@@ -83,25 +83,51 @@ def _validate_llm_reasoning_capability(
     model_reasoning.validate_reasoning_capabilities(config, capabilities, model_entity.name)
 
 
-def _reasoning_capabilities(ap: app.Application, model: persistence_model.LLMModel) -> dict:
+def _runtime_llm_models_by_uuid(ap: app.Application, workspace_uuid: str | None) -> dict:
+    """Return this Workspace's runtime LLM models keyed by model UUID.
+
+    The runtime cache holds every Workspace's models (about 125k on Cloud), so
+    serializers must never scan it once per model.
+    """
     model_mgr = getattr(ap, 'model_mgr', None)
-    runtime_models = getattr(model_mgr, 'llm_model_dict', {}) if model_mgr is not None else {}
-    for runtime_model in runtime_models.values():
-        if (
-            runtime_model.model_entity.uuid == model.uuid
-            and runtime_model.model_entity.workspace_uuid == model.workspace_uuid
-        ):
-            return runtime_model.provider.requester.get_reasoning_capabilities(runtime_model)
+    if model_mgr is None:
+        return {}
+    lookup = getattr(model_mgr, 'runtime_llm_models_for_workspace', None)
+    if callable(lookup):
+        models = lookup(workspace_uuid)
+        if isinstance(models, dict):
+            return models
+    models: dict = {}
+    for runtime_model in getattr(model_mgr, 'llm_model_dict', {}).values():
+        if runtime_model.model_entity.workspace_uuid == workspace_uuid:
+            models.setdefault(runtime_model.model_entity.uuid, runtime_model)
+    return models
+
+
+def _reasoning_capabilities(
+    ap: app.Application,
+    model: persistence_model.LLMModel,
+    runtime_models: dict | None = None,
+) -> dict:
+    if runtime_models is None:
+        runtime_models = _runtime_llm_models_by_uuid(ap, model.workspace_uuid)
+    runtime_model = runtime_models.get(model.uuid)
+    if runtime_model is not None and runtime_model.model_entity.workspace_uuid == model.workspace_uuid:
+        return runtime_model.provider.requester.get_reasoning_capabilities(runtime_model)
     return model_reasoning.default_reasoning_capabilities(
         supported='reasoning' in (model.abilities or []),
         source='manual' if 'reasoning' in (model.abilities or []) else 'unknown',
     )
 
 
-def _serialize_llm_model(ap: app.Application, model: persistence_model.LLMModel) -> dict:
+def _serialize_llm_model(
+    ap: app.Application,
+    model: persistence_model.LLMModel,
+    runtime_models: dict | None = None,
+) -> dict:
     model_dict = ap.persistence_mgr.serialize_model(persistence_model.LLMModel, model)
     model_dict['reasoning_config'] = model_reasoning.normalize_reasoning_config(model_dict.get('reasoning_config'))
-    model_dict['reasoning_capabilities'] = _reasoning_capabilities(ap, model)
+    model_dict['reasoning_capabilities'] = _reasoning_capabilities(ap, model, runtime_models)
     return model_dict
 
 
@@ -304,9 +330,10 @@ class LLMModelsService:
         )
         providers = {p.uuid: p for p in providers_result.all()}
 
+        runtime_models = _runtime_llm_models_by_uuid(self.ap, require_workspace_uuid(context))
         models_list = []
         for model in models:
-            model_dict = _serialize_llm_model(self.ap, model)
+            model_dict = _serialize_llm_model(self.ap, model, runtime_models)
             provider = providers.get(model.provider_uuid)
             if provider:
                 provider_dict = self.ap.persistence_mgr.serialize_model(persistence_model.ModelProvider, provider)
@@ -337,7 +364,8 @@ class LLMModelsService:
             )
         )
         models = result.all()
-        serialized = [_serialize_llm_model(self.ap, model) for model in models]
+        runtime_models = _runtime_llm_models_by_uuid(self.ap, require_workspace_uuid(context))
+        serialized = [_serialize_llm_model(self.ap, model, runtime_models) for model in models]
         return serialized if include_secret else [_redact_model_secrets(model) for model in serialized]
 
     async def create_llm_model(

@@ -901,6 +901,38 @@ class TestLegacyRecordFields:
         assert record['runner'] == 'runner-1'
         assert record['duration_ms'] >= 1000
 
+    def test_chain_adapter_is_never_a_tool_source(self):
+        # LANG-404: an event-route Agent chain never sets state.adapter, and a
+        # tool call finishes before the inbound event closes. The tool's source
+        # must not become the chain's platform.
+        trace, _ = get_modules()
+        _, counters = make_counters(trace_config())
+        for event_id, stages, expected in (
+            (
+                'exec-tool-first',
+                [
+                    {'family': 'tool', 'operation': 'query_user_info', 'adapter': 'mcp'},
+                    {'family': 'platform_api', 'operation': 'send_message', 'adapter': 'HttpBotAdapter'},
+                    {'family': 'runner', 'operation': 'execute', 'adapter': ''},
+                    {'family': 'platform_event', 'operation': 'message.received', 'adapter': 'LarkAdapter'},
+                ],
+                'LarkAdapter',
+            ),
+            (
+                'exec-tool-only',
+                [{'family': 'tool', 'operation': 'activate', 'adapter': 'skill'}],
+                '',
+            ),
+        ):
+            binding = trace.bind(event_id)
+            try:
+                for stage in stages:
+                    counters.record(CONTEXT, **{**STAGE, **stage})
+                counters.close_trace(binding.state, 'event_done')
+            finally:
+                trace.unbind_root(binding)
+            assert chains(counters)[-1]['adapter'] == expected
+
     def test_legacy_string_fields_are_never_null(self):
         trace, _ = get_modules()
         _, counters = make_counters(trace_config())

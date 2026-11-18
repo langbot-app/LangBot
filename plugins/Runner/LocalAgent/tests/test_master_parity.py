@@ -125,6 +125,24 @@ async def test_reasoning_config_preserved_through_fallback_and_committed_tool_ro
     api.call_tool.assert_awaited_once_with(tool_name="echo", parameters={})
 
 
+def test_model_reasoning_levels_handles_non_dict_and_null():
+    from pkg.config import model_reasoning_levels
+
+    # null / None reasoning setting
+    assert model_reasoning_levels({"model": {"primary": "m1", "reasoning": None}}) == {}
+
+    # non-dict reasoning setting (e.g. string or bool)
+    assert model_reasoning_levels({"model": {"primary": "m1", "reasoning": "high"}}) == {}
+    assert model_reasoning_levels({"model": {"primary": "m1", "reasoning": False}}) == {}
+
+    # missing model or non-dict model
+    assert model_reasoning_levels({"model": "m1"}) == {}
+    assert model_reasoning_levels({}) == {}
+
+    # valid dict reasoning setting
+    assert model_reasoning_levels({"model": {"primary": "m1", "reasoning": {"m1": "high"}}}) == {"m1": "high"}
+
+
 @pytest.mark.asyncio
 async def test_streaming_preserves_opaque_provider_fields_into_tool_followup():
     from langbot_plugin.api.entities.builtin.provider.message import FunctionCall, MessageChunk, ToolCall

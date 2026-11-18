@@ -56,6 +56,7 @@ class ExecutionCasesTests(unittest.TestCase):
         recovery_status='completed',
         delete_ok=True,
         recycled=False,
+        box_suffix='-backend-docker',
     ):
         expected = {
             'execution.cancel_cleanup': 'cancelled',
@@ -91,7 +92,7 @@ class ExecutionCasesTests(unittest.TestCase):
         ]
         (self.root / 'mock.jsonl').write_text(''.join(json.dumps(item) + '\n' for item in requests))
         box_key = 'qa-fault-' + hashlib.sha256((str(self.root.resolve()) + scenario).encode()).hexdigest()[:24]
-        box_session_id = 'runner-' + hashlib.sha256(box_key.encode()).hexdigest()
+        box_session_id = 'runner-' + hashlib.sha256(box_key.encode()).hexdigest() + box_suffix
 
         def api(_suite, method, path, body=None):
             if method == 'DELETE':
@@ -122,9 +123,18 @@ class ExecutionCasesTests(unittest.TestCase):
                 )
             tool = 'read' if scenario == 'tools.path_escape' else 'exec'
             stdout = 'INTERRUPT_CLEANUP_OK' if index > 1 else 'SIDE_EFFECT_ONCE'
-            result = {'exit_code': 0 if tool_ok else 1, 'stdout': stdout if tool_ok else 'DUPLICATE_OR_LEAK'}
+            result = {
+                'exit_code': 0 if tool_ok else 1,
+                'stdout': stdout if tool_ok else 'DUPLICATE_OR_LEAK',
+                'session_id': box_session_id,
+            }
             if not tool_ok and index > 1:
-                result = {'exit_code': 42, 'stdout': 'INTERRUPT_LATE_SIDE_EFFECT', 'stderr': ''}
+                result = {
+                    'exit_code': 42,
+                    'stdout': 'INTERRUPT_LATE_SIDE_EFFECT',
+                    'stderr': '',
+                    'session_id': box_session_id,
+                }
             events[run_id] = [
                 {
                     'type': 'tool.call.completed',
@@ -142,11 +152,11 @@ class ExecutionCasesTests(unittest.TestCase):
                         'type': 'tool.call.completed',
                         'data': {
                             'tool_name': 'exec',
-                            'result': {'exit_code': 0, 'stdout': 'SIDE_EFFECT_WRITTEN'},
+                            'result': {'exit_code': 0, 'stdout': 'SIDE_EFFECT_WRITTEN', 'session_id': box_session_id},
                         },
                     },
                 )
-            if kwargs.get('interrupt'):
+            if tool == 'exec':
                 row['box_session_id'] = box_session_id
             return [
                 *[{'kind': 'result', 'data': event} for event in events[run_id]],
@@ -185,6 +195,28 @@ class ExecutionCasesTests(unittest.TestCase):
                 self.assertTrue(self.row['scenario_runs'])
                 self.assertEqual(self.row['assertions']['run_status'], 'passed')
                 self.assertEqual(self.row['cleanup_errors'], [])
+
+    def test_public_session_resolution_requires_a_unique_complete_identity(self):
+        identity = 'runner-' + 'a' * 64
+        unrelated = {identity + 'b-backend-docker': {}, 'runner-' + 'a' * 63: {}}
+        for suffix in ('', '-backend-docker', '-limits-revision-backend-e2b-configuration'):
+            actual = identity + suffix
+            with self.subTest(suffix=suffix), patch.object(cases, '_sessions', return_value={**unrelated, actual: {}}):
+                self.assertEqual(cases._scenario_box_id(self.suite, identity), actual)
+        with patch.object(cases, '_sessions', return_value=unrelated):
+            self.assertIsNone(cases._scenario_box_id(self.suite, identity))
+        with patch.object(cases, '_sessions', return_value={identity: {}, identity + '-backend-docker': {}}):
+            with self.assertRaisesRegex(ValueError, 'multiple sessions'):
+                cases._scenario_box_id(self.suite, identity)
+
+    def test_fault_cases_keep_backend_and_limit_suffixes_from_public_evidence(self):
+        for scenario in ('execution.cancel_cleanup', 'execution.retry_side_effects', 'tools.path_escape'):
+            with self.subTest(scenario=scenario):
+                with sqlite3.connect(self.ledger) as db:
+                    db.execute('DELETE FROM agent_run')
+                result = self.run_fixture(scenario, box_suffix='-limits-revision-backend-e2b-configuration')
+                self.assertEqual(result['result'], 'FAULT_CASE_OK')
+                self.assertTrue(self.row['box_session_id'].endswith('-limits-revision-backend-e2b-configuration'))
 
     def test_duplicate_side_effect_and_untriggered_fault_fail_without_replay(self):
         for tool_ok, fault, assertion in ((False, True, 'side_effect_once'), (True, False, 'fault_injected')):
@@ -254,7 +286,16 @@ class ExecutionCasesTests(unittest.TestCase):
 
     def test_real_ndjson_transport_and_cancel_close(self):
         requests = []
+        identity = 'runner-' + 'a' * 64
+        actual = identity + '-limits-revision-backend-docker'
         frames = [
+            {
+                'kind': 'result',
+                'data': {
+                    'type': 'tool.call.completed',
+                    'data': {'tool_name': 'exec', 'result': {'session_id': actual}},
+                },
+            },
             {
                 'kind': 'result',
                 'data': {'type': 'tool.call.started', 'data': {'parameters': {'command': 'sleep 8; printf late'}}},
@@ -283,25 +324,27 @@ class ExecutionCasesTests(unittest.TestCase):
             self.assertEqual(cases._stream(self.suite, 'agent', 'scope', {})[-1]['kind'], 'completed')
             row = {}
             checkpoints = []
-            with (
-                patch.object(cases, '_running_box', return_value='box'),
-                patch.object(cases, '_sessions', return_value={'box': {'status': 'running'}}),
-            ):
+            with patch.object(cases, '_sessions', return_value={actual: {'status': 'running'}}):
                 cancelled = cases._stream(
                     self.suite,
                     'agent',
                     'scope',
                     row,
                     interrupt='cancel',
+                    box_session_id=identity,
                     before_cancel=lambda: checkpoints.append(row['box_session_id']),
                 )
-            self.assertEqual(len(cancelled), 1)
-            self.assertEqual(checkpoints, ['box'])
-            self.assertEqual(row['box_session_id'], 'box')
+            self.assertEqual(len(cancelled), 2)
+            self.assertEqual(checkpoints, [actual])
+            self.assertEqual(row['box_session_id'], actual)
+            frames[0]['data']['data']['result']['session_id'] = identity + 'b-backend-docker'
+            with self.assertRaisesRegex(ValueError, 'outside this scenario identity'):
+                cases._stream(self.suite, 'agent', 'scope', {}, box_session_id=identity)
+            frames[0]['data']['data']['result']['session_id'] = actual
             frames.pop()
             with self.assertRaisesRegex(RuntimeError, 'outcome unknown'):
                 cases._stream(self.suite, 'agent', 'scope', {})
-            self.assertEqual(len(requests), 3)
+            self.assertEqual(len(requests), 4)
         finally:
             server.shutdown()
             server.server_close()

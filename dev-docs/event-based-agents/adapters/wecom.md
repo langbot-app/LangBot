@@ -88,7 +88,7 @@ The unit tests cover:
 Verified on May 27, 2026 with `EBAEventProbe`, SDK standalone runtime, LangBot core, and a real WeCom desktop client against the server test environment.
 
 ```bash
-cd langbot-plugin-sdk
+cd LangBot/sdk
 uv run python -m langbot_plugin.cli.__init__ rt --debug-only --ws-control-port 5400 --ws-debug-port 5401 --skip-deps-check
 
 cd LangBot
@@ -96,7 +96,7 @@ uv run main.py --standalone-runtime
 
 cd data/plugins/LangBot__EBAEventProbe
 EBA_PROBE_API=1 EBA_PROBE_COMPONENT_SWEEP=1 EBA_PROBE_PLATFORM_API=1 \
-uv --project /absolute/path/to/langbot-plugin-sdk run python -m langbot_plugin.cli.__init__ run
+uv --project /absolute/path/to/LangBot/sdk run python -m langbot_plugin.cli.__init__ run
 ```
 
 Evidence:

@@ -386,12 +386,15 @@ def validate(profile):
             'cooldown_seconds',
             'groups',
             'members_per_group',
+            'max_requests',
         }:
             raise ValueError(f'{name}: unknown phase field')
         number(phase.get('duration_seconds'), 'duration_seconds', minimum=0.001)
         number(phase.get('rps'), 'rps', minimum=0.001)
         number(phase.get('workers'), 'workers', minimum=1, integer=True)
         number(phase.get('cooldown_seconds', 0), 'cooldown_seconds')
+        if 'max_requests' in phase:
+            number(phase['max_requests'], 'max_requests', minimum=1, integer=True)
         if phase['workers'] > 32:
             raise ValueError('workers must be <= 32')
         number(phase.get('groups', 0), 'groups', integer=True)
@@ -564,6 +567,12 @@ class Suite:
                 ):
                     return data
             error = result.stdout + result.stderr
+            try:
+                response = json.loads(result.stdout)
+            except ValueError:
+                response = None
+            if isinstance(response, dict) and response.get('error'):
+                error = json.dumps(response['error'], ensure_ascii=False) + '\n' + error
             for secret in self.secrets:
                 error = error.replace(secret, '[REDACTED]')
             raise RuntimeError(error[:3000])
@@ -809,6 +818,8 @@ class Suite:
                 str(self.output / 'group-state.json'),
                 *observe_args,
             ]
+            if 'max_requests' in phase:
+                command += ['--max-requests', str(phase['max_requests'])]
             with (self.output / f'{phase["name"]}.log').open('w') as log:
                 result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, env=self.env)
             summary = json.loads((destination / 'summary.json').read_text())

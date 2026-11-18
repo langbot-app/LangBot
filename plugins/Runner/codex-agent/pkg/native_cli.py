@@ -37,7 +37,7 @@ from pkg.daemon_relay import (
     get_agent_runtime_daemon_hub,
 )
 from pkg.runtime_support import local_workspace, serialize_codex_session, terminate_process_group
-from pkg.steering import run_with_steering
+from pkg.steering import resume_checkpoint, run_with_steering
 
 SESSION_STATE_KEY = "external.codex_session_id"
 SUPPORTED_LOCATIONS = {"local", "remote-ssh", "daemon"}
@@ -743,16 +743,25 @@ class NativeCodexRunner(Runner):
         }
 
     def _stored_session_id(self, ctx: RunnerContext) -> str:
+        checkpoint = resume_checkpoint(ctx, SESSION_STATE_KEY)
+        if checkpoint is not None:
+            return checkpoint
         return str(ctx.state.conversation.get(SESSION_STATE_KEY) or "").strip()
 
     def _resume_session_id(self, ctx: RunnerContext, config: dict[str, typing.Any]) -> str:
         stored = self._stored_session_id(ctx)
-        if not stored or not config["reuse_session"]:
+        recovering = ctx.runtime.metadata.get("recovery", {}).get("mode") == "resume"
+        if not stored or (not config["reuse_session"] and not recovering):
             return ""
         if config["location"] == "local":
             env = {**os.environ, **config["env"]}
             pending_calls = _pending_session_tool_calls(_shared_codex_home(env), stored)
             if pending_calls:
+                if recovering:
+                    raise NativeCliError(
+                        "Source session has tool calls without output; inspect their effects",
+                        code="codex.resume_unsafe",
+                    )
                 logger.warning(
                     "Starting a new Codex session because %s has %d tool call(s) without output",
                     stored,
@@ -892,6 +901,12 @@ class NativeCodexRunner(Runner):
         )
         tools = AgentRunExternalTools(self.get_run_api(ctx), ctx) if config["langbot_assets_enabled"] else None
         await hub.wait_for_daemon(config["daemon_id"], config["daemon_connect_timeout"])
+        if ctx.runtime.metadata.get("recovery", {}).get("mode") == "resume":
+            daemon = next((item for item in await hub.list_daemons() if item["daemon_id"] == config["daemon_id"]), {})
+            if daemon.get("metadata", {}).get("checkpoint_resume") is not True:
+                raise NativeCliError(
+                    "Upgrade the Codex daemon before resuming a checkpoint", code="codex.resume_unavailable"
+                )
         payload = {
             "prompt": prompt,
             "session_id": session_id,
@@ -907,6 +922,7 @@ class NativeCodexRunner(Runner):
                 "sandbox_mode": config["sandbox_mode"],
                 "mcp_servers": config["mcp_servers"],
                 "langbot_assets_enabled": config["langbot_assets_enabled"],
+                "require_resume": ctx.runtime.metadata.get("recovery", {}).get("mode") == "resume",
             },
             "approval_grant": approval_grant,
         }
@@ -924,6 +940,8 @@ class NativeCodexRunner(Runner):
 
 
 class NativeCodexDaemon(AgentRuntimeDaemonClient):
+    checkpoint_resume = True
+
     async def run_job(self, job_id: str, payload: dict[str, typing.Any]) -> None:
         proxy = None
         config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
@@ -963,6 +981,7 @@ class NativeCodexDaemon(AgentRuntimeDaemonClient):
                         timeout=float(config.get("timeout") or DEFAULT_TIMEOUT_SECONDS),
                         streaming=bool(config.get("streaming", True)),
                         resume_session_id=session_id,
+                        require_resume=bool(config.get("require_resume", False)),
                         prompt=str(payload.get("prompt") or ""),
                         agent_cwd=cwd,
                         approval_policy=config.get("approval_policy"),
@@ -1146,6 +1165,7 @@ class _CodexAppServerClient:
         *,
         approval_policy: str | None,
         sandbox_mode: str | None,
+        require_resume: bool = False,
     ) -> str:
         if resume_session_id:
             try:
@@ -1166,6 +1186,10 @@ class _CodexAppServerClient:
                     self.thread_id = thread_id
                     return thread_id
             except Exception as exc:
+                if require_resume:
+                    raise NativeCliError(
+                        "Failed to resume the source Codex thread", code="codex.resume_failed"
+                    ) from exc
                 logger.debug(
                     "Failed to resume Codex thread; starting a new thread: thread_id=%s error=%s",
                     resume_session_id,
@@ -1173,6 +1197,8 @@ class _CodexAppServerClient:
                     exc_info=True,
                 )
 
+        if require_resume:
+            raise NativeCliError("Source Codex thread could not be resumed", code="codex.resume_failed")
         result = await self.request(
             "thread/start",
             {
@@ -1463,6 +1489,7 @@ async def _run_cli_process_events(
     args: list[str],
     *,
     ctx: RunnerContext | None = None,
+    require_resume: bool = False,
     cwd: str | None,
     env: dict[str, str],
     timeout: float,
@@ -1519,8 +1546,10 @@ async def _run_cli_process_events(
                 agent_cwd,
                 approval_policy=approval_policy,
                 sandbox_mode=sandbox_mode,
+                require_resume=require_resume
+                or bool(ctx and ctx.runtime.metadata.get("recovery", {}).get("mode") == "resume"),
             )
-            if thread_id and thread_id != resume_session_id:
+            if thread_id:
                 result_sequence += 1
                 yield {
                     "type": "state.updated",

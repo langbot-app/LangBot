@@ -22,7 +22,7 @@ LangBot リポジトリの `docker/` ディレクトリには、すぐに使え�
 | `langbot-plugin-runtime` | プラグインランタイム | 5400 |
 | `langbot-box` | Box サンドボックスランタイム（任意） | 5410 |
 
-永続ストレージ：`langbot-data`、`langbot-plugins`、`langbot-plugin-runtime-data` の 3 つの PVC。Box ワークスペースのルートは PVC ではなくノード上の `hostPath`（`/app/data/box`）を使用します。
+永続ストレージ：`langbot-data`、`langbot-plugins`、`langbot-plugin-runtime-data`、`langbot-plugin-runtime-state` の 4 つの PVC。Box ワークスペースのルートは PVC ではなくノード上の `hostPath`（`/app/data/box`）を使用します。
 
 ## クイックスタート
 
@@ -38,6 +38,8 @@ kubectl apply -f kubernetes.yaml
 kubectl get all -n langbot
 ```
 
+旧 Skill とローカルアセットを移行する場合、Core は移行を完了してから HTTP サービスを開始します。マニフェストの `startupProbe` は起動に約 30 分を許容します（`periodSeconds: 10`、`failureThreshold: 180`）。移行する履歴データ量に応じて `failureThreshold` を調整してください。起動プローブの成功後に、既存の liveness/readiness プローブが有効になります。各コンポーネントはイメージ内にインストール済みの Python 環境を使い、Pod 起動時に `uv sync` を実行しません。
+
 ポートフォワードで WebUI にアクセスできます：
 
 ```bash
@@ -47,17 +49,17 @@ kubectl port-forward -n langbot svc/langbot 5300:5300
 
 本番環境では Ingress + TLS での公開を推奨します（マニフェストにはコメントアウトされた Ingress / LoadBalancer / NodePort の例が含まれているので、必要に応じてコメントを解除してください）。
 
-### SeekDB を使用する場合
+### SeekDB / Milvus / Valkey Search を使用する場合
 
-公式イメージにはオプションの SeekDB 依存関係がすでに含まれているため、専用イメージや追加のビルド引数は不要です。`vdb.use` を `seekdb` に設定すると有効になり、不要な場合はデフォルトの `chroma` のまま使用できます。
+デフォルトイメージには Chroma、Qdrant、pgvector のサポートだけが含まれます。SeekDB（組み込み埋め込みモデルを含む）、Milvus、Valkey Search を使う場合は、`langbot` Deployment のイメージを対応するサフィックス付きのタグ（`-seekdb`、`-milvus`、`-valkey`。例：`rockchin/langbot:latest-milvus`、`rockchin/langbot:vX.Y.Z-milvus`）に変更し、`vdb.use` を設定してください。プラグインランタイムと Box はデフォルトイメージのままで構いません。
 
 ## Box サンドボックスランタイム
 
-`langbot-box` は LangBot にコードサンドボックス機能を提供し、サンドボックスツール（`exec` / `read` / `write` / `edit` / `glob` / `grep`）、スキルの `activate` ツールと追加・編集、および stdio モードの MCP サーバーを支えます。これは**任意のコンポーネント**です：デプロイしなくても LangBot は動作し、ダッシュボードとスキル一覧は読み取り専用で表示されますが、上記の機能は無効になります。その場合は `langbot` に `BOX__ENABLED=false` を設定してください。
+`langbot-box` はサンドボックスツール（`exec` / `read` / `write` / `edit` / `glob` / `grep`）、Skill スクリプト実行、サンドボックスのドラフト公開、stdio モードの MCP サーバーを提供します。これは**任意のコンポーネント**です。Skill の管理、有効化、読み取り専用リソースへのアクセスは Core が提供し、Box は不要です。実行とサンドボックスのドラフト公開には Box が必要です。デプロイしない場合は `langbot` に `BOX__ENABLED=false` を設定してください。
 
 ### 仕組みと重要な制約
 
-LangBot 公式イメージには **Docker CLI のみ**が含まれています（dockerd も nsjail も含まれません）。そのため Box ランタイムは、マウントされたノードの Docker socket（`/var/run/docker.sock`）経由でサンドボックスコンテナを作成します。Pod 内で dockerd を実行するわけではありません。
+LangBot 公式イメージには **nsjail と Docker CLI** が含まれ、dockerd は含まれません。このマニフェストは Docker バックエンド用にノードの Docker socket（`/var/run/docker.sock`）をマウントし、ノードのデーモンがサンドボックスコンテナを作成します。Pod 内で dockerd は実行しません。
 
 ここから**重要な制約**が生じます：実際にサンドボックスコンテナを作成するのは**ノード上の Docker デーモン**であり、bind-mount のパスを**ノードのファイルシステム**視点で解決します。したがって Box ワークスペースのルートは、以下の 3 か所で**同一の絶対パス**でなければなりません：
 
@@ -65,10 +67,10 @@ LangBot 公式イメージには **Docker CLI のみ**が含まれています�
 2. `langbot-box` コンテナ内のマウントパス
 3. それが作成する各サンドボックスコンテナ内のマウントパス
 
-これがマニフェストで通常の PVC ではなく `hostPath`（`/app/data/box` に固定）を使う理由です：PVC のパスは Pod の mount namespace 内にしか存在せず、ノードの dockerd からは見えません。また `langbot` と `langbot-box` は `podAffinity` によって**同一ノード**にスケジュールされ、この hostPath を共有します。
+これがマニフェストで通常の PVC ではなく `hostPath`（`/app/data/box` に固定）を使う理由です。PVC のパスは Pod の mount namespace 内にしか存在せず、ノードの dockerd からは見えません。既存の `legacy` デプロイとの互換性のため、Core の Box マウントと同一ノードの `podAffinity` を残しています。データベース保存とネットワークモードへの移行後は、Core のこのマウントと対応するアフィニティを削除できます。Box とノードの Docker デーモン間では同一パスが引き続き必要です。手順は [Skill のアップグレード説明](/ja/usage/skills/readme)を参照してください。
 
 <Warning>
-  hostPath + 同一ノードアフィニティに依存するため、`langbot` は複数レプリカの水平スケーリングをサポートしません（`ReadWriteOnce` PVC と同じ制約）。高可用性が必要な場合は別のアーキテクチャを検討してください。
+  このマニフェストは SQLite と `ReadWriteOnce` ストレージを使う単一 Core デプロイがデフォルトです。共有 Box ディレクトリを削除しても、`replicas` の増加だけで高可用性は実現しません。複数 Core では、データベース、インスタンス ID、Runtime 制御接続を別途設計する必要があります。
 </Warning>
 
 ### 接続と設定
@@ -79,7 +81,7 @@ LangBot 公式イメージには **Docker CLI のみ**が含まれています�
   コンテナ内のデフォルトホスト名は `langbot_box`（アンダースコア付き）ですが、アンダースコアは有効な Kubernetes DNS 名ではありません。そのためマニフェストでは、有効な Service 名 `langbot-box` を使ってエンドポイントを**明示的に**指定する必要があり、コンテナ内のデフォルト値に依存できません。
 </Note>
 
-- Box ランタイムは自身の `box.local.*` / `BOX__*` 環境変数を**読み取りません**。設定は `langbot` が `BOX__LOCAL__*` を読み取り、INIT RPC で渡します。したがって `BOX__LOCAL__HOST_ROOT` / `DEFAULT_WORKSPACE` / `SKILLS_ROOT` / `ALLOWED_MOUNT_ROOTS` はすべて `langbot` Deployment に設定し、`HOST_ROOT` は両側の `box-root` マウントパス（`/app/data/box`）と一致させる必要があります。
+- Box のワークスペースルートは自身の `LANGBOT_BOX_CONFIG` で設定します。マニフェストでは `local.host_root` を `/app/data/box` に設定し、このパスを `local.allowed_mount_roots` に含めています。その他の実行設定は Core が INIT RPC で渡し、Box は自身の `BOX__*` 環境変数を読み取りません。ネットワークモードでは Core のローカルルートを受け付けません。Core の `BOX__LOCAL__*` と `SKILLS__ROOT` は、既存の `legacy` デプロイと移行元の指定用に残しています。
 
 ### セキュリティに関する注意
 

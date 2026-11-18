@@ -30,6 +30,8 @@ LangBotは現在、n8nワークフローの`Webhook`ノードを通じてワー�
 <Info title="">
 ストリーミングレスポンスが必要な場合は、`Response Mode`を`Streaming`に設定します。
 
+ストリーム内で n8n がワークフローエラーを報告した場合、n8n Runner は実行を失敗として扱います。ストリーミングチャネルに送信済みのテキストは、引き続き表示される場合があります。
+
 ![n8nストリーミング設定](/images/zh/deploy/pipelines/n8n/config_response_model.png)
 </Info>
 

@@ -1,0 +1,172 @@
+---
+title: "Manage LangBot with lbctl"
+description: "Install, upgrade, start/stop, read logs, diagnose, configure autostart, run multiple instances and uninstall LangBot with lbctl, and bring existing Docker Compose deployments under lbctl."
+---
+
+[lbctl](https://github.com/langbot-app/langbot-cli) is LangBot's official command-line tool. The [one-line installer](/en/deploy/langbot/one-line) installs it for you. lbctl handles the day-to-day operation of a self-hosted LangBot, so you no longer need to run `docker compose`, `uvx` or download archives by hand.
+
+<Info>
+lbctl prints English or Chinese based on your system language; override it with `--lang en` / `--lang zh-Hans`. Every command accepts `-o json` for machine-readable output, which is useful for scripts and AI agents.
+</Info>
+
+## What lbctl replaces
+
+| Task | Previously | With lbctl |
+|---|---|---|
+| Install | `uvx langbot`, or `git clone` then `docker compose up` | One-line installer, or `lbctl install` (add `--driver docker` for Docker) |
+| Upgrade LangBot | `git pull` + `docker compose up --force-recreate --pull always`; rerun `uvx langbot@latest`; overwrite with a release archive | `lbctl upgrade --yes` (automatic backup and health checks) |
+| Check status and version | `docker compose ps`, or open the WebUI | `lbctl status` |
+| Read logs | `docker logs langbot` | `lbctl logs`, `lbctl logs -f` |
+| Start / stop / restart | `docker compose up -d` / `down` / `restart` | `lbctl start` / `stop` / `restart` |
+| Troubleshoot the environment | Check Docker, ports, disk and network by hand | `lbctl doctor` |
+| Start at boot | Write systemd / launchd units or scheduled tasks | Configured at install; `lbctl autostart status/enable/disable` |
+| Optional SeekDB, Milvus, Valkey dependencies | `uv sync --extra ...`, or switch image tags by hand | `lbctl install --extra seekdb` (or `milvus`, `valkey`) |
+| Mirrors in mainland China | Edit PyPI or Docker registry settings by hand | Region detected automatically and a working source selected; or `--region cn` |
+| Run several instances | Copy directories and edit ports | `lbctl install --name <instance> --port <port>`, `lbctl list` |
+| Uninstall | Remove containers and directories by hand | `lbctl uninstall` (keeps data by default) |
+| Update lbctl itself | Download again | `lbctl update` |
+| Connect the CLI to a local instance | Create an API key in the WebUI, then `lbctl context add` | Connected automatically after install; just run `lbctl bot list` |
+
+## Status and diagnostics
+
+```bash
+lbctl status     # state, LangBot and lbctl versions, URL, deployment type
+lbctl doctor     # checks Python/Docker, ports, disk, network, image sources, sandbox
+lbctl list       # lists all LangBot instances on this machine
+```
+
+When something goes wrong, run `lbctl doctor` first. It reports each failing check and the next command to run.
+
+## Start, stop and logs
+
+```bash
+lbctl start
+lbctl stop
+lbctl restart
+
+lbctl logs                            # last 200 lines
+lbctl logs -f                         # follow
+lbctl logs --tail 1000                # last 1000 lines (up to 5000)
+lbctl logs --service langbot_plugin_runtime   # Plugin Runtime logs on Docker deployments
+```
+
+Native deployments write logs to `logs/langbot.log` in the instance directory, with automatic rotation.
+
+## Upgrade LangBot
+
+```bash
+lbctl upgrade --dry-run    # check and show the plan without changing anything
+lbctl upgrade --yes        # upgrade to the latest stable release
+lbctl upgrade --version v4.11.8 --yes   # upgrade to a specific release
+```
+
+How upgrades work:
+
+- **Native**: prepares the new runtime first, then stops the service, backs up data, switches versions and checks `/healthz`. If the new version fails to start, the previous version and data are restored automatically.
+- **Docker**: pulls and verifies the new image, then stops the service, backs up data and the Compose file, starts the new version and waits for every service's health check.
+- Backups are stored in `backups/` next to the data directory; native deployments keep the newest 3.
+- If you are already on the latest version, `lbctl upgrade --yes` says so and changes nothing.
+- `lbctl update` upgrades lbctl itself and does not touch LangBot.
+
+## Bring an existing Docker Compose deployment under lbctl
+
+If you deployed with `docker compose` following the [Docker guide](/en/deploy/langbot/docker), you don't need to reinstall. Install lbctl and adopt the existing deployment:
+
+```bash
+# Install lbctl only, without deploying a new LangBot
+curl -fsSL https://langbot.app/install.sh | bash -s -- --lbctl-only
+
+# Run in the LangBot/docker directory to adopt the deployment (adjust the port if needed)
+lbctl --endpoint http://127.0.0.1:5300 adopt \
+  --file "$(pwd)/docker-compose.yaml" --project docker --profile all
+
+lbctl status
+lbctl upgrade --dry-run
+lbctl upgrade --yes
+```
+
+- `--project` is the Compose project name; see `docker compose ls` (it is `docker` when started from `LangBot/docker`). `lbctl context list --discover` also lists deployments on this machine that can be adopted.
+- Adoption does not change your Compose file. Upgrades only replace the images of the `langbot`, `langbot_plugin_runtime` and `langbot_box` services; ports, mounts, environment variables and other services stay as they are.
+- Automatic upgrades require services to use a `rockchin/langbot:<tag>` image directly and all data to live in the `data` bind mount under the Compose directory (SQLite, Chroma and local storage). Otherwise `lbctl upgrade --dry-run` explains why; in that case keep upgrading manually as described in [Update LangBot](/en/deploy/update).
+- After editing the Compose file by hand, run `adopt` again.
+- Once adopted, `status`, `logs`, `start`, `stop`, `restart`, `doctor` and `upgrade` all work.
+
+<Warning>
+Upgrading an adopted Docker deployment requires lbctl v0.5.9 or later. Check with `lbctl version` and update with `lbctl update`.
+</Warning>
+
+## Start at boot
+
+The one-line installer enables startup at boot/login by default: systemd on Linux, launchd on macOS, the current user's login startup on Windows (no administrator rights needed), and `restart: unless-stopped` for Docker.
+
+```bash
+lbctl autostart status
+lbctl autostart disable    # turn off autostart without stopping the running instance
+lbctl autostart enable
+```
+
+Non-root Linux users get a systemd user service. Run `loginctl enable-linger` to keep it running after you log out.
+
+## Install options
+
+```bash
+lbctl install                        # native deployment (recommended), Python prepared automatically
+lbctl install --driver docker        # Docker Compose deployment
+lbctl install --port 5300            # HTTP port
+lbctl install --extra seekdb         # optional dependencies: seekdb, milvus, valkey
+lbctl install --version v4.11.8      # specific release
+lbctl install --region cn            # network region: auto, cn, global
+lbctl install --dry-run              # check prerequisites and show the plan only
+```
+
+- Native deployments use uv and Python managed by lbctl; the system Python is never used or modified.
+- If a native installation fails, rerun `lbctl install` with the same instance name and port to repair it; existing data and version are kept.
+- Instances live in `~/.langbot/instances/<name>` by default (`/opt/langbot` for root, `%LOCALAPPDATA%\LangBot` on Windows); change this with `LANGBOT_HOME`.
+
+## Multiple instances
+
+```bash
+lbctl install --driver docker --name second --port 5310 --project langbot-second
+lbctl list
+lbctl stop --name second
+lbctl start --name second
+```
+
+`start`, `stop`, `restart`, `upgrade`, `uninstall` and `autostart` accept `--name` to select an instance. `status`, `logs` and `doctor` act on the current connection; list connections with `lbctl context list` and switch with `lbctl context use <name>`.
+
+Use Docker to run several instances at the same time: native deployments need exclusive use of ports 5401 (plugin debugging) and 5410 (sandbox).
+
+## Uninstall
+
+```bash
+lbctl uninstall --yes               # stop and remove the service, keep data and backups
+lbctl uninstall --purge-data --yes  # also delete lbctl-managed data directories
+```
+
+## Manage bots, plugins and models from the command line (optional)
+
+Day-to-day configuration is easiest in the WebUI. lbctl can also manage Workspace resources over the HTTP API, which suits scripts and AI agents.
+
+Local instances installed or adopted with lbctl connect automatically (lbctl v0.5.11 or later). lbctl generates an API key for each instance, writes it to `api.global_api_key` in `data/config.yaml`, and attaches it to that instance's connection. No setup is needed:
+
+```bash
+lbctl whoami
+lbctl bot list
+lbctl plugin list
+lbctl model list
+lbctl knowledge-base list
+```
+
+- Existing instances get a key the next time you run `lbctl start`, `restart` or `upgrade`. For adopted deployments, run `lbctl restart` once when prompted.
+- The key is stored only in the instance directory (mode 0600) and never appears in lbctl's config file, `-o json` output or logs. To configure an MCP client or another tool, show it with `lbctl auth show-key --yes`.
+- With several local instances, list their connections with `lbctl context list` and pick one with `--context <name>`.
+
+For a remote instance or LangBot Cloud, create an API key in the WebUI, then add a connection:
+
+```bash
+export LANGBOT_API_KEY=<your API key>
+lbctl context add remote --endpoint https://your-langbot.example.com --api-key-env LANGBOT_API_KEY
+lbctl --context remote whoami
+```
+
+See `lbctl help` or the [lbctl repository](https://github.com/langbot-app/langbot-cli) for every command.

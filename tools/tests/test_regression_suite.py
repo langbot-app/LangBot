@@ -144,7 +144,18 @@ class ProfileTests(unittest.TestCase):
     def test_normal_profile_and_overrides_contract(self):
         validate(json.loads((Path(__file__).resolve().parents[1] / 'profiles' / 'normal.json').read_text()))
         bad = profile()
-        for field, value in [('rps', float('nan')), ('workers', 33), ('duration_seconds', -1)]:
+        current = copy.deepcopy(bad)
+        current['phases'][0]['max_requests'] = 17
+        validate(current)
+        for field, value in [
+            ('rps', float('nan')),
+            ('workers', 33),
+            ('duration_seconds', -1),
+            ('max_requests', 0),
+            ('max_requests', -1),
+            ('max_requests', 1.5),
+            ('max_requests', True),
+        ]:
             with self.subTest(field=field):
                 current = copy.deepcopy(bad)
                 current['phases'][0][field] = value
@@ -278,6 +289,7 @@ class ProfileTests(unittest.TestCase):
                 current['phases'] = [
                     {'name': name, 'duration_seconds': 0.5, 'rps': 12, 'workers': 3} for name in ('low', 'high')
                 ]
+                current['phases'][0]['max_requests'] = 3
                 current['observe'] = {'health': {'core': f'http://127.0.0.1:{server.server_port}/healthz'}}
                 current['cleanup'] = 'always'
                 config = root / 'profile.json'
@@ -313,6 +325,9 @@ class ProfileTests(unittest.TestCase):
                         self.assertGreater(phase['achieved_rps'], 0)
                         self.assertEqual(phase['health_failures'], 0)
                         self.assertGreaterEqual(phase['cases']['chat']['requests'], phase['cases']['box']['requests'])
+                    self.assertEqual(summary['phases'][0]['request_limit'], 3)
+                    self.assertEqual(summary['phases'][0]['requests'], 3)
+                    self.assertIsNone(summary['phases'][1]['request_limit'])
                     self.assertEqual(json.loads((output / 'owned.json').read_text())['resources'], [])
                     self.assertEqual(json.loads((root / 'cli-state.json').read_text()), {})
         finally:

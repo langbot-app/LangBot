@@ -992,15 +992,24 @@ class RuntimeBot:
 
     @staticmethod
     def _summarize_event_delivery(results: list[typing.Any]) -> tuple[str, str]:
-        outcome = 'success'
-        error_detail = ''
-        for result in results:
-            if isinstance(result, BaseException):
-                from ..telemetry.execution import describe_exception
+        from ..telemetry.execution import describe_exception, is_cancellation
 
-                outcome = 'failed'
-                error_detail = error_detail or describe_exception(result)
-        return outcome, error_detail
+        failure_detail = ''
+        cancel_detail = ''
+        for result in results:
+            if not isinstance(result, BaseException):
+                continue
+            if is_cancellation(result):
+                # A cancelled delivery (stopped run, superseding message,
+                # shutdown) is not a failed one.
+                cancel_detail = cancel_detail or describe_exception(result)
+            else:
+                failure_detail = failure_detail or describe_exception(result)
+        if failure_detail:
+            return 'failed', failure_detail
+        if cancel_detail:
+            return 'cancelled', cancel_detail
+        return 'success', ''
 
     def _record_platform_event(self, event, adapter, outcome: str, error_detail: str, node: str = '') -> None:
         from ..telemetry.execution import record
@@ -1394,9 +1403,11 @@ class RuntimeBot:
                 # another subscriber or the primary route from receiving the event.
                 results = await asyncio.gather(*tasks, return_exceptions=True)
         except BaseException as exc:
-            from ..telemetry.execution import describe_exception
+            from ..telemetry.execution import describe_exception, is_cancellation
 
-            self._record_platform_event(event, adapter, 'failed', describe_exception(exc), node)
+            self._record_platform_event(
+                event, adapter, 'cancelled' if is_cancellation(exc) else 'failed', describe_exception(exc), node
+            )
             await self._persist_monitoring_ingress(event, adapter, execution_id, 'failed', [exc])
             raise
 
@@ -1451,6 +1462,7 @@ class RuntimeBot:
                 return
         except Exception as exc:
             from ..telemetry import trace as trace_mod
+            from ..telemetry.execution import describe_exception
 
             # No matching declaration was resolved: log locally without
             # reporting a failed delivery for every unrelated incoming event.
@@ -1465,6 +1477,7 @@ class RuntimeBot:
                     failure_code='runner_failed',
                     reason=str(exc),
                     text=f'Plugin processor {processor_uuid} failed: {exc}',
+                    error=describe_exception(exc),
                 )
         agent = {**agent, 'supported_event_patterns': patterns}
         return await self._dispatch_eba_event_to_processor(
@@ -1648,7 +1661,9 @@ class RuntimeBot:
 
         try:
             binding = self._agent_product_to_binding(agent, event_binding, event_type, self.bot_entity.uuid)
-        except Exception:
+        except Exception as exc:
+            from ..telemetry.execution import describe_exception
+
             return await self._record_event_route_trace(
                 event_type=event_type,
                 status='failed',
@@ -1659,6 +1674,7 @@ class RuntimeBot:
                 failure_code='runner_failed',
                 reason='Agent configuration is invalid',
                 text=f'Failed to build Agent binding for EBA event {event_type}: {traceback.format_exc()}',
+                error=describe_exception(exc),
             )
         if binding is None:
             return await self._record_event_route_trace(
@@ -2126,10 +2142,34 @@ class RuntimeBot:
                 settings.get('prefixes', ['/'])[0], tenant_scoped_listener(sync_commands)
             )
 
+    def _observe_alert(self, *, error: Exception | None = None, recovered: bool = False) -> None:
+        """Report adapter crashes and restarts to Workspace alerts."""
+
+        alert_service = getattr(self.ap, 'alert_service', None)
+        bot_entity = getattr(self, 'bot_entity', None)
+        if alert_service is None or bot_entity is None:
+            return
+        workspace_uuid = getattr(self.execution_context, 'workspace_uuid', None)
+        try:
+            if recovered:
+                alert_service.observe_recovery(workspace_uuid, 'bot_offline', bot_entity.uuid)
+            else:
+                alert_service.observe_failure(
+                    workspace_uuid,
+                    'bot_offline',
+                    bot_entity.uuid,
+                    getattr(bot_entity, 'name', None) or bot_entity.uuid,
+                    error_type=type(error).__name__ if error else None,
+                    error_message=str(error) if error else None,
+                )
+        except Exception:
+            pass
+
     async def run(self):
         async def exception_wrapper():
             try:
                 self.task_context.set_current_action('Running...')
+                self._observe_alert(recovered=True)
                 await self.adapter.run_async()
                 self.task_context.set_current_action('Exited.')
             except Exception as e:
@@ -2139,6 +2179,7 @@ class RuntimeBot:
 
                 traceback_str = traceback.format_exc()
                 self.task_context.set_current_action('Exited with error.')
+                self._observe_alert(error=e)
                 await self.logger.error(f'平台适配器运行出错:\n{e}\n{traceback_str}')
 
         self.task_wrapper = self.ap.task_mgr.create_task(

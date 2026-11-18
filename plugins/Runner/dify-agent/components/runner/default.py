@@ -19,8 +19,10 @@ from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
 from langbot_plugin.api.entities.builtin.runner import (
     InteractionAction,
     InteractionField,
+    InteractionNotSupportedError,
     InteractionOption,
     InteractionRequest,
+    InteractionSubmission,
     RunnerContext,
     RunnerResult,
 )
@@ -30,8 +32,10 @@ from pkg.dify_client import (
     DifyAPIError,
     DifyConfigError,
     extract_text_from_output,
+    extract_workflow_outputs,
     process_thinking_content,
 )
+from pkg.http_limits import MAX_STREAM_BUDGET_MB
 from pkg.scoped_identity import scoped_identity
 
 logger = logging.getLogger(__name__)
@@ -438,6 +442,11 @@ class DefaultRunner(Runner):
         stream_budget_mb = _to_int(config.get("stream-budget-mb"), 16)
         if stream_budget_mb <= 0:
             raise DifyConfigError("stream-budget-mb must be a positive integer", code="dify.config_invalid")
+        if stream_budget_mb > MAX_STREAM_BUDGET_MB:
+            raise DifyConfigError(
+                f"stream-budget-mb must not exceed {MAX_STREAM_BUDGET_MB} MiB",
+                code="dify.config_invalid",
+            )
 
         return {
             "base_url": base_url,
@@ -822,6 +831,49 @@ class DefaultRunner(Runner):
         request = self._request_from_continuation(continuation)
         return request, continuation
 
+    @staticmethod
+    async def _ask_fields_one_by_one(
+        ctx: RunnerContext,
+        continuation: dict[str, typing.Any],
+    ) -> InteractionSubmission:
+        """Collect a multi-field Dify form through single-field interactions."""
+        base_id = str(continuation["interaction_id"])
+        title = str(continuation.get("title") or "Human input required")
+        description = continuation.get("description") or None
+        field_descriptions = continuation.get("field_descriptions") or {}
+        values: dict[str, typing.Any] = {}
+        fields = [InteractionField.model_validate(item) for item in continuation.get("current_fields") or []]
+        for index, field in enumerate(fields, start=1):
+            if field.id == "_dify_action":
+                step_description = continuation.get("action_description") or description
+                step = InteractionRequest(
+                    interaction_id=f"{base_id}-action",
+                    kind="confirmation",
+                    title=title,
+                    description=step_description,
+                    actions=[InteractionAction(id=option.value, label=option.label) for option in field.options],
+                    fallback_text="\n".join(filter(None, [f"[Human Input Required] {title}", step_description])),
+                )
+            else:
+                step_description = field_descriptions.get(field.id) or description
+                step = InteractionRequest(
+                    interaction_id=f"{base_id}-{index}",
+                    kind="choice" if field.type == "select" else "form",
+                    title=title,
+                    description=step_description,
+                    fields=[field],
+                    actions=[],
+                    fallback_text="\n".join(filter(None, [f"[Human Input Required] {title}", step_description])),
+                )
+            result = await ctx.request_interaction(step, timeout=3600, on_unsupported="degrade")
+            if result.status != "submitted" or result.submission is None:
+                raise DifyAPIError(f"Dify human input {result.status}", code="dify.interaction_expired")
+            if field.id == "_dify_action":
+                values["_dify_action"] = result.submission.action_id
+            elif field.id in result.submission.values:
+                values[field.id] = result.submission.values[field.id]
+        return InteractionSubmission(interaction_id=base_id, values=values)
+
     async def _wait_and_resume_workflow(
         self,
         ctx: RunnerContext,
@@ -834,13 +886,23 @@ class DefaultRunner(Runner):
         if reason is None:
             raise DifyAPIError("Dify paused without a supported human-input reason", code="dify.response_invalid")
         request, continuation = self._build_interaction_request(reason, _workflow_run_id(event), user)
-        result = await ctx.request_interaction(request, timeout=3600, on_unsupported="degrade")
-        if result.status != "submitted" or result.submission is None:
-            raise DifyAPIError(f"Dify human input {result.status}", code="dify.interaction_expired")
+        try:
+            result = await ctx.request_interaction(request, timeout=3600, on_unsupported="degrade")
+        except InteractionNotSupportedError:
+            # Most platforms render at most one field per card, and text-only
+            # platforms never split a multi-field form themselves. Ask each
+            # field (and then the action) as its own interaction instead.
+            if len(request.fields) <= 1:
+                raise
+            submission = await self._ask_fields_one_by_one(ctx, continuation)
+        else:
+            if result.status != "submitted" or result.submission is None:
+                raise DifyAPIError(f"Dify human input {result.status}", code="dify.interaction_expired")
+            submission = result.submission
         async for item in self._resume_workflow_once(
             ctx,
             client,
-            result.submission,
+            submission,
             remove_think,
             continuation=continuation,
         ):
@@ -1104,6 +1166,10 @@ class DefaultRunner(Runner):
                 data = event.get("data", {})
                 if data.get("error"):
                     raise DifyAPIError(f"Dify workflow error: {data['error']}", code="dify.api_error")
+                if not has_response and not pending_content:
+                    wf_output = extract_workflow_outputs(data.get("outputs"))
+                    if wf_output:
+                        pending_content = wf_output
 
         # Handle any remaining pending content
         if pending_content:
@@ -1272,7 +1338,7 @@ class DefaultRunner(Runner):
                     raise DifyAPIError(f"Dify workflow error: {data['error']}", code="dify.api_error")
 
                 # Get final output
-                summary = extract_text_from_output(data.get("outputs", {}).get("summary", ""))
+                summary = extract_workflow_outputs(data.get("outputs", {}))
                 if summary:
                     content, _ = process_thinking_content(summary, remove_think)
                     has_response = True
@@ -1424,7 +1490,7 @@ class DefaultRunner(Runner):
                 data = event.get("data", {})
                 if data.get("error"):
                     raise DifyAPIError(f"Dify workflow error: {data['error']}", code="dify.api_error")
-                summary = extract_text_from_output(data.get("outputs", {}).get("summary", ""))
+                summary = extract_workflow_outputs(data.get("outputs", {}))
                 if summary:
                     content, _ = process_thinking_content(summary, remove_think)
                     final_response = bool(content)

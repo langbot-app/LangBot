@@ -35,6 +35,8 @@ class Echo(Runner):
         )
 ```
 
+`message.completed` ends one message. Use `run.completed`, `run.failed`, or `run.cancelled` to end the Run explicitly, after all model, tool, and state work is finished. Once the Host has validated and processed that terminal event, it persists the terminal state before closing the result stream. Downstream message delivery can finish later. Results after a valid terminal event are not processed.
+
 ## Manifest File: Runner
 
 Replace `welcome.yaml` with:
@@ -174,7 +176,7 @@ Register a handler with `@self.handler(EventClass)` and add the event identifier
 | Bot unmuted | `bot.unmuted` | `BotUnmutedEvent` |
 | Platform-specific event | `platform.specific` | `PlatformSpecificEvent` |
 
-See the SDK's [events.py](https://github.com/langbot-app/langbot-plugin-sdk/blob/main/src/langbot_plugin/api/entities/builtin/platform/events.py) for available events and fields. Event support varies by platform.
+See the SDK's [events.py](https://github.com/langbot-app/LangBot/blob/master/sdk/src/langbot_plugin/api/entities/builtin/platform/events.py) for available events and fields. Event support varies by platform.
 
 ## Testing the Event Processor
 

@@ -22,13 +22,20 @@ logger = logging.getLogger(__name__)
 
 RESEND_URL = "https://api.resend.com/emails"
 DEFAULT_INTENT_PROMPT = (
-    "用户明确表达了购买、下单、试用、报价、签约、采购或与销售沟通的意愿，"
-    "或在询问价格、套餐、付款方式、发票、合同、交付时间等成交相关细节，视为强烈购买意愿。"
-    "只是了解产品功能、闲聊或技术咨询，不算强烈购买意愿。"
+    "询问价格、套餐、报价、购买、付款方式、发票、合同、采购流程，或提出企业级、大规模、长期合作需求，属于强购买信号（高分）；"
+    "申请试用、测试、演示、询问如何接入、主动要求联系销售，或说明了具体产品需求和使用场景，属于中等信号；"
+    "时间紧迫、表明决策人身份或提供公司信息可以加分；只是了解功能、学习研究、个人使用、闲聊，或想要免费资源，应当低分。"
 )
+DEFAULT_RISK_PROMPT = "刷单刷量、薅羊毛、抢票秒杀、破解盗号、爬取微信或银行等敏感数据、翻墙或 VPN 等明显违规或高风险用途。"
+DEFAULT_LEAD_FIELDS = [
+    "公司名称", "行业", "使用场景", "目标网站或数据来源", "预估月请求量或数据量",
+    "预算范围", "上线时间", "联系人姓名", "职位", "企业邮箱", "微信或电话", "现有供应商",
+]
 DEFAULT_ASK_TEXT = "为了更好地为您服务，方便留下您的手机号或微信号吗？我们的顾问会尽快与您联系。"
 DEFAULT_THANKS_TEXT = "已收到您的联系方式，我们的顾问会尽快与您联系，感谢您的信任！"
 MAX_EMAIL_ATTEMPTS = 3
+MAX_EVENTS = 100
+EXCERPT_CHARS = 300
 PAGE_SIZE = 100
 MAX_TRANSCRIPT_MESSAGES = 5000
 COMPONENT_LABELS = {
@@ -116,8 +123,52 @@ def response_text(response) -> str:
     return ""
 
 
+def to_score(value) -> int:
+    try:
+        return max(0, min(100, int(round(float(value)))))
+    except (TypeError, ValueError):
+        return 0
+
+
+def to_bool(value) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "yes", "1", "是")
+    return bool(value)
+
+
+def int_config(config: dict, name: str, default: int) -> int:
+    try:
+        return int(config.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def score_level(config: dict, score: int) -> str:
+    """high / medium / low by the configured thresholds."""
+    high = int_config(config, "high_score", 60)
+    ask = int_config(config, "ask_score", 30)
+    if score >= high:
+        return "high"
+    return "medium" if score >= ask else "low"
+
+
+LEVEL_LABELS = {"high": "高意向", "medium": "中意向", "low": "低意向"}
+
+
 def role_label(role: str) -> str:
     return "用户" if role == "user" else "AI"
+
+
+def excerpt(text: str) -> str:
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= EXCERPT_CHARS else text[:EXCERPT_CHARS] + "…"
+
+
+def record(lead: dict, kind: str, **data) -> None:
+    """Append one timeline event to a lead row (most recent MAX_EVENTS kept)."""
+    events = lead.setdefault("events", [])
+    events.append({"at": time.time(), "kind": kind, **data})
+    del events[:-MAX_EVENTS]
 
 
 class LeadCapture(BasePlugin):
@@ -148,13 +199,32 @@ class LeadCapture(BasePlugin):
     def key(self, bot: str, user: str) -> str:
         return "lead:" + ":".join(quote(str(part), safe="") for part in (self.scope(), bot, user))
 
+    def key_prefix(self) -> str:
+        return "lead:" + quote(self.scope(), safe="") + ":"
+
     async def load(self, key: str):
         if key not in await self.get_plugin_storage_keys():
             return None
         return json.loads(await self.get_plugin_storage(key))
 
     async def save(self, key: str, value):
+        value["updated_at"] = time.time()
         await self.set_plugin_storage(key, json.dumps(value, ensure_ascii=False).encode("utf-8"))
+
+    async def list_leads(self) -> list[dict]:
+        """All lead rows of this installation (used by the Page)."""
+        prefix = self.key_prefix()
+        rows = []
+        for key in await self.get_plugin_storage_keys():
+            if not key.startswith(prefix):
+                continue
+            try:
+                row = json.loads(await self.get_plugin_storage(key))
+            except (ValueError, TypeError):
+                continue
+            row["key"] = key
+            rows.append(row)
+        return rows
 
     # ---- conversation history --------------------------------------------------
 
@@ -195,18 +265,56 @@ class LeadCapture(BasePlugin):
         )
         return parse_json_object(response_text(response))
 
-    async def evaluate_intent(self, config: dict, dialogue: list[str]) -> tuple[bool, str]:
+    async def evaluate_intent(self, config: dict, dialogue: list[str]) -> dict:
+        """Score purchase intent 0–100 and flag compliance risk; returns a normalized judgment."""
         criteria = str(config.get("intent_prompt") or DEFAULT_INTENT_PROMPT).strip()
+        risk = str(config.get("risk_prompt") or DEFAULT_RISK_PROMPT).strip()
         system = (
-            "你是销售线索分析助手。请根据「判断标准」阅读客户与 AI 客服的对话，判断客户当前是否有强烈购买意愿。\n"
-            "只输出一个 JSON 对象，不要输出其他内容：{\"strong_intent\": true 或 false, \"reason\": \"一句话理由\"}\n\n"
-            f"判断标准：\n{criteria}"
+            "你是销售线索分析助手。请阅读客户与 AI 客服的对话，按「评分标准」综合整段对话给客户当前的购买意向打 0–100 分"
+            "（按语义理解，包括繁体、同义和口语化说法），并判断是否涉及「合规风险」。\n"
+            "只输出一个 JSON 对象，不要输出其他内容：\n"
+            "{\"score\": 0 到 100 的整数, \"signals\": [\"命中的主要信号，简短\"], "
+            "\"risk\": true 或 false, \"risk_reason\": \"涉及合规风险时说明原因，否则为空\", \"reason\": \"一句话说明打分理由\"}\n\n"
+            f"评分标准：\n{criteria}\n\n合规风险：\n{risk}"
         )
         result = await self.ask_llm(str(config["model"]), system, "对话记录（从旧到新）：\n" + "\n".join(dialogue))
-        strong = result.get("strong_intent")
-        if isinstance(strong, str):
-            strong = strong.strip().lower() in ("true", "yes", "1", "是")
-        return bool(strong), str(result.get("reason") or "").strip()
+        if "score" in result:
+            score = to_score(result.get("score"))
+        elif "strong_intent" in result:
+            # Tolerate the 0.1/0.2 output shape from models that ignore the new schema.
+            score = int_config(config, "high_score", 60) if to_bool(result.get("strong_intent")) else 0
+        else:
+            raise ValueError("judgment has no score")
+        signals = result.get("signals") or []
+        if not isinstance(signals, list):
+            signals = [str(signals)]
+        return {
+            "score": score,
+            "level": score_level(config, score),
+            "signals": [excerpt(str(item))[:60] for item in signals][:10],
+            "risk": to_bool(result.get("risk")),
+            "risk_reason": str(result.get("risk_reason") or "").strip(),
+            "reason": str(result.get("reason") or "").strip(),
+        }
+
+    async def extract_fields(self, config: dict, history: list[dict]) -> dict:
+        """Pull the configured lead fields out of the whole conversation ({} on failure)."""
+        fields = [str(name).strip() for name in (config.get("lead_fields") or DEFAULT_LEAD_FIELDS) if str(name).strip()]
+        if not fields:
+            return {}
+        transcript = "\n".join(
+            f"{role_label(row.get('role'))}: {stored_text(row.get('message_content'))}" for row in history[-200:]
+        )
+        system = (
+            "从客户与客服的完整对话中提取销售线索信息。只根据客户明确说过的内容填写，不要推测或编造；没有提到的填空字符串。\n"
+            "只输出一个 JSON 对象，键必须严格是：" + json.dumps(fields, ensure_ascii=False)
+        )
+        try:
+            result = await self.ask_llm(str(config["model"]), system, transcript)
+        except Exception as error:
+            logger.warning("LeadCapture field extraction failed: %s", type(error).__name__)
+            return {}
+        return {name: excerpt(str(result.get(name) or "").strip()) for name in fields}
 
     async def extract_contact(self, config: dict, text: str) -> str:
         contact = find_contact(text)
@@ -233,11 +341,15 @@ class LeadCapture(BasePlugin):
             f"[{utc_label(row.get('timestamp'))} UTC] {role_label(row.get('role'))}: {stored_text(row.get('message_content'))}"
             for row in history
         ]
+        level = LEVEL_LABELS.get(lead.get("level", ""), "")
         summary = [
             ("联系方式", lead["contact"]),
+            ("意向评分", f"{lead['score']} 分（{level}）" if lead.get("score") is not None else "-"),
+            ("命中信号", "、".join(lead.get("signals") or []) or "-"),
+            ("意向判断理由", lead.get("reason") or "-"),
+            *[(name, value or "未提及") for name, value in (lead.get("fields") or {}).items()],
             ("用户 ID", lead["user"]),
             ("来源 Bot", bot_name),
-            ("意向判断理由", lead.get("reason") or "-"),
             ("留资时间 (UTC)", utc_label(datetime.fromtimestamp(lead["captured_at"], UTC).isoformat())),
             ("首次联系 (UTC)", first),
             ("消息总数", str(len(history))),
@@ -261,7 +373,10 @@ class LeadCapture(BasePlugin):
         return {
             "from": str(config.get("from_email") or "").strip(),
             "to": [address.strip() for address in config.get("to_emails", []) if str(address).strip()],
-            "subject": f"【购买意向】{lead['contact']} · {bot_name}",
+            "subject": (
+                f"【购买意向·{level} {lead['score']}分】{lead['contact']} · {bot_name}"
+                if lead.get("score") is not None else f"【购买意向】{lead['contact']} · {bot_name}"
+            ),
             "text": text_body,
             "html": html_body,
             "attachments": [{
@@ -297,10 +412,17 @@ class LeadCapture(BasePlugin):
             history = await self.full_history(lead["bot"], lead["user"])
         except Exception as error:
             lead["email_status"] = f"history:{'permission_denied' if permission_denied(error) else type(error).__name__}"
+            record(lead, "email", status=lead["email_status"], attempt=lead["email_attempts"])
             logger.warning("LeadCapture could not read the conversation: %s", lead["email_status"])
             return
+        if "fields" not in lead:
+            lead["fields"] = await self.extract_fields(config, history)
+            if lead["fields"]:
+                record(lead, "fields", fields=lead["fields"])
         error = await self.send_email(config, self.build_email(config, lead, history))
         lead["email_status"] = error or "sent"
+        record(lead, "email", status=lead["email_status"], attempt=lead["email_attempts"], recipients=len(
+            [address for address in config.get("to_emails", []) if str(address).strip()]))
         if error:
             logger.warning("LeadCapture email failed (%s), attempt %s", error, lead["email_attempts"])
 
@@ -329,6 +451,7 @@ class LeadCapture(BasePlugin):
             if not contact:
                 return
             lead.update(status="captured", contact=contact, captured_at=time.time(), thanks_pending=True)
+            record(lead, "contact", contact=contact, message=excerpt(plain_text(event.message_chain)))
             await self.save(key, lead)
             await self.deliver(config, lead)
             await self.save(key, lead)
@@ -353,8 +476,9 @@ class LeadCapture(BasePlugin):
                     self.append_to_reply(event_context, str(config.get("thanks_text", DEFAULT_THANKS_TEXT) or ""))
                 await self.save(key, lead)
                 return
-            if lead:
-                return  # Already asked once; never ask again.
+            if lead and lead.get("status") in ("asked", "risk"):
+                return  # Asked once already, or flagged for compliance review: never ask (again).
+            lead = lead or {"status": "idle", "bot": bot, "user": user, "created_at": time.time()}
             try:
                 history = int(config.get("history_messages", 20))
             except (TypeError, ValueError):
@@ -363,17 +487,30 @@ class LeadCapture(BasePlugin):
                 dialogue = await self.recent_dialogue(bot, user, max(1, min(history, 100)))
             except Exception as error:
                 logger.warning("LeadCapture could not read recent messages: %s", type(error).__name__)
+                record(lead, "error", stage="history", error=type(error).__name__)
+                await self.save(key, lead)
                 return
+            user_text = next((line[len("用户: "):] for line in reversed(dialogue) if line.startswith("用户: ")), "")
             dialogue.append(f"AI: {event.response_text}")
             try:
-                strong, reason = await self.evaluate_intent(config, dialogue)
+                judgment = await self.evaluate_intent(config, dialogue)
             except Exception as error:
                 logger.warning("LeadCapture intent evaluation failed: %s", type(error).__name__)
+                record(lead, "error", stage="judge", error=type(error).__name__, message=excerpt(user_text))
+                await self.save(key, lead)
                 return
-            if not strong:
-                return
-            await self.save(key, {"status": "asked", "bot": bot, "user": user, "reason": reason, "asked_at": time.time()})
-            self.append_to_reply(event_context, str(config.get("ask_text") or DEFAULT_ASK_TEXT))
+            strong = judgment["level"] in ("high", "medium") and not judgment["risk"]
+            record(lead, "judge", strong=strong, message=excerpt(user_text), reply=excerpt(event.response_text),
+                   **judgment)
+            lead.update(score=judgment["score"], level=judgment["level"])
+            if judgment["risk"]:
+                lead.update(status="risk", reason=judgment["risk_reason"] or judgment["reason"], risk_at=time.time())
+                record(lead, "risk", reason=lead["reason"])
+            elif strong:
+                lead.update(status="asked", reason=judgment["reason"], signals=judgment["signals"], asked_at=time.time())
+                record(lead, "asked", text=excerpt(str(config.get("ask_text") or DEFAULT_ASK_TEXT)))
+                self.append_to_reply(event_context, str(config.get("ask_text") or DEFAULT_ASK_TEXT))
+            await self.save(key, lead)
 
     @staticmethod
     def append_to_reply(event_context, text: str) -> None:

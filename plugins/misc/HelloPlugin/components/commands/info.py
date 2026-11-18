@@ -29,8 +29,6 @@ class Info(Command):
             reply_text += f"privilege: {context.privilege}\n"
             reply_text += f"session: {context.session.launcher_type.value}_{context.session.launcher_id}\n"
 
-            print(f"发起者ID{context.session.launcher_id}发送者ID{context.session.sender_id}消息类型{context.session.launcher_type}")
-            
             yield CommandReturn(
                 text=reply_text,
             )

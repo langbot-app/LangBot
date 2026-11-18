@@ -13,9 +13,7 @@ import re
 import sys
 
 
-DEFAULT_OUTPUT = (
-    Path(__file__).resolve().parents[2] / 'langbot-plugin-sdk/src/langbot_plugin/api/proxies/workspace_domains.py'
-)
+DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / 'sdk/src/langbot_plugin/api/proxies/workspace_domains.py'
 
 
 def identifier(value: str) -> str:

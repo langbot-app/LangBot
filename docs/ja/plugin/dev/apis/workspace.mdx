@@ -7,6 +7,13 @@ description: プラグインから Agent、パイプライン、ボット、モ�
 
 各操作には `pipeline.list` や `knowledge.base.retrieve` のような固定の ID があります。プラグインが呼び出せるのは、[マニフェストで宣言](/ja/plugin/dev/permissions#権限を宣言する)し、かつメンバーがそのインストールに許可した操作だけです。
 
+
+プラグインは `artifact.create`、`artifact.get`、`artifact.read`、`artifact.read_content`、`artifact.retain`、`artifact.release`、`artifact.delete` を明示的に要求できます。必要な操作 ID を個別に列挙してください。`artifact.*` にはアカウント専用の公開・Skill ソース操作も含まれるため拒否されます。型付き呼び出しは `self.plugin.workspace.artifact.<method>(...)`、または run に結び付いた `ctx.api.workspace` プロキシを使用します。
+
+これらの Artifact はインストール UUID に属し、プラグインの作者/名前、アカウント、run には属しません。各操作は現在の有効なインストールと許可を再確認します。許可の取消後や新 UUID による再インストール後は古い資産にアクセスできません。ID の把握や保持はアクセス権の共有になりません。この経路でアカウントのアップロード、Skill ソース、run ハンドルを取り込むことはできません。`artifact.skill_resource.create` と `artifact.publication.get/set/disable` はアカウント/API キー専用です。[Artifact API](/ja/develop/artifacts) を参照してください。
+
+JSON RPC の作成には `filename`、`content_base64`、任意の `mime_type`、`ttl_seconds` を指定します。デコード後の入力は 256 KiB 以下です。プラグインの生バイト読み取りも 256 KiB が上限で、`metadata` と `content_base64` を返します。有界テキスト/構造化メディアには `read_content` を優先してください。この転送上限は既存の認証付き HTTP アップロード/ダウンロード契約を変更しません。保持/解放はそのインストールの pin のみに作用し、有効な業務参照がある間は削除を拒否します。
+
 ## 操作を呼び出す
 
 どのコンポーネントからも `self.plugin.workspace` を使います。各操作には ID に対応した型付きメソッドがあります。

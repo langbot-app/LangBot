@@ -168,7 +168,7 @@ async function main() {
   const langbotRepo = resolve(root, env.LANGBOT_REPO || "..");
   const sdkRepo = resolve(
     root,
-    env.LANGBOT_PLUGIN_SDK_REPO || "../../langbot-plugin-sdk",
+    env.LANGBOT_PLUGIN_SDK_REPO || "../sdk",
   );
   const sdkSrc = resolve(sdkRepo, "src");
   const dbPath = join(evidenceDir, "ledger-contention.sqlite3");

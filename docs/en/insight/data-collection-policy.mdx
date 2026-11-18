@@ -37,7 +37,7 @@ The community edition controls execution reporting with `space.execution_trace`:
 | `all` (default) | Records nodes and closure records for every eligible execution |
 | `sampled` | Makes one stable hash decision from the event identity at ingress; retains approximately `1/N` successful executions, where N is `space.execution_trace_sample` (default 20); every record of an execution shares the decision |
 | `failures` | Omits nodes for ordinary executions and reports a closure only for failure, cancellation, timeout or a recorded chain failure reason |
-| `off` | Disables node and closure records; no independent window counters continue, while Workspace heartbeats remain controlled by the main telemetry switch |
+| `off` | Disables node and closure records; Workspace heartbeats and their usage counters remain controlled by the main telemetry switch |
 
 If an execution excluded by `sampled` fails, its closure is still reported. Previously skipped nodes are not recovered, so a failure may have a summary without a complete chain. WebUI debug runs are retained in `all`, `sampled` and `failures` with a debug flag; neither `off` nor the main opt-out permits their upload.
 
@@ -56,6 +56,14 @@ Active Workspaces first send an `instance_heartbeat` about 30 seconds after star
 Optional in-app surveys send the survey ID, submitted answers, instance ID, version and completion/dismissal status. Survey answers are content voluntarily provided by users.
 
 Space remains compatible with older `query` and `feature_execution` data. Legacy query records may contain model names, feature counters, user-defined skill/MCP names and raw traceback text. The current execution-record restrictions neither sanitize historical data nor change uploads from older clients still running.
+
+### Aggregated feature usage
+
+Heartbeats also carry process-local usage counters for knowledge-base creation, updates, deletion, uploads, ingestion, retrieval and migration; prompt-library browsing and application, sharing previews/submissions and plugin/MCP/skill installation; and HTTP/MCP calls, including lbctl commands and client versions. Dimensions are limited to operation categories, client type, HTTP status class, public engine plugin IDs, file-extension categories, size/duration buckets, outcomes and exception class names. Installation counters include source categories and whether an MCP installation still needs configuration inputs.
+
+These counters do not contain knowledge-base names, file names or contents, prompt names or text, retrieval queries, URLs, credentials or error messages. Heartbeats additionally include up to 16 loaded knowledge-engine IDs, a file count where available (unavailable in Cloud runtime), validated deployment-source/tool-version labels and up to five lbctl versions. No new telemetry requests or frontend funnel tracking are added.
+
+Each Workspace has at most 256 counter keys and the process tracks at most 10,000 Workspaces. Counters are sent as acknowledged deltas with the existing heartbeat; failed sends retain pending counts. They are not persisted locally, so restarts and capacity limits can lose counts. Space aggregates usage by UTC day and retains usage and content-event aggregates for 180 days. `space.disable_telemetry: true` disables accumulation as well as reporting of these counters.
 
 ## Storage and retention
 

@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px;
+      background: var(--langbot-bg, #ffffff); color: var(--langbot-text, #0a0a0a);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', sans-serif;
+      font-size: 14px; line-height: 1.5;
+    }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .muted { color: var(--langbot-text-muted, #6b7280); }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 20px 0; }
+    .card {
+      background: var(--langbot-bg-card, #f9fafb); border: 1px solid var(--langbot-border, #e5e7eb);
+      border-radius: 10px; padding: 14px 16px;
+    }
+    .card .num { font-size: 24px; font-weight: 600; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .tab {
+      border: 1px solid var(--langbot-border, #e5e7eb); background: transparent; color: inherit;
+      border-radius: 999px; padding: 4px 12px; cursor: pointer; font-size: 13px;
+    }
+    .tab.active { background: var(--langbot-accent, #2563eb); border-color: var(--langbot-accent, #2563eb); color: #fff; }
+    input[type=search] {
+      margin-left: auto; min-width: 220px; padding: 6px 10px; border-radius: 8px; color: inherit;
+      border: 1px solid var(--langbot-border, #e5e7eb); background: var(--langbot-bg-card, #f9fafb);
+    }
+    button.refresh {
+      border: 1px solid var(--langbot-border, #e5e7eb); background: transparent; color: inherit;
+      border-radius: 8px; padding: 6px 12px; cursor: pointer;
+    }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    .layout.with-detail { grid-template-columns: minmax(0, 1.2fr) minmax(320px, 1fr); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--langbot-border, #e5e7eb); vertical-align: top; }
+    th { font-weight: 500; font-size: 12px; color: var(--langbot-text-muted, #6b7280); }
+    tbody tr { cursor: pointer; }
+    tbody tr:hover, tbody tr.selected { background: var(--langbot-bg-card, #f3f4f6); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; word-break: break-all; }
+    .badge { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: 12px; white-space: nowrap; }
+    .b-idle { background: rgba(107,114,128,.15); }
+    .b-asked { background: rgba(245,158,11,.18); color: #b45309; }
+    .b-captured { background: rgba(16,185,129,.18); color: #047857; }
+    .b-risk { background: rgba(239,68,68,.15); color: #b91c1c; }
+    .b-high { background: rgba(239,68,68,.12); color: #b91c1c; }
+    .b-medium { background: rgba(245,158,11,.18); color: #b45309; }
+    .b-low { background: rgba(107,114,128,.15); }
+    .score { font-weight: 600; font-size: 15px; }
+    .signals { margin-top: 4px; }
+    .signals span { display: inline-block; margin: 2px 4px 0 0; padding: 0 6px; border-radius: 6px; font-size: 12px; border: 1px solid var(--langbot-border, #e5e7eb); }
+    .fields { width: 100%; font-size: 13px; }
+    .fields td { padding: 4px 6px; border-bottom: 1px solid var(--langbot-border, #e5e7eb); }
+    .b-strong { background: rgba(245,158,11,.18); color: #b45309; }
+    .b-weak { background: rgba(107,114,128,.15); }
+    .b-error { background: rgba(239,68,68,.15); color: #b91c1c; }
+    .b-ok { background: rgba(16,185,129,.18); color: #047857; }
+    .detail {
+      border: 1px solid var(--langbot-border, #e5e7eb); border-radius: 10px; padding: 16px;
+      background: var(--langbot-bg-card, #f9fafb); align-self: start; position: sticky; top: 12px;
+      max-height: calc(100vh - 24px); overflow: auto;
+    }
+    .detail h2 { font-size: 16px; margin: 0 0 8px; }
+    .detail h3 { font-size: 13px; margin: 18px 0 8px; color: var(--langbot-text-muted, #6b7280); font-weight: 500; }
+    .kv { display: grid; grid-template-columns: 96px 1fr; gap: 4px 8px; font-size: 13px; }
+    .event { border-left: 2px solid var(--langbot-border, #e5e7eb); padding: 2px 0 10px 12px; margin-left: 4px; }
+    .event.strong { border-left-color: #f59e0b; }
+    .event.captured { border-left-color: #10b981; }
+    .event.error { border-left-color: #ef4444; }
+    .event .time { font-size: 12px; color: var(--langbot-text-muted, #6b7280); }
+    .msg { margin: 6px 0; padding: 6px 10px; border-radius: 8px; background: var(--langbot-bg, #fff); font-size: 13px; white-space: pre-wrap; }
+    .msg.user { border-left: 3px solid var(--langbot-accent, #2563eb); }
+    .empty { padding: 40px 0; text-align: center; }
+    .close { float: right; border: none; background: transparent; color: inherit; cursor: pointer; font-size: 18px; }
+    @media (max-width: 900px) { .layout.with-detail { grid-template-columns: minmax(0, 1fr); } .detail { position: static; } }
+  </style>
+</head>
+<body>
+  <h1 data-i18n="title">Lead judgments</h1>
+  <div class="muted" data-i18n="subtitle">Every purchase-intent judgment per conversation, the contact request and the email.</div>
+
+  <div class="cards">
+    <div class="card"><div class="muted" data-i18n="sessions">Conversations</div><div class="num" id="t-sessions">-</div></div>
+    <div class="card"><div class="muted" data-i18n="judgments">Judgments</div><div class="num" id="t-judgments">-</div></div>
+    <div class="card"><div class="muted" data-i18n="askedCount">Asked for contact</div><div class="num" id="t-asked">-</div></div>
+    <div class="card"><div class="muted" data-i18n="capturedCount">Contact captured</div><div class="num" id="t-captured">-</div></div>
+    <div class="card"><div class="muted" data-i18n="emailedCount">Emailed</div><div class="num" id="t-emailed">-</div></div>
+    <div class="card"><div class="muted" data-i18n="riskCount">Compliance risk</div><div class="num" id="t-risk">-</div></div>
+  </div>
+
+  <div class="toolbar">
+    <button class="tab active" data-filter="all" data-i18n="filterAll">All</button>
+    <button class="tab" data-filter="captured" data-i18n="filterCaptured">Captured</button>
+    <button class="tab" data-filter="asked" data-i18n="filterAsked">Asked, waiting</button>
+    <button class="tab" data-filter="idle" data-i18n="filterIdle">Not yet</button>
+    <button class="tab" data-filter="risk" data-i18n="filterRisk">Compliance risk</button>
+    <button class="tab" data-filter="errors" data-i18n="filterErrors">With errors</button>
+    <input type="search" id="search" data-i18n-placeholder="searchPlaceholder" placeholder="Search user ID or contact">
+    <button class="refresh" id="refresh" data-i18n="refresh">Refresh</button>
+  </div>
+
+  <div class="layout" id="layout">
+    <div>
+      <table>
+        <thead>
+          <tr>
+            <th data-i18n="colUser">User</th>
+            <th data-i18n="colStatus">Status</th>
+            <th data-i18n="colScore">Score</th>
+            <th data-i18n="colLast">Latest judgment</th>
+            <th data-i18n="colCount">Judged (strong)</th>
+            <th data-i18n="colContact">Contact / email</th>
+            <th data-i18n="colUpdated">Updated</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="empty muted" id="empty" style="display:none" data-i18n="empty">No judgments yet. They appear after the AI replies to private chats.</div>
+    </div>
+    <div class="detail" id="detail" style="display:none"></div>
+  </div>
+
+  <script src="/api/v1/plugins/_sdk/page-sdk.js"></script>
+  <script>
+    var state = { sessions: [], filter: 'all', query: '', selected: null };
+
+    function t(key, fallback) { return langbot.t(key, fallback); }
+    function esc(text) {
+      return String(text == null ? '' : text).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function when(seconds) {
+      if (!seconds) return '-';
+      var d = new Date(seconds * 1000);
+      var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
+    function statusBadge(status) {
+      var label = { idle: t('statusIdle', 'Not yet'), asked: t('statusAsked', 'Asked'), captured: t('statusCaptured', 'Captured'), risk: t('statusRisk', 'Compliance risk') }[status] || status;
+      return '<span class="badge b-' + esc(status) + '">' + esc(label) + '</span>';
+    }
+    function judgeBadge(strong) {
+      if (strong === true) return '<span class="badge b-strong">' + esc(t('strong', 'Strong intent')) + '</span>';
+      if (strong === false) return '<span class="badge b-weak">' + esc(t('weak', 'Not strong')) + '</span>';
+      return '<span class="muted">-</span>';
+    }
+    function scoreCell(score, level) {
+      if (score === null || score === undefined) return '<span class="muted">-</span>';
+      var label = { high: t('levelHigh', 'High'), medium: t('levelMedium', 'Medium'), low: t('levelLow', 'Low') }[level] || '';
+      return '<span class="score">' + esc(score) + '</span> ' + (label ? '<span class="badge b-' + esc(level) + '">' + esc(label) + '</span>' : '');
+    }
+    function signalsHtml(signals) {
+      return (signals && signals.length) ? '<div class="signals">' + signals.map(function (x) { return '<span>' + esc(x) + '</span>'; }).join('') + '</div>' : '';
+    }
+    function emailBadge(status) {
+      if (!status) return '';
+      if (status === 'sent') return '<span class="badge b-ok">' + esc(t('emailSent', 'Email sent')) + '</span>';
+      return '<span class="badge b-error">' + esc(t('emailFailed', 'Email failed')) + ': ' + esc(status) + '</span>';
+    }
+
+    function visible() {
+      var q = state.query.toLowerCase();
+      return state.sessions.filter(function (s) {
+        if (state.filter === 'errors' && !s.errors && !(s.email_status && s.email_status !== 'sent')) return false;
+        if (['idle', 'asked', 'captured', 'risk'].indexOf(state.filter) >= 0 && s.status !== state.filter) return false;
+        if (q && (s.user + ' ' + (s.contact || '')).toLowerCase().indexOf(q) < 0) return false;
+        return true;
+      });
+    }
+
+    function renderTable() {
+      var rows = visible();
+      document.getElementById('empty').style.display = rows.length ? 'none' : 'block';
+      document.getElementById('rows').innerHTML = rows.map(function (s) {
+        return '<tr data-key="' + esc(s.key) + '"' + (s.key === state.selected ? ' class="selected"' : '') + '>' +
+          '<td class="mono">' + esc(s.user) + '</td>' +
+          '<td>' + statusBadge(s.status) + '</td>' +
+          '<td>' + scoreCell(s.score, s.level) + '</td>' +
+          '<td>' + judgeBadge(s.last_strong) + '<div class="muted">' + esc(s.last_reason || s.reason || '') + '</div></td>' +
+          '<td>' + s.judgments + ' (' + s.strong_judgments + ')' + (s.errors ? ' <span class="badge b-error">' + s.errors + ' ' + esc(t('errorsShort', 'errors')) + '</span>' : '') + '</td>' +
+          '<td>' + esc(s.contact || '') + '<div>' + emailBadge(s.email_status) + '</div></td>' +
+          '<td class="muted">' + when(s.updated_at) + '</td>' +
+          '</tr>';
+      }).join('');
+      Array.prototype.forEach.call(document.querySelectorAll('#rows tr'), function (tr) {
+        tr.onclick = function () { openDetail(tr.getAttribute('data-key')); };
+      });
+    }
+
+    function renderTotals(totals) {
+      ['sessions', 'judgments', 'asked', 'captured', 'emailed', 'risk'].forEach(function (k) {
+        document.getElementById('t-' + k).textContent = totals[k] == null ? 0 : totals[k];
+      });
+    }
+
+    function renderEvent(e) {
+      var cls = 'event', body = '';
+      if (e.kind === 'judge') {
+        if (e.risk) cls += ' error'; else if (e.strong) cls += ' strong';
+        body = (e.score !== undefined ? scoreCell(e.score, e.level) + ' ' : judgeBadge(e.strong) + ' ') + esc(e.reason || '') +
+          (e.risk ? '<div><span class="badge b-risk">' + esc(t('statusRisk', 'Compliance risk')) + '</span> ' + esc(e.risk_reason || '') + '</div>' : '') +
+          signalsHtml(e.signals) +
+          (e.message ? '<div class="msg user">' + esc(t('userSaid', 'User')) + ': ' + esc(e.message) + '</div>' : '') +
+          (e.reply ? '<div class="msg">AI: ' + esc(e.reply) + '</div>' : '');
+      } else if (e.kind === 'asked') {
+        cls += ' strong';
+        body = '<b>' + esc(t('eventAsked', 'Contact request appended to the reply')) + '</b><div class="msg">' + esc(e.text || '') + '</div>';
+      } else if (e.kind === 'contact') {
+        cls += ' captured';
+        body = '<b>' + esc(t('eventContact', 'Contact captured')) + ':</b> ' + esc(e.contact) +
+          (e.message ? '<div class="msg user">' + esc(e.message) + '</div>' : '');
+      } else if (e.kind === 'risk') {
+        cls += ' error';
+        body = '<span class="badge b-risk">' + esc(t('eventRisk', 'Flagged for compliance review; no contact request')) + '</span> ' + esc(e.reason || '');
+      } else if (e.kind === 'fields') {
+        cls += ' captured';
+        body = '<b>' + esc(t('eventFields', 'Lead fields extracted')) + '</b>';
+      } else if (e.kind === 'email') {
+        cls += e.status === 'sent' ? ' captured' : ' error';
+        body = emailBadge(e.status) + ' <span class="muted">#' + esc(e.attempt) + '</span>';
+      } else if (e.kind === 'error') {
+        cls += ' error';
+        body = '<span class="badge b-error">' + esc(t('eventError', 'Error')) + '</span> ' + esc(e.stage) + ': ' + esc(e.error) +
+          (e.message ? '<div class="msg user">' + esc(e.message) + '</div>' : '');
+      }
+      return '<div class="' + cls + '"><div class="time">' + when(e.at) + '</div>' + body + '</div>';
+    }
+
+    function renderDetail(data) {
+      var s = data.session;
+      var events = (s.events || []).slice().reverse();
+      var conversation = data.conversation || [];
+      var html = '<button class="close" id="close" title="close">×</button>' +
+        '<h2>' + esc(t('detailTitle', 'Conversation')) + '</h2>' +
+        '<div class="kv">' +
+        '<span class="muted">' + esc(t('colUser', 'User')) + '</span><span class="mono">' + esc(s.user) + '</span>' +
+        '<span class="muted">' + esc(t('colStatus', 'Status')) + '</span><span>' + statusBadge(s.status) + '</span>' +
+        '<span class="muted">' + esc(t('colScore', 'Score')) + '</span><span>' + scoreCell(s.score, s.level) + '</span>' +
+        (s.reason ? '<span class="muted">' + esc(t('reason', 'Reason')) + '</span><span>' + esc(s.reason) + '</span>' : '') +
+        (s.contact ? '<span class="muted">' + esc(t('colContact', 'Contact')) + '</span><span>' + esc(s.contact) + ' ' + emailBadge(s.email_status) + '</span>' : '') +
+        '</div>' +
+        (Object.keys(s.fields || {}).length ? '<h3>' + esc(t('leadFields', 'Lead fields')) + '</h3><table class="fields">' +
+          Object.keys(s.fields).map(function (k) {
+            return '<tr><td class="muted">' + esc(k) + '</td><td>' + (s.fields[k] ? esc(s.fields[k]) : '<span class="muted">' + esc(t('notMentioned', 'Not mentioned')) + '</span>') + '</td></tr>';
+          }).join('') + '</table>' : '') +
+        '<h3>' + esc(t('timeline', 'Timeline (newest first)')) + '</h3>' +
+        (events.length ? events.map(renderEvent).join('') : '<div class="muted">' + esc(t('noEvents', 'No events recorded.')) + '</div>') +
+        '<h3>' + esc(t('recentConversation', 'Recent conversation (UTC)')) + '</h3>';
+      if (data.conversation_error) {
+        html += '<div class="muted">' + esc(t('conversationUnavailable', 'Conversation unavailable')) + ': ' + esc(data.conversation_error) + '</div>';
+      } else {
+        html += conversation.length ? conversation.map(function (m) {
+          return '<div class="msg' + (m.role === '用户' ? ' user' : '') + '"><span class="muted">' + esc(m.at) + ' · ' +
+            esc(m.role === '用户' ? t('userSaid', 'User') : 'AI') + '</span><br>' + esc(m.text) + '</div>';
+        }).join('') : '<div class="muted">-</div>';
+      }
+      var panel = document.getElementById('detail');
+      panel.innerHTML = html;
+      panel.style.display = 'block';
+      document.getElementById('layout').classList.add('with-detail');
+      document.getElementById('close').onclick = closeDetail;
+    }
+
+    function closeDetail() {
+      state.selected = null;
+      document.getElementById('detail').style.display = 'none';
+      document.getElementById('layout').classList.remove('with-detail');
+      renderTable();
+    }
+
+    async function openDetail(key) {
+      state.selected = key;
+      renderTable();
+      try {
+        renderDetail(await langbot.api('/session', { key: key }, 'POST'));
+      } catch (err) {
+        var panel = document.getElementById('detail');
+        panel.style.display = 'block';
+        panel.textContent = String(err && err.message || err);
+      }
+    }
+
+    async function load() {
+      var data = await langbot.api('/sessions', null, 'GET');
+      state.sessions = data.sessions || [];
+      renderTotals(data.totals || {});
+      renderTable();
+      if (state.selected) openDetail(state.selected);
+    }
+
+    langbot.onReady(function () {
+      langbot.applyI18n();
+      var search = document.getElementById('search');
+      search.placeholder = t('searchPlaceholder', search.placeholder);
+      search.oninput = function () { state.query = search.value.trim(); renderTable(); };
+      Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (tab) {
+        tab.onclick = function () {
+          Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (x) { x.classList.remove('active'); });
+          tab.classList.add('active');
+          state.filter = tab.getAttribute('data-filter');
+          renderTable();
+        };
+      });
+      document.getElementById('refresh').onclick = load;
+      langbot.onLanguageChange(function () { langbot.applyI18n(); renderTable(); });
+      load();
+    });
+  </script>
+</body>
+</html>

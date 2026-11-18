@@ -85,7 +85,7 @@ Send:
 Covered by:
 
 ```bash
-PYTHONPATH=/Users/wangqiang/code/python/langbot-plugin-sdk/src uv run pytest tests/unit_tests/platform/test_wecomcs_eba_adapter.py
+PYTHONPATH=/path/to/LangBot/sdk/src uv run pytest tests/unit_tests/platform/test_wecomcs_eba_adapter.py
 ```
 
 Result on May 27, 2026: `10 passed`.
@@ -97,13 +97,13 @@ The local `PYTHONPATH` is required in this workspace because the installed SDK p
 Auxiliary direct adapter probe:
 
 ```bash
-PYTHONPATH=/path/to/langbot-plugin-sdk/src uv run python -m py_compile tests/e2e/live_wecomcs_eba_probe.py
+PYTHONPATH=/path/to/LangBot/sdk/src uv run python -m py_compile tests/e2e/live_wecomcs_eba_probe.py
 
 WECOMCS_CORPID=... \
 WECOMCS_SECRET=... \
 WECOMCS_TOKEN=... \
 WECOMCS_ENCODING_AES_KEY=... \
-PYTHONPATH=/path/to/langbot-plugin-sdk/src \
+PYTHONPATH=/path/to/LangBot/sdk/src \
 uv run python tests/e2e/live_wecomcs_eba_probe.py \
   --path /wecomcs/callback \
   --log data/temp/wecomcs_eba_live_probe.jsonl
@@ -131,11 +131,11 @@ Evidence:
 Command shape used:
 
 ```bash
-cd langbot-plugin-sdk
+cd LangBot/sdk
 uv run python -m langbot_plugin.cli.__init__ rt --debug-only --ws-control-port 5400 --ws-debug-port 5401 --skip-deps-check
 
 cd LangBot
-PYTHONPATH=/absolute/path/to/langbot-plugin-sdk/src uv run main.py --standalone-runtime
+PYTHONPATH=/absolute/path/to/LangBot/sdk/src uv run main.py --standalone-runtime
 
 cd data/plugins/LangBot__EBAEventProbe
 DEBUG_RUNTIME_WS_URL=ws://127.0.0.1:5401/plugin/ws \
@@ -143,7 +143,7 @@ EBA_PROBE_LOG=/absolute/path/to/LangBot/data/temp/wecomcs_eba_plugin_probe.jsonl
 EBA_PROBE_API=1 \
 EBA_PROBE_COMPONENT_SWEEP=1 \
 EBA_PROBE_PLATFORM_API=1 \
-uv --project /absolute/path/to/langbot-plugin-sdk run python -m langbot_plugin.cli.__init__ run
+uv --project /absolute/path/to/LangBot/sdk run python -m langbot_plugin.cli.__init__ run
 ```
 
 Required real UI trigger: send a Customer Service message from the WeCom/WeChat customer-side UI to the configured `dev.rockchin.top` Customer Service account.

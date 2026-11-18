@@ -18,8 +18,14 @@ pip install uv
 uv sync
 ```
 
-The default installation does not include optional SeekDB support. If you need
-the SeekDB vector store or built-in embedding model, use:
+The default installation does not include the optional vector stores. To use one
+of these backends, add its extra to `uv sync` (extras can be combined):
+
+| Backend | extra |
+| --- | --- |
+| SeekDB vector store / built-in embedding model | `seekdb` |
+| Milvus | `milvus` |
+| Valkey Search (not on Windows) | `valkey` |
 
 ```bash
 uv sync --extra seekdb

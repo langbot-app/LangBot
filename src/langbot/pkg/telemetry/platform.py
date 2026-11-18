@@ -27,9 +27,11 @@ def result_failure_detail(result) -> str:
 
 
 def result_outcome(result):
-    # Empty returns do not prove a remote operation succeeded.
+    # Adapters report a failed platform call by raising or by an error
+    # envelope. Most reply/send implementations return nothing on success, so
+    # a call that returned None without raising completed.
     if result is None:
-        return 'unknown'
+        return 'success'
     if result is False:
         return 'failed'
     raw = getattr(result, 'raw', result)

@@ -29,6 +29,7 @@ class ApplicationAPI:
             from .platform_setup import operations as platform_operations
             from .connection_operations import operations as connection_operations
             from .workspace_streams import operations as workspace_streams
+            from .artifact_operations import operations as artifact_operations
 
             operations = [
                 *service_operations(),
@@ -37,6 +38,7 @@ class ApplicationAPI:
                 *platform_operations(),
                 *connection_operations(),
                 *workspace_streams(),
+                *artifact_operations(),
             ]
         self._operations: dict[str, Operation] = {}
         for spec in operations:

@@ -91,6 +91,13 @@ class MockLLMTest(unittest.TestCase):
         with urlopen(Request(self.url + '/_mock/scopes/' + scope, method='DELETE'), timeout=5) as response:
             return json.load(response)
 
+    def test_record_retains_measured_service_duration(self):
+        self.post('test-delay-recovery', mock_scope='duration-record')
+        row = self.records('duration-record', 1)[0]
+        self.assertGreater(row['time'], 0)
+        self.assertGreaterEqual(row['duration_seconds'], row['faults'][0]['elapsed_seconds'])
+        self.assertTrue(row['response_complete'])
+
     def test_chat_and_model_discovery(self):
         with urlopen(self.url + '/v1/models') as response:
             models = json.load(response)

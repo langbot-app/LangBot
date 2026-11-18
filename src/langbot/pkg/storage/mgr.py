@@ -37,6 +37,20 @@ class StorageMgr:
         from . import media
 
         self.media_cache = media.MediaCache(ap, self)
+        from .content import ContentStore
+
+        self.content_store = ContentStore(ap)
+
+    @property
+    def persistent_content(self) -> bool:
+        config = getattr(getattr(self.ap, 'instance_config', None), 'data', {}) or {}
+        return config.get('storage', {}).get('use') == 'persistent'
+
+    async def _load_content_alias(self, context, object_key):
+        ref = await self.content_store.alias_ref(context, object_key)
+        if ref is None:
+            raise FileNotFoundError(object_key)
+        return await self.content_store.get(context, ref, max_bytes=self._object_read_limit())
 
     def _object_read_limit(self) -> int:
         config = getattr(getattr(self.ap, 'instance_config', None), 'data', {})
@@ -193,7 +207,10 @@ class StorageMgr:
             key=key,
             preserve_suffix=preserve_suffix,
         )
-        await self.storage_provider.save(object_key, value)
+        if self.persistent_content:
+            await self.content_store.save_alias(context, object_key, owner_type=owner_type, owner=owner, value=value)
+        else:
+            await self.storage_provider.save(object_key, value)
         return object_key
 
     async def load_scoped(
@@ -213,6 +230,8 @@ class StorageMgr:
             key=key,
             preserve_suffix=preserve_suffix,
         )
+        if self.persistent_content:
+            return await self._load_content_alias(context, object_key)
         return await self._load_object_bounded(object_key)
 
     async def delete_scoped(
@@ -232,7 +251,10 @@ class StorageMgr:
             key=key,
             preserve_suffix=preserve_suffix,
         )
-        await self.storage_provider.delete(object_key)
+        if self.persistent_content:
+            await self.content_store.delete_alias(context, object_key)
+        else:
+            await self.storage_provider.delete(object_key)
 
     async def resolve_public_object(
         self,
@@ -257,6 +279,16 @@ class StorageMgr:
                 )
             except Exception:
                 return None
+            if self.persistent_content:
+                context = ExecutionContext(
+                    instance_uuid=self.ap.workspace_service.instance_uuid,
+                    workspace_uuid=workspace_uuid,
+                    placement_generation=generation,
+                )
+                try:
+                    return await self._load_content_alias(context, object_key)
+                except FileNotFoundError:
+                    return None
             if not await self.storage_provider.exists(object_key):
                 return None
             return await self._load_object_bounded(object_key)
@@ -295,6 +327,8 @@ class StorageMgr:
             object_key,
             expected_owner_type=expected_owner_type,
         )
+        if self.persistent_content:
+            return await self.content_store.alias_ref(context, object_key) is not None
         return await self.storage_provider.exists(object_key)
 
     async def load_scoped_object_key(
@@ -310,6 +344,8 @@ class StorageMgr:
             object_key,
             expected_owner_type=expected_owner_type,
         )
+        if self.persistent_content:
+            return await self._load_content_alias(context, object_key)
         return await self._load_object_bounded(object_key)
 
     async def size_scoped_object_key(
@@ -325,6 +361,11 @@ class StorageMgr:
             object_key,
             expected_owner_type=expected_owner_type,
         )
+        if self.persistent_content:
+            ref = await self.content_store.alias_ref(context, object_key)
+            if ref is None:
+                raise FileNotFoundError(object_key)
+            return await self.content_store.size(context, ref)
         return await self.storage_provider.size(object_key)
 
     async def delete_scoped_object_key(
@@ -342,7 +383,9 @@ class StorageMgr:
             object_key,
             expected_owner_type=expected_owner_type,
         )
-        if await self.storage_provider.exists(object_key):
+        if self.persistent_content:
+            await self.content_store.delete_alias(context, object_key)
+        elif await self.storage_provider.exists(object_key):
             await self.storage_provider.delete(object_key)
 
     @classmethod
@@ -366,11 +409,17 @@ class StorageMgr:
             self.ap.logger.info('Initialized S3 storage backend.')
         else:
             self.storage_provider = localstorage.LocalStorageProvider(self.ap)
-            self.ap.logger.info('Initialized local storage backend.')
+            if self.persistent_content:
+                self.ap.logger.info(
+                    'Initialized persistent content storage; local provider is reserved for legacy maintenance.'
+                )
+            else:
+                self.ap.logger.info('Initialized local storage backend.')
 
         await self.storage_provider.initialize()
 
     async def shutdown(self) -> None:
+        await self.content_store.shutdown()
         storage_provider = getattr(self, 'storage_provider', None)
         if storage_provider is not None:
             await storage_provider.shutdown()

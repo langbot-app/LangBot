@@ -351,7 +351,7 @@ const PipelineFormComponent = forwardRef<
     setAIConfigTabSchema(installed.configTab);
   }, []);
   const dynamicFormSystemContext = useMemo(
-    () => ({ pipeline_id: pipelineId }),
+    () => ({ pipeline_id: pipelineId, prompt_library_kind: 'messaging' }),
     [pipelineId],
   );
 

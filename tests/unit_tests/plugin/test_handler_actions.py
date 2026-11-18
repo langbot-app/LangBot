@@ -7,11 +7,16 @@ from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, Mock
 
 import pytest
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import create_async_engine
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction, RuntimeToLangBotAction
 from langbot_plugin.entities.io.context import ActionContext, InstallationBinding
 
 from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.entity.persistence.bstorage import BinaryStorage
+from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
+from langbot.pkg.persistence.tenant_uow import _validate_scoped_statement_call
 from langbot.pkg.storage.mgr import StorageMgr
 
 from langbot.pkg.provider.tools.errors import ToolExecutionDeniedError
@@ -370,6 +375,46 @@ class TestSetBinaryStorage:
             'test-key',
         )
         assert insert_params['value'] == b'x' * 512
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('dialect', ['sqlite', 'postgresql'])
+    async def test_storage_upsert_passes_tenant_sql_validation(self, app, dialect):
+        app.persistence_mgr.get_db_engine.return_value.dialect.name = dialect
+        runtime_handler = make_handler(app)
+        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
+            self.payload(b'value')
+        )
+
+        assert response.code == 0
+        statements = [call.args[0] for call in app.persistence_mgr.execute_async.await_args_list]
+        assert any(getattr(statement, '_post_values_clause', None) is not None for statement in statements)
+        for statement in statements:
+            _validate_scoped_statement_call((statement,), {})
+
+    @pytest.mark.asyncio
+    async def test_storage_new_key_persists_through_tenant_uow(self, app, tmp_path):
+        engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "binary-storage.db"}')
+        manager = PersistenceManager(app, mode=PersistenceMode.CLOUD_RUNTIME)
+        manager.db = SimpleNamespace(get_engine=lambda: engine)
+        app.persistence_mgr = manager
+        runtime_handler = make_handler(app)
+        try:
+            async with engine.begin() as connection:
+                await connection.run_sync(BinaryStorage.__table__.create)
+
+            for value in (b'first value', b'updated value'):
+                response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
+                    self.payload(value)
+                )
+                assert response.code == 0, response.message
+                async with engine.connect() as connection:
+                    rows = (await connection.execute(sa.select(BinaryStorage.__table__))).mappings().all()
+                assert len(rows) == 1
+                assert rows[0]['workspace_uuid'] == 'workspace-a'
+                assert rows[0]['unique_key'] == canonical_binary_key('plugin', 'test-author/test-plugin', 'test-key')
+                assert rows[0]['value'] == value
+        finally:
+            await engine.dispose()
 
     @pytest.mark.asyncio
     async def test_updates_existing_storage(self, app):
@@ -1067,7 +1112,8 @@ class TestAgentRunProxyActions:
         assert model_requester.LLM_USAGE_QUERY_VARIABLE not in query.variables
 
     @pytest.mark.asyncio
-    async def test_count_tokens_validates_run_authorization_and_calls_provider(self, app):
+    @pytest.mark.parametrize('reasoning_level', [None, 'minimal'])
+    async def test_count_tokens_validates_run_authorization_and_calls_provider(self, app, reasoning_level):
         """COUNT_TOKENS is run-scoped and forwards messages/tools to the model requester."""
         from langbot.pkg.agent.runner.session_registry import get_session_registry
 
@@ -1112,6 +1158,7 @@ class TestAgentRunProxyActions:
                         }
                     ],
                     'extra_args': {'temperature': 0.7},
+                    'reasoning_level': reasoning_level,
                 }
             )
         finally:
@@ -1121,7 +1168,12 @@ class TestAgentRunProxyActions:
         assert response.data == {'tokens': 37}
         requester.count_tokens.assert_awaited_once()
         kwargs = requester.count_tokens.await_args.kwargs
-        assert kwargs['model'] is model
+        if reasoning_level is None:
+            assert kwargs['model'] is model
+        else:
+            assert kwargs['model'] is not model
+            assert kwargs['model'].reasoning_config_override == {'level': reasoning_level}
+            assert not hasattr(model, 'reasoning_config_override')
         assert kwargs['messages'][0].content == 'hello'
         assert [tool.name for tool in kwargs['funcs']] == ['search']
         assert kwargs['extra_args'] == {'temperature': 0.7}

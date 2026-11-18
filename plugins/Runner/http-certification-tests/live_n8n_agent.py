@@ -120,6 +120,19 @@ async def _run() -> None:
         second_content = _assert_run(second, expect_state_updates=False)
         if second_content != first_content:
             raise AssertionError("persisted n8n conversation/session state changed the response")
+        error_context = _context(state)
+        error_context.config["webhook-url"] = os.environ.get(
+            "N8N_ERROR_WEBHOOK_URL", "http://127.0.0.1:5678/webhook/langbot-n8n-stream-error"
+        )
+        failed = [result async for result in runner.run(error_context)]
+        if [_kind(result) for result in failed] != ["run.failed"]:
+            raise AssertionError(
+                f"streaming workflow error did not fail cleanly: {[result.model_dump() for result in failed]}"
+            )
+        if failed[0].data.get("code") != "n8n.workflow_error":
+            raise AssertionError(f"unexpected workflow error code: {failed[0].data}")
+        if "LANGBOT_N8N_STREAM_ERROR" not in failed[0].data.get("error", ""):
+            raise AssertionError(f"missing workflow error description: {failed[0].data}")
         _write_summary(
             {
                 "passed": True,
@@ -127,6 +140,7 @@ async def _run() -> None:
                 "turns": 2,
                 "state_keys": sorted(state),
                 "final_content": first_content,
+                "streaming_workflow_error": failed[0].model_dump(mode="json"),
             }
         )
         print(f"n8n latest Agent Runner regression passed: state_keys={sorted(state)}")

@@ -131,6 +131,12 @@ def _redact(text: str) -> str:
     return text
 
 
+def redact_text(text: str) -> str:
+    """Redact credential-like values and email addresses from free text."""
+
+    return _redact(text)
+
+
 def _bounded_error(value, limit: int = ERROR_LIMIT) -> str:
     """Bound and redact one failure detail before it leaves the process.
 
@@ -191,6 +197,11 @@ def describe_exception(exc: BaseException) -> str:
         return '\n'.join(parts)
     except Exception:
         return type(exc).__name__
+
+
+def is_cancellation(exc: BaseException | None) -> bool:
+    """A cancelled task or a closed generator stopped the work; nothing broke."""
+    return isinstance(exc, (asyncio.CancelledError, GeneratorExit))
 
 
 def _duration_ms(started_at: str, ended_at: str) -> int:
@@ -473,12 +484,21 @@ class ExecutionCounters:
         state.pending += 1
         self.register_trace(state, state.event_id)
 
-    def release(self, state: TraceState, *, error: str = '', merged_into: str | None = None) -> None:
+    def release(
+        self,
+        state: TraceState,
+        *,
+        error: str = '',
+        merged_into: str | None = None,
+        cancelled: bool = False,
+    ) -> None:
         """Release one handoff; close the chain once nothing is outstanding."""
         try:
             if state.closed:
                 return
-            if error:
+            if cancelled:
+                state.mark_cancelled()
+            elif error:
                 state.mark_failure(_bounded_error(error))
             if merged_into is not None:
                 state.merged_into = str(merged_into)[:1024]
@@ -736,7 +756,12 @@ def ingress(
         # outcome, even when sampling had excluded this execution.
         if binding.created:
             failure = _bounded_error(exc)
-            state.mark_failure(failure)
+            if is_cancellation(exc):
+                # Cancelled work (a stopped run, a superseding message, an
+                # instance shutdown) closes as ``cancelled``, never ``failed``.
+                state.mark_cancelled()
+            else:
+                state.mark_failure(failure)
         raise
     finally:
         if scope is not None:
@@ -833,12 +858,14 @@ def resume(ap, variables):
             parent = None
     resources_token = resources_attach(state.resources)
     failure = ''
+    cancelled = False
     try:
         with trace_mod.adopt(state, parent):
             yield state
     except BaseException as exc:
         failure = _bounded_error(exc)
+        cancelled = is_cancellation(exc)
         raise
     finally:
         resources_detach(resources_token)
-        counters.release(state, error=failure)
+        counters.release(state, error=failure, cancelled=cancelled)

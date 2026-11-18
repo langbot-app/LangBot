@@ -1,0 +1,77 @@
+{% raw %}name: Release Plugin
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "manifest.yaml"
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Create a new release"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install lbp CLI
+        run: pip install langbot-plugin
+
+      - name: Get metadata
+        id: meta
+        run: |
+          PLUGIN_NAME=$(grep -m1 'name:' manifest.yaml | awk '{print $2}' | tr -d '"'"'"'')
+          VERSION=$(grep -m1 'version:' manifest.yaml | awk '{print $2}' | tr -d '"'"'"'')
+          AUTHOR=$(grep -m1 'author:' manifest.yaml | awk '{print $2}' | tr -d '"'"'"'')
+          echo "name=$PLUGIN_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "artifact=${AUTHOR}-${PLUGIN_NAME}-${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Check release exists
+        id: check
+        run: |
+          if gh release view "$TAG" --json tagName > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+
+      - name: Build plugin
+        if: steps.check.outputs.exists == 'false'
+        run: lbp build -o dist
+
+      - name: Create release
+        if: steps.check.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.artifact }}
+          body: |
+            ## ${{ steps.meta.outputs.artifact }}
+
+            ### Installation
+            Download `${{ steps.meta.outputs.artifact }}.lbpkg` and install via LangBot plugin marketplace.
+          files: dist/${{ steps.meta.outputs.artifact }}.lbpkg
+          draft: false
+          prerelease: false
+{% endraw %}

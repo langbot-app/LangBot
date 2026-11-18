@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: EventListener
+metadata:
+  name: default
+  label:
+    en_US: EBAEventProbeListener
+    zh_Hans: EBAEventProbeListener
+spec:
+execution:
+  python:
+    path: default.py
+    attr: EBAEventProbeListener

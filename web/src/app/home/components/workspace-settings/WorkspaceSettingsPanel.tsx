@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Item,
   ItemActions,
@@ -37,6 +38,9 @@ import {
 } from '@/components/ui/select';
 import type {
   CurrentWorkspace,
+  WorkspaceSandboxSettings,
+  E2BConfigInput,
+  WorkspaceLimits,
   WorkspaceInvitation,
   WorkspaceMembership,
   WorkspaceRole,
@@ -60,6 +64,22 @@ const ASSIGNABLE_ROLES: Exclude<WorkspaceRole, 'owner'>[] = [
   'operator',
   'viewer',
 ];
+
+const LIMIT_FIELDS = [
+  'timeout_sec',
+  'idle_ttl_sec',
+  'max_sessions',
+  'cpus',
+  'memory_mb',
+  'pids_limit',
+  'workspace_quota_mb',
+] as const;
+
+const SANDBOX_LABELS: Record<string, string> = {
+  docker: 'Docker',
+  e2b: 'E2B',
+  nsjail: 'nsjail',
+};
 
 const MESSAGE_LANGUAGES: Record<string, string> = {
   en_US: 'English',
@@ -86,6 +106,49 @@ export default function WorkspaceSettingsPanel({
   const [messageLanguage, setMessageLanguage] = useState('en_US');
   const [supportedLanguages, setSupportedLanguages] = useState<string[]>([]);
   const [savingLanguage, setSavingLanguage] = useState(false);
+  const [sandbox, setSandbox] = useState<WorkspaceSandboxSettings | null>(null);
+  const [savingSandbox, setSavingSandbox] = useState(false);
+  const [draftBackend, setDraftBackend] = useState('');
+  const [detectedBackends, setDetectedBackends] = useState<
+    WorkspaceSandboxSettings['backends']
+  >([]);
+  const [e2bDraft, setE2bDraft] = useState<E2BConfigInput>({
+    api_url: '',
+    sandbox_url: '',
+    api_key: '',
+    template: 'base',
+  });
+  const [limitDraft, setLimitDraft] = useState<Record<string, string>>({});
+  const [e2bReady, setE2bReady] = useState(false);
+  const resetSandboxDraft = useCallback(
+    (settings: WorkspaceSandboxSettings) => {
+      setLimitDraft(
+        Object.fromEntries(
+          LIMIT_FIELDS.map((key) => [
+            key,
+            settings.limits?.[key]?.toString() || '',
+          ]),
+        ),
+      );
+      setDraftBackend(settings.effective_backend || '');
+      setDetectedBackends(settings.backends);
+      setE2bDraft({
+        api_url: settings.e2b?.api_url || '',
+        sandbox_url: settings.e2b?.sandbox_url || '',
+        template: settings.e2b?.template || 'base',
+        api_key: '',
+      });
+      setE2bReady(
+        settings.backends.some(
+          (item) =>
+            item.name === 'e2b' && item.available && item.template_validated,
+        ),
+      );
+    },
+    [],
+  );
+
+  const [checkingSandbox, setCheckingSandbox] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] =
     useState<Exclude<WorkspaceRole, 'owner'>>('viewer');
@@ -117,11 +180,14 @@ export default function WorkspaceSettingsPanel({
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
     try {
-      const [current, languageSettings] = await Promise.all([
+      const [current, languageSettings, sandboxSettings] = await Promise.all([
         backendClient.getCurrentWorkspace(),
         backendClient.getWorkspaceLanguage(),
+        backendClient.getWorkspaceSandbox(),
       ]);
       setWorkspaceInfo(current);
+      setSandbox(sandboxSettings);
+      resetSandboxDraft(sandboxSettings);
       setMessageLanguage(languageSettings.language);
       setSupportedLanguages(languageSettings.supported_languages);
 
@@ -140,7 +206,115 @@ export default function WorkspaceSettingsPanel({
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [t, resetSandboxDraft]);
+
+  const selectedEnvironment = detectedBackends.find(
+    (item) => item.name === draftBackend,
+  );
+  const limitSupported = (key: keyof WorkspaceLimits) =>
+    Boolean(selectedEnvironment?.limit_capabilities?.[key]);
+  const invalidLimits = LIMIT_FIELDS.some((key) => {
+    const text = limitDraft[key] || '';
+    if (!limitSupported(key) || !text) return false;
+    const value = Number(text);
+    return (
+      !Number.isFinite(value) ||
+      value < (key === 'cpus' ? 0.1 : key === 'memory_mb' ? 32 : 1) ||
+      (key !== 'cpus' && !Number.isInteger(value)) ||
+      value > (sandbox?.limit_caps?.[key] ?? 0)
+    );
+  });
+  const sandboxDirty =
+    LIMIT_FIELDS.some(
+      (key) =>
+        (limitDraft[key] || '') !== (sandbox?.limits?.[key]?.toString() || ''),
+    ) ||
+    draftBackend !== (sandbox?.effective_backend || '') ||
+    (draftBackend === 'e2b' &&
+      (e2bDraft.api_url !== (sandbox?.e2b?.api_url || '') ||
+        e2bDraft.sandbox_url !== (sandbox?.e2b?.sandbox_url || '') ||
+        e2bDraft.template !== (sandbox?.e2b?.template || 'base') ||
+        Boolean(e2bDraft.api_key)));
+
+  function editE2b(field: keyof E2BConfigInput, value: string) {
+    setE2bDraft((current) => ({ ...current, [field]: value }));
+    setE2bReady(false);
+    setDetectedBackends((current) =>
+      current.map((item) =>
+        item.name === 'e2b'
+          ? {
+              ...item,
+              available: false,
+              reason: 'not_checked',
+            }
+          : item,
+      ),
+    );
+  }
+
+  async function refreshSandbox(testRun = false) {
+    setCheckingSandbox(true);
+    try {
+      const result =
+        draftBackend === 'e2b'
+          ? await (testRun
+              ? backendClient.testWorkspaceSandbox(e2bDraft)
+              : backendClient.checkWorkspaceSandbox(e2bDraft))
+          : await backendClient.getWorkspaceSandbox(true);
+      setDetectedBackends(result.backends);
+      setE2bReady(
+        result.backends.some(
+          (item) =>
+            item.name === 'e2b' && item.available && item.template_validated,
+        ),
+      );
+    } catch {
+      setE2bReady(false);
+      toast.error(t('workspaceSandbox.loadFailed'));
+    } finally {
+      setCheckingSandbox(false);
+    }
+  }
+
+  async function saveSandbox() {
+    setSavingSandbox(true);
+    try {
+      // This preflight only performs read-only checks; saving never creates a sandbox.
+      const checked =
+        draftBackend === 'e2b'
+          ? await backendClient.checkWorkspaceSandbox(e2bDraft)
+          : await backendClient.getWorkspaceSandbox(true);
+      setDetectedBackends(checked.backends);
+      if (
+        !checked.backends.some(
+          (item) => item.name === draftBackend && item.available,
+        )
+      ) {
+        toast.error(t('workspaceSandbox.saveFailed'));
+        return;
+      }
+      const values: WorkspaceLimits = {};
+      const capabilities = checked.backends.find(
+        (item) => item.name === draftBackend,
+      )?.limit_capabilities;
+      for (const key of LIMIT_FIELDS) {
+        if (capabilities?.[key] && limitDraft[key])
+          values[key] = Number(limitDraft[key]);
+      }
+      const result = await backendClient.setWorkspaceSandbox(
+        draftBackend,
+        draftBackend === 'e2b' ? e2bDraft : undefined,
+        values,
+      );
+      setSandbox(result);
+      resetSandboxDraft(result);
+      toast.success(t('workspaceSandbox.saved'));
+    } catch {
+      toast.error(t('workspaceSandbox.saveFailed'));
+    } finally {
+      setSavingSandbox(false);
+    }
+  }
 
   async function saveLanguage(locale: string) {
     setSavingLanguage(true);
@@ -325,6 +499,325 @@ export default function WorkspaceSettingsPanel({
               ))}
             </SelectContent>
           </Select>
+        </section>
+        <section className="space-y-3">
+          <div>
+            <h3 id="workspace-sandbox-label" className="text-sm font-semibold">
+              {t('workspaceSandbox.label')}
+            </h3>
+            <p
+              id="workspace-sandbox-description"
+              className="text-xs text-muted-foreground"
+            >
+              {t('workspaceSandbox.description')}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Select
+              value={draftBackend}
+              onValueChange={setDraftBackend}
+              disabled={
+                loading ||
+                savingSandbox ||
+                checkingSandbox ||
+                !permissions.has('workspace.update')
+              }
+            >
+              <SelectTrigger
+                className="w-full sm:w-64"
+                aria-labelledby="workspace-sandbox-label"
+                aria-describedby="workspace-sandbox-description"
+              >
+                <SelectValue
+                  placeholder={t('workspaceSandbox.noEnvironment')}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {detectedBackends.map((item) => (
+                  <SelectItem
+                    key={item.name}
+                    value={item.name}
+                    disabled={!item.available}
+                  >
+                    {SANDBOX_LABELS[item.name] || item.name}
+                    {!item.available &&
+                      ` (${t(`workspaceSandbox.reasons.${item.reason || 'environment_unavailable'}`)})`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refreshSandbox()}
+              disabled={checkingSandbox || savingSandbox || loading}
+            >
+              {checkingSandbox && <Loader2 className="size-3.5 animate-spin" />}
+              {t('workspaceSandbox.refresh')}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {t('workspaceSandbox.current', {
+              backend:
+                SANDBOX_LABELS[sandbox?.effective_backend || ''] ||
+                sandbox?.effective_backend ||
+                '—',
+            })}
+            {sandboxDirty && (
+              <span className="ml-2">{t('workspaceSandbox.unsaved')}</span>
+            )}
+          </p>
+          {draftBackend !== 'e2b' && sandbox?.e2b_configurable !== false && (
+            <Button
+              variant="link"
+              size="sm"
+              onClick={() => setDraftBackend('e2b')}
+              disabled={
+                loading ||
+                savingSandbox ||
+                checkingSandbox ||
+                !permissions.has('workspace.update')
+              }
+            >
+              {t('workspaceSandbox.configureE2b')}
+            </Button>
+          )}
+          {draftBackend === 'e2b' && (
+            <div className="space-y-3 rounded-md border p-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label htmlFor="e2b-api-url">
+                    {t('workspaceSandbox.apiUrl')}
+                  </Label>
+                  <Input
+                    id="e2b-api-url"
+                    type="url"
+                    value={e2bDraft.api_url}
+                    placeholder="https://api.example.com"
+                    onChange={(event) => editE2b('api_url', event.target.value)}
+                    disabled={
+                      savingSandbox ||
+                      checkingSandbox ||
+                      !permissions.has('workspace.update') ||
+                      sandbox?.e2b_configurable === false
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="e2b-sandbox-url">
+                    {t('workspaceSandbox.sandboxUrl')}
+                  </Label>
+                  <Input
+                    id="e2b-sandbox-url"
+                    type="url"
+                    value={e2bDraft.sandbox_url}
+                    placeholder="https://sandbox.example.com"
+                    onChange={(event) =>
+                      editE2b('sandbox_url', event.target.value)
+                    }
+                    disabled={
+                      savingSandbox ||
+                      checkingSandbox ||
+                      !permissions.has('workspace.update') ||
+                      sandbox?.e2b_configurable === false
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="e2b-api-key">API Key</Label>
+                  <Input
+                    id="e2b-api-key"
+                    type="password"
+                    autoComplete="new-password"
+                    value={e2bDraft.api_key || ''}
+                    placeholder={t(
+                      sandbox?.e2b?.api_key_configured
+                        ? 'workspaceSandbox.keyConfigured'
+                        : 'workspaceSandbox.keyRequired',
+                    )}
+                    onChange={(event) => editE2b('api_key', event.target.value)}
+                    disabled={
+                      savingSandbox ||
+                      checkingSandbox ||
+                      !permissions.has('workspace.update') ||
+                      sandbox?.e2b_configurable === false
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="e2b-template">
+                    {t('workspaceSandbox.template')}
+                  </Label>
+                  <Input
+                    id="e2b-template"
+                    value={e2bDraft.template}
+                    placeholder="base"
+                    onChange={(event) =>
+                      editE2b('template', event.target.value)
+                    }
+                    disabled={
+                      savingSandbox ||
+                      checkingSandbox ||
+                      !permissions.has('workspace.update') ||
+                      sandbox?.e2b_configurable === false
+                    }
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t('workspaceSandbox.keyHelp')}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refreshSandbox(true)}
+                disabled={
+                  loading ||
+                  savingSandbox ||
+                  checkingSandbox ||
+                  !permissions.has('workspace.update')
+                }
+              >
+                {t('workspaceSandbox.testRun')}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                {t('workspaceSandbox.testRunCost')}
+              </p>
+              {e2bReady && (
+                <p className="text-xs text-green-600">
+                  {t('workspaceSandbox.templateVerified')}
+                </p>
+              )}
+              {selectedEnvironment?.template_validation === 'unsupported' && (
+                <p role="status" className="text-xs text-muted-foreground">
+                  {t('workspaceSandbox.queryUnsupported')}
+                </p>
+              )}
+              {!e2bReady && (
+                <p role="status" className="text-xs text-muted-foreground">
+                  {t('workspaceSandbox.checkHint')}
+                </p>
+              )}
+            </div>
+          )}
+          {detectedBackends
+            .filter((item) => !item.available)
+            .map((item) => (
+              <p
+                key={item.name}
+                className="text-xs text-muted-foreground"
+                role="status"
+              >
+                {SANDBOX_LABELS[item.name] || item.name}:{' '}
+                {t(
+                  `workspaceSandbox.reasons.${item.reason || 'environment_unavailable'}`,
+                )}
+              </p>
+            ))}
+          <fieldset className="space-y-3 rounded-md border p-3">
+            <legend className="px-1 text-sm font-semibold">
+              {t('workspaceSandbox.limitsTitle')}
+            </legend>
+            <p className="text-xs text-muted-foreground">
+              {t('workspaceSandbox.limitsHelp')}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {t('workspaceSandbox.quotaCheck')}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {LIMIT_FIELDS.map((key) => (
+                <div key={key} className="space-y-1">
+                  <Label htmlFor={`sandbox-limit-${key}`}>
+                    {t(`workspaceSandbox.limitLabels.${key}`)}
+                  </Label>
+                  <Input
+                    id={`sandbox-limit-${key}`}
+                    type="number"
+                    value={limitDraft[key] || ''}
+                    placeholder={t('workspaceSandbox.inherit')}
+                    min={key === 'cpus' ? 0.1 : key === 'memory_mb' ? 32 : 1}
+                    max={sandbox?.limit_caps?.[key]}
+                    step={key === 'cpus' ? 0.1 : 1}
+                    onChange={(event) =>
+                      setLimitDraft((current) => ({
+                        ...current,
+                        [key]: event.target.value,
+                      }))
+                    }
+                    disabled={
+                      !limitSupported(key) ||
+                      loading ||
+                      savingSandbox ||
+                      checkingSandbox ||
+                      !permissions.has('workspace.update')
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {limitSupported(key)
+                      ? t('workspaceSandbox.limitMax', {
+                          value: sandbox?.limit_caps?.[key],
+                        })
+                      : t(
+                          draftBackend === 'e2b'
+                            ? 'workspaceSandbox.e2bLimitUnsupported'
+                            : 'workspaceSandbox.limitUnsupported',
+                        )}
+                  </p>
+                </div>
+              ))}
+            </div>
+            {invalidLimits && (
+              <p role="alert" className="text-xs text-destructive">
+                {t('workspaceSandbox.invalidLimits')}
+              </p>
+            )}
+          </fieldset>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              onClick={saveSandbox}
+              disabled={
+                loading ||
+                savingSandbox ||
+                checkingSandbox ||
+                !sandboxDirty ||
+                !permissions.has('workspace.update') ||
+                !draftBackend ||
+                invalidLimits ||
+                (selectedEnvironment?.available === false &&
+                  selectedEnvironment.reason !== 'not_checked')
+              }
+            >
+              {savingSandbox && <Loader2 className="size-3.5 animate-spin" />}
+              {t('workspaceSandbox.confirm')}
+            </Button>
+            {sandboxDirty && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={savingSandbox || checkingSandbox}
+                onClick={() => sandbox && resetSandboxDraft(sandbox)}
+              >
+                {t('workspaceSandbox.cancel')}
+              </Button>
+            )}
+          </div>
+          {detectedBackends.some(
+            (item) =>
+              item.name === draftBackend && item.managed_processes === false,
+          ) && (
+            <p role="status" className="text-xs text-muted-foreground">
+              {t('workspaceSandbox.noManagedProcesses')}
+            </p>
+          )}
+          {sandbox?.backend &&
+            !detectedBackends.some(
+              (item) => item.name === sandbox.backend && item.available,
+            ) && (
+              <p role="status" className="text-xs text-destructive">
+                {t('workspaceSandbox.unavailable')}
+              </p>
+            )}
         </section>
         {canInvite && (
           <section className="space-y-3">

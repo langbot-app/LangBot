@@ -81,6 +81,10 @@ def load_profile(path):
     suite['vars'].update(
         mock_base_url='http://regression_mock:18080/v1', embedding_base_url='http://regression_mock:18080/v1'
     )
+    for kind in ('box', 'rag'):
+        variable = kind + '_mock_base_url'
+        if variable in suite['vars']:
+            suite['vars'][variable] = f'http://regression_mock_{kind}:18080/v1'
     suite['cli'] = {'config': 'job-generated.yaml'}
     for item in suite.get('resources', []):
         if item['kind'] == 'model' and item.get('type') == 'embedding':
@@ -301,10 +305,18 @@ class Job:
                 },
             },
         }
+        mock_services = ['regression_mock']
+        for kind in ('box', 'rag'):
+            if kind + '_mock_base_url' in self.suite_profile.get('vars', {}):
+                service = 'regression_mock_' + kind
+                mock_services.append(service)
+                mock = copy.deepcopy(override['services']['regression_mock'])
+                mock['command'][-1] = '/results/' + service + '.jsonl'
+                override['services'][service] = mock
         write_json(self.private / 'compose.override.json', override)
         self.compose('up', '-d', override=True)
         containers = self.project_containers()
-        for service in ('langbot', 'langbot_plugin_runtime', 'langbot_box', 'regression_mock'):
+        for service in ('langbot', 'langbot_plugin_runtime', 'langbot_box', *mock_services):
             if service not in containers:
                 raise RuntimeError(f'missing deployment service: {service}')
         endpoint = self.state['record']['endpoint']
@@ -313,6 +325,8 @@ class Job:
             'mock': f'http://{self.address(containers["regression_mock"])}:18080/healthz',
             'box': f'http://{self.address(containers["langbot_box"])}:5410/readyz',
         }
+        for service in mock_services[1:]:
+            health[service] = f'http://{self.address(containers[service])}:18080/healthz'
         for url in health.values():
             self.ready(url)
         identity = self.cli_call(['--endpoint', endpoint, 'whoami'])
@@ -392,7 +406,9 @@ class Job:
         self.recover_record()
         self.load_redactions()
         if self.state.get('record'):
-            logs = self.compose('logs', '--no-color', '--tail', '10000')
+            logs = self.compose(
+                'logs', '--no-color', '--tail', '10000', override=(self.private / 'compose.override.json').exists()
+            )
             (self.output / 'services.log').write_text(logs)
 
     def cleanup(self):
@@ -417,6 +433,8 @@ class Job:
             if sandboxes:
                 self.checked(['docker', 'rm', '-f', *sandboxes])
             if self.state['bound']:
+                if (self.private / 'compose.override.json').exists():
+                    self.compose('down', '--remove-orphans', override=True)
                 self.cli_call(
                     ['uninstall', '--yes', *(['--purge-data'] if self.profile.get('purge_data', True) else [])]
                 )

@@ -122,7 +122,10 @@ CONTEXT_ACTIONS = frozenset(
         PluginAction.BIND_BOX,
         PluginAction.IMPORT_BOX_ATTACHMENTS,
         PluginAction.READ_INPUT_ATTACHMENT,
+        PluginAction.READ_INPUT_ATTACHMENT_CONTENT,
         PluginAction.EXPORT_BOX_FILES,
+        PluginAction.READ_RUN_FILE,
+        PluginAction.COMMIT_RUN_FILES,
         PluginAction.GET_PROMPT,
         PluginAction.HISTORY_PAGE,
         PluginAction.HISTORY_SEARCH,
@@ -151,7 +154,13 @@ CONTEXT_ACTIONS = frozenset(
         PluginAction.RUNTIME_STATS,
         PluginAction.RUNNER_STATS,
     )
-)
+) | {
+    # Core registers these actions before the paired SDK enums are published.
+    'steering_ack',
+    'run_retry',
+    'run_resume',
+    'run_cancel_ack',
+}
 
 APPLICATION_ACTIONS = frozenset(
     action.value

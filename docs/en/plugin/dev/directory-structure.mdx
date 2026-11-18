@@ -162,6 +162,12 @@ components/
 
 For detailed component development specifications, please refer to: [Adding Components](/en/plugin/dev/components/add)
 
+## Runtime Data
+
+The directories above hold only the **read-only** content shipped in the plugin package (code, manifest, static assets). At runtime, do not write data you need to keep into the plugin directory or anywhere else on the filesystem: the plugin directory is replaced on upgrade or reinstall, and the Plugin Runtime's disk is not guaranteed to persist.
+
+Anything that has to persist goes through the APIs into LangBot Core's persistent database. See [Persistence Rules](/en/plugin/dev/apis/common).
+
 ## Configuration Files
 
 ### manifest.yaml

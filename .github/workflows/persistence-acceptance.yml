@@ -1,0 +1,175 @@
+name: Persistence acceptance
+
+on:
+  workflow_call:
+    inputs:
+      uploaded_artifacts:
+        description: Require the real two-Core uploaded Artifact PostgreSQL and MinIO contract
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  persistence-runtime:
+    name: Daily Skill persistence and Plugin Runtime contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SPACE__DISABLE_TELEMETRY: 'true'
+      LANGBOT_NETWORK_PLUGIN_E2E: '1'
+      LANGBOT_CORE_NETWORK_BACKEND: host
+      LANGBOT_PERSISTENCE_CORE_E2E: '1'
+      LANGBOT_SKILL_NETWORK_E2E: '1'
+      LANGBOT_PERSISTENCE_POSTGRES_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/langbot_test
+      LANGBOT_PERSISTENCE_CORE_POSTGRES_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/langbot_core
+      LANGBOT_PERSISTENCE_MINIO_ENDPOINT: http://127.0.0.1:9000
+      # Disposable loopback-only CI service credentials, never external accounts.
+      LANGBOT_PERSISTENCE_MINIO_ACCESS_KEY: minioadmin
+      LANGBOT_PERSISTENCE_MINIO_SECRET_KEY: minioadmin
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: langbot_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd="pg_isready -U postgres -d langbot_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+      - name: Install Core with the in-tree SDK
+        run: |
+          uv sync --dev --frozen
+      - name: Prepare disposable PostgreSQL and MinIO
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .qa/persistence-runtime
+          docker exec "${{ job.services.postgres.id }}" \
+            psql -U postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE langbot_core;'
+          docker exec "${{ job.services.postgres.id }}" \
+            psql -U postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE langbot_skill_network;'
+          minio_binary=minio.linux-amd64.RELEASE.2025-09-07T16-13-09Z
+          gh release download RELEASE.2025-09-07T16-13-09Z --repo minio/minio \
+            --pattern "$minio_binary" --dir .qa/persistence-runtime
+          printf '7c5bd8512c6e966455b1d198209358b2d191c77a83ab377c4073281065fb855f  %s\n' \
+            ".qa/persistence-runtime/$minio_binary" | sha256sum --check
+          chmod +x ".qa/persistence-runtime/$minio_binary"
+          unset GH_TOKEN
+          MINIO_ROOT_USER="$LANGBOT_PERSISTENCE_MINIO_ACCESS_KEY" \
+            MINIO_ROOT_PASSWORD="$LANGBOT_PERSISTENCE_MINIO_SECRET_KEY" \
+            ".qa/persistence-runtime/$minio_binary" server "$PWD/.qa/persistence-runtime/minio-data" \
+            --address 127.0.0.1:9000 --console-address 127.0.0.1:9001 \
+            > .qa/persistence-runtime/minio.log 2>&1 &
+          echo "$!" > .qa/persistence-runtime/minio.pid
+          python - <<'PY_READY'
+          import os, time, urllib.error, urllib.request
+          deadline = time.monotonic() + 60
+          while time.monotonic() < deadline:
+              try:
+                  with urllib.request.urlopen(os.environ['LANGBOT_PERSISTENCE_MINIO_ENDPOINT'] + '/minio/health/ready', timeout=2) as response:
+                      if response.status == 200:
+                          break
+              except (OSError, urllib.error.URLError):
+                  pass
+              time.sleep(1)
+          else:
+              raise SystemExit('MinIO did not become ready within 60 seconds; inspect minio.log')
+          PY_READY
+      - name: Run full-process network file delivery on host
+        run: |
+          uv run --no-sync pytest tests/e2e/test_network_file_plugin_runtime.py \
+            --required-suite network_plugin -q --tb=short -rs \
+            --junitxml=.qa/persistence-runtime/network-plugin.xml
+      - name: Run Skill publications, media, RLS and two-Core recovery
+        run: |
+          uv run --no-sync pytest tests/integration/skill/test_persistent_skill_replicas.py \
+            tests/integration/skill/test_legacy_skill_migration.py tests/integration/storage/test_legacy_storage_migration.py \
+            tests/integration/persistence/test_skill_content_postgres.py tests/e2e/test_skill_persistence_replicas.py \
+            --required-suite skill_persistence -q --tb=short -rs \
+            --basetemp=.qa/persistence-runtime/processes \
+            --junitxml=.qa/persistence-runtime/skill-persistence.xml
+      - name: Run two-Core Skill execution and draft publication without shared paths
+        env:
+          LANGBOT_PERSISTENCE_CORE_POSTGRES_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/langbot_skill_network
+        run: |
+          uv run --no-sync pytest tests/e2e/test_skill_network_runtime.py \
+            --required-suite skill_network -q --tb=short -rs \
+            --basetemp=.qa/persistence-runtime/skill-network-processes \
+            --junitxml=.qa/persistence-runtime/skill-network.xml
+      - name: Prepare a separate database for uploaded Artifacts
+        if: inputs.uploaded_artifacts
+        run: >-
+          docker exec "${{ job.services.postgres.id }}"
+          psql -U postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE langbot_artifact_upload;'
+      - name: Require the two-Core uploaded Artifact contract on PostgreSQL and MinIO
+        if: inputs.uploaded_artifacts
+        env:
+          LANGBOT_PERSISTENCE_CORE_POSTGRES_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/langbot_artifact_upload
+          LANGBOT_ARTIFACT_CORE_S3: '1'
+        run: |
+          uv run --no-sync pytest tests/e2e/test_artifact_persistence.py \
+            --required-suite artifact_persistence -q --tb=short -rs -o xfail_strict=true \
+            --basetemp=.qa/persistence-runtime/artifact-upload-processes \
+            --junitxml=.qa/persistence-runtime/artifact-upload.xml
+          python3 tools/verify_junit.py .qa/persistence-runtime/artifact-upload.xml
+      - name: Preserve execution scope and service logs
+        if: always()
+        run: |
+          mkdir -p .qa/persistence-runtime
+          printf 'Candidate: %s\nSDK: in-tree\nBox: host\nStorage: PostgreSQL + MinIO\nE2B/nsjail: not exercised\n' \
+            "$GITHUB_SHA" | tee .qa/persistence-runtime/scope.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove owned MinIO
+        if: always()
+        run: |
+          python - <<'PY_STOP'
+          import os, signal, time
+          from pathlib import Path
+          pid_file = Path('.qa/persistence-runtime/minio.pid')
+          if not pid_file.exists():
+              raise SystemExit(0)
+          pid = int(pid_file.read_text())
+          expected = Path('.qa/persistence-runtime/minio.linux-amd64.RELEASE.2025-09-07T16-13-09Z').resolve()
+          def owned_process():
+              try:
+                  actual = Path(f'/proc/{pid}/exe').resolve(strict=True)
+              except FileNotFoundError:
+                  return False
+              if actual != expected:
+                  raise SystemExit('MinIO PID belongs to a different executable; refusing cleanup')
+              return True
+          if owned_process():
+              os.kill(pid, signal.SIGTERM)
+              deadline = time.monotonic() + 10
+              while owned_process() and time.monotonic() < deadline:
+                  time.sleep(0.1)
+              if owned_process():
+                  os.kill(pid, signal.SIGKILL)
+          PY_STOP
+      - name: Upload persistence and Runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-persistence-runtime-${{ github.run_id }}-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: |
+            .qa/persistence-runtime/*.xml
+            .qa/persistence-runtime/*.txt
+            .qa/persistence-runtime/*.log
+            .qa/persistence-runtime/processes/**/langbot.*.log
+            .qa/persistence-runtime/processes/**/before-restart-*.log
+            .qa/persistence-runtime/artifact-upload-processes/**/langbot.*.log
+          if-no-files-found: warn
+          retention-days: 30

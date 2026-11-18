@@ -36,7 +36,7 @@ from pkg.daemon_relay import (
     get_agent_runtime_daemon_hub,
 )
 from pkg.runtime_support import local_workspace, terminate_process_group
-from pkg.steering import run_with_steering
+from pkg.steering import resume_checkpoint, run_with_steering
 
 SESSION_STATE_KEY = "external.claude_code_session_id"
 SUPPORTED_LOCATIONS = {"local", "remote-ssh", "daemon"}
@@ -488,11 +488,14 @@ class NativeClaudeCodeRunner(Runner):
         }
 
     def _stored_session_id(self, ctx: RunnerContext) -> str:
+        checkpoint = resume_checkpoint(ctx, SESSION_STATE_KEY)
+        if checkpoint is not None:
+            return checkpoint
         return str(ctx.state.conversation.get(SESSION_STATE_KEY) or "").strip()
 
     def _session_id(self, ctx: RunnerContext, config: dict[str, typing.Any]) -> tuple[str, bool]:
         stored = self._stored_session_id(ctx)
-        if stored and config["reuse_session"]:
+        if stored and (config["reuse_session"] or ctx.runtime.metadata.get("recovery", {}).get("mode") == "resume"):
             return stored, False
         return str(uuid.uuid4()), True
 
@@ -548,8 +551,7 @@ class NativeClaudeCodeRunner(Runner):
             if not prompt:
                 raise NativeCliError("input text is required", code="claude_code.empty_input")
             session_id, session_created = self._session_id(ctx, config)
-            if session_created:
-                yield RunnerResult.state_updated(ctx.run_id, SESSION_STATE_KEY, session_id, scope="conversation")
+            yield RunnerResult.state_updated(ctx.run_id, SESSION_STATE_KEY, session_id, scope="conversation")
 
             # The first turn resumes only when reusing a stored session; every
             # turn after the first continues the session created/resumed above.

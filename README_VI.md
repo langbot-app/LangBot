@@ -70,13 +70,21 @@ Nhấp vào các nút Star và Watch ở góc trên bên phải của kho lưu t
 
 Không cần triển khai, sẵn sàng sử dụng.
 
-### Khởi chạy một dòng
+### Cài đặt một dòng lệnh (khuyến nghị khi tự triển khai)
+
+macOS / Linux:
 
 ```bash
-uvx langbot
+curl -fsSL https://langbot.app/install.sh | bash
 ```
 
-> Yêu cầu [uv](https://docs.astral.sh/uv/getting-started/installation/). Truy cập http://localhost:5300 — xong.
+Windows (PowerShell):
+
+```powershell
+irm https://langbot.app/install.ps1 | iex
+```
+
+> Cài đặt [lbctl](https://github.com/langbot-app/langbot-cli) (CLI của LangBot) rồi triển khai LangBot: mặc định chạy native, tự động chuẩn bị Python, hoặc dùng Docker. Không cần quyền quản trị. Hoàn tất thì truy cập http://localhost:5300. Nâng cấp sau này bằng `lbctl upgrade`.
 
 ### Docker Compose
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import logging
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -172,6 +173,9 @@ async def harness():
         ver_mgr=SimpleNamespace(get_current_version=lambda: 'test'),
         workspace_service=SimpleNamespace(get_execution_binding=get_execution_binding),
         runner_registry=ScopedRunnerRegistry(),
+    )
+    ap.box_service = SimpleNamespace(
+        resolve_workspace_selection=AsyncMock(return_value={'backend': None, 'e2b': {}, 'limits': {}})
     )
     ap.plugin_connector = PromptPullConnector(ap)
     ap.llm_model_service = LLMModelsService(ap)

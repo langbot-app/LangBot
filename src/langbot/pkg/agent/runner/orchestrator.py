@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import time
+import sys
 import asyncio
 import contextlib
 import re
 import copy
+import dataclasses
+import uuid
 import typing
 from uuid import uuid4
 
@@ -20,10 +23,12 @@ from ...core import app
 from ...i18n import t
 from ...i18n.workspace import get_workspace_language
 from ...api.http.context import ExecutionContext
+from ...api.context import PrincipalContext, PrincipalType
 from ...pipeline.pool import get_query_execution_context
 from .binding_resolver import AgentBindingResolver
 from .context_builder import RunnerContextBuilder, RunnerContextPayload
 from .descriptor import RunnerDescriptor
+from .errors import RunnerExecutionError
 from .config_schema import extract_prompt_config
 from .execution_context import (
     append_mcp_resource_context_to_event,
@@ -41,6 +46,7 @@ from .resource_builder import AgentResourceBuilder
 from .platform_tools import PLATFORM_TOOLS_BY_NAME, freeze_platform_context
 from .result_normalizer import AgentResultNormalizer
 from .run_journal import AgentRunJournal
+from .run_ledger_store import TerminalRunTransitionError
 from .session_registry import AgentRunSessionRegistry, get_session_registry
 from .state_scope import build_state_context
 from ...provider.tools.loaders import skill as skill_loader
@@ -57,6 +63,32 @@ def _visible_auto_reply_text(content: str) -> str:
         if any(tag.startswith(visible[-size:].lower()) for tag in ('<think>', '</think>')):
             return visible[:-size]
     return visible
+
+
+async def _await_run_cleanup(operation, logger, description, *, timeout=20):
+    """Bound cleanup and defer repeated caller cancellation until finalization finishes."""
+    cancellation = None
+    deadline = asyncio.get_running_loop().time() + timeout
+    try:
+        task = asyncio.create_task(operation())
+        while not task.done():
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                task.cancel()
+                task.add_done_callback(lambda done: done.exception() if not done.cancelled() else None)
+                raise TimeoutError('Cleanup deadline exceeded')
+            try:
+                await asyncio.wait_for(asyncio.shield(task), remaining)
+            except asyncio.CancelledError as exc:
+                cancellation = exc
+            except asyncio.TimeoutError:
+                continue
+        if task.cancelled():
+            raise RuntimeError('Cleanup operation was cancelled')
+        task.result()
+    except Exception as exc:
+        logger.warning(f'{description}: {exc}')
+    return cancellation
 
 
 class AgentRunOrchestrator:
@@ -103,6 +135,56 @@ class AgentRunOrchestrator:
         bound_plugins: list[str] | None = None,
         adapter_context: dict[str, typing.Any] | None = None,
     ) -> typing.AsyncGenerator[provider_message.Message | provider_message.MessageChunk, None]:
+        context = (adapter_context or {}).get('_execution_context')
+        query = (adapter_context or {}).get('_query')
+        if context is None and query is not None:
+            context = get_query_execution_context(query)
+        if not isinstance(context, ExecutionContext):
+            raise ValueError('Agent run requires a trusted ExecutionContext')
+        if not context.query_uuid:
+            context = dataclasses.replace(context, query_uuid=getattr(query, 'query_uuid', None) or str(uuid.uuid4()))
+            if query is not None:
+                object.__setattr__(query, 'query_uuid', context.query_uuid)
+        selection = await self.ap.box_service.resolve_workspace_selection(context)
+        backend = selection['backend']
+        adapter_context = {
+            **(adapter_context or {}),
+            '_execution_context': context,
+            '_sandbox_backend': backend,
+            '_sandbox_e2b_config': selection['e2b'],
+            '_sandbox_limits': selection.get('limits', {}),
+        }
+        mcp_loader = getattr(getattr(self.ap, 'tool_mgr', None), 'mcp_tool_loader', None)
+        async with contextlib.AsyncExitStack() as stack:
+            if mcp_loader is not None:
+                tool_names = (
+                    None
+                    if binding.resource_policy.allow_all_tools or binding.runner_config.get('mcp-resources')
+                    else (binding.resource_policy.allowed_tool_names or [])
+                )
+                adapter_context['_sandbox_mcp_sessions'] = await stack.enter_async_context(
+                    mcp_loader.task_sandbox_scope(
+                        context,
+                        backend,
+                        tool_names=tool_names,
+                        **({'limits_selection': selection['limits']} if selection.get('limits') else {}),
+                        **({'e2b_selection': selection['e2b']} if backend == 'e2b' else {}),
+                    )
+                )
+            stream = self._run(event, binding, bound_plugins, adapter_context)
+            try:
+                async for item in stream:
+                    yield item
+            finally:
+                await stream.aclose()
+
+    async def _run(
+        self,
+        event: AgentEventEnvelope,
+        binding: AgentBinding,
+        bound_plugins: list[str] | None = None,
+        adapter_context: dict[str, typing.Any] | None = None,
+    ) -> typing.AsyncGenerator[provider_message.Message | provider_message.MessageChunk, None]:
         """Run an Runner from an event-first envelope."""
         runner_id = binding.runner_id
         execution_query = adapter_context.get('_query') if adapter_context else None
@@ -135,6 +217,22 @@ class AgentRunOrchestrator:
             )
             project_mcp_resource_config(execution_query, binding.runner_config)
         object.__setattr__(execution_query, '_execution_context', execution_context)
+        object.__setattr__(execution_query, '_run_files_closing', False)
+        publication_service = getattr(self.ap, 'artifact_publication_service', None)
+        publication = (
+            await publication_service.snapshot_for_run(
+                execution_context,
+                binding.processor_type,
+                binding.processor_id or binding.agent_id,
+            )
+            if publication_service is not None
+            else None
+        )
+        object.__setattr__(execution_query, '_output_publication', publication)
+        object.__setattr__(execution_query, '_sandbox_backend', adapter_context.get('_sandbox_backend'))
+        object.__setattr__(execution_query, '_sandbox_e2b_config', adapter_context.get('_sandbox_e2b_config', {}))
+        object.__setattr__(execution_query, '_sandbox_limits', adapter_context.get('_sandbox_limits', {}))
+        object.__setattr__(execution_query, '_sandbox_mcp_sessions', adapter_context.get('_sandbox_mcp_sessions'))
 
         from ...box.runner import prepare_input_files
 
@@ -177,6 +275,10 @@ class AgentRunOrchestrator:
             descriptor=descriptor,
             resources=resources,
         )
+        recovery = (adapter_context or {}).get('_recovery')
+        if recovery:
+            context['run_id'] = recovery['run_id']
+            context['runtime'].setdefault('metadata', {})['recovery'] = recovery['request']
 
         authorized_skill_names = [
             str(skill['skill_name']) for skill in resources.get('skills', []) if skill.get('skill_name')
@@ -226,6 +328,7 @@ class AgentRunOrchestrator:
             adapter=(adapter_context or {}).get('_delivery_adapter') or getattr(execution_query, 'adapter', None),
             source=(adapter_context or {}).get('_platform_event')
             or getattr((adapter_context or {}).get('_query'), 'message_event', None),
+            delivery_adapter=(adapter_context or {}).get('_recovery_delivery_adapter'),
         )
         available_apis = context.get('context', {}).get('available_apis')
         run_authorization = {
@@ -253,6 +356,7 @@ class AgentRunOrchestrator:
         terminal_status: str | None = None
         terminal_reason: str | None = None
         terminal_usage: dict[str, typing.Any] | None = None
+        finalized: dict[str, typing.Any] | None = None
         execution_outcome = 'unknown'
         execution_error = ''
         auto_reply_enabled = (
@@ -276,6 +380,11 @@ class AgentRunOrchestrator:
         run_token: typing.Any = None
         # Workflow step node for this run; '' until the step scope is opened.
         node = ''
+        artifact_input_ids = getattr(execution_query, '_input_artifact_ids', frozenset())
+        artifact_run_context = dataclasses.replace(
+            execution_context,
+            trigger_principal=PrincipalContext(PrincipalType.PROCESSOR, run_id=run_id),
+        )
 
         try:
             trace_binding = bind_execution_trace(self.ap, run_id)
@@ -287,6 +396,16 @@ class AgentRunOrchestrator:
                 context=context,
                 authorization=run_authorization,
             )
+            if recovery:
+                await self.journal._get_run_ledger_store().authorize_recovery_run(
+                    run_id,
+                    authorization={
+                        **run_authorization,
+                        'recovery_event': self.journal._sanitize_event_data(event.model_dump(mode='json')),
+                        'recovery_checkpoint': recovery['request']['events'],
+                    },
+                    deadline_at=context.get('runtime', {}).get('deadline_at'),
+                )
             monitoring_id = (execution_query.variables or {}).get('_monitoring_message_id')
             if monitoring_id and monitoring_id != run_id:
                 await self.ap.monitoring_service.link_execution_message(
@@ -323,6 +442,22 @@ class AgentRunOrchestrator:
                 ),
                 runtime_context=context.get('runtime'),
             )
+            if artifact_input_ids:
+                await self.ap.artifact_service.bind_run_inputs(
+                    execution_query._input_artifact_context,
+                    artifact_run_context,
+                    list(artifact_input_ids),
+                )
+            recovered_steering = await self._load_recoverable_steering(
+                event=event,
+                descriptor=descriptor,
+                run_id=run_id,
+                binding=binding,
+            )
+            if recovered_steering:
+                restored = await self._session_registry.restore_steering(run_id, recovered_steering)
+                if restored:
+                    self.ap.logger.info(f'Restored {restored} unacknowledged steering input(s) for run {run_id}')
 
             event_log_id = await self.journal.write_event_log(
                 event=event,
@@ -385,6 +520,14 @@ class AgentRunOrchestrator:
                         ):
                             continue
 
+                        usage = result_dict.get('usage')
+                        if isinstance(usage, dict):
+                            # Runners may emit cumulative usage snapshots on
+                            # progress or message events. Keep the latest
+                            # snapshot for cancellation, timeout, and
+                            # disconnect finalization.
+                            terminal_usage = usage
+
                         if result_type == 'tool.call.started':
                             result_data = result_dict.get('data') or {}
                             tool_definition = PLATFORM_TOOLS_BY_NAME.get(result_data.get('tool_name'))
@@ -420,6 +563,7 @@ class AgentRunOrchestrator:
                                 str(result_data.get('tool_call_id') or ''), None
                             )
 
+                        self.result_normalizer.annotate_result_size(result_dict, descriptor)
                         journal_started = time.monotonic()
                         await self.journal.append_run_result(
                             result_dict=result_dict,
@@ -458,16 +602,14 @@ class AgentRunOrchestrator:
                                 if isinstance(result_dict.get('data'), dict)
                                 else None
                             )
-                            usage = result_dict.get('usage')
-                            if isinstance(usage, dict):
-                                terminal_usage = usage
                         elif result_type == 'run.failed':
                             data = result_dict.get('data') if isinstance(result_dict.get('data'), dict) else {}
                             terminal_status = 'cancelled' if data.get('code') == 'cancelled' else 'failed'
                             terminal_reason = data.get('error') or data.get('code')
-                            usage = result_dict.get('usage')
-                            if isinstance(usage, dict):
-                                terminal_usage = usage
+                        elif result_type == 'run.cancelled':
+                            data = result_dict.get('data') if isinstance(result_dict.get('data'), dict) else {}
+                            terminal_status = 'cancelled'
+                            terminal_reason = data.get('reason') or 'runner_cancelled'
 
                         has_completed_message = result_type == 'message.completed' or (
                             result_type == 'run.completed'
@@ -483,7 +625,18 @@ class AgentRunOrchestrator:
                             )
                             assistant_transcript_written = True
 
-                        result = await self.result_normalizer.normalize(result_dict, descriptor)
+                        try:
+                            result = await self.result_normalizer.normalize(result_dict, descriptor)
+                        except RunnerExecutionError as exc:
+                            if result_type == 'run.failed':
+                                # Persist the failure before closing the Runner's transport.
+                                finalized = await self._finalize_run(
+                                    run_id=run_id,
+                                    status=terminal_status,
+                                    status_reason=terminal_reason if terminal_status == 'cancelled' else str(exc),
+                                    usage=terminal_usage,
+                                )
+                            raise
                         file_ids = result_dict.get('data', {}).get('file_ids', [])
                         if file_ids:
                             if result_type != 'message.completed' or result is None:
@@ -493,7 +646,9 @@ class AgentRunOrchestrator:
                             from ...box.runner import exported_message, binding_for
 
                             async with binding_for(execution_query).lock:
-                                result.attachments = exported_message(execution_query, file_ids, consume=True)
+                                result.attachments = await exported_message(
+                                    self.ap, execution_query, file_ids, consume=True
+                                )
 
                         if auto_reply_enabled and not explicit_event_reply_sent and result is not None:
                             if result_type == 'message.delta' and isinstance(result, provider_message.MessageChunk):
@@ -554,15 +709,23 @@ class AgentRunOrchestrator:
                             )
                             auto_reply_stream_open = False
 
+                        if terminal_status is not None:
+                            # A terminal event ends execution; transport cleanup may still wait.
+                            finalized = await self._finalize_run(
+                                run_id=run_id,
+                                status=terminal_status,
+                                status_reason=terminal_reason,
+                                usage=terminal_usage,
+                            )
+
                         if result is not None:
                             yield result
 
+                        if terminal_status is not None:
+                            break
+
                         run_snapshot = await self.journal.get_run(run_id)
-                        if (
-                            terminal_status is None
-                            and run_snapshot
-                            and run_snapshot.get('cancel_requested_at') is not None
-                        ):
+                        if run_snapshot and run_snapshot.get('cancel_requested_at') is not None:
                             terminal_status = 'cancelled'
                             terminal_reason = run_snapshot.get('status_reason') or 'cancel_requested'
                             # The Host closes the stream here, so it owns the missing terminal event.
@@ -588,46 +751,72 @@ class AgentRunOrchestrator:
                             cancelled_result['sequence'] = cancelled_event['sequence']
                             if result_observer is not None:
                                 await result_observer(cancelled_result)
+                            finalized = await self._finalize_run(
+                                run_id=run_id,
+                                status=terminal_status,
+                                status_reason=terminal_reason,
+                                usage=terminal_usage,
+                            )
                             await self.result_normalizer.normalize(cancelled_result, descriptor)
-            await self.journal.finalize_run(
-                run_id=run_id,
-                status=terminal_status or 'completed',
-                status_reason=terminal_reason,
-                usage=terminal_usage,
-            )
-            execution_outcome = {'completed': 'success', 'failed': 'failed', 'cancelled': 'cancelled'}.get(
-                terminal_status or '', 'unknown'
-            )
+            if finalized is None:
+                finalized = await self._finalize_run(
+                    run_id=run_id,
+                    status=terminal_status or 'completed',
+                    status_reason=terminal_reason,
+                    usage=terminal_usage,
+                )
+            ledger_status = finalized.get('status') if isinstance(finalized, dict) else None
+            if isinstance(ledger_status, str) and ledger_status != (terminal_status or 'completed'):
+                # Another writer finished the run first; report what the run
+                # ledger holds instead of the status this stream would have set.
+                terminal_status = ledger_status
+                terminal_reason = finalized.get('status_reason') or terminal_reason
+            execution_outcome = {
+                'completed': 'success',
+                'failed': 'failed',
+                'cancelled': 'cancelled',
+                'timeout': 'timeout',
+            }.get(terminal_status or '', 'unknown')
             execution_error = '' if execution_outcome == 'success' else (terminal_reason or execution_outcome)
         except (asyncio.CancelledError, GeneratorExit):
-            execution_outcome = 'cancelled'
-            execution_error = 'cancelled'
-            await self.journal.finalize_run(
-                run_id=run_id,
-                status='cancelled',
-                status_reason='consumer_cancelled',
-                usage=terminal_usage,
-            )
+            if finalized is None:
+                execution_outcome = 'cancelled'
+                execution_error = 'cancelled'
+                await self._finalize_run(
+                    run_id=run_id,
+                    status='cancelled',
+                    status_reason='consumer_cancelled',
+                    usage=terminal_usage,
+                )
+            else:
+                status = finalized.get('status', 'unknown')
+                execution_outcome = 'success' if status == 'completed' else status
+                execution_error = '' if execution_outcome == 'success' else (finalized.get('status_reason') or status)
             raise
         except Exception as exc:
-            execution_outcome = (
-                'cancelled'
-                if terminal_status == 'cancelled'
-                else 'timeout'
-                if self._is_deadline_exhausted(context)
-                else 'failed'
-            )
+            if finalized is None:
+                execution_outcome = (
+                    'cancelled'
+                    if terminal_status == 'cancelled'
+                    else 'timeout'
+                    if self._is_deadline_exhausted(context)
+                    else 'failed'
+                )
+            else:
+                status = finalized.get('status', 'unknown')
+                execution_outcome = 'success' if status == 'completed' else status
             # A chain that broke must always carry a reason, even for a bare exception.
             from ...telemetry.execution import describe_exception
 
             execution_error = describe_exception(exc)
             failed_usage = terminal_usage
-            await self.journal.finalize_run(
-                run_id=run_id,
-                status=execution_outcome,
-                status_reason=terminal_reason if execution_outcome == 'cancelled' else str(exc),
-                usage=failed_usage,
-            )
+            if finalized is None:
+                await self._finalize_run(
+                    run_id=run_id,
+                    status=execution_outcome,
+                    status_reason=terminal_reason if execution_outcome == 'cancelled' else str(exc),
+                    usage=failed_usage,
+                )
             raise
         finally:
             record_execution(
@@ -646,9 +835,56 @@ class AgentRunOrchestrator:
             trace_mod.reset_run(run_token)
             if trace_binding is not None and trace_mod.unbind_root(trace_binding):
                 close_execution_trace(self.ap, trace_binding.state, 'completed')
+            cleanup_original_error = sys.exception()
+            cleanup_cancellation = None
+            object.__setattr__(execution_query, '_run_files_closing', True)
             binding_box = getattr(execution_query, '_box_binding', None)
             if binding_box is not None and binding_box.run_id == run_id:
+                # Fence callers before waiting: an authorized request may already be queued on the lock.
+                binding_box.closing = True
+                cleanup = getattr(getattr(self.ap, 'box_service', None), 'cleanup_run_files', None)
+                if callable(cleanup):
+
+                    async def clean_box_files():
+                        async with binding_box.lock:
+                            await cleanup(execution_query)
+
+                    cleanup_cancellation = await _await_run_cleanup(
+                        clean_box_files,
+                        self.ap.logger,
+                        f'Failed to clean transient Box files for run {run_id}',
+                    )
+                from ...box.runner import run_artifact_context
+
+                async def expire_output_files():
+                    async with binding_box.lock:
+                        await self.ap.artifact_service.expire_run_outputs(
+                            run_artifact_context(execution_query, allow_closed=True)
+                        )
+
+                expiry_cancellation = await _await_run_cleanup(
+                    expire_output_files,
+                    self.ap.logger,
+                    f'Failed to expire transient output assets for run {run_id}',
+                )
+                cleanup_cancellation = cleanup_cancellation or expiry_cancellation
                 object.__delattr__(execution_query, '_box_binding')
+            if artifact_input_ids:
+
+                async def release_input_files():
+                    lock = getattr(execution_query, '_input_attachment_lock', None)
+                    if lock is None:
+                        await self.ap.artifact_service.release_run_inputs(artifact_run_context)
+                    else:
+                        async with lock:
+                            await self.ap.artifact_service.release_run_inputs(artifact_run_context)
+
+                input_cancellation = await _await_run_cleanup(
+                    release_input_files,
+                    self.ap.logger,
+                    f'Failed to release input asset references for run {run_id}',
+                )
+                cleanup_cancellation = cleanup_cancellation or input_cancellation
             session = await self._session_registry.unregister(run_id)
             await reply_streams.close()
             pending_steering = session.get('steering_queue', []) if session else []
@@ -664,6 +900,9 @@ class AgentRunOrchestrator:
                         f'Failed to write dropped steering audit for run {run_id}: {exc}',
                         exc_info=True,
                     )
+
+            if cleanup_cancellation is not None and cleanup_original_error is None:
+                raise cleanup_cancellation
 
     async def run_from_query(
         self,
@@ -801,35 +1040,7 @@ class AgentRunOrchestrator:
             execution_event = event.model_copy(deep=True)
             append_mcp_resource_context_to_event(execution_event, resource_addition)
 
-        steering_item = self._build_steering_item(execution_event, target_run_id, descriptor.id)
-        if not await self._session_registry.enqueue_steering(target_run_id, steering_item):
-            return False
-
-        try:
-            event_log_id = await self.journal.write_event_log(
-                event=event,
-                binding=binding,
-                run_id=target_run_id,
-                runner_id=descriptor.id,
-                metadata={
-                    'steering': {
-                        'status': 'queued',
-                        'trigger_behavior': 'absorbed_into_active_run',
-                        'claimed_by_run_id': target_run_id,
-                        'claimed_runner_id': descriptor.id,
-                        'claimed_at': steering_item.get('claimed_at'),
-                    },
-                },
-            )
-            await self.journal.write_user_transcript(event, event_log_id)
-        except Exception as exc:
-            self.ap.logger.warning(
-                f'Failed to persist steering event {event.event_id} for run {target_run_id}: {exc}',
-                exc_info=True,
-            )
-
-        self.ap.logger.info(f'Claimed event {event.event_id} as steering input for run {target_run_id}')
-        return True
+        return await self._enqueue_steering(event, execution_event, binding, target_run_id, descriptor.id)
 
     async def try_claim_steering_from_event(
         self,
@@ -857,7 +1068,19 @@ class AgentRunOrchestrator:
         )
         if target_run_id is None:
             return False
-        steering_item = self._build_steering_item(event, target_run_id, descriptor.id)
+        return await self._enqueue_steering(event, event, binding, target_run_id, descriptor.id)
+
+    async def _enqueue_steering(
+        self,
+        event: AgentEventEnvelope,
+        execution_event: AgentEventEnvelope,
+        binding: AgentBinding,
+        target_run_id: str,
+        runner_id: str,
+    ) -> bool:
+        steering_item = self._build_steering_item(execution_event, target_run_id, runner_id)
+        # Reserve queue capacity without exposing an input before its source row exists.
+        steering_item['_steering_pending'] = True
         if not await self._session_registry.enqueue_steering(target_run_id, steering_item):
             return False
         try:
@@ -865,23 +1088,40 @@ class AgentRunOrchestrator:
                 event=event,
                 binding=binding,
                 run_id=target_run_id,
-                runner_id=descriptor.id,
+                runner_id=runner_id,
                 metadata={
                     'steering': {
                         'status': 'queued',
                         'trigger_behavior': 'absorbed_into_active_run',
                         'claimed_by_run_id': target_run_id,
-                        'claimed_runner_id': descriptor.id,
+                        'claimed_runner_id': runner_id,
                         'claimed_at': steering_item.get('claimed_at'),
                     }
                 },
             )
+            published = await self._session_registry.complete_steering_enqueue(
+                target_run_id, event.event_id, persisted=True
+            )
+        except BaseException:
+            await self._session_registry.complete_steering_enqueue(target_run_id, event.event_id, persisted=False)
+            raise
+        if not published:
+            from .event_log_store import EventLogStore
+
+            released = await EventLogStore(self.ap.persistence_mgr.get_db_engine()).update_steering_status(
+                event.event_id, status='dropped', owner_run_id=target_run_id
+            )
+            if not released:
+                raise RuntimeError(f'Cannot release steering event {event.event_id} after its run ended')
+            return False
+        try:
             await self.journal.write_user_transcript(event, event_log_id)
         except Exception as exc:
             self.ap.logger.warning(
-                f'Failed to persist steering event {event.event_id} for run {target_run_id}: {exc}',
+                f'Failed to write steering transcript for event {event.event_id}: {exc}',
                 exc_info=True,
             )
+        self.ap.logger.info(f'Claimed event {event.event_id} as steering input for run {target_run_id}')
         return True
 
     def _build_steering_item(
@@ -927,6 +1167,91 @@ class AgentRunOrchestrator:
             },
         }
 
+    async def _load_recoverable_steering(
+        self,
+        *,
+        event: AgentEventEnvelope,
+        descriptor: RunnerDescriptor,
+        run_id: str,
+        binding: AgentBinding | None = None,
+    ) -> list[dict[str, typing.Any]]:
+        """Rebuild unacknowledged steering inputs after a run restart."""
+        if not event.conversation_id or not descriptor.supports_steering():
+            return []
+        from .event_log_store import EventLogStore
+
+        store = EventLogStore(self.ap.persistence_mgr.get_db_engine())
+        records = await store.list_pending_steering(
+            conversation_id=event.conversation_id,
+            runner_id=descriptor.id,
+            bot_id=event.bot_id,
+            workspace_id=event.workspace_id,
+            thread_id=event.thread_id,
+            binding_id=binding.binding_id if binding else None,
+        )
+        recovered: list[dict[str, typing.Any]] = []
+        for record in records:
+            source_run_id = record.get('run_id')
+            if source_run_id == run_id:
+                continue
+            if source_run_id and await self._session_registry.get(str(source_run_id)) is not None:
+                continue
+            if not await store.reserve_steering_recovery(str(record['event_id']), run_id=run_id):
+                continue
+            metadata = record.get('metadata') if isinstance(record.get('metadata'), dict) else {}
+            steering = metadata.get('steering') if isinstance(metadata.get('steering'), dict) else {}
+            input_json = record.get('input_json') if isinstance(record.get('input_json'), dict) else {}
+            event_data = metadata.get('input_event') if isinstance(metadata.get('input_event'), dict) else {}
+            item: dict[str, typing.Any] = {
+                'claimed_run_id': run_id,
+                'runner_id': descriptor.id,
+                'claimed_at': record.get('created_at') or int(time.time()),
+                'event': {
+                    'event_id': record.get('event_id'),
+                    'event_type': record.get('event_type'),
+                    'event_time': record.get('event_time'),
+                    'source': record.get('source'),
+                    'data': event_data,
+                },
+                'conversation': {
+                    'conversation_id': record.get('conversation_id'),
+                    'thread_id': record.get('thread_id'),
+                    'bot_id': record.get('bot_id'),
+                    'workspace_id': record.get('workspace_id'),
+                },
+                'actor': (
+                    {
+                        'actor_type': record.get('actor_type'),
+                        'actor_id': record.get('actor_id'),
+                        'actor_name': record.get('actor_name'),
+                    }
+                    if record.get('actor_type')
+                    else None
+                ),
+                'subject': (
+                    {
+                        'subject_type': record.get('subject_type'),
+                        'subject_id': record.get('subject_id'),
+                    }
+                    if record.get('subject_type')
+                    else None
+                ),
+                'input': {
+                    'text': input_json.get('text'),
+                    'contents': input_json.get('contents') or [],
+                    'attachments': input_json.get('attachments') or [],
+                },
+                'metadata': {'recovered': True, 'source_run_id': source_run_id},
+            }
+            delivery_id = steering.get('delivery_id')
+            lease_expires_at = steering.get('lease_expires_at')
+            if delivery_id:
+                item['_steering_delivery_id'] = delivery_id
+            if isinstance(lease_expires_at, int):
+                item['_steering_lease_expires_at'] = lease_expires_at
+            recovered.append(item)
+        return recovered
+
     async def _invoke_runner(
         self,
         descriptor: RunnerDescriptor,
@@ -952,6 +1277,21 @@ class AgentRunOrchestrator:
 
     def _is_deadline_exhausted(self, context: RunnerContextPayload) -> bool:
         return self.invoker._is_deadline_exhausted(context)
+
+    async def _finalize_run(self, **kwargs: typing.Any) -> dict[str, typing.Any] | None:
+        """Write this execution's terminal status unless the run already has one.
+
+        Another writer can finish the run first: the Runner finalizing its own
+        run, a cancel request, or lease recovery marking it interrupted. The
+        first terminal status stays; closing the stream afterwards must not
+        raise, which would replace the real outcome (or a pending
+        cancellation) with a second, unrelated failure.
+        """
+        try:
+            return await self.journal.finalize_run(**kwargs)
+        except TerminalRunTransitionError as exc:
+            self.ap.logger.info(f'Run already finalized, keeping its terminal status: {exc}')
+            return await self.journal.get_run(kwargs['run_id'])
 
     async def _close_generator(
         self,

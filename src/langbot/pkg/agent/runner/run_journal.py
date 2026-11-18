@@ -133,7 +133,7 @@ class AgentRunJournal:
             workspace_id=event.workspace_id,
             bot_id=event.bot_id,
             deadline_at=runtime.get('deadline_at') if isinstance(runtime, dict) else None,
-            authorization=authorization,
+            authorization={**authorization, 'recovery_event': self._sanitize_event_data(event.model_dump(mode='json'))},
             metadata={
                 'event_type': event.event_type,
                 'ingress_event_id': trace_state.event_id if trace_state else event.event_id,
@@ -177,6 +177,9 @@ class AgentRunJournal:
         usage = result_dict.get('usage')
         if hasattr(usage, 'model_dump'):
             usage = usage.model_dump(mode='json')
+        result_metadata = result_dict.get('metadata')
+        if isinstance(result_metadata, dict):
+            metadata = {**result_metadata, **(metadata or {})}
         data = result_dict.get('data') if isinstance(result_dict.get('data'), dict) else {}
         if MediaCache.has_inline_images(data):
             data = await self.ap.storage_mgr.media_cache.externalize_chain_dump(data)
@@ -360,7 +363,7 @@ class AgentRunJournal:
         *,
         reason: str = 'run_ended',
     ) -> None:
-        """Write terminal audit events for steering items left unconsumed."""
+        """Audit unconsumed steering items and requeue claimed deliveries."""
         if not items:
             return
 
@@ -372,6 +375,20 @@ class AgentRunJournal:
 
         for item in items:
             event = item.get('event') if isinstance(item.get('event'), dict) else {}
+            source_event_id = event.get('event_id')
+            delivery_id = item.get('_steering_delivery_id') or item.get('delivery_id')
+            requeued = bool(delivery_id)
+            if source_event_id:
+                released = await store.update_steering_status(
+                    str(source_event_id),
+                    status='queued' if requeued else 'dropped',
+                    delivery_id='' if requeued else delivery_id,
+                    lease_expires_at=0 if requeued else None,
+                    expected_delivery_id=delivery_id,
+                    owner_run_id=run_id,
+                )
+                if not released:
+                    continue
             conversation = item.get('conversation') if isinstance(item.get('conversation'), dict) else {}
             actor = item.get('actor') if isinstance(item.get('actor'), dict) else {}
             subject = item.get('subject') if isinstance(item.get('subject'), dict) else {}
@@ -380,7 +397,7 @@ class AgentRunJournal:
 
             await store.append_event(
                 event_id=str(uuid.uuid4()),
-                event_type='steering.dropped',
+                event_type='steering.requeued' if requeued else 'steering.dropped',
                 source='host',
                 bot_id=conversation.get('bot_id'),
                 workspace_id=conversation.get('workspace_id'),
@@ -391,13 +408,15 @@ class AgentRunJournal:
                 actor_name=actor.get('actor_name'),
                 subject_type=subject.get('subject_type'),
                 subject_id=subject.get('subject_id'),
-                input_summary='Unconsumed steering input dropped',
+                input_summary='Unacknowledged steering input requeued'
+                if requeued
+                else 'Unconsumed steering input dropped',
                 run_id=run_id,
                 runner_id=runner_id,
                 event_time=event_time,
                 metadata={
                     'steering': {
-                        'status': 'dropped',
+                        'status': 'requeued' if requeued else 'dropped',
                         'reason': reason,
                         'original_event_id': event.get('event_id'),
                         'claimed_run_id': item.get('claimed_run_id'),

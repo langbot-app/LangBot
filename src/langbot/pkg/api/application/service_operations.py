@@ -410,6 +410,15 @@ _BINDINGS = (
         False,
     ),
     (
+        'knowledge.file.store_artifact',
+        'knowledge_service',
+        'knowledge',
+        'KnowledgeService',
+        'store_artifact',
+        'RESOURCE_MANAGE',
+        True,
+    ),
+    (
         'knowledge.file.store',
         'knowledge_service',
         'knowledge',
@@ -492,6 +501,7 @@ _BINDINGS = (
     ),
     ('skill.list', 'skill_service', 'skill', 'SkillService', 'list_skills', 'RESOURCE_VIEW', False),
     ('skill.get', 'skill_service', 'skill', 'SkillService', 'get_skill', 'RESOURCE_VIEW', False),
+    ('skill.package.get', 'skill_service', 'skill', 'SkillService', 'get_skill_package', 'RESOURCE_VIEW', False),
     ('skill.create', 'skill_service', 'skill', 'SkillService', 'create_skill', 'RESOURCE_MANAGE', True),
     ('skill.update', 'skill_service', 'skill', 'SkillService', 'update_skill', 'RESOURCE_MANAGE', True),
     ('skill.delete', 'skill_service', 'skill', 'SkillService', 'delete_skill', 'RESOURCE_MANAGE', True),
@@ -881,7 +891,14 @@ def _operation(operation_id, service_name, method, permission, side_effect):
                 raise WorkspaceNotFoundError('Resource not found')
         return result
 
-    return Operation(operation_id, Permission[permission], invoke, input_type, output_type, side_effect)
+    principals = (
+        frozenset({PrincipalType.ACCOUNT, PrincipalType.API_KEY})
+        if operation_id == 'knowledge.file.store_artifact'
+        else None
+    )
+    return Operation(
+        operation_id, Permission[permission], invoke, input_type, output_type, side_effect, principals=principals
+    )
 
 
 @lru_cache(maxsize=1)

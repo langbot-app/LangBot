@@ -74,6 +74,13 @@ permissions. Migration with plugin installation enabled uses the same checks.
 Pipeline extensions accept `allowed_platform_tools` as model preferences, not
 installation grants. See `docs/en/plugin/dev/permissions.mdx` for HTTP contracts.
 
+
+## Workspace execution environment
+
+Use `get_workspace_sandbox(refresh=true)` to detect selectable environments and supported limit controls. `check_workspace_sandbox(e2b)` performs read-only validation and never creates a sandbox. If the E2B service does not expose template queries, it reports the template as unverified; saving is still allowed. `set_workspace_sandbox(backend, e2b, limits)` requires `workspace.update`, applies only to new tasks, and never creates a sandbox. Limits may include `timeout_sec`, `idle_ttl_sec`, `max_sessions`, `cpus`, `memory_mb`, `pids_limit`, and `workspace_quota_mb`; only supported values within deployment ceilings are accepted. Empty limits inherit defaults. Existing tasks retain their Box and limit snapshot. Disk quotas are checked before/after commands, not continuous filesystem quotas.
+
+`test_workspace_sandbox(e2b)` is a separate, explicit operation that creates, executes in, and deletes a temporary E2B sandbox without saving. It consumes a provider slot and may incur charges. Users supply their provider's template name or ID. Stored API keys are never returned; a blank key retains the prior key only if service URLs are unchanged. Do not modify an E2B service to enable template queries.
+
 ## Tool surface
 
 `create_bot` requires `bot_data.name` and `bot_data.adapter` as non-empty strings,
@@ -369,3 +376,93 @@ request construction and `preparation_cache_hits` counts retry preparation reuse
 `transport_setup_ms` measures managed pool acquisition, including first-use TLS
 initialization; it is not network TTFT. See `dev-docs/LLM_LATENCY_BENCHMARK.md` for
 controlled request-layer measurements and their scope.
+
+
+## Caller-owned Artifacts
+
+`create_artifact(filename, content_base64, mime_type, ttl_seconds)` uploads at most
+10 MiB and returns an opaque ID and metadata. Use `get_artifact(artifact_id)` to
+inspect it. Prefer `read_artifact_content(artifact_id, mode, offset, max_chars,
+page_start, page_end)` for model consumption: it returns bounded text or native
+MCP image/PDF content. Continue using the returned text/page offsets when a result
+is truncated. PDF text excludes visual content; `native` needs a supporting model,
+and `pages` currently reports unsupported. `read_artifact(artifact_id, max_bytes)`
+returns base64 for raw file transfer. Use authenticated HTTP downloads for users.
+See [Artifact API](../../../docs/en/develop/artifacts.mdx) for limits and modes.
+
+Reads require `resource.view`; writes require `resource.manage`. The authenticated
+account or API key must own the asset in the current Workspace. An ID is not an
+access grant. Plugin/run references are not accepted by this account API, and
+Account-owned files do not become accessible through plugin grants or default
+model tools. The installation-owned plugin operation boundary is described below.
+Runner attachment tools use their existing run-scoped grant and
+Host-only input references; an account upload can be passed to Agent debug with
+`artifact_ids` after ownership validation. The management assistant does not
+accept attachments in this phase.
+
+Temporary files expire after 24 hours by default (`ttl_seconds`: 1 to 604800).
+`retain_artifact` adds a persistent pin without broadening access.
+`release_artifact` removes the caller pin and restores a 24-hour grace period;
+repeating release does not extend it. `delete_artifact` refuses pinned files;
+release first when deletion is authorized. Expired references cannot be revived.
+Never treat a denied reference as permission to use a storage key or run handle.
+
+Run outputs use a separate ExecutionAPI path: `langbot_export_box_files` registers
+temporary Artifacts and `langbot_read_run_file` reads an exported UUID handle as
+bounded structured content. Runner code explicitly calls `ctx.commit_run_files`
+under the producer policy below; export, read and reply do not commit, and commit
+is not a default model tool. The authorized recipient can use the account
+Artifact APIs with `artifact_id` after the run ends or Core restarts. Another
+account, key or run gains no access. The `file_id` remains local to its live run.
+Commit retries preserve a recipient's later release.
+Finalization attempts bounded expiry cleanup of uncommitted outputs; crashes,
+cleanup failures and timeouts fall back to their original 24-hour expiry.
+Use the [Runner API](../../../docs/en/plugin/dev/apis/agent-run.mdx#box-and-attachments)
+for batch acceptance, warning and delivery semantics. No run-file HTTP endpoint
+is provided.
+
+
+### Publish producer outputs to the current caller
+
+Use `set_artifact_publication(producer_type, producer_id, enabled=true)` only
+when asked to retain that producer's generated files for the authenticated caller.
+`producer_type` is `agent`, `pipeline` or `event_processor`. The server chooses
+this named account or API key as recipient; never pass a recipient ID in config
+or tool arguments. Existing policies can only be changed by their recipient.
+`get_artifact_publication` reads the caller-owned policy;
+`disable_artifact_publication` revokes future commits, including frozen old run
+grants. Creating or copying a producer does not authorize publication. Agent debug
+and IM runs follow the same explicit policy. These operations are unavailable to
+plugins and default model tools.
+
+Setting or disabling a policy requires both `resource.view` and `resource.manage`.
+The recipient needs the `artifact_id` returned by commit for subsequent management;
+there is no listing tool. Runner implementations must include it in their result.
+
+## Fixed-version Skill resources
+
+Use `create_skill_resource_artifact(skill_name, revision, path, ttl_seconds=86400)`
+to register one immutable database-backed Skill package file without Box or an
+upload. Both `resource.view` and `resource.manage` are required. Then use the
+existing Artifact metadata, raw-read or structured-read tools. IDs remain private
+to the creator; retain does not share access, and release/GC does not delete the
+Skill package. Filesystem-only sources are unsupported. See
+`docs/en/develop/artifacts.mdx` and `dev-docs/architecture/artifacts.md` for bounds
+and run-consumer authorization. Do not claim that byte transfer proves a model
+understands an image or PDF.
+
+## Artifact knowledge-file imports
+
+`add_knowledge_file_artifact(kb_uuid, artifact_id, parser_plugin_id=None)` indexes
+an authorized account-owned Artifact and returns the existing ingestion task ID.
+It creates a knowledge-file business reference without reuploading bytes. Skill
+sources and run-owned files are not accepted by this path. Deleting the knowledge
+file/base releases its own holder only; another holder still protects the bytes.
+MCP retains account/API-key authorization and does not impersonate a plugin.
+
+Plugins have separate installation-owned access through explicitly granted
+Workspace `artifact.create/get/read/read_content/retain/release/delete` operations.
+Do not use account MCP tools as a fallback for a denied plugin call. Publication
+and Skill-source operations remain account-only; `artifact.*` is not a valid
+plugin wildcard because it includes those excluded operations. See the localized
+Workspace API documentation for the 256 KiB RPC envelope and compatibility rules.

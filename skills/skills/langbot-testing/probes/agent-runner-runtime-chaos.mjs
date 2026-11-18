@@ -5,7 +5,7 @@ import { runPytestProbe } from "./pytest-probe.mjs";
 await runPytestProbe({
   caseId: "agent-runner-runtime-chaos",
   repoEnvKey: "LANGBOT_PLUGIN_SDK_REPO",
-  defaultRepo: "../../langbot-plugin-sdk",
+  defaultRepo: "../sdk",
   description:
     "LangBot plugin SDK Runner runtime failure, timeout, forwarding, and pull API pytest probe.",
   testTargets: [

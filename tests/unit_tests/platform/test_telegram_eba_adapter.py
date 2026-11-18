@@ -781,6 +781,53 @@ async def test_telegram_send_returns_message_result(reply):
     assert result.raw == {'message_ids': [901]}
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('quote', [None, False, True])
+@pytest.mark.parametrize('topic', [None, 7])
+async def test_telegram_recovered_reply_preserves_target_quote_and_file(quote, topic):
+    adapter = make_adapter()
+    bot = SimpleNamespace(
+        send_message=AsyncMock(return_value=SimpleNamespace(message_id=901)),
+        send_document=AsyncMock(return_value=SimpleNamespace(message_id=902)),
+    )
+    object.__setattr__(adapter, 'bot', bot)
+    target_id = '-100123' + (f'#{topic}' if topic else '')
+    context = {'delivery': {'reply_target': {'target_type': 'group', 'target_id': target_id, 'message_id': '88'}}}
+    if quote is not None:
+        context['quote_origin'] = quote
+    chain = platform_message.MessageChain(
+        [
+            platform_message.Plain(text='recovered'),
+            platform_message.File(name='result.txt', base64=base64.b64encode(b'evidence').decode()),
+        ]
+    )
+    result = await adapter.reply_to_event(context=context, target_type='group', target_id=target_id, message=chain)
+    for call in (bot.send_message.await_args, bot.send_document.await_args):
+        assert call.kwargs['chat_id'] == -100123
+        assert call.kwargs.get('message_thread_id') == topic
+        assert call.kwargs.get('reply_to_message_id') == (88 if quote else None)
+    assert bot.send_message.await_args.kwargs['text'] == 'recovered'
+    document = bot.send_document.await_args.kwargs['document']
+    assert document.filename == 'result.txt'
+    assert document.input_file_content == b'evidence'
+    assert result.message_id == 902
+
+
+@pytest.mark.asyncio
+async def test_telegram_recovered_quote_requires_original_message():
+    adapter = make_adapter()
+    bot = SimpleNamespace(send_message=AsyncMock())
+    object.__setattr__(adapter, 'bot', bot)
+    with pytest.raises(ValueError, match='message ID is required'):
+        await adapter.reply_to_event(
+            context={'quote_origin': True, 'delivery': {'reply_target': {'target_id': '-100123#7'}}},
+            target_type='group',
+            target_id='-100123#7',
+            message=platform_message.MessageChain([platform_message.Plain(text='recovered')]),
+        )
+    bot.send_message.assert_not_awaited()
+
+
 @pytest.mark.parametrize('until, expected', [(0, None), (1060, 60), (900, 0)])
 def test_restriction_duration_uses_event_time(until, expected):
     from langbot.pkg.platform.adapters.telegram.event_converter import _restriction_duration

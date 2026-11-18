@@ -13,6 +13,7 @@ from urllib.parse import quote, unquote, urlparse
 import httpx
 
 from ....core import app
+from ....telemetry import usage
 from ....skill.utils import parse_frontmatter
 from ....utils import httpclient
 from ..context import ExecutionContext
@@ -48,7 +49,7 @@ _MAX_SKILL_COMPRESSION_RATIO = 200
 
 
 class SkillService:
-    """Filesystem-backed skill management service."""
+    """Workspace-scoped Skill management and immutable package reads."""
 
     ap: app.Application
 
@@ -92,11 +93,20 @@ class SkillService:
 
     async def get_skill(self, context: TenantContext, skill_name: str) -> Optional[dict]:
         execution_context = await self._execution_context(context)
-        skill = await self._repository().get_skill(execution_context, skill_name, snapshot=True)
+        skill = await self._repository().get_skill(execution_context, skill_name)
         return self._serialize_skill(skill) if skill else None
 
     async def get_skill_by_name(self, context: TenantContext, name: str) -> Optional[dict]:
         return await self.get_skill(context, name)
+
+    async def get_skill_package(
+        self,
+        context: TenantContext,
+        skill_name: str,
+        revision: str | None = None,
+    ) -> dict[str, bytes | str | int | dict]:
+        execution_context = await self._execution_context(context)
+        return await self._repository().get_skill_package(execution_context, skill_name, revision)
 
     async def create_skill(self, context: TenantContext, data: dict) -> dict:
         execution_context = await self._execution_context(context)
@@ -134,6 +144,22 @@ class SkillService:
         )
         await self._reload_skills(execution_context)
         return self._serialize_skill(updated)
+
+    async def import_skill_zip(
+        self,
+        context: TenantContext,
+        *,
+        file_bytes: bytes,
+        data: dict,
+        base_revision: str | None = None,
+    ) -> dict:
+        """Publish one Box draft without interpreting its sandbox path in Core."""
+        execution_context = await self._execution_context(context)
+        published = await self._repository().import_skill_zip(
+            execution_context, file_bytes, data, base_revision=base_revision
+        )
+        await self._reload_skills(execution_context)
+        return {key: value for key, value in self._serialize_skill(published).items() if key != 'package_root'}
 
     async def delete_skill(self, context: TenantContext, skill_name: str) -> bool:
         execution_context = await self._execution_context(context)
@@ -182,6 +208,7 @@ class SkillService:
         await self._reload_skills(execution_context)
         return result
 
+    @usage.observe_install('skill', 'github')
     async def install_from_github(self, context: TenantContext, data: dict) -> list[dict]:
         execution_context = await self._execution_context(context)
         repository = self._repository()
@@ -240,6 +267,7 @@ class SkillService:
             source_subdir=source_subdir,
         )
 
+    @usage.observe_install('skill', 'local')
     async def install_from_zip_upload(
         self,
         context: TenantContext,

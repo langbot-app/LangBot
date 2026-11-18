@@ -162,6 +162,12 @@ components/
 
 详细的组件开发规范请参考：[添加组件](/zh/plugin/dev/components/add)
 
+## 运行时数据
+
+上面的目录只存放随插件包发布的**只读**内容（代码、清单、静态资源）。插件运行时不要向插件目录或文件系统的其他位置写入需要保留的数据：插件目录会在升级、重装时被替换，Plugin Runtime 的磁盘也不保证持久。
+
+需要持久化的数据一律通过 API 写入 LangBot Core 的持久化数据库，详见[数据持久化约定](/zh/plugin/dev/apis/common)。
+
 ## 配置文件
 
 ### manifest.yaml

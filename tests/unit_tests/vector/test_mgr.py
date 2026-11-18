@@ -423,6 +423,22 @@ class TestLazyVectorBackend:
             assert manager.vector_db is factory.return_value
 
     @pytest.mark.asyncio
+    async def test_backend_is_created_off_the_event_loop(self):
+        import threading
+
+        app = self._create_mock_app({'use': 'chroma'})
+        mocks = self._make_vector_import_mocks()
+        factory = mocks['langbot.pkg.vector.vdbs.chroma'].ChromaVectorDatabase
+        creator_threads = []
+        factory.side_effect = lambda *_args: creator_threads.append(threading.get_ident()) or MagicMock()
+        with isolated_sys_modules(mocks):
+            from langbot.pkg.vector.mgr import VectorDBManager
+
+            manager = VectorDBManager(app)
+            await manager.initialize()
+        assert creator_threads and creator_threads[0] != threading.get_ident()
+
+    @pytest.mark.asyncio
     async def test_failed_creation_can_retry(self):
         app = self._create_mock_app({'use': 'chroma'})
         mocks = self._make_vector_import_mocks()
@@ -455,7 +471,8 @@ class TestLazyVectorBackend:
                 await manager.initialize()
             factory.assert_not_called()
 
-    def test_other_backend_does_not_import_pgvector(self):
+    @pytest.mark.asyncio
+    async def test_other_backend_does_not_import_pgvector(self):
         import sys
 
         with isolated_sys_modules({'langbot.pkg.core.app': MagicMock()}):
@@ -466,7 +483,7 @@ class TestLazyVectorBackend:
             module_name = 'langbot.pkg.vector.vdbs.pgvector_db'
             original = sys.modules.pop(module_name, None)
             try:
-                assert manager._pgvector_database() is None
+                assert await manager._pgvector_database() is None
                 assert module_name not in sys.modules
             finally:
                 if original is not None:

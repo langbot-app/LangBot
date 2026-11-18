@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
 from langbot_plugin.api.entities.builtin.runner import (
@@ -34,6 +35,61 @@ from langbot_plugin.api.entities.builtin.runner.context_access import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_resume_restores_source_session_and_uses_continuation_prompt():
+    steering = _steering_module()
+    ctx = _ctx(steering=False)
+    ctx.runtime.metadata["recovery"] = {
+        "mode": "resume",
+        "events": [
+            {
+                "type": "state.updated",
+                "data": {"key": "external.session", "scope": "conversation", "value": "source-session"},
+            }
+        ],
+    }
+    calls = []
+
+    async def turn(prompt, session_id):
+        calls.append((prompt, session_id))
+        yield RunnerResult.run_completed(ctx.run_id)
+
+    results = asyncio.run(
+        _collect(
+            steering.run_with_steering(
+                ctx,
+                lambda: None,
+                turn,
+                initial_prompt="original task",
+                initial_resume_session_id="different-session",
+                session_state_key="external.session",
+            )
+        )
+    )
+    assert calls[0][1] == "source-session"
+    assert calls[0][0].startswith("Continue the interrupted task")
+    assert [_type(result) for result in results] == ["run.completed"]
+
+
+def test_codex_checkpoint_resume_never_falls_back_to_new_thread():
+    _load_plugin("codex-agent")
+    native = sys.modules["pkg.native_cli"]
+    client = object.__new__(native._CodexAppServerClient)
+    client.request = AsyncMock(side_effect=RuntimeError("source session unavailable"))
+
+    async def check():
+        try:
+            await client.start_or_resume_thread(
+                "source", "/tmp", approval_policy=None, sandbox_mode=None, require_resume=True
+            )
+        except native.NativeCliError as exc:
+            assert exc.code == "codex.resume_failed"
+        else:
+            raise AssertionError("Resume silently started a new thread")
+
+    asyncio.run(check())
+    assert [call.args[0] for call in client.request.call_args_list] == ["thread/resume"]
 
 
 def _load_plugin(plugin_dir: str):

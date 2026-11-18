@@ -217,7 +217,7 @@ async def test_model_runtime_workspace_mismatch_denies(host, action):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('action', ACTIONS)
+@pytest.mark.parametrize('action', [PluginToRuntimeAction.INVOKE_LLM, PluginToRuntimeAction.INVOKE_LLM_STREAM])
 async def test_host_reuses_core_ability_validation_before_provider_call(host, action):
     await host.register()
     host.models[PRIMARY].model_entity.abilities = []

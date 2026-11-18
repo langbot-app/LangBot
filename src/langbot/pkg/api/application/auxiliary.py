@@ -11,6 +11,7 @@ from typing import Literal
 
 import sqlalchemy
 from pydantic import Field
+from typing_extensions import TypedDict
 
 from .contracts import Input, Operation
 from ..authz import Permission, PermissionDeniedError
@@ -31,6 +32,19 @@ class Empty(Input):
 
 class Language(Input):
     language: str
+
+
+class SandboxRead(Input):
+    refresh: bool = False
+
+
+class SandboxDraft(Input):
+    e2b: dict[str, str] | None = None
+
+
+class SandboxUpdate(SandboxDraft):
+    backend: Literal['docker', 'e2b', 'nsjail']
+    limits: dict[str, float | int | None] | None = None
 
 
 class Member(Input):
@@ -89,6 +103,11 @@ class Upload(Input):
 
 class ImageGet(Input):
     file_key: str
+
+
+class ImageOutput(TypedDict):
+    content: bytes
+    media_type: str
 
 
 class ToolList(Input):
@@ -610,10 +629,65 @@ async def plugin_status(ap, context, payload):
     return {'is_enable': ap.plugin_connector.is_enable_plugin, 'is_connected': True, 'plugin_connector_error': 'ok'}
 
 
+async def sandbox_get(ap, context, payload):
+    return await ap.box_service.get_workspace_backend_settings(context, refresh=payload.refresh)
+
+
+async def sandbox_update(ap, context, payload):
+    return await ap.box_service.set_workspace_backend(
+        context, payload.backend, e2b_draft=payload.e2b, limits=payload.limits
+    )
+
+
+async def sandbox_check(ap, context, payload):
+    return await ap.box_service.get_workspace_backend_settings(context, refresh=True, e2b_draft=payload.e2b)
+
+
+async def sandbox_test(ap, context, payload):
+    return await ap.box_service.get_workspace_backend_settings(
+        context, refresh=True, e2b_draft=payload.e2b, validate_e2b_template=True
+    )
+
+
 def operations() -> list[Operation]:
     view, manage = Permission.RESOURCE_VIEW, Permission.RESOURCE_MANAGE
     account = frozenset({PrincipalType.ACCOUNT})
+    administrators = frozenset({PrincipalType.ACCOUNT, PrincipalType.API_KEY, PrincipalType.SUPPORT_ADMIN})
     return [
+        Operation(
+            'workspace.sandbox.get',
+            Permission.WORKSPACE_VIEW,
+            sandbox_get,
+            SandboxRead,
+            dict,
+            principals=administrators,
+        ),
+        Operation(
+            'workspace.sandbox.update',
+            Permission.WORKSPACE_UPDATE,
+            sandbox_update,
+            SandboxUpdate,
+            dict,
+            True,
+            principals=administrators,
+        ),
+        Operation(
+            'workspace.sandbox.check',
+            Permission.WORKSPACE_UPDATE,
+            sandbox_check,
+            SandboxDraft,
+            dict,
+            principals=administrators,
+        ),
+        Operation(
+            'workspace.sandbox.test',
+            Permission.WORKSPACE_UPDATE,
+            sandbox_test,
+            SandboxDraft,
+            dict,
+            True,
+            principals=administrators,
+        ),
         Operation('workspace.get', Permission.WORKSPACE_VIEW, workspace_get, Empty, dict),
         Operation('workspace.current', Permission.WORKSPACE_VIEW, workspace_current, Empty, dict),
         Operation('workspace.language.get', Permission.WORKSPACE_VIEW, language_get, Empty, dict),
@@ -666,7 +740,7 @@ def operations() -> list[Operation]:
         Operation('task.get', view, task_get, TaskGet, dict),
         Operation('file.image.upload', manage, image_upload, Upload, dict[str, str], True),
         Operation('file.document.upload', manage, document_upload, Upload, dict[str, str], True),
-        Operation('file.image.get', view, image_get, ImageGet, dict[str, bytes | str]),
+        Operation('file.image.get', view, image_get, ImageGet, ImageOutput),
         Operation('box.status', view, box_status, Empty, dict),
         Operation('box.sessions.list', Permission.AUDIT_VIEW, box_sessions, Empty, list[dict]),
         Operation('box.errors.list', Permission.AUDIT_VIEW, box_errors, Empty, list[dict]),

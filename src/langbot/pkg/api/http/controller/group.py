@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import abc
+import asyncio
 import typing
 import enum
 import quart
+import sqlalchemy.exc
 import time
 import traceback
 import inspect
@@ -11,6 +13,7 @@ import uuid
 from quart.typing import RouteCallable
 
 from ....utils import constants
+from ....telemetry import usage
 from ....utils import bounded_executor
 from ....workspace.collaboration import MembershipPermissionError, WorkspaceCollaborationError
 from ....workspace.errors import WorkspaceNotFoundError
@@ -47,6 +50,7 @@ def group_class(name: str, path: str) -> typing.Callable[[typing.Type[RouterGrou
 
     def decorator(cls: typing.Type[RouterGroup]) -> typing.Type[RouterGroup]:
         cls.name = name
+        usage.GROUPS.add(name)
         cls.path = path
         preregistered_groups.append(cls)
         return cls
@@ -236,6 +240,7 @@ class RouterGroup(abc.ABC):
                             except Exception as e:
                                 return await self._localized_auth_error_response(e)
 
+                quart.g.request_context = request_context
                 observed_at = time.monotonic()
                 try:
                     if request_context is not None:
@@ -328,7 +333,21 @@ class RouterGroup(abc.ABC):
             async def new_f(*args, **kwargs):
                 # Reset even on errors; child tasks inherit this request's locale.
                 with language_scope(quart.request.headers.get('X-LangBot-Language', DEFAULT_LANGUAGE)):
-                    return await handler_error(*args, **kwargs)
+                    status = 500
+                    try:
+                        response = await handler_error(*args, **kwargs)
+                        status = response[1] if isinstance(response, tuple) else getattr(response, 'status_code', 200)
+                        return response
+                    finally:
+                        usage.record_http(
+                            self.ap,
+                            getattr(quart.g, 'request_context', None),
+                            quart.request.headers,
+                            self.name,
+                            quart.request.method,
+                            status,
+                            api_key_auth=auth_type == AuthType.API_KEY or getattr(quart.g, 'usage_api_key_auth', False),
+                        )
 
             # Quart/Flask requires a unique endpoint name even when the same URL
             # intentionally has separate handlers for different HTTP methods.
@@ -593,6 +612,7 @@ class RouterGroup(abc.ABC):
         return request_context
 
     async def _authenticate_api_key(self, api_key: str, auth_type: AuthType) -> RequestContext:
+        quart.g.usage_api_key_auth = True
         authenticator = getattr(self.ap.apikey_service, 'authenticate_api_key', None)
         if callable(authenticator):
             authenticated = authenticator(api_key)
@@ -679,7 +699,49 @@ class RouterGroup(abc.ABC):
             elif 'ctx' in parameters:
                 kwargs['ctx'] = request_context
 
+    @staticmethod
+    def _is_transient_auth_failure(error: Exception) -> bool:
+        """Infrastructure failures while authenticating, not bad credentials.
+
+        Answering these with 401 made the WebUI tear down perfectly valid
+        sessions whenever the resolver/blocking pools were saturated or DNS
+        and the database blipped (LANG-439: Cloud users bounced to /login).
+        """
+
+        if isinstance(error, PermissionError):
+            return False
+        if isinstance(
+            error,
+            (
+                bounded_executor.BlockingWorkCapacityError,
+                TaskCapacityError,
+                OSError,  # includes socket.gaierror, ConnectionError, TimeoutError
+                asyncio.TimeoutError,
+                sqlalchemy.exc.OperationalError,
+                sqlalchemy.exc.InterfaceError,
+                sqlalchemy.exc.TimeoutError,
+            ),
+        ):
+            return True
+        return False
+
     def _auth_error_response(self, error: Exception) -> typing.Any:
+        if self._is_transient_auth_failure(error):
+            request_id = self.request_id()
+            logger = getattr(self.ap, 'logger', self.quart_app.logger)
+            logger.warning(
+                f'Authentication temporarily unavailable request_id={request_id} '
+                f'error_type={type(error).__name__}: {error}'
+            )
+            response = quart.jsonify(
+                {
+                    'code': 'authentication_unavailable',
+                    'msg': 'Authentication is temporarily unavailable, please retry',
+                    'request_id': request_id,
+                }
+            )
+            response.headers['Retry-After'] = '1'
+            return response, 503
         if isinstance(error, AuthorizationError):
             return self.http_status(error.status_code, error.error_code, str(error))
         if isinstance(error, WorkspaceNotFoundError):

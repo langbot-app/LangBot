@@ -1,0 +1,97 @@
+name: SDK / Publish to PyPI
+
+# The SDK is released by pushing a namespaced tag `sdk/vX.Y.Z` (matching
+# sdk/pyproject.toml). Do NOT create a GitHub Release for SDK versions: every
+# `release: published` event in this repository belongs to Core (Docker
+# `latest`, PyPI, release assets, Discord, changelog sync) and Space's update
+# check reads this repository's release list.
+
+on:
+  push:
+    tags:
+      - 'sdk/v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing SDK tag to (re)publish, for example sdk/v0.7.25'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-publish-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build and publish langbot-plugin
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          persist-credentials: false
+
+      - name: Validate tag and version
+        id: version
+        env:
+          SDK_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import tomllib
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          tag = os.environ['SDK_TAG']
+          match = re.fullmatch(r'sdk/v([0-9]+\.[0-9]+\.[0-9]+(?:(?:a|b|rc|\.post|\.dev)[0-9]+)?(?:\.[0-9]+)?)', tag)
+          if not match:
+              raise SystemExit(f'{tag!r} is not an SDK release tag (sdk/vX.Y.Z)')
+          version = tomllib.loads(Path('sdk/pyproject.toml').read_text())['project']['version']
+          if version != match.group(1):
+              raise SystemExit(f'sdk/pyproject.toml version {version} does not match tag {tag}')
+          try:
+              urllib.request.urlopen(f'https://pypi.org/pypi/langbot-plugin/{version}/json', timeout=30)
+              published = True
+          except urllib.error.HTTPError as error:
+              if error.code != 404:
+                  raise
+              published = False
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'version={version}\npublished={str(published).lower()}\n')
+          print(f'{tag}: langbot-plugin {version}, already on PyPI: {published}')
+          PY
+
+      - uses: astral-sh/setup-uv@v6
+        if: steps.version.outputs.published != 'true'
+
+      - name: Build distributions
+        if: steps.version.outputs.published != 'true'
+        working-directory: sdk
+        run: |
+          uv build --out-dir dist
+          ls -l dist
+
+      - name: Publish to PyPI
+        if: steps.version.outputs.published != 'true'
+        working-directory: sdk
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: uv publish dist/*
+
+      - name: Summary
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PUBLISHED: ${{ steps.version.outputs.published }}
+        run: |
+          if [ "$PUBLISHED" = "true" ]; then
+            echo "langbot-plugin $VERSION is already on PyPI; nothing uploaded." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Published langbot-plugin $VERSION to PyPI." >> "$GITHUB_STEP_SUMMARY"
+          fi

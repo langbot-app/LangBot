@@ -102,7 +102,8 @@ async def test_main_reports_app_run_failure_and_still_shuts_down(monkeypatch):
     monkeypatch.setattr(boot, 'make_app', fake_make_app)
     monkeypatch.setattr(boot.traceback, 'print_exc', print_exc)
 
-    await boot.main(SimpleNamespace())
+    with pytest.raises(RuntimeError, match='run failed'):
+        await boot.main(SimpleNamespace())
 
     print_exc.assert_called_once()
     assert app_inst.shutdown_called is True

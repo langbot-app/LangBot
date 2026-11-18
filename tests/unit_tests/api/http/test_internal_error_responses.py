@@ -255,3 +255,61 @@ async def test_account_token_route_cannot_declare_workspace_permission():
 
     with pytest.raises(ValueError, match='cannot declare Workspace permissions'):
         await _InvalidAccountRouterGroup(application, quart_app).initialize()
+
+
+async def _auth_status_for(error: Exception):
+    application = SimpleNamespace(
+        logger=Mock(),
+        user_service=SimpleNamespace(get_authenticated_account=AsyncMock(side_effect=error)),
+    )
+    quart_app = quart.Quart(__name__)
+    await _AuthenticatedRouterGroup(application, quart_app).initialize()
+    response = await quart_app.test_client().get(
+        '/authenticated-test',
+        headers={'Authorization': 'Bearer valid-but-unlucky', 'X-Request-Id': 'request-auth-transient'},
+    )
+    return response
+
+
+@pytest.mark.parametrize(
+    'error',
+    [
+        BlockingWorkCapacityError('Blocking executor capacity reached'),
+        __import__('socket').gaierror(-2, 'Name or service not known'),
+        ConnectionResetError('connection reset'),
+        __import__('sqlalchemy').exc.OperationalError('SELECT 1', {}, Exception('server closed the connection')),
+    ],
+)
+async def test_transient_authentication_failure_is_retryable_not_401(error):
+    # LANG-439: these used to answer 401, and the WebUI logged valid users out.
+    response = await _auth_status_for(error)
+
+    assert response.status_code == 503
+    assert response.headers['Retry-After'] == '1'
+    body = await response.get_json()
+    assert body['code'] == 'authentication_unavailable'
+    assert body['request_id'] == 'request-auth-transient'
+    assert 'server closed' not in body['msg'] and 'Name or service' not in body['msg']
+
+
+@pytest.mark.parametrize(
+    'error',
+    [
+        ValueError('Account token revision is stale'),
+        __import__('jwt').ExpiredSignatureError('Signature has expired'),
+        PermissionError('denied'),
+    ],
+)
+async def test_real_authentication_failure_still_401(error):
+    response = await _auth_status_for(error)
+
+    assert response.status_code == 401
+    assert (await response.get_json())['code'] == 'invalid_authentication'
+
+
+def test_dns_pool_scales_with_main_pool():
+    from langbot.pkg.utils.bounded_executor import dns_pool_limits
+
+    assert dns_pool_limits(8) == (4, 64)
+    assert dns_pool_limits(64) == (16, 256)
+    assert dns_pool_limits(512) == (16, 256)

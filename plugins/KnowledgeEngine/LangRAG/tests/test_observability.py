@@ -57,7 +57,13 @@ class TelemetryTests(unittest.TestCase):
 
         snapshot = store.snapshot()
 
-        self.assertEqual(len(snapshot["recent"]["ingest"]), 2)
+        self.assertEqual(
+            [
+                (entry["document_id"], entry["status"])
+                for entry in snapshot["recent"]["ingest"]
+            ],
+            [("doc3", "completed"), ("doc2", "failed")],
+        )
         self.assertEqual(snapshot["counters"]["ingest.total"], 3)
         self.assertEqual(snapshot["counters"]["retrieval.total"], 1)
         self.assertNotIn("full user query should not be stored", repr(snapshot))
@@ -121,6 +127,9 @@ class TelemetryTests(unittest.TestCase):
             snapshot = reloaded.snapshot()
             self.assertEqual(snapshot["persistence"]["loaded_events"], 1)
             self.assertEqual(snapshot["counters"]["retrieval.total"], 1)
+        event, = snapshot["recent"]["retrieval"]
+        self.assertEqual(event["collection_id"], "kb1")
+        self.assertEqual(event["result_count"], 1)
 
 
 class ObservabilityPageTests(unittest.IsolatedAsyncioTestCase):
@@ -157,6 +166,11 @@ class ObservabilityPageTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNone(response.error)
         self.assertEqual(response.data["counters"], {})
+
+        refreshed = await page.handle_api(PageRequest(endpoint="/snapshot", method="GET"))
+        self.assertIsNone(refreshed.error)
+        self.assertEqual(refreshed.data["counters"], {})
+        self.assertEqual(refreshed.data["recent"]["delete"], [])
 
     async def test_unreadable_storage_fails_the_snapshot_instead_of_stale_data(self):
         from benchmarks.state_fixture import attach_installation_state

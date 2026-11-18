@@ -1,20 +1,34 @@
 name: Plugins / Runner tests
 
 on:
-  push:
-    paths:
-      - "plugins/pytest.ini"
-      - "plugins/Runner/**"
-      - ".github/workflows/plugins-runner-tests.yml"
   pull_request:
     paths:
+      - "sdk/**"
+      - "src/langbot/pkg/api/application/**"
+      - "src/langbot/pkg/core/stages/**"
+      - "src/langbot/pkg/entity/**"
+      - "src/langbot/pkg/plugin/**"
+      - "src/langbot/pkg/workspace/**"
+      - "scripts/generate_plugin_workspace_api.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "src/langbot/pkg/agent/**"
+      - "src/langbot/pkg/box/**"
+      - "src/langbot/pkg/pipeline/**"
+      - "src/langbot/pkg/storage/**"
+      - ".github/workflows/plugins-local-agent-tests.yml"
       - "plugins/pytest.ini"
       - "plugins/Runner/**"
       - ".github/workflows/plugins-runner-tests.yml"
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
+
+concurrency:
+  group: plugin-runner-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -26,6 +40,8 @@ jobs:
     steps:
       - name: Checkout plugins
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -63,9 +79,13 @@ jobs:
       - name: Ruff format check
         run: uv run --no-sync ruff format --check tests http-certification-tests ./*-agent acp-agent-runner
       - name: LocalAgent Ruff check
-        run: uv run --no-sync ruff check LocalAgent
+        working-directory: plugins/Runner/LocalAgent
+        run: |
+          "$LOCALAGENT_TEST_PYTHON" -m ruff check .
       - name: LocalAgent Ruff format check
-        run: uv run --no-sync ruff format --check LocalAgent
+        working-directory: plugins/Runner/LocalAgent
+        run: |
+          "$LOCALAGENT_TEST_PYTHON" -m ruff format --check .
       - name: All Runner tests, including isolated plugin suites (LocalAgent, RunnerDemo, shared agents)
         run: uv run --no-sync python -m pytest --junitxml="${RUNNER_EVIDENCE_DIR}/runner.xml"
       # Generic pkg/test module names require a fresh pytest interpreter.
@@ -76,6 +96,19 @@ jobs:
           "$RUNNER_TEMP/coding-sdk/bin/python" certification-tests/test_runner_demo_dependency_admission.py -v
           cd RunnerDemo
           "$RUNNER_TEMP/coding-sdk/bin/python" -m unittest discover -s tests -v
+      - name: Test LocalAgent with the in-tree SDK
+        working-directory: plugins/Runner/LocalAgent
+        run: |
+          uv pip install --python "$LOCALAGENT_TEST_PYTHON" ../../../sdk
+          uv pip check --python "$LOCALAGENT_TEST_PYTHON"
+          "$LOCALAGENT_TEST_PYTHON" -c 'import json; from importlib.metadata import distribution; from pathlib import Path; sdk = distribution("langbot-plugin"); origin = json.loads(sdk.read_text("direct_url.json"))["url"]; assert origin == Path("../../../sdk").resolve().as_uri(), origin; print(sdk.version, origin)'
+          "$LOCALAGENT_TEST_PYTHON" -m pytest --junitxml="$RUNNER_EVIDENCE_DIR/localagent-in-tree.xml"
+      - name: Test Runner RPC consumers with the in-tree SDK
+        run: |
+          uv pip install --python "$UV_PROJECT_ENVIRONMENT/bin/python" ../../sdk
+          uv pip install --python "$RUNNER_TEMP/coding-sdk/bin/python" ../../sdk
+          RUNNER_EVIDENCE_DIR="$RUNNER_EVIDENCE_DIR/in-tree" uv run --no-sync python -m pytest \
+            tests/test_real_sdk_runtime.py -q --junitxml="${RUNNER_EVIDENCE_DIR}/in-tree.xml"
       - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@v4

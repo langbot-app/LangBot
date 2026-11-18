@@ -355,6 +355,9 @@ class PipelineService:
         if getattr(result, 'rowcount', None) == 0:
             raise WorkspaceNotFoundError('Pipeline not found')
         await self.ap.pipeline_mgr.remove_pipeline(context, pipeline_uuid)
+        publication = getattr(self.ap, 'artifact_publication_service', None)
+        if publication is not None:
+            await publication.remove_producer(context, 'pipeline', pipeline_uuid)
 
     async def copy_pipeline(self, context: TenantContext, pipeline_uuid: str) -> str:
         """Copy a pipeline with all its configurations"""

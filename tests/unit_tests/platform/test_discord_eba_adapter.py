@@ -590,3 +590,94 @@ async def test_guild_event_reply_without_system_channel_does_not_pick_another_ch
         )
     get_guild.assert_called_once_with(expected_guild_id)
     adapter._get_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('quote', [False, True])
+@pytest.mark.parametrize('frozen_channel', [False, True])
+async def test_discord_recovered_reply_preserves_channel_quote_and_file(monkeypatch, quote, frozen_channel):
+    adapter = make_adapter()
+    channel = SimpleNamespace(id=789, send=AsyncMock(return_value=SimpleNamespace(id=901)))
+    adapter._get_channel = AsyncMock(return_value=channel)
+    get_guild = Mock(return_value=SimpleNamespace(system_channel=Mock()) if frozen_channel else None)
+    monkeypatch.setattr(adapter.bot, 'get_guild', get_guild)
+    target = {'target_type': 'group', 'target_id': '123' if frozen_channel else '789', 'message_id': '88'}
+    if frozen_channel:
+        target['chat_id'] = '789'
+    chain = platform_message.MessageChain(
+        [
+            platform_message.At(target='456'),
+            platform_message.Plain(text='recovered'),
+            platform_message.File(name='result.txt', base64='ZXZpZGVuY2U='),
+        ]
+    )
+    result = await adapter.reply_to_event(
+        context={'quote_origin': quote, 'delivery': {'reply_target': target}},
+        target_type='group',
+        target_id=target['target_id'],
+        message=chain,
+    )
+    adapter._get_channel.assert_awaited_once_with('789')
+    if frozen_channel:
+        get_guild.assert_not_called()
+    kwargs = channel.send.await_args.kwargs
+    assert kwargs['content'] == '<@456>recovered'
+    document = kwargs['files'][0]
+    assert document.filename == 'result.txt'
+    assert document.fp.read() == b'evidence'
+    document.close()
+    if quote:
+        assert kwargs['reference'].message_id == 88
+        assert kwargs['reference'].channel_id == 789
+        assert kwargs['mention_author'] is True
+    else:
+        assert 'reference' not in kwargs
+    assert result.message_id == 901
+
+
+@pytest.mark.asyncio
+async def test_discord_event_reply_without_recovery_context_keeps_guild_delivery(monkeypatch):
+    adapter = make_adapter()
+    channel = SimpleNamespace(send=AsyncMock(return_value=SimpleNamespace(id=901)))
+    monkeypatch.setattr(adapter.bot, 'get_guild', Mock(return_value=SimpleNamespace(system_channel=channel)))
+    adapter._get_channel = AsyncMock()
+    await adapter.reply_to_event(
+        context={'delivery': {'reply_target': {'message_id': '88'}}},
+        target_type='group',
+        target_id='123',
+        message=platform_message.MessageChain([platform_message.Plain(text='welcome')]),
+    )
+    channel.send.assert_awaited_once_with(content='welcome')
+    adapter._get_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('target_type', ['group', 'person'])
+async def test_discord_recovered_reply_rejects_missing_original_channel(monkeypatch, target_type):
+    adapter = make_adapter()
+    channel = SimpleNamespace(send=AsyncMock())
+    monkeypatch.setattr(adapter.bot, 'get_guild', Mock(return_value=SimpleNamespace(system_channel=channel)))
+    adapter._get_channel = AsyncMock()
+    with pytest.raises(ValueError, match='original channel ID'):
+        await adapter.reply_to_event(
+            context={'quote_origin': False, 'delivery': {'reply_target': {'target_id': '123'}}},
+            target_type=target_type,
+            target_id='123',
+            message=platform_message.MessageChain([platform_message.Plain(text='recovered')]),
+        )
+    channel.send.assert_not_awaited()
+    adapter._get_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_discord_recovered_quote_requires_original_message():
+    adapter = make_adapter()
+    adapter._get_channel = AsyncMock()
+    with pytest.raises(ValueError, match='message ID is required'):
+        await adapter.reply_to_event(
+            context={'quote_origin': True, 'delivery': {'reply_target': {'chat_id': '789'}}},
+            target_type='group',
+            target_id='123',
+            message=platform_message.MessageChain([platform_message.Plain(text='recovered')]),
+        )
+    adapter._get_channel.assert_not_awaited()

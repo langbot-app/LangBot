@@ -82,6 +82,10 @@ def outbox_script(
                             reject('file_bytes', settings['max_file_bytes'], metadata.st_size, relative)
                         if metadata.st_size > remaining:
                             reject('collection_bytes', settings['max_total_bytes'], budget['bytes'] + metadata.st_size, relative)
+                        if settings['operation'] == 'list':
+                            out.append({'name': relative})
+                            budget['bytes'] += metadata.st_size
+                            continue
                         with os.fdopen(child_fd, 'rb', closefd=False) as source:
                             data = source.read(settings['max_file_bytes'] + 1)
                         if len(data) > settings['max_file_bytes']:
@@ -130,7 +134,7 @@ def outbox_script(
                 try:
                     query_fd = os.open(component(settings['query']), directory_flags, dir_fd=outbox_fd)
                     try:
-                        if settings['operation'] == 'read':
+                        if settings['operation'] in ('read', 'list'):
                             read_directory(query_fd)
                         elif settings['operation'] == 'clear':
                             budget['entries'] = 4096

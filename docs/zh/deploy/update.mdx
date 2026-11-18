@@ -3,7 +3,21 @@ title: "更新 LangBot"
 description: "将 LangBot 更新到最新版本，按步骤安全升级自托管的 AI 聊天机器人平台。"
 ---
 
-## 使用包管理器部署
+## 使用一行命令安装（lbctl）部署
+
+```bash
+lbctl upgrade --yes
+```
+
+这会备份数据、升级到最新稳定版并重新启动；升级失败时会自动恢复（原生部署）或保留备份供恢复（Docker 部署）。已是最新版本时只会提示，不会做任何改动。
+
+- 先看升级计划：`lbctl upgrade --dry-run`
+- 升级到指定版本：`lbctl upgrade --version v4.11.8 --yes`
+- 升级 lbctl 本身：`lbctl update`，或重新执行一次一行命令安装脚本
+
+详见[使用 lbctl 管理 LangBot](/zh/deploy/lbctl#升级-langbot)。
+
+## 使用包管理器（uvx）部署
 
 请在之前使用包管理器部署的目录下重新执行：
 
@@ -14,6 +28,10 @@ uvx langbot@latest
 这将重新下载并启动最新版本的 LangBot。
 
 ## 使用 Docker（或基于 Docker 的一键部署）
+
+<Tip>
+用 `docker compose` 部署的实例可以[接入 lbctl](/zh/deploy/lbctl#已有的-docker-compose-部署接入-lbctl)，之后同样只需 `lbctl upgrade --yes`，并且升级前会自动备份数据。下面是不使用 lbctl 时的手动方式。
+</Tip>
 
 请在之前 Clone 的 LangBot 目录下执行：
 

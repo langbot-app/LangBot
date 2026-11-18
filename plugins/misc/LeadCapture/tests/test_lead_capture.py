@@ -150,7 +150,11 @@ async def test_no_intent_leaves_reply_untouched():
     with bind_invocation(host, config=CONFIG, binding=binding()):
         await fire(handlers, events.NormalMessageResponded, ctx)
     assert reply_text(ctx) is None
-    assert host.storage == {}
+    state = json.loads(next(iter(host.storage.values())))
+    assert state["status"] == "idle"
+    assert [(e["kind"], e["strong"], e["reason"], e["message"], e["reply"]) for e in state["events"]] == [
+        ("judge", False, "just browsing", "what does it do?", "AI answer"),
+    ]
     prompt = host.llm_calls[0]["messages"]
     assert "asks for a quote" in json.dumps(prompt, ensure_ascii=False)
     assert "AI: AI answer" in json.dumps(prompt, ensure_ascii=False)
@@ -198,7 +202,8 @@ async def test_contact_capture_emails_full_history_and_thanks_once(monkeypatch):
         await fire(handlers, events.NormalMessageResponded, after)
         later = responded("Bye.")
         await fire(handlers, events.NormalMessageResponded, later)
-    assert len(host.llm_calls) == 1  # contact found by pattern, no extraction call
+    # One judgment, then field extraction; the contact came from patterns, so no contact-extraction call.
+    assert len(host.llm_calls) == 2
     assert len(resend.requests) == 1
     request = resend.requests[0]
     assert request.headers["Authorization"] == "Bearer re_secret_key"
@@ -311,13 +316,207 @@ def test_manifest():
     assert manifest["spec"]["permissions"] == {
         "capabilities": ["models.invoke", "storage.plugin"], "workspace_operations": ["monitoring.messages"],
     }
+    assert manifest["metadata"]["version"] == "0.3.0"
+    assert manifest["spec"]["components"]["Page"]["fromDirs"][0]["path"] == "components/pages/"
     names = [item["name"] for item in manifest["spec"]["config"]]
-    assert names == ["model", "intent_prompt", "history_messages", "ask_text", "thanks_text",
-                     "resend_api_key", "from_email", "to_emails"]
+    assert names == ["model", "intent_prompt", "high_score", "ask_score", "risk_prompt", "history_messages",
+                     "ask_text", "thanks_text", "lead_fields", "resend_api_key", "from_email", "to_emails"]
     defaults = {item["name"]: item.get("default") for item in manifest["spec"]["config"]}
+    assert defaults["risk_prompt"] == lead_main.DEFAULT_RISK_PROMPT
+    assert defaults["lead_fields"] == lead_main.DEFAULT_LEAD_FIELDS
+    assert (defaults["high_score"], defaults["ask_score"]) == (60, 30)
     assert defaults["intent_prompt"] == lead_main.DEFAULT_INTENT_PROMPT
     assert defaults["ask_text"] == lead_main.DEFAULT_ASK_TEXT
     assert defaults["thanks_text"] == lead_main.DEFAULT_THANKS_TEXT
     locales = {"en_US", "zh_Hans", "zh_Hant", "ja_JP", "es_ES", "ru_RU", "th_TH", "vi_VN"}
     assert set(manifest["metadata"]["label"]) == locales
     assert set(manifest["metadata"]["description"]) == locales
+
+
+page_module = load_module(ROOT / "components/pages/console/console.py", "lead_capture_console")
+
+
+async def page_for(plugin):
+    page = page_module.ConsolePage()
+    page.plugin = plugin
+    return page
+
+
+async def call_page(page, endpoint, body=None, method="GET"):
+    from langbot_plugin.api.definition.components.page import PageRequest
+
+    return await page.handle_api(PageRequest(endpoint=endpoint, method=method, body=body))
+
+
+@pytest.mark.asyncio
+async def test_page_lists_sessions_and_shows_timeline(monkeypatch):
+    resend = Resend().install(monkeypatch)
+    plugin, host, handlers = await graph()
+    host.history = [row("user", "年付多少钱？", "2026-11-06T07:00:00"), row("assistant", "99 元", "2026-11-06T07:00:05")]
+    host.llm_answers = [
+        '{"strong_intent": false, "reason": "only asking"}',
+        '{"strong_intent": true, "reason": "asked about invoices"}',
+        '{"公司名称": "Acme"}',
+        '{"score": 10, "reason": "browsing"}',
+    ]
+    with bind_invocation(host, config=CONFIG, binding=binding()):
+        await fire(handlers, events.NormalMessageResponded, responded("first answer"))
+        await fire(handlers, events.NormalMessageResponded, responded("second answer"))
+        await fire(handlers, events.PersonMessageReceived, received("13800138000"))
+        await fire(handlers, events.NormalMessageResponded, responded("noted", user="other-user"))
+        page = await page_for(plugin)
+        listing = await call_page(page, "/sessions")
+        assert listing.error is None
+        totals, sessions = listing.data["totals"], listing.data["sessions"]
+        assert totals == {"sessions": 2, "asked": 0, "risk": 0, "captured": 1, "emailed": 1, "judgments": 3}
+        captured = next(item for item in sessions if item["user"] == USER)
+        assert captured["status"] == "captured" and captured["contact"] == "13800138000"
+        assert captured["judgments"] == 2 and captured["strong_judgments"] == 1
+        assert captured["last_reason"] == "asked about invoices" and captured["email_status"] == "sent"
+        detail = await call_page(page, "/session", {"key": captured["key"]}, "POST")
+    assert detail.error is None
+    kinds = [event["kind"] for event in detail.data["session"]["events"]]
+    assert kinds == ["judge", "judge", "asked", "contact", "fields", "email"]
+    assert detail.data["session"]["fields"]["公司名称"] == "Acme"
+    assert detail.data["session"]["events"][0]["message"] == "年付多少钱？"
+    assert [m["text"] for m in detail.data["conversation"]] == ["年付多少钱？", "99 元"]
+    assert len(resend.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_page_rejects_foreign_keys_and_unknown_endpoints():
+    plugin, host, _handlers = await graph()
+    host.storage["lead:other-install:bot-1:x"] = json.dumps({"status": "captured"}).encode()
+    with bind_invocation(host, config=CONFIG, binding=binding()):
+        page = await page_for(plugin)
+        foreign = await call_page(page, "/session", {"key": "lead:other-install:bot-1:x"}, "POST")
+        missing = await call_page(page, "/session", {"key": plugin.key("bot-1", "nobody")}, "POST")
+        listing = await call_page(page, "/sessions")
+        unknown = await call_page(page, "/nope")
+    assert foreign.error == "Unknown session" and missing.error == "Unknown session"
+    assert listing.data["sessions"] == []
+    assert unknown.error.startswith("Unknown endpoint")
+
+
+@pytest.mark.asyncio
+async def test_judgment_errors_are_recorded():
+    _plugin, host, handlers = await graph()
+    host.llm_answers = []
+
+    async def failing(action, data, *args, **kwargs):
+        if action == Action.INVOKE_LLM:
+            raise RuntimeError("provider down")
+        return await Host.call_action(host, action, data, *args, **kwargs)
+
+    host.call_action = failing
+    ctx = responded()
+    with bind_invocation(host, config=CONFIG, binding=binding()):
+        await fire(handlers, events.NormalMessageResponded, ctx)
+    assert reply_text(ctx) is None
+    state = json.loads(next(iter(host.storage.values())))
+    assert state["status"] == "idle"
+    assert state["events"][0]["kind"] == "error" and state["events"][0]["stage"] == "judge"
+
+
+def test_page_i18n_keys_match_and_cover_html():
+    import re
+
+    folder = ROOT / "components/pages/console"
+    en = json.loads((folder / "i18n/en_US.json").read_text())
+    zh = json.loads((folder / "i18n/zh_Hans.json").read_text())
+    assert set(en) == set(zh)
+    html = (folder / "index.html").read_text()
+    used = set(re.findall(r'data-i18n="([^"]+)"', html)) | set(re.findall(r"t\('([^']+)'", html))
+    assert used <= set(en), used - set(en)
+
+
+
+SCORING = {**CONFIG, "high_score": 60, "ask_score": 30}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("score,level,asks", [(82, "high", True), (45, "medium", True), (29, "low", False)])
+async def test_score_tiers_decide_the_single_ask(score, level, asks):
+    _plugin, host, handlers = await graph()
+    host.llm_answers = [json.dumps({"score": score, "signals": ["询价", "发票"], "risk": False, "reason": "r"})]
+    first, second = responded("a1"), responded("a2")
+    with bind_invocation(host, config=SCORING, binding=binding()):
+        await fire(handlers, events.NormalMessageResponded, first)
+        await fire(handlers, events.NormalMessageResponded, second)
+    state = json.loads(next(iter(host.storage.values())))
+    judge = state["events"][0]
+    assert (judge["score"], judge["level"], judge["signals"]) == (score, level, ["询价", "发票"])
+    assert state["score"] == score and state["level"] == level
+    assert (reply_text(first) == "a1\n\nASK-CONTACT") is asks
+    assert state["status"] == ("asked" if asks else "idle")
+    assert reply_text(second) is None
+    assert len(host.llm_calls) == (1 if asks else 2)  # asked users are never re-judged
+
+
+@pytest.mark.asyncio
+async def test_thresholds_are_configurable():
+    _plugin, host, handlers = await graph()
+    host.llm_answers = ['{"score": 45}']
+    ctx = responded()
+    with bind_invocation(host, config={**SCORING, "ask_score": 60}, binding=binding()):
+        await fire(handlers, events.NormalMessageResponded, ctx)
+    assert reply_text(ctx) is None
+    # Raising the ask threshold to the high-intent line means only high intent is asked; 45 is then low.
+    assert json.loads(next(iter(host.storage.values())))["level"] == "low"
+
+
+@pytest.mark.asyncio
+async def test_compliance_risk_never_asks_or_emails(monkeypatch):
+    resend = Resend().install(monkeypatch)
+    _plugin, host, handlers = await graph()
+    host.llm_answers = ['{"score": 90, "risk": true, "risk_reason": "抢票", "reason": "wants bulk tickets"}']
+    first, later = responded("a1"), responded("a2")
+    with bind_invocation(host, config=SCORING, binding=binding()):
+        await fire(handlers, events.NormalMessageResponded, first)
+        await fire(handlers, events.PersonMessageReceived, received("13800138000"))
+        await fire(handlers, events.NormalMessageResponded, later)
+    state = json.loads(next(iter(host.storage.values())))
+    assert state["status"] == "risk" and state["reason"] == "抢票"
+    assert [event["kind"] for event in state["events"]] == ["judge", "risk"]
+    assert reply_text(first) is None and reply_text(later) is None
+    assert resend.requests == [] and len(host.llm_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_email_has_score_and_extracted_fields(monkeypatch):
+    resend = Resend().install(monkeypatch)
+    _plugin, host, handlers = await graph()
+    host.history = [row("user", "我们公司 Acme 做跨境电商，每月 500 万次请求，下周上线")]
+    host.llm_answers = [
+        '{"score": 75, "signals": ["大规模请求", "时间紧迫"], "reason": "规模大且着急"}',
+        json.dumps({"公司名称": "Acme", "行业": "跨境电商", "预估月请求量或数据量": "500 万次", "上线时间": "下周",
+                    "预算范围": "", "made_up": "x"}, ensure_ascii=False),
+    ]
+    config = {**SCORING, "lead_fields": ["公司名称", "行业", "预估月请求量或数据量", "预算范围", "上线时间"]}
+    with bind_invocation(host, config=config, binding=binding()):
+        await fire(handlers, events.NormalMessageResponded, responded())
+        await fire(handlers, events.PersonMessageReceived, received("微信 acme_boss1"))
+    payload = json.loads(resend.requests[0].content)
+    assert payload["subject"].startswith("【购买意向·高意向 75分】微信: acme_boss1")
+    assert "意向评分：75 分（高意向）" in payload["text"]
+    assert "命中信号：大规模请求、时间紧迫" in payload["text"]
+    assert "公司名称：Acme" in payload["text"] and "预算范围：未提及" in payload["text"]
+    assert "made_up" not in payload["text"]
+    state = json.loads(next(iter(host.storage.values())))
+    assert state["fields"] == {"公司名称": "Acme", "行业": "跨境电商", "预估月请求量或数据量": "500 万次", "预算范围": "", "上线时间": "下周"}
+
+
+@pytest.mark.asyncio
+async def test_unparseable_judgment_is_recorded_as_error():
+    _plugin, host, handlers = await graph()
+    host.llm_answers = ["I think the user wants to buy"]
+    ctx = responded()
+    with bind_invocation(host, config=SCORING, binding=binding()):
+        await fire(handlers, events.NormalMessageResponded, ctx)
+    state = json.loads(next(iter(host.storage.values())))
+    assert reply_text(ctx) is None and state["events"][0]["kind"] == "error"
+
+
+def test_score_parsing_is_clamped():
+    assert lead_main.to_score("87.6") == 88
+    assert lead_main.to_score(150) == 100 and lead_main.to_score(-5) == 0 and lead_main.to_score("x") == 0

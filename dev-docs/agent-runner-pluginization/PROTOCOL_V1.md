@@ -766,6 +766,7 @@ Runner 失败使用 `run.failed`：
 ## 10. Timeout 与 Cancellation
 
 - Host 在 `ctx.runtime.deadline_at` 下发总 deadline；SDK proxy 必须用该 deadline 限制单次 action timeout。
+- Host 在消费非终态事件时并行启动下一条 Runner result 的读取，最多预读一条；读取仍受原 deadline 限制，不接受真正超时的结果。`message.completed` 不是 Run 终态。合法的 `run.completed`、`run.failed` 或 `run.cancelled` 经校验并完成 Host 内部处理后，Host 先持久化终态，再关闭流；下游消息投递可能仍未完成。不再处理该终态之后的结果。
 - Host 可以取消 active run；Runtime 应尽力中断 runner。
 - Protocol v1 的 run 绑定当前 Host 进程和当前 runtime channel，不保证跨 Host 重启恢复。Host 重启、runtime channel 断开或 run session 丢失时，Runtime / external harness connector 必须 fail-fast 并尽力取消仍在执行的 runner，不得继续使用旧 `run_id` 调用 Host API。
 - Runner 支持中断时应返回或触发 `run.failed`，code 为 `cancelled`。

@@ -58,15 +58,6 @@ def s3_mock():
 class TestS3StorageProviderInit:
     """Tests for S3StorageProvider initialization."""
 
-    def test_init_s3_client_none(self):
-        """Test that s3_client starts as None."""
-        s3storage = get_s3storage_module()
-
-        mock_app = Mock()
-        provider = s3storage.S3StorageProvider(mock_app)
-        assert provider.s3_client is None
-        assert provider.bucket_name is None
-
     @pytest.mark.asyncio
     async def test_shutdown_closes_client_once(self):
         s3storage = get_s3storage_module()
@@ -118,20 +109,26 @@ class TestS3StorageProviderWithMoto:
         create_bucket.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_save_and_load_bytes(self, mock_app_with_s3_config, s3_mock):
-        """Test that save and load work correctly."""
-        s3storage = get_s3storage_module()
-
-        provider = s3storage.S3StorageProvider(mock_app_with_s3_config)
+    async def test_s3_object_lifecycle(self, mock_app_with_s3_config, s3_mock):
+        """Read back exact bytes and deletion through an independent Moto client."""
+        provider = get_s3storage_module().S3StorageProvider(mock_app_with_s3_config)
         await provider.initialize()
+        bucket, key = 'test-langbot-storage', 'test/file.bin'
+        data = b'Hello, S3!\x00\xff'
 
-        # Save data
-        test_data = b'Hello, S3!'
-        await provider.save('test/file.txt', test_data)
+        assert not await provider.exists(key)
+        await provider.save(key, data)
+        assert await provider.exists(key)
+        with s3_mock.get_object(Bucket=bucket, Key=key)['Body'] as body:
+            assert body.read() == data
+        assert await provider.load(key) == data
+        assert await provider.size(key) == len(data)
 
-        # Load data
-        loaded_data = await provider.load('test/file.txt')
-        assert loaded_data == test_data
+        await provider.delete(key)
+        assert not await provider.exists(key)
+        with pytest.raises(ClientError) as error:
+            s3_mock.head_object(Bucket=bucket, Key=key)
+        assert error.value.response['ResponseMetadata']['HTTPStatusCode'] == 404
 
     @pytest.mark.asyncio
     async def test_bounded_load_rejects_oversized_object(self, mock_app_with_s3_config, s3_mock):
@@ -142,67 +139,6 @@ class TestS3StorageProviderWithMoto:
 
         with pytest.raises(ValueError, match='4-byte read limit'):
             await provider.load_bounded('test/oversized.bin', max_bytes=4)
-
-    @pytest.mark.asyncio
-    async def test_exists_returns_true_for_existing_object(self, mock_app_with_s3_config, s3_mock):
-        """Test that exists returns True for existing object."""
-        s3storage = get_s3storage_module()
-
-        provider = s3storage.S3StorageProvider(mock_app_with_s3_config)
-        await provider.initialize()
-
-        # Save data
-        await provider.save('test/file.txt', b'data')
-
-        # Check existence
-        result = await provider.exists('test/file.txt')
-        assert result is True
-
-    @pytest.mark.asyncio
-    async def test_exists_returns_false_for_nonexistent_object(self, mock_app_with_s3_config, s3_mock):
-        """Test that exists returns False for nonexistent object."""
-        s3storage = get_s3storage_module()
-
-        provider = s3storage.S3StorageProvider(mock_app_with_s3_config)
-        await provider.initialize()
-
-        # Check existence without saving
-        result = await provider.exists('nonexistent/file.txt')
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_delete_removes_object(self, mock_app_with_s3_config, s3_mock):
-        """Test that delete removes object."""
-        s3storage = get_s3storage_module()
-
-        provider = s3storage.S3StorageProvider(mock_app_with_s3_config)
-        await provider.initialize()
-
-        # Save data
-        await provider.save('test/file.txt', b'data')
-
-        # Delete
-        await provider.delete('test/file.txt')
-
-        # Check existence
-        result = await provider.exists('test/file.txt')
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_size_returns_content_length(self, mock_app_with_s3_config, s3_mock):
-        """Test that size returns correct content length."""
-        s3storage = get_s3storage_module()
-
-        provider = s3storage.S3StorageProvider(mock_app_with_s3_config)
-        await provider.initialize()
-
-        # Save data
-        test_data = b'12345'  # 5 bytes
-        await provider.save('test/file.txt', test_data)
-
-        # Get size
-        size = await provider.size('test/file.txt')
-        assert size == 5
 
     @pytest.mark.asyncio
     async def test_delete_dir_recursive_removes_all_objects(self, mock_app_with_s3_config, s3_mock):

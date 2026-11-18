@@ -61,8 +61,8 @@ adapter.reply_message() / adapter.send_message()
 ```
 
 关键代码路径：
-- 适配器基类：`langbot-plugin-sdk/.../abstract/platform/adapter.py` — `AbstractMessagePlatformAdapter`
-- 事件定义：`langbot-plugin-sdk/.../builtin/platform/events.py` — 仅 `FriendMessage` / `GroupMessage`
+- 适配器基类：`sdk/src/langbot_plugin/.../abstract/platform/adapter.py` — `AbstractMessagePlatformAdapter`
+- 事件定义：`sdk/src/langbot_plugin/.../builtin/platform/events.py` — 仅 `FriendMessage` / `GroupMessage`
 - Bot 管理：`LangBot/src/langbot/pkg/platform/botmgr.py` — `RuntimeBot` 只注册两个消息回调
 - 流水线控制：`LangBot/src/langbot/pkg/pipeline/controller.py` — 从 QueryPool 消费并执行 Pipeline
 
@@ -193,7 +193,7 @@ Pipeline 与 Agent 是长期并存、场景不同的同级处理器。Pipeline �
 
 | 仓库 | 改动范围 |
 |------|----------|
-| **langbot-plugin-sdk** | 事件定义、实体模型、API 接口、适配器基类、通信协议扩展 |
+| **SDK（`sdk/`）** | 事件定义、实体模型、API 接口、适配器基类、通信协议扩展 |
 | **LangBot**（后端） | 适配器实现、事件路由引擎、Bot/Agent 实体、Runner Host 编排 |
 | **LangBot**（前端） | Bot 事件处理器编排面板 |
 | **langbot-wiki** | 新架构文档、插件开发指南更新、适配器开发指南 |

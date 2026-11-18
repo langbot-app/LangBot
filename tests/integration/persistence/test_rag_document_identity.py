@@ -16,6 +16,9 @@ from alembic.script import ScriptDirectory
 
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.entity.persistence.artifact import Artifact
+from langbot.pkg.entity.persistence.content import ContentObject
+from langbot.pkg.entity.persistence.skill import SkillVersion
 from langbot.pkg.entity.persistence.pipeline import LegacyPipeline
 from langbot.pkg.entity.persistence.rag import File, KnowledgeBase
 from langbot.pkg.entity.persistence.user import User
@@ -111,7 +114,11 @@ async def create_schema(engine, *, legacy=False):
                 )
             )
         else:
-            await conn.run_sync(lambda sync: File.__table__.create(sync))
+            await conn.run_sync(
+                lambda sync: Base.metadata.create_all(
+                    sync, tables=[ContentObject.__table__, SkillVersion.__table__, Artifact.__table__, File.__table__]
+                )
+            )
         for workspace in ('workspace-a', 'workspace-b'):
             await conn.execute(
                 sa.insert(Workspace).values(

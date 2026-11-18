@@ -7,6 +7,7 @@ from .. import database
 
 
 WAL_RETAIN_BYTES = 64 * 1024 * 1024
+BUSY_TIMEOUT_MS = 30_000
 
 
 def _configure_connection(dbapi_connection, _connection_record):
@@ -14,6 +15,7 @@ def _configure_connection(dbapi_connection, _connection_record):
     # still needs its frames. Keep SQLite's automatic checkpoint policy.
     cursor = dbapi_connection.cursor()
     try:
+        cursor.execute(f'PRAGMA busy_timeout={BUSY_TIMEOUT_MS}')
         cursor.execute(f'PRAGMA journal_size_limit={WAL_RETAIN_BYTES}')
     finally:
         cursor.close()

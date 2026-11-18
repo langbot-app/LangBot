@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import hashlib
 from unittest.mock import Mock
 
 import pytest
@@ -48,12 +49,49 @@ def test_repository_prefers_standalone_skill_root(tmp_path):
     assert repository._store.root == str((tmp_path / 'skill-store').resolve())
 
 
+def test_database_repository_requires_publication_capabilities(tmp_path, monkeypatch):
+    from langbot_plugin.skill_store import SkillStore
+
+    monkeypatch.delattr(SkillStore, 'restore_skill_publication', raising=False)
+    app = SimpleNamespace(
+        instance_config=SimpleNamespace(
+            data={
+                'skills': {'persistence': 'database', 'root': str(tmp_path / 'cache')},
+            }
+        )
+    )
+    with pytest.raises(ValueError, match='requires a compatible SDK'):
+        SkillRepository(app)
+    assert not (tmp_path / 'cache').exists()
+
+
 def test_repository_locks_are_workspace_scoped(tmp_path):
     repository = _repository(tmp_path)
 
     first = repository._workspace_lock('workspace-a')
     assert repository._workspace_lock('workspace-a') is first
     assert repository._workspace_lock('workspace-b') is not first
+
+
+@pytest.mark.asyncio
+async def test_filesystem_metadata_keeps_one_export_for_archive_reuse(tmp_path, monkeypatch):
+    from langbot_plugin.skill_store import SkillStore
+
+    repository = _repository(tmp_path)
+    created = await repository.create_skill(_CONTEXT, {'name': 'packet', 'instructions': 'Retain archive bytes.'})
+    export = SkillStore.export_skill_publication
+    calls = []
+
+    def counted_export(store, *args, **kwargs):
+        calls.append((args, kwargs))
+        return export(store, *args, **kwargs)
+
+    monkeypatch.setattr(SkillStore, 'export_skill_publication', counted_export)
+    package = await repository.get_skill_package(_CONTEXT, 'packet', created['revision'], metadata_only=True)
+    assert len(calls) == 1
+    assert package['content']
+    assert package['size'] == len(package['content'])
+    assert package['sha256'] == hashlib.sha256(package['content']).hexdigest()
 
 
 def test_repository_keeps_old_box_root_only_for_online_upgrade(tmp_path):

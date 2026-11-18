@@ -680,7 +680,8 @@ class DefaultRunner(Runner):
         if not isinstance(capabilities, dict):
             capabilities = {}
 
-        if stored_session_id and config["reuse_session"]:
+        recovering = ctx.runtime.metadata.get("recovery", {}).get("mode") == "resume"
+        if stored_session_id and (config["reuse_session"] or recovering):
             if _runtime_has_method(capabilities, "session/resume"):
                 result = await client.request(
                     "session/resume",
@@ -707,6 +708,8 @@ class DefaultRunner(Runner):
                 await client.drain_updates()
                 return _extract_session_id(result) or stored_session_id, False
 
+        if recovering:
+            raise AcpError("Source ACP session cannot be resumed by this runtime", code="acp.resume_unavailable")
         if not config["create_session_if_missing"]:
             raise AcpError(
                 "no stored ACP session and create-session-if-missing is disabled", code="acp.session_missing"
@@ -906,6 +909,9 @@ class DefaultRunner(Runner):
 
         await _hydrate_input_attachments(ctx)
         input_text = self._input_text(ctx)
+        if ctx.runtime.metadata.get("recovery", {}).get("mode") == "resume":
+            config["reuse_session"] = True
+            config["create_session_if_missing"] = False
         if not has_acp_prompt_input(input_text, ctx.input):
             yield RunnerResult.run_failed(ctx.run_id, error="input text is required", code="acp.empty_input")
             return

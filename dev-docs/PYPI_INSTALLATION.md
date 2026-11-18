@@ -1,8 +1,10 @@
 # LangBot PyPI Package Installation
 
+> **End users:** use the one-line installer instead — `curl -fsSL https://langbot.app/install.sh | bash` (macOS/Linux) or `irm https://langbot.app/install.ps1 | iex` (Windows). It installs [lbctl](https://github.com/langbot-app/langbot-cli), deploys LangBot and keeps it upgradable. The `uvx` / `pip` paths below are kept for development and quick experiments.
+
 ## Quick Start with uvx
 
-The easiest way to run LangBot is using `uvx` (recommended for quick testing):
+For a throwaway local run without lbctl (development / quick testing only):
 
 ```bash
 uvx langbot

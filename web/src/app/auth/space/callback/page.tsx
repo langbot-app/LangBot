@@ -26,6 +26,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
+import { consumeSpaceBindReturnPath } from '@/app/infra/space-bind-return';
 
 type SpaceOAuthLoginResult = {
   token: string;
@@ -223,10 +224,11 @@ function SpaceOAuthCallbackContent() {
         }
         setStatus('success');
         toast.success(t('account.bindSpaceSuccess'));
+        const returnTo = consumeSpaceBindReturnPath() ?? '/home';
         const redirectTo =
           workspaceResult.status === 'selection-required'
-            ? '/workspaces/select?returnTo=%2Fhome'
-            : '/home';
+            ? `/workspaces/select?returnTo=${encodeURIComponent(returnTo)}`
+            : returnTo;
         setTimeout(() => {
           navigate(redirectTo);
         }, 1000);

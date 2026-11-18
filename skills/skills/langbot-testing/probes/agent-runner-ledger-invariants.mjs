@@ -143,7 +143,7 @@ async function main() {
   const langbotRepo = resolveFromRoot(root, env.LANGBOT_REPO || "..");
   const sdkRepo = resolveFromRoot(
     root,
-    env.LANGBOT_PLUGIN_SDK_REPO || "../../langbot-plugin-sdk",
+    env.LANGBOT_PLUGIN_SDK_REPO || "../sdk",
   );
   const sdkSrc = resolve(sdkRepo, "src");
   const stdoutLog = join(evidenceDir, "probe-stdout.log");

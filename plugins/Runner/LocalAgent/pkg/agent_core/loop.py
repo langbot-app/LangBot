@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import typing
 from contextlib import aclosing
 
@@ -23,6 +24,11 @@ from .types import (
     ToolExecutionMode,
     ToolExecutionOutcome,
 )
+
+logger = logging.getLogger(__name__)
+
+EMPTY_RESPONSE_ERROR = "Model returned an empty response (no text and no tool calls)"
+EMPTY_RESPONSE_CODE = "runner.empty_response"
 
 TOOL_LOOP_LIMIT_MESSAGE = "Tool call iteration limit reached. I stopped before calling more tools."
 TOOL_LOOP_LIMIT_TOOL_RESULT = "Tool call was not executed because the runner tool iteration limit was reached."
@@ -52,6 +58,8 @@ class AgentLoop:
         self.tool_executor = tool_executor
         self.model_ids = list(model_ids)
         self.messages = [message.model_copy(deep=True) for message in messages]
+        self._model_only_messages: list[Message] = []
+        self._prepared_model_messages = list(self.messages)
         self.tools = list(tools)
         self.streaming = streaming
         self.max_tool_iterations = max_tool_iterations
@@ -90,14 +98,30 @@ class AgentLoop:
         return index, outcome
 
     async def _prepare_model_turn(self) -> None:
-        messages = await self.hooks.prepare_model_turn(self.messages)
-        self.messages = [message.model_copy(deep=True) for message in messages]
+        messages = await self.hooks.prepare_model_turn(self.messages + self._model_only_messages)
+        self._accept_prepared_messages(messages)
+
+    def _accept_prepared_messages(self, messages: list[Message]) -> None:
+        durable_messages = list(messages)
+        for media in self._model_only_messages:
+            try:
+                durable_messages.remove(media)
+            except ValueError as exc:
+                raise ModelCallError(
+                    "Attachment content was removed by context budgeting. Use a smaller attachment or text/page range.",
+                    retryable=False,
+                ) from exc
+        self._prepared_model_messages = [message.model_copy(deep=True) for message in messages]
+        self.messages = [message.model_copy(deep=True) for message in durable_messages]
 
     async def _recover_context_overflow(self, error: ModelCallError) -> bool:
-        messages = await self.hooks.recover_context_overflow(self.messages, error)
+        messages = await self.hooks.recover_context_overflow(self._prepared_model_messages, error)
         if messages is None:
             return False
-        self.messages = [message.model_copy(deep=True) for message in messages]
+        try:
+            self._accept_prepared_messages(messages)
+        except ModelCallError:
+            return False
         return True
 
     def _should_execute_serially(self) -> bool:
@@ -161,6 +185,7 @@ class AgentLoop:
             if outcome is None or outcome.message is None:
                 continue
             self.messages.append(outcome.message)
+            self._model_only_messages.extend(outcome.model_only_messages)
             tool_results.append(outcome.message)
             yield AgentLoopEvent.message_start(outcome.message)
             yield AgentLoopEvent.message_end(outcome.message)
@@ -216,6 +241,7 @@ class AgentLoop:
         visible_content_prefix = ""
         tool_iterations = 0
         last_model_turn: ModelTurnResult | None = None
+        candidate_model_ids = list(self.model_ids)
 
         while True:
             if pending_tool_calls is not None:
@@ -243,7 +269,7 @@ class AgentLoop:
                     return
 
             if committed_model_id is None:
-                turn_model_ids = self.model_ids
+                turn_model_ids = candidate_model_ids
             else:
                 turn_model_ids = [committed_model_id]
 
@@ -259,7 +285,7 @@ class AgentLoop:
                     async with aclosing(
                         self.model_adapter.stream_turn(
                             model_ids=turn_model_ids,
-                            messages=self.messages,
+                            messages=self._prepared_model_messages,
                             tools=self.tools,
                             visible_prefix=visible_content_prefix,
                         )
@@ -293,6 +319,19 @@ class AgentLoop:
                     code="runner.llm_error",
                     usage=self._current_usage(),
                 )
+                return
+
+            if tool_iterations == 0 and not visible_content_prefix and is_empty_model_turn(model_turn):
+                self._record_usage(model_turn.usage)
+                fallback_ids = _models_after(turn_model_ids, model_turn.committed_model_id)
+                if committed_model_id is None and fallback_ids:
+                    logger.warning(
+                        "Model %s returned an empty response; falling back to next configured model",
+                        model_turn.committed_model_id,
+                    )
+                    candidate_model_ids = fallback_ids
+                    continue
+                yield self._empty_response_failed_event(model_turn)
                 return
 
             committed_model_id = model_turn.committed_model_id or committed_model_id
@@ -335,6 +374,7 @@ class AgentLoop:
         pending_tool_calls = None
         tool_iterations = 0
         last_model_turn: ModelTurnResult | None = None
+        candidate_model_ids = list(self.model_ids)
 
         while True:
             if pending_tool_calls is not None:
@@ -370,14 +410,14 @@ class AgentLoop:
                     await self._prepare_model_turn()
                     if committed_model_id is None:
                         model_turn = await self.model_adapter.invoke_turn(
-                            model_ids=self.model_ids,
-                            messages=self.messages,
+                            model_ids=candidate_model_ids,
+                            messages=self._prepared_model_messages,
                             tools=self.tools,
                         )
                     else:
                         model_turn = await self.model_adapter.invoke_committed_turn(
                             committed_model_id=committed_model_id,
-                            messages=self.messages,
+                            messages=self._prepared_model_messages,
                             tools=self.tools,
                         )
                     break
@@ -396,6 +436,19 @@ class AgentLoop:
                 except Exception as e:
                     yield AgentLoopEvent.run_failed(str(e), code="runner.error", usage=self._current_usage())
                     return
+
+            if tool_iterations == 0 and is_empty_model_turn(model_turn):
+                self._record_usage(model_turn.usage)
+                fallback_ids = _models_after(candidate_model_ids, model_turn.committed_model_id)
+                if committed_model_id is None and fallback_ids:
+                    logger.warning(
+                        "Model %s returned an empty response; falling back to next configured model",
+                        model_turn.committed_model_id,
+                    )
+                    candidate_model_ids = fallback_ids
+                    continue
+                yield self._empty_response_failed_event(model_turn)
+                return
 
             committed_model_id = model_turn.committed_model_id or committed_model_id
             self._record_usage(model_turn.usage)
@@ -428,6 +481,16 @@ class AgentLoop:
                 yield AgentLoopEvent.agent_end(self.messages, usage=self._current_usage())
                 return
 
+    def _empty_response_failed_event(self, model_turn: ModelTurnResult) -> AgentLoopEvent:
+        model_label = model_turn.committed_model_id or "unknown"
+        logger.warning("Model %s returned an empty response; failing the run", model_label)
+        return AgentLoopEvent.run_failed(
+            f"{EMPTY_RESPONSE_ERROR}: model {model_label}",
+            code=EMPTY_RESPONSE_CODE,
+            retryable=True,
+            usage=self._current_usage(),
+        )
+
     def _tool_batch_failed_event(self, error: BaseException) -> AgentLoopEvent:
         code = "runner.timeout" if is_deadline_exceeded_error(error) else "runner.tool_error"
         return AgentLoopEvent.run_failed(
@@ -436,6 +499,33 @@ class AgentLoop:
             retryable=code == "runner.timeout",
             usage=self._current_usage(),
         )
+
+
+def is_empty_model_turn(model_turn: ModelTurnResult) -> bool:
+    """Return True when a model turn carries nothing a user could receive.
+
+    Only applied to the first answer of a run: an empty normal stop after tools
+    ran stays a valid way to finish (the tools may have replied already).
+    """
+    if model_turn.tool_calls or model_turn.message.tool_calls:
+        return False
+    content = model_turn.message.content
+    if content is None:
+        return True
+    if isinstance(content, str):
+        return not content.strip()
+    for element in content:
+        if getattr(element, "type", None) != "text":
+            return False
+        if (getattr(element, "text", None) or "").strip():
+            return False
+    return True
+
+
+def _models_after(model_ids: list[str], model_id: str | None) -> list[str]:
+    if model_id is None or model_id not in model_ids:
+        return []
+    return list(model_ids[model_ids.index(model_id) + 1 :])
 
 
 def _merge_usage(

@@ -21,7 +21,8 @@ export default {
   dangerous: 'Nguy hiểm',
   sendsMessages: 'Gửi tin nhắn bot',
   requires: 'Yêu cầu {{permissions}}',
-  review: 'Xem xét quyền',
+  review: 'Xem xét',
+  reviewLabel: 'Xem xét quyền',
   confirmDescription:
     'Cấp các quyền đã chọn cho bản cài đặt plugin này. Quyền nguy hiểm và gửi tin nhắn bot được đánh dấu riêng.',
   grantInPlugin: 'Cấp thao tác này trong quyền plugin trước',

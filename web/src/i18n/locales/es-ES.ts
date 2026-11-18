@@ -118,6 +118,93 @@ const esES = {
       managed_sandbox_sessions: 'Sesiones de sandbox gestionado',
     },
   },
+  workspaceSandbox: {
+    quotaCheck:
+      'La cuota de disco se comprueba antes y después de los comandos, no de forma continua.',
+    testRun: 'Probar ejecución',
+    testRunCost:
+      'Crea un sandbox temporal, ocupa una plaza y puede generar cargos.',
+    checkHint:
+      'La comprobación y el guardado no crean sandboxes. La prueba es opcional.',
+    queryUnsupported:
+      'El servicio no permite consultar plantillas; no se ha verificado. Puede guardar o probar.',
+    limitsTitle: 'Límites del espacio',
+    limitsHelp:
+      'Vacío hereda los valores del despliegue. Solo afecta a tareas nuevas.',
+    inherit: 'Heredar valor',
+    limitMax: 'Máximo: {{value}}',
+    limitUnsupported: 'No compatible con el entorno o la política',
+    e2bLimitUnsupported:
+      'Controlado por la plantilla o el servicio E2B; no configurable',
+    invalidLimits: 'Introduzca valores dentro de los límites',
+
+    confirm: 'Confirmar y guardar',
+    cancel: 'Cancelar',
+    current: 'Activo: {{backend}}',
+    unsaved: 'Sin guardar',
+    configureE2b: 'Configurar E2B',
+    apiUrl: 'URL de API',
+    sandboxUrl: 'URL del sandbox',
+    template: 'Plantilla',
+    keyConfigured: 'Configurada; dejar vacío para conservar',
+    keyRequired: 'Introducir API Key',
+    keyHelp:
+      'Las claves guardadas no se devuelven. Introduzca una nueva clave al cambiar las URL.',
+    noManagedProcesses: 'Este entorno no admite servidores MCP stdio.',
+    label: 'Entorno de ejecución',
+    description:
+      'Las tareas nuevas de este espacio usan este entorno. Las tareas en curso conservan su entorno.',
+    saved: 'Guardado; se aplica a tareas nuevas',
+    saveFailed: 'No se pudo guardar el entorno',
+    loadFailed: 'No se pudieron comprobar los entornos',
+    refresh: 'Comprobar de nuevo',
+    noEnvironment: 'No hay entornos disponibles',
+    unavailable:
+      'El entorno seleccionado no está disponible para nuevas ejecuciones.',
+    templateVerified:
+      'Template verified: temporary sandbox created, executed and deleted',
+    limitLabels: {
+      timeout_sec: 'Tiempo del comando (segundos)',
+      idle_ttl_sec: 'Limpieza por inactividad (segundos)',
+      max_sessions: 'Máximo de sandboxes',
+      cpus: 'Núcleos CPU',
+      memory_mb: 'Memoria (MiB)',
+      pids_limit: 'Límite de procesos',
+      workspace_quota_mb: 'Cuota de disco (MiB)',
+    },
+    reasons: {
+      resource_not_found: 'Requested service resource not found',
+      rate_limited: 'Too many requests; retry later',
+      template_not_found: 'Template not found or not visible to this account',
+      template_query_failed: 'Template query failed; check service status',
+      template_not_ready: 'Template build is not ready',
+      network_error: 'Cannot reach service; check URLs and network',
+      capacity_limited:
+        'Service capacity exhausted or rate limited; retry later',
+      permission_denied: 'Permission denied for the supplied credentials',
+      template_creation_failed:
+        'Sandbox creation failed; check template status and service capacity',
+      template_execution_failed: 'Sandbox created but execution check failed',
+      template_cleanup_failed:
+        'Temporary sandbox cleanup failed; check E2B service',
+
+      environment_unavailable: 'No disponible',
+      policy_restricted: 'Restringido por la plataforma',
+      probe_failed: 'Error de comprobación',
+      docker_missing: 'Docker CLI no está instalado',
+      docker_unreachable: 'Docker está detenido o no hay permiso de acceso',
+      nsjail_missing: 'nsjail no está instalado',
+      cgroup_unavailable: 'Los límites cgroup de nsjail no están listos',
+      isolation_unavailable: 'Falló el aislamiento de nsjail',
+      sdk_missing: 'E2B SDK no está instalado',
+      missing_credentials: 'Falta la clave API de E2B',
+      connection_failed: 'No se puede conectar a E2B; revise URL y red',
+      authentication_failed: 'Error de autenticación E2B; revise la clave',
+      probe_timeout: 'Tiempo de espera agotado',
+      invalid_configuration: 'URL o credenciales E2B incompletas',
+      not_checked: 'La configuración cambió; compruebe de nuevo',
+    },
+  },
   workspaceLanguage: {
     label: 'Idioma del espacio de trabajo',
     description:
@@ -151,6 +238,14 @@ const esES = {
     failed: 'Fallido',
     cancelled: 'Cancelado',
     ignored: 'Ignorado',
+  },
+  githubStarPrompt: {
+    title: 'LangBot ya ha procesado {{total}} eventos por ti',
+    description:
+      'Si LangBot te resulta útil, una estrella en GitHub ayuda a que más personas lo descubran.',
+    later: 'Más tarde',
+    star: 'Star',
+    close: 'Cerrar',
   },
   assistant: {
     movePosition: 'Mover el asistente horizontalmente',
@@ -2030,6 +2125,12 @@ const esES = {
     debugging: 'Depuración',
     uploadLocalPlugin: 'Subir plugin local',
     spaceUpload: {
+      descriptionInstalled:
+        'Sube el plugin instalado localmente {{author}}/{{name}} al mercado.',
+      shareInstalledAction: 'Compartir en Space',
+      installedPackageTitle: 'Se subirá el paquete instalado',
+      installedPackageHint:
+        'Un plugin instalado localmente se sube tal cual su .lbpkg; autor, nombre y versión salen del manifest.',
       menuAction: 'Subir a la tienda de extensiones',
       title: 'Subir plugin a la tienda de extensiones',
       description:
@@ -2346,6 +2447,12 @@ const esES = {
       depsProgress:
         '{{installed}}/{{total}} instaladas · {{remaining}} restantes',
       installComplete: 'Plugin instalado correctamente',
+      followUp: {
+        nextSteps: 'Próximos pasos',
+        agents: 'Crea un Agent o un procesador de plugin',
+        pipelines: 'Crea una canalización',
+        knowledge: 'Crea una base de conocimiento',
+      },
       updateComplete: 'Plugin actualizado correctamente',
       installCompletePlugin: 'Plugin instalado correctamente',
       installCompleteMCP: 'Servidor MCP instalado correctamente',
@@ -2358,6 +2465,13 @@ const esES = {
     },
   },
   market: {
+    typeTiles: {
+      all: 'Todas las extensiones',
+      allDesc: 'Plugins, MCP y skills',
+      pluginDesc: 'Plataformas, herramientas, runners y más',
+      mcpDesc: 'Herramientas de servidores MCP externos',
+      skillDesc: 'Enseña a los Agents nuevas formas de trabajar',
+    },
     certifiedPlugin: 'Plugin certificado',
     certificationTooltip:
       'Esta versión ha superado la revisión de aislamiento de datos y compatibilidad con entornos compartidos. El paquete está firmado.',
@@ -3029,6 +3143,21 @@ const esES = {
     newVersionAvailable: 'Nueva versión disponible',
     viewUpdateGuide: 'Ver guía de actualización',
     noReleaseNotes: 'No hay notas de la versión disponibles',
+    latestBadge: 'Última',
+    currentBadge: 'Actual',
+    viewOnWebsite: 'Ver en el sitio web',
+    whatsNewInCurrent: 'Novedades de esta versión',
+    releasesIncluded: 'Incluye {{count}} versiones',
+    upToDate: 'Estás usando la última versión',
+    showOlderReleases: 'Mostrar {{count}} versiones anteriores',
+    viewFullChangelog: 'Ver el registro de cambios completo',
+    changeTypes: {
+      new: 'Nuevo',
+      improved: 'Mejorado',
+      changed: 'Cambiado',
+      fixed: 'Corregido',
+      security: 'Seguridad',
+    },
   },
   account: {
     settings: 'Configuración de la cuenta',
@@ -3643,6 +3772,7 @@ const esES = {
     nav: {
       workspace: 'Workspace',
       operationTrace: 'Registro',
+      alerts: 'Alertas',
       models: 'Modelos',
       api: 'API',
       storage: 'Almacenamiento',
@@ -3734,6 +3864,7 @@ const esES = {
       skill: 'Habilidad',
       knowledge_base: 'Base de conocimiento',
       mcp_server: 'Servidor MCP',
+      content: 'Contenido compartido',
       runtime: 'Entorno de ejecución',
       system: 'Sistema',
       resource: 'Recurso',
@@ -3744,6 +3875,8 @@ const esES = {
       error: 'Fallido',
     },
     actions: {
+      content_publish: 'Compartir contenido en Space',
+      plugin_publish: 'Publicar extensión en Space',
       audit_log_view: 'Ver registros de operación',
       settings_update: 'Actualizar ajustes de trazabilidad',
       settings_view: 'Ver ajustes de trazabilidad',
@@ -4309,6 +4442,217 @@ const esES = {
     collapseDomain: 'Contraer',
     ungrantableRemoved:
       'Algunas operaciones no se seleccionaron o se quitaron por falta de permisos.',
+  },
+  alerts: {
+    enableHint: 'Activar alertas',
+    cta: {
+      title:
+        'Inicia sesión con una cuenta de LangBot para enviar alertas por correo gratis',
+      pointFree: 'Envío oficial gratuito, 20 correos al día',
+      pointNoSetup: 'Sin configurar SMTP ni Resend',
+      pointPrivate: 'Solo a la dirección de tu propia cuenta de LangBot',
+      selfHosted: '¿Prefieres tu propio servidor de correo?',
+      selfHostedLink: 'Configura SMTP o Resend en config.yaml →',
+    },
+    title: 'Alertas',
+    description:
+      'Avisos por correo y webhook cuando bots, Pipelines o modelos fallan repetidamente',
+    enabled: 'Alertas activadas',
+    firingCount: '{{count}} activas',
+    allClear: 'Todo en orden',
+    sendTest: 'Enviar prueba',
+    saveBeforeTest: 'Guarda los cambios antes de enviar una prueba',
+    saved: 'Configuración de alertas guardada',
+    saveFailed: 'No se pudo guardar la configuración: {{error}}',
+    loadFailed: 'No se pudieron cargar las alertas: {{error}}',
+    testSent: 'Alerta de prueba enviada a {{count}} destino(s)',
+    testPartial: 'La prueba se envió con errores; revisa el registro de envíos',
+    testNoChannel:
+      'Aún no hay ningún canal; elige un canal de correo o un webhook',
+    testFailed: 'No se pudo enviar la alerta de prueba: {{error}}',
+    disabledInstanceWide:
+      'Las alertas están desactivadas en esta instancia (alerts.enabled en config.yaml).',
+    emailTitle: 'Correo',
+    emailDescription: 'Se envía actualmente por: {{channel}}',
+    recipients: 'Destinatarios (propietarios y administradores del Workspace)',
+    noRecipients: 'Ningún propietario o administrador tiene correo.',
+    extraRecipients:
+      'Destinatarios adicionales (solo tu servicio de correo, hasta 10)',
+    spaceRecipientsHint:
+      'LangBot Space solo envía a los administradores que iniciaron sesión con LangBot Space, a su propia dirección de Space. Cuota gratuita: 20 al día y 200 al mes por cuenta.',
+    channel: {
+      auto: 'Automático',
+      autoDescription:
+        'Tu servicio de correo si está configurado; si no, LangBot Space',
+      instance: 'Tu servicio de correo',
+      instanceConfigured: '{{provider}} configurado en config.yaml',
+      instanceMissing:
+        'No configurado. Define la sección email (SMTP o Resend) en config.yaml',
+      space: 'LangBot Space (oficial)',
+      spaceAvailable: 'Envío oficial gratuito a {{accounts}}',
+      spaceMissing: 'Inicia sesión con una cuenta de LangBot Space para usarlo',
+      off: 'Desactivado',
+      offDescription: 'Solo mostrar alertas aquí y enviar webhooks',
+      none: 'no se envía (sin canal disponible)',
+      ready: 'Listo',
+      unavailable: 'No disponible',
+    },
+    rulesTitle: 'Reglas',
+    rulesDescription:
+      'Se abre una alerta cuando los fallos alcanzan el umbral dentro de la ventana.',
+    minutesWithin: 'min, al menos',
+    failuresOrMore: 'fallos',
+    notifyResolved: 'Avisar cuando una alerta se recupere',
+    throttleHint:
+      'Cada alerta se envía una vez al abrirse y se recuerda a las 6 h, a las 12 h y luego cada 24 h mientras siga fallando.',
+    rule: {
+      pipeline_failures: 'Fallos de Pipeline',
+      pipeline_failuresDescription: 'Errores de procesamiento en un Pipeline',
+      model_failures: 'Fallos de llamadas al modelo',
+      model_failuresDescription: 'Solicitudes fallidas a un modelo',
+      bot_offline: 'Bot detenido con error',
+      bot_offlineDescription:
+        'Avisa de inmediato; se recupera cuando el bot vuelve a iniciarse',
+    },
+    webhooksTitle: 'Webhooks',
+    webhooksDescription:
+      'Los webhooks seleccionados reciben los eventos alert.fired, alert.reminder y alert.resolved.',
+    noWebhooks: 'Aún no hay webhooks. Añade uno en Configuración → API.',
+    webhookDisabled: 'Desactivado',
+    incidentsTitle: 'Alertas recientes',
+    noIncidents: 'Todavía no hay alertas.',
+    incidentMeta: '{{count}} fallo(s) · abierta {{time}}',
+    state: {
+      firing: 'Activa',
+      resolved: 'Resuelta',
+    },
+    deliveriesTitle: 'Registro de envíos',
+    noDeliveries: 'Todavía no se ha enviado nada.',
+    kind: {
+      fired: 'Alerta',
+      reminder: 'Recordatorio',
+      resolved: 'Recuperada',
+      test: 'Prueba',
+    },
+    via: {
+      email: 'Correo',
+      space: 'LangBot Space',
+      webhook: 'Webhook',
+    },
+    status: {
+      sent: 'Enviado',
+      failed: 'Fallido',
+      rate_limited: 'Cuota agotada',
+      skipped: 'Omitido',
+    },
+  },
+  promptLibrary: {
+    emptyTitle: 'Las plantillas están en camino ✨',
+    emptyBody: 'Pulsa «Compartir» junto a un prompt y sé el primero.',
+    bindToFavorite: 'Vincula una cuenta para guardar favoritos',
+    originalLanguage: 'original',
+    open: 'Biblioteca de prompts',
+    title: 'Biblioteca de prompts',
+    description:
+      'Busca prompts revisados compartidos en LangBot Space. Guarda la configuración después de aplicar uno.',
+    kindMessaging: 'Conversación',
+    kindAgent: 'Agent',
+    searchPlaceholder: 'Buscar nombre, descripción, etiquetas o texto',
+    tabAll: 'Todos',
+    tabFavorites: 'Favoritos',
+    favoritesNeedAccount: 'Vincula una LangBot Account para usar favoritos',
+    otherKindHint:
+      'Estás viendo prompts de tipo {{kind}}, pensados para otro uso. Revísalos antes de aplicar.',
+    noFavorites: 'Aún no hay favoritos',
+    empty: 'No hay prompts coincidentes',
+    loadFailed: 'No se pudo cargar la biblioteca',
+    favoriteFailed: 'No se pudo actualizar el favorito',
+    applied: 'Aplicado. Guarda para que surta efecto.',
+    uses: '{{count}} usos',
+    favorite: 'Favorito',
+    variablesHint: 'Variables:',
+    append: 'Añadir al prompt actual',
+    replace: 'Reemplazar prompt actual',
+    replaceTitle: '¿Reemplazar el prompt actual?',
+    replaceDescription:
+      'El prompt actual se sobrescribirá (puedes descartar antes de guardar).',
+    selectHint: 'Selecciona un prompt a la izquierda',
+  },
+  spaceShare: {
+    modeNew: 'Publicar como nuevo',
+    modeUpdate: 'Actualizar existente ({{count}})',
+    pickExisting: 'Elige el elemento a actualizar',
+    unlisted: 'oculto',
+    identifierHint:
+      'Minúsculas, dígitos, - o _. No se puede cambiar tras publicar.',
+    bindAccount: 'Vincular cuenta de LangBot',
+    autoTranslateNotice:
+      'Escríbelo en un solo idioma. Lo traduciremos automáticamente a otros idiomas después de subirlo.',
+    shareShort: 'Compartir',
+    shareToSpace: 'Compartir en Space',
+    findingsBlockTitle:
+      'Se detectaron posibles credenciales: elimínalas antes de compartir',
+    findingsWarnTitle: 'Contiene datos personales o internos',
+    submitFailed: 'Error al enviar',
+    submittedTitle: 'Enviado a revisión',
+    submittedAgentReview:
+      '{{id}} se está revisando automáticamente y aparecerá en LangBot Space al aprobarse.',
+    submittedManualReview: '{{id}} espera una revisión manual.',
+    viewProgress: 'Ver el progreso en LangBot Space',
+    needAccountTitle: 'Se requiere una LangBot Account',
+    needAccount:
+      'Vincula una cuenta de LangBot para compartir. Tu aportación se publica con el perfil de creador de esa cuenta en LangBot Space.',
+    needCreatorTitle: 'Aún no tienes perfil de creador',
+    needCreator:
+      'Configura un perfil de creador en LangBot Space para compartir. Solo hace falta una vez.',
+    openCreator: 'Configurar perfil de creador',
+    acknowledgeWarnings: 'Confirmo que esta información puede ser pública',
+    displayName: 'Nombre visible',
+    identifier: 'Identificador',
+    descriptionLabel: 'Descripción',
+    changelog: 'Cambios',
+    reviewNotice:
+      'Los envíos se revisan antes de publicarse en LangBot Space. Compartir el mismo nombre publica una nueva versión.',
+    submit: 'Enviar a revisión',
+    promptTitle: 'Compartir prompt en LangBot Space',
+    promptDescriptionMessaging:
+      'Se publica como prompt de conversación para la configuración de pipelines.',
+    promptDescriptionAgent:
+      'Se publica como prompt de Agent para la configuración de Agents.',
+    detectedVariables: 'Variables detectadas:',
+    skillTitle: 'Compartir Skill en LangBot Space',
+    skillDescription:
+      'Sube el paquete actual de la Skill. La revisión comprueba scripts y peticiones externas.',
+    packageFiles: 'Archivos a enviar',
+    mcpTitle: 'Compartir servidor MCP en LangBot Space',
+    mcpDescription:
+      'Solo MCP remoto. Las credenciales nunca se suben: se sustituyen por marcadores que cada instalador rellena.',
+    mcpPublishedConfig: 'Configuración a publicar',
+    mcpToolsCount: 'Incluye {{count}} herramientas',
+    mcpRedactedTitle: '{{count}} credenciales eliminadas',
+    mcpRedactedHint:
+      'Se pedirán estos valores al instalar. Ponles un nombre claro:',
+    mcpInputLabelPlaceholder: 'Etiqueta (por defecto: {{label}})',
+    mcpNoCredentials: 'No hay credenciales; se publica tal cual.',
+    mcpNeedsConnection:
+      'Conecta correctamente primero; se publica la lista de herramientas',
+    mcpFillInputsTitle: 'Rellena las credenciales antes de activar',
+    mcpFillInputs:
+      'Este MCP de la comunidad necesita tus valores para {{names}}. Sustitúyelos, guarda y actívalo.',
+    finding: {
+      openai_key: 'Clave de OpenAI',
+      anthropic_key: 'Clave de Anthropic',
+      github_token: 'Token de GitHub',
+      slack_token: 'Token de Slack',
+      aws_access_key: 'Clave de acceso de AWS',
+      google_api_key: 'Clave de API de Google',
+      private_key: 'Clave privada',
+      jwt: 'Token JWT',
+      langbot_key: 'Clave de LangBot',
+      email: 'Correo electrónico',
+      phone: 'Número de teléfono',
+      private_url: 'URL interna',
+    },
   },
 };
 export default esES;

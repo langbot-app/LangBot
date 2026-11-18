@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+from dataclasses import replace
+import json
 import os
 import typing
 
@@ -79,8 +82,11 @@ class SkillToolLoader(loader.ToolLoader):
         return None
 
     def _skill_registration_available(self) -> bool:
-        """Host skill scanning is disabled for Cloud-managed sandboxes."""
-        return not bool(getattr(getattr(self.ap, 'box_service', None), 'managed_admission_required', False))
+        """Managed sandboxes publish drafts only through the network protocol."""
+        box = getattr(self.ap, 'box_service', None)
+        if getattr(box, 'file_transfer_mode', None) == 'network':
+            return callable(getattr(box, 'export_skill_draft', None))
+        return not bool(getattr(box, 'managed_admission_required', False))
 
     async def has_tool(self, name: str, *, sandbox_available: bool | None = None) -> bool:
         if not self._is_available() or name not in SKILL_TOOL_NAMES:
@@ -208,6 +214,12 @@ class SkillToolLoader(loader.ToolLoader):
             )
             if skill_data is None:
                 raise ValueError('The run-pinned Skill revision is unavailable')
+        if getattr(getattr(self.ap, 'box_service', None), 'file_transfer_mode', None) == 'network':
+            skill_data = {
+                key: value
+                for key, value in skill_data.items()
+                if key not in {'package_root', 'manifest_path', 'source_path'}
+            }
         skill_data = skill_loader.register_activated_skill(query, skill_data)
         telemetry_features.increment(self.ap, 'activated_skills', query=query)
 
@@ -283,11 +295,18 @@ class SkillToolLoader(loader.ToolLoader):
             expected_revision=skill_data.get('revision'),
         )
 
-    async def _invoke_read_skill_resource(self, parameters: dict, query) -> dict:
+    async def _invoke_read_skill_resource(self, parameters: dict, query) -> typing.Any:
         skill_data = self._activated_skill(parameters, query)
         path = str(parameters.get('path', '') or '').strip()
         if not path:
             raise ValueError('path is required')
+        session = getattr(query, '_agent_run_session', None)
+        if (
+            isinstance(session, dict)
+            and session.get('run_id')
+            and getattr(self.ap.skill_repository, 'database_backed', False)
+        ):
+            return await self._read_run_skill_artifact(parameters, query, skill_data, path, session['run_id'])
         result = await self.ap.skill_repository.read_skill_resource(
             self._execution_context(query),
             skill_data['name'],
@@ -309,6 +328,94 @@ class SkillToolLoader(loader.ToolLoader):
         result['size'] = size
         return result
 
+    async def _read_run_skill_artifact(self, parameters, query, skill_data, path, run_id):
+        """Use the host-pinned run source, never a Runner-supplied artifact ID."""
+        from ....api.context import PrincipalContext, PrincipalType
+        from ....storage.artifact_reader import read_artifact_content
+
+        context = replace(
+            self._execution_context(query),
+            trigger_principal=PrincipalContext(PrincipalType.PROCESSOR, run_id=run_id),
+        )
+        lock = getattr(query, '_skill_artifact_read_lock', None)
+        if lock is None:
+            lock = asyncio.Lock()
+            object.__setattr__(query, '_skill_artifact_read_lock', lock)
+        async with lock:
+            variables = getattr(query, 'variables', None)
+            if not isinstance(variables, dict):
+                variables = {}
+                query.variables = variables
+            # Source materialization and returned content have independent budgets. Keep
+            # both in Host state so changing Runner conversation variables cannot reset them.
+            budgets = getattr(query, '_skill_artifact_budgets', None)
+            if budgets is None:
+                budgets = {}
+                object.__setattr__(query, '_skill_artifact_budgets', budgets)
+            budget = budgets.setdefault(run_id, {'source_bytes': 0, 'returned_bytes': 0, 'materialized': set()})
+            if budget['returned_bytes'] >= _MAX_SKILL_RESOURCE_RUN_BYTES:
+                raise ValueError('Skill resource returned content exceeds the per-run limit')
+            remaining = _MAX_SKILL_RESOURCE_RUN_BYTES - budget['source_bytes']
+            # Private Host state is not writable through Runner conversation variables.
+            refs = getattr(query, '_skill_artifact_refs', None)
+            if refs is None:
+                refs = {}
+                object.__setattr__(query, '_skill_artifact_refs', refs)
+            key = (run_id, skill_data['name'], skill_data['revision'], path)
+            if key not in refs:
+                if remaining <= 0:
+                    raise ValueError('Skill resource reads exceed the per-run limit')
+                create_limit = min(_MAX_SKILL_RESOURCE_FILE_BYTES, remaining)
+                metadata = await self.ap.artifact_service.create_run_skill_resource(
+                    context, skill_data['name'], skill_data['revision'], path, max_bytes=create_limit
+                )
+                # Registration verifies the source bytes before returning success. Charge
+                # that work even if the subsequent authorized read or renderer fails.
+                size = metadata['size']
+                if type(size) is not int or not 0 <= size <= create_limit:
+                    raise ValueError('Skill resource exceeds the permitted read limit')
+                identity = (run_id, metadata['id'])
+                if identity not in budget['materialized']:
+                    budget['source_bytes'] += size
+                    budget['materialized'].add(identity)
+                refs[key] = metadata['id']
+                variables[_SKILL_RESOURCE_BYTES_READ_KEY] = budget['source_bytes']
+            # Reauthorize every continuation. Only immutable identity accounting is cached,
+            # never permission, content bytes or a successful response.
+            result = await self.ap.artifact_service.read_run_skill_resource(
+                context, refs[key], max_bytes=_MAX_SKILL_RESOURCE_FILE_BYTES
+            )
+            payload, metadata = result['content'], result['metadata']
+            if len(payload) > _MAX_SKILL_RESOURCE_FILE_BYTES:
+                raise ValueError('Skill resource exceeds the permitted read limit')
+            variables[_SKILL_RESOURCE_BYTES_READ_KEY] = budget['source_bytes']
+            contents = await read_artifact_content(
+                payload,
+                metadata,
+                **{
+                    key: parameters[key]
+                    for key in ('mode', 'offset', 'max_chars', 'page_start', 'page_end')
+                    if key in parameters
+                },
+            )
+            # Keep the existing text dictionary for legacy callers. Images/native PDF remain
+            # structured ContentElements so SDK/LocalAgent never stringify their payloads.
+            if len(contents) == 1 and contents[0]['type'] == 'text':
+                rendered = json.loads(contents[0]['text'])
+                contents = {
+                    'skill': {'name': skill_data['name'], 'revision': skill_data['revision']},
+                    'revision': skill_data['revision'],
+                    'path': path,
+                    'content': rendered.pop('text', ''),
+                    'size': len(payload),
+                    **rendered,
+                }
+            returned_bytes = len(json.dumps(contents, ensure_ascii=False).encode('utf-8'))
+            if budget['returned_bytes'] + returned_bytes > _MAX_SKILL_RESOURCE_RUN_BYTES:
+                raise ValueError('Skill resource returned content exceeds the per-run limit')
+            budget['returned_bytes'] += returned_bytes
+            return contents
+
     async def _invoke_register_skill(self, parameters: dict, query) -> typing.Any:
         """Register a skill from sandbox directory to data/skills/."""
         from . import skill as skill_loader
@@ -317,35 +424,43 @@ class SkillToolLoader(loader.ToolLoader):
         if not sandbox_path:
             raise ValueError('path is required')
 
-        # Resolve sandbox path to host path
         execution_context = self._execution_context(query)
-        host_path = self._resolve_workspace_directory(sandbox_path, execution_context)
-
-        # Get or create skill service
         skill_service = getattr(self.ap, 'skill_service', None)
         if skill_service is None:
             raise ValueError('Skill service not available')
 
-        # Scan and register the skill
-        scanned = await skill_service.scan_directory_async(execution_context, host_path)
-
-        # Override name if provided
-        skill_name = str(parameters.get('name') or scanned['name']).strip()
-        if not skill_name:
-            raise ValueError('skill name is required')
-
         base_revision = str(parameters.get('base_revision', '') or '').strip() or None
-        published = await skill_service.import_skill_directory(
-            execution_context,
-            host_path,
-            {
-                'name': skill_name,
-                'display_name': str(parameters.get('display_name') or scanned.get('display_name', '')).strip(),
-                'description': str(parameters.get('description') or scanned.get('description', '')).strip(),
-                'instructions': str(parameters.get('instructions') or scanned.get('instructions', '')),
-            },
-            base_revision=base_revision,
-        )
+        if getattr(getattr(self.ap, 'box_service', None), 'file_transfer_mode', None) == 'network':
+            archive = await self.ap.box_service.export_skill_draft(query, sandbox_path)
+            published = await skill_service.import_skill_zip(
+                execution_context,
+                file_bytes=archive,
+                data={
+                    key: str(parameters.get(key) or '').strip()
+                    if key != 'instructions'
+                    else str(parameters.get(key) or '')
+                    for key in ('name', 'display_name', 'description', 'instructions')
+                },
+                base_revision=base_revision,
+            )
+            skill_name = published['name']
+        else:
+            host_path = self._resolve_workspace_directory(sandbox_path, execution_context)
+            scanned = await skill_service.scan_directory_async(execution_context, host_path)
+            skill_name = str(parameters.get('name') or scanned['name']).strip()
+            if not skill_name:
+                raise ValueError('skill name is required')
+            published = await skill_service.import_skill_directory(
+                execution_context,
+                host_path,
+                {
+                    'name': skill_name,
+                    'display_name': str(parameters.get('display_name') or scanned.get('display_name', '')).strip(),
+                    'description': str(parameters.get('description') or scanned.get('description', '')).strip(),
+                    'instructions': str(parameters.get('instructions') or scanned.get('instructions', '')),
+                },
+                base_revision=base_revision,
+            )
         skill_loader.register_created_skill_visibility(query, skill_name)
 
         return {
@@ -442,13 +557,22 @@ class SkillToolLoader(loader.ToolLoader):
         return resource_tool.LLMTool(
             name=READ_SKILL_RESOURCE_TOOL_NAME,
             human_desc='Read an activated skill resource',
-            description='Read a UTF-8 text resource from an activated skill package without starting a sandbox.',
+            description=(
+                'Read a pinned resource from an activated skill without a sandbox. '
+                'Text is bounded with continuation offsets; images and native PDF use structured model content. '
+                'Use mode=text for PDF text extraction or mode=native with a PDF-capable model.'
+            ),
             parameters={
                 'type': 'object',
                 'properties': {
                     'skill_name': {'type': 'string', 'description': 'The activated skill name.'},
                     'path': {'type': 'string', 'description': 'File path relative to the skill package root.'},
                     'revision': {'type': 'string', 'description': 'Optional revision returned by activate.'},
+                    'mode': {'type': 'string', 'enum': ['auto', 'text', 'native'], 'default': 'auto'},
+                    'offset': {'type': 'integer', 'minimum': 0},
+                    'max_chars': {'type': 'integer', 'minimum': 1, 'maximum': 16384},
+                    'page_start': {'type': 'integer', 'minimum': 1},
+                    'page_end': {'type': 'integer', 'minimum': 1},
                 },
                 'required': ['skill_name', 'path'],
                 'additionalProperties': False,

@@ -51,6 +51,10 @@ export interface PluginManifestOverrides {
 
 /** Connection state + pre-fill data for the upload page. */
 export interface PluginSpaceUploadConfig {
+  /** 'debug' or the installation source ('local' | 'github' | 'marketplace'). */
+  source?: string;
+  /** Whether this plugin can be shared (debug, local or GitHub installs). */
+  shareable?: boolean;
   debug: boolean;
   metadata: {
     author: string;

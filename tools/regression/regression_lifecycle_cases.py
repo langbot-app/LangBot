@@ -83,17 +83,18 @@ class CallbackReceiver:
                         'Invalid callback signature',
                     )
                     require(isinstance(payload, dict), 'Callback must be an object')
-                    record = {'body': body, 'payload': payload}
-                    with receiver.condition:
-                        status = 503 if not receiver.records else 200
+                    record, status = {'body': body, 'payload': payload}, 200
                 except (ValueError, OSError) as exc:
                     record, status = {'error': str(exc)}, 400
-                self.send_response(status)
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(b'{}')
-                self.wfile.flush()
                 with receiver.condition:
+                    # A retry may arrive after headers, before the first receipt is complete.
+                    if status == 200 and not receiver.records:
+                        status = 503
+                    self.send_response(status)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(b'{}')
+                    self.wfile.flush()
                     receiver.records.append({**record, 'status': status})
                     receiver.condition.notify_all()
 

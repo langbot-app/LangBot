@@ -76,6 +76,52 @@ class WorkspacesRouterGroup(group.RouterGroup):
         return await operation()
 
     async def initialize(self) -> None:
+        async def sandbox_operation(operation_id, context, payload):
+            from langbot.pkg.api.application import ApplicationAPIException
+
+            try:
+                return self.success(data=await self.ap.application_api.execute(operation_id, context, payload))
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+
+        @self.route(
+            '/current/sandbox',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.WORKSPACE_VIEW,
+        )
+        async def get_sandbox(request_context: RequestContext):
+            return await sandbox_operation(
+                'workspace.sandbox.get', request_context, {'refresh': quart.request.args.get('refresh') == 'true'}
+            )
+
+        @self.route(
+            '/current/sandbox',
+            methods=['PUT'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.WORKSPACE_UPDATE,
+        )
+        async def update_sandbox(request_context: RequestContext):
+            return await sandbox_operation('workspace.sandbox.update', request_context, await quart.request.get_json())
+
+        @self.route(
+            '/current/sandbox/check',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.WORKSPACE_UPDATE,
+        )
+        async def check_sandbox(request_context: RequestContext):
+            return await sandbox_operation('workspace.sandbox.check', request_context, await quart.request.get_json())
+
+        @self.route(
+            '/current/sandbox/test',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.WORKSPACE_UPDATE,
+        )
+        async def test_sandbox(request_context: RequestContext):
+            return await sandbox_operation('workspace.sandbox.test', request_context, await quart.request.get_json())
+
         @self.route(
             '/current/language',
             methods=['GET'],

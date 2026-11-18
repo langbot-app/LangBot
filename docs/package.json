@@ -17,9 +17,11 @@
     "normalize:static-paths": "node scripts/normalize-static-paths.mjs",
     "test:static": "node --test tests/fumapress-static-build.test.mjs tests/agent-static-build.test.mjs tests/locale-static-build.test.mjs",
     "generate:sitemap-alternates": "node scripts/generate-alternate-sitemap.mjs",
+    "generate:recipes": "node scripts/generate-recipes.mjs",
+    "check:recipes": "node scripts/generate-recipes.mjs --check",
     "sync:articles": "node scripts/sync-blog-articles.mjs",
     "check:articles": "node scripts/sync-blog-articles.mjs --check",
-    "test": "node --test tests/social-preview.test.mjs tests/locale-preference.test.mjs tests/agent-docs.test.mjs tests/blog-articles.test.mjs tests/fumapress-migration.test.mjs tests/seo.test.mjs && python3 -m unittest discover -s tests -p 'test_*.py'",
+    "test": "node scripts/generate-recipes.mjs --check && node --test tests/social-preview.test.mjs tests/locale-preference.test.mjs tests/agent-docs.test.mjs tests/blog-articles.test.mjs tests/fumapress-migration.test.mjs tests/seo.test.mjs && python3 -m unittest discover -s tests -p 'test_*.py'",
     "finalize:base-path": "node scripts/finalize-base-path.mjs"
   },
   "dependencies": {

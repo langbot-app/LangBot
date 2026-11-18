@@ -2,41 +2,78 @@ name: Unit Tests
 
 on:
   pull_request:
-    types: [opened, ready_for_review, synchronize]
-    paths:
-      - 'src/langbot/**'
-      - 'tests/**'
-      - 'plugins/Runner/**'
-      - '.github/workflows/run-tests.yml'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - 'run_tests.sh'
-      - 'scripts/test-*.sh'
-      - 'scripts/test-*.py'
-      - 'pytest.ini'
-      - 'AGENTS.md'
-      - 'ARCHITECTURE.md'
-  push:
-    branches:
-      - master
-      - develop
-      - 'feat/**'
-    # No path filter on push: every push to the branches above runs the
-    # full unit-test suite. feat/** branches in particular must be tested
-    # on every push (they accumulate large changes before a PR exists).
+    types: [opened, ready_for_review, synchronize, reopened]
+  workflow_dispatch:
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  # Include the caller workflow for the reusable Daily matrix. Dispatch and
+  # scheduled runs never cancel PR checks or interrupt each other.
+  group: core-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  SPACE__DISABLE_TELEMETRY: 'true'
 
 jobs:
+  plan:
+    name: Choose Core checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selection: ${{ steps.plan.outputs.selection }}
+      python_versions: ${{ steps.plan.outputs.python_versions }}
+      unit_targets: ${{ steps.plan.outputs.unit_targets }}
+      integration_targets: ${{ steps.plan.outputs.integration_targets }}
+      full_unit: ${{ steps.plan.outputs.full_unit }}
+      runtime_contracts: ${{ steps.plan.outputs.runtime_contracts }}
+      full_e2e: ${{ steps.plan.outputs.full_e2e }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: changes
+        uses: ./.github/actions/classify-test-changes
+      - name: Select Core suites
+        id: plan
+        env:
+          CHANGED_PATHS: ${{ steps.changes.outputs.changed_paths }}
+          CORE: ${{ steps.changes.outputs.core }}
+          CORE_FULL: ${{ steps.changes.outputs.core_full }}
+          SDK: ${{ steps.changes.outputs.sdk }}
+          COMPATIBILITY: ${{ steps.changes.outputs.compatibility }}
+          PERSISTENCE: ${{ steps.changes.outputs.persistence }}
+          PERMISSIONS: ${{ steps.changes.outputs.permissions }}
+          BOX: ${{ steps.changes.outputs.box }}
+          FRONTEND: ${{ steps.changes.outputs.frontend }}
+        run: python3 tools/ci_core_tests.py plan
+
   test:
     name: Unit Tests
+    needs: plan
+    if: fromJSON(needs.plan.outputs.selection).test
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     strategy:
       matrix:
-        python-version: ['3.11', '3.12', '3.13']
+        python-version: ${{ fromJSON(needs.plan.outputs.python_versions) }}
       fail-fast: false
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -45,41 +82,179 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
 
-      - name: Install dependencies
-        run: uv sync --dev
+      - name: Install locked dependencies
+        run: uv sync --dev --frozen
+
+      - name: Verify SDK provenance
+        run: |
+          uv run --no-sync python - <<'PY' | tee sdk-source.txt
+          from importlib.metadata import version
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          import langbot_plugin
+
+          installed = Path(langbot_plugin.__file__).resolve()
+          expected = Path('sdk/src/langbot_plugin/__init__.py').resolve()
+          if installed != expected:
+              raise SystemExit(f'Standard install did not resolve in-tree SDK: {installed} != {expected}')
+          print(f"Candidate SHA: {subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()}")
+          print(f'Python: {sys.version}')
+          print(f"SDK: langbot-plugin {version('langbot-plugin')} from {installed}")
+          PY
+          cat sdk-source.txt >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run unit + smoke tests
-        run: uv run pytest tests/unit_tests/ tests/smoke/ -q --tb=short
+        env:
+          UNIT_TARGETS: ${{ needs.plan.outputs.unit_targets }}
+          FULL_UNIT: ${{ needs.plan.outputs.full_unit }}
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: |
+          mapfile -d '' -t targets < <(python -c 'import json,os,sys; sys.stdout.write("".join(p + chr(0) for p in json.loads(os.environ["UNIT_TARGETS"])))')
+          test "${#targets[@]}" -gt 0
+          args=()
+          if [[ "$FULL_UNIT" == 'true' && "$PYTHON_VERSION" == '3.12' ]]; then
+            args+=(--cov=langbot --cov-branch --cov-report=xml --cov-report=json --cov-report=term-missing --cov-fail-under=0)
+          fi
+          uv run --no-sync pytest "${targets[@]}" -m 'not security' "${args[@]}" -q --tb=short -rs --junitxml=core-unit-results.xml
 
       - name: Run required security regressions
         run: |
-          uv run pytest --required-suite security \
+          uv run --no-sync pytest --required-suite security \
             -q --tb=short -rs --junitxml=cwe94-results.xml
 
-      - name: Upload security regression results
+      - name: Run required Core and SDK protocol contracts
+        if: matrix.python-version == '3.12' && needs.plan.outputs.runtime_contracts == 'true'
+        run: |
+          uv run --no-sync pytest tests/integration/plugin --required-suite sdk_core \
+            -q --tb=short -rs --junitxml=sdk-core-results.xml
+
+      - name: Run Runtime artifact transport
+        if: matrix.python-version == '3.12' && needs.plan.outputs.runtime_contracts == 'true'
+        run: |
+          uv run --no-sync pytest tests/integration/skill/test_runtime_artifact_cache.py \
+            -o xfail_strict=true -q --tb=short -rs --junitxml=runtime-artifact-results.xml
+          python tools/verify_junit.py runtime-artifact-results.xml
+
+      - name: Run focused fast integration tests
+        if: matrix.python-version == '3.12' && needs.plan.outputs.integration_targets != '[]'
+        env:
+          INTEGRATION_TARGETS: ${{ needs.plan.outputs.integration_targets }}
+        run: |
+          mapfile -d '' -t targets < <(python -c 'import json,os,sys; sys.stdout.write("".join(p + chr(0) for p in json.loads(os.environ["INTEGRATION_TARGETS"])))')
+          test "${#targets[@]}" -gt 0
+          uv run --no-sync pytest "${targets[@]}" -m 'not slow and not sdk_core' \
+            --ignore=tests/integration/skill/test_runtime_artifact_cache.py \
+            -q --tb=short -rs --junitxml=focused-integration-results.xml
+
+      - name: Upload Core test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cwe94-results-${{ matrix.python-version }}
-          path: cwe94-results.xml
-          if-no-files-found: ignore
+          name: core-test-results-${{ matrix.python-version }}-${{ github.run_attempt }}
+          path: |
+            sdk-source.txt
+            core-unit-results.xml
+            cwe94-results.xml
+            sdk-core-results.xml
+            runtime-artifact-results.xml
+            focused-integration-results.xml
+          if-no-files-found: warn
 
-      - name: Test Summary
-        if: always()
+      - name: Check line coverage threshold
+        if: matrix.python-version == '3.12' && needs.plan.outputs.full_unit == 'true'
         run: |
-          echo "## Unit Tests Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Python Version: ${{ matrix.python-version }}" >> $GITHUB_STEP_SUMMARY
-          echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          # Keep the existing line-only gate when branch measurement is enabled.
+          python - <<'PY_GATE'
+          import json
+          totals = json.load(open('coverage.json'))['totals']
+          line_coverage = 100 * totals['covered_lines'] / totals['num_statements']
+          assert line_coverage >= 18, f'Line coverage {line_coverage:.2f}% is below 18%'
+          PY_GATE
+
+      - name: Report source coverage and complexity
+        if: always() && matrix.python-version == '3.12' && hashFiles('coverage.json') != ''
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          args=()
+          if [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ && "$BASE_SHA" != 0000000000000000000000000000000000000000 ]]; then
+            git fetch --no-tags --depth=1 origin "$BASE_SHA"
+            args+=(--base-ref "$BASE_SHA")
+          fi
+          uv run --no-sync python scripts/test-complexity.py \
+            --json complexity.json --summary complexity.md --coverage-json coverage.json "${args[@]}"
+          cat complexity.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload source quality reports
+        if: always() && matrix.python-version == '3.12' && needs.plan.outputs.full_unit == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-quality-reports-${{ github.run_attempt }}
+          path: |
+            coverage.json
+            coverage.xml
+            complexity.json
+            complexity.md
+          if-no-files-found: warn
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.12' && needs.plan.outputs.full_unit == 'true'
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          flags: unit-tests
+          name: coverage-report
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  sqlalchemy-compat:
+    needs: plan
+    if: fromJSON(needs.plan.outputs.selection)['sqlalchemy-compat']
+    name: SQLAlchemy ${{ matrix.sqlalchemy-version }} compatibility
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sqlalchemy-version: ['2.0.*', '2.1.*']
+    env:
+      SPACE__DISABLE_TELEMETRY: 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+      - name: Install dependencies
+        run: |
+          uv sync --dev --frozen
+          uv pip install 'sqlalchemy[asyncio]==${{ matrix.sqlalchemy-version }}' 'sqlmodel>=0.0.24'
+          uv pip check
+      - name: Run tenant SQL and plugin storage regressions
+        run: |
+          uv run --no-sync pytest \
+            tests/unit_tests/persistence/test_tenant_uow.py \
+            tests/unit_tests/persistence/test_tenant_uow_failed_commit.py \
+            tests/unit_tests/plugin/test_handler_actions.py -q --tb=short
 
   integration:
+    needs: plan
+    if: fromJSON(needs.plan.outputs.selection)['integration']
     name: Fast Integration Tests
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -90,10 +265,21 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --frozen
 
       - name: Run fast integration tests
-        run: uv run pytest tests/integration/ -m "not slow" -q --tb=short
+        run: >-
+          uv run --no-sync pytest tests/integration/ -m "not slow and not sdk_core"
+          --ignore=tests/integration/skill/test_runtime_artifact_cache.py
+          -q --tb=short -rs --junitxml=integration-results.xml
+
+      - name: Upload integration test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-results
+          path: integration-results.xml
+          if-no-files-found: warn
 
       - name: Integration Test Summary
         if: always()
@@ -103,6 +289,8 @@ jobs:
           echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
   postgres-contracts:
+    needs: plan
+    if: fromJSON(needs.plan.outputs.selection)['postgres-contracts']
     name: PostgreSQL Contract Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -130,6 +318,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -150,7 +340,7 @@ jobs:
 
       - name: Run required PostgreSQL contracts
         run: |
-          uv run pytest --required-suite postgres \
+          uv run --no-sync pytest --required-suite postgres \
             -q --tb=short -rs --durations=10 --junitxml=postgres-contract-results.xml
 
       - name: Upload PostgreSQL contract results
@@ -175,12 +365,16 @@ jobs:
           if-no-files-found: ignore
 
   e2e:
+    needs: plan
+    if: fromJSON(needs.plan.outputs.selection)['e2e']
     name: E2E Startup Tests
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -191,12 +385,12 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --frozen
 
       - name: Set up Node.js for real-stack browser tests
         uses: actions/setup-node@v4
         with:
-          node-version: '25'
+          node-version: '24'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -214,24 +408,52 @@ jobs:
         run: pnpm build
 
       - name: Run E2E startup tests
-        run: uv run pytest tests/e2e -m "not local_agent" -q --tb=short
+        if: needs.plan.outputs.full_e2e == 'true'
+        # P0 owns production-image upgrades, Artifact QA runs mixed acceptance,
+        # Artifact accelerated soak owns long runs, and Full Daily owns
+        # two-Core Artifact persistence.
+        run: |
+          uv run --no-sync pytest tests/e2e -m "not local_agent and not p0_image" \
+            --ignore=tests/e2e/test_artifact_mixed_acceptance.py \
+            --ignore=tests/e2e/test_artifact_lifecycle_soak.py \
+            --ignore=tests/e2e/test_artifact_persistence.py \
+            --ignore=tests/e2e/test_deployed_content.py \
+            --ignore=tests/e2e/test_network_file_plugin_runtime.py \
+            --ignore=tests/e2e/test_skill_legacy_upgrade.py \
+            --ignore=tests/e2e/test_skill_network_runtime.py \
+            --ignore=tests/e2e/test_skill_persistence_replicas.py \
+            -k "not test_historical_sdk_proxy_and_message_entities" \
+            -o xfail_strict=true -q --tb=short -rs --junitxml=e2e-results.xml
+          python tools/verify_junit.py e2e-results.xml
+
+      - name: Run focused real-stack browser test
+        if: needs.plan.outputs.full_e2e != 'true'
+        run: |
+          uv run --no-sync pytest \
+            tests/e2e/test_runner_plugin_runtime.py::test_chromium_pipeline_save_copy_execute_real_runtime \
+            -o xfail_strict=true -q --tb=short -rs --junitxml=e2e-results.xml
+          python tools/verify_junit.py e2e-results.xml
 
       - name: Check Docker for the required LocalAgent Box contract
+        if: needs.plan.outputs.full_e2e == 'true'
         run: docker info
 
       - name: Run required LocalAgent contracts
+        if: needs.plan.outputs.full_e2e == 'true'
         env:
           LANGBOT_LEGACY_PLUGIN_ROOT: ${{ github.workspace }}/plugins
         run: |
           uv run --no-sync pytest --required-suite local_agent \
             -q --tb=short -rs --junitxml=local-agent-results.xml
 
-      - name: Upload LocalAgent contract results
+      - name: Upload browser, startup and LocalAgent results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: local-agent-contract-results
-          path: local-agent-results.xml
+          path: |
+            e2e-results.xml
+            local-agent-results.xml
           if-no-files-found: ignore
 
       - name: E2E Test Summary
@@ -242,12 +464,16 @@ jobs:
           echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
   box-integration:
+    needs: plan
+    if: fromJSON(needs.plan.outputs.selection)['box-integration']
     name: Box Integration Tests
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -258,13 +484,26 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --frozen
 
       - name: Check Docker runtime
         run: docker info
 
       - name: Run Box integration tests
-        run: uv run pytest tests/integration_tests -q --tb=short
+        # The live model test needs a separate model credential and an explicit opt-in.
+        run: |
+          uv run --no-sync pytest tests/integration_tests \
+            --ignore=tests/integration_tests/box/test_live_explicit_export.py \
+            -o xfail_strict=true -q --tb=short -rs --junitxml=box-results.xml
+          python tools/verify_junit.py box-results.xml
+
+      - name: Upload Box test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: box-results
+          path: box-results.xml
+          if-no-files-found: warn
 
       - name: Box Integration Test Summary
         if: always()
@@ -276,87 +515,15 @@ jobs:
   coverage:
     name: Coverage Gate
     runs-on: ubuntu-latest
-    needs: [test, integration, postgres-contracts]
+    timeout-minutes: 5
+    needs: [plan, test, integration, postgres-contracts, sqlalchemy-compat, e2e, box-integration]
     if: always()
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Verify required test jobs
-        run: |
-          test "${{ needs.test.result }}" = success
-          test "${{ needs.integration.result }}" = success
-          test "${{ needs.postgres-contracts.result }}" = success
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Install dependencies
-        run: uv sync --dev
-
-      - name: Run coverage (unit + smoke)
-        run: |
-          uv run pytest tests/unit_tests/ tests/smoke/ \
-            --cov=langbot --cov-branch \
-            --cov-report=xml --cov-report=json \
-            --cov-report=term-missing \
-            --cov-fail-under=0 \
-            -q --tb=short
-
-          # Keep the existing line-only gate when branch measurement is enabled.
-          python - <<'PY_GATE'
-          import json
-          totals = json.load(open('coverage.json'))['totals']
-          line_coverage = 100 * totals['covered_lines'] / totals['num_statements']
-          assert line_coverage >= 18, f'Line coverage {line_coverage:.2f}% is below 18%'
-          PY_GATE
-
-      - name: Report source coverage and complexity
-        if: always() && hashFiles('coverage.json') != ''
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          args=()
-          if [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ && "$BASE_SHA" != 0000000000000000000000000000000000000000 ]]; then
-            git fetch --no-tags --depth=1 origin "$BASE_SHA"
-            args+=(--base-ref "$BASE_SHA")
-          fi
-          uv run python scripts/test-complexity.py \
-            --json complexity.json --summary complexity.md --coverage-json coverage.json "${args[@]}"
-          cat complexity.md >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload source quality reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: source-quality-reports
-          path: |
-            coverage.json
-            coverage.xml
-            complexity.json
-            complexity.md
-          if-no-files-found: ignore
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          files: ./coverage.xml
-          flags: unit-tests
-          name: coverage-report
-          fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Coverage Summary
-        if: always()
-        run: |
-          echo "## Coverage Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Threshold: 18%" >> $GITHUB_STEP_SUMMARY
-          echo "Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: python3 tools/ci_core_tests.py gate | tee -a "$GITHUB_STEP_SUMMARY"

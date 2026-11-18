@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 from components.runner.default import DefaultRunner
 from pkg.dify_client import AsyncDifyClient, DifyAPIError, DifyConfigError, _iter_sse_json
-from pkg.http_limits import MAX_STREAM_BYTES, limited_bytes, limited_lines
+from pkg.http_limits import MAX_STREAM_BUDGET_MB, MAX_STREAM_BYTES, limited_bytes, limited_lines
 
 
 class FakeResponse:
@@ -91,6 +91,11 @@ def test_client_stores_custom_budget():
     assert default_client.max_stream_bytes == MAX_STREAM_BYTES
 
 
+def test_client_rejects_budget_above_safety_cap():
+    with pytest.raises(ValueError, match="max_stream_bytes"):
+        AsyncDifyClient(api_key="k", max_stream_bytes=(MAX_STREAM_BUDGET_MB + 1) * 1024 * 1024)
+
+
 def _validate(runner_ctx, monkeypatch):
     monkeypatch.setattr("components.runner.default.scoped_identity", lambda runner, ctx, tag: tag)
     runner = SimpleNamespace()
@@ -130,6 +135,19 @@ def test_runner_config_rejects_non_positive_budget(monkeypatch):
         with pytest.raises(DifyConfigError) as excinfo:
             _validate(ctx, monkeypatch)
         assert "positive integer" in excinfo.value.message
+
+
+def test_runner_config_rejects_budget_above_safety_cap(monkeypatch):
+    ctx = _runner_ctx(
+        {
+            "api-key": "k",
+            "base-url": "https://dify.example/v1",
+            "app-type": "chat",
+            "stream-budget-mb": MAX_STREAM_BUDGET_MB + 1,
+        }
+    )
+    with pytest.raises(DifyConfigError, match=str(MAX_STREAM_BUDGET_MB)):
+        _validate(ctx, monkeypatch)
 
 
 def test_runner_config_falls_back_to_default_for_garbage_budget(monkeypatch):

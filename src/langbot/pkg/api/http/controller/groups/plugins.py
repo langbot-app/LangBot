@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .....i18n import t
+from .....telemetry import usage
 
 import asyncio
 import base64
@@ -308,6 +309,7 @@ class PluginsRouterGroup(group.RouterGroup):
         )
         async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
             """Metadata and connection state for the "upload to Space" page."""
+            usage.inc(self.ap, request_context.workspace_uuid, 'ugc.share.preview', type='plugin')
             await self._require_authenticated_plugin_runtime_context(request_context)
             plugin = await _resolve_upload_target(author, plugin_name)
             if plugin is None:
@@ -336,9 +338,15 @@ class PluginsRouterGroup(group.RouterGroup):
                 except Exception:
                     self.ap.logger.exception('Failed to retrieve creator profile for space-upload/config')
 
+            is_debug = bool(plugin.get('debug'))
+            install_source = 'debug' if is_debug else str(plugin.get('install_source') or '')
             return self.success(
                 data={
-                    'debug': bool(plugin.get('debug')),
+                    'debug': is_debug,
+                    # LANG-439: locally installed plugins share their installed
+                    # package as-is (metadata locked, no GitHub sync).
+                    'source': install_source,
+                    'shareable': is_debug or install_source in ('local', 'github'),
                     'metadata': {
                         'author': metadata.get('author', author),
                         'name': metadata.get('name', plugin_name),
@@ -365,6 +373,7 @@ class PluginsRouterGroup(group.RouterGroup):
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
             permission=Permission.RESOURCE_MANAGE,
         )
+        @usage.observe_share(self.ap, 'plugin')
         async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
             """Build the debug plugin and publish it to LangBot Space.
 
@@ -386,12 +395,22 @@ class PluginsRouterGroup(group.RouterGroup):
             sync_github = data.get('sync_github') is True
             git_result: dict | None = None
 
+            target = await _resolve_upload_target(author, plugin_name)
+            if target is None:
+                return self.http_status(404, -1, 'plugin not found')
             try:
-                package_result = await self.ap.plugin_connector.get_plugin_package(
-                    author,
-                    plugin_name,
-                    manifest_overrides=overrides,
-                )
+                if target.get('debug'):
+                    package_result = await self.ap.plugin_connector.get_plugin_package(
+                        author,
+                        plugin_name,
+                        manifest_overrides=overrides,
+                    )
+                else:
+                    # An installed local/GitHub plugin is shared byte-for-byte:
+                    # its manifest is part of the reviewed artifact, so
+                    # overrides and GitHub sync do not apply.
+                    package_result = await self.ap.plugin_connector.get_installed_plugin_package(author, plugin_name)
+                    sync_github = False
             except Exception as exc:
                 self.ap.logger.warning('Building package for %s/%s failed: %s', author, plugin_name, exc)
                 message = str(exc)
@@ -454,6 +473,7 @@ class PluginsRouterGroup(group.RouterGroup):
                     changelog=str(data.get('changelog') or ''),
                 )
             except ValueError as exc:
+                quart.g.usage_error = type(exc).__name__
                 return self.http_status(400, -1, str(exc))
 
             quart.g.operation_log_resource_id = f'{author}/{plugin_name}'

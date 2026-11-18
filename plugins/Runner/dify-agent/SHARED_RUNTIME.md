@@ -15,6 +15,13 @@ The exact archive requires independent review, signer approval, and two-Workspac
 - Redirects are not followed by HTTP clients. Configure the final endpoint/attachment
   URL; redirect-dependent workflows must update their URL rather than forwarding
   credentials to an unreviewed destination.
+- Credentials stay out of shared logs. The Dify API key is only sent in the
+  `Authorization` header. httpx logs each request URL at INFO; the human-input
+  form token (a URL path segment that submits the form by itself) and input file
+  URLs (which may be signed) are logged as a redacted target instead. The
+  redaction is a filter on the `httpx` logger that only acts on requests this
+  plugin opens inside `pkg.request_log.redacted_target`; other plugins' log
+  records and the logger level are unchanged.
 - Tests use installed SDK types and actual local transports/processes, with explicitly
   simulated vendor replies. They are not paid/live vendor-account tests.
 
@@ -45,15 +52,13 @@ not a trusted Host actor is refused before any outbound call instead of minting 
 per-run vendor user; a conversation-scoped vendor user must be selected explicitly
 through this plugin's `user-id-source` legacy mode.
 
-## Human-input continuation migration
+## Human-input continuation
 
-New pending forms have an owner binding (Workspace/installation, conversation,
-actor and endpoint) and a one-hour expiry. Old ownerless forms must be restarted;
-this intentionally fails closed instead of adopting an unscoped form. Storage
-denial/transport/decode failures are not reported as “not found”. A submission is
-persistently consumed BEFORE dispatching the external approval; ambiguous vendor
-failures cannot be replayed. Recover such a workflow at Dify rather than blindly
-resubmitting. The component rejects overlapping resumes of the same form. This
-relies on SDK single-installation worker fencing, not distributed compare-and-swap.
-Expired/consumed failures are retained in scoped plugin storage until normal
-installation cleanup; this version does not promise periodic garbage collection.
+A paused Dify workflow is continued inside the same run: the runner asks LangBot
+for the interaction (`ctx.request_interaction`, up to one hour) and submits it to
+Dify. The form token, workflow run id and field/action mapping live only in that
+run's local variables; nothing is kept in component fields, module globals or
+plugin storage, so a form cannot be resumed by another run, conversation or
+installation. If the interaction expires, is cancelled or the run ends, the
+workflow must be restarted or recovered at Dify. A failed submission is not
+retried automatically, because Dify may already have accepted it.

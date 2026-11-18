@@ -12,6 +12,7 @@ from ......core import taskmgr
 from ......entity.persistence import metadata as persistence_metadata
 from ......workspace.errors import WorkspaceError, WorkspaceNotFoundError
 from ......utils import httpclient
+from ......telemetry import usage
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 
 LANGRAG_PLUGIN_AUTHOR = 'langbot-team'
@@ -205,6 +206,7 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
         except (ApplicationAPIException, PermissionDeniedError) as exc:
             raise RuntimeError(f'plugin_permission_confirmation_required: {author}/{name}') from exc
 
+    @usage.observe_runtime('kb.migration.run')
     async def _execute_rag_migration(
         self,
         execution_context: ExecutionContext,

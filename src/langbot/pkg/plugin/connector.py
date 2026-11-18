@@ -20,6 +20,7 @@ from urllib.parse import urljoin, urlparse
 from langbot_plugin.api.entities.builtin.pipeline.query import provider_session
 
 from ..core import app
+from ..telemetry import usage
 from . import handler
 from . import runtime_ops
 from .errors import (
@@ -98,6 +99,7 @@ _DEFAULT_CONNECT_TIMEOUT_SECONDS = 180.0
 _HEARTBEAT_INTERVAL_SEC = 20.0
 _HEARTBEAT_FAILURE_THRESHOLD = 3
 _RECONNECT_MAX_DELAY_SEC = 60.0
+_RECONNECT_REQUEST_WAIT_SECONDS = 30.0
 
 
 def _utc_now_iso() -> str:
@@ -1311,7 +1313,21 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         self._execution_context.set(execution_context)
         if not self.is_enable_plugin:
             return execution_context, None
-        if not hasattr(self, 'handler'):
+        if not self._runtime_available():
+            reconnect_task = self._reconnect_task
+            if reconnect_task is not None and not reconnect_task.done():
+                timeout = min(
+                    self._runtime_connect_timeout(self.ap.instance_config.data.get('plugin', {})),
+                    _RECONNECT_REQUEST_WAIT_SECONDS,
+                )
+                try:
+                    await asyncio.wait_for(asyncio.shield(reconnect_task), timeout=timeout)
+                except asyncio.TimeoutError as exc:
+                    raise PluginRuntimeNotConnectedError(
+                        f'Plugin runtime is reconnecting; not ready after {timeout:g} seconds. '
+                        'Please retry the message shortly.'
+                    ) from exc
+        if not self._runtime_available():
             raise PluginRuntimeNotConnectedError('Plugin runtime is not connected')
         settings = await self._synchronize_workspace(execution_context)
         return execution_context, settings
@@ -1435,6 +1451,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     return binding
         raise ValueError(f'Plugin {component_kind} {component_name!r} was not found in this Workspace')
 
+    @usage.observe_install('mcp', 'market')
     async def _install_mcp_from_marketplace(
         self,
         execution_context: ExecutionContext,
@@ -1472,9 +1489,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             self.ap.logger.info(f'MCP server {name} already exists, skipping installation')
             return
 
+        # Community-published MCP servers carry ``${VAR}`` placeholders instead
+        # of credentials (LANG-439). Install them disabled so nothing connects
+        # with a placeholder; the WebUI asks for the values before enabling.
+        required_inputs = mcp_data.get('required_inputs') or []
         server_data = {
             'name': name,
-            'enable': True,
+            'enable': not required_inputs,
             'mode': mode,
             'extra_args': extra_args,
             'readme': readme,
@@ -1499,11 +1520,15 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         self.ap.logger.info(f'Installing skill from marketplace ZIP ({len(file_bytes)} bytes)')
 
         # Install from ZIP using skill service
-        result = await skill_service.install_from_zip_upload(
-            execution_context,
-            file_bytes=file_bytes,
-            filename=filename + '.zip',
-        )
+        token = usage.install_source.set(usage.install_source.get() or 'market')
+        try:
+            result = await skill_service.install_from_zip_upload(
+                execution_context,
+                file_bytes=file_bytes,
+                filename=filename + '.zip',
+            )
+        finally:
+            usage.install_source.reset(token)
         self.ap.logger.info(f'Skill installed successfully: {result}')
 
     def _build_plugin_startup_failure_message(
@@ -1896,6 +1921,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 allow_not_found=True,
             )
             if mcp_status == 200:
+                usage.install_source.set('market')
                 mcp_payload = _decode_json_object(mcp_body, subject='Marketplace MCP metadata')
                 mcp_data = mcp_payload.get('data', {}).get('mcp', {})
                 if not isinstance(mcp_data, dict):
@@ -1920,11 +1946,30 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 allow_not_found=True,
             )
             if skill_status == 200:
-                _download_status, skill_package = await _marketplace_get(
-                    client,
-                    f'{space_url}/api/v1/marketplace/skills/download/{plugin_author}/{plugin_name}',
-                    max_bytes=_MARKETPLACE_SKILL_DOWNLOAD_MAX_BYTES,
-                )
+                try:
+                    skill_data = _decode_json_object(_skill_body, subject='Marketplace skill metadata')
+                    source = skill_data.get('data', {}).get('skill', {}).get('source')
+                except Exception:
+                    source = None
+                source = 'community' if source == 'community' else 'market'
+                usage.install_source.set(source)
+                try:
+                    _download_status, skill_package = await _marketplace_get(
+                        client,
+                        f'{space_url}/api/v1/marketplace/skills/download/{plugin_author}/{plugin_name}',
+                        max_bytes=_MARKETPLACE_SKILL_DOWNLOAD_MAX_BYTES,
+                    )
+                except Exception:
+                    usage.inc(
+                        self.ap,
+                        execution_context.workspace_uuid,
+                        'ugc.install',
+                        type='skill',
+                        source=source,
+                        outcome='failed',
+                        unfilled='no',
+                    )
+                    raise
                 await self._install_skill_from_zip(
                     execution_context,
                     skill_package,
@@ -1999,6 +2044,36 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         return {**install_info, '_certification': certification_info}, verified
 
     async def install_plugin(
+        self,
+        install_source: PluginInstallSource,
+        install_info: dict[str, Any],
+        task_context: taskmgr.TaskContext | None = None,
+    ) -> None:
+        outcome = 'failed'
+        token = usage.install_source.set(None)
+        try:
+            await self._install_plugin(install_source, install_info, task_context)
+            outcome = 'ok'
+        finally:
+            try:
+                context = self._execution_context.get()
+                if usage.install_source.get() is None:
+                    source = 'market' if install_source.value == 'marketplace' else install_source.value
+                    usage.inc(
+                        self.ap,
+                        getattr(context, 'workspace_uuid', None),
+                        'ugc.install',
+                        type='plugin',
+                        source=source,
+                        outcome=outcome,
+                        unfilled='no',
+                    )
+            except Exception:
+                pass
+            finally:
+                usage.install_source.reset(token)
+
+    async def _install_plugin(
         self,
         install_source: PluginInstallSource,
         install_info: dict[str, Any],
@@ -2598,6 +2673,30 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 manifest_overrides=manifest_overrides,
             )
 
+    async def get_installed_plugin_package(self, author: str, plugin_name: str) -> dict[str, Any]:
+        """Return the exact archive an installed local/GitHub plugin runs (LANG-439).
+
+        Every installation persists its verified ``.lbpkg`` by digest, so the
+        shared package is byte-identical to what this Workspace installed.
+        Marketplace installations are refused: they already live on Space.
+        """
+        execution_context, setting = await self._setting_for_plugin(author, plugin_name)
+        if setting.install_source not in (PluginInstallSource.LOCAL.value, PluginInstallSource.GITHUB.value):
+            raise ValueError('Only locally installed or GitHub-installed plugins can be shared to LangBot Space')
+        package = await self._load_artifact_package(execution_context, setting.artifact_digest)
+        if package is None:
+            raise ValueError('The installed plugin package is missing; reinstall the plugin and try again')
+        manifest, _, _ = inspect_plugin_archive_metadata(package, require_manifest=True)
+        metadata = (manifest or {}).get('metadata') or {}
+        version = str(metadata.get('version') or '')
+        return {
+            'package': package,
+            'filename': f'{author}-{plugin_name}-{version or "local"}.lbpkg',
+            'install_source': setting.install_source,
+            'version': version,
+            'artifact_digest': setting.artifact_digest,
+        }
+
     async def git_sync_plugin(
         self,
         author: str,
@@ -2798,6 +2897,31 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 yield command_context.CommandReturn.model_validate(ret)
 
     # Runner methods
+    async def wait_for_runner_plugin(self, plugin_author: str, plugin_name: str) -> None:
+        """Wait for an enabled installation, without granting or enabling it."""
+        if not self.is_enable_plugin:
+            raise ValueError('The plugin system is disabled. Enable it in the instance configuration.')
+        try:
+            _, setting = await self._setting_for_plugin(plugin_author, plugin_name)
+        except ValueError as exc:
+            if str(exc) != f'Plugin {plugin_author}/{plugin_name} is not installed in this Workspace':
+                raise
+            raise ValueError(
+                'The Runner plugin is not installed in this Workspace. Open Plugins to install it; '
+                'if installation failed, check the installation task and runtime logs, then retry.'
+            ) from None
+        if not setting.enabled:
+            from ..api.application.plugin_permissions import permission_status
+
+            if permission_status(self.ap, setting)['pending_confirmation']:
+                raise ValueError('The Runner plugin requires permission confirmation. Open Plugins to review it.')
+            raise ValueError('The Runner plugin is disabled. Open Plugins to enable it.')
+        try:
+            async with asyncio.timeout(30):
+                await self._wait_for_installed_plugin_ready(plugin_author, plugin_name, None)
+        except TimeoutError as exc:
+            raise RuntimeError(self._build_plugin_startup_failure_message(plugin_author, plugin_name, None)) from exc
+
     async def list_runners(self, bound_plugins: list[str] | None = None) -> list[dict[str, Any]]:
         """List all available Runner components.
 

@@ -93,7 +93,7 @@ Observed event/API evidence:
 Standalone runtime command:
 
 ```bash
-cd langbot-plugin-sdk
+cd LangBot/sdk
 uv run python -m langbot_plugin.cli.__init__ rt --debug-only --ws-control-port 5400 --ws-debug-port 5401 --skip-deps-check
 ```
 

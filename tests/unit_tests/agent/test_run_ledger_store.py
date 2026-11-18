@@ -462,6 +462,42 @@ async def test_append_audit_event_uses_next_sequence(store):
 
 
 @pytest.mark.asyncio
+async def test_retry_resume_and_cancel_ack_persist_lifecycle_metadata(store):
+    await store.create_run(
+        run_id='run-retry-contract',
+        event_id='evt-retry',
+        binding_id='binding-1',
+        runner_id='runner-a',
+    )
+    await store.finalize_run(run_id='run-retry-contract', status='failed', status_reason='upstream')
+
+    retried = await store.retry_run(run_id='run-retry-contract', status_reason='retry once')
+    assert retried is not None
+    assert retried['status'] == 'queued'
+    assert retried['metadata']['retry_count'] == 1
+    assert retried['metadata']['retry_reason'] == 'retry once'
+
+    await store.finalize_run(run_id='run-retry-contract', status='timeout')
+    resumed = await store.retry_run(
+        run_id='run-retry-contract',
+        status_reason='resume from last event',
+        resume_from_sequence=7,
+    )
+    assert resumed is not None
+    assert resumed['status'] == 'queued'
+    assert resumed['metadata']['retry_count'] == 2
+    assert resumed['metadata']['resume_from_sequence'] == 7
+
+    acknowledged = await store.acknowledge_cancel(
+        run_id='run-retry-contract',
+        reason='cleanup complete',
+        cleanup_confirmed=True,
+    )
+    assert acknowledged is not None
+    assert acknowledged['metadata']['cancel_ack']['cleanup_confirmed'] is True
+
+
+@pytest.mark.asyncio
 async def test_host_events_allocate_sequences_across_stores(store, db_engine):
     await store.create_run(run_id='concurrent-host', event_id=None, binding_id=None, runner_id='runner')
     other = RunLedgerStore(db_engine)

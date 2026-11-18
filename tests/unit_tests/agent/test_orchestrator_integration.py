@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import asyncio
 import datetime
 import types
@@ -135,6 +136,10 @@ class FakeApplication:
     def __init__(self, plugin_connector: FakePluginConnector, db_engine: AsyncEngine):
         self.logger = FakeLogger()
         self.ver_mgr = FakeVersionManager()
+        self.box_service = types.SimpleNamespace(
+            resolve_workspace_backend=AsyncMock(return_value=None),
+            resolve_workspace_selection=AsyncMock(return_value={'backend': None, 'e2b': {}}),
+        )
         self.plugin_connector = plugin_connector
         self.persistence_mgr = FakePersistenceManager(db_engine)
 
@@ -309,7 +314,7 @@ def test_context_builder_renders_message_chain_without_preprocessing():
 
     input_data = QueryEntryAdapter._build_input(query)
 
-    assert [content.type for content in input_data.contents] == ['text', 'image_base64']
+    assert [content.type for content in input_data.contents] == ['text']
     assert input_data.text == '[attachment att-1: image]'
     assert len(input_data.attachments) == 1
     assert input_data.attachments[0].type == 'image'
@@ -605,11 +610,11 @@ async def test_orchestrator_persists_run_ledger(clean_agent_state):
             {
                 'type': 'message.completed',
                 'data': {'message': {'role': 'assistant', 'content': 'fake response'}},
+                'usage': {'prompt_tokens': 1, 'completion_tokens': 1, 'total_tokens': 2},
             },
             {
                 'type': 'run.completed',
                 'data': {'finish_reason': 'stop'},
-                'usage': {'prompt_tokens': 2, 'completion_tokens': 3, 'total_tokens': 5},
             },
         ]
     )
@@ -628,9 +633,9 @@ async def test_orchestrator_persists_run_ledger(clean_agent_state):
     assert run['event_id'] == plugin_connector.contexts[0]['event']['event_id']
     assert run['runner_id'] == RUNNER_ID
     assert run['usage'] == {
-        'prompt_tokens': 2,
-        'completion_tokens': 3,
-        'total_tokens': 5,
+        'prompt_tokens': 1,
+        'completion_tokens': 1,
+        'total_tokens': 2,
     }
 
     events, next_cursor, prev_cursor, has_more = await store.page_run_events(
@@ -703,6 +708,7 @@ async def test_cancel_request_preserves_one_terminal_event(clean_agent_state, re
     from langbot.pkg.i18n import t, language_scope
 
     store = RunLedgerStore(clean_agent_state)
+    cleaned_up = []
     resumed = []
 
     class CancellingConnector(FakePluginConnector):
@@ -715,8 +721,16 @@ async def test_cancel_request_preserves_one_terminal_event(clean_agent_state, re
                 'run.failed': {'code': 'cancelled', 'error': 'Runner cancellation diagnostic', 'retryable': False},
                 'run.completed': {'finish_reason': 'stop'},
             }[result_type]
-            yield {'type': result_type, 'sequence': 7, 'data': data}
-            resumed.append(True)
+            try:
+                yield {'type': result_type, 'sequence': 7, 'data': data}
+                resumed.append(True)
+                yield {
+                    'type': 'message.completed',
+                    'sequence': 8,
+                    'data': {'message': {'role': 'assistant', 'content': 'must not be delivered'}},
+                }
+            finally:
+                cleaned_up.append(True)
 
     connector = CancellingConnector()
     ap = FakeApplication(connector, clean_agent_state)
@@ -746,6 +760,8 @@ async def test_cancel_request_preserves_one_terminal_event(clean_agent_state, re
     run_id = connector.contexts[0]['run_id']
     run = await store.get_run(run_id)
     events, *_ = await store.page_run_events(run_id=run_id, limit=10)
+    assert cleaned_up == [True]
+    assert not any(event['type'] == 'message.completed' for event in events)
     terminals = [event for event in observed if event['type'] in {'run.completed', 'run.failed'}]
     assert len(terminals) == 1
     assert [event['type'] for event in events if event['type'] != 'admin.run_cancel'] == [
@@ -759,13 +775,13 @@ async def test_cancel_request_preserves_one_terminal_event(clean_agent_state, re
         assert run['status'] == 'cancelled'
         assert terminals[0]['data']['code'] == 'cancelled'
     if result_type == 'tool.call.started':
-        assert not resumed
         assert run['status_reason'] == 'cancel during export recovery'
         assert [event['sequence'] for event in events] == ([7, 8, 9] if admin_audit else [7, 8])
         assert terminals[0]['sequence'] == events[-1]['sequence']
         assert events[-1]['source'] == 'host'
         assert terminals[0]['data']['error'] == t('Task was cancelled', locale=locale)
     else:
+        assert not resumed
         assert len(events) == 1
         assert events[0]['source'] == 'runner'
         if result_type == 'run.failed':
@@ -773,23 +789,123 @@ async def test_cancel_request_preserves_one_terminal_event(clean_agent_state, re
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('cancel_while_waiting', [False, True])
-async def test_consumer_exit_finalizes_cancelled_ledger(clean_agent_state, cancel_while_waiting):
+@pytest.mark.parametrize(
+    ('result_type', 'data', 'status'),
+    [
+        (
+            'run.completed',
+            {'finish_reason': 'stop', 'message': {'role': 'assistant', 'content': 'done'}},
+            'completed',
+        ),
+        ('run.failed', {'error': 'boom', 'code': 'fake.error', 'retryable': False}, 'failed'),
+        ('run.failed', {'error': 'stopped', 'code': 'cancelled', 'retryable': False}, 'cancelled'),
+        ('run.cancelled', {'reason': 'stopped', 'cleanup_confirmed': True}, 'cancelled'),
+    ],
+)
+async def test_terminal_is_persisted_before_runner_stream_cleanup(
+    clean_agent_state, monkeypatch, result_type, data, status
+):
+    """Transport cleanup must not hold a validated terminal run open."""
+    cleanup_started = asyncio.Event()
+    release_cleanup = asyncio.Event()
+    usage = {'prompt_tokens': 2, 'completion_tokens': 1, 'total_tokens': 3}
+    record_execution = Mock()
+    monkeypatch.setattr('langbot.pkg.agent.runner.orchestrator.record_execution', record_execution)
+
+    class SlowCleanupConnector(FakePluginConnector):
+        async def run_runner(self, **kwargs):
+            self.contexts.append(kwargs['context'])
+            try:
+                yield {'type': result_type, 'data': data, 'usage': usage}
+            finally:
+                cleanup_started.set()
+                await release_cleanup.wait()
+
+    connector = SlowCleanupConnector()
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
+
+    async def consume():
+        return [message async for message in orchestrator.run_from_query(make_query())]
+
+    task = asyncio.create_task(consume())
+    try:
+        await asyncio.wait_for(cleanup_started.wait(), timeout=2)
+        run = await RunLedgerStore(clean_agent_state).get_run(connector.contexts[0]['run_id'])
+        assert run['status'] == status
+        assert run['finished_at'] is not None
+        assert run['usage'] == usage
+        assert not task.done()
+        # Cleanup crossing the deadline must not change an already-finalized outcome.
+        connector.contexts[0]['runtime']['deadline_at'] = 0
+    finally:
+        release_cleanup.set()
+        outcomes = await asyncio.wait_for(asyncio.gather(task, return_exceptions=True), timeout=2)
+
+    if result_type == 'run.failed':
+        assert isinstance(outcomes[0], RunnerExecutionError)
+        assert outcomes[0].error_code == data['code']
+    else:
+        assert not isinstance(outcomes[0], BaseException)
+    assert record_execution.call_args.kwargs['outcome'] == ('success' if status == 'completed' else status)
+    assert await get_session_registry().list_active_runs() == []
+
+
+@pytest.mark.asyncio
+async def test_completed_run_message_is_terminal_before_consumer_resumes(clean_agent_state, monkeypatch):
+    record_execution = Mock()
+    monkeypatch.setattr('langbot.pkg.agent.runner.orchestrator.record_execution', record_execution)
     connector = FakePluginConnector(
         results=[
-            {'type': 'message.delta', 'data': {'chunk': {'role': 'assistant', 'content': 'first'}}},
-            {'type': 'run.completed', 'data': {'finish_reason': 'stop'}},
+            {
+                'type': 'run.completed',
+                'data': {'finish_reason': 'stop', 'message': {'role': 'assistant', 'content': 'done'}},
+            }
         ]
     )
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
+    stream = orchestrator.run_from_query(make_query())
+    try:
+        assert (await anext(stream)).content == 'done'
+        run = await RunLedgerStore(clean_agent_state).get_run(connector.contexts[0]['run_id'])
+        assert run['status'] == 'completed'
+    finally:
+        await stream.aclose()
+    run = await RunLedgerStore(clean_agent_state).get_run(connector.contexts[0]['run_id'])
+    assert run['status'] == 'completed'
+    assert record_execution.call_args.kwargs['outcome'] == 'success'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('cancel_while_waiting', [False, True])
+@pytest.mark.parametrize('message_type', ['message.delta', 'message.completed'])
+async def test_consumer_exit_finalizes_cancelled_ledger(clean_agent_state, cancel_while_waiting, message_type):
+    class WaitingConnector(FakePluginConnector):
+        async def run_runner(self, **kwargs):
+            self.contexts.append(kwargs['context'])
+            payload_key = 'chunk' if message_type == 'message.delta' else 'message'
+            yield {'type': message_type, 'data': {payload_key: {'role': 'assistant', 'content': 'first'}}}
+            self.delay_entered.set()
+            await asyncio.Event().wait()
+
+    connector = WaitingConnector()
     orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
     plan = orchestrator.query_bridge.build_plan(make_query())
     stream = orchestrator.run(plan.event, plan.binding, adapter_context={'_execution_context': TEST_CONTEXT})
     await anext(stream)
     if cancel_while_waiting:
-        connector.delay = 10
+        snapshot_read = asyncio.Event()
+        get_run = orchestrator.journal.get_run
+
+        async def get_run_then_signal(*args, **kwargs):
+            snapshot = await get_run(*args, **kwargs)
+            snapshot_read.set()
+            return snapshot
+
+        orchestrator.journal.get_run = get_run_then_signal
         pending = asyncio.create_task(anext(stream))
-        # Cancel the provider wait, not an arbitrary journal DB operation.
+        # Prefetch can start before the Host finishes its post-message ledger read.
         await asyncio.wait_for(connector.delay_entered.wait(), timeout=2)
+        await asyncio.wait_for(snapshot_read.wait(), timeout=2)
         pending.cancel()
         with pytest.raises(asyncio.CancelledError):
             await pending
@@ -1052,7 +1168,10 @@ async def test_unconsumed_steering_audit_does_not_persist_pinned_context(clean_a
         attachments = query.variables.get('_pipeline_mcp_resource_attachments', [])
         return pinned_context if attachments else ''
 
-    mcp_loader = types.SimpleNamespace(build_resource_context_for_query=AsyncMock(side_effect=build_resource_context))
+    mcp_loader = types.SimpleNamespace(
+        task_sandbox_scope=lambda *_, **__: contextlib.nullcontext(),
+        build_resource_context_for_query=AsyncMock(side_effect=build_resource_context),
+    )
     ap.tool_mgr = types.SimpleNamespace(mcp_tool_loader=mcp_loader)
     orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
 
@@ -1096,7 +1215,7 @@ async def test_unconsumed_steering_audit_does_not_persist_pinned_context(clean_a
         event
         for event in event_logs
         if event['event_type'] == 'message.received'
-        and event.get('metadata', {}).get('steering', {}).get('status') == 'queued'
+        and event.get('metadata', {}).get('steering', {}).get('status') == 'dropped'
     )
 
     assert dropped['input_summary'] == 'Unconsumed steering input dropped'
@@ -1134,6 +1253,7 @@ async def test_platform_event_steering_requires_waiting_run_and_matching_binding
     sessions = types.SimpleNamespace(
         find_steering_target=AsyncMock(return_value=target_run_id),
         enqueue_steering=AsyncMock(return_value=True),
+        complete_steering_enqueue=AsyncMock(return_value=True),
     )
     journal = types.SimpleNamespace(write_event_log=AsyncMock(return_value='log-1'), write_user_transcript=AsyncMock())
     orchestrator = types.SimpleNamespace(
@@ -1144,6 +1264,7 @@ async def test_platform_event_steering_requires_waiting_run_and_matching_binding
         journal=journal,
         ap=types.SimpleNamespace(logger=FakeLogger()),
     )
+    orchestrator._enqueue_steering = lambda *args: AgentRunOrchestrator._enqueue_steering(orchestrator, *args)
 
     claimed = await AgentRunOrchestrator.try_claim_steering_from_event(
         orchestrator,
@@ -1204,6 +1325,8 @@ class TestQueryEntrySessionQueryId:
         from langbot.pkg.box.service import BoxService
 
         class CapturingBoxService:
+            resolve_workspace_backend = AsyncMock(return_value=None)
+            resolve_workspace_selection = AsyncMock(return_value={'backend': None, 'e2b': {}})
             available = True
 
             def __init__(self):
@@ -1322,7 +1445,8 @@ class TestQueryEntrySessionQueryId:
             return 'Pinned documentation'
 
         mcp_loader = types.SimpleNamespace(
-            build_resource_context_for_query=AsyncMock(side_effect=build_resource_context)
+            task_sandbox_scope=lambda *_, **__: contextlib.nullcontext(),
+            build_resource_context_for_query=AsyncMock(side_effect=build_resource_context),
         )
         ap.tool_mgr = types.SimpleNamespace(mcp_tool_loader=mcp_loader)
         orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
@@ -1956,7 +2080,8 @@ class TestQueryEntryAdapterHostCapabilities:
         )
         ap = FakeApplication(plugin_connector, db_engine)
         mcp_loader = types.SimpleNamespace(
-            build_resource_context_for_query=AsyncMock(return_value='Pinned documentation')
+            task_sandbox_scope=lambda *_, **__: contextlib.nullcontext(),
+            build_resource_context_for_query=AsyncMock(return_value='Pinned documentation'),
         )
         ap.tool_mgr = types.SimpleNamespace(mcp_tool_loader=mcp_loader)
         orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
@@ -1992,8 +2117,8 @@ class TestQueryEntryAdapterHostCapabilities:
         assert len(event_logs) >= 1
         # First event should be the incoming message.received
         assert event_logs[0]['event_type'] == 'message.received'
-        assert event_logs[0]['input_json']['contents'][1]['image_base64'] is None
-        assert event_logs[0]['input_json']['contents'][1]['content_redacted'] is True
+        assert event_logs[0]['input_json']['contents'][1]['type'] == 'text'
+        assert event_logs[0]['input_json']['contents'][1]['text'] == '[attachment att-2: image]'
         assert 'aGVsbG8=' not in str(event_logs[0]['input_json'])
         assert 'Pinned documentation' not in str(event_logs[0]['input_json'])
 
@@ -2010,7 +2135,8 @@ class TestQueryEntryAdapterHostCapabilities:
         assert 'user' in roles
         assert 'assistant' in roles
         user_item = next(t for t in transcripts if t['role'] == 'user')
-        assert user_item['content_json']['content'][1]['image_base64'] is None
+        assert user_item['content_json']['content'][1]['type'] == 'text'
+        assert user_item['content_json']['content'][1]['text'] == '[attachment att-2: image]'
         assert user_item['attachment_refs'][0]['content'] is None
         assert 'aGVsbG8=' not in str(user_item)
         assert 'Pinned documentation' not in str(user_item)
@@ -2036,7 +2162,8 @@ async def test_synthetic_event_query_exposes_trusted_workspace_to_tools(clean_ag
     assert synthetic.workspace_uuid == context.workspace_uuid
     assert synthetic.instance_uuid == context.instance_uuid
     assert synthetic.placement_generation == context.placement_generation
-    assert synthetic.query_uuid == context.query_uuid
+    assert synthetic.query_uuid
+    assert synthetic._execution_context.query_uuid == synthetic.query_uuid
     received = []
     app.skill_mgr.get_skills = lambda scope: received.append(scope) or {}
     get_visible_skills(app, synthetic)
@@ -2066,3 +2193,152 @@ async def test_agent_cannot_deliver_exported_files_without_reply_api(clean_agent
             )
         ]
     assert await get_session_registry().list_active_runs() == []
+
+
+class SelfFinalizingPluginConnector(FakePluginConnector):
+    """A Runner that finalizes its own run through the ledger mid-stream."""
+
+    def __init__(self, db_engine, ledger_status: str, results=None, error: Exception | None = None):
+        super().__init__(results=results)
+        self.db_engine = db_engine
+        self.ledger_status = ledger_status
+        self.after_finalize_error = error
+
+    async def run_runner(self, plugin_author, plugin_name, runner_name, context):
+        self.contexts.append(context)
+        await RunLedgerStore(self.db_engine).finalize_run(
+            run_id=context['run_id'], status=self.ledger_status, status_reason='runner_finalized'
+        )
+        for result in self.results:
+            yield result
+        if self.after_finalize_error is not None:
+            raise self.after_finalize_error
+
+
+@pytest.mark.asyncio
+async def test_stream_end_after_runner_finalized_run_keeps_its_terminal_status(clean_agent_state):
+    """Closing the stream of an already-terminal run must not raise a second failure."""
+    db_engine = clean_agent_state
+    plugin_connector = SelfFinalizingPluginConnector(
+        db_engine,
+        'failed',
+        results=[{'type': 'message.completed', 'data': {'message': {'role': 'assistant', 'content': 'partial'}}}],
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(make_descriptor()))
+
+    # Previously: ValueError: Cannot transition terminal run ... from failed to completed
+    messages = [message async for message in orchestrator.run_from_query(make_query())]
+
+    assert len(messages) == 1
+    run = await RunLedgerStore(db_engine).get_run(plugin_connector.contexts[0]['run_id'])
+    assert run['status'] == 'failed'
+    assert run['status_reason'] == 'runner_finalized'
+
+
+@pytest.mark.asyncio
+async def test_runner_error_after_runner_finalized_run_surfaces_the_real_error(clean_agent_state):
+    """The Runner's own error propagates instead of a terminal-transition ValueError."""
+    db_engine = clean_agent_state
+    plugin_connector = SelfFinalizingPluginConnector(db_engine, 'completed', error=RuntimeError('upstream broke'))
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(make_descriptor()))
+
+    with pytest.raises(RunnerExecutionError, match='upstream broke'):
+        [message async for message in orchestrator.run_from_query(make_query())]
+
+    run = await RunLedgerStore(db_engine).get_run(plugin_connector.contexts[0]['run_id'])
+    assert run['status'] == 'completed'
+
+
+@pytest.mark.asyncio
+async def test_event_without_query_identity_gets_a_task_scoped_identity(clean_agent_state, monkeypatch):
+    from dataclasses import replace
+
+    app = FakeApplication(FakePluginConnector(), clean_agent_state)
+    orchestrator = AgentRunOrchestrator(app, FakeRegistry(make_descriptor()))
+    plan = orchestrator.query_bridge.build_plan(make_query())
+    context = replace(TEST_CONTEXT, query_uuid=None)
+    contexts = []
+
+    async def capture(event, binding, bound_plugins, adapter_context):
+        contexts.append(adapter_context['_execution_context'])
+        if False:
+            yield None
+
+    monkeypatch.setattr(orchestrator, '_run', capture)
+    for _ in range(2):
+        assert [
+            item
+            async for item in orchestrator.run(
+                plan.event, plan.binding, adapter_context={'_execution_context': context}
+            )
+        ] == []
+    assert all(item.query_uuid for item in contexts)
+    assert contexts[0].query_uuid != contexts[1].query_uuid
+    assert context.query_uuid is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('runner_failure', [False, True])
+async def test_repeated_cancel_during_box_cleanup_expires_outputs_and_unregisters(clean_agent_state, runner_failure):
+    from langbot.pkg.box.runner import RunBoxBinding
+
+    query = make_query()
+    cleanup_entered = asyncio.Event()
+    cleanup_release = asyncio.Event()
+    expired = []
+
+    class OutputConnector(FakePluginConnector):
+        async def run_runner(self, **kwargs):
+            self.contexts.append(kwargs['context'])
+            run_id = kwargs['context']['run_id']
+            object.__setattr__(query, '_box_binding', RunBoxBinding(run_id, 'cleanup-box', {}, run_id))
+            if runner_failure:
+                raise RuntimeError('original runner failure')
+            yield {
+                'type': 'run.completed',
+                'data': {'finish_reason': 'stop', 'message': {'role': 'assistant', 'content': 'done'}},
+            }
+
+    connector = OutputConnector()
+    application = FakeApplication(connector, clean_agent_state)
+
+    async def delayed_cleanup(execution_query):
+        assert execution_query is query
+        cleanup_entered.set()
+        await cleanup_release.wait()
+
+    async def expire_outputs(context):
+        expired.append(context.trigger_principal.run_id)
+        return 0
+
+    application.box_service.cleanup_run_files = delayed_cleanup
+    application.artifact_service = types.SimpleNamespace(expire_run_outputs=expire_outputs)
+    orchestrator = AgentRunOrchestrator(application, FakeRegistry(make_descriptor()))
+
+    async def consume():
+        return [result async for result in orchestrator.run_from_query(query)]
+
+    task = asyncio.create_task(consume())
+    try:
+        await asyncio.wait_for(cleanup_entered.wait(), timeout=2)
+        task.cancel('first cancellation during Box cleanup')
+        await asyncio.sleep(0)
+        task.cancel('second cancellation during Box cleanup')
+        await asyncio.sleep(0)
+        assert not task.done()
+        cleanup_release.set()
+        if runner_failure:
+            with pytest.raises(RunnerExecutionError, match='original runner failure'):
+                await asyncio.wait_for(task, timeout=2)
+        else:
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(task, timeout=2)
+    finally:
+        cleanup_release.set()
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+    run_id = connector.contexts[0]['run_id']
+    assert expired == [run_id]
+    assert not hasattr(query, '_box_binding')
+    assert await get_session_registry().get(run_id) is None
