@@ -474,6 +474,10 @@ The existing required check names remain `Regression tools` and `Core smoke (60s
 soak tests use the existing Suite and Job entry points with separately calibrated
 latency, throughput and resource budgets; the one-minute smoke does not replace them.
 
+For the optional JSON-configurable transaction mix used for local smoke,
+pressure and soak tests, see [Configurable mixload](mixload.md). It does
+not change the stock Daily job described below.
+
 ## Daily mixed workload and weekly contracts
 
 `Daily Endurance` keeps one owned Core/Runtime/Box deployment per run. At the
@@ -586,7 +590,9 @@ retrieval empty; normal Suite cleanup checks the owned configuration resources.
 The business chain has a 270-second budget and a 30-second cleanup reserve;
 plugin installation and initial service startup are outside this budget.
 `gate/suite/cases.json` retains assertions, process replacement receipts, exact
-HTTP statuses and retrieved content. A missing phase or failed assertion fails
+HTTP statuses and retrieved content. Authenticated monitoring requests read back
+each exact completed run and its conversation ID, and verify selected historical
+runs after subsequent process replacements. A missing phase or failed assertion fails
 the job. The job is opt-in and does not change Smoke or the daily schedule. It
 checks graceful process restart durability, not abrupt power loss or migrations.
 

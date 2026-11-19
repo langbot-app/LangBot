@@ -2,6 +2,9 @@
 """Drive independent CLI requests or persistent group conversations with Linux resource sampling."""
 
 import argparse
+import base64
+
+from tools.regression.mixload_pacing import allocate_group_slot, planned_group_slots
 from collections import Counter
 from tools.entrypoints.regression_coverage import checked, check_response
 from concurrent.futures import ThreadPoolExecutor
@@ -235,6 +238,32 @@ def sample_containers(configured, data_root, run=subprocess.run, discover=owned_
     return observation
 
 
+def valid_group_settings(settings):
+    if not isinstance(settings, dict):
+        return False
+    required = {'url', 'secret_env', 'message'}
+    if not required <= set(settings) or set(settings) - required - {'components'}:
+        return False
+    if any(not isinstance(settings[key], str) or not settings[key] for key in required):
+        return False
+    components = settings.get('components', [])
+    if not isinstance(components, list) or len(components) > 1:
+        return False
+    for component in components:
+        if not isinstance(component, dict) or set(component) != {'type', 'base64'} or component['type'] != 'Image':
+            return False
+        data = component['base64']
+        prefix = 'data:image/png;base64,'
+        if not isinstance(data, str) or len(data) > 16384 or not data.startswith(prefix):
+            return False
+        try:
+            if not base64.b64decode(data[len(prefix) :], validate=True).startswith(b'\x89PNG\r\n\x1a\n'):
+                return False
+        except ValueError:
+            return False
+    return True
+
+
 def group_request(case, group_id, member_id, turn, token, previous, env=None, *, timeout=90):
     """Send one signed GroupMessage through the existing HTTP Bot adapter."""
     settings = case['http_group']
@@ -245,7 +274,7 @@ def group_request(case, group_id, member_id, turn, token, previous, env=None, *,
             'session_id': group_id,
             'session_type': 'group',
             'sender': {'id': member_id, 'name': member_id, 'group_name': group_id},
-            'message': [{'type': 'Plain', 'text': settings['message'] + ' ' + marker}],
+            'message': [{'type': 'Plain', 'text': settings['message'] + ' ' + marker}, *settings.get('components', [])],
         }
     ).encode()
     stamp = str(int(time.time()))
@@ -335,6 +364,9 @@ def main():
     parser.add_argument(
         '--group-state', type=Path, help='Carry group histories across load phases; refuses interrupted runs'
     )
+    parser.add_argument(
+        '--open-loop-groups', action='store_true', help='Use absolute offered slots; report missed admissions'
+    )
     parser.add_argument('--ledger-db', type=Path)
     parser.add_argument('--workspace')
     parser.add_argument('--verification-timeout', type=float, default=5)
@@ -357,6 +389,8 @@ def main():
         parser.error('duration/rps must be positive, workers 1..32, cooldown nonnegative')
     if not 0 <= args.groups <= 4096 or not 1 <= args.members_per_group <= 1000:
         parser.error('groups must be 0..4096 (0 selects CLI mode), members-per-group 1..1000')
+    if args.open_loop_groups and not args.groups:
+        parser.error('open-loop groups require group mode')
     if args.max_requests is not None and args.max_requests < 1:
         parser.error('max-requests must be positive')
     cases = json.loads(args.cases.read_text())
@@ -382,9 +416,7 @@ def main():
         for case in cases:
             settings = case.get('http_group', {})
             if (
-                not isinstance(settings, dict)
-                or set(settings) != {'url', 'secret_env', 'message'}
-                or not all(isinstance(value, str) and value for value in settings.values())
+                not valid_group_settings(settings)
                 or not settings['url'].startswith(('http://', 'https://'))
                 or not os.environ.get(settings['secret_env'])
             ):
@@ -415,6 +447,9 @@ def main():
     phase = ['load']
     next_case = 0
     admitted_requests = 0
+    next_slot = 0
+    offered_slots = planned_group_slots(args.duration, args.rps, args.max_requests) if args.open_loop_groups else None
+    missed_by_case = Counter()
     phase_start_id = 0
     if args.ledger_db:
         with sqlite3.connect(args.ledger_db.resolve().as_uri() + '?mode=ro', uri=True) as db:
@@ -626,9 +661,22 @@ def main():
             iteration += 1
             due = max(due + args.workers / args.rps, time.monotonic())
 
+    def miss_slots(start, end):
+        if start >= end:
+            return
+        cycle = len(groups)
+        loops, rem = divmod(end - start, cycle)
+        if loops:
+            for group in groups:
+                missed_by_case[cases[group['case']]['name']] += loops
+        for slot in range(start, start + rem):
+            group = groups[slot % cycle]
+            missed_by_case[cases[group['case']]['name']] += 1
+
     def group_worker(_index):
-        nonlocal admitted_requests
+        nonlocal admitted_requests, next_slot
         while not stop.is_set():
+            offered_slot = None
             with group_condition:
                 while True:
                     now = time.monotonic()
@@ -638,6 +686,27 @@ def main():
                         or (args.max_requests is not None and admitted_requests >= args.max_requests)
                     ):
                         return
+                    if args.open_loop_groups:
+                        if next_slot >= offered_slots:
+                            return
+                        next_slot, index, missed_start, missed_end, wait = allocate_group_slot(
+                            next_slot,
+                            now - started,
+                            args.rps,
+                            offered_slots,
+                            [not item['busy'] and not item['failed'] for item in groups],
+                        )
+                        miss_slots(missed_start, missed_end)
+                        if index is None:
+                            if next_slot < offered_slots:
+                                group_condition.wait(min(wait, max(0, deadline - now)))
+                            continue
+                        group = groups[index]
+                        offered_slot = next_slot - 1
+                        group['due'] = started + offered_slot / args.rps
+                        group['busy'] = True
+                        admitted_requests += 1
+                        break
                     available = [group for group in groups if not group['busy'] and not group['failed']]
                     if not available:
                         if not any(group['busy'] for group in groups):
@@ -668,6 +737,8 @@ def main():
                 'status': 'failed',
                 'schedule_lag_seconds': max(0, before - group['due']),
             }
+            if offered_slot is not None:
+                row.update(offered_slot=offered_slot, planned_elapsed_seconds=offered_slot / args.rps)
             connection = None
             try:
                 connection, after_id = open_ledger()
@@ -717,6 +788,10 @@ def main():
             stop.set()
             admission_closed.set()
 
+    if args.open_loop_groups:
+        # Schedules start after state/ledger setup, not while files are initialized.
+        started = time.monotonic()
+        deadline = started + args.duration
     sampler = threading.Thread(target=sampling_guard)
     sampler.start()
     try:
@@ -724,6 +799,8 @@ def main():
             list(pool.map(group_worker if args.groups else worker, range(args.workers)))
         if args.max_requests is None:
             stop.wait(max(0, deadline - time.monotonic()))
+        if args.open_loop_groups:
+            miss_slots(next_slot, offered_slots)
         load_elapsed = time.monotonic() - started
         phase[0] = 'cooldown'
         stop.wait(args.cooldown)
@@ -751,6 +828,21 @@ def main():
         'status': dict(Counter(row['status'] for row in rows)),
         'cases': {},
     }
+    if args.open_loop_groups:
+        admitted = Counter(row['case'] for row in rows)
+        summary.update(
+            planned_requests=offered_slots,
+            delivery_ratio=len(rows) / offered_slots,
+            load_model='open-loop scheduled slots; bounded workers; serialized sessions; missed slots not replayed',
+            slot_accounting={
+                name: {
+                    'offered': admitted[name] + missed_by_case[name],
+                    'admitted': admitted[name],
+                    'not_admitted': missed_by_case[name],
+                }
+                for name in dict.fromkeys(case['name'] for case in cases)
+            },
+        )
     if args.ledger_db:
         conversations.update('group_' + group['id'] for group in groups)
         summary['ledger_closeout'] = reconcile_runs(
@@ -791,6 +883,9 @@ def main():
                 for group in groups
             },
         }
+        if args.open_loop_groups:
+            for index, group in enumerate(groups):
+                summary['groups']['sessions'][group['id']]['group_index'] = index
         summary['group_failures'] = [
             group_id
             for group_id, result in summary['groups']['sessions'].items()
@@ -810,7 +905,11 @@ def main():
     print(json.dumps(summary, indent=2), flush=True)
     if (
         not rows
-        or (args.max_requests is not None and (len(rows) != args.max_requests or load_elapsed > args.duration))
+        or (
+            not args.open_loop_groups
+            and args.max_requests is not None
+            and (len(rows) != args.max_requests or load_elapsed > args.duration)
+        )
         or any(row['status'] != 'ok' for row in rows)
         or summary['health_failures']
         or sampling_errors

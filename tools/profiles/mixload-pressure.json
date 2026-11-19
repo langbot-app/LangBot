@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "seed": 20261118,
+  "include": ["chat", "box", "rag_chat", "media_chat"],
+  "weights": {"chat": 3, "box": 1, "rag_chat": 1, "media_chat": 1},
+  "phases": [
+    {"name": "normal", "duration_seconds": 120, "rps": 1.5, "workers": 12, "groups": 18, "members_per_group": 3, "cooldown_seconds": 20, "min_delivery_ratio": 0.85},
+    {"name": "pressure", "duration_seconds": 240, "rps": 3, "workers": 24, "groups": 30, "members_per_group": 3, "cooldown_seconds": 30, "min_delivery_ratio": 0.80}
+  ]
+}
