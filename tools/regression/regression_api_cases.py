@@ -11,9 +11,9 @@ from tools.regression.regression_api_checks import (
     unique_name,
     user_headers,
 )
-from tools.entrypoints.regression_coverage import checked
+from tools.regression.evidence import checked
 from tools.regression.regression_local_cases import require
-from tools.regression.regression_resource_cases import cleanup, journal
+from tools.regression.resource_cleanup import cleanup, journal
 
 CASE_NAMES = ('api_llm', 'api_embedding', 'api_rerank', 'api_pipeline', 'api_credentials', 'api_skills', 'api_mcp')
 

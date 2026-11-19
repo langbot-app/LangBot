@@ -7,12 +7,12 @@ import secrets
 import time
 
 from tools.regression.regression_api_checks import check, request, user_headers
-from tools.entrypoints.regression_coverage import checked
-from tools.regression.regression_lifecycle_cases import after_id, completed
+from tools.regression.evidence import checked
+from tools.regression.run_ledger import after_id, completed
 from tools.regression.regression_local_cases import require
-from tools.regression.regression_smoke import reconcile_scenario_runs
+from tools.regression.run_ledger import reconcile_scenario_runs
 from tools.entrypoints.regression_suite import Suite, contains_fields, resolve, validate
-from tools.entrypoints.regression_traffic import group_request
+from tools.regression.http_bot import group_request
 
 
 def state_profile(profile):

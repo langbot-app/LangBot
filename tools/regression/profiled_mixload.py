@@ -10,6 +10,7 @@ import re
 import sqlite3
 
 from tools.entrypoints.mock_llm import group_ack, group_markers, select_message
+from tools.regression.run_ledger import connect_readonly, run_event_rows
 from tools.regression.mixload_pacing import planned_group_slots
 from tools.regression.mixload_profile import compile_mixload, load_mixload
 from tools.regression.regression_mixed import BOX_HOST, RECOVERY_QUEUES, MissingEvidence, records, require
@@ -92,11 +93,8 @@ def box_evidence(db, run_id, case):
     """Require persisted successful execs and an identity from the selected backend."""
     check = case['box_exec']
     hits = []
-    rows = db.execute(
-        'SELECT data_json FROM agent_run_event WHERE run_id=? AND type=? ORDER BY sequence',
-        (run_id, 'tool.call.completed'),
-    )
-    for (data,) in rows:
+    rows = run_event_rows(db, run_id, 'tool.call.completed')
+    for _, data in rows:
         event = json.loads(data or '{}')
         if event.get('tool_name') != 'exec':
             continue
@@ -234,11 +232,8 @@ def check_phase_geometry(summary, rows, phase):
 
 
 def memory_events(db, run_id, turn):
-    rows = db.execute(
-        'SELECT data_json FROM agent_run_event WHERE run_id=? AND type=? ORDER BY sequence',
-        (run_id, 'tool.call.completed'),
-    )
-    actual = [json.loads(data).get('tool_name') for (data,) in rows]
+    rows = run_event_rows(db, run_id, 'tool.call.completed')
+    actual = [json.loads(data).get('tool_name') for _, data in rows]
     expected = ['remember', 'recall_memory'] if turn == 1 else ['recall_memory']
     require(actual == expected, 'Persisted memory tool sequence differs from the transaction')
     return len(actual)
@@ -274,7 +269,7 @@ def verify_profiled_run(output_suite_dir, ledger_db, provider_records, profile):
         tokens, runs, box_sessions = {}, set(), defaultdict(set)
         bots_by_case = defaultdict(set)
         memory_turns = Counter()
-        with closing(sqlite3.connect(Path(ledger_db).resolve().as_uri() + '?mode=ro', uri=True)) as db:
+        with closing(connect_readonly(ledger_db)) as db:
             db.execute('PRAGMA query_only=ON')
             for phase in profile['phases']:
                 path = root / phase['name']

@@ -19,6 +19,13 @@ The directory boundaries are intentional:
 
 Imports use the `tools.entrypoints` and `tools.regression` package paths. Keep commands rooted at the repository so profile and fixture paths resolve consistently.
 
+Common workload primitives live in `regression/http_bot.py` (group requests
+and signing), `regression/run_ledger.py` (read-only RunLedger evidence),
+`regression/resource_cleanup.py` (owned-resource journals and cleanup checks),
+and `regression/evidence.py` (assertion receipts). Import these from runners and
+cases rather than routing through an executable entrypoint. Keep
+scenario-specific expected outcomes and workflows with their scenarios.
+
 Run the deterministic OpenAI Chat Completions endpoint with Python 3.11+, without
 API credentials or third-party dependencies:
 
