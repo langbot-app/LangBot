@@ -11,6 +11,8 @@ from uuid import UUID, uuid4
 import pydantic
 from langbot_plugin.api.entities.builtin.platform import events, message
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
+from langbot_plugin.api.entities import events as plugin_events
+from langbot_plugin.api.entities.builtin.provider import session as provider_session
 
 
 logger = logging.getLogger(__name__)
@@ -39,8 +41,12 @@ class _Reply:
 class ReplyStreamSession:
     """Ephemeral delivery state owned by one authorized run, never by plugin input."""
 
-    def __init__(self, event, adapter=None, source=None, *, delivery_adapter=None):
+    def __init__(
+        self, event, adapter=None, source=None, *, delivery_adapter=None, policy_query=None, agent_hooks=False
+    ):
         self.adapter = adapter
+        self.policy_query = policy_query
+        self.agent_hooks = agent_hooks
         self._delivery_adapter_override = delivery_adapter
         self.source = source.to_legacy_event() if isinstance(source, events.MessageReceivedEvent) else source
         if not isinstance(self.source, events.MessageEvent):
@@ -71,6 +77,44 @@ class ReplyStreamSession:
         finally:
             self._active.discard(task)
 
+    async def _responded(self, chain, *, streamed=False):
+        query = self.policy_query
+        if not self.agent_hooks or query is None:
+            return chain
+        session = query.session or provider_session.Session(
+            launcher_type=query.launcher_type,
+            launcher_id=query.launcher_id,
+            sender_id=query.sender_id,
+            bot_uuid=query.bot_uuid,
+        )
+        event = plugin_events.NormalMessageResponded(
+            query=query,
+            launcher_type=query.launcher_type.value,
+            launcher_id=query.launcher_id,
+            sender_id=query.sender_id,
+            session=session,
+            prefix='',
+            response_text=str(chain),
+            finish_reason='stop',
+            funcs_called=[],
+        )
+        ctx = await query._message_policy.ap.plugin_connector.emit_event(event, query._listener_plugins)
+        if streamed:
+            return chain
+        if ctx.event.reply_message_chain is not None:
+            return ctx.event.reply_message_chain
+        if ctx.is_prevented_default():
+            return None
+        if ctx.event.response_text != event.response_text:
+            return self._message(ctx.event.response_text)
+        return chain
+
+    async def prepare_reply(self, chain):
+        chain = await self._responded(chain)
+        if chain is not None and self.policy_query is not None:
+            chain = await self.policy_query._message_policy.prepare_reply_chain(self.policy_query, chain)
+        return chain
+
     async def _apply(self, request: ReplyStreamRequest) -> dict:
         async with self._lock:
             if self._closed:
@@ -86,6 +130,8 @@ class ReplyStreamSession:
                     raise ValueError('Reply stream is closed')
                 return reply.result
             try:
+                prepared = False
+                chain = None
                 if request.operation != 'abort':
                     reply.text = request.text
                 if self.mock_error:
@@ -103,7 +149,21 @@ class ReplyStreamSession:
                     reply.native = (
                         self.source is not None or target_streaming
                     ) and await self._delivery_adapter.is_stream_output_supported()
+                    if self.policy_query is not None and request.operation == 'finish':
+                        prepared = True
+                        chain = await self.prepare_reply(self._message(reply.text))
+                        reply.native = (
+                            reply.native
+                            and chain is not None
+                            and len(chain) == 1
+                            and isinstance(chain[0], message.Plain)
+                            and not self._quote_origin
+                        )
+                        if reply.native:
+                            reply.text = chain[0].text
                     if reply.native:
+                        if self.policy_query is not None and not prepared:
+                            await self.policy_query._message_policy.wait_force_delay()
                         if self.source is not None:
                             await self._delivery_adapter.create_message_card(reply.delivery_id, self.source)
                         else:
@@ -115,6 +175,8 @@ class ReplyStreamSession:
                             )
                 if reply.started and reply.native:
                     await self._update_native(key, reply, final=request.operation != 'update')
+                    if request.operation == 'finish' and not prepared:
+                        await self._responded(self._message(reply.text), streamed=True)
                 if (
                     reply.started
                     and not reply.native
@@ -123,9 +185,12 @@ class ReplyStreamSession:
                     and not self.mock
                 ):
                     if self.source is not None:
-                        await self._delivery_adapter.reply_message(
-                            message_source=self.source, message=self._message(reply.text), quote_origin=False
-                        )
+                        if not prepared:
+                            chain = await self.prepare_reply(self._message(reply.text))
+                        if chain is not None:
+                            await self._delivery_adapter.reply_message(
+                                message_source=self.source, message=chain, quote_origin=self._quote_origin
+                            )
                     else:
                         target_type, target_id = self.target.get('target_type'), self.target.get('target_id')
                         if not target_type or not target_id:
@@ -151,6 +216,10 @@ class ReplyStreamSession:
     def _message(text):
         return message.MessageChain([message.Plain(text=text)])
 
+    @property
+    def _quote_origin(self):
+        return self.policy_query is not None and self.policy_query._message_policy.quote_origin
+
     async def _update_native(self, key, reply, *, final):
         if final:
             reply.final_attempted = True
@@ -164,11 +233,14 @@ class ReplyStreamSession:
             is_final=final,
         )
         if self.source is not None:
+            chain = self._message(reply.text)
+            if self.policy_query is not None:
+                self.policy_query._message_policy.mention_sender(self.source, chain)
             await self._delivery_adapter.reply_message_chunk(
                 message_source=self.source,
                 bot_message=chunk,
-                message=self._message(reply.text),
-                quote_origin=False,
+                message=chain,
+                quote_origin=self._quote_origin,
                 is_final=final,
             )
         else:

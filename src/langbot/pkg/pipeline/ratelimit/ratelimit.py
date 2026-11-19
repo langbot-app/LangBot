@@ -5,7 +5,6 @@ from ...i18n import pipeline_notice
 import typing
 
 from .. import entities, stage
-from . import algo
 from ...utils import importutil
 
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -18,27 +17,14 @@ importutil.import_modules_in_pkg(algos)
 @stage.stage_class('RequireRateLimitOccupancy')
 @stage.stage_class('ReleaseRateLimitOccupancy')
 class RateLimit(stage.PipelineStage):
-    """限速器控制阶段
+    """Rate limit stage
 
-    不改写query，只检查是否需要限速。
+    Takes and releases a slot in the rate limit of the message policy in
+    effect for the query. Does not rewrite the query.
     """
 
-    algo: algo.ReteLimitAlgo
-
     async def initialize(self, pipeline_config: dict):
-        algo_name = 'fixwin'
-
-        algo_class = None
-
-        for algo_cls in algo.preregistered_algos:
-            if algo_cls.name == algo_name:
-                algo_class = algo_cls
-                break
-        else:
-            raise ValueError(f'未知的限速算法: {algo_name}')
-
-        self.algo = algo_class(self.ap)
-        await self.algo.initialize()
+        pass
 
     async def process(
         self,
@@ -49,12 +35,9 @@ class RateLimit(stage.PipelineStage):
         typing.AsyncGenerator[entities.StageProcessResult, None],
     ]:
         """处理"""
+        policy = await self.ap.message_policy_mgr.for_query(query)
         if stage_inst_name == 'RequireRateLimitOccupancy':
-            if await self.algo.require_access(
-                query,
-                query.launcher_type.value,
-                query.launcher_id,
-            ):
+            if await policy.acquire_rate_limit(query):
                 return entities.StageProcessResult(
                     result_type=entities.ResultType.CONTINUE,
                     new_query=query,
@@ -67,11 +50,7 @@ class RateLimit(stage.PipelineStage):
                     user_notice=pipeline_notice(query, 'rate-limit-hint', 'Too many requests. Please try again later.'),
                 )
         elif stage_inst_name == 'ReleaseRateLimitOccupancy':
-            await self.algo.release_access(
-                query,
-                query.launcher_type.value,
-                query.launcher_id,
-            )
+            await policy.release_rate_limit(query)
             return entities.StageProcessResult(
                 result_type=entities.ResultType.CONTINUE,
                 new_query=query,

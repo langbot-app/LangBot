@@ -5,6 +5,10 @@ description: "LangBot を各メッセージングプラットフォームに接�
 
 ボットは、メッセージングプラットフォームからメッセージイベントを受信し、パイプラインを呼び出してメッセージを処理するために使用されます。
 
+`message_policy.plugins` はプラグインのコマンドとイベントリスナーをまとめて有効にします。新しいボットではすべて有効です。個別に選ぶには `enable_all` を `false` にし、`plugins` に `{author, name}` を実行順に指定します。ルートごとに `policy.plugins` で上書きできます。Messaging のプラグイン一覧は AI が利用できるツールを別途制御します。
+
+Agent ルートでは通常メッセージのリスナーが入力を書き換えたり、Agent の代わりに返信したりできます。`NormalMessageResponded` は送信前の返信を変更できますが、送信済みのストリーミング返信は観察のみです。`PromptPreProcessing` は Messaging 専用です。`list_bot_plugin_registrations` の `event_processors` に各フックが有効な処理先が表示されます。
+
 ![arch](/images/zh/deploy/bots/arch.png)
 
 

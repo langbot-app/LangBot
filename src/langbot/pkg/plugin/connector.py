@@ -956,6 +956,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if not self.is_enable_plugin or not hasattr(self, 'handler'):
             return None
         runtime_handler = self._runtime_handler()
+        changed = False
         async with self._state_lock:
             # Read the durable desired state while holding the same gate used by
             # install/remove bookkeeping. Otherwise a request can load a stale
@@ -966,6 +967,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             desired_by_uuid = {state.binding.installation_uuid: state for state in desired_states}
             previous_ids = set(self._workspace_installations.get(execution_context.workspace_uuid, set()))
             for installation_uuid in previous_ids - set(desired_by_uuid):
+                changed = True
                 previous = self._known_desired_states.get(installation_uuid)
                 if previous is not None:
                     await runtime_handler.remove_plugin_installation(previous.binding)
@@ -983,6 +985,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     await warn_compatibility(
                         self.ap, execution_context.workspace_uuid, f'{setting.plugin_author}/{setting.plugin_name}'
                     )
+                changed = True
                 try:
                     await self._apply_desired_state(desired)
                 except PluginInstallationFailedError:
@@ -997,7 +1000,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     execution_context.workspace_uuid,
                     None,
                 )
-            return settings
+        if changed:
+            await self._refresh_platform_commands(execution_context)
+        return settings
 
     async def _current_execution_context(self) -> ExecutionContext:
         current = self._execution_context.get()
@@ -1274,6 +1279,16 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         pass
 
     async def _refresh_runner_registry(self) -> None:
+        try:
+            await self._refresh_registered_runners()
+        finally:
+            # Platform command menus are best-effort and must not fail plugin lifecycle operations.
+            try:
+                await self._refresh_platform_commands(await self._current_execution_context())
+            except Exception as e:
+                self.ap.logger.warning(f'Failed to refresh platform commands: {e}')
+
+    async def _refresh_registered_runners(self) -> None:
         registry = getattr(self.ap, 'runner_registry', None)
         if registry is None:
             return
@@ -1281,6 +1296,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             await registry.refresh(await self._current_execution_context())
         except Exception as e:
             self.ap.logger.warning(f'Failed to refresh agent runner registry: {e}')
+
+    async def _refresh_platform_commands(self, context):
+        manager = getattr(self.ap, 'platform_mgr', None)
+        sync = getattr(manager, 'sync_workspace_commands', None)
+        if callable(sync):
+            await sync(context)
 
     async def ping_plugin_runtime(self):
         return await self._runtime_handler().ping()
@@ -1358,6 +1379,11 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         bindings: list[InstallationBinding] = (
             [self._legacy_oss_bridge_binding(execution_context)] if self.runtime_profile == 'oss_dev' else []
         )
+        if include_plugins is not None:
+            position = {name: index for index, name in enumerate(include_plugins)}
+            settings = sorted(
+                settings, key=lambda item: position.get(f'{item.plugin_author}/{item.plugin_name}', len(position))
+            )
         for setting in settings:
             plugin_id = f'{setting.plugin_author}/{setting.plugin_name}'
             if not include_disabled and not setting.enabled:
@@ -2847,6 +2873,19 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 query_uuid=query_uuid,
                 include_plugins=bound_plugins,
             )
+
+    async def list_plugin_registrations(self, include_plugins):
+        if not self.is_enable_plugin or not self._runtime_available():
+            return {}
+        handler = self._runtime_handler()
+        registrations = {}
+        for binding in await self._operation_bindings(include_plugins=include_plugins):
+            with handler.installation_scope(binding):
+                scoped = await handler.list_plugin_registrations(include_plugins)
+            if scoped is None:
+                return None
+            registrations.update(scoped)
+        return registrations
 
     async def list_commands(self, bound_plugins: list[str] | None = None) -> list[ComponentManifest]:
         if not self.is_enable_plugin or not self._runtime_available():

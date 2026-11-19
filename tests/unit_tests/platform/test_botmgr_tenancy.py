@@ -426,6 +426,7 @@ async def test_platform_callback_carries_scope_without_holding_database_session(
 
     listener = adapter.listeners[platform_events.FriendMessage]
     event = friend_message_event(text_chain('hello'), sender_id='user')
+    runtime._begin_message = AsyncMock(return_value=(None, False))
     await listener(event, adapter)
 
     assert persistence_mgr.active_workspace is None

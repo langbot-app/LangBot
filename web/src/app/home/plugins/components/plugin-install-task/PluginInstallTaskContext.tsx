@@ -7,6 +7,9 @@ import React, {
   useEffect,
 } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { showPluginEnablementHint } from './plugin-enablement-hint';
 import { AsyncTask } from '@/app/infra/entities/api';
 import {
   InstallStage,
@@ -205,6 +208,8 @@ export function PluginInstallTaskProvider({
   children: React.ReactNode;
 }) {
   const [tasks, setTasks] = useState<PluginInstallTask[]>([]);
+  const { t: translate } = useTranslation();
+  const navigate = useNavigate();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const intervalRefs = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -241,14 +246,20 @@ export function PluginInstallTaskProvider({
       success: boolean,
       error?: string,
       operation?: PluginTaskOperation,
+      installedPlugin?: string,
     ) => {
       if (notifiedTaskIds.current.has(taskId)) return;
       notifiedTaskIds.current.add(taskId);
       onTaskCompleteCallbacks.current.forEach((cb) => {
         cb(taskId, success, error, operation);
       });
+      if (success && installedPlugin) {
+        showPluginEnablementHint(installedPlugin, translate, () =>
+          navigate('/home/bots'),
+        ).catch(() => {});
+      }
     },
-    [],
+    [navigate, translate],
   );
 
   const pollTask = useCallback(
@@ -314,7 +325,17 @@ export function PluginInstallTaskProvider({
                     };
                   }
 
-                  notifyTaskComplete(taskId, true, undefined, t.operation);
+                  notifyTaskComplete(
+                    taskId,
+                    true,
+                    undefined,
+                    t.operation,
+                    t.extensionType === 'plugin' &&
+                      t.operation === 'install' &&
+                      typeof md.plugin_name === 'string'
+                      ? md.plugin_name
+                      : undefined,
+                  );
                   return {
                     ...t,
                     stage: InstallStage.DONE,

@@ -171,6 +171,9 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
                 async def run(self, ctx: RunnerContext) -> AsyncGenerator[RunnerResult, None]:
                     text = ctx.input.to_text()
                     content = f'{ctx.config.get("prefix", "e2e echo")}: {text}'
+                    self.plugin.runner_inputs = getattr(self.plugin, 'runner_inputs', []) + [text]
+                    if text == 'lifecycle-counts':
+                        content = json.dumps({'received': self.plugin.received, 'ran': self.plugin.runner_inputs})
                     if text.startswith('boundary probe'):
                         tools = await ctx.get_available_tools()
                         names = [item['name'] for item in tools]
@@ -228,6 +231,7 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
             """
             from langbot_plugin.api.definition.components.command.command import Command
             from langbot_plugin.api.entities.builtin.command.context import CommandReturn
+            from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
 
             class BoundaryCommand(Command):
                 async def initialize(self):
@@ -235,6 +239,10 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
                     @self.subcommand('')
                     async def handle(self, ctx):
                         yield CommandReturn(text='QA_COMMAND_EXECUTED')
+                    @self.subcommand('query-probe')
+                    async def probe(self, ctx):
+                        await ctx.reply(MessageChain([Plain(text='command:' + await ctx.get_bot_uuid())]))
+                        yield CommandReturn()
         """,
         ),
         'event_listener': (
@@ -246,13 +254,33 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
             from pathlib import Path
             from langbot_plugin.api.definition.components.common.event_listener import EventListener
             from langbot_plugin.api.entities import events
+            from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
 
             class BoundaryListener(EventListener):
                 async def initialize(self):
                     await super().initialize()
+                    self.plugin.received = []
+                    @self.handler(events.PersonMessageReceived)
+                    async def person(ctx):
+                        self.plugin.received.append(str(ctx.event.message_chain))
                     @self.handler(events.PersonNormalMessageReceived)
                     async def handle(ctx):
                         self.plugin.boundary_listener_hits = getattr(self.plugin, 'boundary_listener_hits', 0) + 1
+                        if 'agent-probe intercept' in ctx.event.text_message:
+                            ctx.event.reply_message_chain = MessageChain([Plain(text='handled before agent')])
+                            ctx.prevent_default()
+                        elif 'agent-probe replace-input' in ctx.event.text_message:
+                            ctx.event.user_message_alter = 'updated input'
+                    @self.handler(events.NormalMessageResponded)
+                    async def responded(ctx):
+                        if ctx.event.response_text == 'e2e echo: agent-probe replace-output':
+                            ctx.event.reply_message_chain = MessageChain([Plain(text='updated output')])
+                    @self.handler(events.GroupMessageReceived)
+                    async def group(ctx):
+                        self.plugin.received.append(str(ctx.event.message_chain))
+                        if 'group-probe' in str(ctx.event.message_chain):
+                            await ctx.reply(MessageChain([Plain(text='group:' + await ctx.get_bot_uuid())]))
+                            ctx.prevent_default()
         """,
         ),
     }
@@ -353,7 +381,7 @@ def runner_e2e_config_path(runner_e2e_tmpdir, runner_e2e_port, runner_runtime_po
     config['system']['disabled_adapters'] = [
         yaml.safe_load(path.read_text(encoding='utf-8'))['metadata']['name']
         for path in sorted(adapters.glob('*.yaml'))
-        if path.stem != 'websocket'
+        if path.stem not in {'websocket', 'http_bot'}
     ]
     with open(config_path, 'w', encoding='utf-8') as f:
         yaml.safe_dump(config, f, default_flow_style=False)
@@ -651,6 +679,155 @@ def test_host_orchestrator_runs_runner_and_records_ledger(
         assert '"count": 1' in state_row[0]
     finally:
         conn.close()
+
+
+def test_http_bot_plugin_lifecycle(runner_client, runner_e2e_tmpdir):
+    client = runner_client
+    token = _init_and_auth(client)
+    _ensure_qa_plugin(client, token, runner_e2e_tmpdir / 'agent-runner-qa.zip')
+    headers = {'Authorization': f'Bearer {token}'}
+
+    def data(response):
+        payload = response.json()
+        assert payload['code'] == 0, payload
+        return payload['data']
+
+    agent = data(
+        client.post(
+            '/api/v1/agents',
+            headers=headers,
+            json={
+                'kind': 'agent',
+                'name': 'Plugin lifecycle QA',
+                'supported_event_patterns': ['message.*'],
+                'config': {'runner': {'id': QA_RUNNER_ID}, 'runner_config': {QA_RUNNER_ID: {}}},
+            },
+        )
+    )['uuid']
+    pipeline = _create_boundary_pipeline(client, token)
+    enabled = {'plugins': {'enable_all': False, 'plugins': [{'author': 'e2e', 'name': 'agent-runner-qa'}]}}
+
+    def route(target, uuid, text, priority, policy):
+        return {
+            'event_pattern': 'message.received',
+            'target_type': target,
+            'target_uuid': uuid,
+            'priority': priority,
+            'policy': policy,
+            'filters': [{'field': 'message_text', 'operator': 'contains', 'value': text}] if text else [],
+        }
+
+    bot = data(
+        client.post(
+            '/api/v1/platform/bots',
+            headers=headers,
+            json={
+                'adapter': 'http_bot',
+                'name': 'Plugin lifecycle QA',
+                'enable': True,
+                'adapter_config': {'signature_required': False, 'callback_timeout': 2},
+                'event_bindings': [
+                    route('discard', '', 'discard-probe', 4, {}),
+                    route('pipeline', pipeline, 'disabled', 3, {}),
+                    route('agent', agent, 'agent-probe', 2, enabled),
+                    route('pipeline', pipeline, '', 1, enabled),
+                ],
+                'message_policy': {
+                    'plugins': {'enable_all': False, 'plugins': []},
+                    'trigger': {
+                        'group-respond-rules': {'enabled': True, 'at': True, 'prefix': [], 'regexp': [], 'random': 0}
+                    },
+                },
+            },
+        )
+    )['uuid']
+
+    def send(text, kind='person'):
+        reply = data(
+            client.post(
+                f'/bots/{bot}/sync',
+                json={'session_id': 'lifecycle', 'session_type': kind, 'message': [{'type': 'Plain', 'text': text}]},
+            )
+        )
+        return [item['text'] for item in reply['message'] if item.get('type') == 'Plain']
+
+    assert send('/qa_boundary_command query-probe') == ['command:' + bot]
+    assert send('group-probe messaging', 'group') == ['group:' + bot]
+    assert send('group-probe agent-probe', 'group') == ['group:' + bot]
+    assert data(client.get(f'/api/v1/agents/{agent}/runs', headers=headers))['items'] == []
+    assert send('no mention', 'group') == []
+    assert send('discard-probe disabled') == []
+    disabled_command = '/qa_boundary_command query-probe disabled'
+    assert send(disabled_command) == ['e2e echo: ' + disabled_command]
+    data(client.put(f'/api/v1/platform/bots/{bot}', headers=headers, json={'message_policy': enabled}))
+    registrations = data(client.get(f'/api/v1/platform/bots/{bot}/plugin-registrations', headers=headers))['plugins']
+    assert 'GroupMessageReceived' in registrations['e2e/agent-runner-qa']['events']
+    assert send('discard-probe') == []
+    counts = json.loads(send('lifecycle-counts')[0])
+    received = counts['received']
+    for text in ('group-probe messaging', 'group-probe agent-probe', 'no mention', 'discard-probe', 'lifecycle-counts'):
+        assert received.count(text) == 1, received
+    assert disabled_command not in received
+    assert 'discard-probe disabled' not in received
+    assert 'group-probe messaging' not in counts['ran']
+    assert 'no mention' not in counts['ran']
+
+
+def test_http_agent_message_policy(runner_client, runner_e2e_tmpdir):
+    client = runner_client
+    token = _init_and_auth(client)
+    _ensure_qa_plugin(client, token, runner_e2e_tmpdir / 'agent-runner-qa.zip')
+    headers = {'Authorization': f'Bearer {token}'}
+
+    def data(response):
+        body = response.json()
+        assert body['code'] == 0, body
+        return body['data']
+
+    agent = data(
+        client.post(
+            '/api/v1/agents',
+            headers=headers,
+            json={
+                'kind': 'agent',
+                'name': 'Agent policy QA',
+                'supported_event_patterns': ['message.*'],
+                'config': {'runner': {'id': QA_RUNNER_ID}, 'runner_config': {QA_RUNNER_ID: {}}},
+            },
+        )
+    )['uuid']
+    bot = data(
+        client.post(
+            '/api/v1/platform/bots',
+            headers=headers,
+            json={
+                'adapter': 'http_bot',
+                'name': 'Agent policy QA',
+                'enable': True,
+                'adapter_config': {'signature_required': False, 'callback_timeout': 8},
+                'event_bindings': [{'event_pattern': 'message.received', 'target_type': 'agent', 'target_uuid': agent}],
+                'message_policy': {
+                    'plugins': {'enable_all': False, 'plugins': [{'author': 'e2e', 'name': 'agent-runner-qa'}]},
+                    'trigger': {'group-respond-rules': {'enabled': True, 'prefix': [], 'random': 0, 'at': True}},
+                },
+            },
+        )
+    )['uuid']
+
+    def send(text, kind='person'):
+        result = data(
+            client.post(
+                f'/bots/{bot}/sync',
+                json={'session_id': 'agent-policy', 'session_type': kind, 'message': [{'type': 'Plain', 'text': text}]},
+            )
+        )
+        return [part['text'] for part in result['message'] if part['type'] == 'Plain']
+
+    assert send('agent-probe intercept') == ['handled before agent']
+    assert send('agent-probe blocked', 'group') == []
+    assert data(client.get(f'/api/v1/agents/{agent}/runs', headers=headers))['items'] == []
+    assert send('agent-probe replace-output') == ['updated output']
+    assert send('agent-probe replace-input') == ['e2e echo: updated input']
 
 
 def test_event_processor_real_runtime_logs_actions_and_instance_isolation(

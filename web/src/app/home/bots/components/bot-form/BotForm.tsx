@@ -24,7 +24,12 @@ import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicForm
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { systemInfo } from '@/app/infra/http';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
-import { Agent, Bot } from '@/app/infra/entities/api';
+import {
+  Agent,
+  Bot,
+  EventBinding,
+  MessagePolicy,
+} from '@/app/infra/entities/api';
 import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
 import {
   Cable,
@@ -35,12 +40,23 @@ import {
   ChevronRight,
   Webhook,
   Search,
+  TerminalSquare,
+  Route,
+  Puzzle,
+  ShieldCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
 import EventBindingsEditor from './EventBindingsEditor';
 import EventRoutingHelp from './EventRoutingHelp';
 import LegacyAdapterHelp from './LegacyAdapterHelp';
+import PluginCommandBindings from './PluginCommandBindings';
 import PluginProcessorBindings from './PluginProcessorBindings';
+import BotPluginsPanel from './BotPluginsPanel';
+import BotMessagePolicyPanel from './BotMessagePolicyPanel';
+import { BOT_SCOPE } from './PolicyScopeSelect';
+import { normalizeRouteOverride } from './message-policy';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, useWatch } from 'react-hook-form';
@@ -86,6 +102,50 @@ import GuidedTour, {
 } from '@/app/home/components/guided-tour/GuidedTour';
 
 type ConnectionMode = 'webhook' | 'persistent';
+
+function RoutingLayer({
+  icon: Icon,
+  title,
+  description,
+  count,
+  action,
+  children,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
+  count: number;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      aria-label={title}
+      className="overflow-hidden rounded-xl border bg-card"
+    >
+      <header className="flex items-start gap-3 border-b bg-muted/30 px-4 py-3">
+        <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-background text-primary shadow-xs">
+          <Icon className="size-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold">{title}</h3>
+            {count > 0 && (
+              <span className="rounded-full bg-muted-foreground/15 px-1.5 text-[11px] leading-4 tabular-nums">
+                {count}
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+            {description}
+          </p>
+        </div>
+        {action && <div className="shrink-0 pt-0.5">{action}</div>}
+      </header>
+      <div className="p-4">{children}</div>
+    </section>
+  );
+}
 
 function supportsConnectionMode(
   config: IDynamicFormItemSchema[],
@@ -174,6 +234,22 @@ const getFormSchema = (t: (key: string) => string) =>
     plugin_processors: z
       .array(z.object({ processor_uuid: z.string(), enabled: z.boolean() }))
       .optional(),
+    command_settings: z
+      .object({
+        enabled: z.boolean(),
+        prefixes: z.array(z.string()),
+        platform_commands: z
+          .object({ enabled: z.boolean(), selected: z.array(z.string()) })
+          .optional(),
+        processors: z.array(
+          z.object({
+            processor_uuid: z.string(),
+            enabled: z.boolean(),
+          }),
+        ),
+      })
+      .optional(),
+    message_policy: z.any().optional(),
     event_bindings: z
       .array(
         z.object({
@@ -191,6 +267,7 @@ const getFormSchema = (t: (key: string) => string) =>
           enabled: z.boolean(),
           description: z.string().optional(),
           order: z.number().optional(),
+          policy: z.any().optional(),
         }),
       )
       .optional(),
@@ -234,6 +311,11 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
       enable: true,
       event_bindings: [],
       plugin_processors: [],
+      command_settings: {
+        enabled: true,
+        prefixes: ['/'],
+        processors: [],
+      },
     },
   });
 
@@ -261,6 +343,8 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
   >({});
 
   const [agentNameList, setAgentNameList] = useState<Agent[]>([]);
+  const [routingTab, setRoutingTab] = useState('routes');
+  const [policyScope, setPolicyScope] = useState(BOT_SCOPE);
 
   const [dynamicFormConfigList, setDynamicFormConfigList] = useState<
     IDynamicFormItemSchema[]
@@ -317,6 +401,12 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
     [activeAdapters],
   );
   const [adapterSearch, setAdapterSearch] = useState('');
+  const [commandCapabilities, setCommandCapabilities] = useState<
+    Record<
+      string,
+      import('@/app/infra/entities/api').PlatformCommandCapability | undefined
+    >
+  >({});
   const adapterQuery = adapterSearch.trim().toLocaleLowerCase();
   const matchesAdapterSearch = (adapter: IChooseAdapterEntity) =>
     `${adapter.label} ${adapter.value} ${adapterDescriptionList[adapter.value] ?? ''}`
@@ -382,7 +472,13 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                 adapter_config: val.adapter_config,
                 enable: val.enable,
                 event_bindings: val.event_bindings || [],
+                message_policy: val.message_policy,
                 plugin_processors: val.plugin_processors || [],
+                command_settings: val.command_settings || {
+                  enabled: true,
+                  prefixes: ['/'],
+                  processors: [],
+                },
               });
               handleAdapterSelect(val.adapter, true);
 
@@ -418,6 +514,14 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
     setAgentNameList(agentsRes.agents);
 
     const adaptersRes = await httpClient.getAdapters();
+    setCommandCapabilities(
+      Object.fromEntries(
+        adaptersRes.adapters.map((item) => [
+          item.name,
+          item.spec.command_registration,
+        ]),
+      ),
+    );
     setAdapterNameList(
       adaptersRes.adapters.map((item) => {
         return {
@@ -508,7 +612,9 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
             adapter_config: bot.adapter_config,
             enable: bot.enable ?? true,
             event_bindings: bot.event_bindings ?? [],
+            message_policy: bot.message_policy,
             plugin_processors: bot.plugin_processors ?? [],
+            command_settings: bot.command_settings,
             webhook_full_url: runtimeValues?.webhook_full_url as
               string | undefined,
             extra_webhook_full_url: runtimeValues?.extra_webhook_full_url as
@@ -667,6 +773,11 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
       enable: false,
       event_bindings: [],
       plugin_processors: [],
+      command_settings: form.getValues('command_settings') || {
+        enabled: true,
+        prefixes: ['/'],
+        processors: [],
+      },
     };
 
     try {
@@ -724,8 +835,16 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
       adapter: form.getValues().adapter,
       adapter_config: form.getValues().adapter_config,
       enable: true,
-      event_bindings: form.getValues().event_bindings ?? [],
+      event_bindings: (form.getValues().event_bindings ?? []).map((binding) =>
+        binding.target_type === 'discard'
+          ? binding
+          : { ...binding, policy: normalizeRouteOverride(binding.policy) },
+      ),
       plugin_processors: form.getValues().plugin_processors ?? [],
+      command_settings: form.getValues().command_settings,
+      ...(form.getValues().message_policy
+        ? { message_policy: form.getValues().message_policy }
+        : {}),
     };
     httpClient
       .updateBot(initBotId, updateBot)
@@ -754,6 +873,20 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
     (form.watch('plugin_processors') ?? []).some(
       (processor) => processor.enabled !== false && !!processor.processor_uuid,
     );
+
+  const routeCount = (form.watch('event_bindings') ?? []).length;
+  const watchedBindings = (form.watch('event_bindings') ??
+    []) as EventBinding[];
+  const watchedPolicy = form.watch('message_policy') as
+    MessagePolicy | undefined;
+  const setBindings = (bindings: EventBinding[]) =>
+    form.setValue('event_bindings', bindings, { shouldDirty: true });
+  const setBotPolicy = (policy: MessagePolicy) =>
+    form.setValue('message_policy', policy, { shouldDirty: true });
+  const commandProcessorCount = (
+    form.watch('command_settings')?.processors ?? []
+  ).length;
+  const pluginProcessorCount = (form.watch('plugin_processors') ?? []).length;
 
   if (loadFailed)
     return (
@@ -1310,33 +1443,148 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                   initBotId && 'lg:min-h-0 lg:flex-1 lg:overflow-y-auto',
                 )}
               >
-                <EventBindingsEditor
-                  form={form}
-                  onAgentCreated={(agent) =>
-                    setAgentNameList((items) => [
-                      ...items.filter((item) => item.uuid !== agent.uuid),
-                      agent,
-                    ])
-                  }
-                  botId={initBotId}
-                  supportedEvents={adapterSupportedEvents[currentAdapter] || []}
-                  agentOptions={agentNameList.filter(
-                    (agent) => agent.kind !== 'event_processor',
-                  )}
-                />
-                <PluginProcessorBindings
-                  supportedEvents={adapterSupportedEvents[currentAdapter] || []}
-                  value={form.watch('plugin_processors') ?? []}
-                  onChange={(value) =>
-                    form.setValue('plugin_processors', value, {
-                      shouldDirty: true,
-                    })
-                  }
-                  agents={agentNameList}
-                  onCreated={(agent) =>
-                    setAgentNameList((items) => [...items, agent])
-                  }
-                />
+                <Tabs
+                  value={routingTab}
+                  onValueChange={setRoutingTab}
+                  className="gap-4"
+                >
+                  <TabsList>
+                    <TabsTrigger value="routes" className="gap-1.5">
+                      <Route className="size-4" />
+                      {t('bots.routingTabs.routes')}
+                      {routeCount > 0 && (
+                        <span className="rounded-full bg-muted-foreground/15 px-1.5 text-[11px] leading-4 tabular-nums">
+                          {routeCount}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                    <TabsTrigger value="plugins" className="gap-1.5">
+                      <Puzzle className="size-4" />
+                      {t('bots.routingTabs.plugins')}
+                    </TabsTrigger>
+                    <TabsTrigger value="policy" className="gap-1.5">
+                      <ShieldCheck className="size-4" />
+                      {t('bots.routingTabs.policy')}
+                    </TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="routes" className="min-w-0">
+                    <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+                      {t('bots.routingLayers.rulesDescription')}
+                    </p>
+                    <EventBindingsEditor
+                      form={form}
+                      onAgentCreated={(agent) =>
+                        setAgentNameList((items) => [
+                          ...items.filter((item) => item.uuid !== agent.uuid),
+                          agent,
+                        ])
+                      }
+                      botId={initBotId}
+                      supportedEvents={
+                        adapterSupportedEvents[currentAdapter] || []
+                      }
+                      agentOptions={agentNameList.filter(
+                        (agent) =>
+                          agent.kind !== 'event_processor' &&
+                          agent.kind !== 'command_processor',
+                      )}
+                    />
+                  </TabsContent>
+                  <TabsContent value="plugins" className="min-w-0">
+                    <BotPluginsPanel
+                      botId={initBotId}
+                      botPolicy={watchedPolicy}
+                      onBotPolicyChange={setBotPolicy}
+                      bindings={watchedBindings}
+                      onBindingsChange={setBindings}
+                      agents={agentNameList}
+                      scope={policyScope}
+                      onScopeChange={setPolicyScope}
+                      commandPrefix={
+                        form.watch('command_settings')?.prefixes?.[0] || '/'
+                      }
+                    >
+                      <RoutingLayer
+                        icon={TerminalSquare}
+                        title={t('bots.routingLayers.commands')}
+                        description={t('bots.pluginCommands.description')}
+                        count={commandProcessorCount}
+                        action={
+                          <Switch
+                            checked={
+                              form.watch('command_settings')?.enabled ?? true
+                            }
+                            onCheckedChange={(enabled) =>
+                              form.setValue(
+                                'command_settings',
+                                {
+                                  prefixes: ['/'],
+                                  processors: [],
+                                  ...form.getValues('command_settings'),
+                                  enabled,
+                                },
+                                { shouldDirty: true },
+                              )
+                            }
+                            aria-label={t('bots.routingLayers.commands')}
+                          />
+                        }
+                      >
+                        <PluginCommandBindings
+                          registrationCapability={
+                            commandCapabilities[currentAdapter]
+                          }
+                          botId={initBotId}
+                          dirty={form.formState.isDirty}
+                          value={form.watch('command_settings')}
+                          onChange={(value) =>
+                            form.setValue('command_settings', value, {
+                              shouldDirty: true,
+                            })
+                          }
+                          agents={agentNameList}
+                          onCreated={(agent) =>
+                            setAgentNameList((items) => [...items, agent])
+                          }
+                        />
+                      </RoutingLayer>
+                      <RoutingLayer
+                        icon={Puzzle}
+                        title={t('bots.routingLayers.processors')}
+                        description={t('bots.pluginSubscriptions.description')}
+                        count={pluginProcessorCount}
+                      >
+                        <PluginProcessorBindings
+                          supportedEvents={
+                            adapterSupportedEvents[currentAdapter] || []
+                          }
+                          value={form.watch('plugin_processors') ?? []}
+                          onChange={(value) =>
+                            form.setValue('plugin_processors', value, {
+                              shouldDirty: true,
+                            })
+                          }
+                          agents={agentNameList}
+                          onCreated={(agent) =>
+                            setAgentNameList((items) => [...items, agent])
+                          }
+                        />
+                      </RoutingLayer>
+                    </BotPluginsPanel>
+                  </TabsContent>
+                  <TabsContent value="policy" className="min-w-0">
+                    <BotMessagePolicyPanel
+                      botPolicy={watchedPolicy}
+                      onBotPolicyChange={setBotPolicy}
+                      bindings={watchedBindings}
+                      onBindingsChange={setBindings}
+                      agents={agentNameList}
+                      scope={policyScope}
+                      onScopeChange={setPolicyScope}
+                      adapter={currentAdapter}
+                    />
+                  </TabsContent>
+                </Tabs>
               </CardContent>
             </Card>
           )}

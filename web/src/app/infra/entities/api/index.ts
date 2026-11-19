@@ -217,7 +217,8 @@ export interface ApiRespPipelines {
   pipelines: Pipeline[];
 }
 
-export type AgentKind = 'agent' | 'pipeline' | 'event_processor';
+export type AgentKind =
+  'agent' | 'pipeline' | 'event_processor' | 'command_processor';
 
 export interface RunnerDescriptor {
   id: string;
@@ -255,7 +256,25 @@ export interface ProcessorRun {
     input?: { text?: string; contents?: unknown[]; attachments?: unknown[] };
     input_event?: unknown;
     delivery?: unknown;
+    command?: string;
   };
+}
+
+export interface CommandOutput {
+  text?: string;
+  error?: string;
+  image_url?: string;
+  image?: string;
+  file_url?: string;
+  file_name?: string;
+}
+
+export interface CommandDebugResult {
+  run_id: string | null;
+  status: 'completed' | 'failed';
+  command: string;
+  outputs: CommandOutput[];
+  error: string | null;
 }
 
 export interface ProcessorRunEvent {
@@ -332,6 +351,7 @@ export interface DomainMeta {
 export interface GetAgentMetadataResponseData {
   workspace_operation_grants?: Record<string, string[]>;
   event_processors?: RunnerDescriptor[];
+  command_processors?: CommandProcessorDescriptor[];
   runner_config?: PipelineConfigTab;
   platform_tools: AgentPlatformTool[];
   host_tools?: PluginTool[] | null;
@@ -388,6 +408,7 @@ export interface Adapter {
     help_links?: Record<string, string>;
     supported_events?: string[];
     supported_apis?: string[];
+    command_registration?: PlatformCommandCapability;
     config: IDynamicFormItemSchema[];
   };
 }
@@ -409,9 +430,57 @@ export interface Bot {
   adapter_config: object;
   event_bindings?: EventBinding[];
   plugin_processors?: PluginProcessorBinding[];
+  command_settings?: BotCommandSettings;
+  message_policy?: MessagePolicy;
+  platform_command_sync?: PlatformCommandSync;
+  platform_command_registration?: {
+    rejected?: { name: string; reason: string }[];
+    error?: string;
+  };
   created_at?: string;
   updated_at?: string;
   adapter_runtime_values?: object;
+}
+
+export interface BotCommandProcessorBinding {
+  processor_uuid: string;
+  enabled: boolean;
+}
+
+export interface CommandComponentDescriptor {
+  name: string;
+  label: Record<string, string>;
+  description?: Record<string, string> | null;
+  config_schema: import('../form/dynamic').IDynamicFormItemSchema[];
+}
+
+export interface CommandProcessorDescriptor {
+  id: string;
+  plugin_id: string;
+  commands: CommandComponentDescriptor[];
+}
+
+export interface BotCommandSettings {
+  enabled: boolean;
+  prefixes: string[];
+  processors: BotCommandProcessorBinding[];
+  platform_commands?: { enabled: boolean; selected: string[] };
+}
+
+export interface PlatformCommandCapability {
+  max_commands: number;
+  name_pattern: string;
+  description_max_length: number;
+  multilingual: boolean;
+  scopes: boolean;
+  lowercase?: boolean;
+}
+
+export interface PlatformCommandSync {
+  synced_at?: string;
+  error?: string | null;
+  skipped?: boolean;
+  rejected?: { name: string; reason: string }[];
 }
 
 export interface PluginProcessorBinding {
@@ -422,13 +491,54 @@ export interface PluginProcessorBinding {
 export interface EventBinding {
   id?: string;
   event_pattern: string;
-  target_type: AgentKind | 'discard';
+  target_type: Exclude<AgentKind, 'command_processor'> | 'discard';
   target_uuid: string;
   filters?: Array<Record<string, unknown>>;
   priority: number;
   enabled: boolean;
   description?: string;
   order?: number;
+  /** Partial message policy overriding the bot's for this route; null clears it. */
+  policy?: MessagePolicyOverride | null;
+}
+
+export type MessagePolicySectionName = 'trigger' | 'safety' | 'output';
+
+export interface PluginSelection {
+  enable_all: boolean;
+  plugins: { author: string; name: string }[];
+}
+
+/** A bot's message policy: sections of blocks, as in the policy metadata. */
+export interface MessagePolicy {
+  trigger?: Record<string, Record<string, unknown>>;
+  safety?: Record<string, Record<string, unknown>>;
+  output?: Record<string, Record<string, unknown>>;
+  plugins?: PluginSelection;
+}
+
+export interface MessagePolicyOverride extends Omit<MessagePolicy, 'plugins'> {
+  plugins?: PluginSelection | null;
+}
+
+export interface MessagePolicyMetadata {
+  configs: import('../pipeline').PipelineConfigTab[];
+  default: MessagePolicy;
+  neutral: MessagePolicy;
+}
+
+/** Where a hook takes effect: Chat (``messaging``), Agent or command. */
+export type HookProcessor = 'messaging' | 'agent' | 'command';
+
+export interface PluginRegistration {
+  commands?: string[] | null;
+  events?: string[] | null;
+  event_processors?: Record<string, HookProcessor[]> | null;
+}
+
+export interface ApiRespPluginRegistrations {
+  /** null when the Plugin Runtime cannot report registrations. */
+  plugins: Record<string, PluginRegistration> | null;
 }
 
 export interface BotRouteDryRunRequest {

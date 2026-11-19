@@ -175,8 +175,6 @@ class PopulatedWorkspaceProbe:
             persistence_mgr=SimpleNamespace(
                 mode=SimpleNamespace(value='cloud_runtime'),
             ),
-            pipeline_config_meta_trigger={'name': 'trigger', 'stages': []},
-            pipeline_config_meta_safety={'name': 'safety', 'stages': []},
             pipeline_config_meta_ai={'name': 'ai', 'stages': []},
             pipeline_config_meta_output={'name': 'output', 'stages': []},
             task_mgr=SimpleNamespace(

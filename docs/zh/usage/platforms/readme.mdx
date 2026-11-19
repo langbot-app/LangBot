@@ -4,6 +4,10 @@ description: "将 LangBot 接入各消息平台：Discord、Telegram、Slack、�
 ---
 机器人用于从消息平台接收消息事件并调用流水线处理消息。
 
+`message_policy.plugins` 同时控制插件的命令和消息监听器。新建机器人默认启用全部插件；手动选择时把 `enable_all` 设为 `false`，在 `plugins` 中按顺序填写 `{author, name}`。单条路由可通过 `policy.plugins` 覆盖机器人设置。消息处理中的插件名单单独控制 AI 可调用的工具。
+
+Agent 路由上的普通消息监听器可改写输入，也可替代 Agent 回复。`NormalMessageResponded` 能改写尚未发送的回复；已经发出的流式回复只供旁观。`PromptPreProcessing` 仅在消息处理中生效。`list_bot_plugin_registrations` 返回的 `event_processors` 列出各监听器适用的处理器。
+
 ![arch](/images/zh/deploy/bots/arch.png)
 
 

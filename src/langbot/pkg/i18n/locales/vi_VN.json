@@ -1,6 +1,10 @@
 {
   "Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. If startup failed, check the installation task and runtime logs, then retry.": "Không tìm thấy trình chạy Agent: {runner}. Mở trang Plugin để kiểm tra cài đặt, kích hoạt và quyền. Nếu khởi động thất bại, hãy kiểm tra tác vụ cài đặt và nhật ký runtime rồi thử lại.",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "Plugin {plugin} chưa khai báo quyền. Hãy xem xét quyền truy cập tương thích trong cài đặt plugin.",
+  "platform_commands.enabled must be a boolean": "platform_commands.enabled phải là giá trị boolean",
+  "platform_commands.selected must be a list of command names": "platform_commands.selected phải là danh sách tên lệnh",
+  "Platform command registration requires a running supported bot": "Đăng ký lệnh cần bot được hỗ trợ đang chạy",
+  "Command arguments": "Tham số lệnh",
   "Request failed.": "Yêu cầu thất bại.",
   "Too many requests. Please try again later.": "Quá nhiều yêu cầu. Vui lòng thử lại sau.",
   "Your message contains inappropriate content. Please revise it.": "Tin nhắn chứa nội dung không phù hợp. Vui lòng chỉnh sửa.",

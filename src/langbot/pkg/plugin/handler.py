@@ -91,6 +91,7 @@ _HOST_RESERVED_QUERY_VAR_KEYS = frozenset(
         '_activated_skills',
         '_fallback_model_uuids',
         '_routed_by_rule',
+        '_message_route_id',
     }
 )
 
@@ -1360,11 +1361,11 @@ class RuntimeConnectionHandler(handler.Handler):
 
             plugin = _plugin_handler_ref(plugin_identity)
             try:
-                await query.adapter.reply_message(
-                    query.message_event,
-                    message_chain_obj,
-                    quote_origin,
-                )
+                policy = getattr(query, '_message_policy', None)
+                if policy is not None and hasattr(query, '_listener_plugins'):
+                    await policy.send_command_reply(query, message_chain_obj, quote_origin)
+                else:
+                    await query.adapter.reply_message(query.message_event, message_chain_obj, quote_origin)
             except Exception as exc:
                 await MonitoringHelper.record_plugin_reply(self.ap, query, plugin, message_chain_obj, error=exc)
                 raise
@@ -3708,6 +3709,20 @@ class RuntimeConnectionHandler(handler.Handler):
             )
 
         return result['tool_response']
+
+    async def list_plugin_registrations(self, include_plugins):
+        from langbot_plugin.entities.io.errors import ActionCallError
+
+        action = getattr(LangBotToRuntimeAction, 'LIST_PLUGIN_REGISTRATIONS', None)
+        if action is None:
+            return None
+        try:
+            result = await self.call_action(action, {'include_plugins': include_plugins}, timeout=10)
+        except ActionCallError as exc:
+            if f'Action {action.value} not found' in str(exc):
+                return None
+            raise
+        return result['plugins']
 
     async def list_commands(self, include_plugins: list[str] | None = None) -> list[dict[str, Any]]:
         """List commands"""

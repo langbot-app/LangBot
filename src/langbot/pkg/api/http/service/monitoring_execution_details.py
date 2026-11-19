@@ -316,6 +316,12 @@ class ExecutionDetailsMixin:
         metadata = {'status': status, 'bot_name': bot_name, 'platform': platform}
         if routes is not None:
             metadata['routes'] = safe_routes
+            if safe_routes and safe_routes[0].get('failure_code') == 'message_policy':
+                metadata['reason'] = safe_routes[0]['reason']
+                if status == 'completed':
+                    metadata['status'] = 'ignored'
+            if safe_routes and safe_routes[0].get('target_type') == 'plugin':
+                metadata['handled_by'] = safe_routes[0]['target_uuid']
         async with self._summary_write_session(workspace) as session:
             await store.append_event(
                 event_id=event_id,
@@ -503,6 +509,7 @@ class ExecutionDetailsMixin:
             'target_kind': 'event',
             'target_id': None,
             'target_name': None,
+            'handled_by': metadata.get('handled_by'),
             'bot_id': row.bot_id,
             'bot_name': metadata.get('bot_name'),
             'platform': metadata.get('platform') or row.source,

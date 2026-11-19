@@ -1,6 +1,10 @@
 {
   "Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. If startup failed, check the installation task and runtime logs, then retry.": "Agent ランナーが見つかりません：{runner}。プラグイン画面でインストール、有効化、権限を確認してください。起動に失敗した場合は、インストールタスクとランタイムログを確認して再試行してください。",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "プラグイン {plugin} に権限宣言がありません。プラグイン設定で互換モードのアクセス権を確認してください。",
+  "platform_commands.enabled must be a boolean": "platform_commands.enabled は真偽値である必要があります",
+  "platform_commands.selected must be a list of command names": "platform_commands.selected はコマンド名のリストである必要があります",
+  "Platform command registration requires a running supported bot": "対応するボットを起動してからコマンドを登録してください",
+  "Command arguments": "コマンド引数",
   "Request failed.": "リクエストに失敗しました。",
   "Too many requests. Please try again later.": "リクエストが多すぎます。しばらくしてから再試行してください。",
   "Your message contains inappropriate content. Please revise it.": "不適切な内容が含まれています。メッセージを修正してください。",

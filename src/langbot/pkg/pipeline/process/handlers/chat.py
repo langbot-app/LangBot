@@ -83,7 +83,7 @@ class ChatMessageHandler(handler.MessageHandler):
         )
 
         # Get bound plugins for filtering
-        bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+        bound_plugins = getattr(query, '_listener_plugins', None)
         event_ctx = await self.ap.plugin_connector.emit_event(event, bound_plugins)
 
         is_create_card = False  # Track if streaming card was created

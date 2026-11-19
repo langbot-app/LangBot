@@ -9,13 +9,12 @@ import contextlib
 import sqlalchemy
 
 from ..core import app
+from ..plugin.message_received import message_received_event
 from . import entities as pipeline_entities
 from ..entity.persistence import pipeline as persistence_pipeline
 from . import stage
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
-import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
-import langbot_plugin.api.entities.events as events
 from ..utils import importutil
 from ..api.http.authz import WorkspaceRequiredError
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType, RequestContext
@@ -27,7 +26,6 @@ from ..i18n.workspace import get_workspace_language
 from ..agent.runner.config_resolver import RunnerConfigResolver
 from .extension_preferences import normalize_extension_preferences
 
-import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 from . import (
@@ -196,7 +194,9 @@ class RuntimePipeline:
         ):
             raise WorkspaceRequiredError('Query execution scope does not match RuntimePipeline')
         await self._assert_execution_active(query)
-        query.pipeline_config = self.pipeline_entity.config
+        # The message policy of the route this message matched is laid over the
+        # Messaging config, so stages and plugins read it under the legacy keys.
+        await self.ap.message_policy_mgr.bind_query(query, self.pipeline_entity.config)
         # Store bound plugins and MCP servers in query for filtering
         query.variables['_pipeline_bound_plugins'] = self.bound_plugins
         query.variables['_pipeline_bound_mcp_servers'] = self.bound_mcp_servers
@@ -258,33 +258,13 @@ class RuntimePipeline:
         if result.user_notice or result.debug_notice or result.console_notice or result.error_notice:
             await self._assert_execution_active(query)
         if result.user_notice:
-            # 处理str类型
+            policy = await self.ap.message_policy_mgr.for_query(query)
+            result.user_notice = policy.build_notice(query.message_event, result.user_notice)
 
-            if isinstance(result.user_notice, str):
-                result.user_notice = platform_message.MessageChain([platform_message.Plain(text=result.user_notice)])
-            elif isinstance(result.user_notice, list):
-                result.user_notice = platform_message.MessageChain(*result.user_notice)
+            async def before_send() -> None:
+                await self._assert_execution_active(query)
 
-            if query.pipeline_config['output']['misc']['at-sender'] and isinstance(
-                query.message_event, platform_events.GroupMessage
-            ):
-                result.user_notice.insert(0, platform_message.At(target=query.message_event.sender.id))
-            stream_output_supported = await query.adapter.is_stream_output_supported()
-            await self._assert_execution_active(query)
-            if stream_output_supported and query.resp_messages:
-                await query.adapter.reply_message_chunk(
-                    message_source=query.message_event,
-                    bot_message=query.resp_messages[-1],
-                    message=result.user_notice,
-                    quote_origin=query.pipeline_config['output']['misc']['quote-origin'],
-                    is_final=query.resp_messages[-1].is_final,
-                )
-            else:
-                await query.adapter.reply_message(
-                    message_source=query.message_event,
-                    message=result.user_notice,
-                    quote_origin=query.pipeline_config['output']['misc']['quote-origin'],
-                )
+            await policy.send_notice(query, result.user_notice, before_send=before_send)
         if result.debug_notice:
             self.ap.logger.debug(result.debug_notice)
         if result.console_notice:
@@ -332,7 +312,7 @@ class RuntimePipeline:
             except Exception as e:
                 self.ap.logger.error(f'Failed to record error to monitoring: {e}')
 
-    def _mark_stage_interrupt(self, query: pipeline_query.Query, stage_name: str) -> None:
+    async def _mark_stage_interrupt(self, query: pipeline_query.Query, stage_name: str) -> None:
         """Make rule-based drops visible: log them and attribute them in monitoring."""
         from .monitoring_helper import FILTER_STAGES, mark_stage_interrupt
 
@@ -341,6 +321,37 @@ class RuntimePipeline:
         session = f'{getattr(query.launcher_type, "value", query.launcher_type)}_{query.launcher_id}'
         self.ap.logger.info(f'Query {query.query_id} ({session}) stopped by pipeline stage {stage_name}')
         mark_stage_interrupt(query, stage_name)
+        from ..message_policy import manager, schema
+
+        runtime = manager.get_query_policy(query)
+        if runtime is None or not runtime.bot_uuid:
+            return
+        bot = self.ap.platform_mgr.find_runtime_bot(get_query_execution_context(query), runtime.bot_uuid)
+        if bot is None:
+            return
+        route = manager.select_route(
+            bot.bot_entity.event_bindings, route_id=runtime.route_id, pipeline_uuid=query.pipeline_uuid
+        )
+        item = {
+            'BanSessionCheckStage': 'trigger.access-control',
+            'GroupRespondRuleCheckStage': 'trigger.group-respond-rules',
+            'RequireRateLimitOccupancy': 'safety.rate-limit',
+            'PreContentFilterStage': 'safety.content-filter',
+            'PostContentFilterStage': 'safety.content-filter',
+        }[stage_name]
+        item = query.variables.get('_policy_filter_item', item)
+        reason = schema.drop_reason(runtime.bot_uuid, route, item)
+        query.variables['message_policy_drop'] = reason
+        await bot._record_event_route_trace(
+            event_type='message.received',
+            binding=route,
+            target_type='pipeline',
+            target_uuid=query.pipeline_uuid,
+            status='discarded',
+            failure_code='message_policy',
+            text=reason,
+            reason=reason,
+        )
 
     async def _execute_from_stage(
         self,
@@ -388,7 +399,7 @@ class RuntimePipeline:
 
                 if result.result_type == pipeline_entities.ResultType.INTERRUPT:
                     self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query.query_id}')
-                    self._mark_stage_interrupt(query, stage_container.inst_name)
+                    await self._mark_stage_interrupt(query, stage_container.inst_name)
                     break
                 elif result.result_type == pipeline_entities.ResultType.CONTINUE:
                     query = result.new_query
@@ -409,7 +420,7 @@ class RuntimePipeline:
 
                     if sub_result.result_type == pipeline_entities.ResultType.INTERRUPT:
                         self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query.query_id}')
-                        self._mark_stage_interrupt(query, stage_container.inst_name)
+                        await self._mark_stage_interrupt(query, stage_container.inst_name)
                         break
                     elif sub_result.result_type == pipeline_entities.ResultType.CONTINUE:
                         query = sub_result.new_query
@@ -659,42 +670,17 @@ class RuntimePipeline:
             self.ap.logger.error(f'Failed to record query start: {e}')
 
         try:
-            # Get bound plugins for this pipeline
-            bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
-
-            # ======== 触发 MessageReceived 事件 ========
-            event_type = (
-                events.PersonMessageReceived
-                if query.launcher_type == provider_session.LauncherTypes.PERSON
-                else events.GroupMessageReceived
-            )
-
-            event_obj = event_type(
-                query=query,
-                launcher_type=query.launcher_type.value,
-                launcher_id=query.launcher_id,
-                sender_id=query.sender_id,
-                message_event=query.message_event,
-                message_chain=query.message_chain,
-            )
-
-            await self._assert_execution_active(query)
-            event_ctx = await self.ap.plugin_connector.emit_event(event_obj, bound_plugins)
-            await self._assert_execution_active(query)
-
-            if event_ctx.is_prevented_default():
-                self.ap.logger.debug(
-                    f'MessageReceived event prevented default for query {query.query_id}, pipeline={pipeline_name}'
+            if not getattr(query, '_message_received_dispatched', False):
+                await self._assert_execution_active(query)
+                ctx = await self.ap.plugin_connector.emit_event(
+                    message_received_event(query), query.variables.get('_pipeline_bound_plugins')
                 )
-                from .monitoring_helper import mark_plugin_handled
-
-                mark_plugin_handled(query, event_ctx)
-                return
-
-            # The Runtime returns a deserialized event, not the original Query.
-            # Carry plugin message edits into the following Pipeline stages.
-            query.message_chain = event_ctx.event.message_chain
-            query.message_event.message_chain = query.message_chain
+                await self._assert_execution_active(query)
+                if ctx.is_prevented_default():
+                    monitoring_helper.mark_plugin_handled(query, ctx)
+                    return
+                query.message_chain = ctx.event.message_chain
+                query.message_event.message_chain = query.message_chain
 
             self.ap.logger.debug(f'Processing query {query.query_id}')
 
@@ -1000,8 +986,6 @@ class PipelineManager:
             )
         coerce_pipeline_config(
             pipeline_entity.config,
-            getattr(self.ap, 'pipeline_config_meta_trigger', {'name': 'trigger', 'stages': []}),
-            getattr(self.ap, 'pipeline_config_meta_safety', {'name': 'safety', 'stages': []}),
             getattr(self.ap, 'pipeline_config_meta_ai', {'name': 'ai', 'stages': []}),
             getattr(self.ap, 'pipeline_config_meta_speech', {'name': 'speech', 'stages': []}),
             getattr(self.ap, 'pipeline_config_meta_output', {'name': 'output', 'stages': []}),
