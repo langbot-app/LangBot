@@ -59,7 +59,7 @@ jobs:
         run: |
           versions='["3.12"]'
           if [[ "$FULL" == true ]]; then
-            versions='["3.10","3.11","3.12"]'
+            versions='["3.10","3.11","3.12","3.13","3.14"]'
           fi
           printf 'versions=%s\n' "$versions" >> "$GITHUB_OUTPUT"
 
