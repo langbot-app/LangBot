@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
+import sqlite3
 import typing
 import uuid
 
@@ -27,6 +29,85 @@ from ...entity.persistence.agent_run import AgentRun, AgentRunEvent, AgentRuntim
 UTC = datetime.timezone.utc
 RUN_STATUSES = {'created', 'queued', 'claimed', 'running', 'completed', 'failed', 'cancelled', 'timeout'}
 TERMINAL_STATUSES = {'completed', 'failed', 'cancelled', 'timeout'}
+
+# SQLite allows a single writer, so unrelated short transactions in the same
+# database can exhaust the busy timeout of a ledger write. The wait is bounded
+# so a Runner budget is not consumed twice, and only for retry-safe statements.
+BUSY_RETRY_ATTEMPTS = 8
+BUSY_RETRY_BASE_DELAY = 0.02
+BUSY_RETRY_MAX_DELAY = 0.5
+BUSY_ERROR_CODES = {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
+
+
+def _sqlite_error_code(exc: BaseException) -> int | None:
+    """Return the SQLite primary error code behind a SQLAlchemy exception."""
+    pending: list[BaseException] = [exc]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        code = getattr(current, 'sqlite_errorcode', None)
+        if isinstance(code, int):
+            return code
+        pending.extend(arg for arg in getattr(current, 'args', ()) if isinstance(arg, BaseException))
+        original = getattr(current, 'orig', None)
+        if isinstance(original, BaseException):
+            pending.append(original)
+    return None
+
+
+def _is_sqlite_busy(exc: BaseException) -> bool:
+    """True for SQLite write contention, not for unrelated OperationalErrors."""
+    if not isinstance(exc, sqlalchemy.exc.OperationalError):
+        return False
+    code = _sqlite_error_code(exc)
+    if code is not None:
+        return code & 0xFF in BUSY_ERROR_CODES
+    # Older drivers may not expose the code; fall back to the message.
+    message = str(exc).lower()
+    return 'database is locked' in message or 'database table is locked' in message
+
+
+# SQLite reports the offending columns, PostgreSQL reports the constraint name.
+_DUPLICATE_SEQUENCE_MARKERS = (
+    'agent_run_event.run_id, agent_run_event.sequence',
+    'uq_agent_run_event_run_sequence',
+)
+
+
+def _is_duplicate_sequence(exc: BaseException) -> bool:
+    """True when the (run_id, sequence) unique index rejected an insert."""
+    if not isinstance(exc, sqlalchemy.exc.IntegrityError):
+        return False
+    message = str(exc)
+    return any(marker in message for marker in _DUPLICATE_SEQUENCE_MARKERS)
+
+
+async def _retry_on_busy(
+    operation: typing.Callable[[], typing.Awaitable[typing.Any]],
+    *,
+    retry_duplicates: bool = False,
+) -> typing.Any:
+    """Run *operation*, retrying SQLite busy failures with capped backoff.
+
+    Only retry an operation whose whole transaction is inside *operation*, so a
+    retry cannot repeat a side effect that already committed. Host-allocated
+    sequences also retry a duplicate-key race, because the next attempt reads
+    the max sequence again instead of replaying the lost one.
+    """
+    attempt = 0
+    while True:
+        try:
+            return await operation()
+        except (sqlalchemy.exc.OperationalError, sqlalchemy.exc.IntegrityError) as exc:
+            retryable = _is_sqlite_busy(exc) or (retry_duplicates and _is_duplicate_sequence(exc))
+            attempt += 1
+            if attempt >= BUSY_RETRY_ATTEMPTS or not retryable:
+                raise
+            delay = min(BUSY_RETRY_MAX_DELAY, BUSY_RETRY_BASE_DELAY * (2 ** (attempt - 1)))
+            await asyncio.sleep(delay)
 
 
 class TerminalRunTransitionError(ValueError):
@@ -332,6 +413,62 @@ class RunLedgerStore:
         If the same run_id + sequence already exists, the existing row is
         returned. This supports retrying append calls idempotently.
         """
+        try:
+            appended = await _retry_on_busy(
+                retry_duplicates=sequence is None,
+                operation=lambda: self._append_event_once(
+                    run_id=run_id,
+                    sequence=sequence,
+                    event_type=event_type,
+                    data=data,
+                    usage=usage,
+                    source=source,
+                    metadata=metadata,
+                ),
+            )
+        except sqlalchemy.exc.IntegrityError as exc:
+            # Two deliveries raced onto the same explicit sequence. The caller
+            # asked for exactly this slot, so return the winner: a replay is
+            # idempotent, not an error.
+            existing = await self._find_event_sequence(run_id=run_id, sequence=sequence, error=exc)
+            if existing is not None:
+                return existing
+            raise
+        inflight_hub.notify_run(run_id, event_type)
+        return appended
+
+    async def _find_event_sequence(
+        self,
+        *,
+        run_id: str,
+        sequence: int | None,
+        error: sqlalchemy.exc.IntegrityError,
+    ) -> dict[str, typing.Any] | None:
+        """Resolve a lost duplicate-sequence race to the stored row."""
+        if sequence is None or not _is_duplicate_sequence(error):
+            return None
+        async with self._session_factory() as session:
+            result = await session.execute(
+                sqlalchemy.select(AgentRunEvent).where(
+                    AgentRunEvent.run_id == run_id,
+                    AgentRunEvent.sequence == sequence,
+                )
+            )
+            existing = result.scalars().first()
+            return self._event_to_dict(existing) if existing is not None else None
+
+    async def _append_event_once(
+        self,
+        *,
+        run_id: str,
+        sequence: int | None,
+        event_type: str,
+        data: dict[str, typing.Any] | None,
+        usage: dict[str, typing.Any] | None,
+        source: str,
+        metadata: dict[str, typing.Any] | None,
+    ) -> dict[str, typing.Any]:
+        """One complete append transaction, safe to repeat after a busy failure."""
         async with self._session_factory() as session:
             if sequence is None:
                 # Serialize Host allocation across store instances and database connections.
@@ -374,7 +511,6 @@ class RunLedgerStore:
                     run.usage_json = _json_dumps(usage)
                     run.updated_at = as_naive_utc(_utc_now())
             await session.commit()
-            inflight_hub.notify_run(run_id, event_type)
             return self._event_to_dict(row)
 
     async def append_audit_event(
@@ -434,8 +570,38 @@ class RunLedgerStore:
         cost: dict[str, typing.Any] | None = None,
         metadata: dict[str, typing.Any] | None = None,
     ) -> dict[str, typing.Any] | None:
-        """Update a run to a terminal or current status."""
+        """Update a run to a terminal or current status.
+
+        The whole read-modify-write transaction retries on SQLite write
+        contention, so a terminal state is not lost to an unrelated short
+        writer in the same database.
+        """
         status = _validate_run_status(status)
+        finalized = await _retry_on_busy(
+            operation=lambda: self._finalize_run_once(
+                run_id=run_id,
+                status=status,
+                status_reason=status_reason,
+                usage=usage,
+                cost=cost,
+                metadata=metadata,
+            )
+        )
+        if finalized is not None:
+            inflight_hub.notify(finalized['workspace_id'])
+        return finalized
+
+    async def _finalize_run_once(
+        self,
+        *,
+        run_id: str,
+        status: str,
+        status_reason: str | None,
+        usage: dict[str, typing.Any] | None,
+        cost: dict[str, typing.Any] | None,
+        metadata: dict[str, typing.Any] | None,
+    ) -> dict[str, typing.Any] | None:
+        """One complete finalize transaction, safe to repeat after a busy failure."""
         now = _utc_now()
         async with self._session_factory() as session:
             run = await self._get_run_row(session, run_id)
@@ -480,7 +646,6 @@ class RunLedgerStore:
                 else:
                     run.metadata_json = _json_dumps(metadata)
             await session.commit()
-            inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
     async def validate_active_claim(
