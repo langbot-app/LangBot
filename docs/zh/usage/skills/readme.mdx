@@ -17,6 +17,18 @@ Skill 是一个**按需激活**的指令包：用户描述匹配时，Agent 调�
 
 详见[运行时与扩展关系](../sandbox/runtime-relationships)。
 
+## 使用 lbctl 更新本地完整包
+
+编辑本地目录前读取已有 Skill 的修订，发布时显式使用该修订。
+
+```bash
+lbctl skill get demo -o json
+lbctl skill push demo --dir ./demo --base-revision <revision> --dry-run
+lbctl skill push demo --dir ./demo --base-revision <revision>
+```
+
+预览会校验 `SKILL.md`，列出新增、修改、删除的文件，并显示当前身份是否具备发布权限。包内名称必须与 `demo` 一致。发布以修订号校验并原子替换完整包，包含二进制资源和可执行权限，本地目录中缺少的文件会从新版本移除。发布需要 `resource.manage` 和 `resource.view`，CLI 会读取并验证发布后的修订。修订冲突时，请下载最新包、合并修改，再使用已查看的修订重试。已有执行继续使用绑定的旧版本。
+
 ## 安装技能
 
 <Note>

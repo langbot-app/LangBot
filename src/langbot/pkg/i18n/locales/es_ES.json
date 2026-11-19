@@ -1,4 +1,9 @@
 {
+  "The bot route changed. Read the current binding.": "La ruta del bot ha cambiado. Consulta la vinculación actual.",
+  "Skill not found": "No se encontró el Skill",
+  "Skill package name must match the requested Skill": "El nombre del Skill del paquete debe coincidir con el Skill solicitado",
+  "file and base_revision are required": "file y base_revision son obligatorios",
+  "Skill package exceeds the 10MB upload limit": "El paquete Skill supera el límite de carga de 10MB",
   "Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. If startup failed, check the installation task and runtime logs, then retry.": "No se encontró el ejecutor del agente: {runner}. Abra Plugins para comprobar la instalación, la activación y los permisos. Si el inicio falló, revise la tarea de instalación y los registros del entorno de ejecución y vuelva a intentarlo.",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "El complemento {plugin} no declara permisos. Revise el acceso de compatibilidad en sus ajustes.",
   "Request failed.": "La solicitud ha fallado.",
