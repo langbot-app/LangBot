@@ -152,11 +152,13 @@ system:
     gc:
         # Long-running processes with a large heap rarely reach CPython's
         # automatic full-collection threshold, so cyclic garbage (for example
-        # closed TLS connections of reconnecting adapters) accumulates. After
-        # this many seconds the startup heap is frozen out of collection, then
-        # a full collection runs every collect_interval_seconds. 0 disables.
-        freeze_after_seconds: 600
-        collect_interval_seconds: 300
+        # closed TLS connections of reconnecting adapters) accumulates. A full
+        # collection runs every collect_interval_seconds (0 disables).
+        # freeze_after_seconds > 0 freezes the startup heap out of collection
+        # after that many seconds; it shortens collections but leaks startup
+        # objects that later become cyclic garbage, so it is off by default.
+        freeze_after_seconds: 0
+        collect_interval_seconds: 1800
     task_retention:
         # Keep at most this many completed async task records in memory
         completed_limit: 200

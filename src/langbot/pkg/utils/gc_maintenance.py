@@ -8,8 +8,12 @@ import time
 import typing
 
 
-DEFAULT_FREEZE_AFTER_SECONDS = 600.0
-DEFAULT_COLLECT_INTERVAL_SECONDS = 300.0
+# Freezing is off by default: Core periodically replaces large startup
+# structures (model catalog snapshots, bot/pipeline reloads). Frozen objects that
+# later become cyclic garbage are never reclaimed, which on Cloud grew RSS by
+# ~290 MiB/h and left an unfrozen heap that made each full collection take >1 s.
+DEFAULT_FREEZE_AFTER_SECONDS = 0.0
+DEFAULT_COLLECT_INTERVAL_SECONDS = 1800.0
 SLOW_COLLECTION_LOG_SECONDS = 0.5
 
 
@@ -24,11 +28,13 @@ class GarbageCollectionMaintainer:
     TLS connection leaves an ``SSLProtocol``/transport/``SSLContext`` cycle of
     several hundred KiB that reference counting cannot free.
 
-    The maintainer freezes the heap once startup has settled, which moves those
-    objects to the permanent generation so collections no longer traverse them,
-    and then runs a full collection on a fixed interval. Startup objects that
-    later become cyclic garbage are not reclaimed after the freeze; that is a
-    one-off cost, unlike garbage produced continuously at runtime.
+    The maintainer runs a full collection on a fixed interval so that garbage
+    stays bounded. Optionally it can first freeze the heap once startup has
+    settled (``freeze_after_seconds``), which moves those objects to the
+    permanent generation so collections no longer traverse them. Freezing is
+    off by default: objects frozen at startup that later become cyclic garbage
+    (for example a replaced model catalog snapshot) are never reclaimed, and
+    Core replaces such structures continuously, so the frozen heap leaks.
     """
 
     def __init__(

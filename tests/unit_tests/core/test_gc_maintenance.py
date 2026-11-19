@@ -111,6 +111,36 @@ async def test_run_freezes_then_collects_periodically_and_stops():
     logger.info.assert_called_once()
 
 
+def test_defaults_do_not_freeze_the_heap():
+    # Frozen objects that later become cyclic garbage (replaced model catalog
+    # snapshots, reloaded bots) are never reclaimed, so freezing must be opt-in.
+    maintainer = GarbageCollectionMaintainer()
+    assert maintainer.freeze_after_seconds == 0
+    assert maintainer.collect_interval_seconds > 0
+    assert maintainer.enabled
+
+
+@pytest.mark.asyncio
+async def test_run_without_freeze_only_collects_periodically():
+    collect = Mock(return_value=0)
+    freeze = Mock()
+    maintainer = GarbageCollectionMaintainer(
+        freeze_after_seconds=0,
+        collect_interval_seconds=0.01,
+        collect=collect,
+        freeze=freeze,
+        freeze_count=lambda: 0,
+    )
+
+    maintainer.start()
+    await asyncio.sleep(0.1)
+    await maintainer.stop()
+
+    freeze.assert_not_called()
+    assert collect.call_count >= 2
+    assert maintainer.snapshot()['frozen'] is False
+
+
 @pytest.mark.asyncio
 async def test_disabled_maintainer_does_not_start_a_task():
     maintainer = GarbageCollectionMaintainer(freeze_after_seconds=0, collect_interval_seconds=0)
