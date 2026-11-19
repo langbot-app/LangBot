@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "idle_seconds": 4,
+  "chunk_size": 2048,
+  "cases": [
+    {"id": "public-probe-upload-8m", "file_bytes": 8388608, "files": 4, "workers": 4, "attach": false},
+    {"id": "public-probe-rag-512k", "file_bytes": 524288, "files": 4, "workers": 4, "attach": true}
+  ]
+}

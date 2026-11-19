@@ -1,0 +1,9 @@
+{
+  "documents": 48,
+  "test_queries": 20,
+  "seed": 20261119,
+  "workers": 1,
+  "warmup_queries": 4,
+  "request_timeout_seconds": 30,
+  "index_timeout_seconds": 120
+}
