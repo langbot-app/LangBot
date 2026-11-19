@@ -133,9 +133,9 @@ def _workspace_transaction(method):
     @functools.wraps(method)
     async def wrapped(self, context, *args, **kwargs):
         workspace_uuid = require_workspace_uuid(context)
-        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_write_uow', None)
         if callable(tenant_uow):
-            async with tenant_uow(workspace_uuid):
+            async with tenant_uow(workspace_uuid, operation=f'monitoring.{method.__name__}'):
                 result = await method(self, context, *args, **kwargs)
         else:
             result = await method(self, context, *args, **kwargs)
@@ -169,19 +169,23 @@ class MonitoringService(ExecutionDetailsMixin):
         self._session_list: SessionSummaryReader = SqlSessionSummaryReader(self._summary_session)
 
     @asynccontextmanager
-    async def _summary_session(self, workspace: str):
+    async def _summary_session(self, workspace: str, *, write: bool = False, operation='monitoring.summary'):
         """Join the owning Workspace transaction, including source writes."""
-        async with self.ap.persistence_mgr.tenant_uow(workspace) as uow:
+        persistence = self.ap.persistence_mgr
+        transaction = (
+            persistence.tenant_write_uow(workspace, operation=operation) if write else persistence.tenant_uow(workspace)
+        )
+        async with transaction as uow:
             yield uow.session
 
     def _summary_writer(self):
         return SessionSummaryWriter(self.ap.persistence_mgr.get_db_engine().dialect.name)
 
     @asynccontextmanager
-    async def _summary_write_session(self, workspace: str):
+    async def _summary_write_session(self, workspace: str, operation='monitoring.summary'):
         from ....persistence.session_summary_backfill import require_initialized
 
-        async with self._summary_session(workspace) as session:
+        async with self._summary_session(workspace, write=True, operation=operation) as session:
             await require_initialized(session, workspace)
             yield session
 
@@ -458,9 +462,9 @@ class MonitoringService(ExecutionDetailsMixin):
                 )
                 return len(pk_values), int(delete_result.rowcount or 0)
 
-            tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+            tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_write_uow', None)
             if callable(tenant_uow):
-                async with tenant_uow(workspace_uuid):
+                async with tenant_uow(workspace_uuid, operation='monitoring.cleanup'):
                     selected, deleted = await delete_batch()
             else:
                 selected, deleted = await delete_batch()
@@ -478,7 +482,7 @@ class MonitoringService(ExecutionDetailsMixin):
         expired = [receipt.workspace_uuid == workspace, receipt.timestamp < cutoff]
         deleted = 0
         for _ in range(max_batches):
-            async with self._summary_session(workspace) as session:
+            async with self._summary_session(workspace, write=True) as session:
                 rows = (
                     (
                         await session.execute(
@@ -501,7 +505,7 @@ class MonitoringService(ExecutionDetailsMixin):
                 (row['bot_id'], row['source_key']) for row in rows if not row['source_key'].startswith('event:')
             ]
             if message_keys:
-                async with self._summary_session(workspace) as session:
+                async with self._summary_session(workspace, write=True) as session:
                     result = await session.execute(
                         sqlalchemy.delete(receipt).where(
                             *expired,

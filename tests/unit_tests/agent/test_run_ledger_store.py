@@ -15,6 +15,7 @@ from sqlalchemy.orm import sessionmaker
 from langbot.pkg.agent.runner.run_ledger_store import RunLedgerStore, _epoch_to_datetime
 from langbot.pkg.entity.persistence.agent_run import AgentRun
 from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.persistence.write_admission import enable_sqlite_write_queue
 
 
 UTC = datetime.timezone.utc
@@ -32,11 +33,13 @@ def test_epoch_to_datetime_ignores_invalid_timestamp(value):
     assert _epoch_to_datetime(value) is None
 
 
-@pytest.fixture
-async def db_engine(tmp_path):
+@pytest.fixture(params=[False, True], ids=['unqueued', 'queued'])
+async def db_engine(tmp_path, request):
     db_path = tmp_path / 'run_ledger_store.db'
     engine = create_async_engine(f'sqlite+aiosqlite:///{db_path}', echo=False)
 
+    if request.param:
+        enable_sqlite_write_queue(engine)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

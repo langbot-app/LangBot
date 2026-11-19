@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql.dml import OnConflictDoUpdate as PostgreSQLO
 from sqlalchemy.dialects.sqlite.dml import OnConflictDoNothing as SQLiteOnConflictDoNothing
 from sqlalchemy.dialects.sqlite.dml import OnConflictDoUpdate as SQLiteOnConflictDoUpdate
 
+from .write_admission import commit_write
 from .media import MediaReferenceText, MediaReferenceJSON
 
 
@@ -951,7 +952,7 @@ class TenantScopedAsyncSession(sqlalchemy_asyncio.AsyncSession):
             # alone can then return that poisoned connection to the pool.
             connection = await super().connection()
             try:
-                await transaction.commit()
+                await commit_write(transaction)
             except BaseException as exc:
                 cleanup = asyncio.create_task(connection.invalidate())
                 # Invalidation does not access the task-owned Session. Shield
