@@ -126,7 +126,7 @@ def build_plan():
         'e2e': full_e2e or flags['frontend'],
         'box-integration': box,
     }
-    versions = ['3.12', '3.11', '3.13'] if flags['compatibility'] else ['3.12']
+    versions = ['3.12', '3.11', '3.13', '3.14'] if flags['compatibility'] else ['3.12']
     return {
         'selection': plan,
         'python_versions': versions,

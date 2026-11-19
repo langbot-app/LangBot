@@ -25,6 +25,7 @@ class CoverageWorkflowTests(unittest.TestCase):
             ('3.11', True, ['tests/unit_tests', 'tests/smoke']),
             ('3.12', True, ['tests/unit_tests', 'tests/smoke']),
             ('3.13', True, ['tests/unit_tests', 'tests/smoke']),
+            ('3.14', True, ['tests/unit_tests', 'tests/smoke']),
             ('3.12', False, ['tests/smoke', 'tests/unit_tests/platform']),
         ]
         for version, full, targets in cases:
