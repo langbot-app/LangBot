@@ -13,7 +13,6 @@ from langbot.libs.slack_api.slackevent import SlackEvent
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
-from langbot_plugin.api.entities.builtin.command import errors as command_errors
 from langbot.pkg.utils import image
 from langbot.pkg.platform.logger import EventLogger
 
@@ -104,7 +103,7 @@ class SlackAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         ]
         missing_keys = [key for key in required_keys if not config.get(key)]
         if missing_keys:
-            raise command_errors.ParamNotEnoughError('Slack机器人缺少相关配置项，请查看文档或联系管理员')
+            raise ValueError(f'Slack missing required config: {", ".join(missing_keys)}')
 
         bot = SlackClient(
             bot_token=config['bot_token'],
