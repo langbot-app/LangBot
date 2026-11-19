@@ -15,7 +15,8 @@ import urllib.error
 import urllib.request
 from uuid import uuid4
 
-from tools.entrypoints.regression_traffic import group_request, valid_group_settings
+from tools.regression.http_bot import group_request, valid_group_settings
+from tools.regression.resource_cleanup import verify_cleanup
 
 
 KINDS = {'provider', 'model', 'pipeline', 'knowledge-base', 'bot'}
@@ -790,8 +791,6 @@ class Suite:
                 saved['resources'].remove(resource)
                 self.write('owned.json', saved)
         if 'smoke' in self.profile or 'verification' in self.profile:
-            from tools.regression.regression_smoke import verify_cleanup
-
             try:
                 verify_cleanup(self, [item for item in original if item not in saved['resources']])
             except (RuntimeError, ValueError, OSError, KeyError) as exc:

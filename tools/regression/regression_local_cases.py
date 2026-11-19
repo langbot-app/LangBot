@@ -1,11 +1,7 @@
 """Optional local scenarios share the Suite's verified Workspace and credentials."""
 
-from contextlib import closing
 import importlib
 import json
-from pathlib import Path
-import sqlite3
-import time
 import urllib.error
 import urllib.request
 
@@ -70,30 +66,6 @@ def api(suite, method, path, body=None, headers=None):
         response = exc
     with response:
         return response.status, json.load(response)
-
-
-def record_run(suite, row, run_id, expected_status):
-    """Register exact run ownership for the independent final ledger check."""
-    require(expected_status in {'completed', 'failed', 'cancelled', 'timeout'}, 'Expected Run status must be terminal')
-    path = Path(suite.path(suite.profile['smoke']['ledger_db'])).resolve()
-    deadline = time.monotonic() + suite.timeout(30)
-    with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=5)) as connection:
-        connection.row_factory = sqlite3.Row
-        while True:
-            run = connection.execute(
-                'SELECT run_id, conversation_id, status, finished_at FROM agent_run '
-                'WHERE workspace_id=? AND run_id=? AND id>?',
-                (suite.variables['workspace_uuid'], run_id, row['after_id']),
-            ).fetchone()
-            if run and run['finished_at']:
-                observed = dict(run)
-                observed.update(expected_status=expected_status, after_id=row['after_id'])
-                row.setdefault('scenario_runs', []).append(observed)
-                require(run['status'] == expected_status, f'Run ended as {run["status"]}; expected {expected_status}')
-                return observed
-            if time.monotonic() >= deadline:
-                raise TimeoutError('Scenario Run did not reach a persisted terminal state')
-            time.sleep(0.1)
 
 
 def modules():

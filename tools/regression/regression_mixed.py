@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import sqlite3
 
+from tools.regression.run_ledger import connect_readonly
 from tools.entrypoints.mock_llm import GROUP_TURN, group_ack
 
 
@@ -91,7 +92,7 @@ def verify_mixed(output_suite_dir, ledger_db, provider_records):
         tokens, runs = {}, set()
         groups, bots, box_hosts = defaultdict(list), defaultdict(set), defaultdict(set)
         tool_intervals = []
-        with sqlite3.connect(Path(ledger_db).resolve().as_uri() + '?mode=ro', uri=True) as db:
+        with connect_readonly(ledger_db) as db:
             db.row_factory = sqlite3.Row
             db.execute('PRAGMA query_only=ON')
             for row in rows:

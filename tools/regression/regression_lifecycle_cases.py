@@ -8,12 +8,21 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 import secrets
-import sqlite3
 import threading
 import time
 
-from tools.entrypoints.regression_coverage import checked
-from tools.regression.regression_local_cases import ScenarioUnavailable, api, record_run, require
+from tools.regression.evidence import checked
+from tools.regression.http_bot import group_request, signature
+from tools.regression.run_ledger import (
+    UnresolvedRun,
+    after_id,
+    completed,
+    completed_run,
+    ledger,
+    reconcile_scenario_runs,
+    record_run,
+)
+from tools.regression.regression_local_cases import ScenarioUnavailable, api, require
 
 GROUP = 'lifecycle'
 CASE_NAMES = {'callback_retry_identity'}
@@ -28,33 +37,6 @@ def add_cases(profile):
             'expect': 'LANGBOT_CALLBACK_RETRY_OK',
         }
     )
-
-
-def signature(secret, body, timestamp):
-    return 'sha256=' + hmac.new(secret.encode(), timestamp.encode() + b'.' + body, hashlib.sha256).hexdigest()
-
-
-def ledger(suite):
-    path = Path(suite.path(suite.profile['smoke']['ledger_db'])).resolve()
-    connection = sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=min(5, suite.timeout(5)))
-    connection.row_factory = sqlite3.Row
-    return connection
-
-
-def after_id(suite):
-    with closing(ledger(suite)) as connection:
-        return connection.execute('SELECT COALESCE(MAX(id),0) FROM agent_run').fetchone()[0]
-
-
-def completed(suite, row, session_id, after, expected='completed'):
-    from tools.regression.regression_smoke import completed_run
-
-    with closing(ledger(suite)) as connection:
-        run = completed_run(
-            connection, suite.variables['workspace_uuid'], 'group_' + session_id, after, suite.timeout(20)
-        )
-    record_run(suite, row, run['run_id'], expected)
-    return run
 
 
 class CallbackReceiver:
@@ -296,9 +278,7 @@ def restart_profile(profile):
 
 def run_restart_checks(profile, profile_path, output, env, restart_owned):
     """Run owned-service restart checks once, before fixed-PID resource sampling starts."""
-    from tools.regression.regression_smoke import UnresolvedRun, reconcile_scenario_runs
     from tools.entrypoints.regression_suite import Suite, resolve
-    from tools.entrypoints.regression_traffic import group_request
 
     started = time.monotonic()
     deadline = started + 120
@@ -410,8 +390,6 @@ def run_restart_checks(profile, profile_path, output, env, restart_owned):
                             'response' not in outcome, 'Interrupted request returned a successful business response'
                         ),
                     )
-                    from tools.regression.regression_smoke import completed_run
-
                     with closing(ledger(suite)) as connection:
                         terminal = completed_run(
                             connection,

@@ -2,15 +2,11 @@
 """Drive independent CLI requests or persistent group conversations with Linux resource sampling."""
 
 import argparse
-import base64
 
 from tools.regression.mixload_pacing import allocate_group_slot, planned_group_slots
 from collections import Counter
-from tools.entrypoints.regression_coverage import checked, check_response
 from concurrent.futures import ThreadPoolExecutor
 import json
-import hashlib
-import hmac
 import math
 import os
 from pathlib import Path
@@ -20,8 +16,18 @@ import sys
 import threading
 import time
 import urllib.error
-import urllib.request
 import uuid
+
+from tools.regression.evidence import check_attachment, check_fields, check_response, checked
+from tools.regression.http_bot import group_request, valid_group_settings
+from tools.regression.run_ledger import (
+    UnresolvedRun,
+    check_run,
+    completed_run,
+    connect_readonly,
+    high_water_mark,
+    reconcile_runs,
+)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
 from cloud_runtime_soak import read_endpoint_snapshot, read_process_snapshot
@@ -238,109 +244,6 @@ def sample_containers(configured, data_root, run=subprocess.run, discover=owned_
     return observation
 
 
-def valid_group_settings(settings):
-    if not isinstance(settings, dict):
-        return False
-    required = {'url', 'secret_env', 'message'}
-    if not required <= set(settings) or set(settings) - required - {'components'}:
-        return False
-    if any(not isinstance(settings[key], str) or not settings[key] for key in required):
-        return False
-    components = settings.get('components', [])
-    if not isinstance(components, list) or len(components) > 1:
-        return False
-    for component in components:
-        if not isinstance(component, dict) or set(component) != {'type', 'base64'} or component['type'] != 'Image':
-            return False
-        data = component['base64']
-        prefix = 'data:image/png;base64,'
-        if not isinstance(data, str) or len(data) > 16384 or not data.startswith(prefix):
-            return False
-        try:
-            if not base64.b64decode(data[len(prefix) :], validate=True).startswith(b'\x89PNG\r\n\x1a\n'):
-                return False
-        except ValueError:
-            return False
-    return True
-
-
-def group_request(case, group_id, member_id, turn, token, previous, env=None, *, timeout=90):
-    """Send one signed GroupMessage through the existing HTTP Bot adapter."""
-    settings = case['http_group']
-    secret = (os.environ if env is None else env)[settings['secret_env']]
-    marker = f'LB_GROUP={group_id} LB_TURN={turn} LB_TOKEN={token} LB_PREVIOUS={previous}'
-    body = json.dumps(
-        {
-            'session_id': group_id,
-            'session_type': 'group',
-            'sender': {'id': member_id, 'name': member_id, 'group_name': group_id},
-            'message': [{'type': 'Plain', 'text': settings['message'] + ' ' + marker}, *settings.get('components', [])],
-        }
-    ).encode()
-    stamp = str(int(time.time()))
-    signature = hmac.new(secret.encode(), stamp.encode() + b'.' + body, hashlib.sha256).hexdigest()
-    request = urllib.request.Request(
-        settings['url'],
-        data=body,
-        headers={
-            'Content-Type': 'application/json',
-            'X-LB-Timestamp': stamp,
-            'X-LB-Signature': 'sha256=' + signature,
-            'X-LB-Idempotency-Key': token,
-        },
-    )
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(request, timeout=timeout) as response:
-        payload = json.load(response)
-        if response.status != 200 or not isinstance(payload, dict) or payload.get('code') != 0:
-            raise ValueError('group ingress did not return a completed response')
-    data = payload.get('data', {})
-    if not isinstance(data, dict):
-        raise ValueError('group ingress response data must be an object')
-    parts = data.get('message')
-    if not isinstance(parts, list) or any(not isinstance(part, dict) for part in parts):
-        raise ValueError('group reply must contain message components')
-    text = ''.join(str(part.get('text', '')) for part in parts if part.get('type') == 'Plain')
-    if data.get('session_id') != group_id or not data.get('reply_to'):
-        raise ValueError('group reply session or message correlation is missing')
-    if case['expect'] not in text or f'GROUP_ACK={token}' not in text:
-        raise ValueError('group reply failed its business or conversation-history oracle')
-    return payload
-
-
-def reconcile_runs(path, workspace, after_id, conversations, expected_ids, *, expected_statuses=None):
-    """Catch delayed extra or nonterminal runs after request-level verification."""
-    actual, unfinished = set(), []
-    expected_statuses = expected_statuses or {}
-    if set(expected_statuses) - set(expected_ids) or any(
-        status not in {'completed', 'failed', 'cancelled', 'timeout'} for status in expected_statuses.values()
-    ):
-        raise ValueError('Expected statuses must name owned runs and terminal states')
-    connection = sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)
-    try:
-        values = sorted(conversations)
-        for start in range(0, len(values), 500):
-            part = values[start : start + 500]
-            query = (
-                'SELECT run_id, status FROM agent_run WHERE workspace_id=? AND id>? '
-                'AND conversation_id IN (' + ','.join('?' for _ in part) + ')'
-            )
-            for run_id, status in connection.execute(query, [workspace, after_id, *part]):
-                actual.add(run_id)
-                if status != expected_statuses.get(run_id, 'completed'):
-                    unfinished.append(run_id)
-    finally:
-        connection.close()
-    return {
-        'matched': actual == set(expected_ids) and not unfinished,
-        'expected_count': len(expected_ids),
-        'actual_count': len(actual),
-        'extra': sorted(actual - set(expected_ids)),
-        'missing': sorted(set(expected_ids) - actual),
-        'not_completed': unfinished,
-    }
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--lbctl', required=True)
@@ -425,14 +328,6 @@ def main():
         parser.error('ledger verification requires an existing SQLite file and workspace')
     if not math.isfinite(args.verification_timeout) or args.verification_timeout <= 0:
         parser.error('verification timeout must be positive')
-    from tools.regression.regression_smoke import (
-        UnresolvedRun,
-        check_run,
-        check_attachment,
-        check_fields,
-        completed_run,
-    )
-
     args.output.mkdir(parents=True, exist_ok=False)
     pids = {name: int(pid) for name, pid in (value.split('=', 1) for value in args.pid)}
     endpoints = dict(value.split('=', 1) for value in args.health)
@@ -452,8 +347,8 @@ def main():
     missed_by_case = Counter()
     phase_start_id = 0
     if args.ledger_db:
-        with sqlite3.connect(args.ledger_db.resolve().as_uri() + '?mode=ro', uri=True) as db:
-            phase_start_id = db.execute('SELECT COALESCE(MAX(id),0) FROM agent_run').fetchone()[0]
+        with connect_readonly(args.ledger_db) as db:
+            phase_start_id = high_water_mark(db)
     started = time.monotonic()
     deadline = started + args.duration
     redactions = [value for name, value in os.environ.items() if 'API_KEY' in name and value]
@@ -501,10 +396,10 @@ def main():
     def open_ledger():
         if not args.ledger_db:
             return None, None
-        connection = sqlite3.connect(args.ledger_db.resolve().as_uri() + '?mode=ro', uri=True, timeout=5)
+        connection = connect_readonly(args.ledger_db)
         connection.row_factory = sqlite3.Row
         connection.execute('PRAGMA query_only=ON')
-        after_id = connection.execute('SELECT COALESCE(MAX(id),0) FROM agent_run').fetchone()[0]
+        after_id = high_water_mark(connection)
         return connection, after_id
 
     def verify(row, case, connection, after_id, is_group=False):

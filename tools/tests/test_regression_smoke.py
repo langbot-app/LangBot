@@ -11,17 +11,11 @@ import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-from tools.regression.regression_smoke import (
-    UnresolvedRun,
-    check_attachment,
-    check_fields,
-    check_mock_requests,
-    check_run,
-    completed_run,
-    verify_cleanup,
-    reset_group,
-)
 from tools.entrypoints.regression_suite import validate
+from tools.regression.evidence import check_attachment, check_fields
+from tools.regression.regression_smoke import check_mock_requests, reset_group
+from tools.regression.resource_cleanup import verify_cleanup
+from tools.regression.run_ledger import UnresolvedRun, check_run, completed_run
 
 
 class SmokeOracleTest(unittest.TestCase):

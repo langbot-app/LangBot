@@ -4,7 +4,7 @@ from contextlib import contextmanager
 
 from tools.regression.regression_api_checks import check, request, unique_name, user_headers
 from tools.regression.regression_local_cases import api, require
-from tools.regression.regression_resource_cases import cleanup, journal
+from tools.regression.resource_cleanup import cleanup, journal
 
 
 @contextmanager
