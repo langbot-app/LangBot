@@ -16,7 +16,6 @@ import sys
 import time
 
 import yaml
-from packaging.utils import parse_wheel_filename
 
 from tools.entrypoints.regression_gate import supervise
 from tools.entrypoints.regression_coverage import write_report
@@ -147,6 +146,8 @@ def allocate_ports():
 
 def host_wheel_index(private, wheelhouse):
     """Publish a private, file-based PEP 503 index for the OSS installer."""
+    from packaging.utils import parse_wheel_filename
+
     index = private / 'wheel-index'
     index.mkdir()
     entries = {}
