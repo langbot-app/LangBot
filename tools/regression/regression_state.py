@@ -6,7 +6,7 @@ from pathlib import Path
 import secrets
 import time
 
-from tools.regression.regression_api_checks import check, request
+from tools.regression.regression_api_checks import check, request, user_headers
 from tools.entrypoints.regression_coverage import checked
 from tools.regression.regression_lifecycle_cases import after_id, completed
 from tools.regression.regression_local_cases import require
@@ -59,6 +59,40 @@ def document_absent(results, document, marker):
         item.get('metadata', {}).get('file_id') != document['engine_document_id']
         and marker not in json.dumps(item, ensure_ascii=False)
         for item in results
+    )
+
+
+def monitor_run(suite, row, phase, current, session_id):
+    """Verify the same terminal run is visible through the public monitoring API."""
+    run_id = current['run_id']
+    payload = request(
+        suite,
+        row,
+        'GET',
+        f'/api/v1/monitoring/executions/agent/{run_id}?section=overview',
+        headers=user_headers(suite),
+    )
+    public_run = payload.get('run', {})
+    public_row = payload.get('row', {})
+    check(
+        row,
+        phase + '_monitoring_readback',
+        payload.get('source') == 'agent'
+        and public_run.get('run_id') == run_id
+        and public_run.get('status') == current['status'] == 'completed'
+        and public_row.get('id') == run_id
+        and public_row.get('status') == 'completed'
+        and public_row.get('conversation_id') == 'group_' + session_id
+        and bool(public_row.get('finished_at_ms')),
+        'Monitoring overview does not identify the same completed run and conversation',
+    )
+    row.setdefault('monitoring', []).append(
+        {
+            'phase': phase,
+            'run': public_run,
+            'conversation_id': public_row['conversation_id'],
+            'finished_at_ms': public_row['finished_at_ms'],
+        }
     )
 
 
@@ -177,8 +211,10 @@ def run_state_checks(profile, profile_path, output, env, restart_owned, budget=3
                     timeout=timeout(30),
                 ),
             )
-            completed(suite, row, session, after)
+            current = completed(suite, row, session, after)
+            monitor_run(suite, row, phase, current, session)
             previous = token
+            return current
 
         def retrieval(phase, *, updated=False):
             found = request(
@@ -220,12 +256,13 @@ def run_state_checks(profile, profile_path, output, env, restart_owned, budget=3
                 )
             row.setdefault('retrievals', []).append({'phase': phase, 'results': found})
 
-        chat('created')
+        initial = chat('created')
         retrieval('created')
         for service in ('runtime', 'core'):
             restart(service, 'initial_' + service)
             configuration('after_' + service)
             chat('after_' + service)
+            monitor_run(suite, row, 'historical_after_' + service, initial, session)
             retrieval('after_' + service)
 
         updated = copy.deepcopy(expected_pipeline['config'])
@@ -237,13 +274,14 @@ def run_state_checks(profile, profile_path, output, env, restart_owned, budget=3
         configuration('updated')
         case['expect'] = 'LANGBOT_UNICODE_OK'
         case['http_group']['message'] = 'ai 请原样处理：你好，世界 🌍'
-        chat('updated')
+        updated_run = chat('updated')
         documents['replacement'] = ingest('replacement', markers['replacement'])
         request(suite, row, 'DELETE', kb_path + '/files/' + documents['original']['uuid'])
         retrieval('updated', updated=True)
         restart('core', 'updated_core')
         configuration('persisted_update')
         chat('persisted_update')
+        monitor_run(suite, row, 'historical_updated_after_core', updated_run, session)
         retrieval('persisted_update', updated=True)
         for name in ('replacement', 'control'):
             request(suite, row, 'DELETE', kb_path + '/files/' + documents[name]['uuid'])
