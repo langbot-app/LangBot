@@ -60,8 +60,10 @@ async def initialize_application_summaries(ap):
         await require_application_initialized(ap)
         return
 
+    from functools import partial
+
     backfill = SessionSummaryBackfill(
-        ap.monitoring_service._summary_session, ap.persistence_mgr.get_db_engine().dialect.name
+        partial(ap.monitoring_service._summary_session, write=True), ap.persistence_mgr.get_db_engine().dialect.name
     )
     for binding in await ap.workspace_service.list_active_execution_bindings():
         workspace = binding.workspace_uuid

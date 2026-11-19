@@ -444,6 +444,11 @@ def run(args):
             from tools.regression.profiled_mixload import prepare_profile
 
             profile = prepare_profile(profile, args.mixload_profile, box_backend=args.box_backend)
+            if any(case['name'] == 'memory_chat' for case in profile['cases']):
+                require(
+                    any(entry['id'] == 'langbot-team/LongTermMemory' for entry in packages['plugins']),
+                    'memory_chat requires the LongTermMemory fixture (--extra-plugins KnowledgeEngine/LongTermMemory)',
+                )
             budget = 120 + sum(
                 phase['duration_seconds'] + phase.get('cooldown_seconds', 0) for phase in profile['phases']
             )

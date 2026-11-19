@@ -105,6 +105,15 @@ class WorkspacesRouterGroup(group.RouterGroup):
             return await sandbox_operation('workspace.sandbox.update', request_context, await quart.request.get_json())
 
         @self.route(
+            '/current/sandbox',
+            methods=['DELETE'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.WORKSPACE_UPDATE,
+        )
+        async def reset_sandbox(request_context: RequestContext):
+            return await sandbox_operation('workspace.sandbox.reset', request_context, {})
+
+        @self.route(
             '/current/sandbox/check',
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,

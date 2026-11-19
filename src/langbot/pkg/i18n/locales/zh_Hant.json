@@ -1,4 +1,9 @@
 {
+  "The bot route changed. Read the current binding.": "Bot 路由已變更。請讀取目前的綁定。",
+  "Skill not found": "Skill 不存在",
+  "Skill package name must match the requested Skill": "套件內 Skill 名稱必須與請求的 Skill 一致",
+  "file and base_revision are required": "file 和 base_revision 為必填項",
+  "Skill package exceeds the 10MB upload limit": "Skill 套件超過 10MB 上傳限制",
   "Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. If startup failed, check the installation task and runtime logs, then retry.": "找不到 Agent 執行器：{runner}。請開啟外掛頁面，檢查是否已安裝、啟用並確認權限。如果啟動失敗，請檢查安裝工作和執行階段日誌後重試。",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "外掛 {plugin} 未宣告權限。請在外掛設定中確認相容模式存取權限。",
   "Request failed.": "請求失敗。",

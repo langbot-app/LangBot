@@ -106,6 +106,125 @@ def _auth(token: str, workspace_uuid: str | None = None) -> dict[str, str]:
     return headers
 
 
+@pytest.mark.skipif('backend' not in BoxSpec.model_fields, reason='requires in-tree Box SDK')
+async def test_workspace_sandbox_reset_clears_only_its_overrides_and_is_idempotent(workspace_api):
+    from langbot.pkg.box.service import BoxService
+    from langbot.pkg.box.settings import get_settings, set_backend
+
+    ap, client, engine, token = workspace_api
+    current = (await (await client.get('/api/v1/workspaces/current', headers=_auth(token))).get_json())['data']
+    ws = current['workspace']['uuid']
+    created = await client.post(
+        '/api/v1/apikeys',
+        headers=_auth(token, ws),
+        json={'name': 'Reset test', 'scopes': ['workspace.view', 'workspace.update']},
+    )
+    key = (await created.get_json())['data']['key']['key']
+    headers = {'X-API-Key': key, 'X-Workspace-Id': 'reset-other'}
+    async with engine.begin() as connection:
+        await connection.execute(
+            sqlalchemy.insert(Workspace).values(
+                uuid='reset-other', instance_uuid='reset-other-instance', name='Other', slug='reset-other'
+            )
+        )
+        await connection.execute(
+            sqlalchemy.insert(WorkspaceMetadata).values(workspace_uuid=ws, key='unrelated', value='keep')
+        )
+    await set_backend(ap, ws, 'e2b', e2b_config={'api_key': 'workspace-private-key'}, limits={'timeout_sec': 60})
+    await set_backend(ap, 'reset-other', 'nsjail', e2b_config={'api_key': 'other-private-key'}, limits={'cpus': 1})
+    other = await get_settings(ap, 'reset-other')
+    ap.instance_config.data['box'] = {'e2b': {'api_key': 'deployment-private-key'}}
+    box = BoxService(
+        ap,
+        client=SimpleNamespace(
+            get_backends=AsyncMock(return_value=[{'name': 'docker', 'available': True}]),
+            get_backend_info=AsyncMock(return_value={'name': 'docker'}),
+        ),
+    )
+    box._available = True
+    ap.box_service = box
+    for _ in range(2):
+        reset = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+        assert reset.status_code == 200
+        assert (await reset.get_json())['data'] == {'reset': True}
+        visible = await client.get('/api/v1/workspaces/current/sandbox', headers=headers)
+        public = (await visible.get_json())['data']
+        assert public['backend'] is None and public['effective_backend'] == 'docker'
+        assert public['limits'] == {} and public['e2b']['source'] == 'deployment'
+        assert public['e2b']['api_key_configured']
+        assert 'private-key' not in await reset.get_data(as_text=True)
+        assert await get_settings(ap, ws) == {'backend': None, 'e2b': None, 'limits': None}
+        assert await get_settings(ap, 'reset-other') == other
+    async with engine.begin() as connection:
+        kept = await connection.execute(
+            sqlalchemy.select(WorkspaceMetadata.value).where(
+                WorkspaceMetadata.workspace_uuid == ws, WorkspaceMetadata.key == 'unrelated'
+            )
+        )
+        assert kept.scalar_one() == 'keep'
+
+    await set_backend(ap, ws, 'docker', limits={'timeout_sec': 30})
+    box.client.get_backends.reset_mock()
+    box.client.get_backends.side_effect = RuntimeError('Runtime unavailable')
+    reset = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+    assert reset.status_code == 200 and (await reset.get_json())['data'] == {'reset': True}
+    assert await get_settings(ap, ws) == {'backend': None, 'e2b': None, 'limits': None}
+    box.client.get_backends.assert_not_awaited()
+
+
+@pytest.mark.parametrize('failure_stage', ['execute', 'commit'])
+async def test_workspace_sandbox_reset_rolls_back_and_masks_storage_errors(workspace_api, monkeypatch, failure_stage):
+    from sqlalchemy.ext.asyncio import AsyncSessionTransaction
+
+    from langbot.pkg.box.service import BoxService
+    from langbot.pkg.box.settings import get_settings, set_backend
+    from langbot.pkg.persistence.tenant_uow import TenantUnitOfWork
+
+    ap, client, _, token = workspace_api
+    current = (await (await client.get('/api/v1/workspaces/current', headers=_auth(token))).get_json())['data']
+    workspace_uuid = current['workspace']['uuid']
+    headers = _auth(token, workspace_uuid)
+    ap.box_service = BoxService(ap, client=SimpleNamespace())
+    await set_backend(
+        ap, workspace_uuid, 'docker', e2b_config={'api_key': 'saved-private-key'}, limits={'timeout_sec': 60}
+    )
+    before = await get_settings(ap, workspace_uuid)
+    original_execute = TenantUnitOfWork.execute
+    original_commit = AsyncSessionTransaction.commit
+    deleted = False
+    private_error = 'storage-private-error-must-not-escape'
+
+    async def execute(uow, statement, *args, **kwargs):
+        nonlocal deleted
+        result = await original_execute(uow, statement, *args, **kwargs)
+        if isinstance(statement, sqlalchemy.sql.dml.Delete) and statement.table.name == WorkspaceMetadata.__tablename__:
+            deleted = True
+            if failure_stage == 'execute':
+                raise RuntimeError(private_error)
+        return result
+
+    async def commit(transaction):
+        if deleted:
+            raise RuntimeError(private_error)
+        return await original_commit(transaction)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(TenantUnitOfWork, 'execute', execute)
+        if failure_stage == 'commit':
+            patch.setattr(AsyncSessionTransaction, 'commit', commit)
+        failed = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+
+    assert deleted
+    assert failed.status_code == 400
+    public = await failed.get_data(as_text=True)
+    assert 'Sandbox settings could not be reset' in public
+    assert private_error not in public and 'saved-private-key' not in public
+    assert await get_settings(ap, workspace_uuid) == before
+    retried = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+    assert retried.status_code == 200 and (await retried.get_json())['data'] == {'reset': True}
+    assert await get_settings(ap, workspace_uuid) == {'backend': None, 'e2b': None, 'limits': None}
+
+
 async def test_account_bootstrap_uses_the_account_resolved_from_the_token(workspace_api):
     application, client, _, owner_token = workspace_api
     account = await application.user_service.get_authenticated_account(owner_token)
@@ -510,6 +629,7 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
             'bot.get',
             'bot.create',
             'bot.update',
+            'bot.routes.bind',
             'bot.delete',
             'pipeline.list',
             'pipeline.get',
@@ -534,6 +654,7 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
             'plugin.install.local',
             'plugin.upgrade',
             'plugin.get',
+            'plugin.permissions.get',
             'plugin.list',
             'plugin.config.get',
             'plugin.config.update',
@@ -573,6 +694,8 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
             'skill.files.read',
             'skill.files.write',
             'skill.preview',
+            'skill.package.preview',
+            'skill.package.publish',
             'skill.install.github',
             'skill.install.upload',
             'mcp_server.list',
@@ -605,6 +728,7 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
             'sandbox.errors',
             'workspace.sandbox.get',
             'workspace.sandbox.update',
+            'workspace.sandbox.reset',
             'workspace.sandbox.check',
             'workspace.sandbox.test',
         ]
@@ -1089,6 +1213,14 @@ async def test_workspace_sandbox_setting_routes_new_boxes_and_preserves_old(work
         invalid = await client.put('/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'host'})
         assert unavailable.status_code == invalid.status_code == 400
         assert await get_backend(application, workspace_uuid) == 'e2b'
+        reset = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+        assert reset.status_code == 200
+        assert (await reset.get_json())['data'] == {'reset': True}
+        visible = await client.get('/api/v1/workspaces/current/sandbox', headers=headers)
+        assert (await visible.get_json())['data']['effective_backend'] == 'docker'
+        assert await get_backend(application, workspace_uuid) is None
+        assert new_query._box_binding.spec['backend'] == 'e2b'
+        assert runtime.get_session(new_query._box_binding.session_id) is not None
         async with engine.begin() as connection:
             await connection.execute(
                 sqlalchemy.update(WorkspaceMembership)
@@ -1099,6 +1231,7 @@ async def test_workspace_sandbox_setting_routes_new_boxes_and_preserves_old(work
                 .values(role='viewer')
             )
         assert (await client.get('/api/v1/workspaces/current/sandbox', headers=headers)).status_code == 200
+        assert (await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)).status_code == 403
         assert (
             await client.put('/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'docker'})
         ).status_code == 403

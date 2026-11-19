@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 import sqlite3
 
-from tools.entrypoints.mock_llm import group_ack, group_markers
+from tools.entrypoints.mock_llm import group_ack, group_markers, select_message
 from tools.regression.mixload_pacing import planned_group_slots
 from tools.regression.mixload_profile import compile_mixload, load_mixload
 from tools.regression.regression_mixed import BOX_HOST, RECOVERY_QUEUES, MissingEvidence, records, require
@@ -20,6 +20,7 @@ WIRE = {
     'box': ('box', 'mock-smoke-box', 2),
     'rag_chat': ('rag_chat', 'mock-rag', 0),
     'media_chat': ('chat', 'mock-media', 1),
+    'memory_chat': ('chat', 'mock-memory', 2),
 }
 RESOURCE = re.compile(r'\$\{([^}]+)\}')
 
@@ -40,10 +41,12 @@ def prepare_profile(base, path, *, box_backend='docker'):
     from tools.regression.mixload_cases import extend_mixload_profile
 
     profile = deepcopy(base)
-    result = extend_mixload_profile(profile, box_backend=box_backend)
+    configured = load_mixload(path)
+    result = extend_mixload_profile(
+        profile, box_backend=box_backend, enable_memory='memory_chat' in (configured.include or ())
+    )
     if result is not None:
         profile = result
-    configured = load_mixload(path)
     compiled = compile_mixload(profile['cases'], configured, default_phases=profile['phases'])
     used = {case['name'] for phase in compiled for case in phase.cases}
     if not used <= WIRE.keys():
@@ -230,8 +233,27 @@ def check_phase_geometry(summary, rows, phase):
     }
 
 
+def memory_events(db, run_id, turn):
+    rows = db.execute(
+        'SELECT data_json FROM agent_run_event WHERE run_id=? AND type=? ORDER BY sequence',
+        (run_id, 'tool.call.completed'),
+    )
+    actual = [json.loads(data).get('tool_name') for (data,) in rows]
+    expected = ['remember', 'recall_memory'] if turn == 1 else ['recall_memory']
+    require(actual == expected, 'Persisted memory tool sequence differs from the transaction')
+    return len(actual)
+
+
+def final_stage(case, turn):
+    if case == 'memory_chat' and turn > 1:
+        return 1
+    return WIRE[case][2]
+
+
 def verify_profiled_run(output_suite_dir, ledger_db, provider_records, profile):
     """Require all selected business scenarios and fail closed on missing evidence."""
+    from tools.regression.mixload_cases import memory_scenario
+
     root = Path(output_suite_dir)
     result = {
         'passed': False,
@@ -251,6 +273,7 @@ def verify_profiled_run(output_suite_dir, ledger_db, provider_records, profile):
         require(expected_phases == observed_phases, 'Unexpected measured phase(s)')
         tokens, runs, box_sessions = {}, set(), defaultdict(set)
         bots_by_case = defaultdict(set)
+        memory_turns = Counter()
         with closing(sqlite3.connect(Path(ledger_db).resolve().as_uri() + '?mode=ro', uri=True)) as db:
             db.execute('PRAGMA query_only=ON')
             for phase in profile['phases']:
@@ -277,6 +300,9 @@ def verify_profiled_run(output_suite_dir, ledger_db, provider_records, profile):
                     )
                     require(bool(stored[0][2]), 'Persisted run has no source Bot')
                     bots_by_case[case].add(stored[0][2])
+                    if case == 'memory_chat':
+                        memory_events(db, run_id, row['turn'])
+                        memory_turns['first_write' if row['turn'] == 1 else 'later_recall'] += 1
                     if 'box_exec' in catalogue[case]:
                         box_sessions[group].add(box_evidence(db, run_id, catalogue[case]))
         require(all(len(v) == 1 for v in bots_by_case.values()), 'Scenario unexpectedly changed source Bot')
@@ -290,6 +316,8 @@ def verify_profiled_run(output_suite_dir, ledger_db, provider_records, profile):
             'Different groups shared a Box',
         )
         result['box_groups_verified'] = len(box_sessions)
+        if 'memory_chat' in catalogue:
+            result['memory_turns_verified'] = dict(memory_turns)
         warmups = {
             item['output']['data']['session_id']: item['case']
             for item in json.loads((root / 'warmup.json').read_text())
@@ -330,7 +358,9 @@ def verify_profiled_run(output_suite_dir, ledger_db, provider_records, profile):
                     'Unowned or misrouted Provider request',
                 )
                 stage = sum(msg.get('role') == 'tool' for msg in messages[position + 1 :])
-                last = WIRE[case][2]
+                last = final_stage(case, turn)
+                if case == 'memory_chat':
+                    select_message(request, memory_scenario())
                 require(0 <= stage <= last and stage not in seen[token], 'Unexpected or repeated generation stage')
                 seen[token].add(stage)
                 wire_counts[case] += 1
@@ -338,7 +368,7 @@ def verify_profiled_run(output_suite_dir, ledger_db, provider_records, profile):
                     content = (event.get('response') or {}).get('content')
                     require(content == catalogue[case]['expect'] + acknowledgement, 'Wrong final Provider response')
         if set(seen) != set(tokens) or any(
-            seen[token] != set(range(WIRE[row['case']][2] + 1)) for token, row in tokens.items()
+            seen[token] != set(range(final_stage(row['case'], row['turn']) + 1)) for token, row in tokens.items()
         ):
             raise MissingEvidence('Measured requests lack exact Provider stage receipts')
         below = [

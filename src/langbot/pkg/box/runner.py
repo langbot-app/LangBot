@@ -520,17 +520,11 @@ class RunnerBoxService:
             if not items:
                 raise BoxValidationError('file_ids must contain at least one exported file ID')
             context = run_artifact_context(query)
-            # Keep revocation and publication in one transaction under the frozen Host policy.
-            async with self.box.ap.persistence_mgr.tenant_uow(context.workspace_uuid):
-                manager = await self.box.ap.artifact_publication_service.manager_for_commit(
-                    context,
-                    getattr(query, '_output_publication', None),
-                )
-                result = await self.box.ap.artifact_service.commit_run_outputs(
-                    context,
-                    [item['artifact_id'] for item in items],
-                    manager_context=manager,
-                )
+            result = await self.box.ap.artifact_service.commit_run_outputs(
+                context,
+                [item['artifact_id'] for item in items],
+                publication=getattr(query, '_output_publication', None),
+            )
             for item, metadata in zip(items, result, strict=True):
                 item.update({**metadata, 'id': item['id'], 'artifact_id': metadata['id']})
             return {'items': [dict(item) for item in items]}

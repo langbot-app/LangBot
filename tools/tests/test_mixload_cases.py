@@ -32,7 +32,7 @@ def test_mixload_uses_distinct_vision_runner_and_preserves_stock_profile(backend
     assert profile == original
     resources = {row['id']: row['body'] for row in result['resources']}
     cases = {row['name']: row for row in result['cases']}
-    assert set(cases) == set(CASE_MODELS) == {'chat', 'box', 'rag_chat', 'media_chat'}
+    assert set(cases) == (set(CASE_MODELS) - {'memory_chat'}) == {'chat', 'box', 'rag_chat', 'media_chat'}
     assert cases['box']['box_exec']['backend'] == backend
     assert cases['media_chat']['http_group']['components'] == [{'type': 'Image', 'base64': MEDIA_DATA_URL}]
     assert '/bots/${media_bot}/sync' in cases['media_chat']['http_group']['url']
@@ -159,3 +159,57 @@ def test_rag_oracle_needs_retrieved_context_in_the_current_turn_not_only_history
         select_message({'messages': [first, reply, second]}, scenario)
     second['content'] = [{'type': 'text', 'text': retrieval}, {'type': 'text', 'text': second['content']}]
     assert select_message({'messages': [first, reply, second]}, scenario)['content'] == 'LANGBOT_RAG_OK GROUP_ACK=ccdd'
+
+
+def test_memory_is_opt_in_and_only_its_pipeline_binds_the_memory_kb():
+    result = extend_mixload_profile(read('profiles/endurance.json'), box_backend='host', enable_memory=True)
+    resources = {row['id']: row['body'] for row in result['resources']}
+    ai = resources['memory_pipeline']['config']['ai']
+    cfg = ai['runner_config'][ai['runner']['id']]
+    assert cfg['knowledge-bases'] == ['${memory_kb}']
+    assert cfg['tools'] == ['remember', 'recall_memory']
+    assert resources['memory_kb']['creation_settings']['isolation'] == 'session'
+    assert resources['memory_bot']['event_bindings'][0]['target_uuid'] == '${memory_pipeline}'
+
+
+@pytest.mark.parametrize('contents', [['QA session memory qa-one'], ['QA session memory other'], [], None])
+def test_memory_model_checks_tool_receipt_not_transcript(contents):
+    from tools.regression.mixload_cases import memory_scenario
+
+    session = 'QA session memory qa-one'
+    user = {'role': 'user', 'content': 'LB_GROUP=qa-one LB_TURN=1 LB_TOKEN=abc LB_PREVIOUS=none'}
+    tools = [{'type': 'function', 'function': {'name': n}} for n in ('remember', 'recall_memory')]
+    body = {'messages': [user], 'tools': tools}
+    scenario = memory_scenario()
+    remember = select_message(body, scenario)
+    assert json.loads(remember['tool_calls'][0]['function']['arguments']) == {'content': session}
+    body['messages'].extend(
+        [
+            remember,
+            {'role': 'tool', 'tool_call_id': remember['tool_calls'][0]['id'], 'content': f'Remembered: {session}'},
+        ]
+    )
+    recall = select_message(body, scenario)
+    body['messages'].extend(
+        [
+            recall,
+            {
+                'role': 'tool',
+                'tool_call_id': recall['tool_calls'][0]['id'],
+                'content': json.dumps({'episodes': [{'content': x} for x in contents]})
+                if contents is not None
+                else 'bad JSON',
+            },
+        ]
+    )
+    if contents == [session]:
+        first = select_message(body, scenario)
+        assert first['content'] == 'LANGBOT_MEMORY_OK GROUP_ACK=abc'
+        body['messages'].extend(
+            [first, {'role': 'user', 'content': 'LB_GROUP=qa-one LB_TURN=2 LB_TOKEN=def LB_PREVIOUS=abc'}]
+        )
+        later = select_message(body, scenario)
+        assert later['tool_calls'][0]['function']['name'] == 'recall_memory'
+    else:
+        with pytest.raises(ValueError, match='recall'):
+            select_message(body, scenario)

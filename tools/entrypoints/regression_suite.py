@@ -703,6 +703,40 @@ class Suite:
                         'config': merge(current['config'], config),
                     },
                 )
+            if kind == 'pipeline' and item['id'] == 'memory_pipeline':
+                from tools.regression.regression_api_checks import user_headers
+                from tools.regression.regression_local_cases import api
+
+                headers = user_headers(self)
+                bindings = {
+                    'enable_all_plugins': False,
+                    'bound_plugins': [
+                        {'author': 'langbot-team', 'name': 'LocalAgent'},
+                        {'author': 'langbot-team', 'name': 'LongTermMemory'},
+                    ],
+                    'enable_all_mcp_servers': False,
+                    'bound_mcp_servers': [],
+                    'enable_all_skills': False,
+                    'bound_skills': [],
+                }
+                status, report = api(self, 'PUT', f'/api/v1/pipelines/{uuid}/extensions', bindings, headers)
+                if status != 200 or report.get('code') != 0:
+                    raise ValueError('Cannot scope the memory pipeline to the fixture plugins')
+                status, report = api(self, 'GET', f'/api/v1/tools?pipeline_uuid={uuid}', headers=headers)
+                catalog = report.get('data', {}).get('tools', []) if status == 200 else []
+                memory_tools = sorted(
+                    tool['name'] for tool in catalog if tool.get('source_id') == 'langbot-team/LongTermMemory'
+                )
+                self.write(
+                    'memory-tool-discovery.json',
+                    {
+                        'status': status,
+                        'memory_tools': memory_tools,
+                        'tool_names': sorted(tool['name'] for tool in catalog),
+                    },
+                )
+                if not {'remember', 'recall_memory'} <= set(memory_tools):
+                    raise ValueError('Memory pipeline did not discover both LongTermMemory tools')
             for document in item.get('documents', []):
                 self.call(
                     [

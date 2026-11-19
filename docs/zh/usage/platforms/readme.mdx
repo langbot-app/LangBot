@@ -6,6 +6,8 @@ description: "将 LangBot 接入各消息平台：Discord、Telegram、Slack、�
 
 ![arch](/images/zh/deploy/bots/arch.png)
 
+运行 `lbctl bot get <bot>` 查看路由 ID，再用 `lbctl bot routes bind <bot> --binding <id> --agent <agent> --dry-run` 预览。确认后用 `--yes` 应用。绑定流水线时可用 `--pipeline`。若有人并发修改了路由，Core 返回冲突，此时可重新读取并核对。
+
 
 | 平台 | 状态 | 备注  |教程 |
 | ------ | ---- | ---- | ---- |

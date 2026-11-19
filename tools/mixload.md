@@ -92,3 +92,35 @@ an external stimulus and independent provider/ledger/side-effect oracle. JSON
 can choose and tune them, but cannot add arbitrary URLs, model payloads, shell
 commands or credentials. Restart/cleanup and configuration mutations should
 stay in separate finite contracts until made replay-safe and isolated.
+
+### Optional plugin mix with persistent session memory
+
+`tools/profiles/mixload-plugins-smoke.json` opts into the additional
+`memory_chat` family. The old four-family profiles do not change. Use a
+disposable Chroma-backed test instance and explicitly install the bundled
+LongTermMemory fixture in this lane:
+
+```sh
+.venv/bin/python -m tools.entrypoints.regression_ci \
+  --suite endurance --mixload-profile tools/profiles/mixload-plugins-smoke.json \
+  --box-backend host --plugin-wheelhouse /path/to/offline-wheels \
+  --plugins plugins --extra-plugins KnowledgeEngine/LongTermMemory \
+  --lbctl /path/to/lbctl --output /path/to/new-test-output
+```
+
+LocalAgent drives all five families. LangRAG answers via a document that
+GeneralParsers parsed during setup; this is a retrieval workload, not
+concurrent parser performance. The memory pipeline binds its own
+LongTermMemory knowledge base and explicitly scopes discovery to LocalAgent
+and LongTermMemory. Turn one writes and recalls a synthetic group-specific
+episode; subsequent turns recall the original episode without rewriting it.
+The mock validates the current turn's actual tool result, the independent
+verifier rechecks wire stages and the Core RunLedger, and each group may
+return only its own receipt. Do not infer true model quality, memory
+consolidation quality, or parser throughput from this preset.
+
+Specialized checks stay separate: memory correction/expiry/deletion and
+runtime reload, GeneralParsers format and degradation cases, AgenticRAG tool
+retrieval, and other stateful plugins such as EssentialCommands,
+GroupChatSummary, or external PowerContext. Adding a plugin to the install
+manifest is not business evidence.

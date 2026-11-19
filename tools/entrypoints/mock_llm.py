@@ -223,6 +223,15 @@ def select_message(body, scenario):
         if len(returned) != len(requested) or set(returned) != requested:
             raise ValueError('each tool call must have exactly one matching tool result')
     steps = scenario['steps']
+    memory_marker = None
+    if scenario.get('session_memory'):
+        marker = group_markers(messages[start])
+        if len(marker) != 1:
+            raise ValueError('memory transaction needs one signed group marker')
+        group, turn_number, _, _ = marker[0]
+        memory_marker = 'QA session memory ' + group
+        if int(turn_number) == 1:
+            steps = scenario['first_turn_steps']
     if len(calls) >= len(steps):
         raise ValueError('tool history exceeds the configured scenario')
     step = steps[len(calls)]
@@ -245,6 +254,25 @@ def select_message(body, scenario):
         result_text = '\n'.join(str(m.get('content', '')) for m in results if m.get('role') == 'tool')
         if expected not in result_text:
             raise ValueError(f'tool result must contain {expected!r}')
+    if memory_marker and (step.get('expect_memory_write') or step.get('expect_memory_episode')):
+        results = turn[calls[-1] + 1 :] if calls else []
+        text = '\n'.join(
+            part for msg in results if msg.get('role') == 'tool' for part in _text_parts(msg.get('content'))
+        )
+        if step.get('expect_memory_write') and text != 'Remembered: ' + memory_marker:
+            raise ValueError('remember did not return the exact current group receipt')
+        if step.get('expect_memory_episode'):
+            try:
+                episodes = json.loads(text)['episodes']
+            except (ValueError, KeyError, TypeError) as error:
+                raise ValueError('recall did not return structured episodes') from error
+            if (
+                not isinstance(episodes, list)
+                or len(episodes) != 1
+                or not isinstance(episodes[0], dict)
+                or episodes[0].get('content') != memory_marker
+            ):
+                raise ValueError('recall did not return exactly the current session memory')
     content = step.get('content')
     message = {'role': 'assistant', 'content': content + acknowledgement if content is not None else None}
     if tool_calls := step.get('tool_calls'):
@@ -263,6 +291,8 @@ def select_message(body, scenario):
                 if attachment_ref is None:
                     raise ValueError('tool expected a current image reference')
                 value['ref'] = attachment_ref
+            if memory_marker:
+                value = {k: memory_marker if v == '{memory_marker}' else v for k, v in value.items()}
             encoded = json.dumps(value)
             return encoded.replace('{mock_scope}', scope) if scope is not None else encoded
 
@@ -582,6 +612,13 @@ def validate_scenarios(scenarios):
             raise ValueError(f'{name}: steps must be a non-empty array')
         if any(not isinstance(step, dict) for step in steps):
             raise ValueError(f'{name}: each step must be an object')
+        if 'session_memory' in scenario:
+            first = scenario.get('first_turn_steps')
+            if scenario['session_memory'] is not True or not isinstance(first, list) or len(first) != 3:
+                raise ValueError(f'{name}: session_memory requires three first_turn_steps')
+            if not all(isinstance(step, dict) for step in first):
+                raise ValueError(f'{name}: first_turn_steps must be objects')
+            steps = [*steps, *first]
         for step in steps:
             if not isinstance(step.get('content'), str) and not step.get('tool_calls'):
                 raise ValueError(f'{name}: each step needs content or tool_calls')

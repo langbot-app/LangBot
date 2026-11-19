@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql.dml import OnConflictDoUpdate as PostgreSQLO
 from sqlalchemy.dialects.sqlite.dml import OnConflictDoNothing as SQLiteOnConflictDoNothing
 from sqlalchemy.dialects.sqlite.dml import OnConflictDoUpdate as SQLiteOnConflictDoUpdate
 
+from .write_admission import commit_write
 from .media import MediaReferenceText, MediaReferenceJSON
 
 
@@ -528,16 +529,21 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
             raise ScopedSessionTransactionError('TenantUnitOfWork does not allow literal-execute SQL parameters')
 
         if isinstance(element, sqlalchemy.sql.elements.Cast) and type(element.type) not in {Vector, HALFVEC}:
-            # Manual Pipeline migration compares DB-native JSON text, because
+            # Conditional configuration updates compare DB-native JSON text, because
             # PostgreSQL JSON has no equality operator. Permit only these fixed
             # mapped columns and a built-in Text target, never arbitrary casts.
             source = element.clause
-            pipeline_json_cas = (
+            json_cas = (
                 type(element.type) is sqlalchemy.Text
                 and isinstance(source, sqlalchemy.Column)
                 and type(source.type) is sqlalchemy.JSON
-                and getattr(getattr(source, 'table', None), 'name', None) == 'legacy_pipelines'
-                and source.name in {'config', 'stages', 'extensions_preferences'}
+                and (getattr(getattr(source, 'table', None), 'name', None), source.name)
+                in {
+                    ('legacy_pipelines', 'config'),
+                    ('legacy_pipelines', 'stages'),
+                    ('legacy_pipelines', 'extensions_preferences'),
+                    ('bots', 'event_bindings'),
+                }
             )
             monitoring_metadata = (
                 type(element.type) is sqlalchemy.JSON
@@ -548,9 +554,9 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
                     source.name == 'metadata_json' or (source.table.name == 'event_log' and source.name == 'input_json')
                 )
             )
-            if not (pipeline_json_cas or monitoring_metadata):
+            if not (json_cas or monitoring_metadata):
                 raise ScopedSessionTransactionError(
-                    'TenantUnitOfWork only allows trusted pgvector, Pipeline JSON CAS and monitoring metadata casts'
+                    'TenantUnitOfWork only allows trusted pgvector, JSON CAS and monitoring metadata casts'
                 )
 
         if isinstance(element, sqlalchemy.sql.functions.FunctionElement):
@@ -946,7 +952,7 @@ class TenantScopedAsyncSession(sqlalchemy_asyncio.AsyncSession):
             # alone can then return that poisoned connection to the pool.
             connection = await super().connection()
             try:
-                await transaction.commit()
+                await commit_write(transaction)
             except BaseException as exc:
                 cleanup = asyncio.create_task(connection.invalidate())
                 # Invalidation does not access the task-owned Session. Shield

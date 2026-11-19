@@ -17,6 +17,18 @@ Agent に**専門的なワークフロー、テンプレート、スクリプト
 
 詳細は[ランタイムと拡張機能の関係](../sandbox/runtime-relationships)を参照。
 
+## lbctl でローカルパッケージを更新
+
+編集前に現在の Skill リビジョンを取得し、完全なディレクトリと一緒に指定します。
+
+```bash
+lbctl skill get demo -o json
+lbctl skill push demo --dir ./demo --base-revision <revision> --dry-run
+lbctl skill push demo --dir ./demo --base-revision <revision>
+```
+
+プレビューは `SKILL.md` を検証し、追加・変更・削除するファイルと公開権限を表示します。パッケージ内の名前は `demo` と一致する必要があります。公開はバイナリ資源と実行権限を含むパッケージ全体を原子的に置き換え、ローカルに存在しないファイルを新バージョンから削除します。`resource.manage` と `resource.view` が必要で、CLI は公開後のリビジョンを読み取って検証します。リビジョン競合時は最新パッケージを取得して変更を統合し、確認したリビジョンで再試行してください。実行中の処理は固定された既存バージョンを使用します。
+
 ## Skill のインストール
 
 <Note>

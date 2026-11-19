@@ -254,7 +254,7 @@ class ExecutionDetailsMixin:
             )
             .values(run_id=run_id, event_id=sa.func.coalesce(models.MonitoringMessage.event_id, event_id))
         )
-        async with self._summary_write_session(workspace) as session:
+        async with self._summary_write_session(workspace, 'monitoring.link_event') as session:
             message = (
                 await session.execute(
                     sa.select(
@@ -316,7 +316,7 @@ class ExecutionDetailsMixin:
         metadata = {'status': status, 'bot_name': bot_name, 'platform': platform}
         if routes is not None:
             metadata['routes'] = safe_routes
-        async with self._summary_write_session(workspace) as session:
+        async with self._summary_write_session(workspace, 'monitoring.ingress') as session:
             await store.append_event(
                 event_id=event_id,
                 event_type=event_type,
