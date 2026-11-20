@@ -94,6 +94,7 @@ TENANT_TABLE_COLUMNS: dict[str, str] = {
     'alert_settings': 'workspace_uuid',
     'alert_incidents': 'workspace_uuid',
     'alert_deliveries': 'workspace_uuid',
+    'workspace_message_usage_daily': 'workspace_uuid',
     # Created by 0013 rather than ORM metadata; it is still part of the same
     # business-database RLS contract and permits no discovery policies.
     'langbot_vectors': 'workspace_uuid',

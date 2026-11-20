@@ -121,6 +121,16 @@ stages:
         type: string
         required: false
         default: ''
+      - name: daily-message-quota-exceeded
+        label:
+          en_US: Daily Message Quota Reached
+          zh_Hans: 每日消息额度已用完
+        description:
+          en_US: "Leave empty to use the Workspace language."
+          zh_Hans: "留空时使用工作区语言的默认提示。"
+        type: string
+        required: false
+        default: ''
       - name: content-filter-hint
         label:
           en_US: Content Filter Hint
@@ -215,4 +225,3 @@ stages:
         type: boolean
         required: true
         default: false
-

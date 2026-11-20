@@ -106,6 +106,56 @@ def _auth(token: str, workspace_uuid: str | None = None) -> dict[str, str]:
     return headers
 
 
+async def test_daily_message_quota(workspace_api, monkeypatch):
+    import asyncio
+    from langbot.pkg.cloud import message_quota
+
+    ap, client, _, token = workspace_api
+    current = '/api/v1/workspaces/current'
+    start = datetime.datetime(2026, 11, 20, tzinfo=datetime.UTC)
+    monkeypatch.setattr(message_quota, 'period_start', lambda: start)
+
+    async def get(path):
+        response = await client.get(path, headers=_auth(token))
+        assert response.status_code == 200
+        return (await response.get_json())['data']
+
+    workspace = await get(current)
+    ws = workspace['workspace']['uuid']
+    unlimited = await get(current + '/message-quota')
+    assert (
+        unlimited
+        == workspace['message_quota']
+        == {
+            'enforced': False,
+            'limit': -1,
+            'used': 0,
+            'remaining': -1,
+            'period': 'day',
+            'timezone': 'UTC',
+            'period_start': '2026-11-20T00:00:00Z',
+            'resets_at': '2026-11-21T00:00:00Z',
+        }
+    )
+    assert await message_quota.daily_message_quota(ap, ws, reserve=True) == (True, unlimited)
+    ap.deployment = SimpleNamespace(mode='cloud')
+    snapshot = SimpleNamespace(limits={})
+    ap.entitlement_resolver = SimpleNamespace(resolve=AsyncMock(return_value=snapshot))
+    for limits in ({}, {'messages.daily': 0}):
+        snapshot.limits = limits
+        assert await message_quota.daily_message_quota(ap, ws, reserve=True) == (True, unlimited)
+    snapshot.limits = {'messages.daily': 2}
+    limited = await get(current + '/message-quota')
+    assert limited == dict(unlimited, enforced=True, limit=2, remaining=2)
+    results = await asyncio.gather(*(message_quota.daily_message_quota(ap, ws, reserve=True) for _ in range(10)))
+    assert sum(accepted for accepted, _ in results) == 2
+    exhausted = await get(current + '/message-quota')
+    assert exhausted == (await get(current))['message_quota'] == dict(limited, used=2, remaining=0)
+    start += datetime.timedelta(days=1)
+    accepted, fresh = await message_quota.daily_message_quota(ap, ws, reserve=True)
+    assert accepted and fresh['used'] == 1 and fresh['period_start'] == exhausted['resets_at']
+
+
 @pytest.mark.skipif('backend' not in BoxSpec.model_fields, reason='requires in-tree Box SDK')
 async def test_workspace_sandbox_reset_clears_only_its_overrides_and_is_idempotent(workspace_api):
     from langbot.pkg.box.service import BoxService

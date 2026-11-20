@@ -190,6 +190,8 @@ async def workspace_get(ap, context, payload):
 
 
 async def workspace_current(ap, context, payload):
+    from ...cloud.message_quota import message_quota_status
+
     workspace = await ap.workspace_service.get_workspace(context.workspace_uuid)
     result = {
         'workspace': _workspace(workspace),
@@ -198,6 +200,7 @@ async def workspace_current(ap, context, payload):
         'membership': None,
         'plan_name': None,
         'current_plan': None,
+        'message_quota': await message_quota_status(ap, context.workspace_uuid),
         'limitation': None,
     }
     if context.principal.principal_type == PrincipalType.ACCOUNT:

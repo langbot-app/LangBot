@@ -1,4 +1,5 @@
 {
+  "Daily message quota reached ({limit} per day). It resets at 00:00 UTC. Upgrade your plan for a higher quota.": "Daily message quota reached ({limit} per day). It resets at 00:00 UTC. Upgrade your plan for a higher quota.",
   "The bot route changed. Read the current binding.": "The bot route changed. Read the current binding.",
   "Skill not found": "Skill not found",
   "Skill package name must match the requested Skill": "Skill package name must match the requested Skill",
