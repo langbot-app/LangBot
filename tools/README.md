@@ -881,3 +881,13 @@ The default load mode remains `gate` for existing benchmark users.
 ## CI selection and regression tiers
 
 See the [CI tiers and evidence guide](../dev-docs/CROSS_COMPONENT_TESTING.md#ci-tiers-and-evidence) for PR selection, required smoke, and full daily/manual verification. The CI tooling tests can be run locally with `python -m unittest discover -s tools/tests -p "test_*.py"` in a Python environment with PyYAML.
+
+
+## Optional public RAG experiments
+
+The opt-in Linux launcher runs in a disposable local Core/Runtime with Chroma.
+See [BEIR SciFact retrieval](vdb-benchmark-public.md) for reproducible public
+relevance and HTTP latency, and [WikiText upload/RAG RSS](vdb-benchmark-memory.md)
+for process memory, mapping categories and the separate allocation diagnostic.
+Public inputs are fetched at runtime and hash-verified. Do not commit source
+corpora, model weights, local profiles with secrets, raw traces or results.
