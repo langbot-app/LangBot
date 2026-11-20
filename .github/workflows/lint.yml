@@ -7,6 +7,8 @@ on:
       - 'src/**'
       - 'tests/**'
       - 'tools/**'
+      - 'sdk/src/langbot_plugin/**'
+      - 'scripts/*check_traceback_logging.py'
       - 'pyproject.toml'
       - '.github/workflows/lint.yml'
   workflow_dispatch:
@@ -27,6 +29,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 2
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -39,3 +42,9 @@ jobs:
       - name: Run ruff format
         if: ${{ !cancelled() }}
         run: uvx ruff@0.14.14 format src tools --check
+      - name: Reject new raw traceback calls
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        # Pull request checkout uses GitHub's test merge commit, whose first parent is the base.
+        run: |
+          python scripts/test_check_traceback_logging.py uvx ruff@0.14.14
+          python scripts/check_traceback_logging.py HEAD^1 uvx ruff@0.14.14
