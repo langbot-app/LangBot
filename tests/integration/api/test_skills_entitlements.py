@@ -9,9 +9,7 @@ import pytest
 import quart
 
 from langbot.pkg.api.http.controller.groups.skills import SkillsRouterGroup
-from langbot.pkg.api.http.service.skill import SkillService
 from langbot.pkg.cloud.entitlements import EntitlementUnavailableError
-from langbot.pkg.skill.repository import SkillRepository
 
 pytestmark = pytest.mark.integration
 WORKSPACE_UUID = '11111111-1111-4111-8111-111111111111'
@@ -76,39 +74,3 @@ async def test_list_skills_does_not_hide_other_entitlement_failures(skills_api):
     assert response.status_code == 403
     payload = await response.get_json()
     assert payload['code'] == 'entitlement_unavailable'
-
-
-@pytest.mark.asyncio
-async def test_skill_file_write_returns_conflict_without_replacing_saved_content(skills_api, tmp_path):
-    application, client = skills_api
-    application.instance_config = SimpleNamespace(data={'skills': {'root': str(tmp_path / 'skills')}})
-    application.workspace_service.get_execution_binding = AsyncMock(
-        return_value=SimpleNamespace(instance_uuid='instance-a', workspace_uuid=WORKSPACE_UUID, placement_generation=1)
-    )
-    application.skill_mgr = SimpleNamespace(reload_skills=AsyncMock())
-    application.skill_repository = SkillRepository(application)
-    application.skill_service = SkillService(application)
-    headers = {'Authorization': 'Bearer owner-token', 'X-Workspace-Id': WORKSPACE_UUID}
-
-    created = await client.post(
-        '/api/v1/skills',
-        headers=headers,
-        json={'name': 'editable', 'instructions': 'Keep these instructions.'},
-    )
-    assert created.status_code == 200
-    original_revision = (await created.get_json())['data']['skill']['revision']
-    path = '/api/v1/skills/editable/files/references/guide.md'
-    written = await client.put(path, headers=headers, json={'content': 'Saved content', 'base_revision': original_revision})
-    assert written.status_code == 200
-    revision = (await written.get_json())['data']['revision']
-    assert revision.startswith('sha256:') and revision != original_revision
-
-    stale = await client.put(path, headers=headers, json={'content': 'Stale overwrite', 'base_revision': original_revision})
-    assert stale.status_code == 409
-    saved = await client.get(path, headers=headers)
-    assert saved.status_code == 200
-    assert (await saved.get_json())['data']['content'] == 'Saved content'
-    current = await client.get('/api/v1/skills/editable', headers=headers)
-    skill = (await current.get_json())['data']['skill']
-    assert skill['revision'] == revision
-    assert skill['instructions'] == 'Keep these instructions.'

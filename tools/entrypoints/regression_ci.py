@@ -59,7 +59,7 @@ sys.path.insert(0, str(ROOT))
 from tests.e2e.utils.config_factory import create_minimal_config, create_test_directories  # noqa: E402
 
 
-def suite_profile(name, run_id, groups=(), api_seed=1, load_settings=None):
+def suite_profile(name, run_id, groups=(), api_seed=1, load_settings=None, *, api_fixed_only=False):
     profile_path = ROOT / 'tools/profiles' / ('endurance.json' if name == 'endurance' else 'smoke.json')
     if name in ('scenarios', 'daily'):
         from tools.regression.regression_scenarios import expanded_profile
@@ -75,8 +75,8 @@ def suite_profile(name, run_id, groups=(), api_seed=1, load_settings=None):
         from tools.regression.regression_api_cases import add_cases
 
         profile.update(resources=[], cases=[], coverage_suite='api')
-        profile['vars']['api_seed'] = api_seed
-        add_cases(profile)
+        profile['vars'].update(api_seed=api_seed, api_fixed_only=api_fixed_only)
+        add_cases(profile, fixed_only=api_fixed_only)
     if name == 'isolation':
         from tools.regression.regression_isolation_cases import isolation_profile
 
@@ -342,7 +342,12 @@ def run(args):
             if 'plugins' in groups and not {'misc/EssentialCommands', 'misc/FAQManager'} <= set(args.extra_plugins):
                 groups.remove('plugins')
         profile, profile_path = suite_profile(
-            args.suite, secrets.token_hex(8), groups, args.api_seed, args.load_settings
+            args.suite,
+            secrets.token_hex(8),
+            groups,
+            args.api_seed,
+            load_settings=args.load_settings,
+            api_fixed_only=args.api_fixed_only,
         )
         if host:
             profile.get('resource_limits', {}).pop('containers', None)
@@ -603,7 +608,8 @@ def run(args):
         if host:
             result['docker_container_evidence'] = 'not_applicable_host'
         if args.suite == 'api':
-            result['api_seed'] = args.api_seed
+            result['api_fixed_only'] = args.api_fixed_only
+            result['api_seed'] = None if args.api_fixed_only else args.api_seed
             result['case_order'] = [case['name'] for case in profile['cases']]
         result['passed'] = result['passed'] and not result['coverage_errors']
         (root / 'gate/gate.json').write_text(json.dumps(result, indent=2) + '\n')
@@ -661,8 +667,11 @@ def main():
         help='Local groups for scenarios/daily (default: all); an empty list selects only the base cases',
     )
     parser.add_argument('--api-seed', type=int, default=1, help='Replay the API suite chain shuffle (default: 1)')
+    parser.add_argument('--api-fixed-only', action='store_true', help='Run one fixed pass of the API chains')
     parser.add_argument('--restart-services', action='store_true', help='Check owned Core/Runtime restarts once')
     args = parser.parse_args()
+    if args.api_fixed_only and args.suite != 'api':
+        parser.error('--api-fixed-only requires --suite api')
     if args.extra_plugins and args.plugins is None:
         parser.error('--extra-plugins requires --plugins')
     if args.suite not in ('scenarios', 'daily') and (args.scenario_groups is not None or args.restart_services):

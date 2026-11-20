@@ -254,25 +254,58 @@ class DailySummaryTest(unittest.TestCase):
                 else:
                     self.assertNotIn('Daily regression: PASS', text)
 
-    def test_api_summary_keeps_preparation_and_outer_failures_visible(self):
-        workflow = Path(__file__).resolve().parents[2] / '.github/workflows/daily-endurance.yml'
-        steps = yaml.safe_load(workflow.read_text())['jobs']['api-contracts']['steps']
+    def test_api_summary_reports_both_modes_and_keeps_failures_visible(self):
+        action = Path(__file__).resolve().parents[2] / '.github/actions/run-api-contracts/action.yml'
+        steps = yaml.safe_load(action.read_text())['runs']['steps']
         command = next(step['run'] for step in steps if step.get('name') == 'Publish API result')
         suite = {'passed': True, 'requests': 14, 'status': {'passed': 14}, 'elapsed_seconds': 7.3}
-        for gate, actual_suite, expected in [
-            ({'passed': True, 'api_seed': 123}, suite, 'Daily API contracts: PASS'),
+        daily = {'passed': True, 'api_fixed_only': False, 'api_seed': 123}
+        cases = [
+            (False, daily, suite, 'success', True, 'Daily API contracts: PASS'),
+            (True, {'passed': True, 'api_fixed_only': True}, suite, 'success', True, 'PR API contracts: PASS'),
+            (True, daily, suite, 'success', False, 'verdict does not match the requested run mode'),
+            (False, daily, suite, 'failure', False, 'API runner step: failure'),
+            (False, daily, None, 'success', False, 'Missing verdict'),
             (
+                False,
                 {'passed': False, 'infrastructure_error': 'plugin installation failed'},
                 None,
+                'failure',
+                False,
                 'plugin installation failed',
             ),
-            ({'passed': False, 'timed_out': True}, suite, '600-second outer process guard'),
-            ({'passed': False, 'resource_errors': ['sampling failed']}, suite, 'sampling failed'),
-            ({'passed': False, 'coverage_errors': ['missing evidence']}, suite, 'missing evidence'),
-            ({'passed': False}, {'passed': False, 'errors': ['MCP mode persisted']}, 'MCP mode persisted'),
-            (None, None, 'Missing verdict'),
-        ]:
-            with self.subTest(gate=gate), tempfile.TemporaryDirectory() as directory:
+            (False, {'passed': False, 'timed_out': True}, suite, 'failure', False, '600-second outer process guard'),
+            (
+                False,
+                {'passed': False, 'resource_errors': ['sampling failed']},
+                suite,
+                'failure',
+                False,
+                'sampling failed',
+            ),
+            (
+                False,
+                {'passed': False, 'coverage_errors': ['missing evidence']},
+                suite,
+                'failure',
+                False,
+                'missing evidence',
+            ),
+            (
+                False,
+                {'passed': False},
+                {'passed': False, 'errors': ['MCP mode persisted']},
+                'failure',
+                False,
+                'MCP mode persisted',
+            ),
+            (False, None, None, 'skipped', False, 'Missing verdict'),
+        ]
+        for fixed_only, gate, actual_suite, outcome, passed, expected in cases:
+            with (
+                self.subTest(fixed_only=fixed_only, gate=gate, outcome=outcome),
+                tempfile.TemporaryDirectory() as directory,
+            ):
                 root = Path(directory)
                 target = root / '.qa/api/gate/suite'
                 target.mkdir(parents=True)
@@ -291,15 +324,21 @@ class DailySummaryTest(unittest.TestCase):
                         'GITHUB_STEP_SUMMARY': str(summary),
                         'GITHUB_SHA': 'tested-core',
                         'GITHUB_RUN_ID': '456',
+                        'API_FIXED_ONLY': json.dumps(fixed_only),
+                        'API_RUN_OUTCOME': outcome,
                     },
                 )
-                self.assertEqual(result.returncode, 0 if gate and gate.get('passed') else 1)
+                self.assertEqual(result.returncode, 0 if passed else 1, result.stderr)
                 text = summary.read_text()
                 self.assertIn(expected, text)
                 self.assertIn('not reported', text)
-                self.assertIn('shuffle seed: `123`' if gate and gate.get('passed') else 'shuffle seed: `456`', text)
-                if not gate or not gate.get('passed'):
-                    self.assertNotIn('Daily API contracts: PASS', text)
+                if fixed_only:
+                    self.assertNotIn('Shuffle seed', text)
+                else:
+                    seed = (gate or {}).get('api_seed', 456)
+                    self.assertIn(f'Shuffle seed: `{seed}`', text)
+                if not passed:
+                    self.assertIn('FAIL / incomplete', text)
 
     def test_core_summary_records_preparation_failure_and_selected_plugins(self):
         workflow = Path(__file__).resolve().parents[2] / '.github/workflows/core-smoke.yml'

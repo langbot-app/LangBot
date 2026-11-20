@@ -3,6 +3,7 @@
 import json
 import random
 
+from tools.entrypoints.regression_coverage import api_checks_by_case, load_catalog
 from tools.regression.regression_api_checks import (
     check,
     owned_resource,
@@ -18,12 +19,14 @@ from tools.regression.resource_cleanup import cleanup, journal
 CASE_NAMES = ('api_llm', 'api_embedding', 'api_rerank', 'api_pipeline', 'api_credentials', 'api_skills', 'api_mcp')
 
 
-def add_cases(profile):
+def add_cases(profile, *, fixed_only=False):
     require(profile.get('coverage_suite') == 'api', 'API contracts require their dedicated suite')
-    shuffled = list(CASE_NAMES)
-    seed = profile['vars']['api_seed']
-    random.Random(seed).shuffle(shuffled)
-    for phase, names in (('fixed', CASE_NAMES), ('shuffled', shuffled)):
+    rounds = [('fixed', CASE_NAMES)]
+    if not fixed_only:
+        shuffled = list(CASE_NAMES)
+        random.Random(profile['vars']['api_seed']).shuffle(shuffled)
+        rounds.append(('shuffled', shuffled))
+    for phase, names in rounds:
         for name in names:
             profile['cases'].append(
                 {'name': f'{phase}_{name}', 'scenario': name, 'stage': 'api', 'expect': 'API_CONTRACT_OK'}
@@ -203,7 +206,13 @@ def run_case(suite, case, row):
     from tools.regression.regression_api_resources import mcp_case, skills_case
 
     name = case['scenario']
-    row['api_seed'] = suite.profile['vars']['api_seed']
+    phase = case['name'].partition('_')[0]
+    row.update(
+        phase=phase,
+        round=1 if phase == 'fixed' else 2,
+        api_seed=suite.profile['vars']['api_seed'] if phase == 'shuffled' else None,
+        contract_ids=list(api_checks_by_case(load_catalog())[case['name']]),
+    )
 
     def execute():
         if name in ('api_llm', 'api_embedding', 'api_rerank'):
