@@ -88,8 +88,9 @@ that baseline; include its selection and runtime in new ordinary-PR measurements
 
 ## P0 pull-request acceptance
 
-`core-smoke.yml` calls the reusable `p0-acceptance.yml` before its existing required
-`Core smoke (60s)` job. Backend/SDK/dependency/workflow changes select all P0 paths;
+`core-smoke.yml` runs `p0-acceptance.yml` and `Core runtime smoke` in parallel.
+The required `Core smoke (60s)` check waits for both to succeed.
+Backend/SDK/dependency/workflow changes select all P0 paths;
 test-only changes select their affected boundary. Documentation and WebUI-only
 changes do not select backend acceptance. Selected jobs must succeed; a missing
 environment, failed job, cancellation or skipped required case blocks the existing
