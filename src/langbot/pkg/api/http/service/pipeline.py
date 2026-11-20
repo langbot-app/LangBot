@@ -28,6 +28,7 @@ default_stage_order = [
     'SpeechRecognitionStage',  # 语音识别（ASR）阶段
     'PreContentFilterStage',  # 内容过滤前置阶段
     'PreProcessor',  # 预处理器
+    'RequireDailyMessageQuota',
     'RequireRateLimitOccupancy',  # 请求速率限制占用
     'MessageProcessor',  # 处理器
     'ReleaseRateLimitOccupancy',  # 释放速率限制占用

@@ -3111,6 +3111,32 @@ const esES = {
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
+  dailyMessageQuota: {
+    planLimited: '{{count}} mensajes al día',
+    planUnlimited: 'Mensajes diarios ilimitados',
+    planHelp:
+      'Mensajes que tus bots pueden procesar al día, contados por día UTC y reiniciados a las 00:00 UTC. Solo cuentan los mensajes que un bot procesa realmente. Al agotarse, los mensajes nuevos de ese día no se procesan y se avisa al usuario.',
+    title: 'Mensajes de hoy',
+    usage: '{{used}} / {{limit}}',
+    remaining: 'Quedan {{count}}',
+    resetsAt: 'Se reinicia {{time}}',
+    today: 'hoy {{time}}',
+    tomorrow: 'mañana {{time}}',
+    exhausted: 'Cuota de hoy agotada',
+    exhaustedHint: 'Los mensajes nuevos se pausan hasta {{time}}',
+    nearLimit: 'Casi agotada',
+    upgrade: 'Mejorar plan',
+    unlimited: 'Ilimitado',
+    settingsTitle: 'Cuota diaria de mensajes',
+    settingsDescription:
+      'Mensajes que tus bots pueden procesar al día, incluido el chat de depuración. Se cuenta por día UTC; los mensajes de grupo que no activan un bot no cuentan.',
+    unlimitedDescription: 'Tu plan no limita los mensajes diarios.',
+    errorTitle: 'Cuota diaria de mensajes agotada',
+    errorBody:
+      'Este espacio de trabajo ya procesó {{limit}} mensajes hoy, por lo que este mensaje no se procesó. La cuota se reinicia {{time}}.',
+    errorUpgrade: 'Mejora para una cuota mayor',
+    unavailable: 'El uso de hoy no está disponible ahora',
+  },
   workspace: {
     dedicatedSpaceMembersHint:
       'Los miembros que inician sesión con su cuenta de LangBot se invitan desde la página Cloud de LangBot Space. La invitación de abajo crea una cuenta con contraseña independiente en esta instancia.',

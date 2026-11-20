@@ -51,6 +51,7 @@ import {
   PanelToolbar,
 } from '@/app/home/components/settings-dialog/panel-layout';
 import WorkspacePlanBadge from './WorkspacePlanBadge';
+import { WorkspaceDailyMessageQuota } from '@/app/home/components/workspace-quota/DailyMessageQuotaMeter';
 
 const CloudPlansDialog = lazy(() => import('./CloudPlansDialog'));
 
@@ -465,6 +466,7 @@ export default function WorkspaceSettingsPanel({
       </PanelToolbar>
 
       <PanelBody className="space-y-6">
+        <WorkspaceDailyMessageQuota onUpgrade={() => setPlansOpen(true)} />
         <section className="space-y-3">
           <div>
             <h3 id="workspace-language-label" className="text-sm font-semibold">

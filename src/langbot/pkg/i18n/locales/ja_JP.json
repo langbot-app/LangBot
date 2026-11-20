@@ -1,4 +1,5 @@
 {
+  "Daily message quota reached ({limit} per day). It resets at 00:00 UTC. Upgrade your plan for a higher quota.": "本日のメッセージ上限（1 日 {limit} 件）に達しました。UTC 00:00 にリセットされます。プランのアップグレードで上限を増やせます。",
   "The bot route changed. Read the current binding.": "Bot のルートが変更されました。現在のバインディングを確認してください。",
   "Skill not found": "Skill が見つかりません",
   "Skill package name must match the requested Skill": "パッケージ内の Skill 名は要求された Skill と一致する必要があります",

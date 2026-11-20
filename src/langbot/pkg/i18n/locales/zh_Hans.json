@@ -1,4 +1,5 @@
 {
+  "Daily message quota reached ({limit} per day). It resets at 00:00 UTC. Upgrade your plan for a higher quota.": "今日消息额度已用完（每天 {limit} 条），将于 UTC 00:00 重置。升级套餐可提高额度。",
   "The bot route changed. Read the current binding.": "Bot 路由已变化。请读取当前绑定。",
   "Skill not found": "Skill 不存在",
   "Skill package name must match the requested Skill": "包内 Skill 名称必须与请求的 Skill 一致",

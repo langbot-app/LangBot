@@ -1,3 +1,4 @@
+import type { MessageQuota } from '@/app/infra/entities/workspace';
 // Message component base interface
 export interface MessageComponent {
   type: string;
@@ -139,6 +140,13 @@ export type MessageChainComponent =
   | WeChatEmoji
   | WeChatLink;
 
+/** Structured pipeline rejection attached to a Debug Chat reply. */
+export interface MessageError {
+  error_code: string;
+  message?: string;
+  quota?: MessageQuota;
+}
+
 // Message interface
 export interface Message {
   id: number;
@@ -147,4 +155,5 @@ export interface Message {
   message_chain: MessageChainComponent[];
   timestamp: string;
   is_final?: boolean;
+  error?: MessageError | null;
 }

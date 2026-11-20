@@ -102,6 +102,7 @@ _ALEMBIC_TENANT_TABLES = {
     'alert_settings',
     'alert_incidents',
     'alert_deliveries',
+    'workspace_message_usage_daily',
     'langbot_vectors',
     'directory_projection_states',
     'directory_projection_inbox',

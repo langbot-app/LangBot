@@ -1,4 +1,5 @@
 {
+  "Daily message quota reached ({limit} per day). It resets at 00:00 UTC. Upgrade your plan for a higher quota.": "Se alcanzó el límite diario de mensajes ({limit} al día). Se restablece a las 00:00 UTC. Mejora tu plan para aumentar el límite.",
   "The bot route changed. Read the current binding.": "La ruta del bot ha cambiado. Consulta la vinculación actual.",
   "Skill not found": "No se encontró el Skill",
   "Skill package name must match the requested Skill": "El nombre del Skill del paquete debe coincidir con el Skill solicitado",

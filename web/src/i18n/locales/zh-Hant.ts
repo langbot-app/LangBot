@@ -2860,6 +2860,32 @@ const zhHant = {
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
+  dailyMessageQuota: {
+    planLimited: '每日訊息 {{count}} 則',
+    planUnlimited: '每日訊息不限',
+    planHelp:
+      '機器人每天可處理的訊息數，按 UTC 自然日計算，00:00 重置。只有機器人實際處理的訊息才計入，群組內未觸發機器人的訊息不計。用完後當天的新訊息不再處理，並提示使用者。',
+    title: '今日訊息',
+    usage: '{{used}} / {{limit}}',
+    remaining: '剩餘 {{count}} 則',
+    resetsAt: '{{time}} 重置',
+    today: '今天 {{time}}',
+    tomorrow: '明天 {{time}}',
+    exhausted: '今日額度已用完',
+    exhaustedHint: '新訊息暫不處理，{{time}} 恢復',
+    nearLimit: '即將用完',
+    upgrade: '升級方案',
+    unlimited: '不限',
+    settingsTitle: '每日訊息額度',
+    settingsDescription:
+      '工作區內機器人每天可處理的訊息數（含調試對話），按 UTC 自然日計算。群組內未觸發機器人的訊息不計入。',
+    unlimitedDescription: '目前方案不限制每日訊息數。',
+    errorTitle: '今日訊息額度已用完',
+    errorBody:
+      '本工作區今天已處理 {{limit}} 則訊息，這則訊息沒有被處理。額度將於{{time}}重置。',
+    errorUpgrade: '升級方案提高額度',
+    unavailable: '暫時無法取得今日用量',
+  },
   workspace: {
     dedicatedSpaceMembersHint:
       '使用 LangBot 帳號登入的成員請在 LangBot Space 的 Cloud 頁面邀請。下方邀請會在本實例建立獨立的密碼帳號。',

@@ -3075,6 +3075,32 @@ const ruRU = {
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
+  dailyMessageQuota: {
+    planLimited: '{{count}} сообщений в день',
+    planUnlimited: 'Сообщения в день без ограничений',
+    planHelp:
+      'Сколько сообщений боты могут обработать за сутки (UTC); сброс в 00:00 UTC. Учитываются только сообщения, которые бот действительно обработал. После исчерпания новые сообщения в этот день не обрабатываются, а пользователь получает уведомление.',
+    title: 'Сообщения сегодня',
+    usage: '{{used}} / {{limit}}',
+    remaining: 'Осталось {{count}}',
+    resetsAt: 'Сброс {{time}}',
+    today: 'сегодня {{time}}',
+    tomorrow: 'завтра {{time}}',
+    exhausted: 'Лимит на сегодня исчерпан',
+    exhaustedHint: 'Новые сообщения не обрабатываются до {{time}}',
+    nearLimit: 'Почти исчерпан',
+    upgrade: 'Улучшить тариф',
+    unlimited: 'Без ограничений',
+    settingsTitle: 'Дневной лимит сообщений',
+    settingsDescription:
+      'Сколько сообщений боты могут обработать за день, включая отладочный чат. Считается по суткам UTC; сообщения в группах, не адресованные боту, не учитываются.',
+    unlimitedDescription: 'Ваш тариф не ограничивает число сообщений в день.',
+    errorTitle: 'Дневной лимит сообщений исчерпан',
+    errorBody:
+      'Это рабочее пространство уже обработало {{limit}} сообщений сегодня, поэтому это сообщение не обработано. Лимит сбросится {{time}}.',
+    errorUpgrade: 'Улучшить тариф для большего лимита',
+    unavailable: 'Сейчас не удаётся получить данные за сегодня',
+  },
   workspace: {
     dedicatedSpaceMembersHint:
       'Участников, входящих через аккаунт LangBot, приглашают на странице Cloud в LangBot Space. Приглашение ниже создаёт отдельный аккаунт с паролем в этом экземпляре.',

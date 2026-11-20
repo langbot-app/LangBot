@@ -4,6 +4,8 @@ import typing
 
 import quart
 
+from .....cloud.message_quota import message_quota_display, message_quota_status
+
 from ...authz import Permission, permissions_for_role
 from ...context import PrincipalType, RequestContext
 from ...service.user import AccountExistsLoginRequiredError, ControlPlaneDirectoryRequiredError
@@ -209,6 +211,10 @@ class WorkspacesRouterGroup(group.RouterGroup):
                 )
             return self.http_status(403, 'edition_limit', 'This edition supports one Workspace per instance')
 
+        @self.route('/current/message-quota', methods=['GET'], permission=Permission.WORKSPACE_VIEW)
+        async def _(request_context: RequestContext) -> typing.Any:
+            return self.success(data=await message_quota_status(self.ap, request_context.workspace_uuid))
+
         @self.route('/current', methods=['GET'], permission=Permission.WORKSPACE_VIEW)
         async def _(request_context: RequestContext) -> typing.Any:
             membership = quart.g.workspace_membership
@@ -216,6 +222,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
             plan_name: str | None = None
             limitation = None
             current_plan = None
+            quota = await message_quota_display(self.ap, request_context.workspace_uuid)
             resolver = getattr(self.ap, 'entitlement_resolver', None)
             if workspace.source == WorkspaceSource.CLOUD_PROJECTION.value and resolver is not None:
                 entitlement = await resolver.resolve(
@@ -254,6 +261,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
                         'placement_generation': request_context.placement_generation,
                         'plan_name': plan_name,
                         'current_plan': current_plan,
+                        'message_quota': quota,
                         'limitation': limitation,
                     }
                 )
@@ -272,6 +280,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
                     'placement_generation': request_context.placement_generation,
                     'plan_name': plan_name,
                     'current_plan': current_plan,
+                    'message_quota': quota,
                     'limitation': limitation,
                 }
             )
