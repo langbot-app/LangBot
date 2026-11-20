@@ -886,6 +886,17 @@ export class BackendClient extends BaseHttpClient {
     return this.put(`/api/v1/platform/bots/${uuid}`, bot);
   }
 
+  public callBotPlatformApi<T = Record<string, unknown>>(
+    botId: string,
+    action: string,
+    params: Record<string, unknown> = {},
+  ): Promise<T> {
+    return this.post(`/api/v1/platform/bots/${botId}/platform-api`, {
+      action,
+      params,
+    });
+  }
+
   public dryRunBotEventRoute(
     botId: string,
     request: BotRouteDryRunRequest,

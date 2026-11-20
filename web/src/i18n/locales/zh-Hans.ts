@@ -1,4 +1,5 @@
 import slackSetup from './slack-setup/zh-Hans';
+import wxoaMenu from './wxoa-menu/zh-Hans';
 import pipelineMigration from './pipeline-migration/zh-Hans';
 import pluginPermissions from './plugin-permissions/zh-Hans';
 const zhHans = {
@@ -197,6 +198,7 @@ const zhHans = {
     saveFailed: '语言设置保存失败',
   },
   slackSetup,
+  wxoaMenu,
   inflight: {
     autoCollapse: '自动折叠',
     empty: '当前没有正在处理的事件',

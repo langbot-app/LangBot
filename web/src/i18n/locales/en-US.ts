@@ -1,4 +1,5 @@
 import slackSetup from './slack-setup/en-US';
+import wxoaMenu from './wxoa-menu/en-US';
 import pipelineMigration from './pipeline-migration/en-US';
 import pluginPermissions from './plugin-permissions/en-US';
 const enUS = {
@@ -216,6 +217,7 @@ const enUS = {
     saveFailed: 'Failed to save language',
   },
   slackSetup,
+  wxoaMenu,
   inflight: {
     autoCollapse: 'Auto-collapse',
     empty: 'No events are being processed',
