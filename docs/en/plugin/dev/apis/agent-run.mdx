@@ -272,9 +272,15 @@ External runners use the same flow through `AgentRunExternalTools`: `langbot_get
 | `await ctx.run_cancel(run_id=None, reason=None)` | `AgentRun` | `run_cancel` |
 | `await ctx.run_retry(run_id=None, reason=None)` | `AgentRun` | `run_retry` |
 | `await ctx.run_resume(run_id=None, from_sequence=None, reason=None)` | `AgentRun` | `run_resume` |
-| `await ctx.run_cancel_ack(run_id=None, reason=None, cleanup_confirmed=True)` | `AgentRun` | `run_cancel_ack` |
+| `await ctx.run_cancel_ack(run_id=None, reason=None, cleanup_confirmed=True, *, expected_retry_count=None)` | `AgentRun` | `run_cancel_ack` |
 | `await ctx.run_append_result(result)` | `AgentRunEvent` | `run_append_result` |
 | `await ctx.run_finalize(run_id=None, status=None, reason=None)` | `AgentRun` | `run_finalize` |
+
+Cancellation records the request first. After the Runner finishes cleanup, call `ctx.run_cancel_ack()`. A pending acknowledgement (`cleanup_confirmed=False`) can advance to confirmed. For the same attempt, retries preserve the time and reason of the first acknowledgement in each state, and confirmation is final.
+
+Externally queued runs reuse their ID on retry. When handling cancellation, save the count from the returned run (`run.metadata.get("retry_count", 0)`). Pass it as `expected_retry_count` when acknowledging cleanup and reuse the saved value on retransmission. After the first requeue, the Host rejects a missing or mismatched count without changing the run. Other runs can omit the field. Finalizers can add metadata. The Host preserves `cancel_ack` for all runs and `retry_count` for external queues.
+
+On upgrade, an old acknowledgement on a requeued run may lack an attempt number. Its history is retained. The first ACK tagged with the current count establishes the time and reason for the current attempt.
 
 `claim=False` consumes steering on pull. With `claim=True`, acknowledge accepted delivery IDs with `steering_ack`; unacknowledged leases can be redelivered. ACK and recovery controls retain authorization after the source Run ends. Host retry/resume creates a new Run with a fresh deadline and current grants; resume requires a committed checkpoint and does not rewind external effects.
 

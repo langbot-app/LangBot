@@ -497,6 +497,9 @@ async def test_recovery_operations_preserve_run_authorization(host, monkeypatch,
         ('steering_ack', {'delivery_ids': ['']}),
         ('run_resume', {'from_sequence': -1}),
         ('run_cancel_ack', {'cleanup_confirmed': 'true'}),
+        ('run_cancel_ack', {'expected_retry_count': -1}),
+        ('run_cancel_ack', {'expected_retry_count': True}),
+        ('run_cancel_ack', {'expected_retry_count': '1'}),
     ],
 )
 async def test_recovery_operations_reject_invalid_inputs(host, action, payload):

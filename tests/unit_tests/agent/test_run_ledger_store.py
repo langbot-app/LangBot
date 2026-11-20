@@ -501,6 +501,135 @@ async def test_retry_resume_and_cancel_ack_persist_lifecycle_metadata(store):
 
 
 @pytest.mark.asyncio
+async def test_cancel_ack_is_monotonic_and_concurrent_across_stores(store, db_engine):
+    run_id = 'cancel-ack'
+    await store.create_run(run_id=run_id, event_id=None, binding_id=None, runner_id='runner', queue_name='external')
+    other_engine = create_async_engine(db_engine.url)
+    try:
+        other = RunLedgerStore(other_engine)
+        pending = await store.acknowledge_cancel(run_id=run_id, reason='working', cleanup_confirmed=False)
+        repeated = await other.acknowledge_cancel(run_id=run_id, reason='retry', cleanup_confirmed=False)
+        assert repeated['metadata'] == pending['metadata']
+        confirmed, concurrent = await asyncio.gather(
+            store.acknowledge_cancel(run_id=run_id, reason='complete'),
+            other.acknowledge_cancel(run_id=run_id, reason='complete'),
+        )
+        assert confirmed['metadata'] == concurrent['metadata']
+        stale = await other.acknowledge_cancel(run_id=run_id, reason='working', cleanup_confirmed=False)
+        assert stale['metadata'] == confirmed['metadata']
+        assert confirmed['metadata']['cancel_ack']['reason'] == 'complete'
+        assert confirmed['metadata']['cancel_ack']['cleanup_confirmed'] is True
+        events, *_ = await store.page_run_events(run_id=run_id)
+        assert [(e['type'], e['data']['reason']) for e in events] == [
+            ('run.cancel_ack', 'working'),
+            ('run.cancel_ack', 'complete'),
+        ]
+        await store.finalize_run(run_id=run_id, status='cancelled')
+        next_attempt = await store.retry_run(run_id=run_id)
+        assert 'cancel_ack' not in next_attempt['metadata']
+        await store.finalize_run(
+            run_id=run_id,
+            status='queued',
+            metadata={'retry_count': 0, 'cancel_ack': pending['metadata']['cancel_ack'], 'user_note': 'keep'},
+        )
+        current = await store.get_run(run_id)
+        assert current['metadata']['retry_count'] == 1 and current['metadata']['user_note'] == 'keep'
+        assert 'cancel_ack' not in current['metadata']
+        with pytest.raises(ValueError, match='does not match'):
+            await other.acknowledge_cancel(run_id=run_id, expected_retry_count=0)
+        await store.acknowledge_cancel(run_id=run_id, reason='second attempt', expected_retry_count=1)
+        events, *_ = await store.page_run_events(run_id=run_id)
+        assert [e['sequence'] for e in events] == [1, 2, 3]
+    finally:
+        await other_engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_ordinary_run_finalizer_cannot_restore_stale_cleanup_state(store):
+    await store.create_run(run_id='ordinary', event_id=None, binding_id=None, runner_id='runner')
+    pending = await store.acknowledge_cancel(run_id='ordinary', reason='in progress', cleanup_confirmed=False)
+    confirmed = await store.acknowledge_cancel(run_id='ordinary', reason='done')
+    metadata = {**pending['metadata'], 'result': 'delivered', 'retry_count': 12}
+    final = await store.finalize_run(run_id='ordinary', status='cancelled', metadata=metadata)
+    assert final['metadata'] == {
+        'cancel_ack': confirmed['metadata']['cancel_ack'],
+        'result': 'delivered',
+        'retry_count': 12,
+    }
+    await store.acknowledge_cancel(run_id='ordinary', reason='done')
+    history, *_ = await store.page_run_events(run_id='ordinary')
+    assert [(row['type'], row['data']['cleanup_confirmed']) for row in history] == [
+        ('run.cancel_ack', False),
+        ('run.cancel_ack', True),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_cancel_ack_replay_preserves_legacy_metadata_and_records_missing_audit(store):
+    legacy = {'acknowledged_at': 12345, 'reason': 'original', 'cleanup_confirmed': True}
+    await store.create_run(
+        run_id='old', event_id=None, binding_id=None, runner_id='runner', metadata={'cancel_ack': legacy}
+    )
+    for _ in range(2):
+        got = await store.acknowledge_cancel(run_id='old', reason='current retry')
+        assert got['metadata']['cancel_ack'] == legacy
+    events, *_ = await store.page_run_events(run_id='old')
+    assert [(e['source'], e['type'], e['data']['reason']) for e in events] == [
+        ('host', 'run.cancel_ack', 'current retry')
+    ]
+    assert events[0]['created_at'] > legacy['acknowledged_at']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('first_state', [False, True])
+async def test_legacy_external_ack_has_no_claim_on_new_attempt(store, first_state):
+    original = {'acknowledged_at': 12345, 'reason': 'old cleanup', 'cleanup_confirmed': True}
+    await store.create_run(
+        run_id='upgraded',
+        runner_id='runner',
+        binding_id=None,
+        event_id=None,
+        queue_name='ext',
+        metadata={'retry_count': 1, 'retry_requested_at': 12345, 'cancel_ack': original},
+    )
+    assert 'cancel_ack' not in (await store.get_run('upgraded'))['metadata']
+    old_event = await store.append_audit_event(
+        run_id='upgraded', event_type='run.cancel_ack', data={'reason': 'old cleanup', 'cleanup_confirmed': True}
+    )
+    for state in (first_state, first_state, True, True):
+        got = await store.acknowledge_cancel(
+            run_id='upgraded', cleanup_confirmed=state, expected_retry_count=1, reason='new cleanup'
+        )
+        receipt = got['metadata']['cancel_ack']
+        assert (receipt['retry_count'], receipt['reason'], receipt['cleanup_confirmed']) == (1, 'new cleanup', state)
+    events, *_ = await store.page_run_events(run_id='upgraded')
+    assert events[0] == old_event
+    assert [(e['data']['retry_count'], e['data']['cleanup_confirmed']) for e in events[1:]] == (
+        [(1, True)] if first_state else [(1, False), (1, True)]
+    )
+
+
+@pytest.mark.asyncio
+async def test_cancel_ack_audit_failure_rolls_back_metadata(store, db_engine):
+    await store.create_run(run_id='failure', event_id=None, binding_id=None, runner_id='runner')
+
+    def refuse_event(conn, cursor, statement, parameters, context, executemany):
+        if statement.startswith('INSERT INTO agent_run_event'):
+            raise RuntimeError('injected audit write failure')
+
+    sqlalchemy.event.listen(db_engine.sync_engine, 'before_cursor_execute', refuse_event)
+    try:
+        with pytest.raises(RuntimeError, match='injected audit write failure'):
+            await store.acknowledge_cancel(run_id='failure')
+    finally:
+        sqlalchemy.event.remove(db_engine.sync_engine, 'before_cursor_execute', refuse_event)
+    assert 'cancel_ack' not in (await store.get_run('failure'))['metadata']
+    assert (await store.page_run_events(run_id='failure'))[0] == []
+    await store.acknowledge_cancel(run_id='failure')
+    assert len((await store.page_run_events(run_id='failure'))[0]) == 1
+
+
+@pytest.mark.asyncio
 async def test_host_events_allocate_sequences_across_stores(store, db_engine):
     await store.create_run(run_id='concurrent-host', event_id=None, binding_id=None, runner_id='runner')
     other = RunLedgerStore(db_engine)
