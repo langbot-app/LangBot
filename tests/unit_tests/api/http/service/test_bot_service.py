@@ -104,6 +104,13 @@ class _PersistenceManager:
         return _FakeResult(SimpleNamespace(name='Updated Pipeline'))
 
 
+async def test_add_bot_admin_rejects_group_launcher():
+    service = BotService(SimpleNamespace())
+
+    with pytest.raises(ValueError, match='person'):
+        await service.add_bot_admin(WORKSPACE_UUID, 'bot-1', 'group', 'group-1')
+
+
 async def test_update_bot_copies_input_before_filtering_legacy_routing_fields():
     persistence_mgr = _PersistenceManager()
     runtime_bot = SimpleNamespace(enable=False, bot_entity=SimpleNamespace(name='Test Bot'))

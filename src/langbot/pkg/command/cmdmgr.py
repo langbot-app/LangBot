@@ -88,25 +88,48 @@ class CommandManager:
         else:
             yield command_context.CommandReturn(error=command_errors.CommandNotFoundError(context.command))
 
+    @staticmethod
+    def _command_actor_id(query: pipeline_query.Query) -> str | None:
+        """Return the person who sent the command, never the group itself.
+
+        Bot admins are people. In a group chat the launcher is the group ID,
+        so using it would either deny every personal admin or, if group admins
+        were accepted, grant every member the admin's privileges. Prefer the
+        sender ID; fall back to the launcher ID only for private chats.
+        """
+
+        sender_id = getattr(query, 'sender_id', None)
+        if sender_id is not None and str(sender_id).strip():
+            return str(sender_id).strip()
+
+        launcher_type = getattr(query, 'launcher_type', None)
+        launcher_type = getattr(launcher_type, 'value', launcher_type)
+        if launcher_type == 'person':
+            launcher_id = getattr(query, 'launcher_id', None)
+            if launcher_id is not None and str(launcher_id).strip():
+                return str(launcher_id).strip()
+        return None
+
     async def resolve_privilege(self, query: pipeline_query.Query) -> int:
         """Resolve the command privilege for one platform query."""
-        privilege = 1
+        actor_id = self._command_actor_id(query)
+        if actor_id is None:
+            return 1
 
         import sqlalchemy as _sa
         from ..entity.persistence.bot import BotAdmin as _BotAdmin
 
-        _admins = await self.ap.persistence_mgr.execute_async(
-            _sa.select(_BotAdmin).where(
-                _BotAdmin.workspace_uuid == query.workspace_uuid,
-                _BotAdmin.bot_uuid == (query.bot_uuid or ''),
-                _BotAdmin.launcher_type == query.launcher_type.value,
-                _BotAdmin.launcher_id == str(query.launcher_id),
-            )
-        )
-        if _admins.first() is not None:
-            privilege = 2
+        conditions = [
+            _BotAdmin.bot_uuid == (query.bot_uuid or ''),
+            _BotAdmin.launcher_type == 'person',
+            _BotAdmin.launcher_id == actor_id,
+        ]
+        workspace_uuid = getattr(query, 'workspace_uuid', None)
+        if workspace_uuid:
+            conditions.append(_BotAdmin.workspace_uuid == workspace_uuid)
 
-        return privilege
+        _admins = await self.ap.persistence_mgr.execute_async(_sa.select(_BotAdmin).where(*conditions))
+        return 2 if _admins.first() is not None else 1
 
     async def execute(
         self,

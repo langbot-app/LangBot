@@ -148,10 +148,8 @@ class TestCommandHandlerReal:
 
         command = get_command_handler()
 
-        admin_result = Mock()
-        admin_result.first.return_value = Mock()
-        fake_app.persistence_mgr.execute_async = AsyncMock(return_value=admin_result)
-        fake_app.instance_config.data = {}
+        fake_app.cmd_mgr.resolve_privilege = AsyncMock(return_value=2)
+        fake_app.instance_config.data = {'command': {'prefix': ['/'], 'enable': True}}
         fake_app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
         fake_app.cmd_mgr.execute = mock_execute_factory()
 
@@ -165,7 +163,7 @@ class TestCommandHandlerReal:
         async for result in handler.handle(query):
             results.append(result)
 
-        fake_app.persistence_mgr.execute_async.assert_awaited_once()
+        fake_app.cmd_mgr.resolve_privilege.assert_awaited_once_with(query)
         call_args = fake_app.plugin_connector.emit_event.call_args
         event = call_args[0][0]
         assert event.is_admin is True
@@ -177,10 +175,8 @@ class TestCommandHandlerReal:
 
         command = get_command_handler()
 
-        admin_result = Mock()
-        admin_result.first.return_value = None
-        fake_app.persistence_mgr.execute_async = AsyncMock(return_value=admin_result)
-        fake_app.instance_config.data = {}
+        fake_app.cmd_mgr.resolve_privilege = AsyncMock(return_value=1)
+        fake_app.instance_config.data = {'command': {'prefix': ['/'], 'enable': True}}
         fake_app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
         fake_app.cmd_mgr.execute = mock_execute_factory()
 
@@ -194,10 +190,43 @@ class TestCommandHandlerReal:
         async for result in handler.handle(query):
             results.append(result)
 
-        fake_app.persistence_mgr.execute_async.assert_awaited_once()
+        fake_app.cmd_mgr.resolve_privilege.assert_awaited_once_with(query)
         call_args = fake_app.plugin_connector.emit_event.call_args
         event = call_args[0][0]
         assert event.is_admin is False
+
+    @pytest.mark.asyncio
+    async def test_group_mention_command_strips_at_for_dispatch(self, fake_app, mock_event_ctx):
+        """A leading @mention must not hide the command from dispatch."""
+        from langbot_plugin.api.entities.builtin.platform.message import At, MessageChain, Plain
+        from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes
+
+        command = get_command_handler()
+        fake_app.cmd_mgr.resolve_privilege = AsyncMock(return_value=2)
+        fake_app.instance_config.data = {'command': {'prefix': ['!'], 'enable': True}}
+        fake_app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+        seen = []
+
+        async def track_execute(command_text, full_command_text, query, session):
+            seen.append((command_text, full_command_text))
+            ret = Mock()
+            ret.text = 'ok'
+            ret.error = None
+            ret.image_url = None
+            ret.image_base64 = None
+            ret.file_url = None
+            yield ret
+
+        fake_app.cmd_mgr.execute = track_execute
+        query = command_query('!new')
+        query.launcher_type = LauncherTypes.GROUP
+        query.launcher_id = 'group-1'
+        query.message_chain = MessageChain([At(target='bot-1'), Plain(text='!new')])
+
+        results = [result async for result in command.CommandHandler(fake_app).handle(query)]
+
+        assert seen == [('new', '!new')]
+        assert results
 
     @pytest.mark.asyncio
     async def test_prevent_default_with_reply_continues(self, fake_app, mock_event_ctx):

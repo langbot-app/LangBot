@@ -1301,7 +1301,10 @@ class BotService:
             raise WorkspaceNotFoundError('Bot not found')
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
-                sqlalchemy.select(persistence_bot.BotAdmin).where(persistence_bot.BotAdmin.bot_uuid == bot_uuid),
+                sqlalchemy.select(persistence_bot.BotAdmin).where(
+                    persistence_bot.BotAdmin.bot_uuid == bot_uuid,
+                    persistence_bot.BotAdmin.launcher_type == 'person',
+                ),
                 persistence_bot.BotAdmin,
                 context,
             )
@@ -1310,6 +1313,12 @@ class BotService:
 
     async def add_bot_admin(self, context: TenantContext, bot_uuid: str, launcher_type: str, launcher_id: str) -> int:
         from ....entity.persistence import bot as persistence_bot
+
+        if launcher_type != 'person':
+            raise ValueError('Bot admins must be person launchers')
+        launcher_id = launcher_id.strip()
+        if not launcher_id:
+            raise ValueError('launcher_id is required')
 
         workspace_uuid = require_workspace_uuid(context)
         if await self.get_bot(context, bot_uuid, include_secret=False) is None:
