@@ -184,14 +184,13 @@ def skills_case(suite, row):
                 'Rejected Skill file write changed the file or published revision',
             )
 
-        # The file route currently maps revision conflicts to HTTP 400.
         _expect_rejection(
             suite,
             row,
             'PUT',
             file_path,
             {'content': 'stale file must not win', 'base_revision': file_revision},
-            expected=400,
+            expected=409,
             headers=headers,
             verify=verify_stale_file,
         )
