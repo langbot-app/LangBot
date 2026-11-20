@@ -278,6 +278,8 @@ Pipeline では `ctx.delivery.automatic_reply` が `True` になり、`RunnerRes
 
 キャンセル要求は先に実行台帳に記録されます。Runner は後処理を終えたら `ctx.run_cancel_ack()` を呼び出します。後処理が未確認の状態（`cleanup_confirmed=False`）は確認済みに更新できます。同じ実行を再通知しても各状態の最初の確認日時と理由は維持され、確認済みの状態は元に戻りません。
 
+外部キューの再試行では実行 ID が再利用されます。次の実行中に新たなキャンセル要求が記録されるまで、Host は遅れて届いた ACK を無視します。新たな要求が記録された後は ACK に実行試行の識別子がないため、呼び出し元が各試行の確認を区別する必要があります。
+
 `claim=False` は取得時に入力を消費します。`claim=True` では、受け付けた delivery ID を `steering_ack` で確認します。未確認のリースは再配信される場合があります。元の Run が終了した後も ACK と復旧操作は認可を検証します。Host の retry/resume は新しい期限と現在の権限で新しい Run を作成します。resume は確定済みチェックポイントを必要とし、外部の副作用を巻き戻しません。
 
 `run_id=None` は現在の実行を指します。通常のイベントハンドラーは SDK が自動的に完了します。独自の `run(ctx)` が `RunnerResult` を yield する場合、同じ結果を `run_append_result()` で重複登録しないでください。

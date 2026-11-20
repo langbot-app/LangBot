@@ -656,6 +656,14 @@ class RunLedgerStore:
             metadata = MediaCache.redact_inline_images(_json_loads(run.metadata_json, {}))
             if not isinstance(metadata, dict):
                 metadata = {}
+            if (
+                run.queue_name is not None
+                and metadata.get('retry_count')
+                and run.cancel_requested_at is None
+                and run.status in ('queued', 'claimed', 'running')
+            ):
+                # A requeued external run reuses its ID. A late ACK must not confirm its new active attempt.
+                return self._run_to_dict(run)
             previous = metadata.get('cancel_ack')
             previous_state = previous.get('cleanup_confirmed') if isinstance(previous, dict) else None
             if previous_state is True and not cleanup_confirmed:

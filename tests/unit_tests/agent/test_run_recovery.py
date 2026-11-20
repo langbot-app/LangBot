@@ -231,19 +231,24 @@ async def test_late_cancel_ack_replay_preserves_authorization_and_audit(clean_ag
     store = RunLedgerStore(clean_agent_state)
     await store.create_run(
         run_id='cancelled',
+        queue_name='external',
         event_id=None,
         binding_id=None,
         runner_id='runner',
-        authorization={'plugin_identity': 'test/runner', 'available_apis': {'run_cancel_ack': True}},
+        authorization={
+            'plugin_identity': 'test/runner',
+            'available_apis': {'run_cancel_ack': True, 'run_retry': True, 'run_cancel': True},
+        },
     )
     await store.request_cancel(run_id='cancelled')
     await store.finalize_run(run_id='cancelled', status='cancelled')
     ack = host.actions['run_cancel_ack']
-    data = {'target_run_id': 'cancelled', 'reason': 'stopped', 'cleanup_confirmed': True}
+    target = {'target_run_id': 'cancelled'}
     if admin:
-        data['caller_plugin_identity'] = 'test/ops'
+        target['caller_plugin_identity'] = 'test/ops'
     else:
-        data.update(run_id='cancelled', caller_plugin_identity='test/runner')
+        target.update(run_id='cancelled', caller_plugin_identity='test/runner')
+    data = {**target, 'reason': 'stopped', 'cleanup_confirmed': True}
     denied = await ack({**data, 'caller_plugin_identity': 'test/other'})
     assert denied.code != 0
     assert (await store.page_run_events(run_id='cancelled'))[0] == []
@@ -263,6 +268,15 @@ async def test_late_cancel_ack_replay_preserves_authorization_and_audit(clean_ag
             'target_run_id': 'cancelled',
             'detail': {'cleanup_confirmed': True},
         }
+
+    requeued = await host.actions['run_retry'](target)
+    assert requeued.code == 0 and requeued.data['status'] == 'queued'
+    stale = await ack(data)
+    assert stale.code == 0 and 'cancel_ack' not in stale.data['metadata']
+    requested = await host.actions['run_cancel'](target)
+    assert requested.code == 0 and requested.data['cancel_requested_at'] is not None
+    second = await ack({**data, 'reason': 'second cleanup'})
+    assert second.code == 0 and second.data['metadata']['cancel_ack']['reason'] == 'second cleanup'
 
 
 @pytest.mark.asyncio
