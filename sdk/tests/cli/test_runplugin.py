@@ -311,8 +311,7 @@ def test_cli_run_forwards_the_process_tag(monkeypatch):
 
     forwarded: list = []
     monkeypatch.setattr(
-        cli_module,
-        "run_plugin_process",
+        "langbot_plugin.cli.commands.runplugin.run_plugin_process",
         lambda *args, **kwargs: forwarded.append(kwargs),
     )
     monkeypatch.setattr(sys, "argv", ["lbp", "run", "--tag", "langbot-team/LangRAG"])

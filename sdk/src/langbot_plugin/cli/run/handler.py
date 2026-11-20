@@ -39,7 +39,6 @@ from langbot_plugin.api.definition.components.page import (
     PageResponse,
 )
 from langbot_plugin.api.definition.components.parser.parser import Parser
-from langbot_plugin.utils import git_sync as git_sync_util
 from langbot_plugin.utils import packaging as packaging_util
 from langbot_plugin.api.entities.builtin.rag.context import RetrievalContext
 from langbot_plugin.api.entities.builtin.rag.models import (
@@ -937,6 +936,8 @@ class PluginRuntimeHandler(Handler):
         @self.action(RuntimeToPluginAction.GIT_SYNC_PLUGIN)
         async def git_sync_plugin(data: dict[str, typing.Any]) -> ActionResponse:
             """Commit and push the plugin working directory to GitHub."""
+
+            from langbot_plugin.utils import git_sync as git_sync_util
 
             plugin_root = os.getcwd()
             try:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 
 import pytest
@@ -11,6 +12,32 @@ from langbot_plugin.box import server as box_server
 def _run(monkeypatch, argv: list[str]):
     monkeypatch.setattr(sys, "argv", ["lbp", *argv])
     return cli.main()
+
+
+def test_version_does_not_load_service_implementations():
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; from langbot_plugin.cli import main; main(); "
+            "assert 'langbot_plugin.runtime.app' not in sys.modules; "
+            "assert 'langbot_plugin.box.server' not in sys.modules",
+            "ver",
+        ],
+        check=True,
+    )
+
+
+def test_importing_worker_does_not_load_optional_clients():
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import langbot_plugin.cli.commands.runplugin; "
+            "assert 'httpx' not in sys.modules; assert 'aiofiles' not in sys.modules",
+        ],
+        check=True,
+    )
 
 
 def test_help_prints_usage(monkeypatch, capsys):
@@ -45,7 +72,8 @@ def test_unknown_command_exits(monkeypatch):
 def test_login_dispatches(monkeypatch):
     captured: dict = {}
     monkeypatch.setattr(
-        cli, "login_process", lambda token=None: captured.setdefault("token", token)
+        "langbot_plugin.cli.commands.login.login_process",
+        lambda token=None: captured.setdefault("token", token),
     )
 
     _run(monkeypatch, ["login", "--token", "abc"])
@@ -56,7 +84,8 @@ def test_login_dispatches(monkeypatch):
 def test_logout_dispatches(monkeypatch):
     captured: dict = {}
     monkeypatch.setattr(
-        cli, "logout_process", lambda: captured.setdefault("called", True)
+        "langbot_plugin.cli.commands.logout.logout_process",
+        lambda: captured.setdefault("called", True),
     )
 
     _run(monkeypatch, ["logout"])
@@ -67,7 +96,8 @@ def test_logout_dispatches(monkeypatch):
 def test_init_dispatches(monkeypatch):
     captured: dict = {}
     monkeypatch.setattr(
-        cli, "init_plugin_process", lambda name: captured.setdefault("name", name)
+        "langbot_plugin.cli.commands.initplugin.init_plugin_process",
+        lambda name: captured.setdefault("name", name),
     )
 
     _run(monkeypatch, ["init", "demo"])
@@ -78,8 +108,7 @@ def test_init_dispatches(monkeypatch):
 def test_comp_dispatches(monkeypatch):
     captured: dict = {}
     monkeypatch.setattr(
-        cli,
-        "generate_component_process",
+        "langbot_plugin.cli.commands.gencomponent.generate_component_process",
         lambda kind: captured.setdefault("kind", kind),
     )
 
@@ -92,8 +121,7 @@ def test_run_dispatches(monkeypatch):
     captured: dict = {}
     monkeypatch.setattr(cli, "cli_print", lambda *args: None)
     monkeypatch.setattr(
-        cli,
-        "run_plugin_process",
+        "langbot_plugin.cli.commands.runplugin.run_plugin_process",
         lambda *args, **kwargs: captured.update(args=args, kwargs=kwargs),
     )
 
@@ -108,8 +136,7 @@ def test_run_dispatches_without_tag(monkeypatch):
     captured: dict = {}
     monkeypatch.setattr(cli, "cli_print", lambda *args: None)
     monkeypatch.setattr(
-        cli,
-        "run_plugin_process",
+        "langbot_plugin.cli.commands.runplugin.run_plugin_process",
         lambda *args, **kwargs: captured.update(args=args, kwargs=kwargs),
     )
 
@@ -121,8 +148,7 @@ def test_run_dispatches_without_tag(monkeypatch):
 def test_build_dispatches(monkeypatch):
     captured: dict = {}
     monkeypatch.setattr(
-        cli,
-        "build_plugin_process",
+        "langbot_plugin.cli.commands.buildplugin.build_plugin_process",
         lambda output: captured.setdefault("output", output),
     )
 
@@ -134,7 +160,8 @@ def test_build_dispatches(monkeypatch):
 def test_publish_dispatches(monkeypatch):
     captured: dict = {}
     monkeypatch.setattr(
-        cli, "publish_process", lambda: captured.setdefault("called", True)
+        "langbot_plugin.cli.commands.publish.publish_process",
+        lambda: captured.setdefault("called", True),
     )
 
     _run(monkeypatch, ["publish"])
@@ -145,7 +172,8 @@ def test_publish_dispatches(monkeypatch):
 def test_rt_dispatches(monkeypatch):
     captured: dict = {}
     monkeypatch.setattr(
-        cli.runtime_app, "main", lambda args: captured.setdefault("args", args)
+        "langbot_plugin.runtime.app.main",
+        lambda args: captured.setdefault("args", args),
     )
 
     _run(monkeypatch, ["rt", "--ws-control-port", "1234"])
