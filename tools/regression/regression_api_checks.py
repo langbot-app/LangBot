@@ -12,14 +12,16 @@ def check(row, name, condition, message):
     return checked(row, name, lambda: require(condition, message))
 
 
-def request(suite, row, method, path, body=None, *, expected=200, headers=None):
+def request(suite, row, method, path, body=None, *, expected=200, headers=None, check_name=None):
     step = {'method': method, 'path': path, 'expected_status': expected}
+    if check_name is not None:
+        step['check'] = check_name
     row.setdefault('http_steps', []).append(step)
     status, response = api(suite, method, path, body, headers=headers)
     step['status'] = status
     check(
         row,
-        f'http_{len(row["http_steps"])}',
+        check_name or f'http_{len(row["http_steps"])}',
         status == expected
         and isinstance(response, dict)
         and ((response.get('code') == 0) if expected < 400 else (response.get('code') not in (None, 0))),

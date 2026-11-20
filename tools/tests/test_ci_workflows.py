@@ -185,14 +185,71 @@ class CoverageWorkflowTests(unittest.TestCase):
                 self.assertIn("matrix.python-version == '3.12'", guard)
                 self.assertIn("needs.plan.outputs.runtime_contracts == 'true'", guard)
 
+    def test_pr_api_contracts_use_core_selection_and_skip_daily_matrix(self):
+        flags = ('CORE', 'CORE_FULL', 'SDK', 'COMPATIBILITY', 'PERSISTENCE', 'PERMISSIONS', 'BOX', 'FRONTEND')
+        cases = [
+            ('pull_request', ['src/langbot/pkg/api/http/controller/groups/skills.py'], {'CORE'}, True),
+            ('pull_request', ['tools/regression/regression_api_resources.py'], set(flags), True),
+            ('pull_request', [], set(flags), True),
+            ('pull_request', ['docs/index.mdx'], set(), False),
+            ('schedule', [], set(flags), False),
+            ('workflow_dispatch', [], set(flags), False),
+        ]
+        for event, paths, selected, expected in cases:
+            with self.subTest(event=event, paths=paths), tempfile.NamedTemporaryFile() as output:
+                subprocess.run(
+                    [sys.executable, 'tools/ci_core_tests.py', 'plan'],
+                    cwd=ROOT,
+                    env={
+                        **os.environ,
+                        **{flag: json.dumps(flag in selected) for flag in flags},
+                        'CHANGED_PATHS': json.dumps(paths),
+                        'GITHUB_EVENT_NAME': event,
+                        'GITHUB_OUTPUT': output.name,
+                    },
+                    check=True,
+                    capture_output=True,
+                )
+                results = dict(line.split('=', 1) for line in Path(output.name).read_text().splitlines())
+                self.assertEqual(json.loads(results['selection'])['api-contracts'], expected)
+
+    def test_pr_and_daily_use_the_same_api_command_with_different_modes(self):
+        daily_jobs = yaml.safe_load((ROOT / '.github/workflows/daily-endurance.yml').read_text())['jobs']
+        pr = JOBS['api-contracts']
+        self.assertEqual(pr['needs'], 'plan')
+        self.assertIn("fromJSON(needs.plan.outputs.selection)['api-contracts']", pr['if'])
+        pr_step = pr['steps'][-1]
+        daily_step = daily_jobs['api-contracts']['steps'][-1]
+        self.assertEqual(pr_step['uses'], daily_step['uses'])
+        action = yaml.safe_load((ROOT / pr_step['uses'] / 'action.yml').read_text())
+        command = next(step['run'] for step in action['runs']['steps'] if step.get('id') == 'execute')
+        for caller, expected in ((pr_step, ['--api-fixed-only']), (daily_step, ['--api-seed', '1234'])):
+            mode = caller.get('with', {}).get('fixed-only', action['inputs']['fixed-only']['default'])
+            with self.subTest(mode=mode):
+                result = subprocess.run(
+                    ['bash', '-eo', 'pipefail', '-c', 'uv() { printf \'%s\\n\' "$@"; }\n' + command],
+                    env={**os.environ, 'API_FIXED_ONLY': mode, 'GITHUB_RUN_ID': '1234'},
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                args = result.stdout.splitlines()
+                suite = args.index('--suite')
+                self.assertIn('tools.entrypoints.regression_ci', args)
+                self.assertEqual(args[suite + 1 : args.index('--lbctl')], ['api', *expected])
+
     def test_summary_gate_matches_selected_jobs_and_fails_closed(self):
         command = next(
             step['run'] for step in JOBS['coverage']['steps'] if step.get('name') == 'Verify required test jobs'
         )
         jobs = set(JOBS['coverage']['needs']) - {'plan'}
-        selection = {job: job in ('test', 'integration') for job in jobs}
+        selection = {job: job in ('test', 'integration', 'api-contracts') for job in jobs}
         cases = [(None, 'success', True)]
-        cases.extend((job, status, False) for job in ('plan', 'test') for status in ('failure', 'skipped', 'cancelled'))
+        cases.extend(
+            (job, status, False)
+            for job in ('plan', 'test', 'api-contracts')
+            for status in ('failure', 'skipped', 'cancelled')
+        )
         cases.extend(('postgres-contracts', status, False) for status in ('success', 'failure', 'cancelled'))
         for unsuccessful, status, expected in cases:
             with self.subTest(job=unsuccessful, status=status):

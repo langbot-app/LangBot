@@ -42,17 +42,21 @@ def _named_resource(suite, row, collection, body, item_key, ownership_field, hea
         cleanup(suite, row, 'cleanup_' + item_key, remove)
 
 
-def _expect_rejection(suite, row, method, path, body, *, expected, headers, verify):
+def _with_followup(action, followup):
     try:
-        request(suite, row, method, path, body, expected=expected, headers=headers)
+        action()
     except Exception:
         try:
-            verify()
+            followup()
         except Exception:
-            # Both assertions are recorded; retain the original HTTP failure.
+            # Keep the first failure after collecting any follow-up evidence.
             pass
         raise
-    verify()
+    followup()
+
+
+def _expect_rejection(suite, row, method, path, body, *, expected, headers, verify):
+    _with_followup(lambda: request(suite, row, method, path, body, expected=expected, headers=headers), verify)
 
 
 def skills_case(suite, row):
@@ -82,6 +86,42 @@ def skills_case(suite, row):
         check(row, 'skill_preview', preview.get('instructions') == instructions, 'Skill preview lost instructions')
 
         file_path = path + '/files/references/fixture.txt'
+
+        def verify_stale_file(base_revision, before_file, before_skill, phase):
+            prefix = f'skill_stale_file_{phase}'
+
+            def reject_stale_file():
+                request(
+                    suite,
+                    row,
+                    'PUT',
+                    file_path,
+                    {'content': 'stale file must not win', 'base_revision': base_revision},
+                    expected=409,
+                    headers=headers,
+                    check_name=prefix + '_status',
+                )
+
+            def verify_file():
+                after = request(suite, row, 'GET', file_path, headers=headers)
+                check(
+                    row,
+                    prefix + '_content_preserved',
+                    after == before_file,
+                    'Rejected Skill write changed the file content or metadata',
+                )
+
+            def verify_skill():
+                after = request(suite, row, 'GET', path, headers=headers)['skill']
+                check(
+                    row,
+                    prefix + '_revision_preserved',
+                    after == before_skill,
+                    'Rejected Skill write changed the published revision or metadata',
+                )
+
+            _with_followup(reject_stale_file, lambda: _with_followup(verify_file, verify_skill))
+
         content = 'Skill API fixture: 中文\n' + name + '\n'
         written = request(
             suite, row, 'PUT', file_path, {'content': content, 'base_revision': initial_revision}, headers=headers
@@ -90,7 +130,8 @@ def skills_case(suite, row):
         check(
             row,
             'skill_file_published',
-            bool(file_revision)
+            isinstance(file_revision, str)
+            and file_revision.startswith('sha256:')
             and file_revision != initial_revision
             and written.get('bytes_written') == len(content.encode()),
             'Skill file write did not publish the expected UTF-8 bytes as a new revision',
@@ -104,6 +145,14 @@ def skills_case(suite, row):
             and file_readback.get('skill', {}).get('name') == name,
             'Skill file readback differs from the written content or identity',
         )
+        published = request(suite, row, 'GET', path, headers=headers)['skill']
+        check(
+            row,
+            'skill_file_publication_readback',
+            published.get('revision') == file_revision and published.get('instructions') == instructions,
+            'File publication changed Skill instructions or returned the wrong revision',
+        )
+        verify_stale_file(initial_revision, file_readback, published, 'after_write')
         files = request(suite, row, 'GET', path + '/files?path=references', headers=headers)
         check(
             row,
@@ -174,26 +223,7 @@ def skills_case(suite, row):
         before_file_conflict = request(suite, row, 'GET', file_path, headers=headers)
         before_file_skill = request(suite, row, 'GET', path, headers=headers)['skill']
 
-        def verify_stale_file():
-            after_file_conflict = request(suite, row, 'GET', file_path, headers=headers)
-            after_conflict = request(suite, row, 'GET', path, headers=headers)['skill']
-            check(
-                row,
-                'skill_stale_file_preserved',
-                after_file_conflict == before_file_conflict and after_conflict == before_file_skill,
-                'Rejected Skill file write changed the file or published revision',
-            )
-
-        _expect_rejection(
-            suite,
-            row,
-            'PUT',
-            file_path,
-            {'content': 'stale file must not win', 'base_revision': file_revision},
-            expected=409,
-            headers=headers,
-            verify=verify_stale_file,
-        )
+        verify_stale_file(file_revision, before_file_conflict, before_file_skill, 'after_update')
         request(suite, row, 'DELETE', path, headers=headers)
         request(suite, row, 'GET', path, expected=404, headers=headers)
         request(suite, row, 'DELETE', path, expected=400, headers=headers)
