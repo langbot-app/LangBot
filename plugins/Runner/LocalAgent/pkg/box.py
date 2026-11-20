@@ -35,6 +35,9 @@ def resolve_reuse_key(ctx, template: str) -> str:
         "bot_id": (conversation.bot_id if conversation else None) or ctx.event.data.get("bot_uuid"),
     }
     # Interpolate named scalar fields, never Python expressions or object access.
+    if template == "{launcher_type}_{launcher_id}" and getattr(conversation, "session_id", None):
+        variables["session_id"] = conversation.session_id
+        template = "{session_id}"
     for _, name, spec, conversion in Formatter().parse(template):
         if name is not None and (name not in variables or variables[name] is None or spec or conversion):
             raise ValueError(f"Unavailable or invalid Box template variable: {name}")

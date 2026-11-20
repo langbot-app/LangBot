@@ -15,6 +15,7 @@ from ....entity.persistence import agent as persistence_agent
 from ....entity.persistence import monitoring as persistence_monitoring
 from ....entity.persistence import agent_run as persistence_agent_run
 from ....entity.persistence import agent_interaction as persistence_agent_interaction
+from ....entity.persistence.pipeline import LegacyPipeline
 from ....entity.persistence.event_log import EventLog
 from ....storage.media import MediaCache
 from ....utils import constants
@@ -23,6 +24,8 @@ from ..context import ExecutionContext
 from .tenant import TenantContext, require_workspace_uuid
 from .monitoring_execution_details import ExecutionDetailsMixin
 from ....persistence.session_summary_contract import (
+    parse_group_member_id,
+    shares_group_context,
     SessionListFilter,
     SessionSummaryReader,
 )
@@ -2351,6 +2354,9 @@ class MonitoringService(ExecutionDetailsMixin):
 
         if not isinstance(bot_id, str) or not bot_id or not isinstance(session_id, str) or not session_id:
             raise ValueError('bot_id and session_id are required')
+        member = parse_group_member_id(session_id)
+        if session_id.startswith('groupmember_') and member is None:
+            raise ValueError('Invalid group member session ID')
         workspace = require_workspace_uuid(context)
         execute = self.ap.persistence_mgr.execute_async
         source = self._conversation_message_source(workspace, [bot_id])
@@ -2380,42 +2386,24 @@ class MonitoringService(ExecutionDetailsMixin):
             raise LookupError('Session not found')
         # Legacy sessions use uppercase PERSON/GROUP; envelope IDs use lowercase.
         conversation = re.sub(r'^(PERSON|GROUP)_', lambda match: match[1].lower() + '_', session_id)
-        if conversation.startswith('group_') and '#' not in conversation:
-            session_model = persistence_monitoring.MonitoringSession
-            user_id = (
+        group_conversation = conversation
+        if member:
+            group_conversation = f'group_{member[0]}'
+            session = persistence_monitoring.MonitoringSession
+            config = (
                 await execute(
-                    sqlalchemy.select(session_model.user_id)
+                    sqlalchemy.select(LegacyPipeline.config)
+                    .join(session, session.pipeline_id == LegacyPipeline.uuid)
                     .where(
-                        session_model.workspace_uuid == workspace,
-                        session_model.bot_id == bot_id,
-                        session_model.session_id == session_id,
-                        session_model.user_id.is_not(None),
-                        session_model.user_id != '',
+                        session.workspace_uuid == workspace,
+                        session.bot_id == bot_id,
+                        session.session_id == session_id,
+                        LegacyPipeline.workspace_uuid == workspace,
                     )
-                    .limit(1)
                 )
             ).scalar_one_or_none()
-            if not user_id:
-                msg_model = persistence_monitoring.MonitoringMessage
-                user_id = (
-                    await execute(
-                        sqlalchemy.select(msg_model.user_id)
-                        .where(
-                            msg_model.workspace_uuid == workspace,
-                            msg_model.bot_id == bot_id,
-                            msg_model.session_id == session_id,
-                            sqlalchemy.func.coalesce(msg_model.role, 'user') != 'assistant',
-                            msg_model.user_id.is_not(None),
-                            msg_model.user_id != '',
-                        )
-                        .order_by(msg_model.timestamp.desc())
-                        .limit(1)
-                    )
-                ).scalar_one_or_none()
-            if user_id and conversation.endswith(f'_{user_id}'):
-                stripped = conversation[: -(len(str(user_id)) + 1)]
-                if stripped != 'group':
-                    conversation = stripped
+            if shares_group_context(config):
+                conversation = group_conversation
         run = persistence_agent_run.AgentRun
         busy = (
             await execute(
@@ -2423,7 +2411,7 @@ class MonitoringService(ExecutionDetailsMixin):
                 .where(
                     run.workspace_id == workspace,
                     run.bot_id == bot_id,
-                    run.conversation_id == conversation,
+                    run.conversation_id == group_conversation,
                     run.status.in_(['created', 'queued', 'claimed', 'running']),
                 )
                 .limit(1)
@@ -2449,7 +2437,7 @@ class MonitoringService(ExecutionDetailsMixin):
                 .where(
                     interaction.workspace_id == workspace,
                     interaction.bot_id == bot_id,
-                    interaction.conversation_id == conversation,
+                    interaction.conversation_id.in_([conversation, group_conversation]),
                     interaction.status.in_(['pending', 'submitted']),
                     sqlalchemy.or_(
                         interaction.expires_at.is_(None), interaction.expires_at > datetime.datetime.utcnow()

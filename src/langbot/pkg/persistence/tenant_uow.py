@@ -247,7 +247,9 @@ _ALLOWED_SCOPED_BUILTIN_FUNCTION_TYPES = {
     'now': sqlalchemy.sql.functions.now,
     'sum': sqlalchemy.sql.functions.sum,
 }
-_ALLOWED_SCOPED_GENERIC_FUNCTIONS = frozenset({'date_trunc', 'length', 'nullif', 'row_number', 'strftime'})
+_ALLOWED_SCOPED_GENERIC_FUNCTIONS = frozenset(
+    {'date_trunc', 'length', 'nullif', 'row_number', 'strftime', 'substr', 'trim'}
+)
 _ALLOWED_SCOPED_CUSTOM_OPERATORS = frozenset({'<=>'})
 _ALLOWED_SCOPED_STATEMENT_TYPES = (
     sqlalchemy.sql.dml.UpdateBase,

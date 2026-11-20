@@ -200,7 +200,10 @@ async def test_signed_http_reset_uses_normal_adapter_wiring_and_clears_persisted
 
 
 @pytest.mark.asyncio
-async def test_reset_group_per_sender_session_resets_shared_group_conversation(context_service):
+@pytest.mark.parametrize('mode', [None, 'member', 'group'])
+async def test_reset_group_per_sender_session(context_service, mode):
+    from langbot.pkg.entity.persistence.pipeline import LegacyPipeline
+
     service, engine = context_service
     store = TranscriptStore(engine)
     async with engine.begin() as conn:
@@ -208,7 +211,7 @@ async def test_reset_group_per_sender_session_resets_shared_group_conversation(c
             sa.insert(MonitoringSession).values(
                 workspace_uuid='w',
                 bot_id='b',
-                session_id='group_g100_u42',
+                session_id='groupmember_4_g100_u42',
                 bot_name='Bot',
                 pipeline_id='p',
                 pipeline_name='Pipeline',
@@ -218,8 +221,22 @@ async def test_reset_group_per_sender_session_resets_shared_group_conversation(c
                 last_activity=datetime.datetime.utcnow(),
             )
         )
-    await store.append_transcript(None, 'event', 'group_g100', 'user', bot_id='b', workspace_id='w', content='old')
-    result = await service.reset_session_context('w', 'b', 'group_g100_u42')
-    assert result == {'reset': True, 'session_id': 'group_g100_u42'}
-    assert await get_reset_generation(engine, 'w', 'b', 'group_g100')
-    assert not (await store.page_transcript('group_g100', bot_id='b', workspace_id='w'))[0]
+        if mode:
+            await conn.execute(
+                sa.insert(LegacyPipeline).values(
+                    uuid='p',
+                    workspace_uuid='w',
+                    name='chat',
+                    description='',
+                    for_version='1',
+                    stages=[],
+                    config={'ai': {'runner': {'group-context': mode}}},
+                )
+            )
+    target = 'group_g100' if mode == 'group' else 'groupmember_4_g100_u42'
+    await store.append_transcript(None, 'event', target, 'user', bot_id='b', workspace_id='w', content='old')
+    result = await service.reset_session_context('w', 'b', 'groupmember_4_g100_u42')
+    assert result == {'reset': True, 'session_id': 'groupmember_4_g100_u42'}
+    assert await get_reset_generation(engine, 'w', 'b', target)
+    assert not await get_reset_generation(engine, 'w', 'b', 'groupmember_4_g100_u43')
+    assert not (await store.page_transcript(target, bot_id='b', workspace_id='w'))[0]

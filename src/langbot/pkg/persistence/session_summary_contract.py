@@ -46,6 +46,34 @@ def message_source_key(message_id: str) -> str:
     return f'message:{message_id}'
 
 
+def parse_group_member_id(value: str) -> tuple[str, str] | None:
+    if not value.startswith('groupmember_'):
+        return None
+    length, _, payload = value.removeprefix('groupmember_').partition('_')
+    if not length.isascii() or not length.isdecimal() or len(length) > len(str(len(payload))):
+        return None
+    size = int(length)
+    sender = payload[size + 1 :]
+    if str(size) != length or payload[size : size + 1] != '_' or not sender or sender != sender.strip():
+        return None
+    return payload[:size], sender
+
+
+def shares_group_context(config) -> bool:
+    ai = config.get('ai') if isinstance(config, dict) else None
+    runner = ai.get('runner') if isinstance(ai, dict) else None
+    return isinstance(runner, dict) and runner.get('group-context') == 'group'
+
+
+def conversation_scope(query, launcher=None) -> str:
+    launcher = launcher or query
+    return build_monitoring_session_id(
+        launcher.launcher_type,
+        launcher.launcher_id,
+        None if shares_group_context(getattr(query, 'pipeline_config', None)) else getattr(query, 'sender_id', None),
+    )
+
+
 def build_monitoring_session_id(
     launcher_type: object,
     launcher_id: object,
@@ -56,7 +84,7 @@ def build_monitoring_session_id(
     if launcher_type_value == 'group' and sender_id is not None:
         sender_text = str(sender_id).strip()
         if sender_text:
-            return f'group_{launcher_id}_{sender_text}'
+            return f'groupmember_{len(str(launcher_id))}_{launcher_id}_{sender_text}'
     return f'{launcher_type_value}_{launcher_id}'
 
 

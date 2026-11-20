@@ -68,8 +68,7 @@ class SqlSessionSummaryReader:
                             f'PERSON_{normalized}',
                         )
                     ),
-                    model.session_id.like(f'group_{escaped}\\_%', escape='\\'),
-                    model.session_id.like(f'GROUP_{escaped}\\_%', escape='\\'),
+                    model.session_id.startswith(f'groupmember_{len(normalized)}_{normalized}_', autoescape=True),
                     model.session_id.like(f'group_{escaped}#%', escape='\\'),
                     model.session_id.like(f'GROUP_{escaped}#%', escape='\\'),
                 )

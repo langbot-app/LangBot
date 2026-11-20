@@ -18,6 +18,22 @@ stages:
         type: select
         required: true
         # Options and default are dynamically populated from RunnerRegistry
+      - name: group-context
+        label:
+          en_US: Group chat context
+          zh_Hans: 群聊上下文
+        type: select
+        required: true
+        default: member
+        options:
+          - name: member
+            label:
+              en_US: Separate for each member
+              zh_Hans: 每个成员独立
+          - name: group
+            label:
+              en_US: Shared by the group
+              zh_Hans: 整个群共享
       - name: expire-time
         label:
           en_US: Conversation expire time (seconds)

@@ -67,7 +67,7 @@ def test_group_query_session_id_includes_sender_id_when_present():
         sender_id='user-42',
         variables={},
     )
-    assert monitoring_session_id(group_query) == 'group_group-100_user-42'
+    assert monitoring_session_id(group_query) == 'groupmember_9_group-100_user-42'
 
     group_query_without_sender = SimpleNamespace(
         launcher_type=SimpleNamespace(value='group'),
@@ -162,8 +162,7 @@ async def test_llm_call_from_plugin_action_query_is_recorded():
 
 @pytest.mark.asyncio
 async def test_group_query_monitoring_session_id_is_consistent_across_all_writers_without_splitting_conversation():
-    """A group Query must share ``group_{launcher_id}_{sender_id}`` across all monitoring writers
-    while keeping ``group_{launcher_id}`` for conversation_id and sessionmgr."""
+    """Monitoring and model context split by member; the ledger keeps its original conversation ID."""
     import contextvars
     from sqlalchemy.ext.asyncio import create_async_engine
     import sqlalchemy as sa
@@ -177,7 +176,6 @@ async def test_group_query_monitoring_session_id_is_consistent_across_all_writer
     from langbot.pkg.persistence.mgr import PersistenceManager
     from langbot.pkg.persistence.tenant_uow import TenantUnitOfWork
     from langbot.pkg.platform.botmgr import RuntimeBot
-    from langbot.pkg.provider.session.sessionmgr import SessionManager
     from langbot.pkg.provider.tools.toolmgr import ToolManager
     from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
     from langbot_plugin.api.entities.builtin.platform import events as platform_events
@@ -273,10 +271,10 @@ async def test_group_query_monitoring_session_id_is_consistent_across_all_writer
             conversation_id='group_group-100',
         )
 
-        # Verify uncovered ingress already projects to 'group_group-100_user-42' while EventLog.conversation_id stays 'group_group-100'
+        # Verify uncovered ingress already projects to 'groupmember_9_group-100_user-42' while EventLog.conversation_id stays 'group_group-100'
         sessions_before, total_before = await monitoring_service.get_sessions(exec_ctx, bot_ids=['bot-1'])
         assert total_before == 1
-        assert sessions_before[0]['session_id'] == 'group_group-100_user-42'
+        assert sessions_before[0]['session_id'] == 'groupmember_9_group-100_user-42'
         assert sessions_before[0]['user_id'] == 'user-42'
         assert sessions_before[0]['user_name'] == 'Alice'
 
@@ -349,7 +347,7 @@ async def test_group_query_monitoring_session_id_is_consistent_across_all_writer
         # Verify all writers converged on the exact same monitoring session_id
         sessions, total = await monitoring_service.get_sessions(exec_ctx, bot_ids=['bot-1'])
         assert total == 1
-        assert sessions[0]['session_id'] == 'group_group-100_user-42'
+        assert sessions[0]['session_id'] == 'groupmember_9_group-100_user-42'
         assert sessions[0]['user_name'] == 'Alice'
         assert sessions[0]['message_count'] == 3  # start + response + discarded (ingress covered)
         # Filter by group launcher_id returns the per-sender group session
@@ -357,11 +355,11 @@ async def test_group_query_monitoring_session_id_is_consistent_across_all_writer
             exec_ctx, bot_ids=['bot-1'], launcher_id='group-100'
         )
         assert filtered_total == 1
-        assert filtered_sessions[0]['session_id'] == 'group_group-100_user-42'
+        assert filtered_sessions[0]['session_id'] == 'groupmember_9_group-100_user-42'
 
         analysis = await monitoring_service.get_session_analysis(
             exec_ctx,
-            'group_group-100_user-42',
+            'groupmember_9_group-100_user-42',
             bot_id='bot-1',
         )
         assert analysis['found'] is True
@@ -374,19 +372,15 @@ async def test_group_query_monitoring_session_id_is_consistent_across_all_writer
         messages, msg_total = await monitoring_service.get_messages(
             exec_ctx,
             bot_ids=['bot-1'],
-            session_ids=['group_group-100_user-42'],
+            session_ids=['groupmember_9_group-100_user-42'],
         )
         assert msg_total == 3
         user_messages = [m for m in messages if m['role'] == 'user']
         assert all(m['user_name'] == 'Alice' for m in user_messages)
 
-        # Verify conversation_id and SessionManager key remain 'group_group-100'
         conversation_ctx = QueryEntryAdapter._build_conversation_context(query)
-        assert conversation_ctx.conversation_id == 'group_group-100'
-
-        session_mgr = SessionManager(ap)
-        assert f'{query.launcher_type.value}_{query.launcher_id}' == 'group_group-100'
-        assert session_mgr is not None
+        assert conversation_ctx.session_id == 'groupmember_9_group-100_user-42'
+        assert QueryEntryAdapter.query_to_event(query).ledger_conversation_id == 'group_group-100'
 
         async with engine.connect() as conn:
             stored_conv_id = (

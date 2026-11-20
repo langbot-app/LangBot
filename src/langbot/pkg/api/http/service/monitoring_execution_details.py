@@ -139,15 +139,22 @@ class ExecutionDetailsMixin:
                 ),
             ),
         )
+        group_id = sa.func.substr(conversation, 7)
+        actor_id = sa.func.trim(EventLog.actor_id)
         monitoring_session = sa.case(
             (
                 sa.and_(
                     conversation.like('group\\_%', escape='\\'),
                     ~conversation.like('%#%', escape='\\'),
                     EventLog.actor_id.is_not(None),
-                    EventLog.actor_id != '',
+                    actor_id != '',
                 ),
-                conversation + sa.literal('_') + EventLog.actor_id,
+                sa.literal('groupmember_')
+                .concat(sa.func.length(group_id))
+                .concat('_')
+                .concat(group_id)
+                .concat('_')
+                .concat(actor_id),
             ),
             else_=conversation,
         )

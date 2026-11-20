@@ -291,7 +291,7 @@ class SessionSummaryWriter:
                     previous_owner.startswith('group_')
                     and '#' not in previous_owner
                     and change.user_id not in (None, '')
-                    and identity == f'{previous_owner}_{change.user_id}'
+                    and identity == monitoring_session_id_from_conversation(previous_owner, change.user_id)
                 ):
                     deltas[previous_owner] = deltas.get(previous_owner, 0) - 1
                     claimed = True
