@@ -2382,10 +2382,31 @@ class MonitoringService(ExecutionDetailsMixin):
                     .limit(1)
                 )
             ).first()
-        if exists is None:
-            raise LookupError('Session not found')
         # Legacy sessions use uppercase PERSON/GROUP; envelope IDs use lowercase.
         conversation = re.sub(r'^(PERSON|GROUP)_', lambda match: match[1].lower() + '_', session_id)
+        # A whole-group ID resets the shared conversation and every member's own
+        # conversation in that group, since monitoring records groups per member.
+        member_conversations: list[str] = []
+        if member is None and conversation.startswith('group_') and '#' not in conversation:
+            group_id = conversation.removeprefix('group_')
+            session = persistence_monitoring.MonitoringSession
+            member_conversations = [
+                row[0]
+                for row in (
+                    await execute(
+                        sqlalchemy.select(session.session_id).where(
+                            session.workspace_uuid == workspace,
+                            session.bot_id == bot_id,
+                            session.session_id.startswith(f'groupmember_{len(group_id)}_{group_id}_', autoescape=True),
+                        )
+                    )
+                ).all()
+                if (parse_group_member_id(row[0]) or ('',))[0] == group_id
+            ]
+            if exists is None and member_conversations:
+                exists = True
+        if exists is None:
+            raise LookupError('Session not found')
         group_conversation = conversation
         if member:
             group_conversation = f'group_{member[0]}'
@@ -2424,7 +2445,7 @@ class MonitoringService(ExecutionDetailsMixin):
                 .where(
                     message.workspace_uuid == workspace,
                     message.bot_id == bot_id,
-                    message.session_id.in_([session_id, conversation]),
+                    message.session_id.in_([session_id, conversation, *member_conversations]),
                     message.status == 'pending',
                 )
                 .limit(1)
@@ -2448,7 +2469,8 @@ class MonitoringService(ExecutionDetailsMixin):
         ).first()
         if busy or pending or waiting:
             raise RuntimeError('Session is processing a task; wait until it finishes')
-        await reset_runner_context(self.ap.persistence_mgr, workspace, bot_id, conversation)
+        for target in (conversation, *member_conversations):
+            await reset_runner_context(self.ap.persistence_mgr, workspace, bot_id, target)
         return {'reset': True, 'session_id': session_id}
 
     async def get_sessions(
