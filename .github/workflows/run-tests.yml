@@ -288,6 +288,20 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
+  api-contracts:
+    name: PR API contracts
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.selection)['api-contracts'] }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/run-api-contracts
+        with:
+          fixed-only: 'true'
+
   postgres-contracts:
     needs: plan
     if: fromJSON(needs.plan.outputs.selection)['postgres-contracts']
@@ -516,7 +530,7 @@ jobs:
     name: Coverage Gate
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [plan, test, integration, postgres-contracts, sqlalchemy-compat, e2e, box-integration]
+    needs: [plan, test, integration, api-contracts, postgres-contracts, sqlalchemy-compat, e2e, box-integration]
     if: always()
 
     steps:

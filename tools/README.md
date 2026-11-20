@@ -603,29 +603,26 @@ runs after subsequent process replacements. A missing phase or failed assertion 
 the job. The job is opt-in and does not change Smoke or the daily schedule. It
 checks graceful process restart durability, not abrupt power loss or migrations.
 
-## Daily API contract job
+## Shared PR and Daily API contract jobs
 
-`daily-endurance.yml` runs API contracts alongside the mixed/weekly-contract job
-on separate runners, at the existing daily schedule and on manual dispatch.
-The API job uses the GitHub run ID as its shuffle seed, so each daily run explores
-a different order and a rerun keeps the same seed. It has a 15-minute job timeout,
-including preparation, and is not a required PR check. Its summary and separate
-`daily-api-<run_id>-<attempt>` artifact retain failures, order, coverage and cleanup
-evidence for 30 days.
+The PR API job runs one fixed-order pass of all seven chains on related Core
+changes. Daily runs the same chains in fixed order, then in shuffled order
+(14 case rows), using the GitHub run ID as the shuffle seed. Requests within
+each chain keep their create/read/update/delete order. The seed replays chain
+ordering; resource names and credentials are unique to each run.
 
-To replay locally on a disposable Linux/Docker host, pass the recorded seed:
+To run the PR profile or replay Daily on a disposable Linux/Docker host:
 
 ```sh
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite api --api-fixed-only \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/api-pr-001
 uv run --no-sync python -m tools.entrypoints.regression_ci --suite api --api-seed 20261028 \
-  --lbctl /path/to/lbctl --plugins plugins --output .qa/api-001
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/api-daily-001
 ```
 
-This separate suite executes seven independent operation chains once in fixed
-order, then once in seed-shuffled order (14 case rows). Operations within each
-chain retain their create/read/update/delete dependencies. Reuse the seed to
-replay chain ordering; resource names and credentials remain unique. Preparation
-is outside the 600-second execution guard; a completed run ends immediately.
-The default PR smoke and daily scenario groups do not include these cases.
+Both use a 600-second execution guard after preparation, and a 15-minute CI
+job timeout including preparation. GitHub Actions preserves their separate
+`pr-api-<run_id>-<attempt>` and `daily-api-<run_id>-<attempt>` artifacts for 30 days.
 
 The chains cover Provider and LLM/embedding/rerank model CRUD, Pipeline extension
 validation, API key permissions/revocation, Skill files and revision conflicts,
@@ -637,7 +634,7 @@ loopback addresses. This job does not exercise external MCP servers, real model
 inference, concurrent API mutations, or cross-Workspace isolation.
 
 Inspect `gate/gate.json` for the verdict, seed and exact case order;
-`gate/suite/cases.json` for HTTP steps, assertions and cleanup results; and
+`gate/suite/cases.json` for contract IDs, rounds, HTTP steps, named assertions and cleanup; and
 `gate/suite/coverage.json` for observed route templates and behavior contracts.
 An HTTP route hit includes rejected requests and is not proof of all behavior
 behind that route. Invalid MCP modes must return HTTP 400 and leave the original
