@@ -81,6 +81,31 @@ Webhook 回调地址需要能够从公网访问，建议使用 HTTPS。自部署
 
 旧界面可能显示「系统发生错误，请稍后重试」，同样可以按上述项目检查，并查看 LangBot 的机器人日志定位错误。
 
+### 启用消息推送后，自定义菜单显示「未开启自定义菜单」
+
+启用「消息推送」（服务器配置）后，公众号进入开发者模式。微信会停用在公众平台网页里编辑的自定义菜单，并在「自定义菜单」页面提示「由于开发者通过接口修改了菜单配置，当前菜单配置已失效并停用」。这是微信平台的规则，**LangBot 不会调用任何菜单接口**，也不会修改或删除你的菜单。
+
+有两种处理方式：
+
+- **继续使用 LangBot，并通过接口重新发布菜单（推荐）**：消息推送保持启用，用 AppID 和 AppSecret 调用微信的[创建自定义菜单接口](https://developers.weixin.qq.com/doc/service/api/custommenu/api_createcustommenu.html)。
+- **停用消息推送**：按提示在「微信开发者平台 → 我的业务 → 公众号 → 基础信息」停用后，网页编辑的菜单可恢复，但 LangBot 将无法再收到公众号消息。
+
+通过接口发布菜单时，在已加入 API IP 白名单的机器上执行：
+
+```bash
+# 1. 获取 access_token。使用 stable_token 且 force_refresh 为 false，不会使 LangBot 正在使用的令牌失效
+curl -s -X POST 'https://api.weixin.qq.com/cgi-bin/stable_token' \
+  -H 'Content-Type: application/json' \
+  -d '{"grant_type":"client_credential","appid":"你的AppID","secret":"你的AppSecret","force_refresh":false}'
+
+# 2. 用返回的 access_token 发布菜单（会整体覆盖现有菜单）
+curl -s -X POST 'https://api.weixin.qq.com/cgi-bin/menu/create?access_token=ACCESS_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{"button":[{"type":"view","name":"官网","url":"https://example.com"}]}'
+```
+
+返回 `{"errcode":0,"errmsg":"ok"}` 即发布成功，菜单通常在用户重新进入公众号后生效。菜单项建议使用 `view`（打开网页）或 `miniprogram`（打开小程序）类型：`click` 类型会向回调地址推送点击事件，LangBot 目前不会处理这类事件，用户点击后不会收到回复。接口权限和菜单格式以微信官方文档和接口返回为准。
+
 ## 4. 配置 API IP 白名单
 
 在微信开发者平台「基础信息 → 开发密钥」中找到 **API IP 白名单**，填入部署 LangBot 的服务器访问微信 API 时使用的**公网出站 IP**，保存配置。截图中未启用 AppSecret 时，该项会提示「启用 AppSecret 后，可配置」。
