@@ -280,7 +280,7 @@ Box 是否启用、何时创建以及如何复用，由运行器决定。获取�
 
 取消请求先记录到运行账本。Runner 完成清理后调用 `ctx.run_cancel_ack()`。清理待确认（`cleanup_confirmed=False`）可更新为已确认。同一执行尝试中，重复调用保留该状态第一次确认的时间和原因。已确认状态不会回退。
 
-外部队列重试会复用运行 ID。处理取消时，从返回的运行记录保存 `run.metadata.get("retry_count", 0)`。确认清理时传入 `expected_retry_count`，重发时沿用保存的值。首次重新入队后，缺少轮次或轮次不匹配的确认会被拒绝，运行状态保持原值。其他运行可省略此字段。外部队列可以在结束运行时补充元数据，其中 `retry_count` 和 `cancel_ack` 由 Host 维护。
+外部队列重试会复用运行 ID。处理取消时，从返回的运行记录保存 `run.metadata.get("retry_count", 0)`。确认清理时传入 `expected_retry_count`，重发时沿用保存的值。首次重新入队后，缺少轮次或轮次不匹配的确认会被拒绝，运行状态保持原值。其他运行可省略此字段。结束运行时可补充元数据。Host 维护所有运行的 `cancel_ack`，以及外部队列的 `retry_count`。
 
 `claim=False` 保留拉取即消费语义；`claim=True` 领取后，需要用 `steering_ack` 确认已接受的 delivery ID，未确认的租约可被重投。ACK 和恢复控制在原 Run 结束后仍需校验授权。Host 的 retry/resume 创建具有新期限和当前授权的新 Run；resume 必须有已提交的检查点，不会回退外部副作用。
 

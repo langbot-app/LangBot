@@ -481,9 +481,9 @@ class RunLedgerStore:
             if cost is not None:
                 run.cost_json = _json_dumps(cost)
             if metadata is not None:
-                if run.queue_name is not None:
-                    # A finalizer may replay a stale metadata snapshot. The Host owns the attempt and ACK.
-                    metadata = {k: v for k, v in metadata.items() if k not in ('retry_count', 'cancel_ack')}
+                # A finalizer may replay an old snapshot of the Host's ACK or external queue attempt.
+                reserved = ('cancel_ack', 'retry_count') if run.queue_name is not None else ('cancel_ack',)
+                metadata = {k: v for k, v in metadata.items() if k not in reserved}
                 # Discard legacy image bytes before merging; new metadata still uses the write contract.
                 existing_metadata = MediaCache.redact_inline_images(_json_loads(run.metadata_json, {}))
                 if isinstance(existing_metadata, dict):

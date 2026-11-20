@@ -545,6 +545,26 @@ async def test_cancel_ack_is_monotonic_and_concurrent_across_stores(store, db_en
 
 
 @pytest.mark.asyncio
+async def test_ordinary_run_finalizer_cannot_restore_stale_cleanup_state(store):
+    await store.create_run(run_id='ordinary', event_id=None, binding_id=None, runner_id='runner')
+    pending = await store.acknowledge_cancel(run_id='ordinary', reason='in progress', cleanup_confirmed=False)
+    confirmed = await store.acknowledge_cancel(run_id='ordinary', reason='done')
+    metadata = {**pending['metadata'], 'result': 'delivered', 'retry_count': 12}
+    final = await store.finalize_run(run_id='ordinary', status='cancelled', metadata=metadata)
+    assert final['metadata'] == {
+        'cancel_ack': confirmed['metadata']['cancel_ack'],
+        'result': 'delivered',
+        'retry_count': 12,
+    }
+    await store.acknowledge_cancel(run_id='ordinary', reason='done')
+    history, *_ = await store.page_run_events(run_id='ordinary')
+    assert [(row['type'], row['data']['cleanup_confirmed']) for row in history] == [
+        ('run.cancel_ack', False),
+        ('run.cancel_ack', True),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_cancel_ack_replay_preserves_legacy_metadata_and_records_missing_audit(store):
     legacy = {'acknowledged_at': 12345, 'reason': 'original', 'cleanup_confirmed': True}
     await store.create_run(
