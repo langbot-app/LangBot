@@ -11,7 +11,8 @@ import urllib.error
 import urllib.request
 from uuid import uuid4
 
-from tools.entrypoints.regression_traffic import percentile, read_endpoint_snapshot
+from tools.entrypoints.regression_traffic import percentile
+from tools.regression.observations import read_endpoint_snapshot
 from tools.regression.evidence import check_attachment, check_fields, check_response, checked
 from tools.regression.http_bot import group_request, signed_headers
 from tools.regression.regression_local_cases import ScenarioUnavailable

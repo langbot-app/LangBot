@@ -104,11 +104,17 @@ class CIProfileTest(unittest.TestCase):
         self.assertTrue(all(value == '{launcher_type}_{launcher_id}' for value in keys('scenarios', 'run-a').values()))
 
 
+def run_report(mode, directory, *options):
+    return subprocess.run(
+        [sys.executable, '-m', 'tools.entrypoints.regression_report', mode, str(directory), *options],
+        cwd=Path(__file__).resolve().parents[2],
+        capture_output=True,
+        text=True,
+    )
+
+
 class DailySummaryTest(unittest.TestCase):
     def test_summary_reports_observations_without_hiding_outer_failures(self):
-        workflow = Path(__file__).resolve().parents[2] / '.github/workflows/daily-endurance.yml'
-        steps = yaml.safe_load(workflow.read_text())['jobs']['endurance']['steps']
-        command = next(step['run'] for step in steps if step.get('name') == 'Publish observations')
         suite = {
             'passed': True,
             'outcome': 'PASS',
@@ -140,16 +146,9 @@ class DailySummaryTest(unittest.TestCase):
                     (target / 'gate/gate.json').write_text(json.dumps(gate))
                     if actual_suite is not None:
                         (target / 'gate/suite/summary.json').write_text(json.dumps(actual_suite))
-                summary = root / 'summary.md'
-                env = {
-                    **os.environ,
-                    'PATH': str(Path(sys.executable).parent) + os.pathsep + os.environ['PATH'],
-                    'GITHUB_STEP_SUMMARY': str(summary),
-                    'GITHUB_SHA': 'core-revision',
-                }
-                result = subprocess.run(['bash', '-e', '-c', command], cwd=root, env=env, capture_output=True)
+                result = run_report('daily', target, '--sha', 'core-revision')
                 self.assertEqual(result.returncode, 0 if gate and gate.get('passed') else 1)
-                text = summary.read_text()
+                text = result.stdout
                 self.assertIn(expected, text)
                 self.assertIn('langbot-team/LocalAgent@1.2.3', text)
                 self.assertIn('not confirmed', text)
@@ -160,13 +159,19 @@ class DailySummaryTest(unittest.TestCase):
                     self.assertNotIn('Daily regression: PASS', text)
 
     def test_api_summary_reports_both_modes_and_keeps_failures_visible(self):
-        action = Path(__file__).resolve().parents[2] / '.github/actions/run-api-contracts/action.yml'
-        steps = yaml.safe_load(action.read_text())['runs']['steps']
-        command = next(step['run'] for step in steps if step.get('name') == 'Publish API result')
         suite = {'passed': True, 'requests': 14, 'status': {'passed': 14}, 'elapsed_seconds': 7.3}
         daily = {'passed': True, 'api_fixed_only': False, 'api_seed': 123}
         cases = [
             (False, daily, suite, 'success', True, 'Daily API contracts: PASS'),
+            (
+                False,
+                {'passed': True, 'api_seed': 123, 'case_order': ['fixed_api_skills', 'shuffled_api_skills']},
+                suite,
+                'success',
+                True,
+                'Daily API contracts: PASS',
+            ),
+            (False, {'passed': True}, suite, 'success', False, 'verdict does not match'),
             (True, {'passed': True, 'api_fixed_only': True}, suite, 'success', True, 'PR API contracts: PASS'),
             (True, daily, suite, 'success', False, 'verdict does not match the requested run mode'),
             (False, daily, suite, 'failure', False, 'API runner step: failure'),
@@ -218,37 +223,44 @@ class DailySummaryTest(unittest.TestCase):
                     (target.parent / 'gate.json').write_text(json.dumps(gate))
                 if actual_suite is not None:
                     (target / 'summary.json').write_text(json.dumps(actual_suite))
-                summary = root / 'summary.md'
-                result = subprocess.run(
-                    ['bash', '-e', '-c', command],
-                    cwd=root,
-                    capture_output=True,
-                    env={
-                        **os.environ,
-                        'PATH': str(Path(sys.executable).parent) + os.pathsep + os.environ['PATH'],
-                        'GITHUB_STEP_SUMMARY': str(summary),
-                        'GITHUB_SHA': 'tested-core',
-                        'GITHUB_RUN_ID': '456',
-                        'API_FIXED_ONLY': json.dumps(fixed_only),
-                        'API_RUN_OUTCOME': outcome,
-                    },
+                result = run_report(
+                    'api-fixed' if fixed_only else 'api-daily', target.parent.parent, '--step-outcome', outcome
                 )
                 self.assertEqual(result.returncode, 0 if passed else 1, result.stderr)
-                text = summary.read_text()
+                text = result.stdout
                 self.assertIn(expected, text)
                 self.assertIn('not reported', text)
                 if fixed_only:
                     self.assertNotIn('Shuffle seed', text)
                 else:
-                    seed = (gate or {}).get('api_seed', 456)
+                    seed = (gate or {}).get('api_seed', 'not reported')
                     self.assertIn(f'Shuffle seed: `{seed}`', text)
                 if not passed:
                     self.assertIn('FAIL / incomplete', text)
 
+    def test_report_rejects_a_different_recorded_suite(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'gate/suite').mkdir(parents=True)
+            (root / 'gate/gate.json').write_text(json.dumps({'passed': True, 'api_fixed_only': True}))
+            (root / 'gate/suite/summary.json').write_text(json.dumps({'passed': True}))
+            for mode in ('daily', 'core-smoke'):
+                with self.subTest(mode=mode):
+                    result = run_report(mode, root)
+                    self.assertEqual(result.returncode, 1)
+                    self.assertIn('does not match report mode', result.stdout)
+
+    def test_old_core_smoke_is_not_a_legacy_daily_run(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'gate/suite').mkdir(parents=True)
+            (root / 'gate/gate.json').write_text(json.dumps({'passed': True, 'budget_seconds': 300}))
+            (root / 'gate/suite/summary.json').write_text(json.dumps({'passed': True}))
+            result = run_report('daily', root)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn('Recorded execution budget 300s', result.stdout)
+
     def test_core_summary_records_preparation_failure_and_selected_plugins(self):
-        workflow = Path(__file__).resolve().parents[2] / '.github/workflows/core-smoke.yml'
-        steps = yaml.safe_load(workflow.read_text())['jobs']['smoke']['steps']
-        command = next(step['run'] for step in steps if step.get('name') == 'Publish gate result')
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             target = root / '.qa/core-smoke'
@@ -260,19 +272,9 @@ class DailySummaryTest(unittest.TestCase):
             (target / 'gate/gate.json').write_text(
                 json.dumps({'passed': False, 'infrastructure_error': 'incompatible'})
             )
-            summary = root / 'summary.md'
-            subprocess.run(
-                ['bash', '-e', '-c', command],
-                cwd=root,
-                check=True,
-                capture_output=True,
-                env={
-                    **os.environ,
-                    'PATH': str(Path(sys.executable).parent) + os.pathsep + os.environ['PATH'],
-                    'GITHUB_STEP_SUMMARY': str(summary),
-                },
-            )
-            text = summary.read_text()
+            result = run_report('core-smoke', target)
+            self.assertEqual(result.returncode, 1)
+            text = result.stdout
             self.assertIn('Core smoke: FAIL', text)
             self.assertIn('Preparation or teardown failed', text)
             self.assertIn('langbot-team/LocalAgent@1.2.3', text)
@@ -332,7 +334,6 @@ class MixedScheduleTest(unittest.TestCase):
                 )
 
     def test_mixed_summary_requires_its_independent_execution_evidence(self):
-        command = self.commands()['Publish observations']
         for mixed in (None, {'passed': False, 'outcome': 'INCOMPLETE'}, {'passed': True, 'outcome': 'PASS'}):
             with self.subTest(mixed=mixed), tempfile.TemporaryDirectory() as folder:
                 root = Path(folder)
@@ -343,21 +344,21 @@ class MixedScheduleTest(unittest.TestCase):
                 (target.parent / 'gate.json').write_text(json.dumps({'passed': True}))
                 if mixed is not None:
                     (target.parent / 'mixed.json').write_text(json.dumps(mixed))
-                summary = root / 'summary.md'
-                result = subprocess.run(
-                    ['bash', '-e', '-c', command],
-                    cwd=root,
-                    capture_output=True,
-                    env={
-                        **os.environ,
-                        'PATH': str(Path(sys.executable).parent) + os.pathsep + os.environ['PATH'],
-                        'GITHUB_STEP_SUMMARY': str(summary),
-                        'GITHUB_SHA': 'candidate',
-                    },
-                )
+                result = run_report('daily', target.parent.parent)
                 passed = bool(mixed and mixed['passed'])
                 self.assertEqual(result.returncode, 0 if passed else 1)
-                self.assertEqual('Daily regression: PASS' in summary.read_text(), passed)
+                self.assertEqual('Daily regression: PASS' in result.stdout, passed)
+
+    def test_workload_marker_cannot_hide_missing_mixed_evidence(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder) / 'daily'
+            (root / 'gate/suite').mkdir(parents=True)
+            (root.parent / 'daily-workload.txt').write_text('contracts\n')
+            (root / 'gate/gate.json').write_text(json.dumps({'passed': True, 'mixed': {'passed': True}}))
+            (root / 'gate/suite/summary.json').write_text(json.dumps({'passed': True}))
+            result = run_report('daily', root)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("conflicts with recorded 'mixed' run", result.stdout)
 
     def test_required_daily_jobs_fail_for_cancel_skip_missing_and_failure(self):
         path = Path(__file__).resolve().parents[2] / '.github/workflows/daily-endurance.yml'

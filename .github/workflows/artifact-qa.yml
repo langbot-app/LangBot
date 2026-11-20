@@ -5,6 +5,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - '.github/workflows/artifact-qa.yml'
+      - 'tools/verify_junit.py'
       - 'tests/**/test_artifact*.py'
       - 'tests/utils/**/*artifact*'
       - 'tests/utils/required_suites.py'
@@ -108,21 +109,11 @@ jobs:
             tests/e2e/test_local_runner_fake_provider.py::test_local_runner_compacts_without_persisting_artifact_bytes
       - name: Require evidence with no skipped or expected-failure cases
         if: ${{ !cancelled() }}
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import xml.etree.ElementTree as ET
-
-          for name in ('contracts', 'mixed', 'compaction'):
-              path = Path('.qa/artifact-ci') / (name + '.xml')
-              if not path.is_file():
-                  raise SystemExit(f'Missing Artifact QA evidence: {path}')
-              cases = ET.parse(path).findall('.//testcase')
-              if not cases or any(case.find(tag) is not None for case in cases
-                                  for tag in ('skipped', 'error', 'failure')):
-                  raise SystemExit(f'{name}: expected executed and passing test cases, inspect {path}')
-              print(f'{name}: {len(cases)} cases passed')
-          PY
+        run: >-
+          python tools/verify_junit.py
+          .qa/artifact-ci/contracts.xml
+          .qa/artifact-ci/mixed.xml
+          .qa/artifact-ci/compaction.xml
       - name: Upload Artifact QA evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

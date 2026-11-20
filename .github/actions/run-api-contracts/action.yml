@@ -45,57 +45,11 @@ runs:
       if: always()
       shell: bash
       env:
-        API_FIXED_ONLY: ${{ inputs.fixed-only }}
-        API_RUN_OUTCOME: ${{ steps.execute.outcome }}
+        API_MODE: ${{ inputs.fixed-only == 'true' && 'api-fixed' || 'api-daily' }}
+        RUN_OUTCOME: ${{ steps.execute.outcome }}
       run: |
-        python - <<'PY_SUMMARY'
-        import json, os
-        from pathlib import Path
-
-        root = Path('.qa/api')
-
-        def read(path):
-            source = root / path
-            return json.loads(source.read_text()) if source.exists() else {}
-
-        gate = read('gate/gate.json')
-        suite = read('gate/suite/summary.json')
-        coverage = read('gate/suite/coverage.json')
-        manifest = read('plugins/manifest.json')
-        fixed_only = os.environ['API_FIXED_ONLY'] == 'true'
-        label = 'PR' if fixed_only else 'Daily'
-        mode = 'Fixed order once' if fixed_only else 'Fixed order followed by a seeded chain shuffle'
-        errors = list(suite.get('errors', [])) + list(gate.get('resource_errors', [])) + list(gate.get('coverage_errors', []))
-        if gate.get('timed_out'):
-            errors.append('API suite exceeded its 600-second outer process guard.')
-        if gate.get('infrastructure_error'):
-            errors.append(gate['infrastructure_error'])
-        if not gate or not suite:
-            errors.append('Missing verdict; inspect preparation and service logs.')
-        if gate.get('passed') is True and gate.get('api_fixed_only') is not fixed_only:
-            errors.append('API verdict does not match the requested run mode.')
-        outcome = os.environ['API_RUN_OUTCOME']
-        if outcome != 'success':
-            errors.append(f'API runner step: {outcome}.')
-        passed = gate.get('passed') is True and suite.get('passed') is True and not errors
-
-        with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
-            out.write(f"{label} API contracts: {'PASS' if passed else 'FAIL / incomplete'}\n\n")
-            out.write(f"Core: `{os.environ['GITHUB_SHA']}`. {mode}.\n\n")
-            if not fixed_only:
-                out.write(f"Shuffle seed: `{gate.get('api_seed', os.environ['GITHUB_RUN_ID'])}`.\n\n")
-            out.write(f"Cases: {suite.get('requests', 'not reported')}; statuses: {suite.get('status', 'not reported')}; suite execution: {suite.get('elapsed_seconds', 'not reported')}s.\n\n")
-            out.write(f"API behavior contracts: {coverage.get('areas', {}).get('api', 'not reported')}.\n\n")
-            observations = coverage.get('http_observations')
-            if observations:
-                out.write(f"Observed HTTP route templates (including preparation): {len(observations['routes'])}.\n\n")
-            for plugin in manifest.get('plugins', []):
-                out.write(f"Plugin: `{plugin['id']}@{plugin['version']}`; installation readback: `{plugin.get('installed', 'not confirmed')}`.\n\n")
-            for error in errors:
-                out.write(f"- {error}\n")
-        if not passed:
-            raise SystemExit(f'{label} API regression failed or its required verdict is missing')
-        PY_SUMMARY
+        python -m tools.entrypoints.regression_report "$API_MODE" .qa/api \
+          --sha "$GITHUB_SHA" --step-outcome "$RUN_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
     - name: Preserve API verdicts and evidence
       if: always()
       uses: actions/upload-artifact@v4

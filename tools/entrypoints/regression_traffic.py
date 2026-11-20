@@ -12,7 +12,6 @@ import os
 from pathlib import Path
 import subprocess
 import sqlite3
-import sys
 import threading
 import time
 import urllib.error
@@ -20,6 +19,7 @@ import uuid
 
 from tools.regression.evidence import check_attachment, check_fields, check_response, checked
 from tools.regression.http_bot import group_request, valid_group_settings
+from tools.regression.observations import read_endpoint_snapshot, read_process_snapshot
 from tools.regression.run_ledger import (
     UnresolvedRun,
     check_run,
@@ -28,9 +28,6 @@ from tools.regression.run_ledger import (
     high_water_mark,
     reconcile_runs,
 )
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
-from cloud_runtime_soak import read_endpoint_snapshot, read_process_snapshot
 
 
 def percentile(values, fraction):
