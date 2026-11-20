@@ -2128,6 +2128,31 @@ async def test_knowledge_actions_keep_foreign_runs_in_trusted_workspace(knowledg
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'action', [PluginToRuntimeAction.RETRIEVE_KNOWLEDGE, PluginToRuntimeAction.RETRIEVE_KNOWLEDGE_BASE]
+)
+async def test_knowledge_retrieval_failure_is_logged(knowledge_host, action):
+    host = knowledge_host
+    await host.registry.register(
+        run_id='run-a',
+        runner_id='plugin:test-author/test-plugin/runner',
+        query_id=None,
+        plugin_identity='test-author/test-plugin',
+        workspace_id='workspace-a',
+        resources=make_agent_resources(knowledge_bases=[{'kb_id': 'kb-a'}]),
+    )
+    host.app.plugin_connector.call_rag_retrieve.side_effect = RuntimeError('embedding backend unavailable')
+    response = await host.runtime.actions[action.value]({'run_id': 'run-a', 'kb_id': 'kb-a', 'query_text': 'hello'})
+    assert response.code != 0
+    assert 'embedding backend unavailable' in response.message
+    warnings = [call.args[0] for call in host.app.logger.warning.call_args_list]
+    assert any(
+        'kb=kb-a' in line and 'engine=author/engine' in line and 'embedding backend unavailable' in line
+        for line in warnings
+    ), warnings
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('selected', [True, False])
 @pytest.mark.parametrize('scope_source', ['preprocessed', 'custom_runner'])
 async def test_pipeline_knowledge_action_enforces_query_scope(knowledge_host, selected, scope_source):
