@@ -347,7 +347,7 @@ class LifecycleTest(unittest.TestCase):
                 with (
                     patch.object(Suite, 'prepare', prepare),
                     patch.object(Suite, 'call', return_value={'workspace_uuid': 'workspace'}),
-                    patch('tools.entrypoints.regression_traffic.group_request', side_effect=group_request),
+                    patch.object(lifecycle, 'group_request', side_effect=group_request),
                     patch.object(lifecycle, 'api', side_effect=public_api),
                 ):
                     result = lifecycle.run_restart_checks(

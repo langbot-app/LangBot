@@ -101,3 +101,28 @@ test('save normalization preserves explicit selected per-model provider_default'
     { one: 'provider_default', two: 'high' },
   );
 });
+
+test('successive form edits preserve prior saves and hidden nested values', () => {
+  const { preserveRunnerConfig } = load(helper);
+  const persisted = {
+    model: { primary: 'one', hiddenOption: 'keep' },
+    retries: null,
+  };
+  const first = { model: { primary: 'one' }, retries: 0 };
+  const second = { ...first, model: { primary: 'two' } };
+  const third = { ...second, retries: 2 };
+
+  const afterModelEdit = preserveRunnerConfig(persisted, first, second);
+  assert.deepEqual(afterModelEdit, {
+    model: { primary: 'two', hiddenOption: 'keep' },
+    retries: null,
+  });
+  assert.deepEqual(preserveRunnerConfig(afterModelEdit, second, third), {
+    model: { primary: 'two', hiddenOption: 'keep' },
+    retries: 2,
+  });
+  assert.deepEqual(persisted, {
+    model: { primary: 'one', hiddenOption: 'keep' },
+    retries: null,
+  });
+});

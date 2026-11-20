@@ -138,6 +138,22 @@ Host MVP は `sh` を備えた POSIX システム（Linux / macOS）をサポー
 
 E2B はホスト側に Docker や Nsjail を必要とせず、毎回の実行をリモートサンドボックスで行います。
 
+## ローカルデータの読み取り専用マウント
+
+セルフホストの Docker Box では、Box Runtime の `LANGBOT_BOX_CONFIG` JSON の既存設定に次のマッピングを追加できます。Runtime と Docker デーモンが同じ絶対パスで参照できるディレクトリを指定してください。
+
+```json
+{
+  "local_mounts": {
+    "corpus": {"path": "/srv/corpus", "workspaces": ["<workspace-uuid>"]}
+  }
+}
+```
+
+LocalAgent の **Local Box mounts** に `corpus` を指定します。独自の Runner では、`acquire_box` の options に `{"mounts": ["corpus"]}` を渡せます。Box は `/datasets/corpus` でデータを読み取り、ファイル転送と Skill 公開には `/workspace` を使います。エクスポートする成果物は `/workspace` に保存してください。マッピングの変更後は Box Runtime を再起動します。
+
+新規インストールはネットワーク転送と専用ワークスペースを使用します。v4.11.8 からのアップグレードでは、転送モードが未指定または `legacy` の場合、共有ワークスペースを維持します。`network` で `workspace_mode` が未指定の場合も共有ワークスペースとネットワーク転送を維持します。必要な作業ファイルと未公開の草稿を保存した後、`box.workspace_mode: private` を設定すると専用ワークスペースと名前付きマウントを利用できます。
+
 ## Docker Compose デプロイ
 
 Docker Compose では、サンドボックス設定は `langbot` サービス側に記述します。LangBot は起動時に INIT RPC で設定を `langbot_box` に転送します。

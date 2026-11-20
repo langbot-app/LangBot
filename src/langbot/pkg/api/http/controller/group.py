@@ -19,6 +19,7 @@ from ....workspace.collaboration import MembershipPermissionError, WorkspaceColl
 from ....workspace.errors import WorkspaceNotFoundError
 from ....cloud.entitlements import EntitlementUnavailableError
 from ....core.errors import TaskCapacityError
+from ...application.contracts import ApplicationAPIException
 from ....provider.modelmgr.codex_errors import CodexProviderError
 from ....i18n import DEFAULT_LANGUAGE, language, language_scope, t, error_text
 from ....i18n.workspace import get_workspace_language
@@ -313,6 +314,11 @@ class RouterGroup(abc.ABC):
                         return self.http_status(400, e.code, str(e))
                     if isinstance(e, TaskCapacityError):
                         return self.http_status(429, 'task_capacity_exceeded', str(e))
+                    if isinstance(e, ApplicationAPIException) and 400 <= e.error.status_code < 500:
+                        # Application operations carry their own client-facing
+                        # status (e.g. a disabled plugin is 403 permission_denied).
+                        # Surfacing them as 500 hid the reason and paged as faults.
+                        return self.http_status(e.error.status_code, e.error.code, e.error.message)
                     if isinstance(
                         e,
                         bounded_executor.BlockingWorkCapacityError,

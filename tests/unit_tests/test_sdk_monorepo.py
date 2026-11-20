@@ -74,6 +74,12 @@ def test_sdk_workflows_never_touch_core_releases():
         events = data.get('on', data.get(True))
         assert 'release' not in events, path.name
         assert 'langbot-app/langbot-plugin-sdk' not in path.read_text(), path.name
+        if path.name in {'sdk-tests.yml', 'sdk-box-docker.yml'}:
+            # Read-only test workflows intentionally cover shared consumers and CI changes.
+            assert set(events) == {'pull_request', 'workflow_dispatch', 'workflow_call'}, path.name
+            assert data['permissions'] == {'contents': 'read'}, path.name
+            assert {'pyproject.toml', 'uv.lock'} <= set(events['pull_request']['paths']), path.name
+            continue
         for event in ('push', 'pull_request'):
             if event in events and 'paths' in events[event]:
                 assert all(p.startswith(('sdk/', '.github/workflows/sdk-')) for p in events[event]['paths']), path.name

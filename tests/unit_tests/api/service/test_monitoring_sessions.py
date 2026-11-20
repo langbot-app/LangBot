@@ -252,10 +252,12 @@ async def service():
         serialize_model = PersistenceManager.serialize_model
         active_transaction = contextvars.ContextVar('summary-test-transaction', default=None)
 
-        def tenant_uow(self, workspace):
+        def tenant_uow(self, workspace, *, operation=None):
             from langbot.pkg.persistence.tenant_uow import TenantUnitOfWork
 
             return TenantUnitOfWork(engine, workspace, active_transaction=self.active_transaction)
+
+        tenant_write_uow = tenant_uow
 
         def get_db_engine(self):
             return engine
@@ -453,7 +455,7 @@ async def test_live_replay_and_legacy_initialization_agree(service, order, first
                 bot_name='Bot',
                 pipeline_id='pipeline',
                 pipeline_name='Pipeline',
-                session_id='group_42',
+                session_id='groupmember_2_42_carol',
                 message_content='input',
                 event_id='covered',
                 platform='test',
@@ -466,7 +468,7 @@ async def test_live_replay_and_legacy_initialization_agree(service, order, first
                 bot_name='Bot',
                 pipeline_id='assistant',
                 pipeline_name='Assistant',
-                session_id='group_42',
+                session_id='groupmember_2_42_carol',
                 message_content='output',
                 event_id='covered',
                 platform='test',

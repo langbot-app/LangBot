@@ -15,7 +15,8 @@ import urllib.error
 import urllib.request
 from uuid import uuid4
 
-from tools.entrypoints.regression_traffic import group_request
+from tools.regression.http_bot import group_request, valid_group_settings
+from tools.regression.resource_cleanup import verify_cleanup
 
 
 KINDS = {'provider', 'model', 'pipeline', 'knowledge-base', 'bot'}
@@ -292,8 +293,7 @@ def validate(profile):
                 'args' in case
                 or 'body' in case
                 or not isinstance(settings, dict)
-                or set(settings) != {'url', 'secret_env', 'message'}
-                or any(not isinstance(value, str) or not value for value in settings.values())
+                or not valid_group_settings(settings)
                 or not resolve(settings['url'], variables).startswith(('http://', 'https://'))
                 or settings['secret_env'] != 'LANGBOT_QA_GROUP_SECRET'
             ):
@@ -387,6 +387,8 @@ def validate(profile):
             'groups',
             'members_per_group',
             'max_requests',
+            'scenario_weights',
+            'min_delivery_ratio',
         }:
             raise ValueError(f'{name}: unknown phase field')
         number(phase.get('duration_seconds'), 'duration_seconds', minimum=0.001)
@@ -401,9 +403,38 @@ def validate(profile):
         number(phase.get('members_per_group', 3), 'members_per_group', minimum=1, integer=True)
         if phase.get('groups', 0) > 4096 or phase.get('members_per_group', 3) > 1000:
             raise ValueError('groups must be <= 4096 and members_per_group <= 1000')
-        group_cases = ['http_group' in case for case in cases]
+        phase_cases = cases
+        if 'scenario_weights' in phase:
+            weights = phase['scenario_weights']
+            catalogue = {case['name']: case for case in cases}
+            if (
+                not isinstance(weights, list)
+                or not weights
+                or any(
+                    not isinstance(item, list)
+                    or len(item) != 2
+                    or not isinstance(item[0], str)
+                    or item[0] not in catalogue
+                    or type(item[1]) is not int
+                    or not 1 <= item[1] <= 1000
+                    for item in weights
+                )
+                or len({name for name, _ in weights}) != len(weights)
+                or sum(weight for _, weight in weights) > 1000
+            ):
+                raise ValueError(f'{name}: invalid scenario weights')
+            if not phase.get('groups') or phase['groups'] % sum(weight for _, weight in weights):
+                raise ValueError(f'{name}: groups must be a positive multiple of total scenario weight')
+            if verification is None:
+                raise ValueError('Configurable mixload requires ledger verification')
+            phase_cases = [dict(catalogue[case_name], weight=weight) for case_name, weight in weights]
+        if 'min_delivery_ratio' in phase:
+            number(phase['min_delivery_ratio'], 'min_delivery_ratio')
+            if 'scenario_weights' not in phase or phase['min_delivery_ratio'] > 1:
+                raise ValueError('min_delivery_ratio requires configurable mixload and must be <= 1')
+        group_cases = ['http_group' in case for case in phase_cases]
         if any(group_cases) and (
-            not all(group_cases) or phase.get('groups', 0) < sum(case.get('weight', 1) for case in cases)
+            not all(group_cases) or phase.get('groups', 0) < sum(case.get('weight', 1) for case in phase_cases)
         ):
             raise ValueError('group phases need only http_group cases and enough groups for all weighted cases')
         if not any(group_cases) and phase.get('groups', 0):
@@ -673,6 +704,40 @@ class Suite:
                         'config': merge(current['config'], config),
                     },
                 )
+            if kind == 'pipeline' and item['id'] == 'memory_pipeline':
+                from tools.regression.regression_api_checks import user_headers
+                from tools.regression.regression_local_cases import api
+
+                headers = user_headers(self)
+                bindings = {
+                    'enable_all_plugins': False,
+                    'bound_plugins': [
+                        {'author': 'langbot-team', 'name': 'LocalAgent'},
+                        {'author': 'langbot-team', 'name': 'LongTermMemory'},
+                    ],
+                    'enable_all_mcp_servers': False,
+                    'bound_mcp_servers': [],
+                    'enable_all_skills': False,
+                    'bound_skills': [],
+                }
+                status, report = api(self, 'PUT', f'/api/v1/pipelines/{uuid}/extensions', bindings, headers)
+                if status != 200 or report.get('code') != 0:
+                    raise ValueError('Cannot scope the memory pipeline to the fixture plugins')
+                status, report = api(self, 'GET', f'/api/v1/tools?pipeline_uuid={uuid}', headers=headers)
+                catalog = report.get('data', {}).get('tools', []) if status == 200 else []
+                memory_tools = sorted(
+                    tool['name'] for tool in catalog if tool.get('source_id') == 'langbot-team/LongTermMemory'
+                )
+                self.write(
+                    'memory-tool-discovery.json',
+                    {
+                        'status': status,
+                        'memory_tools': memory_tools,
+                        'tool_names': sorted(tool['name'] for tool in catalog),
+                    },
+                )
+                if not {'remember', 'recall_memory'} <= set(memory_tools):
+                    raise ValueError('Memory pipeline did not discover both LongTermMemory tools')
             for document in item.get('documents', []):
                 self.call(
                     [
@@ -726,21 +791,15 @@ class Suite:
                 saved['resources'].remove(resource)
                 self.write('owned.json', saved)
         if 'smoke' in self.profile or 'verification' in self.profile:
-            from tools.regression.regression_smoke import verify_cleanup
-
             try:
                 verify_cleanup(self, [item for item in original if item not in saved['resources']])
             except (RuntimeError, ValueError, OSError, KeyError) as exc:
                 failures.append(f'cleanup readback failed: {exc}')
         return failures
 
-    def run(self):
-        if 'smoke' in self.profile:
-            from tools.regression.regression_smoke import run_smoke
-
-            return run_smoke(self)
+    def _traffic_cases(self, originals, file_name):
         cases = []
-        for original in self.profile['cases']:
+        for original in originals:
             case = resolve(original, self.variables)
             if 'body' in case:
                 case['args'] += ['--file', self.write(f'case-{len(cases)}.json', case.pop('body'))]
@@ -763,7 +822,17 @@ class Suite:
                 ]
                 * case.get('weight', 1)
             )
-        cases_path = self.write('cases.json', cases)
+        return self.write(file_name, cases)
+
+    def run(self):
+        if 'smoke' in self.profile:
+            from tools.regression.regression_smoke import run_smoke
+
+            return run_smoke(self)
+        catalogue = {case['name']: case for case in self.profile['cases']}
+        shared_cases_path = None
+        if any('scenario_weights' not in phase for phase in self.profile['phases']):
+            shared_cases_path = self._traffic_cases(self.profile['cases'], 'cases.json')
         observed = resolve(self.profile.get('observe', {}), self.variables)
         observe_args = []
         for name, pid in observed.get('pids', {}).items():
@@ -789,6 +858,13 @@ class Suite:
         errors = []
         for phase in self.profile['phases']:
             destination = self.output / phase['name']
+            profiled = 'scenario_weights' in phase
+            group_state = 'group-state.json'
+            cases_path = shared_cases_path
+            if profiled:
+                selected = [dict(catalogue[name], weight=weight) for name, weight in phase['scenario_weights']]
+                cases_path = self._traffic_cases(selected, f'{phase["name"]}-cases.json')
+                group_state = f'{phase["name"]}-group-state.json'
             command = [
                 sys.executable,
                 '-m',
@@ -815,14 +891,20 @@ class Suite:
                 '--members-per-group',
                 str(phase.get('members_per_group', 3)),
                 '--group-state',
-                str(self.output / 'group-state.json'),
+                str(self.output / group_state),
                 *observe_args,
             ]
+            if profiled:
+                command.append('--open-loop-groups')
             if 'max_requests' in phase:
                 command += ['--max-requests', str(phase['max_requests'])]
             with (self.output / f'{phase["name"]}.log').open('w') as log:
                 result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, env=self.env)
-            summary = json.loads((destination / 'summary.json').read_text())
+            phase_summary = destination / 'summary.json'
+            if profiled and not phase_summary.is_file():
+                errors.append(f'{phase["name"]}: no completed phase summary (exit {result.returncode})')
+                continue
+            summary = json.loads(phase_summary.read_text())
             summary['name'] = phase['name']
             summary['achieved_rps'] = (
                 summary.get(
@@ -845,6 +927,8 @@ class Suite:
             if summary['achieved_rps'] < phase['rps'] * thresholds.get('min_rps_ratio', 0):
                 errors.append(f'{phase["name"]}: achieved RPS below configured threshold')
             for name, maximum in thresholds.get('max_p95_seconds', {}).items():
+                if profiled and name not in summary['cases']:
+                    continue
                 p95 = summary['cases'][name]['p95_seconds']
                 if p95 is None or p95 > maximum:
                     errors.append(f'{phase["name"]}/{name}: P95 missing or above configured threshold')

@@ -28,6 +28,7 @@ default_stage_order = [
     'SpeechRecognitionStage',  # 语音识别（ASR）阶段
     'PreContentFilterStage',  # 内容过滤前置阶段
     'PreProcessor',  # 预处理器
+    'RequireDailyMessageQuota',
     'RequireRateLimitOccupancy',  # 请求速率限制占用
     'MessageProcessor',  # 处理器
     'ReleaseRateLimitOccupancy',  # 释放速率限制占用
@@ -347,6 +348,9 @@ class PipelineService:
         if getattr(result, 'rowcount', None) == 0:
             raise WorkspaceNotFoundError('Pipeline not found')
         await self.ap.pipeline_mgr.remove_pipeline(context, pipeline_uuid)
+        publication = getattr(self.ap, 'artifact_publication_service', None)
+        if publication is not None:
+            await publication.remove_producer(context, 'pipeline', pipeline_uuid)
 
     async def copy_pipeline(self, context: TenantContext, pipeline_uuid: str) -> str:
         """Copy a pipeline with all its configurations"""

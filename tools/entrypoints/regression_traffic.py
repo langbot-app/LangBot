@@ -2,12 +2,11 @@
 """Drive independent CLI requests or persistent group conversations with Linux resource sampling."""
 
 import argparse
+
+from tools.regression.mixload_pacing import allocate_group_slot, planned_group_slots
 from collections import Counter
-from tools.entrypoints.regression_coverage import checked, check_response
 from concurrent.futures import ThreadPoolExecutor
 import json
-import hashlib
-import hmac
 import math
 import os
 from pathlib import Path
@@ -17,8 +16,18 @@ import sys
 import threading
 import time
 import urllib.error
-import urllib.request
 import uuid
+
+from tools.regression.evidence import check_attachment, check_fields, check_response, checked
+from tools.regression.http_bot import group_request, valid_group_settings
+from tools.regression.run_ledger import (
+    UnresolvedRun,
+    check_run,
+    completed_run,
+    connect_readonly,
+    high_water_mark,
+    reconcile_runs,
+)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
 from cloud_runtime_soak import read_endpoint_snapshot, read_process_snapshot
@@ -235,83 +244,6 @@ def sample_containers(configured, data_root, run=subprocess.run, discover=owned_
     return observation
 
 
-def group_request(case, group_id, member_id, turn, token, previous, env=None, *, timeout=90):
-    """Send one signed GroupMessage through the existing HTTP Bot adapter."""
-    settings = case['http_group']
-    secret = (os.environ if env is None else env)[settings['secret_env']]
-    marker = f'LB_GROUP={group_id} LB_TURN={turn} LB_TOKEN={token} LB_PREVIOUS={previous}'
-    body = json.dumps(
-        {
-            'session_id': group_id,
-            'session_type': 'group',
-            'sender': {'id': member_id, 'name': member_id, 'group_name': group_id},
-            'message': [{'type': 'Plain', 'text': settings['message'] + ' ' + marker}],
-        }
-    ).encode()
-    stamp = str(int(time.time()))
-    signature = hmac.new(secret.encode(), stamp.encode() + b'.' + body, hashlib.sha256).hexdigest()
-    request = urllib.request.Request(
-        settings['url'],
-        data=body,
-        headers={
-            'Content-Type': 'application/json',
-            'X-LB-Timestamp': stamp,
-            'X-LB-Signature': 'sha256=' + signature,
-            'X-LB-Idempotency-Key': token,
-        },
-    )
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(request, timeout=timeout) as response:
-        payload = json.load(response)
-        if response.status != 200 or not isinstance(payload, dict) or payload.get('code') != 0:
-            raise ValueError('group ingress did not return a completed response')
-    data = payload.get('data', {})
-    if not isinstance(data, dict):
-        raise ValueError('group ingress response data must be an object')
-    parts = data.get('message')
-    if not isinstance(parts, list) or any(not isinstance(part, dict) for part in parts):
-        raise ValueError('group reply must contain message components')
-    text = ''.join(str(part.get('text', '')) for part in parts if part.get('type') == 'Plain')
-    if data.get('session_id') != group_id or not data.get('reply_to'):
-        raise ValueError('group reply session or message correlation is missing')
-    if case['expect'] not in text or f'GROUP_ACK={token}' not in text:
-        raise ValueError('group reply failed its business or conversation-history oracle')
-    return payload
-
-
-def reconcile_runs(path, workspace, after_id, conversations, expected_ids, *, expected_statuses=None):
-    """Catch delayed extra or nonterminal runs after request-level verification."""
-    actual, unfinished = set(), []
-    expected_statuses = expected_statuses or {}
-    if set(expected_statuses) - set(expected_ids) or any(
-        status not in {'completed', 'failed', 'cancelled', 'timeout'} for status in expected_statuses.values()
-    ):
-        raise ValueError('Expected statuses must name owned runs and terminal states')
-    connection = sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)
-    try:
-        values = sorted(conversations)
-        for start in range(0, len(values), 500):
-            part = values[start : start + 500]
-            query = (
-                'SELECT run_id, status FROM agent_run WHERE workspace_id=? AND id>? '
-                'AND conversation_id IN (' + ','.join('?' for _ in part) + ')'
-            )
-            for run_id, status in connection.execute(query, [workspace, after_id, *part]):
-                actual.add(run_id)
-                if status != expected_statuses.get(run_id, 'completed'):
-                    unfinished.append(run_id)
-    finally:
-        connection.close()
-    return {
-        'matched': actual == set(expected_ids) and not unfinished,
-        'expected_count': len(expected_ids),
-        'actual_count': len(actual),
-        'extra': sorted(actual - set(expected_ids)),
-        'missing': sorted(set(expected_ids) - actual),
-        'not_completed': unfinished,
-    }
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--lbctl', required=True)
@@ -335,6 +267,9 @@ def main():
     parser.add_argument(
         '--group-state', type=Path, help='Carry group histories across load phases; refuses interrupted runs'
     )
+    parser.add_argument(
+        '--open-loop-groups', action='store_true', help='Use absolute offered slots; report missed admissions'
+    )
     parser.add_argument('--ledger-db', type=Path)
     parser.add_argument('--workspace')
     parser.add_argument('--verification-timeout', type=float, default=5)
@@ -357,6 +292,8 @@ def main():
         parser.error('duration/rps must be positive, workers 1..32, cooldown nonnegative')
     if not 0 <= args.groups <= 4096 or not 1 <= args.members_per_group <= 1000:
         parser.error('groups must be 0..4096 (0 selects CLI mode), members-per-group 1..1000')
+    if args.open_loop_groups and not args.groups:
+        parser.error('open-loop groups require group mode')
     if args.max_requests is not None and args.max_requests < 1:
         parser.error('max-requests must be positive')
     cases = json.loads(args.cases.read_text())
@@ -382,9 +319,7 @@ def main():
         for case in cases:
             settings = case.get('http_group', {})
             if (
-                not isinstance(settings, dict)
-                or set(settings) != {'url', 'secret_env', 'message'}
-                or not all(isinstance(value, str) and value for value in settings.values())
+                not valid_group_settings(settings)
                 or not settings['url'].startswith(('http://', 'https://'))
                 or not os.environ.get(settings['secret_env'])
             ):
@@ -393,14 +328,6 @@ def main():
         parser.error('ledger verification requires an existing SQLite file and workspace')
     if not math.isfinite(args.verification_timeout) or args.verification_timeout <= 0:
         parser.error('verification timeout must be positive')
-    from tools.regression.regression_smoke import (
-        UnresolvedRun,
-        check_run,
-        check_attachment,
-        check_fields,
-        completed_run,
-    )
-
     args.output.mkdir(parents=True, exist_ok=False)
     pids = {name: int(pid) for name, pid in (value.split('=', 1) for value in args.pid)}
     endpoints = dict(value.split('=', 1) for value in args.health)
@@ -415,10 +342,13 @@ def main():
     phase = ['load']
     next_case = 0
     admitted_requests = 0
+    next_slot = 0
+    offered_slots = planned_group_slots(args.duration, args.rps, args.max_requests) if args.open_loop_groups else None
+    missed_by_case = Counter()
     phase_start_id = 0
     if args.ledger_db:
-        with sqlite3.connect(args.ledger_db.resolve().as_uri() + '?mode=ro', uri=True) as db:
-            phase_start_id = db.execute('SELECT COALESCE(MAX(id),0) FROM agent_run').fetchone()[0]
+        with connect_readonly(args.ledger_db) as db:
+            phase_start_id = high_water_mark(db)
     started = time.monotonic()
     deadline = started + args.duration
     redactions = [value for name, value in os.environ.items() if 'API_KEY' in name and value]
@@ -466,10 +396,10 @@ def main():
     def open_ledger():
         if not args.ledger_db:
             return None, None
-        connection = sqlite3.connect(args.ledger_db.resolve().as_uri() + '?mode=ro', uri=True, timeout=5)
+        connection = connect_readonly(args.ledger_db)
         connection.row_factory = sqlite3.Row
         connection.execute('PRAGMA query_only=ON')
-        after_id = connection.execute('SELECT COALESCE(MAX(id),0) FROM agent_run').fetchone()[0]
+        after_id = high_water_mark(connection)
         return connection, after_id
 
     def verify(row, case, connection, after_id, is_group=False):
@@ -626,9 +556,22 @@ def main():
             iteration += 1
             due = max(due + args.workers / args.rps, time.monotonic())
 
+    def miss_slots(start, end):
+        if start >= end:
+            return
+        cycle = len(groups)
+        loops, rem = divmod(end - start, cycle)
+        if loops:
+            for group in groups:
+                missed_by_case[cases[group['case']]['name']] += loops
+        for slot in range(start, start + rem):
+            group = groups[slot % cycle]
+            missed_by_case[cases[group['case']]['name']] += 1
+
     def group_worker(_index):
-        nonlocal admitted_requests
+        nonlocal admitted_requests, next_slot
         while not stop.is_set():
+            offered_slot = None
             with group_condition:
                 while True:
                     now = time.monotonic()
@@ -638,6 +581,27 @@ def main():
                         or (args.max_requests is not None and admitted_requests >= args.max_requests)
                     ):
                         return
+                    if args.open_loop_groups:
+                        if next_slot >= offered_slots:
+                            return
+                        next_slot, index, missed_start, missed_end, wait = allocate_group_slot(
+                            next_slot,
+                            now - started,
+                            args.rps,
+                            offered_slots,
+                            [not item['busy'] and not item['failed'] for item in groups],
+                        )
+                        miss_slots(missed_start, missed_end)
+                        if index is None:
+                            if next_slot < offered_slots:
+                                group_condition.wait(min(wait, max(0, deadline - now)))
+                            continue
+                        group = groups[index]
+                        offered_slot = next_slot - 1
+                        group['due'] = started + offered_slot / args.rps
+                        group['busy'] = True
+                        admitted_requests += 1
+                        break
                     available = [group for group in groups if not group['busy'] and not group['failed']]
                     if not available:
                         if not any(group['busy'] for group in groups):
@@ -668,6 +632,8 @@ def main():
                 'status': 'failed',
                 'schedule_lag_seconds': max(0, before - group['due']),
             }
+            if offered_slot is not None:
+                row.update(offered_slot=offered_slot, planned_elapsed_seconds=offered_slot / args.rps)
             connection = None
             try:
                 connection, after_id = open_ledger()
@@ -717,6 +683,10 @@ def main():
             stop.set()
             admission_closed.set()
 
+    if args.open_loop_groups:
+        # Schedules start after state/ledger setup, not while files are initialized.
+        started = time.monotonic()
+        deadline = started + args.duration
     sampler = threading.Thread(target=sampling_guard)
     sampler.start()
     try:
@@ -724,6 +694,8 @@ def main():
             list(pool.map(group_worker if args.groups else worker, range(args.workers)))
         if args.max_requests is None:
             stop.wait(max(0, deadline - time.monotonic()))
+        if args.open_loop_groups:
+            miss_slots(next_slot, offered_slots)
         load_elapsed = time.monotonic() - started
         phase[0] = 'cooldown'
         stop.wait(args.cooldown)
@@ -751,6 +723,21 @@ def main():
         'status': dict(Counter(row['status'] for row in rows)),
         'cases': {},
     }
+    if args.open_loop_groups:
+        admitted = Counter(row['case'] for row in rows)
+        summary.update(
+            planned_requests=offered_slots,
+            delivery_ratio=len(rows) / offered_slots,
+            load_model='open-loop scheduled slots; bounded workers; serialized sessions; missed slots not replayed',
+            slot_accounting={
+                name: {
+                    'offered': admitted[name] + missed_by_case[name],
+                    'admitted': admitted[name],
+                    'not_admitted': missed_by_case[name],
+                }
+                for name in dict.fromkeys(case['name'] for case in cases)
+            },
+        )
     if args.ledger_db:
         conversations.update('group_' + group['id'] for group in groups)
         summary['ledger_closeout'] = reconcile_runs(
@@ -791,6 +778,9 @@ def main():
                 for group in groups
             },
         }
+        if args.open_loop_groups:
+            for index, group in enumerate(groups):
+                summary['groups']['sessions'][group['id']]['group_index'] = index
         summary['group_failures'] = [
             group_id
             for group_id, result in summary['groups']['sessions'].items()
@@ -810,7 +800,11 @@ def main():
     print(json.dumps(summary, indent=2), flush=True)
     if (
         not rows
-        or (args.max_requests is not None and (len(rows) != args.max_requests or load_elapsed > args.duration))
+        or (
+            not args.open_loop_groups
+            and args.max_requests is not None
+            and (len(rows) != args.max_requests or load_elapsed > args.duration)
+        )
         or any(row['status'] != 'ok' for row in rows)
         or summary['health_failures']
         or sampling_errors

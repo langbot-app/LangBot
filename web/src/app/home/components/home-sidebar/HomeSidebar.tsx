@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, lazy, Suspense } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  lazy,
+  Suspense,
+} from 'react';
 import { SidebarChildVO } from '@/app/home/components/home-sidebar/HomeSidebarChild';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { sidebarConfigList } from '@/app/home/components/home-sidebar/sidbarConfigList';
@@ -131,6 +138,8 @@ import {
   useWorkspaceQuotaStatus,
 } from '@/app/home/components/workspace-quota/useWorkspaceQuotaStatus';
 import { WorkspaceQuotaTooltip } from '@/app/home/components/workspace-quota/WorkspaceQuotaTooltip';
+import { SidebarDailyMessageQuota } from '@/app/home/components/workspace-quota/DailyMessageQuotaMeter';
+import { useOpenCloudPlansListener } from '@/app/home/components/workspace-quota/useDailyMessageQuota';
 import { SidebarGuide } from './SidebarGuide';
 import { isCoreUpdate } from '@/app/utils/coreVersion';
 
@@ -1892,6 +1901,9 @@ export default function HomeSidebar({
   const [versionDialogOpen, setVersionDialogOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [cloudPlansOpen, setCloudPlansOpen] = useState(false);
+  const openCloudPlansDialog = useCallback(() => setCloudPlansOpen(true), []);
+  // Quota views elsewhere (Debug Chat, settings) open the plans dialog here.
+  useOpenCloudPlansListener(openCloudPlansDialog);
   const [userEmail, setUserEmail] = useState<string>('');
   const [starCount, setStarCount] = useState<number | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -2280,6 +2292,7 @@ export default function HomeSidebar({
 
         {/* Footer */}
         <SidebarFooter>
+          <SidebarDailyMessageQuota />
           {/* Models entry */}
           <SidebarMenu>
             <SidebarMenuItem data-sidebar-guide="models">

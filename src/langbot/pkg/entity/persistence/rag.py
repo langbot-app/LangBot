@@ -10,6 +10,7 @@ class KnowledgeBase(Base):
         sqlalchemy.ForeignKey('workspaces.uuid', ondelete='CASCADE'),
         nullable=False,
     )
+    deleting = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False, default=False, server_default=sqlalchemy.false())
     name = sqlalchemy.Column(sqlalchemy.String, index=True)
     description = sqlalchemy.Column(sqlalchemy.Text)
     emoji = sqlalchemy.Column(sqlalchemy.String(10), nullable=True, default='📚')
@@ -48,6 +49,7 @@ class KnowledgeBase(Base):
 
     ALL_DB_FIELDS = CREATE_FIELDS | {
         'workspace_uuid',
+        'deleting',
         'legacy_vector_collection',
         'embedding_dimension',
         'initialized',
@@ -92,6 +94,7 @@ class File(Base):
     )  # pending, processing, completed, failed, interrupted
     # Server-owned engine identity; the public Host file UUID never changes.
     engine_document_id = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    artifact_id = sqlalchemy.Column(sqlalchemy.String(40), nullable=True)
 
     __table_args__ = (
         sqlalchemy.UniqueConstraint('workspace_uuid', 'uuid', name='uq_knowledge_base_files_workspace_uuid'),
@@ -100,6 +103,12 @@ class File(Base):
             ['knowledge_bases.workspace_uuid', 'knowledge_bases.uuid'],
             name='fk_knowledge_base_files_workspace_kb',
             ondelete='CASCADE',
+        ),
+        sqlalchemy.ForeignKeyConstraint(
+            ['workspace_uuid', 'artifact_id'],
+            ['artifacts.workspace_uuid', 'artifacts.id'],
+            name='fk_knowledge_file_artifact',
+            ondelete='RESTRICT',
         ),
         sqlalchemy.Index('ix_knowledge_base_files_workspace_kb', 'workspace_uuid', 'kb_id'),
     )

@@ -1,0 +1,64 @@
+---
+title: "One-Line Install (Recommended)"
+description: "Install lbctl and deploy LangBot with one command: Python set up automatically, native or Docker deployment, start on boot, one-command upgrades."
+---
+
+<Info>
+This is the recommended way to self-host LangBot on Windows, macOS and Linux. Prefer not to self-host? Use [LangBot Cloud](https://cloud.langbot.app).
+</Info>
+
+## Install
+
+macOS / Linux:
+
+```bash
+curl -fsSL https://langbot.app/install.sh | bash
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://langbot.app/install.ps1 | iex
+```
+
+The script installs [lbctl](https://github.com/langbot-app/langbot-cli), the LangBot CLI, which then deploys LangBot:
+
+- **Native (default, recommended)**: Python is downloaded and set up automatically — no prerequisites, no admin rights.
+- **Docker**: offered when Docker is available, or force it with `--driver docker`.
+- LangBot starts automatically on boot/login, and a "LangBot is ready" panel is shown at the end.
+
+Then open `http://localhost:5300` and create the administrator account.
+
+### Common options
+
+```bash
+# Pick the driver and port and skip every prompt
+curl -fsSL https://langbot.app/install.sh | bash -s -- --driver native --port 5300 --yes
+```
+
+On Windows pass options as environment variables, e.g. `$env:LANGBOT_DRIVER="docker"`, `$env:LANGBOT_PORT="5300"`, `$env:LANGBOT_YES="1"`.
+
+## Everyday management
+
+```bash
+lbctl status              # status and versions
+lbctl logs                # logs
+lbctl doctor              # diagnose problems
+lbctl stop / start / restart
+lbctl upgrade --yes       # upgrade to the latest LangBot
+lbctl update              # update lbctl itself
+lbctl autostart disable   # stop starting on boot
+lbctl uninstall --yes     # uninstall (data kept by default)
+lbctl list                # all local instances
+```
+
+`lbctl` follows your system language (English or Chinese); override it with `--lang en` / `--lang zh-Hans`.
+
+For the full guide (upgrade details, adopting an existing Docker deployment, multiple instances, managing resources from the command line) see [Manage LangBot with lbctl](/en/deploy/lbctl).
+
+## Other deployment options
+
+- [Docker Compose](/en/deploy/langbot/docker) — when you manage containers yourself
+- [Kubernetes](/en/deploy/langbot/kubernetes)
+- [BT Panel](/en/deploy/langbot/one-click/bt) and [1Panel](/en/deploy/langbot/one-click/1panel)
+- [Package manager (uvx)](/en/deploy/langbot/package) — for development and quick experiments, not recommended for everyday use

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import hashlib
 import io
 import json
 import os
@@ -222,6 +223,7 @@ def core_pair_configure(tmp_path, monkeypatch):
             backend='docker' if backend == 'e2b' else backend,
             instance_id=instance_id,
             file_transfer_mode='network',
+            workspace_mode='private',
             runtime={'endpoint': f'http://127.0.0.1:{box_port}'},
         )
         config['box']['local'].update(host_root='', default_workspace='', allowed_mount_roots=[])
@@ -365,6 +367,10 @@ def _assert_probe(report, revision, output, guide='# Replica guide\nOriginal ref
     assert report['activation']['revision'] == report['again']['revision'] == revision, report
     assert report['execution']['stdout'].strip() == output, report
     assert report['resource']['content'] == guide, report
+    artifact = report['resource']['artifact']
+    assert artifact['source'] == 'skill_resource' and artifact['id'].startswith('art_'), report
+    assert artifact['digest'] == hashlib.sha256(guide.encode()).hexdigest(), report
+    assert report['resource']['revision'] == revision, report
 
 
 def _assert_no_core_cache(pair):

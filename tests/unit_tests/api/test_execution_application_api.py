@@ -395,6 +395,8 @@ async def test_resource_families_preserve_frozen_grants(host, monkeypatch, opera
         ('event_get', {'event_id': 'event-a'}),
         ('bind_box', {'box_id': 'box-a'}),
         ('export_box_files', {'paths': ['report.txt']}),
+        ('read_run_file', {'file_id': 'file-1'}),
+        ('commit_run_files', {'file_ids': ['file-1']}),
     ],
 )
 async def test_run_capability_families_cannot_fall_back_to_plugin_access(host, monkeypatch, operation, payload):

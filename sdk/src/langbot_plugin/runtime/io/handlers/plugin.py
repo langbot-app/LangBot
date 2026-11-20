@@ -169,8 +169,15 @@ class PluginConnectionHandler(handler.Handler):
                 in {
                     PluginToRuntimeAction.CALL_TOOL,
                     PluginToRuntimeAction.REQUEST_INTERACTION,
+                    PluginToRuntimeAction.READ_INPUT_ATTACHMENT_CONTENT,
+                    PluginToRuntimeAction.EXPORT_BOX_FILES,
+                    PluginToRuntimeAction.READ_RUN_FILE,
+                    PluginToRuntimeAction.COMMIT_RUN_FILES,
                 }
                 and payload.get("run_id") is not None
+            ) or (
+                action == PluginToRuntimeAction.CALL_APPLICATION_OPERATION
+                and str(payload.get("operation_id", "")).startswith("artifact.")
             )
             if binding is None:
                 # Compatibility for non-Workspace APIs used with an older
@@ -922,10 +929,36 @@ class PluginConnectionHandler(handler.Handler):
                 LONG_RUNNING_OPERATION_TIMEOUT,
             )
 
+        @self.action(PluginToRuntimeAction.READ_INPUT_ATTACHMENT_CONTENT)
+        async def read_input_attachment_content(
+            data: dict[str, Any],
+        ) -> handler.ActionResponse:
+            return await forward_agent_action(
+                PluginToRuntimeAction.READ_INPUT_ATTACHMENT_CONTENT,
+                data,
+                LONG_RUNNING_OPERATION_TIMEOUT,
+            )
+
         @self.action(PluginToRuntimeAction.EXPORT_BOX_FILES)
         async def export_box_files(data: dict[str, Any]) -> handler.ActionResponse:
             return await forward_agent_action(
                 PluginToRuntimeAction.EXPORT_BOX_FILES,
+                data,
+                LONG_RUNNING_OPERATION_TIMEOUT,
+            )
+
+        @self.action(PluginToRuntimeAction.READ_RUN_FILE)
+        async def read_run_file(data: dict[str, Any]) -> handler.ActionResponse:
+            return await forward_agent_action(
+                PluginToRuntimeAction.READ_RUN_FILE,
+                data,
+                LONG_RUNNING_OPERATION_TIMEOUT,
+            )
+
+        @self.action(PluginToRuntimeAction.COMMIT_RUN_FILES)
+        async def commit_run_files(data: dict[str, Any]) -> handler.ActionResponse:
+            return await forward_agent_action(
+                PluginToRuntimeAction.COMMIT_RUN_FILES,
                 data,
                 LONG_RUNNING_OPERATION_TIMEOUT,
             )

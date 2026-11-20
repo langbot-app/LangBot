@@ -48,7 +48,10 @@ export function useAuthenticatedPluginAsset(
     let objectURL = '';
     setResource({ key: resourceKey, url: '', error: false });
     httpClient
-      .getAuthenticatedPluginAssetURL(author, name, filepath)
+      // Pin the Workspace this render resolved. The interceptor would otherwise
+      // read the global uuid at send time, which can already be the next
+      // Workspace while this effect still belongs to the previous one.
+      .getAuthenticatedPluginAssetURL(author, name, filepath, workspaceUuid)
       .then((nextURL) => {
         objectURL = nextURL;
         if (active) {
@@ -66,7 +69,7 @@ export function useAuthenticatedPluginAsset(
       active = false;
       if (objectURL) URL.revokeObjectURL(objectURL);
     };
-  }, [author, name, filepath, resourceKey]);
+  }, [author, name, filepath, resourceKey, workspaceUuid]);
 
   return {
     url: resource.key === resourceKey ? resource.url : '',

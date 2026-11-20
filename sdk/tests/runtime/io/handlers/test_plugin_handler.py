@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -167,6 +168,87 @@ def _handler(debug_plugin=False, action_context=None, *, runtime_profile=None):
         "key" if debug_plugin and action_context is not None else None
     )
     return handler, manager, control_handler
+
+
+async def test_input_content_forwarding_uses_trusted_identity_scope_and_cancellation():
+    binding = _action_context()
+    handler, manager, control = _handler(action_context=binding)
+    manager.plugins = [FakePluginContainer(runtime_handler=handler)]
+    contents = [{"type": "text", "text": "bounded content"}]
+    control.call_action = AsyncMock(return_value={"contents": contents})
+    async with ProtocolSession(handler) as session:
+        result = await session.request(
+            PluginToRuntimeAction.READ_INPUT_ATTACHMENT_CONTENT.value,
+            {
+                "run_id": "run-1",
+                "ref": "att-1",
+                "mode": "text",
+                "caller_plugin_identity": "forged/identity",
+                "workspace_uuid": "forged-workspace",
+            },
+            action_context=None,
+        )
+    assert result["code"] == 0 and result["data"] == {"contents": contents}
+    action, data = control.call_action.call_args.args
+    assert action == PluginToRuntimeAction.READ_INPUT_ATTACHMENT_CONTENT
+    assert data == {
+        "run_id": "run-1",
+        "ref": "att-1",
+        "mode": "text",
+        "caller_plugin_identity": "tester/demo",
+    }
+    assert control.call_action.call_args.kwargs["action_context"] == binding
+    assert control.call_action.call_args.kwargs["cancel_peer_on_cancel"] is True
+
+
+@pytest.mark.parametrize(
+    "action,payload,response",
+    [
+        (
+            PluginToRuntimeAction.EXPORT_BOX_FILES,
+            {"paths": ["/out/report.txt"]},
+            {"items": []},
+        ),
+        (
+            PluginToRuntimeAction.READ_RUN_FILE,
+            {"file_id": "file-1", "mode": "text"},
+            {"contents": []},
+        ),
+        (
+            PluginToRuntimeAction.COMMIT_RUN_FILES,
+            {"file_ids": ["file-1"]},
+            {"items": []},
+        ),
+    ],
+)
+async def test_run_file_forwarding_keeps_trusted_scope_and_cancellation(
+    action, payload, response
+):
+    binding = _action_context()
+    handler, manager, control = _handler(action_context=binding)
+    manager.plugins = [FakePluginContainer(runtime_handler=handler)]
+    control.call_action = AsyncMock(return_value=response)
+    async with ProtocolSession(handler) as session:
+        result = await session.request(
+            action.value,
+            {
+                **payload,
+                "run_id": "run-1",
+                "caller_plugin_identity": "forged/identity",
+                "workspace_uuid": "forged-workspace",
+            },
+            action_context=None,
+        )
+    assert result["code"] == 0 and result["data"] == response
+    forwarded_action, data = control.call_action.call_args.args
+    assert forwarded_action == action
+    assert data == {
+        **payload,
+        "run_id": "run-1",
+        "caller_plugin_identity": "tester/demo",
+    }
+    assert control.call_action.call_args.kwargs["action_context"] == binding
+    assert control.call_action.call_args.kwargs["cancel_peer_on_cancel"] is True
 
 
 def test_reserved_decode_capacity_is_consumed_by_first_message_only():
@@ -1488,3 +1570,34 @@ async def test_plugin_handler_forwards_send_message_with_plugin_timeout(
             expected_timeout,
         )
     ]
+
+
+@pytest.mark.parametrize("run_id", [None, "run-a"])
+async def test_artifact_workspace_forwarding_preserves_scoped_cancellation(run_id):
+    binding = _action_context()
+    handler, manager, control = _handler(action_context=binding)
+    manager.plugins = [FakePluginContainer(runtime_handler=handler)]
+    control.call_action = AsyncMock(
+        return_value={"ok": True, "result": {"id": "art_test"}}
+    )
+    payload = {
+        "operation_id": "artifact.get",
+        "arguments": {"artifact_id": "art_test"},
+        "workspace_uuid": "forged",
+        "caller_plugin_identity": "forged/identity",
+    }
+    if run_id:
+        payload["run_id"] = run_id
+    async with ProtocolSession(handler) as session:
+        result = await session.request(
+            PluginToRuntimeAction.CALL_APPLICATION_OPERATION.value,
+            payload,
+            action_context=None,
+        )
+    assert result["code"] == 0
+    forwarded = control.call_action.call_args.args[1]
+    assert forwarded["caller_plugin_identity"] == "tester/demo"
+    assert "workspace_uuid" not in forwarded
+    assert forwarded.get("run_id") == run_id
+    assert control.call_action.call_args.kwargs["action_context"] == binding
+    assert control.call_action.call_args.kwargs["cancel_peer_on_cancel"] is True

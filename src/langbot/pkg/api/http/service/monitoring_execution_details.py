@@ -139,6 +139,25 @@ class ExecutionDetailsMixin:
                 ),
             ),
         )
+        group_id = sa.func.substr(conversation, 7)
+        actor_id = sa.func.trim(EventLog.actor_id)
+        monitoring_session = sa.case(
+            (
+                sa.and_(
+                    conversation.like('group\\_%', escape='\\'),
+                    ~conversation.like('%#%', escape='\\'),
+                    EventLog.actor_id.is_not(None),
+                    actor_id != '',
+                ),
+                sa.literal('groupmember_')
+                .concat(sa.func.length(group_id))
+                .concat('_')
+                .concat(group_id)
+                .concat('_')
+                .concat(actor_id),
+            ),
+            else_=conversation,
+        )
         values = {
             'id': EventLog.event_id,
             'workspace_uuid': EventLog.workspace_id,
@@ -152,7 +171,7 @@ class ExecutionDetailsMixin:
                 self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'target_type')), ''
             ),
             'message_content': sa.func.coalesce(EventLog.input_json, EventLog.input_summary, ''),
-            'session_id': conversation,
+            'session_id': monitoring_session,
             'status': sa.func.coalesce(self._execution_json_text(EventLog.metadata_json, 'status'), 'success'),
             'level': sa.literal('info'),
             'platform': self._execution_json_text(EventLog.metadata_json, 'platform'),
@@ -254,7 +273,7 @@ class ExecutionDetailsMixin:
             )
             .values(run_id=run_id, event_id=sa.func.coalesce(models.MonitoringMessage.event_id, event_id))
         )
-        async with self._summary_write_session(workspace) as session:
+        async with self._summary_write_session(workspace, 'monitoring.link_event') as session:
             message = (
                 await session.execute(
                     sa.select(
@@ -316,7 +335,7 @@ class ExecutionDetailsMixin:
         metadata = {'status': status, 'bot_name': bot_name, 'platform': platform}
         if routes is not None:
             metadata['routes'] = safe_routes
-        async with self._summary_write_session(workspace) as session:
+        async with self._summary_write_session(workspace, 'monitoring.ingress') as session:
             await store.append_event(
                 event_id=event_id,
                 event_type=event_type,

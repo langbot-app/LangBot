@@ -1,0 +1,53 @@
+---
+title: "ワンラインインストール（推奨）"
+description: "1 コマンドで lbctl をインストールして LangBot をデプロイ。Python 自動セットアップ、ネイティブ／Docker デプロイ、自動起動、ワンコマンドアップグレード。"
+---
+
+<Info>
+Windows・macOS・Linux で LangBot をセルフホストする推奨方法です。セルフホストしない場合は [LangBot Cloud](https://cloud.langbot.app) をご利用ください。
+</Info>
+
+## インストール
+
+macOS / Linux：
+
+```bash
+curl -fsSL https://langbot.app/install.sh | bash
+```
+
+Windows（PowerShell）：
+
+```powershell
+irm https://langbot.app/install.ps1 | iex
+```
+
+スクリプトは [lbctl](https://github.com/langbot-app/langbot-cli)（LangBot CLI）をインストールし、lbctl が LangBot をデプロイします。
+
+- **ネイティブ（デフォルト・推奨）**：Python を自動でダウンロード・設定します。事前準備も管理者権限も不要です。
+- **Docker**：Docker がある場合に選択でき、`--driver docker` で指定もできます。
+- 起動／ログイン時の自動起動が有効になり、最後に「LangBot is ready」パネルが表示されます。
+
+完了後 `http://localhost:5300` を開き、管理者アカウントを作成してください。
+
+## 日常の管理
+
+```bash
+lbctl status              # 状態とバージョン
+lbctl logs                # ログ
+lbctl doctor              # 問題の診断
+lbctl stop / start / restart
+lbctl upgrade --yes       # 最新の LangBot へアップグレード
+lbctl update              # lbctl 自体を更新
+lbctl autostart disable   # 自動起動を無効化
+lbctl uninstall --yes     # アンインストール（データは既定で保持）
+lbctl list                # ローカルの全インスタンス
+```
+
+詳しい使い方（アップグレードの詳細、既存の Docker デプロイの移行、複数インスタンス、コマンドラインでのリソース管理など）は [lbctl で LangBot を管理する](/ja/deploy/lbctl)を参照してください。
+
+## その他のデプロイ方法
+
+- [Docker Compose](/ja/deploy/langbot/docker)
+- [Kubernetes](/ja/deploy/langbot/kubernetes)
+- [宝塔](/ja/deploy/langbot/one-click/bt)・[1Panel](/ja/deploy/langbot/one-click/1panel)
+- [パッケージマネージャー（uvx）](/ja/deploy/langbot/package)：開発・お試し向け。日常の運用には推奨しません

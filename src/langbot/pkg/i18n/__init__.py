@@ -158,6 +158,15 @@ def error_text(code: int | str, message: str) -> str:
     if language.get() == DEFAULT_LANGUAGE:
         return message
     messages = {
+        'artifact_principal_not_supported': 'Artifact operations require an account or API key',
+        'artifact_expired': 'Artifact has expired',
+        'artifact_in_use': 'Artifact is still in use',
+        'artifact_integrity_failed': 'Artifact content failed integrity verification',
+        'artifact_publish_not_authorized': 'Artifact publication is not authorized',
+        'artifact_read_timeout': 'Artifact read timed out',
+        'artifact_manager_conflict': 'Artifact has a different manager',
+        'artifact_legacy_commit_unmanaged': 'Legacy output requires explicit manager assignment',
+        'artifact_run_not_active': 'Artifact access requires an active run lease',
         'permission_denied': 'Permission denied',
         'resource_not_found': 'Resource not found',
         'membership_not_found': 'Resource not found',

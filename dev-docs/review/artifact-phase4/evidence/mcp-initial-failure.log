@@ -1,0 +1,24 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.14, pytest-9.0.3, pluggy-1.6.0
+rootdir: <checkout>
+configfile: pytest.ini
+plugins: langsmith-0.8.18, anyio-4.14.2, asyncio-1.3.0, cov-7.0.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 18 items
+
+tests/integration/storage/test_artifact_mcp.py .ss.ssFss                 [ 50%]
+tests/unit_tests/api/test_mcp_server.py .........                        [100%]
+
+=================================== FAILURES ===================================
+_ test_mcp_fixed_skill_reference_uses_shared_reader_and_permissions[sqlite-database] _
+<checkout>/tests/integration/storage/test_artifact_mcp.py:135: in test_mcp_fixed_skill_reference_uses_shared_reader_and_permissions
+    rendered = await _call(server, case.context, 'read_artifact_content', artifact_id=created['id'], max_chars=7)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<checkout>/tests/integration/storage/test_artifact_mcp.py:33: in _call
+    content, _structured = await server.mcp.call_tool(tool, arguments)
+    ^^^^^^^^^^^^^^^^^^^^
+E   ValueError: too many values to unpack (expected 2)
+- generated xml file: <checkout>/.qa/skill-artifact-phase4/mcp.xml -
+=========================== short test summary info ============================
+FAILED tests/integration/storage/test_artifact_mcp.py::test_mcp_fixed_skill_reference_uses_shared_reader_and_permissions[sqlite-database]
+============= 1 failed, 11 passed, 6 skipped, 16 warnings in 6.40s =============

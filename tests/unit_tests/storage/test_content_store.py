@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.entity.persistence.content import ContentAlias, ContentObject
+from langbot.pkg.entity.persistence.artifact import Artifact, ArtifactReference
+from langbot.pkg.entity.persistence.skill import SkillVersion
 from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
 from langbot.pkg.persistence.tenant_uow import TenantScopeRequiredError
 from langbot.pkg.storage.mgr import StorageMgr
@@ -87,6 +89,7 @@ async def test_content_joins_caller_transaction_and_is_workspace_scoped(storage)
 async def test_content_checks_read_limits_and_digest(storage):
     store = storage.content_store
     ref = await store.put(context(), owner_type='skill', owner='one', key='rev1', value=b'payload')
+    assert await store.get(context(), ref, max_bytes=7) == b'payload'
     with pytest.raises(ValueError, match='size limit'):
         await store.get(context(), ref, max_bytes=2)
     async with storage.ap.persistence_mgr.tenant_uow(WORKSPACE) as uow:
@@ -393,6 +396,11 @@ async def test_network_resource_reads_share_short_transactions_and_keep_validati
 
 @pytest.mark.asyncio
 async def test_scoped_alias_replaces_content_without_mutating_previous_ref(storage):
+    # Only this alias-lifecycle case needs the Artifact holder schema. Keep the
+    # shared minimal content fixture compatible with downstream Skill fixtures.
+    async with storage.ap.persistence_mgr.get_db_engine().begin() as connection:
+        for table in (SkillVersion.__table__, Artifact.__table__, ArtifactReference.__table__):
+            await connection.run_sync(lambda sync, table=table: table.create(sync))
     kwargs = dict(owner_type='upload_image', owner='account', key='same.png')
     key = await storage.save_scoped(context(), **kwargs, value=b'first')
     old_ref = await storage.content_store.alias_ref(context(), key)

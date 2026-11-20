@@ -1,0 +1,112 @@
+name: Artifact accelerated soak
+
+on:
+  schedule:
+    - cron: '43 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: artifact-accelerated-soak
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  accelerated:
+    name: Four-hour accelerated Artifact TTL and cleanup
+    # The manual entry is independent of the opt-in daily schedule. Never run
+    # four hours for a PR or fork, and do not make this a required status check.
+    if: >-
+      github.repository == 'langbot-app/LangBot' &&
+      (github.event_name == 'workflow_dispatch' || vars.ARTIFACT_ACCELERATED_SOAK_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 270
+    env:
+      SPACE__DISABLE_RELEASE_CHECK: 'true'
+      SPACE__DISABLE_MODELS_SERVICE: 'true'
+      SPACE__DISABLE_TELEMETRY: 'true'
+      SPACE__URL: http://127.0.0.1:9
+      CLOUD_SERVICE_URL: http://127.0.0.1:9
+      LITELLM_LOCAL_MODEL_COST_MAP: 'True'
+      LANGBOT_LEGACY_PLUGIN_ROOT: ${{ github.workspace }}/plugins
+      LANGBOT_ARTIFACT_SOAK: '1'
+      LANGBOT_NETWORK_PLUGIN_E2E: '1'
+      LANGBOT_CORE_NETWORK_BACKEND: host
+      LANGBOT_SOAK_LANE: sqlite-database
+      LANGBOT_SOAK_MIXED_MODE: accelerated
+      LANGBOT_SOAK_EVIDENCE: ${{ github.workspace }}/.qa/artifact-accelerated
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Prepare evidence and install the locked environment
+        run: |
+          mkdir -p "$LANGBOT_SOAK_EVIDENCE"
+          {
+            printf 'Profile: repository default (four hours of load plus drain; accelerated only)\n'
+            printf 'SHA: %s\n' "$GITHUB_SHA"
+            uname -sm
+            nproc
+            free -m
+            df -h .
+            sha256sum tools/profiles/artifact-soak.json
+          } > "$LANGBOT_SOAK_EVIDENCE/environment.txt"
+          uv sync --dev --frozen
+      - name: Run the deterministic accelerated profile on real Core and Runtime
+        run: |
+          uv run --no-sync pytest -q -rs -o xfail_strict=true \
+            --junitxml="$LANGBOT_SOAK_EVIDENCE/results.xml" \
+            tests/e2e/test_artifact_lifecycle_soak.py::test_artifact_mixed_soak
+      - name: Require four-hour accelerated completion evidence
+        if: ${{ !cancelled() }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          root = Path(os.environ['LANGBOT_SOAK_EVIDENCE'])
+          cases = ET.parse(root / 'results.xml').findall('.//testcase')
+          if (len(cases) != 1 or cases[0].get('name') != 'test_artifact_mixed_soak'
+                  or any(cases[0].find(tag) is not None for tag in ('error', 'failure', 'skipped'))):
+              raise SystemExit('The accelerated Artifact case did not execute and pass as required.')
+
+          suffix = 'sqlite-database.mixed-accelerated'
+          with (root / f'{suffix}.summary.json').open() as stream:
+              summary = json.load(stream)
+          if (summary.get('result') != 'PASS'
+                  or summary.get('scheduled_gc_maintenance') is not True
+                  or summary.get('load_seconds', 0) < 14400 or summary.get('seconds', 0) < 14400
+                  or summary.get('ttl_seconds') != 120 or summary.get('gc_interval_seconds') != 20
+                  or summary.get('gc_ticks', 0) < 2 or summary.get('manual_gc_calls') != 0
+                  or summary.get('identity', {}).get('git_sha') != os.environ['GITHUB_SHA']):
+              raise SystemExit('Missing full-duration accelerated PASS for the exact checkout.')
+          if not (root / f'{suffix}.ndjson').stat().st_size:
+              raise SystemExit('The accelerated Artifact journal is empty.')
+          print(f"Accelerated SQLite/host soak: {summary['seconds']} seconds; not native-TTL evidence.")
+          PY
+      - name: Upload run metadata, timings and verdict
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifact-accelerated-soak-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .qa/artifact-accelerated/*.txt
+            .qa/artifact-accelerated/*.xml
+            .qa/artifact-accelerated/*.json
+            .qa/artifact-accelerated/*.ndjson
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14

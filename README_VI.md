@@ -15,7 +15,7 @@
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb)](https://discord.gg/wdNEHETs87)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/langbot-app/LangBot)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/langbot-app/LangBot)](https://github.com/langbot-app/LangBot/releases/latest)
-<img src="https://img.shields.io/badge/python-3.10 ~ 3.13 -blue.svg" alt="python">
+<img src="https://img.shields.io/badge/python-3.11%20~%203.14-blue.svg" alt="python">
 [![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
 
 <a href="https://langbot.app">Trang chủ</a> ｜
@@ -70,13 +70,21 @@ Nhấp vào các nút Star và Watch ở góc trên bên phải của kho lưu t
 
 Không cần triển khai, sẵn sàng sử dụng.
 
-### Khởi chạy một dòng
+### Cài đặt một dòng lệnh (khuyến nghị khi tự triển khai)
+
+macOS / Linux:
 
 ```bash
-uvx langbot
+curl -fsSL https://langbot.app/install.sh | bash
 ```
 
-> Yêu cầu [uv](https://docs.astral.sh/uv/getting-started/installation/). Truy cập http://localhost:5300 — xong.
+Windows (PowerShell):
+
+```powershell
+irm https://langbot.app/install.ps1 | iex
+```
+
+> Cài đặt [lbctl](https://github.com/langbot-app/langbot-cli) (CLI của LangBot) rồi triển khai LangBot: mặc định chạy native, tự động chuẩn bị Python, hoặc dùng Docker. Không cần quyền quản trị. Hoàn tất thì truy cập http://localhost:5300. Nâng cấp sau này bằng `lbctl upgrade`.
 
 ### Docker Compose
 

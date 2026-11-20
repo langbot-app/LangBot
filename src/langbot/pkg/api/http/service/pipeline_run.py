@@ -67,5 +67,7 @@ async def run_pipeline(ap, context: RequestContext, pipeline_uuid: str, text: st
         message_id=query.variables.get('_monitoring_message_id'),
     )
     if data['status'] != 'completed':
-        data['error'] = 'Pipeline failed or was dropped; inspect the message and call records.'
+        data['error'] = query.variables.get(
+            '_cli_run_error', 'Pipeline failed or was dropped; inspect the message and call records.'
+        )
     return data

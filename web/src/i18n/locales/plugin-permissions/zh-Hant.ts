@@ -13,7 +13,7 @@ export default {
   listSeparator: '、',
   grantCount: '授予 {{count}} 項',
   undeclared: '未宣告權限',
-  pending: '需要確認外掛權限',
+  pending: '需要確認插件權限',
   saved: '權限已儲存',
   failed: '無法更新權限',
   retry: '重試',
@@ -21,7 +21,8 @@ export default {
   dangerous: '危險操作',
   sendsMessages: '可傳送機器人訊息',
   requires: '需要 {{permissions}}',
-  review: '檢閱權限',
+  review: '審閱',
+  reviewLabel: '審閱權限',
   confirmDescription:
     '向此外掛安裝授予所選權限。危險權限和機器人傳訊能力已單獨標示。',
   grantInPlugin: '請先在外掛權限中授予此操作',

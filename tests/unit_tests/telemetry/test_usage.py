@@ -207,7 +207,7 @@ async def test_real_ingest_outcome(ap, failed):
             'document_id': 'document',
         }
     )
-    file = SimpleNamespace(uuid='file', file_name=_upload_key('private.pdf'), extension='pdf')
+    file = SimpleNamespace(uuid='file', file_name=_upload_key('private.pdf'), extension='pdf', artifact_id=None)
     if failed:
         with pytest.raises(Exception, match='private error'):
             await kb._store_file_task(CONTEXT, file, Mock())

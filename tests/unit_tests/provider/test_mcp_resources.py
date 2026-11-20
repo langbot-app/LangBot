@@ -17,6 +17,7 @@ from langbot.pkg.provider.tools.loaders.mcp import (
     MCP_RESOURCE_CONTEXT_QUERY_KEY,
     MCP_RESOURCE_TRACE_QUERY_KEY,
     MCP_TOOL_CALL_TIMEOUT_DEFAULT_SECONDS,
+    MCP_TOOL_PDF_MAX_BYTES,
     MCP_TOOL_LIST_RESOURCES,
     MCP_TOOL_READ_RESOURCE,
     MCPLoader,
@@ -82,6 +83,67 @@ def _connected_session(
     ]
     session.resource_templates = templates or []
     return session
+
+
+@pytest.mark.asyncio
+async def test_explicit_tool_pdf_resource_remains_structured_for_model_consumption():
+    session = _connected_session()
+    pdf = b'%PDF-1.7 explicit tool result'
+    session.session.call_tool = AsyncMock(
+        return_value=mcp_types.CallToolResult(
+            content=[
+                mcp_types.EmbeddedResource(
+                    type='resource',
+                    resource=mcp_types.BlobResourceContents(
+                        uri='langbot-artifact:///sample%20report.pdf',
+                        mimeType='application/pdf',
+                        blob=base64.b64encode(pdf).decode(),
+                    ),
+                ),
+            ]
+        )
+    )
+    result = await session.invoke_mcp_tool('read_artifact_content', {'artifact_id': 'art_current', 'mode': 'native'})
+    assert len(result) == 1 and result[0].type == 'file_base64'
+    assert result[0].file_name == 'sample report.pdf'
+    assert result[0].file_base64 == 'data:application/pdf;base64,' + base64.b64encode(pdf).decode()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'blob,error',
+    [
+        ('not valid base64', 'invalid PDF base64'),
+        ('x' * (4 * ((MCP_TOOL_PDF_MAX_BYTES + 2) // 3) + 1), 'read size limit'),
+        (base64.b64encode(b'x' * (MCP_TOOL_PDF_MAX_BYTES + 1)).decode(), 'read size limit'),
+    ],
+)
+async def test_explicit_tool_pdf_resource_rejects_invalid_or_oversized_payload(blob, error):
+    session = _connected_session()
+    resource = mcp_types.BlobResourceContents.model_construct(
+        uri='langbot-artifact:///invalid.pdf',
+        mimeType='application/pdf',
+        blob=blob,
+    )
+    block = mcp_types.EmbeddedResource.model_construct(type='resource', resource=resource)
+    with pytest.raises(ValueError, match=error):
+        session._content_to_provider_elements(block, source_tool='read_artifact_content')
+
+
+def test_non_pdf_tool_resource_keeps_binary_omitted_behavior():
+    session = _connected_session()
+    result = session._content_to_provider_elements(
+        mcp_types.EmbeddedResource(
+            type='resource',
+            resource=mcp_types.BlobResourceContents(
+                uri='langbot-artifact:///archive.zip',
+                mimeType='application/zip',
+                blob='aGk=',
+            ),
+        ),
+        source_tool='download_archive',
+    )
+    assert len(result) == 1 and '"binary_omitted": true' in result[0].text
 
 
 def _query(variables: dict | None = None, context: ExecutionContext = TEST_EXECUTION_CONTEXT) -> SimpleNamespace:

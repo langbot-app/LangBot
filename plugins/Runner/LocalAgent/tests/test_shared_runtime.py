@@ -221,6 +221,35 @@ def assert_success(results, owner):
     assert len([r for r in results if r.type in {"run.completed", "run.failed"}]) == 1
 
 
+@pytest.mark.parametrize("mode", ["member", "group"])
+def test_default_box_key_follows_pipeline_session(mode):
+    from types import SimpleNamespace
+
+    from pkg.box import resolve_reuse_key
+
+    keys = []
+    for sender in ("a", "b"):
+        session_id = f"groupmember_4_team_{sender}" if mode == "member" else "group_team"
+        ctx = SimpleNamespace(
+            conversation=SimpleNamespace(
+                session_id=session_id,
+                launcher_type="group",
+                launcher_id="team",
+                sender_id=sender,
+                conversation_id=session_id,
+                bot_id="bot",
+            ),
+            delivery=SimpleNamespace(reply_target={}),
+            event=SimpleNamespace(event_id="event", event_type="message", data={}),
+            run_id="run",
+            variables={},
+        )
+        keys.append(resolve_reuse_key(ctx, "{launcher_type}_{launcher_id}"))
+        assert keys[-1] == session_id
+        assert resolve_reuse_key(ctx, "custom_{launcher_id}_{sender_id}") == f"custom_team_{sender}"
+    assert (keys[0] == keys[1]) == (mode == "group")
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("streaming", [False, True])
 async def test_same_component_concurrent_installations(sdk_runtime, streaming):

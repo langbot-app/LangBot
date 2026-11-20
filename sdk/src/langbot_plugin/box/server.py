@@ -645,6 +645,7 @@ class BoxServerHandler(Handler):
                     request.path,
                     content,
                     context,
+                    expected_session_generation=request.expected_session_generation,
                 )
                 return ActionResponse.success(
                     {"path": request.path, "size": len(content), "sha256": digest}
@@ -661,6 +662,7 @@ class BoxServerHandler(Handler):
                 request.path,
                 context,
                 directory_archive=request.directory_archive,
+                expected_session_generation=request.expected_session_generation,
             )
             await self.send_file(
                 content, "", action_context=context, file_key=request.file_key
@@ -688,6 +690,7 @@ class BoxServerHandler(Handler):
                 self._session_id(request.session_id),
                 request.io_scope,
                 self._action_context(),
+                expected_session_generation=request.expected_session_generation,
             )
             return ActionResponse.success({"cleaned": True})
 

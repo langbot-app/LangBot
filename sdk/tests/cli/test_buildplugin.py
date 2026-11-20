@@ -51,7 +51,7 @@ def test_build_plugin_process_packages_manifest_and_filters_ignored_files(
         ),
         encoding="utf-8",
     )
-    (plugin_dir / "main.py").write_text("print('hello')\n", encoding="utf-8")
+    (plugin_dir / "main.py").write_bytes(b"print('hello')\n")
     (plugin_dir / ".env").write_text("SECRET=1\n", encoding="utf-8")
     (plugin_dir / ".gitignore").write_text("ignored.txt\ncache/\n", encoding="utf-8")
     (plugin_dir / "ignored.txt").write_text("ignore", encoding="utf-8")
@@ -67,6 +67,14 @@ def test_build_plugin_process_packages_manifest_and_filters_ignored_files(
     with zipfile.ZipFile(package_path) as package:
         names = set(package.namelist())
         assert {"manifest.yaml", "main.py", ".gitignore"} <= names
+        archived_manifest = yaml.safe_load(package.read("manifest.yaml"))
+        source_manifest = yaml.safe_load((plugin_dir / "manifest.yaml").read_bytes())
+        assert archived_manifest["metadata"] == source_manifest["metadata"]
+        assert (
+            archived_manifest["spec"]["components"]
+            == source_manifest["spec"]["components"]
+        )
+        assert package.read("main.py") == b"print('hello')\n"
         assert ".env" not in names
         assert "ignored.txt" not in names
         assert "cache/data.txt" not in names
@@ -76,4 +84,6 @@ def test_build_plugin_process_returns_none_when_manifest_missing(tmp_path, monke
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(buildplugin, "cli_print", lambda *args, **kwargs: None)
 
-    assert buildplugin.build_plugin_process(str(tmp_path / "dist")) is None
+    output_dir = tmp_path / "dist"
+    assert buildplugin.build_plugin_process(str(output_dir)) is None
+    assert not list(output_dir.glob("*.lbpkg"))

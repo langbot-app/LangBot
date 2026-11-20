@@ -47,6 +47,7 @@ import {
   PluginInstallProgressDialog,
 } from '@/app/home/plugins/components/plugin-install-task';
 import { setDocumentTitle } from '@/hooks/useDocumentTitle';
+import { ContentLoading, PageLoading } from '@/components/RouteLoading';
 
 // Routes that belong to the "Extensions" section
 const EXTENSIONS_ROUTES = [
@@ -166,7 +167,9 @@ export default function HomeLayout({
     }
   }, [identityReady, navigate]);
 
-  if (!identityReady) return <div />;
+  // Same visual as the route-level Suspense fallback, so the hand-off from
+  // chunk loading to Workspace bootstrap is seamless.
+  if (!identityReady) return <PageLoading />;
 
   return (
     <SidebarDataProvider>
@@ -276,7 +279,9 @@ function HomeLayoutInner({ children }: { children: React.ReactNode }) {
           <div
             className={`mx-auto h-full w-full min-w-0 ${HOME_CONTENT_MAX_WIDTH}`}
           >
-            {mainContent}
+            {/* Keep the shell (sidebar/header) visible while a lazily loaded
+                page chunk is still downloading. */}
+            <Suspense fallback={<ContentLoading />}>{mainContent}</Suspense>
           </div>
         </main>
 

@@ -332,9 +332,25 @@ class CLISandboxBackend(BaseSandboxBackend):
         args.extend(["-v", f"{artifact_root}:{ARTIFACT_MOUNT_ROOT}:ro"])
         for mount in spec.extra_mounts:
             if mount.mode != BoxHostMountMode.NONE and not mount.is_content_addressed:
-                args.extend(
-                    ["-v", f"{mount.host_path}:{mount.mount_path}:{mount.mode.value}"]
-                )
+                if spec.local_mounts:
+                    bind = io.StringIO()
+                    csv.writer(bind).writerow(
+                        [
+                            "type=bind",
+                            f"src={mount.host_path}",
+                            f"dst={mount.mount_path}",
+                            "readonly",
+                            "bind-recursive=disabled",
+                        ]
+                    )
+                    args.extend(["--mount", bind.getvalue().rstrip("\r\n")])
+                else:
+                    args.extend(
+                        [
+                            "-v",
+                            f"{mount.host_path}:{mount.mount_path}:{mount.mode.value}",
+                        ]
+                    )
 
         args.extend([spec.image, "sh", "-lc", "while true; do sleep 3600; done"])
 

@@ -150,7 +150,12 @@ for (const candidate of contract.cases) {
     await switchField(page, 'Quote Origin Message').click();
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect.poll(() => writes.length).toBe(1);
-    expect(writes[0].config.ai).toEqual(candidate.plan.config.ai);
+    // The editor materializes the group-context default; a missing key
+    // already means "member", so the saved runner config is unchanged.
+    expect(writes[0].config.ai).toEqual({
+      ...candidate.plan.config.ai,
+      runner: { 'group-context': 'member', ...candidate.plan.config.ai.runner },
+    });
     expect(writes[0].config.output.misc['quote-origin']).toBe(
       !candidate.plan.config.output.misc['quote-origin'],
     );

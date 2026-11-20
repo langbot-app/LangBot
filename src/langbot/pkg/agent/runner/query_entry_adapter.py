@@ -35,6 +35,7 @@ from . import events as runner_events
 from ...pipeline.pool import get_query_execution_context
 from ...provider.tools.toolmgr import TOOL_SOURCE_REFS_QUERY_KEY
 from . import input_media
+from ...persistence.session_summary_contract import conversation_scope
 
 
 class QueryEntryAdapter:
@@ -112,7 +113,16 @@ class QueryEntryAdapter:
             return value if isinstance(value, str) and value else None
 
         session = getattr(query, 'session', None)
+        launcher = (
+            session
+            if exact(getattr(session, 'launcher_type', None)) in ('group', 'person')
+            and exact(getattr(session, 'launcher_id', None))
+            else query
+        )
         return LegacyRunnerIdentity(
+            session_id=conversation_scope(query, launcher)
+            if exact(getattr(launcher, 'launcher_type', None)) and getattr(launcher, 'launcher_id', None) is not None
+            else None,
             workspace_id=workspace_id,
             bot_id=exact(getattr(query, 'bot_uuid', None)),
             pipeline_id=exact(getattr(query, 'pipeline_uuid', None)),
@@ -334,7 +344,7 @@ class QueryEntryAdapter:
         # Build session_id from launcher info if available
         session_id = None
         if launcher_type_value and launcher_id:
-            session_id = f'{launcher_type_value}_{launcher_id}'
+            session_id = conversation_scope(query)
 
         # Handle session and conversation_id
         conversation_id = None

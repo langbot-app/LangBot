@@ -15,6 +15,7 @@ from ....entity.persistence import agent as persistence_agent
 from ....entity.persistence import monitoring as persistence_monitoring
 from ....entity.persistence import agent_run as persistence_agent_run
 from ....entity.persistence import agent_interaction as persistence_agent_interaction
+from ....entity.persistence.pipeline import LegacyPipeline
 from ....entity.persistence.event_log import EventLog
 from ....storage.media import MediaCache
 from ....utils import constants
@@ -23,6 +24,8 @@ from ..context import ExecutionContext
 from .tenant import TenantContext, require_workspace_uuid
 from .monitoring_execution_details import ExecutionDetailsMixin
 from ....persistence.session_summary_contract import (
+    parse_group_member_id,
+    shares_group_context,
     SessionListFilter,
     SessionSummaryReader,
 )
@@ -133,9 +136,9 @@ def _workspace_transaction(method):
     @functools.wraps(method)
     async def wrapped(self, context, *args, **kwargs):
         workspace_uuid = require_workspace_uuid(context)
-        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_write_uow', None)
         if callable(tenant_uow):
-            async with tenant_uow(workspace_uuid):
+            async with tenant_uow(workspace_uuid, operation=f'monitoring.{method.__name__}'):
                 result = await method(self, context, *args, **kwargs)
         else:
             result = await method(self, context, *args, **kwargs)
@@ -169,19 +172,23 @@ class MonitoringService(ExecutionDetailsMixin):
         self._session_list: SessionSummaryReader = SqlSessionSummaryReader(self._summary_session)
 
     @asynccontextmanager
-    async def _summary_session(self, workspace: str):
+    async def _summary_session(self, workspace: str, *, write: bool = False, operation='monitoring.summary'):
         """Join the owning Workspace transaction, including source writes."""
-        async with self.ap.persistence_mgr.tenant_uow(workspace) as uow:
+        persistence = self.ap.persistence_mgr
+        transaction = (
+            persistence.tenant_write_uow(workspace, operation=operation) if write else persistence.tenant_uow(workspace)
+        )
+        async with transaction as uow:
             yield uow.session
 
     def _summary_writer(self):
         return SessionSummaryWriter(self.ap.persistence_mgr.get_db_engine().dialect.name)
 
     @asynccontextmanager
-    async def _summary_write_session(self, workspace: str):
+    async def _summary_write_session(self, workspace: str, operation='monitoring.summary'):
         from ....persistence.session_summary_backfill import require_initialized
 
-        async with self._summary_session(workspace) as session:
+        async with self._summary_session(workspace, write=True, operation=operation) as session:
             await require_initialized(session, workspace)
             yield session
 
@@ -458,9 +465,9 @@ class MonitoringService(ExecutionDetailsMixin):
                 )
                 return len(pk_values), int(delete_result.rowcount or 0)
 
-            tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+            tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_write_uow', None)
             if callable(tenant_uow):
-                async with tenant_uow(workspace_uuid):
+                async with tenant_uow(workspace_uuid, operation='monitoring.cleanup'):
                     selected, deleted = await delete_batch()
             else:
                 selected, deleted = await delete_batch()
@@ -478,7 +485,7 @@ class MonitoringService(ExecutionDetailsMixin):
         expired = [receipt.workspace_uuid == workspace, receipt.timestamp < cutoff]
         deleted = 0
         for _ in range(max_batches):
-            async with self._summary_session(workspace) as session:
+            async with self._summary_session(workspace, write=True) as session:
                 rows = (
                     (
                         await session.execute(
@@ -501,7 +508,7 @@ class MonitoringService(ExecutionDetailsMixin):
                 (row['bot_id'], row['source_key']) for row in rows if not row['source_key'].startswith('event:')
             ]
             if message_keys:
-                async with self._summary_session(workspace) as session:
+                async with self._summary_session(workspace, write=True) as session:
                     result = await session.execute(
                         sqlalchemy.delete(receipt).where(
                             *expired,
@@ -2347,6 +2354,9 @@ class MonitoringService(ExecutionDetailsMixin):
 
         if not isinstance(bot_id, str) or not bot_id or not isinstance(session_id, str) or not session_id:
             raise ValueError('bot_id and session_id are required')
+        member = parse_group_member_id(session_id)
+        if session_id.startswith('groupmember_') and member is None:
+            raise ValueError('Invalid group member session ID')
         workspace = require_workspace_uuid(context)
         execute = self.ap.persistence_mgr.execute_async
         source = self._conversation_message_source(workspace, [bot_id])
@@ -2372,10 +2382,49 @@ class MonitoringService(ExecutionDetailsMixin):
                     .limit(1)
                 )
             ).first()
-        if exists is None:
-            raise LookupError('Session not found')
         # Legacy sessions use uppercase PERSON/GROUP; envelope IDs use lowercase.
         conversation = re.sub(r'^(PERSON|GROUP)_', lambda match: match[1].lower() + '_', session_id)
+        # A whole-group ID resets the shared conversation and every member's own
+        # conversation in that group, since monitoring records groups per member.
+        member_conversations: list[str] = []
+        if member is None and conversation.startswith('group_') and '#' not in conversation:
+            group_id = conversation.removeprefix('group_')
+            session = persistence_monitoring.MonitoringSession
+            member_conversations = [
+                row[0]
+                for row in (
+                    await execute(
+                        sqlalchemy.select(session.session_id).where(
+                            session.workspace_uuid == workspace,
+                            session.bot_id == bot_id,
+                            session.session_id.startswith(f'groupmember_{len(group_id)}_{group_id}_', autoescape=True),
+                        )
+                    )
+                ).all()
+                if (parse_group_member_id(row[0]) or ('',))[0] == group_id
+            ]
+            if exists is None and member_conversations:
+                exists = True
+        if exists is None:
+            raise LookupError('Session not found')
+        group_conversation = conversation
+        if member:
+            group_conversation = f'group_{member[0]}'
+            session = persistence_monitoring.MonitoringSession
+            config = (
+                await execute(
+                    sqlalchemy.select(LegacyPipeline.config)
+                    .join(session, session.pipeline_id == LegacyPipeline.uuid)
+                    .where(
+                        session.workspace_uuid == workspace,
+                        session.bot_id == bot_id,
+                        session.session_id == session_id,
+                        LegacyPipeline.workspace_uuid == workspace,
+                    )
+                )
+            ).scalar_one_or_none()
+            if shares_group_context(config):
+                conversation = group_conversation
         run = persistence_agent_run.AgentRun
         busy = (
             await execute(
@@ -2383,7 +2432,7 @@ class MonitoringService(ExecutionDetailsMixin):
                 .where(
                     run.workspace_id == workspace,
                     run.bot_id == bot_id,
-                    run.conversation_id == conversation,
+                    run.conversation_id == group_conversation,
                     run.status.in_(['created', 'queued', 'claimed', 'running']),
                 )
                 .limit(1)
@@ -2396,7 +2445,7 @@ class MonitoringService(ExecutionDetailsMixin):
                 .where(
                     message.workspace_uuid == workspace,
                     message.bot_id == bot_id,
-                    message.session_id.in_([session_id, conversation]),
+                    message.session_id.in_([session_id, conversation, *member_conversations]),
                     message.status == 'pending',
                 )
                 .limit(1)
@@ -2409,7 +2458,7 @@ class MonitoringService(ExecutionDetailsMixin):
                 .where(
                     interaction.workspace_id == workspace,
                     interaction.bot_id == bot_id,
-                    interaction.conversation_id == conversation,
+                    interaction.conversation_id.in_([conversation, group_conversation]),
                     interaction.status.in_(['pending', 'submitted']),
                     sqlalchemy.or_(
                         interaction.expires_at.is_(None), interaction.expires_at > datetime.datetime.utcnow()
@@ -2420,7 +2469,8 @@ class MonitoringService(ExecutionDetailsMixin):
         ).first()
         if busy or pending or waiting:
             raise RuntimeError('Session is processing a task; wait until it finishes')
-        await reset_runner_context(self.ap.persistence_mgr, workspace, bot_id, conversation)
+        for target in (conversation, *member_conversations):
+            await reset_runner_context(self.ap.persistence_mgr, workspace, bot_id, target)
         return {'reset': True, 'session_id': session_id}
 
     async def get_sessions(
@@ -2431,6 +2481,7 @@ class MonitoringService(ExecutionDetailsMixin):
         start_time: datetime.datetime | None = None,
         end_time: datetime.datetime | None = None,
         user_query: str | None = None,
+        launcher_id: str | None = None,
         is_active: bool | None = None,
         limit: int = 100,
         offset: int = 0,
@@ -2446,6 +2497,7 @@ class MonitoringService(ExecutionDetailsMixin):
                 start_time=start_time,
                 end_time=end_time,
                 user_query=user_query,
+                launcher_id=launcher_id,
                 is_active=is_active,
             ),
             limit,
@@ -3213,6 +3265,7 @@ class MonitoringService(ExecutionDetailsMixin):
                 'is_active': str(row[0].is_active if isinstance(row, tuple) else row.is_active),
                 'platform': row[0].platform if isinstance(row, tuple) else row.platform,
                 'user_id': row[0].user_id if isinstance(row, tuple) else row.user_id,
+                'user_name': row[0].user_name if isinstance(row, tuple) else row.user_name,
             }
             for row in rows
         ]

@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 import quart
 
+from langbot.pkg.api.application.contracts import ApplicationAPIError, ApplicationAPIException
+from langbot.pkg.api.application.plugin_permissions import fail
 from langbot.pkg.api.http.controller import group
 from langbot.pkg.api.http.controller.groups.webhooks import WebhookRouterGroup
 from langbot.pkg.utils.bounded_executor import (
@@ -46,6 +48,21 @@ class _BlockingCapacityRouterGroup(group.RouterGroup):
         @self.route('', methods=['GET'], auth_type=group.AuthType.NONE)
         async def _():
             raise BlockingWorkCapacityError('Workspace blocking executor capacity reached')
+
+
+class _DisabledPluginRouterGroup(group.RouterGroup):
+    name = 'disabled-plugin-test'
+    path = '/disabled-plugin-test'
+
+    async def initialize(self) -> None:
+        @self.route('', methods=['GET'], auth_type=group.AuthType.NONE)
+        async def _():
+            # Same raise path as connector._setting_for_plugin for a disabled plugin.
+            fail('permission_denied', 'Plugin author/name is disabled')
+
+        @self.route('/server', methods=['GET'], auth_type=group.AuthType.NONE)
+        async def _server():
+            raise ApplicationAPIException(ApplicationAPIError('upstream_failed', 'secret detail', 502))
 
 
 class _InvalidAccountRouterGroup(group.RouterGroup):
@@ -128,6 +145,26 @@ async def test_blocking_work_capacity_maps_to_retryable_http_response():
         'code': 'blocking_work_capacity_exceeded',
         'msg': 'Workspace blocking executor capacity reached',
     }
+
+
+async def test_application_api_client_errors_keep_their_status_instead_of_500():
+    logger = Mock()
+    application = SimpleNamespace(logger=logger)
+    quart_app = quart.Quart(__name__)
+    await _DisabledPluginRouterGroup(application, quart_app).initialize()
+    client = quart_app.test_client()
+
+    response = await client.get('/disabled-plugin-test')
+
+    assert response.status_code == 403
+    assert (await response.get_json())['code'] == 'permission_denied'
+    logger.error.assert_not_called()
+
+    # Non-client statuses still use the generic internal error contract.
+    response = await client.get('/disabled-plugin-test/server')
+    assert response.status_code == 500
+    assert (await response.get_json())['code'] == 'internal_error'
+    assert 'secret detail' not in await response.get_data(as_text=True)
 
 
 async def test_public_webhook_carries_scope_without_holding_database_session():

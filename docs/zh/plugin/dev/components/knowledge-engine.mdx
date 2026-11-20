@@ -489,3 +489,7 @@ file_bytes = await self.plugin.get_knowledge_file_stream(context.file_object.sto
 3. 选择您的插件提供的 RAG 引擎，并根据引擎的 `creation_schema` 填写配置
 4. 创建成功后，可上传文档测试摄取能力（如引擎声明了 `DOC_INGESTION` 能力）
 5. 在流水线中绑定该知识库，测试检索能力
+
+## Artifact 入库兼容
+
+现有入库回调和 `get_knowledge_file_stream(context.file_object.storage_path)` 调用也支持 Artifact 知识文件。请把 `storage_path` 当作不透明值：`artifact:<knowledge_file_uuid>` 表示 Core 管理的业务引用，不是本地路径或可转交的权限。Core 验证已安装引擎对该知识库的访问后，才返回有界字节。不要改为直接访问底层存储。已有上传和 `file_id` 调用方保持原接口。导入及删除语义参见 [Artifact 导入](/zh/develop/artifacts#知识库导入-artifact)。

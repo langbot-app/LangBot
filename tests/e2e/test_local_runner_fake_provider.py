@@ -361,7 +361,9 @@ def local_agent_runtime_process(local_agent_e2e_tmpdir, local_agent_runtime_port
     stderr_file.close()
 
 
-async def _inject_llm_model(ap, api_requester=None, *, model_name=FAKE_MODEL_UUID) -> Any:
+async def _inject_llm_model(
+    ap, api_requester=None, *, model_name=FAKE_MODEL_UUID, abilities=None, ephemeral_token=None
+) -> Any:
     """Register a model backed by either the existing fake or an explicit requester."""
     import sqlalchemy
 
@@ -382,7 +384,11 @@ async def _inject_llm_model(ap, api_requester=None, *, model_name=FAKE_MODEL_UUI
     runtime_provider = requester.RuntimeProvider(
         execution_context=execution_context,
         provider_entity=provider_entity,
-        token_mgr=token.TokenManager(name=provider_entity.uuid, tokens=provider_entity.api_keys),
+        # Live manual acceptance may use a secret only in runtime memory; the
+        # disposable test DB deliberately keeps the existing placeholder key.
+        token_mgr=token.TokenManager(
+            name=provider_entity.uuid, tokens=[ephemeral_token] if ephemeral_token else provider_entity.api_keys
+        ),
         requester=api_requester,
     )
     model_entity = persistence_model.LLMModel(
@@ -390,7 +396,7 @@ async def _inject_llm_model(ap, api_requester=None, *, model_name=FAKE_MODEL_UUI
         workspace_uuid=execution_context.workspace_uuid,
         name=model_name,
         provider_uuid=provider_entity.uuid,
-        abilities=['func_call'],
+        abilities=abilities if abilities is not None else ['func_call'],
         context_length=8192,
         extra_args={},
     )
@@ -1096,6 +1102,255 @@ def test_local_runner_compacts_history_and_persists_checkpoint(
         assert checkpoint['tokens_before'] > 600
     finally:
         conn.close()
+
+
+def test_local_runner_compacts_without_persisting_artifact_bytes(
+    local_agent_e2e_tmpdir,
+    local_agent_e2e_config_path,
+    local_agent_runtime_process,
+    capfd,
+):
+    """Native media reaches the model but never becomes ordinary history."""
+    import base64
+
+    from tests.utils.artifact_media import make_artifact_media
+
+    del local_agent_e2e_config_path, local_agent_runtime_process
+    image, _, pdf, _ = make_artifact_media('local-agent-compact')
+    session = 'local-agent-artifact-compaction'
+    media = (image, pdf)
+    encoded = tuple(base64.b64encode(item.data) for item in media)
+    assert all(len(value) > 256 for value in encoded)
+    # Multiple interior probes catch partial leakage, even if a serialized
+    # document is truncated or the leading payload is on a different DB page.
+    signatures = {
+        item.kind: tuple(value[start : start + 96] for start in range(64, len(value) - 95, 96))
+        for item, value in zip(media, encoded, strict=True)
+    }
+
+    def assert_no_native_payload(label, value):
+        data = value.encode() if isinstance(value, str) else value
+        for kind, probes in signatures.items():
+            assert not any(probe in data for probe in probes), f'{kind} payload leaked into {label}'
+
+    def assert_messages_without_native_payload(label, messages):
+        assert_no_native_payload(label, '\n'.join(message.model_dump_json() for message in messages))
+        for message in messages:
+            if isinstance(message.content, list):
+                assert all(not part.image_base64 and not part.file_base64 for part in message.content), label
+
+    async def probe(ap):
+        from langbot.pkg.agent.runner.transcript_store import TranscriptStore
+        from langbot.pkg.api.authz import Permission
+        from langbot.pkg.api.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
+        from langbot_plugin.api.entities.builtin.provider import message as provider_message
+
+        fake = await _inject_llm_model(ap, abilities=['func_call', 'vision', 'pdf_input'])
+        execution = await ap.plugin_connector._current_execution_context()
+        request = RequestContext(
+            instance_uuid=execution.instance_uuid,
+            placement_generation=execution.placement_generation,
+            request_id=session,
+            auth_type='user-token',
+            principal=PrincipalContext(PrincipalType.ACCOUNT, account_uuid=session),
+            workspace=WorkspaceContext(execution.workspace_uuid, None, None, frozenset(Permission)),
+        )
+        image_asset, pdf_asset = [
+            await ap.artifact_service.create(request, item.filename, item.data, item.mime_type) for item in (image, pdf)
+        ]
+        for entry in (image_asset, pdf_asset):
+            await ap.artifact_service.retain(request, entry['id'])
+
+        agent = await ap.agent_service.create_agent(
+            request,
+            {
+                'name': 'Artifact compaction probe',
+                'kind': 'agent',
+                'config': {
+                    'runner': {'id': LOCAL_RUNNER_ID},
+                    'runner_config': {
+                        LOCAL_RUNNER_ID: {
+                            'model': {'primary': FAKE_MODEL_UUID, 'fallbacks': []},
+                            'context-window-tokens': 5700,
+                            'context-reserve-tokens': 400,
+                            'context-keep-recent-tokens': 160,
+                            'context-summary-tokens': 240,
+                            'context-history-fetch-limit': 24,
+                            'timeout': 60,
+                        },
+                    },
+                    'allowed_platform_tools': [],
+                    'allowed_tools': [],
+                },
+            },
+        )
+
+        def ask_for_native(**kwargs):
+            messages = kwargs['messages']
+            text = ' '.join(_message_text(item) for item in messages)
+            for document in (image_asset, pdf_asset):
+                assert document['id'] in text
+            assert_messages_without_native_payload('model input before an explicit read', messages)
+            return provider_message.Message(
+                role='assistant',
+                content='',
+                tool_calls=[
+                    provider_message.ToolCall(
+                        id=call_id,
+                        type='function',
+                        function=provider_message.FunctionCall(
+                            name='langbot_read_input_attachment',
+                            arguments=json.dumps({'ref': document['id'], 'mode': 'native'}),
+                        ),
+                    )
+                    for call_id, document in (('native-image', image_asset), ('native-pdf', pdf_asset))
+                ],
+            )
+
+        def verify_native_read(**kwargs):
+            messages = kwargs['messages']
+            model_parts = [
+                (message.role, part)
+                for message in messages
+                if isinstance(message.content, list)
+                for part in message.content
+                if part.type in {'image_base64', 'file_base64'}
+            ]
+            assert sorted(part.type for _, part in model_parts) == ['file_base64', 'image_base64']
+            by_type = {part.type: part for role, part in model_parts if role == 'user'}
+            assert set(by_type) == {'image_base64', 'file_base64'}
+            for item, kind in ((image, 'image_base64'), (pdf, 'file_base64')):
+                part = by_type[kind]
+                header, payload = getattr(part, kind).split(',', 1)
+                assert header == f'data:{item.mime_type};base64'
+                assert base64.b64decode(payload, validate=True) == item.data
+            assert by_type['file_base64'].file_name == pdf.filename
+            assert_messages_without_native_payload(
+                'ordinary tool results beside native model-only media',
+                [message for message in messages if message.role == 'tool'],
+            )
+            return 'References noted.'
+
+        fake.queue_llm_responses(ask_for_native, verify_native_read)
+        first = await ap.agent_service.debug_agent(
+            request,
+            agent['uuid'],
+            {
+                'conversation_id': session,
+                'text': 'Keep the documents for the next turn.',
+                'artifact_ids': [image_asset['id'], pdf_asset['id']],
+            },
+        )
+        assert first['final_text'] == 'References noted.'
+        boundary = fake._invoke_count
+        assert boundary == 2
+        tool_events = [event for event in first['execution_events'] if event['type'] == 'tool.call.completed']
+        assert len(tool_events) == 2
+        assert_no_native_payload('first-turn execution events', json.dumps(first['execution_events']))
+
+        store = TranscriptStore(ap.persistence_mgr.get_db_engine())
+        for index in range(12):
+            await store.append_transcript(
+                transcript_id=None,
+                event_id=f'artifact-history-{index}',
+                conversation_id=session,
+                workspace_id=execution.workspace_uuid,
+                role='user' if index % 2 == 0 else 'assistant',
+                content=f'HISTORY PRESSURE {index}. Deterministic history for compaction. ' * 75,
+                thread_id=None,
+                item_type='message',
+            )
+
+        def ask_for_text(**kwargs):
+            flattened = ' '.join(_message_text(item) for item in kwargs['messages'])
+            assert 'Compacted history without file payloads' in flattened
+            assert pdf_asset['id'] in flattened and pdf.marker not in flattened
+            return provider_message.Message(
+                role='assistant',
+                content='',
+                tool_calls=[
+                    provider_message.ToolCall(
+                        id='read-after-compaction',
+                        type='function',
+                        function=provider_message.FunctionCall(
+                            name='langbot_read_input_attachment',
+                            arguments=json.dumps({'ref': pdf_asset['id'], 'mode': 'text'}),
+                        ),
+                    ),
+                ],
+            )
+
+        def verify_tool_read(**kwargs):
+            messages = kwargs['messages']
+            tool_text = ' '.join(_message_text(item) for item in messages if item.role == 'tool')
+            assert pdf.marker in tool_text, tool_text[:250]
+            assert image.marker not in tool_text
+            return provider_message.Message(role='assistant', content='Text read after compaction.')
+
+        fake.queue_llm_responses('Compacted history without file payloads.', ask_for_text, verify_tool_read)
+        final = await ap.agent_service.debug_agent(
+            request,
+            agent['uuid'],
+            {'conversation_id': session, 'text': 'Read the previous document.', 'artifact_ids': [pdf_asset['id']]},
+        )
+        assert final['final_text'] == 'Text read after compaction.'
+        payloads = _invoke_payload_texts(fake)
+        assert 'HISTORY PRESSURE' in ' '.join(payloads[boundary])
+        assert pdf.marker not in ' '.join(payloads[boundary])
+        for index, invocation in enumerate(fake._invoke_payloads[boundary:]):
+            label = 'compaction model input' if index == 0 else 'post-compaction model input'
+            assert_messages_without_native_payload(label, invocation['messages'])
+        assert_no_native_payload('second-turn execution events', json.dumps(final['execution_events']))
+        for meta, fixture in ((image_asset, image), (pdf_asset, pdf)):
+            saved = await ap.artifact_service.read(request, meta['id'])
+            assert saved['content'] == fixture.data
+            assert saved['metadata']['digest'] == fixture.sha256
+        return first['event_id'], final['event_id'], [item['id'] for item in (image_asset, pdf_asset)]
+
+    first_event, second_event, refs = _run_local_agent_probe(local_agent_e2e_tmpdir, probe)
+    with contextlib.closing(sqlite3.connect(local_agent_e2e_tmpdir / 'data' / 'langbot.db')) as conn:
+        rows = conn.execute(
+            'SELECT value_json FROM runner_state WHERE runner_id = ? AND scope = ? '
+            'AND conversation_id = ? AND state_key = ?',
+            (LOCAL_RUNNER_ID, 'conversation', session, 'runner.compaction.checkpoint'),
+        ).fetchall()
+        assert len(rows) == 1
+        checkpoint = json.loads(rows[0][0])
+        assert checkpoint['conversation_id'] == session
+        assert 'Compacted history without file payloads' in checkpoint['summary']
+        run_ids = conn.execute(
+            'SELECT run_id, status FROM agent_run WHERE event_id IN (?, ?)', (first_event, second_event)
+        ).fetchall()
+        assert len(run_ids) == 2 and all(status == 'completed' for _, status in run_ids)
+        journal = conn.execute(
+            'SELECT data_json, metadata_json FROM agent_run_event WHERE run_id IN (?, ?)',
+            tuple(run_id for run_id, _ in run_ids),
+        ).fetchall()
+        assert journal
+        transcript = conn.execute(
+            'SELECT content, content_json, attachment_refs_json, metadata_json FROM transcript WHERE conversation_id = ?',
+            (session,),
+        ).fetchall()
+        assert transcript
+        assert_no_native_payload('run event journal', json.dumps(journal))
+        assert_no_native_payload('conversation transcript', json.dumps(transcript))
+        assert_no_native_payload('compaction checkpoint', rows[0][0])
+        stored = dict(conn.execute('SELECT id, digest FROM artifacts WHERE id IN (?, ?)', refs))
+        assert stored == {refs[0]: image.sha256, refs[1]: pdf.sha256}
+
+        # Committed rows can still be in SQLite's WAL in the shared test suite.
+        # Scan both durable files for payload leakage; query logical rows above
+        # instead of relying on the checkpoint timing to find an artifact ID.
+        db_path = local_agent_e2e_tmpdir / 'data' / 'langbot.db'
+        files = [db_path, db_path.with_name(db_path.name + '-wal')]
+        for file in files:
+            if file.exists():
+                assert_no_native_payload(file.name, file.read_bytes())
+        for log in local_agent_e2e_tmpdir.rglob('*.log'):
+            assert_no_native_payload(log.name, log.read_bytes())
+
+    output = capfd.readouterr()
+    assert_no_native_payload('captured Core logs', output.out + output.err)
 
 
 @pytest.mark.contract('agent_multi_turn')

@@ -165,11 +165,11 @@ export function SidebarDataProvider({
   const refreshPlugins = useCallback(async () => {
     const requestId = ++refreshRequestIds.current.plugins;
     try {
-      const [pluginsResp, marketplaceResp] = await Promise.all([
+      const [pluginsResp, marketplacePlugins] = await Promise.all([
         httpClient.getPlugins(),
         getCloudServiceClientSync()
-          .getMarketplacePlugins(1, 100)
-          .catch(() => ({ plugins: [] })),
+          .getAllMarketplacePlugins()
+          .catch(() => []),
       ]);
       if (requestId !== refreshRequestIds.current.plugins) return;
       setQuotaResourceLoaded('plugins', true);
@@ -177,7 +177,7 @@ export function SidebarDataProvider({
 
       // Build marketplace version lookup: "author/name" -> latest_version
       const marketplaceVersions = new Map<string, string>();
-      for (const mp of marketplaceResp.plugins) {
+      for (const mp of marketplacePlugins) {
         if (mp.latest_version) {
           marketplaceVersions.set(`${mp.author}/${mp.name}`, mp.latest_version);
         }

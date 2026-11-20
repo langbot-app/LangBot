@@ -10,8 +10,13 @@ export function isCurrentPipelineConfig(config: unknown): boolean {
   const runner = ai.runner as Record<string, unknown>;
   if (
     Object.keys(ai).some((key) => !['runner', 'runner_config'].includes(key)) ||
-    Object.keys(runner).some((key) => !['id', 'expire-time'].includes(key)) ||
-    typeof runner.id !== 'string'
+    Object.keys(runner).some(
+      (key) => !['id', 'expire-time', 'group-context'].includes(key),
+    ) ||
+    typeof runner.id !== 'string' ||
+    !['undefined', 'string'].includes(typeof runner['group-context']) ||
+    (typeof runner['group-context'] === 'string' &&
+      !['member', 'group'].includes(runner['group-context']))
   )
     return false;
 

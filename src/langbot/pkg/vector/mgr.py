@@ -276,8 +276,14 @@ class VectorDBManager:
         *,
         expected_dimension: int | None,
         initialize_dimension: bool,
+        allow_unbound: bool = False,
     ):
-        """Bind and verify the server-owned knowledge-base vector dimension."""
+        """Bind and verify the server-owned knowledge-base vector dimension.
+
+        With ``allow_unbound`` a knowledge base that has never stored a vector
+        (no dimension selected yet) yields a scope whose dimension is None
+        instead of raising, so read paths can treat it as empty.
+        """
 
         from .vdbs.pgvector_db import PgVectorScope
 
@@ -307,6 +313,12 @@ class VectorDBManager:
 
             if expected_dimension is not None and current_dimension != expected_dimension:
                 if current_dimension is None:
+                    if allow_unbound:
+                        return PgVectorScope(
+                            workspace_uuid=execution_context.workspace_uuid,
+                            knowledge_base_uuid=knowledge_base_uuid,
+                            embedding_dimension=None,
+                        )
                     raise ValueError('Knowledge base has no selected pgvector embedding dimension')
                 raise ValueError(f'Knowledge base embedding dimension is {current_dimension}, not {expected_dimension}')
 
@@ -399,7 +411,14 @@ class VectorDBManager:
                 # mask the backend capability error.
                 expected_dimension=len(query_vector) or None,
                 initialize_dimension=False,
+                allow_unbound=True,
             )
+            if scope.embedding_dimension is None and query_vector:
+                # No vector has ever been written, so the knowledge base is
+                # empty: a vector search has nothing to match. Failing here
+                # broke retrieval for every new or still-empty knowledge base
+                # (e.g. LongTermMemory before its first memory is stored).
+                return []
             results = await pgvector.search(
                 collection=collection_name,
                 query_embedding=query_vector,

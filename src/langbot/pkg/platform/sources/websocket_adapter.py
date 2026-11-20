@@ -44,6 +44,7 @@ class WebSocketMessage(pydantic.BaseModel):
     message_chain: list[dict]
     timestamp: str
     is_final: bool = False
+    error: dict | None = None
     connection_id: str = ''
     """发送者连接ID"""
 
@@ -349,6 +350,8 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         message_source: platform_events.MessageEvent,
         message: platform_message.MessageChain,
         quote_origin: bool = False,
+        *,
+        error: dict | None = None,
     ) -> dict:
         """回复消息 - 非流式"""
         # 获取会话和pipeline信息
@@ -369,6 +372,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             id=msg_id,
             role='assistant',
             content=str(message),
+            error=error,
             message_chain=[component.__dict__ for component in message],
             timestamp=datetime.now().isoformat(),
             is_final=True,

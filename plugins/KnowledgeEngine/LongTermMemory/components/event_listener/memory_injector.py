@@ -84,7 +84,6 @@ class MemoryInjector(EventListener):
             return
 
         query_vars = await api.get_query_vars()
-
         # --- L2 episodic memory retrieval ---
         retrieved_episodes: list[dict] = []
         user_message_text: str = query_vars.get("user_message_text", "")
@@ -136,10 +135,11 @@ class MemoryInjector(EventListener):
                     kb_id,
                 )
 
-        # Retrieve while the memory KB is still in this query's authorized
-        # selection, then exclude it from the Runner's automatic retrieval.
+        # Suppress duplicate automatic RAG only after scoped L2 recall.
+        # The Host checks recall against the effective list for this query,
+        # so removing this KB before recall would deny the plugin's own lookup.
         naive_rag_suppressed = False
-        raw_kb_uuids = query_vars.get("_knowledge_base_uuids", [])
+        raw_kb_uuids = query_vars.get("_knowledge_base_uuids")
         if "_knowledge_base_uuids" not in query_vars:
             logger.warning(
                 "[LongTermMemory] naive RAG suppression unavailable: query_id=%s kb_id=%s reason=missing_kb_uuid_query_var",

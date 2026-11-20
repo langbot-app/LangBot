@@ -1,0 +1,124 @@
+---
+title: "Artifact 文件接口"
+description: "通过 HTTP 或 MCP 上传、读取、保留和删除当前主体拥有的文件。"
+---
+
+Artifact 为文件提供不透明引用和元信息。账户或 API 密钥只能访问当前工作区内属于自己的文件。知道 ID 不代表获得权限，同一工作区的其他成员也不能凭 ID 读取。
+
+沿用工作区 HTTP 认证。读取需要 `resource.view`；创建、保留、释放和删除需要 `resource.manage`。
+
+| 操作 | HTTP |
+| --- | --- |
+| 上传 | `POST /api/v1/artifacts`，multipart `file`，可选 `ttl_seconds` |
+| 元信息 | `GET /api/v1/artifacts/{id}` |
+| 下载 | `GET /api/v1/artifacts/{id}/content`，可选 `max_bytes` |
+| 读取结构化内容 | `GET /api/v1/artifacts/{id}/read`，可选 `mode`、`offset`、`max_chars`、`page_start`、`page_end` |
+| 持久保留 | `POST /api/v1/artifacts/{id}/retain` |
+| 释放保留 | `POST /api/v1/artifacts/{id}/release` |
+| 删除 | `DELETE /api/v1/artifacts/{id}` |
+
+上传返回含 `id` 的元信息。下载返回原始字节，使用附件响应及 digest ETag。上传和下载上限为 10 MiB。`max_bytes` 限制整个文件的读取大小，不表示字节范围；超过限制时拒绝读取，不截断文件。
+
+新上传文件默认 24 小时后过期；`ttl_seconds` 可设为 1 秒至 7 天。retain 添加持久保留标记，不改变访问权限。release 移除该标记并恢复 24 小时临时保留期；重复 release 不续期。仍有标记的文件不能删除，需要先释放。过期资产不能读取或重新保留；清理任务回收过期临时内容。
+
+不存在、已删除和无权访问的 ID 均返回 404。已过期的自有文件返回 `artifact_expired`（410），删除仍在使用的文件返回 `artifact_in_use`（409），读取超限返回 `artifact_too_large`（413），完整性校验失败返回 `artifact_integrity_failed`（422）。
+
+删除立即阻止后续访问，底层字节由维护任务回收。有界下载持有临时读取租约，清理会跳过该文件，直至读取结束或租约到期。执行租约有效的活跃 run 也会保护它正在使用的输出。
+
+删除 Artifact 不会撤回已投递的平台文件，也不会删除按独立规则保留的消息历史。
+
+PDF 结构化读取（包括原生模式）会拒绝损坏或受密码保护的文件，返回 `artifact_pdf_unreadable`（422）。有权访问的用户仍可下载原始字节。
+
+## 固定版本 Skill 资源
+
+`POST /api/v1/artifacts/skill-resources` 为数据库持久化 Skill 包中的单个文件创建调用方拥有的引用。JSON 请求包含 `skill_name`、明确的 `revision`、包内相对 `path`，以及可选的 `ttl_seconds`。需要同时具备 `resource.view` 和 `resource.manage`。对应的 ApplicationAPI 操作是 `artifact.skill_resource.create`；MCP 工具 `create_skill_resource_artifact` 使用相同参数。
+
+登记直接复用 ContentStore 中已有的不可变版本包，不上传或复制文件、整包。引用绑定存储版本身份和规范包内路径，并包含文件摘要、大小和 MIME 类型。发布新版本不会改变旧引用。使用现有 Artifact 元信息、下载和结构化读取接口即可读取，无需 Box 会话。
+
+只有创建引用的账户或 API key 能使用它。分享 ID 或保留引用都不授予其他主体权限。来源引用不是普通上传附件，不能假定将其放入调试请求的 `artifact_ids` 就会授权 run 访问。该 Workspace 操作不向插件、默认模型工具或 `lbctl` 开放。
+
+释放和 Artifact 清理只回收引用，不删除共享 Skill 包。存活引用保护其保留版本，临时读租约保护正在进行的读取。删除 Skill 当前目录项不会重写保留版本。此引用接口不支持仅文件系统的 Skill 存储，请使用数据库持久化；原文本资源读取接口仍然可用。
+
+同一所有者、版本和路径的重复登记返回同一引用，不延长过期时间。已过期或删除的引用须先回收，才能重新登记。
+
+
+在已授权的存活 run 中，`read_skill_resource` 使用已激活 Skill 的冻结版本和同一有界 reader。文本保留文本契约，截断时给出继续读取位置；图片和原生 PDF 使用结构化模型内容，而不是普通文本中的 base64。登记时验证有界来源字节。来源字节读取在每个 run 中对每个不可变 Artifact 只计入预算一次，限额为每文件 256 KiB、每 run 1 MiB。另设独立的每 run 1 MiB 返回预算，累计计算返回 JSON 的 UTF-8 字节和媒体载荷字节。每次继续读取仍会重新检查权限，即使来源已计入预算。旧文本路径不变。原生 PDF 仍要求模型支持。没有该存活 run 授权时只保留旧文本读取路径，不隐式授予二进制来源访问权。
+
+## MCP
+
+原生 PDF 需要可信的模型能力信息；对于已由供应商确认支持、但能力目录尚未识别的模型别名，可由管理员在模型的现有 `abilities` 字段中声明 `pdf_input`。未声明且能力未知时会明确拒绝原生 PDF，仍可使用文本模式。
+
+内置 `/mcp` 服务提供 `create_artifact`、`get_artifact`、`read_artifact`、`read_artifact_content`、`retain_artifact`、`release_artifact` 和 `delete_artifact`，使用相同的归属及权限检查。创建参数为 `filename`、`content_base64`，以及可选的 `mime_type` 和 `ttl_seconds`。原始读取参数为 `artifact_id` 及可选的 `max_bytes`，返回 base64 和元信息。`read_artifact_content` 沿用 HTTP `/read` 的读取参数，返回原生 MCP 文本、图片或嵌入 PDF 内容，不把 base64 放入普通文本。对应 Workspace 操作为 `artifact.read_content`。
+
+`read_artifact` 传输原始字节。插件授权和类型化方法不授予账户私有文件访问权；安装私有的 Artifact 操作见下文。账户管理不会加入默认模型工具或 `lbctl`。原有上传接口和运行内 `file_id` 接口继续使用原契约。
+
+## Agent 按需读取
+
+Runner 初始输入只包含附件引用、名称、MIME 和大小。图片、文件字节和来源 URL 保留在 Host 的运行内注册表中，不直接进入首轮模型消息。当前消息和引用消息中的附件各有独立引用。Agent 需要内容时才调用读取工具，Host 继续检查当前 run 的冻结附件权限；另一个 run 的引用不能授权访问。
+
+`read_input_attachment_content` 返回结构化内容，支持以下模式：
+
+| 模式 | 行为 |
+| --- | --- |
+| `auto` | 读取 UTF-8 文本、返回结构化图片，或提取 PDF 文本。 |
+| `text` | 有界读取字符范围；PDF 结果标明所选页码，明确不包含视觉内容。 |
+| `native` | 将图片或 PDF 作为原生输入交给支持的模型；不支持时明确报错。 |
+| `pages` | 本阶段尚不支持页面渲染，返回明确错误。 |
+
+文本使用从零开始的 `offset` 和 `max_chars`（默认 8192，最大 16384）。结果带 `truncated` 和 `next_offset`，应从该位置继续读取，不能将截断内容当作全文。PDF 文本使用从一开始的 `page_start` 和可选 `page_end`，每次最多十页，并返回下一页位置；不做 OCR，也不保留图片和页面布局。其他二进制格式明确拒绝；自有上传文件仍可通过账户下载接口取得原件。
+
+Agent 调试 API 的请求可带 `artifact_ids`，最多 20 个不同的自有上传资产 ID。Host 在启动 run 前按真实认证主体检查归属，再给该 run 引用。请求中的事件 `actor` 不会改变资产归属。独立的 Workspace 管理助手本阶段仍不接受附件输入。已有原始字节接口 `read_input_attachment` 继续供有权限的 Runner 代码使用。
+
+## Runner 输出文件
+
+`ctx.export_box_files(paths)` 把选定的沙箱文件登记为临时 Artifact。返回的 `BoxFile.id` 仍是原有 UUID 文件句柄，归导出它的 run 所有；元信息新增 `artifact_id`、`mime_type`、`digest`、`lifecycle` 和 `expires_at`。`artifact_id` 不会授予账户 Artifact API 的读取权限。
+
+`ctx.read_run_file(file_id, mode="auto", offset=0, max_chars=8192, page_start=1, page_end=None)` 使用上述模式有界读取结构化内容。要发布选定的输出，认证账户或具名 API 密钥需要先为 Agent 或流水线启用发布策略：
+
+```http
+PUT /api/v1/artifacts/producers/agent/{agent_id}/publication
+Content-Type: application/json
+
+{"enabled": true}
+```
+
+流水线使用 `pipeline`，事件处理器使用 `event_processor`。服务器将真实认证主体设为接收人，请求不能指定其他人；需要同时具有 `resource.view` 和 `resource.manage`。策略属于该主体，同工作区其他成员不能接管。新建或复制的执行器默认没有策略。全局和旧版兼容 API key 不能接收发布产物，需要使用具名工作区 API key。
+
+Host 在运行开始时冻结策略。`ctx.commit_run_files(file_ids)` 重新检查策略和接收人的当前权限，通过后添加接收人的持久保留标记，并返回更新后的元信息。策略缺失、被修改、停用或权限被撤销时会拒绝提交。导出、读取和投递都不会自动提交，默认模型工具也不提供 commit。重复提交不会撤销接收人随后执行的 release。
+
+提交后，接收人可用 `artifact_id` 调用已有 Artifact 元信息、下载、retain、release 和 delete 接口，运行结束或 Core 重启后仍可管理。其他账户、密钥和 run 不因此获得权限；原 `file_id` 仍只在原 run 存活时有效。release 恢复 24 小时临时保留期。仍有持久保留标记或有效使用租约时，delete 返回 `artifact_in_use`（409），解除后重试。
+
+管理接口按 ID 操作，没有 Artifact 列表接口。Runner 实现需要在业务结果中把 commit 返回的 `artifact_id` 交给接收人，供后续管理使用。
+
+同一 URL 的 `GET` 查看策略，`DELETE` 停用策略；MCP 对应 `get_artifact_publication`、`set_artifact_publication` 和 `disable_artifact_publication`。停用会阻止后续发布，已发布文件继续由原接收人管理。
+
+运行完成、失败或取消时，Host 在有时间限制的清理中尝试使未发布输出过期，再由维护任务回收。Core 崩溃、清理失败或超时时，仍以原有 24 小时期限兜底。
+
+`ctx.reply_files` 和流水线附件回复通过原有平台投递路径读取 Artifact 字节。本阶段没有新增通用 run 文件 HTTP 下载入口。完整流程见 [Runner API](/zh/plugin/dev/apis/agent-run#box-与附件)。
+
+## 知识库导入 Artifact
+
+要索引已有且有权访问的 Artifact 而不重新上传，可调用 `knowledge.file.store_artifact`，传入 `kb_uuid`、`artifact_id` 和可选的 `parser_plugin_id`；也可向 `POST /api/v1/knowledge/bases/{kb_uuid}/files/artifact` 发送包含后两项的 JSON。需要同时具备 `resource.view` 和 `resource.manage`。MCP 工具 `add_knowledge_file_artifact` 使用相同参数。返回值保持现有索引任务的 `task_id` 契约。原上传和 `file_id` 入库路径继续可用。
+
+此账户/API key 入口建立持久的知识文件业务引用，知道 Artifact ID 本身并不授予访问权。此导入路径不接受 Skill 包来源或 run 拥有的来源。删除知识文件或知识库仅解除自身业务引用，不删除其他消费者的引用或共享字节。有效业务引用会阻止 Artifact 删除。
+
+KnowledgeEngine 插件继续通过 `get_knowledge_file_stream` 读取 `context.file_object.storage_path`。对 Artifact 导入，该字段是不透明的 `artifact:<knowledge_file_uuid>` 标识，不是文件系统路径、URL 或公开下载密钥。Core 先验证已安装调用方是知识库指定的引擎，再通过公共 Artifact 服务读取。不要在本地打开此标识，也不要把它当作对另一插件安装的授权。
+
+
+## 插件拥有的 Artifact
+
+插件可显式申请 `artifact.create`、`artifact.get`、`artifact.read`、`artifact.read_content`、`artifact.retain`、`artifact.release` 和 `artifact.delete`。请逐项列出所需操作 ID：`artifact.*` 还包含仅供账户使用的发布和 Skill 来源操作，因此会被拒绝。类型化调用使用 `self.plugin.workspace.artifact.<method>(...)`，或 run 绑定的 `ctx.api.workspace` 代理。
+
+这些 Artifact 属于安装 UUID，不属于插件作者/名称、账户或 run。每次操作均重新检查当前安装是否启用及有效授权；撤销权限或以新 UUID 重装后不能访问旧资产。知道 ID 或保留引用并不分享权限。插件操作不能导入账户上传、Skill 来源或 run 句柄。`artifact.skill_resource.create` 和 `artifact.publication.get/set/disable` 仍仅供账户/API key 使用。参见 [Artifact 接口](/zh/develop/artifacts)。
+
+JSON RPC 创建使用 `filename`、`content_base64`、可选的 `mime_type` 和 `ttl_seconds`。解码后的输入最多 256 KiB；插件原始读取同样限制为 256 KiB，返回 `metadata` 和 `content_base64`。有界文本/结构化媒体优先使用 `read_content`。较小的传输限制不改变原已认证 HTTP 上传/下载契约。保留/释放只操作此安装的保留引用；存在有效业务引用时拒绝删除。
+
+## 旧上传入口与共享保留
+
+`/api/v1/files/images` 和 `/api/v1/files/documents` 保持现有 `file_key`、`file_id` 返回字段。使用持久存储的新上传额外返回 `artifact_id`。旧别名和 Artifact 引用共享同一内容对象，不重复保存字节。别名持有独立的持久引用；删除别名只释放该引用，其他持有者不受影响。非持久旧存储仅返回原字段。已有不透明 key 不会迁移或重新解释为 Artifact ID。
+
+持久化旧上传若超过 `storage.max_object_read_bytes` 与 Artifact 大小限制中的较小值，会在写入前返回 HTTP 413。超过 255 个字符的普通文件名仍可上传，仅 Artifact 显示名称会缩短，保留扩展名和 MIME 类型；返回的旧句柄及文件字节保持不变。
+
+知识文件导入仅接受账户/API key 拥有的普通上传。已发布的 run 产物和 Skill 包来源仍被排除，避免扩大原权限。知识库删除通过持久删除屏障阻止新的文件加入；删除失败或结果不确定时保留业务引用及可重试的屏障，不回收可能仍在使用的字节。
+
+知识文件列表新增 `artifact_id`（旧文件为 `null`），本次不新增摘要、大小或 MIME 字段。上游知识库删除失败、取消或结果未知时，应重试显式删除操作，Core 重启后也可重试。删除完成前，屏障持续禁止新入库。活跃或中断未完成的入库会在建立屏障前阻止删除。
