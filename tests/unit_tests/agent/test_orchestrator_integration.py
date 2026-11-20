@@ -1800,6 +1800,26 @@ class TestQueryEntryAdapterParams:
     """Tests for params handling in Query entry adapter."""
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize('automatic_kbs', [['kb_001'], []], ids=['documents-only', 'disabled'])
+    async def test_preprocessed_auto_retrieval_keeps_explicit_resource_grants(self, clean_agent_state, automatic_kbs):
+        connector = FakePluginConnector(results=[{'type': 'run.completed', 'data': {'finish_reason': 'stop'}}])
+        ap = FakeApplication(connector, clean_agent_state)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(make_descriptor()))
+        query = make_query()
+        stored_config = query.pipeline_config['ai']['runner_config'][RUNNER_ID]
+        stored_config['knowledge-bases'] = ['kb_001', 'memory-kb']
+        query.variables['_knowledge_base_uuids'] = automatic_kbs
+
+        _ = [message async for message in orchestrator.run_from_query(query)]
+
+        context = connector.contexts[0]
+        assert context['config']['knowledge-bases'] == automatic_kbs
+        assert [kb['kb_id'] for kb in context['resources']['knowledge_bases']] == ['kb_001', 'memory-kb']
+        assert stored_config['knowledge-bases'] == ['kb_001', 'memory-kb']
+        authorization = connector.sessions_during_run[0]['authorization']
+        assert authorization['resources']['knowledge_bases'] == context['resources']['knowledge_bases']
+
+    @pytest.mark.asyncio
     async def test_prompt_not_pushed_into_adapter_extra(self, clean_agent_state):
         """Pipeline prompt is not pushed into adapter.extra; runners pull it through prompt_get."""
         from langbot_plugin.api.entities.builtin.provider import prompt as provider_prompt

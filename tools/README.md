@@ -1,5 +1,9 @@
 # LangBot regression tools
 
+Public-dataset quality evaluation uses the [evaluation workflow](evaluation/README.md).
+It prepares pinned question plans, executes installed Pipeline arms, records real
+model inputs, and reports paired answer and evidence metrics.
+
 ## Layout and entrypoints
 
 Run module entrypoints from the repository root:
@@ -129,6 +133,65 @@ Latency percentiles include the entire CLI invocation and use successful
 requests only. Achieved request rate is `requests / load_elapsed_seconds`.
 `health_samples` counts sampling rounds; `health_failures` counts rounds with
 any failed health probe or process/container resource read.
+
+## Fixed-arrival load and capacity exploration
+
+Load phases can set `arrival_mode: "open-loop"` and a positive `queue_capacity`
+(default 128). Arrivals follow a fixed schedule throughout `duration_seconds`,
+even when responses slow down. A bounded client queue retains waiting arrivals;
+workers still bound in-flight requests, and each group still executes one turn
+at a time. Omit `arrival_mode` to keep the existing paced behavior.
+`max_requests` is available only in paced mode.
+
+Every planned arrival is recorded in `arrivals.jsonl` with an `arrival_id`,
+scheduled time and final outcome. The summary reconciles scheduled arrivals
+against dispatched, dropped, expired and blocked arrivals. A full client queue
+drops an arrival explicitly. The load deadline expires waiting arrivals and
+drains only requests already dispatched. A failed group blocks its later
+arrivals because their conversation history is uncertain. Every undispatched
+arrival makes the run fail, including when `performance_mode` is `observe`.
+
+`requests.jsonl` contains actual requests with their scheduling, dispatch and
+completion times. Each case reports `arrival_p95_seconds` across all dispatched
+outcomes, including ledger verification, alongside the existing successful
+response-time percentiles. `max_arrival_p95_seconds` sets per-case thresholds
+for open-loop phases. Inspect arrival counts and failures together with latency;
+the percentile population excludes arrivals that never reached the service.
+
+The client queue and the Core/Box health queues have separate observations.
+Worker limits and serialized groups can constrain dispatch. Capacity results
+must state those limits, the workload mix, mock delays and the host resource
+envelope. A saturated run remains failed evidence of that tested configuration.
+A later low-rate phase verifies whether service queues and resources recover.
+
+Use the source-stack entrypoint with the checked-in load overrides:
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_ci \
+  --suite endurance --plugins plugins --lbctl /path/to/lbctl \
+  --load-profile tools/profiles/arrival-ramp.json --budget-seconds 900 \
+  --output .qa/arrival-ramp-001
+
+uv run --no-sync python -m tools.entrypoints.regression_ci \
+  --suite endurance --plugins plugins --lbctl /path/to/lbctl \
+  --load-profile tools/profiles/arrival-soak.json --budget-seconds 1200 \
+  --output .qa/arrival-soak-001
+```
+
+`--load-profile` accepts `phases`, `thresholds`, `resource_limits`,
+`performance_mode` and `box_command_delay_seconds`, validated before service
+creation. The Box command delay must be finite and nonnegative, and defaults to
+one second per command. The existing chat/Box/RAG
+resources, plugin installation, run-ledger verification and independent mixed
+evidence checks remain part of the source-stack run. `--budget-seconds` bounds
+execution after preparation. Both options apply to `--suite endurance`.
+The ramp uses 0.8, 4 and 0.8 aggregate arrivals/second; the soak runs 15 minutes at
+0.8 arrivals/second with a four-second delay in each Box command, so different
+Boxes execute concurrently at that arrival rate. The workload fingerprint
+includes the actual generated mock scenario file. Their latency limits are
+exploratory test settings and need
+calibration against measured workloads. Keep the existing Docker-daemon
+prerequisites of the source-stack runner.
 
 ## Configured regression suites
 
@@ -897,3 +960,13 @@ The default load mode remains `gate` for existing benchmark users.
 ## CI selection and regression tiers
 
 See the [CI tiers and evidence guide](../dev-docs/CROSS_COMPONENT_TESTING.md#ci-tiers-and-evidence) for PR selection, required smoke, and full daily/manual verification. The CI tooling tests can be run locally with `python -m unittest discover -s tools/tests -p "test_*.py"` in a Python environment with PyYAML.
+
+
+## Optional public RAG experiments
+
+The opt-in Linux launcher runs in a disposable local Core/Runtime with Chroma.
+See [BEIR SciFact retrieval](vdb-benchmark-public.md) for reproducible public
+relevance and HTTP latency, and [WikiText upload/RAG RSS](vdb-benchmark-memory.md)
+for process memory, mapping categories and the separate allocation diagnostic.
+Public inputs are fetched at runtime and hash-verified. Do not commit source
+corpora, model weights, local profiles with secrets, raw traces or results.

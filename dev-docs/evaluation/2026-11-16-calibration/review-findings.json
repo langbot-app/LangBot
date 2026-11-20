@@ -1,0 +1,45 @@
+{
+  "schema": "langbot.public-eval.review.v1",
+  "original_labels_preserved": true,
+  "findings": [
+    {
+      "question_id": "conv-26/q6",
+      "kinds": ["source_gold_conflict", "judge_inconsistency"],
+      "question": "When did Melanie run a charity race?",
+      "original_reference": "The sunday before 25 May 2023",
+      "source_turn": "D2:1",
+      "source_datetime": "1:14 pm on 25 May, 2023",
+      "source_excerpt": "I ran a charity race for mental health last Saturday",
+      "source_calendar_date": "2023-05-20",
+      "source_calendar_weekday": "Saturday",
+      "observed_labels": {"langrag": false, "combined": false, "powercontext": true},
+      "review": "All three proposed answers identify 20 May 2023. The PowerContext judge reason incorrectly calls 20 May Sunday. Detailed Saturday answers receive false labels.",
+      "adjudicated_labels": null,
+      "status": "requires_blinded_adjudication"
+    },
+    {
+      "question_id": "conv-26/q72",
+      "kinds": ["reader_context_sensitivity"],
+      "original_arm": "langrag",
+      "follow_up_arm": "langrag_parser_fixed",
+      "original_judge_correct": true,
+      "follow_up_answer": "Unknown",
+      "follow_up_judge_correct": false,
+      "shared_delivered_chunks": 9,
+      "delivered_chunk_count": 10,
+      "both_inputs_contain_book_title_and_reading_passage": true,
+      "review": "Both model inputs include the answer title and later reading passage. Retrieval overlap and the raw model inputs require reader/context analysis before assigning a cause.",
+      "status": "requires_reader_context_analysis"
+    },
+    {
+      "kinds": ["artifact_normalization_clarification"],
+      "artifact": "parser-reingestion/chunk-ab-audit.json",
+      "raw_text_multisets_equal": false,
+      "raw_chunk_differences_after_encoding_repair": 19,
+      "trimmed_text_multisets_equal_after_encoding_repair": true,
+      "normalization": "Correct the six encoding defects and strip leading/trailing whitespace from each chunk before multiset comparison",
+      "review": "The archived audit's recovered-text equality uses trimmed text. Raw chunks retain differences including trailing newlines. Source non-whitespace coverage remains complete.",
+      "status": "clarified_without_changing_original_artifact"
+    }
+  ]
+}

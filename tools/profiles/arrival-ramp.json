@@ -1,0 +1,46 @@
+{
+  "phases": [
+    {
+      "name": "arrival-baseline",
+      "duration_seconds": 120,
+      "rps": 0.8,
+      "workers": 8,
+      "groups": 16,
+      "members_per_group": 3,
+      "cooldown_seconds": 45,
+      "arrival_mode": "open-loop",
+      "queue_capacity": 16
+    },
+    {
+      "name": "arrival-pressure",
+      "duration_seconds": 120,
+      "rps": 4,
+      "workers": 12,
+      "groups": 16,
+      "members_per_group": 3,
+      "cooldown_seconds": 45,
+      "arrival_mode": "open-loop",
+      "queue_capacity": 16
+    },
+    {
+      "name": "arrival-recovery",
+      "duration_seconds": 120,
+      "rps": 0.8,
+      "workers": 8,
+      "groups": 16,
+      "members_per_group": 3,
+      "cooldown_seconds": 45,
+      "arrival_mode": "open-loop",
+      "queue_capacity": 16
+    }
+  ],
+  "performance_mode": "gate",
+  "thresholds": {
+    "min_rps_ratio": 0.8,
+    "max_arrival_p95_seconds": {
+      "chat": 8,
+      "box": 20,
+      "rag_chat": 10
+    }
+  }
+}

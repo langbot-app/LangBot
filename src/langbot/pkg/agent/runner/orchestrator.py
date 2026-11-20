@@ -29,7 +29,7 @@ from .binding_resolver import AgentBindingResolver
 from .context_builder import RunnerContextBuilder, RunnerContextPayload
 from .descriptor import RunnerDescriptor
 from .errors import RunnerExecutionError
-from .config_schema import extract_prompt_config
+from .config_schema import extract_prompt_config, project_automatic_knowledge_bases
 from .execution_context import (
     append_mcp_resource_context_to_event,
     build_mcp_resource_context_addition,
@@ -275,6 +275,15 @@ class AgentRunOrchestrator:
             descriptor=descriptor,
             resources=resources,
         )
+        query_variables = execution_query.variables or {}
+        if binding.processor_type == 'pipeline' and '_knowledge_base_uuids' in query_variables:
+            selected_kbs = query_variables['_knowledge_base_uuids']
+            context['config'] = project_automatic_knowledge_bases(
+                descriptor,
+                binding.runner_config,
+                selected_kbs if isinstance(selected_kbs, list) else [],
+                [kb['kb_id'] for kb in resources.get('knowledge_bases', [])],
+            )
         recovery = (adapter_context or {}).get('_recovery')
         if recovery:
             context['run_id'] = recovery['run_id']

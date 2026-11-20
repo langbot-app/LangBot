@@ -1,0 +1,752 @@
+{
+  "schema": "langbot.public-memory-comparison.v1",
+  "protocol": {
+    "protocol_id": "locomo-text-real-pipeline-calibration-v1",
+    "embedding_model": "all-MiniLM-L6-v2:384",
+    "answer_model": "deepseek-flash",
+    "answer_policy": "source-only-v1",
+    "answer_temperature": 0,
+    "answer_max_tokens": 256,
+    "judge_model": "deepseek-flash",
+    "judge_policy": "strict-v1",
+    "judge_request_settings": {
+      "thinking": {
+        "type": "disabled"
+      }
+    },
+    "context_budget_bytes": 12000,
+    "execution_layer": "langbot.pipeline",
+    "dataset_sha256": "79fa87e90f04081343b8c8debecb80a9a6842b76a7aa537dc9fdf651ea698ff4",
+    "question_set_sha256": "4c40d67265a0144fe3545cc7bca976ded8c1d7c3eb269aa67609d3a9f5fc35ba"
+  },
+  "question_count": 8,
+  "conversation_count": 1,
+  "left_correct": 4,
+  "right_correct": 3,
+  "left_accuracy": 0.5,
+  "right_accuracy": 0.375,
+  "right_minus_left": -0.125,
+  "paired_outcomes": {
+    "both_correct": 3,
+    "left_only_correct": 1,
+    "right_only_correct": 0,
+    "both_wrong": 4
+  },
+  "confidence_interval": {
+    "method": "conversation-cluster-bootstrap-percentile",
+    "confidence": 0.95,
+    "seed": 42,
+    "bootstrap_samples": 2000,
+    "lower": null,
+    "upper": null,
+    "limitations": "At least two independent conversation clusters are needed for an interval."
+  },
+  "left_metrics": {
+    "schema": "langbot.public-memory-eval.v2",
+    "metric_granularity": "session",
+    "rank_unit": "original_retrieval_item",
+    "k_values": [
+      1,
+      3,
+      5,
+      10
+    ],
+    "query_count": 8,
+    "retrieval_count": 0,
+    "retrieval_unscorable_count": 8,
+    "queries": [
+      {
+        "id": "conv-26/q6",
+        "sample_id": "conv-26",
+        "question": "When did Melanie run a charity race?",
+        "gold_evidence_ids": [
+          "D2"
+        ],
+        "retrieved_ids": [],
+        "retrieval_scorable": false,
+        "metrics": {
+          "hit@1": 0.0,
+          "precision@1": 0.0,
+          "recall@1": 0.0,
+          "mrr@1": 0.0,
+          "ndcg@1": 0.0,
+          "hit@3": 0.0,
+          "precision@3": 0.0,
+          "recall@3": 0.0,
+          "mrr@3": 0.0,
+          "ndcg@3": 0.0,
+          "hit@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit@10": 0.0,
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "mrr@10": 0.0,
+          "ndcg@10": 0.0
+        },
+        "answer_metrics": {
+          "exact_match": 0.0,
+          "token_f1": 0.20689655172413793,
+          "judge_correct": 0.0
+        }
+      },
+      {
+        "id": "conv-26/q39",
+        "sample_id": "conv-26",
+        "question": "What activities has Melanie done with her family?",
+        "gold_evidence_ids": [
+          "D8",
+          "D9",
+          "D6",
+          "D1",
+          "D3"
+        ],
+        "retrieved_ids": [],
+        "retrieval_scorable": false,
+        "metrics": {
+          "hit@1": 0.0,
+          "precision@1": 0.0,
+          "recall@1": 0.0,
+          "mrr@1": 0.0,
+          "ndcg@1": 0.0,
+          "hit@3": 0.0,
+          "precision@3": 0.0,
+          "recall@3": 0.0,
+          "mrr@3": 0.0,
+          "ndcg@3": 0.0,
+          "hit@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit@10": 0.0,
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "mrr@10": 0.0,
+          "ndcg@10": 0.0
+        },
+        "answer_metrics": {
+          "exact_match": 0.0,
+          "token_f1": 0.1142857142857143,
+          "judge_correct": 0.0
+        }
+      },
+      {
+        "id": "conv-26/q47",
+        "sample_id": "conv-26",
+        "question": "Would Melanie be considered an ally to the transgender community?",
+        "gold_evidence_ids": [],
+        "retrieved_ids": [],
+        "retrieval_scorable": false,
+        "metrics": {
+          "hit@1": 0.0,
+          "precision@1": 0.0,
+          "recall@1": 0.0,
+          "mrr@1": 0.0,
+          "ndcg@1": 0.0,
+          "hit@3": 0.0,
+          "precision@3": 0.0,
+          "recall@3": 0.0,
+          "mrr@3": 0.0,
+          "ndcg@3": 0.0,
+          "hit@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit@10": 0.0,
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "mrr@10": 0.0,
+          "ndcg@10": 0.0
+        },
+        "answer_metrics": {
+          "exact_match": 0.0,
+          "token_f1": 0.12903225806451613,
+          "judge_correct": 1.0
+        }
+      },
+      {
+        "id": "conv-26/q55",
+        "sample_id": "conv-26",
+        "question": "When did Caroline draw a self-portrait?",
+        "gold_evidence_ids": [
+          "D13"
+        ],
+        "retrieved_ids": [],
+        "retrieval_scorable": false,
+        "metrics": {
+          "hit@1": 0.0,
+          "precision@1": 0.0,
+          "recall@1": 0.0,
+          "mrr@1": 0.0,
+          "ndcg@1": 0.0,
+          "hit@3": 0.0,
+          "precision@3": 0.0,
+          "recall@3": 0.0,
+          "mrr@3": 0.0,
+          "ndcg@3": 0.0,
+          "hit@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit@10": 0.0,
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "mrr@10": 0.0,
+          "ndcg@10": 0.0
+        },
+        "answer_metrics": {
+          "exact_match": 0.0,
+          "token_f1": 0.2962962962962963,
+          "judge_correct": 1.0
+        }
+      },
+      {
+        "id": "conv-26/q70",
+        "sample_id": "conv-26",
+        "question": "What personality traits might Melanie say Caroline has?",
+        "gold_evidence_ids": [
+          "D16",
+          "D13",
+          "D7"
+        ],
+        "retrieved_ids": [],
+        "retrieval_scorable": false,
+        "metrics": {
+          "hit@1": 0.0,
+          "precision@1": 0.0,
+          "recall@1": 0.0,
+          "mrr@1": 0.0,
+          "ndcg@1": 0.0,
+          "hit@3": 0.0,
+          "precision@3": 0.0,
+          "recall@3": 0.0,
+          "mrr@3": 0.0,
+          "ndcg@3": 0.0,
+          "hit@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit@10": 0.0,
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "mrr@10": 0.0,
+          "ndcg@10": 0.0
+        },
+        "answer_metrics": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "judge_correct": 0.0
+        }
+      },
+      {
+        "id": "conv-26/q72",
+        "sample_id": "conv-26",
+        "question": "What book did Melanie read from Caroline's suggestion?",
+        "gold_evidence_ids": [
+          "D7",
+          "D17"
+        ],
+        "retrieved_ids": [],
+        "retrieval_scorable": false,
+        "metrics": {
+          "hit@1": 0.0,
+          "precision@1": 0.0,
+          "recall@1": 0.0,
+          "mrr@1": 0.0,
+          "ndcg@1": 0.0,
+          "hit@3": 0.0,
+          "precision@3": 0.0,
+          "recall@3": 0.0,
+          "mrr@3": 0.0,
+          "ndcg@3": 0.0,
+          "hit@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit@10": 0.0,
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "mrr@10": 0.0,
+          "ndcg@10": 0.0
+        },
+        "answer_metrics": {
+          "exact_match": 0.0,
+          "token_f1": 0.5,
+          "judge_correct": 1.0
+        }
+      },
+      {
+        "id": "conv-26/q107",
+        "sample_id": "conv-26",
+        "question": "What are the new shoes that Melanie got used for?",
+        "gold_evidence_ids": [
+          "D7"
+        ],
+        "retrieved_ids": [],
+        "retrieval_scorable": false,
+        "metrics": {
+          "hit@1": 0.0,
+          "precision@1": 0.0,
+          "recall@1": 0.0,
+          "mrr@1": 0.0,
+          "ndcg@1": 0.0,
+          "hit@3": 0.0,
+          "precision@3": 0.0,
+          "recall@3": 0.0,
+          "mrr@3": 0.0,
+          "ndcg@3": 0.0,
+          "hit@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit@10": 0.0,
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "mrr@10": 0.0,
+          "ndcg@10": 0.0
+        },
+        "answer_metrics": {
+          "exact_match": 0.0,
+          "token_f1": 0.08333333333333333,
+          "judge_correct": 0.0
+        }
+      },
+      {
+        "id": "conv-26/q151",
+        "sample_id": "conv-26",
+        "question": "How did Melanie feel about her family supporting her?",
+        "gold_evidence_ids": [
+          "D18"
+        ],
+        "retrieved_ids": [],
+        "retrieval_scorable": false,
+        "metrics": {
+          "hit@1": 0.0,
+          "precision@1": 0.0,
+          "recall@1": 0.0,
+          "mrr@1": 0.0,
+          "ndcg@1": 0.0,
+          "hit@3": 0.0,
+          "precision@3": 0.0,
+          "recall@3": 0.0,
+          "mrr@3": 0.0,
+          "ndcg@3": 0.0,
+          "hit@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit@10": 0.0,
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "mrr@10": 0.0,
+          "ndcg@10": 0.0
+        },
+        "answer_metrics": {
+          "exact_match": 0.0,
+          "token_f1": 0.05555555555555555,
+          "judge_correct": 1.0
+        }
+      }
+    ],
+    "summary": {},
+    "answer_count": 8,
+    "answer_missing_count": 0,
+    "answer_error_count": 0,
+    "judge_count": 8,
+    "judge_missing_count": 0,
+    "judge_coverage": 1.0,
+    "answer_summary": {
+      "exact_match": 0.0,
+      "judge_correct": 0.5,
+      "token_f1": 0.1731749636574442
+    }
+  },
+  "right_metrics": {
+    "schema": "langbot.public-memory-eval.v2",
+    "metric_granularity": "session",
+    "rank_unit": "original_retrieval_item",
+    "k_values": [
+      1,
+      3,
+      5,
+      10
+    ],
+    "query_count": 8,
+    "retrieval_count": 0,
+    "retrieval_unscorable_count": 8,
+    "queries": [
+      {
+        "id": "conv-26/q6",
+        "sample_id": "conv-26",
+        "question": "When did Melanie run a charity race?",
+        "gold_evidence_ids": [
+          "D2"
+        ],
+        "retrieved_ids": [],
+        "retrieval_scorable": false,
+        "metrics": {
+          "hit@1": 0.0,
+          "precision@1": 0.0,
+          "recall@1": 0.0,
+          "mrr@1": 0.0,
+          "ndcg@1": 0.0,
+          "hit@3": 0.0,
+          "precision@3": 0.0,
+          "recall@3": 0.0,
+          "mrr@3": 0.0,
+          "ndcg@3": 0.0,
+          "hit@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit@10": 0.0,
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "mrr@10": 0.0,
+          "ndcg@10": 0.0
+        },
+        "answer_metrics": {
+          "exact_match": 0.0,
+          "token_f1": 0.22222222222222224,
+          "judge_correct": 0.0
+        }
+      },
+      {
+        "id": "conv-26/q39",
+        "sample_id": "conv-26",
+        "question": "What activities has Melanie done with her family?",
+        "gold_evidence_ids": [
+          "D8",
+          "D9",
+          "D6",
+          "D1",
+          "D3"
+        ],
+        "retrieved_ids": [],
+        "retrieval_scorable": false,
+        "metrics": {
+          "hit@1": 0.0,
+          "precision@1": 0.0,
+          "recall@1": 0.0,
+          "mrr@1": 0.0,
+          "ndcg@1": 0.0,
+          "hit@3": 0.0,
+          "precision@3": 0.0,
+          "recall@3": 0.0,
+          "mrr@3": 0.0,
+          "ndcg@3": 0.0,
+          "hit@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit@10": 0.0,
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "mrr@10": 0.0,
+          "ndcg@10": 0.0
+        },
+        "answer_metrics": {
+          "exact_match": 0.0,
+          "token_f1": 0.09302325581395349,
+          "judge_correct": 0.0
+        }
+      },
+      {
+        "id": "conv-26/q47",
+        "sample_id": "conv-26",
+        "question": "Would Melanie be considered an ally to the transgender community?",
+        "gold_evidence_ids": [],
+        "retrieved_ids": [],
+        "retrieval_scorable": false,
+        "metrics": {
+          "hit@1": 0.0,
+          "precision@1": 0.0,
+          "recall@1": 0.0,
+          "mrr@1": 0.0,
+          "ndcg@1": 0.0,
+          "hit@3": 0.0,
+          "precision@3": 0.0,
+          "recall@3": 0.0,
+          "mrr@3": 0.0,
+          "ndcg@3": 0.0,
+          "hit@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit@10": 0.0,
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "mrr@10": 0.0,
+          "ndcg@10": 0.0
+        },
+        "answer_metrics": {
+          "exact_match": 0.0,
+          "token_f1": 0.14285714285714285,
+          "judge_correct": 1.0
+        }
+      },
+      {
+        "id": "conv-26/q55",
+        "sample_id": "conv-26",
+        "question": "When did Caroline draw a self-portrait?",
+        "gold_evidence_ids": [
+          "D13"
+        ],
+        "retrieved_ids": [],
+        "retrieval_scorable": false,
+        "metrics": {
+          "hit@1": 0.0,
+          "precision@1": 0.0,
+          "recall@1": 0.0,
+          "mrr@1": 0.0,
+          "ndcg@1": 0.0,
+          "hit@3": 0.0,
+          "precision@3": 0.0,
+          "recall@3": 0.0,
+          "mrr@3": 0.0,
+          "ndcg@3": 0.0,
+          "hit@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit@10": 0.0,
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "mrr@10": 0.0,
+          "ndcg@10": 0.0
+        },
+        "answer_metrics": {
+          "exact_match": 0.0,
+          "token_f1": 0.2962962962962963,
+          "judge_correct": 1.0
+        }
+      },
+      {
+        "id": "conv-26/q70",
+        "sample_id": "conv-26",
+        "question": "What personality traits might Melanie say Caroline has?",
+        "gold_evidence_ids": [
+          "D16",
+          "D13",
+          "D7"
+        ],
+        "retrieved_ids": [],
+        "retrieval_scorable": false,
+        "metrics": {
+          "hit@1": 0.0,
+          "precision@1": 0.0,
+          "recall@1": 0.0,
+          "mrr@1": 0.0,
+          "ndcg@1": 0.0,
+          "hit@3": 0.0,
+          "precision@3": 0.0,
+          "recall@3": 0.0,
+          "mrr@3": 0.0,
+          "ndcg@3": 0.0,
+          "hit@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit@10": 0.0,
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "mrr@10": 0.0,
+          "ndcg@10": 0.0
+        },
+        "answer_metrics": {
+          "exact_match": 0.0,
+          "token_f1": 0.0,
+          "judge_correct": 0.0
+        }
+      },
+      {
+        "id": "conv-26/q72",
+        "sample_id": "conv-26",
+        "question": "What book did Melanie read from Caroline's suggestion?",
+        "gold_evidence_ids": [
+          "D7",
+          "D17"
+        ],
+        "retrieved_ids": [],
+        "retrieval_scorable": false,
+        "metrics": {
+          "hit@1": 0.0,
+          "precision@1": 0.0,
+          "recall@1": 0.0,
+          "mrr@1": 0.0,
+          "ndcg@1": 0.0,
+          "hit@3": 0.0,
+          "precision@3": 0.0,
+          "recall@3": 0.0,
+          "mrr@3": 0.0,
+          "ndcg@3": 0.0,
+          "hit@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit@10": 0.0,
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "mrr@10": 0.0,
+          "ndcg@10": 0.0
+        },
+        "answer_metrics": {
+          "exact_match": 0.0,
+          "token_f1": 0.1904761904761905,
+          "judge_correct": 0.0
+        }
+      },
+      {
+        "id": "conv-26/q107",
+        "sample_id": "conv-26",
+        "question": "What are the new shoes that Melanie got used for?",
+        "gold_evidence_ids": [
+          "D7"
+        ],
+        "retrieved_ids": [],
+        "retrieval_scorable": false,
+        "metrics": {
+          "hit@1": 0.0,
+          "precision@1": 0.0,
+          "recall@1": 0.0,
+          "mrr@1": 0.0,
+          "ndcg@1": 0.0,
+          "hit@3": 0.0,
+          "precision@3": 0.0,
+          "recall@3": 0.0,
+          "mrr@3": 0.0,
+          "ndcg@3": 0.0,
+          "hit@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit@10": 0.0,
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "mrr@10": 0.0,
+          "ndcg@10": 0.0
+        },
+        "answer_metrics": {
+          "exact_match": 0.0,
+          "token_f1": 0.08333333333333333,
+          "judge_correct": 0.0
+        }
+      },
+      {
+        "id": "conv-26/q151",
+        "sample_id": "conv-26",
+        "question": "How did Melanie feel about her family supporting her?",
+        "gold_evidence_ids": [
+          "D18"
+        ],
+        "retrieved_ids": [],
+        "retrieval_scorable": false,
+        "metrics": {
+          "hit@1": 0.0,
+          "precision@1": 0.0,
+          "recall@1": 0.0,
+          "mrr@1": 0.0,
+          "ndcg@1": 0.0,
+          "hit@3": 0.0,
+          "precision@3": 0.0,
+          "recall@3": 0.0,
+          "mrr@3": 0.0,
+          "ndcg@3": 0.0,
+          "hit@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit@10": 0.0,
+          "precision@10": 0.0,
+          "recall@10": 0.0,
+          "mrr@10": 0.0,
+          "ndcg@10": 0.0
+        },
+        "answer_metrics": {
+          "exact_match": 0.0,
+          "token_f1": 0.047619047619047616,
+          "judge_correct": 1.0
+        }
+      }
+    ],
+    "summary": {},
+    "answer_count": 8,
+    "answer_missing_count": 0,
+    "answer_error_count": 0,
+    "judge_count": 8,
+    "judge_missing_count": 0,
+    "judge_coverage": 1.0,
+    "answer_summary": {
+      "exact_match": 0.0,
+      "judge_correct": 0.375,
+      "token_f1": 0.13447843607727328
+    }
+  },
+  "pairs": [
+    {
+      "id": "conv-26/q6",
+      "sample_id": "conv-26",
+      "left": 0,
+      "right": 0
+    },
+    {
+      "id": "conv-26/q39",
+      "sample_id": "conv-26",
+      "left": 0,
+      "right": 0
+    },
+    {
+      "id": "conv-26/q47",
+      "sample_id": "conv-26",
+      "left": 1,
+      "right": 1
+    },
+    {
+      "id": "conv-26/q55",
+      "sample_id": "conv-26",
+      "left": 1,
+      "right": 1
+    },
+    {
+      "id": "conv-26/q70",
+      "sample_id": "conv-26",
+      "left": 0,
+      "right": 0
+    },
+    {
+      "id": "conv-26/q72",
+      "sample_id": "conv-26",
+      "left": 1,
+      "right": 0
+    },
+    {
+      "id": "conv-26/q107",
+      "sample_id": "conv-26",
+      "left": 0,
+      "right": 0
+    },
+    {
+      "id": "conv-26/q151",
+      "sample_id": "conv-26",
+      "left": 1,
+      "right": 1
+    }
+  ]
+}

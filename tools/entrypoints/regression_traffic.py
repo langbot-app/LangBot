@@ -252,6 +252,8 @@ def main():
     parser.add_argument('--duration', type=float, default=600)
     parser.add_argument('--rps', type=float, default=2)
     parser.add_argument('--workers', type=int, default=4)
+    parser.add_argument('--arrival-mode', choices=('paced', 'open-loop'), default='paced')
+    parser.add_argument('--queue-capacity', type=int, default=128, help='Maximum waiting arrivals in open-loop mode')
     parser.add_argument(
         '--max-requests',
         type=int,
@@ -289,10 +291,16 @@ def main():
         parser.error('duration/rps must be positive, workers 1..32, cooldown nonnegative')
     if not 0 <= args.groups <= 4096 or not 1 <= args.members_per_group <= 1000:
         parser.error('groups must be 0..4096 (0 selects CLI mode), members-per-group 1..1000')
+    if args.open_loop_groups and args.arrival_mode == 'open-loop':
+        parser.error('--open-loop-groups and --arrival-mode open-loop select different schedulers')
     if args.open_loop_groups and not args.groups:
         parser.error('open-loop groups require group mode')
     if args.max_requests is not None and args.max_requests < 1:
         parser.error('max-requests must be positive')
+    if args.queue_capacity < 1:
+        parser.error('queue-capacity must be positive')
+    if args.arrival_mode == 'open-loop' and args.max_requests is not None:
+        parser.error('open-loop uses duration and rps to fix arrival count; max-requests is not supported')
     cases = json.loads(args.cases.read_text())
     if (
         not isinstance(cases, list)
@@ -477,6 +485,105 @@ def main():
                 # Collection time counts toward the three-second sampling cadence.
                 stop.wait(max(0, sample_started + 3 - time.monotonic()))
 
+    def execute_request(case, due, *, group=None, arrival=None, offered_slot=None):
+        before = time.monotonic()
+        row = {
+            'case': case['name'],
+            'time': time.time(),
+            'elapsed': before - started,
+            'status': 'failed',
+            'schedule_lag_seconds': max(0, before - due),
+        }
+        if offered_slot is not None:
+            row.update(offered_slot=offered_slot, planned_elapsed_seconds=offered_slot / args.rps)
+        if group is not None:
+            token = uuid.uuid4().hex
+            member = f'qa-member-{(group["turn"] - 1) % args.members_per_group:03d}'
+            row.update(group_id=group['id'], token=token, member_id=member, turn=group['turn'])
+        connection = None
+        try:
+            connection, after_id = open_ledger()
+            dispatch = time.monotonic()
+            row.update(
+                ledger_setup_seconds=dispatch - before,
+                elapsed=dispatch - started,
+                schedule_lag_seconds=max(0, dispatch - due),
+            )
+            if arrival is not None and (dispatch >= deadline or stop.is_set()):
+                return None
+            if group is not None:
+                row['output'] = checked(
+                    row,
+                    'response',
+                    lambda: group_request(case, group['id'], member, group['turn'], token, group['previous']),
+                )
+                row['seconds'] = time.monotonic() - dispatch
+                verify(row, case, connection, after_id, is_group=True)
+                row['status'] = 'ok'
+            else:
+                result = subprocess.run(
+                    [args.lbctl, '--config', args.config, '-o', 'json', *case['args']],
+                    capture_output=True,
+                    text=True,
+                    timeout=90,
+                )
+                row['seconds'] = time.monotonic() - dispatch
+                row['exit_code'] = result.returncode
+                row['output'] = json.loads(redact(result.stdout))
+                if not isinstance(row['output'], dict):
+                    raise ValueError('CLI response must be an object')
+                if result.returncode == 0:
+                    checked(row, 'response', lambda: check_response(row['output'].get('data'), case['expect']))
+                    verify(row, case, connection, after_id)
+                    row['status'] = 'ok'
+                elif 'result_unknown' in result.stdout:
+                    row['status'] = 'unknown'
+                else:
+                    row['error'] = redact(result.stderr)[:2000] or 'exit code or response oracle failed'
+        except subprocess.TimeoutExpired:
+            row.update(status='unknown', error='CLI timed out; server outcome unknown; request was not retried')
+        except urllib.error.HTTPError as exc:
+            row['error'] = redact(str(exc))
+            if group is not None:
+                row.update(http_status=exc.code, error=redact(exc.read(2000).decode(errors='replace')))
+                if exc.code >= 500:
+                    row['status'] = 'unknown'
+        except (urllib.error.URLError, TimeoutError) as exc:
+            row['error'] = redact(str(exc))
+            if group is not None:
+                row.update(status='unknown', error=row['error'] + '; not retried')
+        except UnresolvedRun as exc:
+            row.update(status='unknown', error=str(exc))
+        except (OSError, ValueError, KeyError, sqlite3.Error) as exc:
+            row['error'] = redact(str(exc))
+            if group is not None and isinstance(exc, OSError):
+                row['status'] = 'unknown'
+        finally:
+            if connection:
+                connection.close()
+        row.setdefault('seconds', time.monotonic() - before)
+        if arrival is not None:
+            completed = time.monotonic() - started
+            row.update(
+                arrival_id=arrival['arrival_id'],
+                scheduled_elapsed=arrival['scheduled_elapsed'],
+                dispatch_elapsed=row['elapsed'],
+                completed_elapsed=completed,
+                queue_seconds=max(0, row['elapsed'] - arrival['scheduled_elapsed']),
+                arrival_seconds=max(0, completed - arrival['scheduled_elapsed']),
+            )
+        with group_condition:
+            rows.append(row)
+            with (args.output / 'requests.jsonl').open('a') as stream:
+                stream.write(json.dumps(row, ensure_ascii=False) + '\n')
+            if group is not None:
+                group.update(busy=False, failed=row['status'] != 'ok')
+                if row['status'] == 'ok':
+                    group.update(turn=group['turn'] + 1, previous=token)
+                group['due'] = max(group['due'] + args.groups / args.rps, time.monotonic())
+                group_condition.notify_all()
+        return row
+
     def worker(index):
         nonlocal next_case, admitted_requests
         iteration = 0
@@ -500,56 +607,7 @@ def main():
                     next_case += 1
                 else:
                     case = cases[(iteration * args.workers + index) % len(cases)]
-            before = time.monotonic()
-            row = {
-                'case': case['name'],
-                'time': time.time(),
-                'elapsed': before - started,
-                'status': 'failed',
-                'schedule_lag_seconds': max(0, before - due),
-            }
-            connection = None
-            try:
-                connection, after_id = open_ledger()
-                dispatch = time.monotonic()
-                row.update(
-                    ledger_setup_seconds=dispatch - before,
-                    elapsed=dispatch - started,
-                    schedule_lag_seconds=max(0, dispatch - due),
-                )
-                result = subprocess.run(
-                    [args.lbctl, '--config', args.config, '-o', 'json', *case['args']],
-                    capture_output=True,
-                    text=True,
-                    timeout=90,
-                )
-                row['seconds'] = time.monotonic() - dispatch
-                row['exit_code'] = result.returncode
-                row['output'] = json.loads(redact(result.stdout))
-                if not isinstance(row['output'], dict):
-                    raise ValueError('CLI response must be an object')
-                if result.returncode == 0:
-                    checked(row, 'response', lambda: check_response(row['output'].get('data'), case['expect']))
-                    verify(row, case, connection, after_id)
-                    row['status'] = 'ok'
-                elif 'result_unknown' in result.stdout:
-                    row['status'] = 'unknown'
-                else:
-                    row['error'] = redact(result.stderr)[:2000] or 'exit code or response oracle failed'
-            except subprocess.TimeoutExpired:
-                row.update(status='unknown', error='CLI timed out; server outcome unknown; request was not retried')
-            except UnresolvedRun as exc:
-                row.update(status='unknown', error=str(exc))
-            except (OSError, ValueError, KeyError, sqlite3.Error) as exc:
-                row['error'] = redact(str(exc))
-            finally:
-                if connection:
-                    connection.close()
-            row.setdefault('seconds', time.monotonic() - before)
-            with lock:
-                rows.append(row)
-                with (args.output / 'requests.jsonl').open('a') as stream:
-                    stream.write(json.dumps(row, ensure_ascii=False) + '\n')
+            execute_request(case, due)
             iteration += 1
             due = max(due + args.workers / args.rps, time.monotonic())
 
@@ -614,63 +672,7 @@ def main():
                     if admitted_requests == args.max_requests:
                         group_condition.notify_all()
                     break
-            case = cases[group['case']]
-            before = time.monotonic()
-            token = uuid.uuid4().hex
-            member = f'qa-member-{(group["turn"] - 1) % args.members_per_group:03d}'
-            row = {
-                'case': case['name'],
-                'group_id': group['id'],
-                'token': token,
-                'member_id': member,
-                'turn': group['turn'],
-                'time': time.time(),
-                'elapsed': before - started,
-                'status': 'failed',
-                'schedule_lag_seconds': max(0, before - group['due']),
-            }
-            if offered_slot is not None:
-                row.update(offered_slot=offered_slot, planned_elapsed_seconds=offered_slot / args.rps)
-            connection = None
-            try:
-                connection, after_id = open_ledger()
-                dispatch = time.monotonic()
-                row.update(
-                    ledger_setup_seconds=dispatch - before,
-                    elapsed=dispatch - started,
-                    schedule_lag_seconds=max(0, dispatch - group['due']),
-                )
-                row['output'] = checked(
-                    row,
-                    'response',
-                    lambda: group_request(case, group['id'], member, group['turn'], token, group['previous']),
-                )
-                row['seconds'] = time.monotonic() - dispatch
-                verify(row, case, connection, after_id, is_group=True)
-                row['status'] = 'ok'
-            except urllib.error.HTTPError as exc:
-                row.update(http_status=exc.code, error=redact(exc.read(2000).decode(errors='replace')))
-                if exc.code >= 500:
-                    row['status'] = 'unknown'
-            except (urllib.error.URLError, TimeoutError, OSError) as exc:
-                row.update(status='unknown', error=redact(str(exc)) + '; not retried')
-            except UnresolvedRun as exc:
-                row.update(status='unknown', error=str(exc))
-            except (ValueError, KeyError, sqlite3.Error) as exc:
-                row['error'] = redact(str(exc))
-            finally:
-                if connection:
-                    connection.close()
-            row.setdefault('seconds', time.monotonic() - before)
-            with group_condition:
-                rows.append(row)
-                with (args.output / 'requests.jsonl').open('a') as stream:
-                    stream.write(json.dumps(row, ensure_ascii=False) + '\n')
-                group.update(busy=False, failed=row['status'] != 'ok')
-                if row['status'] == 'ok':
-                    group.update(turn=group['turn'] + 1, previous=token)
-                group['due'] = max(group['due'] + args.groups / args.rps, time.monotonic())
-                group_condition.notify_all()
+            execute_request(cases[group['case']], group['due'], group=group, offered_slot=offered_slot)
 
     def sampling_guard():
         try:
@@ -680,15 +682,62 @@ def main():
             stop.set()
             admission_closed.set()
 
-    if args.open_loop_groups:
+    def execute_arrival(item):
+        group = groups[item['serialization_key']] if groups else None
+        case = cases[group['case']] if group is not None else cases[item['arrival_id'] % len(cases)]
+        return execute_request(case, started + item['scheduled_elapsed'], group=group, arrival=item)
+
+    def settle_arrival(item, outcome, row):
+        group = groups[item['serialization_key']] if groups else None
+        case = cases[group['case']] if group is not None else cases[item['arrival_id'] % len(cases)]
+        record = {**item, 'case': case['name'], 'outcome': outcome}
+        if group is not None:
+            record['group_id'] = group['id']
+        if row is not None:
+            record.update(
+                status=row['status'],
+                dispatch_elapsed=row['dispatch_elapsed'],
+                completed_elapsed=row['completed_elapsed'],
+                queue_seconds=row['queue_seconds'],
+                arrival_seconds=row['arrival_seconds'],
+            )
+        else:
+            record['settled_elapsed'] = time.monotonic() - started
+            record['reason'] = {
+                'dropped': 'client waiting queue full',
+                'blocked': 'group has a failed or unknown previous request',
+                'expired': 'observation aborted' if stop.is_set() else 'load deadline reached before dispatch',
+            }[outcome]
+        with (args.output / 'arrivals.jsonl').open('a') as stream:
+            stream.write(json.dumps(record, ensure_ascii=False) + '\n')
+
+    arrivals = None
+    if args.open_loop_groups or args.arrival_mode == 'open-loop':
         # Schedules start after state/ledger setup, not while files are initialized.
         started = time.monotonic()
         deadline = started + args.duration
     sampler = threading.Thread(target=sampling_guard)
     sampler.start()
     try:
-        with ThreadPoolExecutor(max_workers=args.workers) as pool:
-            list(pool.map(group_worker if args.groups else worker, range(args.workers)))
+        if args.arrival_mode == 'open-loop':
+            from tools.regression.arrival_schedule import run_open_loop
+
+            (args.output / 'requests.jsonl').touch()
+            arrivals = run_open_loop(
+                started=started,
+                duration=args.duration,
+                rps=args.rps,
+                workers=args.workers,
+                queue_capacity=args.queue_capacity,
+                execute=execute_arrival,
+                key_for=lambda index: index % len(groups) if groups else None,
+                blocked=lambda key: groups[key]['failed'] if key is not None else False,
+                settle=settle_arrival,
+                stop=stop,
+            )
+        else:
+            with ThreadPoolExecutor(max_workers=args.workers) as pool:
+                list(pool.map(group_worker if args.groups else worker, range(args.workers)))
         if args.max_requests is None:
             stop.wait(max(0, deadline - time.monotonic()))
         if args.open_loop_groups:
@@ -720,6 +769,23 @@ def main():
         'status': dict(Counter(row['status'] for row in rows)),
         'cases': {},
     }
+    if arrivals is not None:
+        arrivals.update(
+            successful=sum(row['status'] == 'ok' for row in rows),
+            failed=sum(row['status'] == 'failed' for row in rows),
+            unknown=sum(row['status'] == 'unknown' for row in rows),
+            queue_p95_seconds=percentile([row['queue_seconds'] for row in rows], 0.95),
+            arrival_p95_seconds=percentile([row['arrival_seconds'] for row in rows], 0.95),
+            latency_population='all dispatched outcomes, including verification',
+        )
+        arrivals['conserved'] = arrivals['conserved'] and arrivals['dispatched'] == len(rows)
+        summary.update(
+            planned_requests=arrivals['scheduled'],
+            delivery_ratio=len(rows) / arrivals['scheduled'],
+            arrival_mode=args.arrival_mode,
+            arrivals=arrivals,
+            load_model='fixed arrivals; bounded client queue; serialized groups; arrival latency includes verification',
+        )
     if args.open_loop_groups:
         admitted = Counter(row['case'] for row in rows)
         summary.update(
@@ -793,6 +859,13 @@ def main():
             'p95_seconds': percentile(times, 0.95),
             'p99_seconds': percentile(times, 0.99),
         }
+        if arrivals is not None:
+            summary['cases'][name].update(
+                arrival_p95_seconds=percentile([row['arrival_seconds'] for row in selected], 0.95),
+                queue_p95_seconds=percentile([row['queue_seconds'] for row in selected], 0.95),
+                arrival_latency_count=len(selected),
+                arrival_latency_population='all dispatched outcomes, including verification',
+            )
     (args.output / 'summary.json').write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary, indent=2), flush=True)
     if (
@@ -805,6 +878,10 @@ def main():
         or any(row['status'] != 'ok' for row in rows)
         or summary['health_failures']
         or sampling_errors
+        or (
+            arrivals is not None
+            and (not arrivals['conserved'] or any(arrivals[name] for name in ('dropped', 'expired', 'blocked')))
+        )
         or summary.get('group_failures')
         or (args.ledger_db and not summary['ledger_closeout']['matched'])
     ):

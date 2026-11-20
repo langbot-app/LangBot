@@ -958,6 +958,9 @@ class TestAgentRunProxyActions:
 
         run_id = 'run_proxy_get_prompt'
         query = self.query()
+        query.variables['_host_prompt_preprocessing_system_context'] = [
+            {'role': 'system', 'content': 'Retrieved historical evidence'},
+        ]
         app.query_pool.cached_queries[900] = query
 
         registry = get_session_registry()
@@ -987,6 +990,7 @@ class TestAgentRunProxyActions:
         assert response.code == 0
         assert response.data['prompt'][0]['role'] == 'system'
         assert response.data['prompt'][0]['content'] == 'effective prompt'
+        assert response.data['prompt'][1] == {'role': 'system', 'content': 'Retrieved historical evidence'}
 
     @pytest.mark.asyncio
     async def test_invoke_llm_restores_query_and_model_options(self, app):
