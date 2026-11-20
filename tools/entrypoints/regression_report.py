@@ -38,7 +38,7 @@ def daily_workload(root, profile, gate):
 
 
 def daily_details(workload, budget, gate, suite, profile, mixed, coverage):
-    print(f'Workload: `{workload}`. Configured execution guard: {budget} seconds.')
+    print(f'Workload: `{workload}`. Configured execution guard: {budget:g} seconds.')
     if workload == 'mixed':
         print(
             'Configured for one Workspace, three HTTP Bots and separate mock generation endpoints. '
@@ -122,6 +122,8 @@ def summarize(mode, root, sha=None, step_outcome=None):
         label = 'Daily regression'
         workload = daily_workload(root, profile, gate)
         budget = {'mixed': 900, 'contracts': 300, 'legacy': 1860}[workload]
+        if recorded_suite == 'endurance':
+            budget = gate.get('budget_seconds', budget)
         mixed = read_json(root / 'gate/mixed.json')
         if workload == 'mixed' and mixed.get('passed') is not True:
             errors.append('Missing or unsuccessful independent mixed workload verdict.')
@@ -159,7 +161,7 @@ def summarize(mode, root, sha=None, step_outcome=None):
     if recorded_suite and recorded_suite not in allowed_suites:
         errors.append(f'Recorded suite `{recorded_suite}` does not match report mode `{mode}`.')
     if gate.get('timed_out'):
-        errors.append(f'Suite exceeded its {budget}-second outer process guard.')
+        errors.append(f'Suite exceeded its {budget:g}-second outer process guard.')
     outer_failed = bool(errors)
     errors.extend(suite.get('errors', []))
     if step_outcome and step_outcome != 'success':

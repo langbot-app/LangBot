@@ -444,6 +444,21 @@ class MixedScheduleTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 0 if passed else 1)
                 self.assertEqual('Daily regression: PASS' in result.stdout, passed)
 
+    def test_mixed_timeout_report_uses_the_recorded_execution_budget(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'gate/suite').mkdir(parents=True)
+            (root / 'gate/suite/profile.json').write_text(json.dumps({'coverage_suite': 'endurance'}))
+            (root / 'gate/suite/summary.json').write_text(json.dumps({'passed': False}))
+            (root / 'gate/gate.json').write_text(
+                json.dumps({'passed': False, 'timed_out': True, 'budget_seconds': 1200.0})
+            )
+            (root / 'gate/mixed.json').write_text(json.dumps({'passed': True}))
+            report = run_report('daily', root)
+            self.assertEqual(report.returncode, 1)
+            self.assertIn('Configured execution guard: 1200 seconds', report.stdout)
+            self.assertIn('1200-second outer process guard', report.stdout)
+
     def test_workload_marker_cannot_hide_missing_mixed_evidence(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder) / 'daily'
