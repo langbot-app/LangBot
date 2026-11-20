@@ -223,4 +223,3 @@ async def test_reset_group_per_sender_session_resets_shared_group_conversation(c
     assert result == {'reset': True, 'session_id': 'group_g100_u42'}
     assert await get_reset_generation(engine, 'w', 'b', 'group_g100')
     assert not (await store.page_transcript('group_g100', bot_id='b', workspace_id='w'))[0]
-

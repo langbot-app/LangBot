@@ -1,5 +1,6 @@
 """Plugin-owned Host Queries must still produce monitoring records (LANG-320)."""
 
+import contextlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -87,7 +88,9 @@ def test_extract_sender_name_supports_group_sender_methods_and_variables():
             id='user-42',
             member_name='Alice',
             permission=platform_entities.Permission.Member,
-            group=platform_entities.Group(id='group-100', name='Dev Group', permission=platform_entities.Permission.Member),
+            group=platform_entities.Group(
+                id='group-100', name='Dev Group', permission=platform_entities.Permission.Member
+            ),
         ),
         message_chain=platform_message.MessageChain([platform_message.Plain(text='hello')]),
     )
@@ -195,6 +198,11 @@ async def test_group_query_monitoring_session_id_is_consistent_across_all_writer
 
             def tenant_uow(self, workspace):
                 return TenantUnitOfWork(engine, workspace, active_transaction=self.active_transaction)
+
+            @contextlib.asynccontextmanager
+            async def tenant_write_uow(self, workspace, *, operation='artifact'):
+                async with self.tenant_uow(workspace) as uow:
+                    yield uow
 
             def get_db_engine(self):
                 return engine
@@ -387,4 +395,3 @@ async def test_group_query_monitoring_session_id_is_consistent_across_all_writer
         assert stored_conv_id == 'group_group-100'
     finally:
         await engine.dispose()
-
