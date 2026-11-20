@@ -3579,7 +3579,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 timeout=20,
             )
         except Exception:
-            traceback.print_exc()
+            self.ap.logger.exception('Failed to read plugin README for %s/%s', plugin_author, plugin_name)
             return ''
 
         readme_file_key = result.get('readme_file_key')
@@ -3611,7 +3611,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 timeout=20,
             )
         except Exception:
-            traceback.print_exc()
+            self.ap.logger.exception('Failed to read plugin logs for %s/%s', plugin_author, plugin_name)
             return []
 
         return result.get('logs', [])

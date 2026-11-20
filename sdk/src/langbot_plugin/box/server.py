@@ -1351,3 +1351,6 @@ def main(args: argparse.Namespace) -> None:
         )
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt, Box runtime stopped")
+    except Exception:
+        logger.exception("Box Runtime failed")
+        raise SystemExit(1) from None
