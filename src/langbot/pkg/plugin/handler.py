@@ -1553,13 +1553,13 @@ class RuntimeConnectionHandler(handler.Handler):
             output_lock_acquired = False
             try:
                 if data.get('file_ids') is not None:
-                    from ..box.runner import exported_message, binding_for
+                    from ..box.runner import exported_message, binding_for, mark_exported_files
 
                     query = _resolve_action_query(data, session, self.ap, action_context)
                     output_lock = binding_for(query).lock
                     await output_lock.acquire()
                     output_lock_acquired = True
-                    files = exported_message(query, data['file_ids'])
+                    files = await exported_message(self.ap, query, data['file_ids'])
                     data = {**data, 'params': {**(data.get('params') or {}), 'message': files.model_dump(mode='json')}}
                 tool_name, parameters, message = resolve_platform_api_call(
                     session, data.get('bot_uuid'), data['action'], data.get('params') or {}, data.get('context_tool')
@@ -1581,7 +1581,7 @@ class RuntimeConnectionHandler(handler.Handler):
                     message_chain=message,
                 )
                 if data.get('file_ids') is not None:
-                    exported_message(query, data['file_ids'], consume=True)
+                    mark_exported_files(query, data['file_ids'])
                 return handler.ActionResponse.success(data={'result': _serialize_plugin_api_result(result)})
             except (ValueError, KeyError, TypeError) as exc:
                 return handler.ActionResponse.error(message=str(exc))
@@ -2802,6 +2802,16 @@ class RuntimeConnectionHandler(handler.Handler):
                 content_bytes = await self.ap.rag_runtime_service.get_file_stream(
                     execution_context,
                     storage_path,
+                    plugin_id=f'{identity.plugin_author}/{identity.plugin_name}',
+                )
+                # Storage I/O may outlive installation/grant revocation. Never start
+                # the binary transfer under stale authority after the await.
+                await self._require_plugin_action_context()
+                await self._require_active_action_context(action_context)
+                from ..api.application.plugin_permissions import authorize_action
+
+                await authorize_action(
+                    self.ap, installation_binding, PluginToRuntimeAction.GET_KNOWLEDEGE_FILE_STREAM.value, data
                 )
                 file_key = await self.send_file(
                     content_bytes,
@@ -2923,6 +2933,13 @@ class RuntimeConnectionHandler(handler.Handler):
                 results = [entry.model_dump(mode='json') for entry in entries]
                 return handler.ActionResponse.success(data={'results': results})
             except Exception as e:
+                # The error only travels back to the calling plugin; log it so
+                # operators can see why retrievals fail (kb.retrieve telemetry
+                # carries no error text).
+                self.ap.logger.warning(
+                    f'Knowledge base retrieval failed: kb={kb_id} '
+                    f'engine={kb.get_knowledge_engine_plugin_id()} {type(e).__name__}: {e}'
+                )
                 return _make_rag_error_response(e, 'RetrievalError', kb_id=kb_id)
 
         @self.action(PluginToRuntimeAction.LIST_PIPELINE_KNOWLEDGE_BASES)
@@ -3041,6 +3058,13 @@ class RuntimeConnectionHandler(handler.Handler):
                 results = [entry.model_dump(mode='json') for entry in entries]
                 return handler.ActionResponse.success(data={'results': results})
             except Exception as e:
+                # The error only travels back to the calling plugin; log it so
+                # operators can see why retrievals fail (kb.retrieve telemetry
+                # carries no error text).
+                self.ap.logger.warning(
+                    f'Knowledge base retrieval failed: kb={kb_id} '
+                    f'engine={kb.get_knowledge_engine_plugin_id()} {type(e).__name__}: {e}'
+                )
                 return _make_rag_error_response(e, 'RetrievalError', kb_id=kb_id)
 
         # ================= Agent History/Event APIs =================
@@ -3162,6 +3186,19 @@ class RuntimeConnectionHandler(handler.Handler):
             operation_id = data['operation_id']
             if operation_id not in context.allowed_operation_ids:
                 fail('permission_denied', 'Workspace operation has not been granted', denied_operations=[operation_id])
+            if operation_id.startswith('artifact.') and data.get('run_id'):
+                session, error = await _validate_agent_run_session(
+                    data['run_id'], data.get('caller_plugin_identity'), self.ap, 'Artifact'
+                )
+                if error:
+                    return error
+                frozen = {item['id'] for item in session['authorization'].get('workspace_operations', [])}
+                if operation_id not in frozen:
+                    fail(
+                        'permission_denied',
+                        'Workspace operation has not been granted',
+                        denied_operations=[operation_id],
+                    )
             result = await call(self.ap, context, operation_id, data.get('arguments', {}), consumer='processor')
             return handler.ActionResponse.success(data=result)
 
@@ -3542,7 +3579,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 timeout=20,
             )
         except Exception:
-            traceback.print_exc()
+            self.ap.logger.exception('Failed to read plugin README for %s/%s', plugin_author, plugin_name)
             return ''
 
         readme_file_key = result.get('readme_file_key')
@@ -3574,7 +3611,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 timeout=20,
             )
         except Exception:
-            traceback.print_exc()
+            self.ap.logger.exception('Failed to read plugin logs for %s/%s', plugin_author, plugin_name)
             return []
 
         return result.get('logs', [])

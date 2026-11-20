@@ -1038,7 +1038,9 @@ skip_dirs = {json.dumps(sorted(_SKIP_DIRS))}
 allowed_root = {json.dumps(allowed_root)}
 def regex_timeout(_signum, _frame):
     raise TimeoutError
-signal.signal(signal.SIGALRM, regex_timeout)
+has_timer = hasattr(signal, 'setitimer')
+if has_timer:
+    signal.signal(signal.SIGALRM, regex_timeout)
 try:
     regex = re.compile(pattern)
 except re.error as exc:
@@ -1051,6 +1053,8 @@ else:
     else:
         regex_deadline = time.monotonic() + {_GREP_REGEX_TIMEOUT_SECONDS}
         def bounded_search(value):
+            if not has_timer:
+                return regex.search(value)
             remaining = regex_deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError

@@ -197,6 +197,12 @@ The Pipeline wrapper never scans a Box. Binding ends with the run; the reusable 
 remains subject to Runtime idle expiry. Legacy shared workspace files survive expiry.
 In explicit network mode Runtime owns the workspace and removes it after the backend
 has stopped; reusable session files last only for that session.
+Network runs bind a Runtime session generation. Bound execution and transfer
+cannot use a replacement with the same Box ID; stale cleanup leaves that
+replacement intact. A new run must acquire and bind explicitly.
+Self-hosted Docker network Boxes can request administrator-configured mount
+names. The Runtime authorizes each name for the Workspace and mounts its source
+read-only under `/datasets`. The mount set is part of Box reuse compatibility.
 
 Box is the optional sandbox subsystem used by native execution tools, stdio MCP servers, agent-side skill authoring, and managed processes. Skill storage and read-only access are Core responsibilities and remain available without Box.
 

@@ -89,6 +89,12 @@ OSS singleton Workspace setting. Private bytes cannot be exposed by giving them
 a media-shaped filename. Scoped upload aliases continue to validate their
 Workspace and placement through StorageMgr.
 
+## Complete package publication from lbctl
+
+`POST /api/v1/skills/<skill_name>/package` accepts multipart `file` and required `base_revision`. `/package/preview` uses the same fields with read-only Workspace semantics. Both validate the archive through the SDK in disposable staging, including the internal Skill name, executable modes and binary resources. Preview returns `base_revision`, `proposed_revision`, added/modified/deleted paths, required permissions and `can_publish`. Publication delegates to the existing `import_skill_zip` revision CAS, then returns the published Skill. The CLI verifies the resulting revision through `skill.get`.
+
+The Application API registers `skill.package.preview` and `skill.package.publish` for account/API-key principals. Preview requires `resource.view`. Publication also requires `resource.manage`. Both have `exposure=none`. Their consumer is the authenticated CLI, while model-facing authoring uses the existing draft tools. Core adds these IDs to system capabilities for `lbctl skill push`. A stale base returns HTTP 409, a missing Skill returns 404, and a mismatched internal name or invalid archive returns 400. Preview uses disposable validation storage and read-only Workspace operations.
+
 ## Backend changes and cleanup
 
 Content defaults to database bytes. Named S3 backends retain their endpoint,

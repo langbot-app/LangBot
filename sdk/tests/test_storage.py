@@ -11,6 +11,9 @@ def test_collect_storage_directories_counts_roots_and_details_once(tmp_path):
     root = tmp_path / "workspace"
     detail = root / ".mcp"
     detail.mkdir(parents=True)
+    cache = tmp_path / "independent-cache"
+    cache.mkdir()
+    (cache / "data.bin").write_bytes(b"1234567")
     (root / "message.txt").write_bytes(b"abc")
     (detail / "cache.bin").write_bytes(b"12345")
 
@@ -19,6 +22,7 @@ def test_collect_storage_directories_counts_roots_and_details_once(tmp_path):
             ("workspace", root, "root", None),
             ("mcp", detail, "detail", "workspace"),
             ("missing", root / "missing", "detail", "workspace"),
+            ("cache", cache, "root", None),
         )
     )
 
@@ -28,7 +32,9 @@ def test_collect_storage_directories_counts_roots_and_details_once(tmp_path):
     assert by_key["mcp"]["size_bytes"] == 5
     assert by_key["mcp"]["parent_key"] == "workspace"
     assert by_key["missing"]["exists"] is False
-    assert storage_total_bytes(directories) == 8
+    assert by_key["cache"]["size_bytes"] == 7
+    assert by_key["cache"]["file_count"] == 1
+    assert storage_total_bytes(directories) == 15
 
 
 def test_collect_storage_directories_does_not_follow_symlinks(tmp_path):

@@ -4,7 +4,7 @@ from contextlib import contextmanager
 
 from tools.regression.regression_api_checks import check, request, unique_name, user_headers
 from tools.regression.regression_local_cases import api, require
-from tools.regression.regression_resource_cases import cleanup, journal
+from tools.regression.resource_cleanup import cleanup, journal
 
 
 @contextmanager
@@ -184,14 +184,13 @@ def skills_case(suite, row):
                 'Rejected Skill file write changed the file or published revision',
             )
 
-        # The file route currently maps revision conflicts to HTTP 400.
         _expect_rejection(
             suite,
             row,
             'PUT',
             file_path,
             {'content': 'stale file must not win', 'base_revision': file_revision},
-            expected=400,
+            expected=409,
             headers=headers,
             verify=verify_stale_file,
         )

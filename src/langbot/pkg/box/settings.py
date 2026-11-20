@@ -70,6 +70,19 @@ async def set_backend(
         raise BoxValidationError('Sandbox settings could not be stored') from None
 
 
+async def reset_settings(ap, workspace_uuid: str) -> None:
+    try:
+        async with ap.persistence_mgr.tenant_uow(workspace_uuid) as uow:
+            await uow.execute(
+                sa.delete(WorkspaceMetadata).where(
+                    WorkspaceMetadata.workspace_uuid == workspace_uuid,
+                    WorkspaceMetadata.key.in_([BACKEND_KEY, E2B_KEY, LIMITS_KEY]),
+                )
+            )
+    except Exception:
+        raise BoxValidationError('Sandbox settings could not be reset') from None
+
+
 class WorkspaceLimits(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra='forbid', strict=True)
     timeout_sec: int | None = pydantic.Field(default=None, ge=1)

@@ -190,12 +190,51 @@ class RAGRuntimeService:
         self,
         execution_context: ExecutionContext,
         storage_path: str,
+        *,
+        plugin_id: str | None = None,
     ) -> bytes:
         """Handle GET_KNOWLEDEGE_FILE_STREAM action.
 
         Uses the storage manager abstraction to load file content,
         regardless of the underlying storage provider.
         """
+        if storage_path.startswith('artifact:'):
+            await self._validate_execution_context(execution_context)
+            if not plugin_id:
+                raise WorkspaceNotFoundError('Knowledge file not found')
+            file_uuid = storage_path.removeprefix('artifact:')
+            query = (
+                sqlalchemy.select(persistence_rag.File)
+                .join(
+                    persistence_rag.KnowledgeBase,
+                    sqlalchemy.and_(
+                        persistence_rag.File.kb_id == persistence_rag.KnowledgeBase.uuid,
+                        persistence_rag.File.workspace_uuid == persistence_rag.KnowledgeBase.workspace_uuid,
+                    ),
+                )
+                .where(persistence_rag.File.workspace_uuid == execution_context.workspace_uuid)
+                .where(persistence_rag.File.uuid == file_uuid)
+                .where(persistence_rag.File.artifact_id.is_not(None))
+                .where(persistence_rag.KnowledgeBase.knowledge_engine_plugin_id == plugin_id)
+                .limit(1)
+            )
+            result = await self.ap.persistence_mgr.execute_async(query)
+            file = result.first()
+            if file is None:
+                raise WorkspaceNotFoundError('Knowledge file not found')
+            read = await self.ap.artifact_service.read_business(
+                execution_context,
+                file.artifact_id,
+                holder_type='knowledge_file',
+                holder_id=file.uuid,
+                max_bytes=10 * 1024 * 1024,
+            )
+            # Do not return bytes if the KB engine/file binding changed during object-store IO.
+            await self._validate_execution_context(execution_context)
+            current = (await self.ap.persistence_mgr.execute_async(query)).first()
+            if current is None or current.artifact_id != file.artifact_id:
+                raise WorkspaceNotFoundError('Knowledge file not found')
+            return read['content']
         # Validate storage_path to prevent path traversal
         decoded_path = unquote(storage_path).replace('\\', '/')
         decoded_segments = decoded_path.split('/')

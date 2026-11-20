@@ -96,6 +96,9 @@ class _TransportProbe:
                             },
                         }
                     )
+                if method in ('resources/list', 'resources/templates/list'):
+                    key = 'resourceTemplates' if method == 'resources/templates/list' else 'resources'
+                    return web.json_response({'jsonrpc': '2.0', 'id': message['id'], 'result': {key: []}})
                 if method == 'tools/call':
                     tool_name = message.get('params', {}).get('name')
                     if tool_name == 'hang':
@@ -397,3 +400,34 @@ async def test_remote_transport_external_cancellation_is_not_converted_to_sse_fa
 def test_public_error_category_does_not_expose_exception_details(error, expected):
     grouped = ExceptionGroup('secret outer exception', [error])
     assert RuntimeMCPSession._classify_public_error(grouped) == expected
+
+
+@pytest.mark.asyncio
+async def test_remote_transport_closed_stream_reconnects_on_next_tool_call():
+    """A dead transport leaves the cached session with closed streams.
+
+    The MCP client's streamable-HTTP/SSE writers swallow their own errors and
+    close the session streams in ``finally``, so the lifecycle loop keeps a
+    "connected" session whose every call raises a bare ``ClosedResourceError``.
+    The next tool call must rebuild the session instead of failing until some
+    unrelated event restarts it.
+    """
+    async with _transport_server(200) as (probe, url):
+        session = _session(url)
+        try:
+            await session.start()
+            assert session.status == MCPSessionStatus.CONNECTED
+            dead_session = session.session
+            assert dead_session is not None
+
+            # Same end state as the transport writer's ``finally`` block.
+            await dead_session._write_stream.aclose()
+
+            result = await session.invoke_mcp_tool('health_check', {})
+
+            assert result[0].text == 'healthy'
+            assert session.session is not dead_session
+            assert session.status == MCPSessionStatus.CONNECTED
+            assert probe.streamable_messages.count('initialize') >= 2
+        finally:
+            await session.shutdown()

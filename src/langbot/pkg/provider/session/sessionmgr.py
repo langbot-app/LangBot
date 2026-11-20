@@ -11,6 +11,7 @@ import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 from ...api.http.context import ExecutionContext
 from ...core import app
+from ...persistence.session_summary_contract import conversation_scope
 from ...pipeline.pool import (
     ExecutionContextMismatchError,
     ExecutionContextRequiredError,
@@ -45,7 +46,7 @@ def _query_session_key(query: pipeline_query.Query) -> tuple[SessionKey, Executi
         execution_context.placement_generation,
         bot_uuid,
         query.launcher_type.value,
-        query.launcher_id,
+        conversation_scope(query),
     )
     return key, execution_context
 
@@ -280,7 +281,7 @@ class SessionManager:
                 persistence.get_db_engine(),
                 execution_context.workspace_uuid,
                 query.bot_uuid,
-                f'{str(query.launcher_type.value).lower()}_{query.launcher_id}',
+                session_key[-1],
             )
         now = time.monotonic()
         session = self._session_index.get(session_key)

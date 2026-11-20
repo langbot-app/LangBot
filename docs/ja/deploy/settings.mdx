@@ -9,6 +9,12 @@ LangBot の実行設定は `data/config.yaml` にあります。初回起動時�
 通常のセルフホストで変更が必要なのは主に公開 URL、DB/ベクトルストア、オブジェクトストレージ、Box Runtime です。用途を理解していない容量・Cloud 安全上限は既定値を維持してください。
 </Info>
 
+## Workspace のサンドボックス設定
+
+Workspace のサンドボックス設定はデプロイの既定値を上書きします。対応する Core と `lbctl` で `lbctl sandbox config reset --dry-run` を実行して前提条件を確認し、`lbctl sandbox config reset --yes` で Workspace のバックエンド、E2B 接続情報・認証情報、リソース制限を削除します。新しいタスクはデプロイの既定値を継承し、既存タスクは設定スナップショットを保持します。
+
+API は `DELETE /api/v1/workspaces/current/sandbox`、操作 ID は `workspace.sandbox.reset`、必要な権限は `workspace.update` です。応答は `{reset: true}` で保存完了を示します。継承した設定は GET で別途確認でき、繰り返し実行できます。CLI の保存後確認には `workspace.view` も必要です。
+
 ## 完全なデフォルト設定
 
 ```yaml
@@ -364,7 +370,7 @@ space:
 - `database.use` で SQLite または PostgreSQL を選択します。`database.postgresql.url` が空でなければ分割された接続項目より優先され、TLS/クエリオプションも保持できます。
 - PostgreSQL のプールとタイムアウトは共有ランタイム資源を制限します。`database.cloud_migration.operator_dsn_env` は運用者専用のマイグレーション DSN を格納する環境変数名で、ランタイムロールとは分離してください。
 - `vdb.use` で利用するベクトルバックエンドを選びます。実際に選択したバックエンドだけを設定します。
-- SeekDB、Milvus、Valkey Search はオプション依存関係で、デフォルトのインストールにもデフォルトイメージにも含まれません。`vdb.use: seekdb` / `milvus` / `valkey_search` を使う場合、ソースデプロイでは `uv sync --extra seekdb`（または `milvus`、`valkey`）、パッケージデプロイでは `uvx --from 'langbot[seekdb]@latest' langbot`（または `[milvus]`、`[valkey]`）を使用し、Docker/Kubernetes では `langbot` サービスのイメージを対応するタグ（例：`rockchin/langbot:latest-seekdb`、`latest-milvus`、`latest-valkey`）に変更してください。Chroma、Qdrant、pgvector は追加の依存関係が不要です。
+- SeekDB、Milvus、Valkey Search はオプション依存関係で、デフォルトのインストールにもデフォルトイメージにも含まれません。`vdb.use: seekdb` / `milvus` / `valkey_search` を使う場合、ワンラインインストール（lbctl ネイティブ）では `lbctl install --extra seekdb`（または `milvus`、`valkey`）、ソースデプロイでは `uv sync --extra seekdb`（または `milvus`、`valkey`）、パッケージデプロイでは `uvx --from 'langbot[seekdb]@latest' langbot`（または `[milvus]`、`[valkey]`）を使用し、Docker/Kubernetes では `langbot` サービスのイメージを対応するタグ（例：`rockchin/langbot:latest-seekdb`、`latest-milvus`、`latest-valkey`）に変更してください。Chroma、Qdrant、pgvector は追加の依存関係が不要です。
 - `vdb.pgvector.use_business_database` は `database.postgresql` を再利用します。`allowed_dimensions` はリリースマイグレーションが作成する ANN インデックスの次元を制御します。
 - Valkey Search には Search モジュール入りの Valkey（例: `valkey/valkey-bundle:9.1.0`）が必要です。
 

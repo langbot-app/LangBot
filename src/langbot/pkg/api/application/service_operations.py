@@ -320,6 +320,7 @@ _BINDINGS = (
     ('bot.runtime.get', 'bot_service', 'bot', 'BotService', 'get_runtime_bot_info', 'RESOURCE_VIEW', False),
     ('bot.create', 'bot_service', 'bot', 'BotService', 'create_bot', 'RESOURCE_MANAGE', True),
     ('bot.update', 'bot_service', 'bot', 'BotService', 'update_bot', 'RESOURCE_MANAGE', True),
+    ('bot.routes.bind', 'bot_service', 'bot', 'BotService', 'bind_event_route', 'RESOURCE_MANAGE', True),
     ('bot.delete', 'bot_service', 'bot', 'BotService', 'delete_bot', 'RESOURCE_MANAGE', True),
     ('bot.logs', 'bot_service', 'bot', 'BotService', 'list_event_logs', 'RESOURCE_VIEW', False),
     ('bot.routes.status', 'bot_service', 'bot', 'BotService', 'list_event_route_statuses', 'RESOURCE_VIEW', False),
@@ -410,6 +411,15 @@ _BINDINGS = (
         False,
     ),
     (
+        'knowledge.file.store_artifact',
+        'knowledge_service',
+        'knowledge',
+        'KnowledgeService',
+        'store_artifact',
+        'RESOURCE_MANAGE',
+        True,
+    ),
+    (
         'knowledge.file.store',
         'knowledge_service',
         'knowledge',
@@ -493,6 +503,24 @@ _BINDINGS = (
     ('skill.list', 'skill_service', 'skill', 'SkillService', 'list_skills', 'RESOURCE_VIEW', False),
     ('skill.get', 'skill_service', 'skill', 'SkillService', 'get_skill', 'RESOURCE_VIEW', False),
     ('skill.package.get', 'skill_service', 'skill', 'SkillService', 'get_skill_package', 'RESOURCE_VIEW', False),
+    (
+        'skill.package.preview',
+        'skill_service',
+        'skill',
+        'SkillService',
+        'preview_skill_package',
+        'RESOURCE_VIEW',
+        False,
+    ),
+    (
+        'skill.package.publish',
+        'skill_service',
+        'skill',
+        'SkillService',
+        'publish_skill_package',
+        'RESOURCE_MANAGE',
+        True,
+    ),
     ('skill.create', 'skill_service', 'skill', 'SkillService', 'create_skill', 'RESOURCE_MANAGE', True),
     ('skill.update', 'skill_service', 'skill', 'SkillService', 'update_skill', 'RESOURCE_MANAGE', True),
     ('skill.delete', 'skill_service', 'skill', 'SkillService', 'delete_skill', 'RESOURCE_MANAGE', True),
@@ -803,6 +831,8 @@ def _field_description(name: str, operation_id: str) -> str | None:
         return f'UUID of the model; get it from {list_op}'
     if name == 'server_uuid':
         return 'UUID of the MCP server; get it from mcp.server.list'
+    if name == 'target_uuid' and operation_id == 'bot.routes.bind':
+        return 'For an Agent, get it from agent.list. For a Pipeline, get it from pipeline.list.'
     if name.endswith('_uuid'):
         entity = name[:-5]
         list_op = _LIST_OPS_BY_ENTITY.get(entity, f'{entity}.list')
@@ -882,7 +912,15 @@ def _operation(operation_id, service_name, method, permission, side_effect):
                 raise WorkspaceNotFoundError('Resource not found')
         return result
 
-    return Operation(operation_id, Permission[permission], invoke, input_type, output_type, side_effect)
+    principals = (
+        frozenset({PrincipalType.ACCOUNT, PrincipalType.API_KEY})
+        if operation_id
+        in {'bot.routes.bind', 'knowledge.file.store_artifact', 'skill.package.preview', 'skill.package.publish'}
+        else None
+    )
+    return Operation(
+        operation_id, Permission[permission], invoke, input_type, output_type, side_effect, principals=principals
+    )
 
 
 @lru_cache(maxsize=1)

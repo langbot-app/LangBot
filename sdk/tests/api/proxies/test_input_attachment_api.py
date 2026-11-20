@@ -23,6 +23,7 @@ from langbot_plugin.api.entities.builtin.runner.runtime import AgentRuntimeConte
 from langbot_plugin.api.entities.builtin.runner.trigger import AgentTrigger
 from langbot_plugin.api.proxies.runner import RunnerAPIProxy
 from langbot_plugin.api.proxies.runner.common import PermissionDeniedError
+from langbot_plugin.api.entities.builtin.runner.errors import AgentAPIException
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
 
 PAYLOAD = b"%PDF-1.7 test"
@@ -117,3 +118,47 @@ def test_older_host_context_without_the_flag_disables_the_api():
     access = ContextAccess.model_validate({"available_apis": {"box": True}})
 
     assert access.available_apis.input_attachments is False
+
+
+@pytest.mark.anyio
+async def test_content_proxy_preserves_structured_output_and_run_scope():
+    contents = [
+        {"type": "text", "text": "metadata"},
+        {"type": "image_base64", "image_base64": "data:image/png;base64,aGk="},
+    ]
+    handler = _handler()
+    handler.call_action.return_value = {"contents": contents}
+    ctx = _context(enabled=True)
+    ctx._api = RunnerAPIProxy(ctx=ctx, plugin_runtime_handler=handler)
+    assert (
+        await ctx.read_input_attachment_content(
+            "att-1", mode="native", page_start=2, page_end=3
+        )
+        == contents
+    )
+    action, data, timeout = handler.call_action.call_args.args
+    assert action == PluginToRuntimeAction.READ_INPUT_ATTACHMENT_CONTENT
+    assert data == {
+        "run_id": "run-1",
+        "ref": "att-1",
+        "mode": "native",
+        "offset": 0,
+        "max_chars": 8192,
+        "page_start": 2,
+        "page_end": 3,
+    }
+    assert timeout > 0
+    assert handler.call_action.call_args.kwargs["cancel_peer_on_cancel"] is True
+
+
+@pytest.mark.anyio
+async def test_content_proxy_rejects_missing_capability_and_malformed_response():
+    handler = _handler()
+    proxy = RunnerAPIProxy(ctx=_context(enabled=False), plugin_runtime_handler=handler)
+    with pytest.raises(PermissionDeniedError):
+        await proxy.read_input_attachment_content("att-1")
+    handler.call_action.assert_not_called()
+    proxy = RunnerAPIProxy(ctx=_context(enabled=True), plugin_runtime_handler=handler)
+    with pytest.raises(AgentAPIException) as failure:
+        await proxy.read_input_attachment_content("att-1")
+    assert failure.value.error.code == "host.malformed_response"

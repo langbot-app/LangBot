@@ -57,8 +57,8 @@ class ArrivalScheduleTests(unittest.TestCase):
         settled, calls = [], []
         summary = run_open_loop(
             started=time.monotonic(),
-            duration=1,
-            rps=20,
+            duration=0.07,
+            rps=100,
             workers=2,
             queue_capacity=2,
             execute=lambda item: calls.append(item),
@@ -68,8 +68,8 @@ class ArrivalScheduleTests(unittest.TestCase):
             stop=stop,
         )
         self.assertEqual(calls, [])
-        self.assertEqual(settled, [(index, 'expired') for index in range(20)])
-        self.assertEqual(summary['expired'], 20)
+        self.assertEqual(settled, [(index, 'expired') for index in range(7)])
+        self.assertEqual(summary['expired'], 7)
         self.assertTrue(summary['conserved'])
 
 

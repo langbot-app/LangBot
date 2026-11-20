@@ -169,6 +169,26 @@ def test_build_plugin_package_ignores_unsafe_extra_files(tmp_path, monkeypatch):
     assert manifest["apiVersion"] == "v1"
 
 
+def test_build_plugin_package_excludes_virtualenvs(tmp_path, monkeypatch):
+    root = _copy_fixture(tmp_path)
+    for venv_dir in ("venv", ".venv", "my-env"):
+        site = root / venv_dir / "lib" / "python3.13" / "site-packages"
+        site.mkdir(parents=True)
+        (site / "big.py").write_text("x", encoding="utf-8")
+        (root / venv_dir / "pyvenv.cfg").write_text("home = /usr/bin", encoding="utf-8")
+    (root / "venvtools").mkdir()
+    (root / "venvtools" / "keep.py").write_text("x", encoding="utf-8")
+    monkeypatch.chdir(root)
+
+    package_bytes, _ = packaging.build_plugin_package(str(root))
+
+    with zipfile.ZipFile(io.BytesIO(package_bytes)) as archive:
+        names = set(archive.namelist())
+
+    assert not [n for n in names if n.split("/")[0] in {"venv", ".venv", "my-env"}]
+    assert "venvtools/keep.py" in names
+
+
 # --------------------------------------------------------------------------- #
 # persistence helpers
 # --------------------------------------------------------------------------- #

@@ -16,6 +16,7 @@ if typing.TYPE_CHECKING:
     from ..core import app
     import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
+from ..persistence.session_summary_contract import build_monitoring_session_id
 from .pool import get_query_execution_context
 
 # Query variable naming the plugin (``author/name``) that owns a Host-built
@@ -114,7 +115,11 @@ def monitoring_session_id(query: typing.Any) -> str:
     """Return the monitoring session id for pipeline and plugin-owned Queries."""
     platform = monitoring_platform(query)
     if platform is not None:
-        return f'{platform}_{getattr(query, "launcher_id", None)}'
+        return build_monitoring_session_id(
+            platform,
+            getattr(query, 'launcher_id', None),
+            getattr(query, 'sender_id', None),
+        )
     if _origin(query).get('session_id'):
         return _origin(query)['session_id']
     plugin = (getattr(query, 'variables', None) or {}).get(PLUGIN_ATTRIBUTION_VAR)
@@ -245,8 +250,62 @@ async def prepare_monitoring_identity(
         ap.logger.error(f'Failed to prepare monitoring identity: {e}')
 
 
+def extract_sender_name(
+    message_event: typing.Any,
+    variables: typing.Mapping[str, typing.Any] | None = None,
+) -> str | None:
+    """Extract sender display name from a message event or query variables."""
+    sender_name: str | None = None
+
+    sender = getattr(message_event, 'sender', None)
+    if sender is not None:
+        get_name = getattr(sender, 'get_name', None)
+        if callable(get_name):
+            try:
+                sender_name = get_name()
+            except Exception:
+                sender_name = None
+            else:
+                sender_name = sender_name.strip() if isinstance(sender_name, str) else None
+
+        if not sender_name:
+            for attr in (
+                'member_name',
+                'nickname',
+                'remark',
+                'name',
+                'display_name',
+                'username',
+                'user_name',
+                'card',
+            ):
+                value = getattr(sender, attr, None)
+                if isinstance(value, str) and value.strip():
+                    sender_name = value.strip()
+                    break
+
+    if not sender_name and isinstance(variables, typing.Mapping):
+        var_sender_name = variables.get('sender_name')
+        if isinstance(var_sender_name, str) and var_sender_name.strip():
+            sender_name = var_sender_name.strip()
+
+    return sender_name if sender_name else None
+
+
 class MonitoringHelper:
     """Helper class for monitoring operations"""
+
+    @staticmethod
+    def _build_session_id(query: pipeline_query.Query) -> str:
+        return monitoring_session_id(query)
+
+    @staticmethod
+    def _extract_sender_name(query: pipeline_query.Query) -> str | None:
+        """Extract sender display name from query message event."""
+        return extract_sender_name(
+            getattr(query, 'message_event', None),
+            getattr(query, 'variables', None),
+        )
 
     @staticmethod
     async def finish_query(ap, query, message_id: str, status: str) -> None:
@@ -291,15 +350,7 @@ class MonitoringHelper:
         try:
             # Message persistence updates the summary in the same transaction.
             session_id = monitoring_session_id(query)
-
-            # Get sender name from message event
-            sender_name = None
-            if hasattr(query, 'message_event'):
-                if hasattr(query.message_event, 'sender'):
-                    if hasattr(query.message_event.sender, 'nickname'):
-                        sender_name = query.message_event.sender.nickname
-                    elif hasattr(query.message_event.sender, 'member_name'):
-                        sender_name = query.message_event.sender.member_name
+            sender_name = MonitoringHelper._extract_sender_name(query)
 
             # Try to record message
             # Let persistence externalize images before serializing the message chain.
@@ -375,15 +426,7 @@ class MonitoringHelper:
         try:
             handled_by = get_handled_by(query)
             session_id = monitoring_session_id(query)
-
-            # Get sender name from message event
-            sender_name = None
-            if hasattr(query, 'message_event'):
-                if hasattr(query.message_event, 'sender'):
-                    if hasattr(query.message_event.sender, 'nickname'):
-                        sender_name = query.message_event.sender.nickname
-                    elif hasattr(query.message_event.sender, 'member_name'):
-                        sender_name = query.message_event.sender.member_name
+            sender_name = MonitoringHelper._extract_sender_name(query)
 
             # Extract response content from resp_message_chain
             if hasattr(query, 'resp_message_chain') and query.resp_message_chain:
@@ -444,15 +487,7 @@ class MonitoringHelper:
             if original_message_id:
                 await MonitoringHelper.finish_query(ap, query, original_message_id, 'error')
             session_id = monitoring_session_id(query)
-
-            # Get sender name from message event
-            sender_name = None
-            if hasattr(query, 'message_event'):
-                if hasattr(query.message_event, 'sender'):
-                    if hasattr(query.message_event.sender, 'nickname'):
-                        sender_name = query.message_event.sender.nickname
-                    elif hasattr(query.message_event.sender, 'member_name'):
-                        sender_name = query.message_event.sender.member_name
+            sender_name = MonitoringHelper._extract_sender_name(query)
 
             # Record error message
             message_id = await ap.monitoring_service.record_message(
@@ -563,7 +598,6 @@ class MonitoringHelper:
     ) -> str:
         """Record a ``ctx.reply`` from a plugin as a reply to the triggering message."""
         variables = getattr(query, 'variables', None) or {}
-        sender = getattr(getattr(query, 'message_event', None), 'sender', None)
         return await MonitoringHelper.record_plugin_message(
             ap,
             get_query_execution_context(query),
@@ -576,7 +610,7 @@ class MonitoringHelper:
             session_id=monitoring_session_id(query),
             platform=monitoring_platform(query),
             user_id=getattr(query, 'sender_id', None),
-            user_name=getattr(sender, 'nickname', None) or getattr(sender, 'member_name', None),
+            user_name=MonitoringHelper._extract_sender_name(query),
             parent_message_id=variables.get('_monitoring_message_id'),
             error=error,
             error_type='PluginReplyError',

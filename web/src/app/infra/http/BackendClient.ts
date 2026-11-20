@@ -130,6 +130,7 @@ import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogs
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
 import type {
   CurrentWorkspace,
+  MessageQuota,
   Workspace,
   WorkspaceInvitation,
   WorkspaceInvitationDelivery,
@@ -951,6 +952,7 @@ export class BackendClient extends BaseHttpClient {
       startTime?: string;
       endTime?: string;
       userQuery?: string;
+      launcherId?: string;
     },
   ): Promise<{
     sessions: Array<{
@@ -981,6 +983,9 @@ export class BackendClient extends BaseHttpClient {
     }
     if (options.userQuery) {
       queryParams.append('userQuery', options.userQuery);
+    }
+    if (options.launcherId) {
+      queryParams.append('launcherId', options.launcherId);
     }
     return this.get(`/api/v1/monitoring/sessions?${queryParams.toString()}`);
   }
@@ -1234,10 +1239,12 @@ export class BackendClient extends BaseHttpClient {
   private async getAuthenticatedObjectURL(
     path: string,
     rewritePluginPageSdk = false,
+    workspaceUuid?: string | null,
   ): Promise<string> {
     const response = await this.instance.get<Blob>(path, {
       responseType: 'blob',
-    });
+      workspaceUuid,
+    } as RequestConfig);
     let blob = response.data;
     if (rewritePluginPageSdk && blob.type.startsWith('text/html')) {
       const apiBase =
@@ -1263,10 +1270,12 @@ export class BackendClient extends BaseHttpClient {
     author: string,
     name: string,
     filepath: string,
+    workspaceUuid?: string | null,
   ): Promise<string> {
     return this.getAuthenticatedObjectURL(
       `/api/v1/plugins/${author}/${name}/authenticated-assets/${filepath}`,
       true,
+      workspaceUuid,
     );
   }
 
@@ -2154,6 +2163,10 @@ export class BackendClient extends BaseHttpClient {
     return this.get('/api/v1/workspaces/current');
   }
 
+  public getMessageQuota(): Promise<MessageQuota> {
+    return this.get('/api/v1/workspaces/current/message-quota');
+  }
+
   public getWorkspace(
     workspaceUuid: string,
   ): Promise<{ workspace: Workspace }> {
@@ -2512,6 +2525,7 @@ export class BackendClient extends BaseHttpClient {
       start_time: string;
       platform?: string;
       user_id?: string;
+      user_name?: string;
     }>;
     errors: Array<{
       id: string;

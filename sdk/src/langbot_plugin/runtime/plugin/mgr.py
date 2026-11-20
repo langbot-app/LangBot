@@ -92,11 +92,28 @@ logger = logging.getLogger(__name__)
 
 _PLUGIN_RESTART_INITIAL_DELAY_SEC = 1.0
 _PLUGIN_RESTART_MAX_DELAY_SEC = 60.0
+# Workers that keep dying before they stabilise (e.g. a plugin whose
+# initialize() always raises) would otherwise respawn every ~60s forever.
+# After this many consecutive unstable exits the backoff cap is raised so a
+# permanently broken plugin costs a few launches per hour instead of ~1440/day.
+_PLUGIN_PERSISTENT_FAILURE_THRESHOLD = 10
+_PLUGIN_PERSISTENT_FAILURE_MAX_DELAY_SEC = 900.0
 _PLUGIN_STABLE_WINDOW_SEC = 60.0
 _PLUGIN_READY_TIMEOUT_SEC = 30.0
 _SHARED_TRANSPORT_READY_TIMEOUT_SEC = 120.0
 _SHARED_SLOT_ATTACH_TIMEOUT_SEC = 120.0
 _PLUGIN_WORKER_STOP_TIMEOUT_SEC = 5.0
+
+
+def _next_restart_delay(delay: float, consecutive_failures: int) -> float:
+    """Return the next supervisor backoff after one more unstable exit."""
+
+    cap = (
+        _PLUGIN_PERSISTENT_FAILURE_MAX_DELAY_SEC
+        if consecutive_failures >= _PLUGIN_PERSISTENT_FAILURE_THRESHOLD
+        else _PLUGIN_RESTART_MAX_DELAY_SEC
+    )
+    return min(delay * 2, cap)
 
 
 class PluginInstallSource(enum.Enum):
@@ -890,6 +907,7 @@ class PluginManager:
 
     async def _supervise_plugin(self, plugin_path: str) -> None:
         delay = _PLUGIN_RESTART_INITIAL_DELAY_SEC
+        consecutive_failures = 0
         while (
             not self._shutting_down
             and plugin_path in self._desired_plugin_paths
@@ -913,6 +931,8 @@ class PluginManager:
             uptime = asyncio.get_running_loop().time() - started_at
             if uptime >= _PLUGIN_STABLE_WINDOW_SEC:
                 delay = _PLUGIN_RESTART_INITIAL_DELAY_SEC
+                consecutive_failures = 0
+            consecutive_failures += 1
             restart_delay = delay * random.uniform(0.8, 1.2)
             logger.warning(
                 "Plugin process exited unexpectedly; restarting %s in %.1fs",
@@ -920,7 +940,7 @@ class PluginManager:
                 restart_delay,
             )
             await asyncio.sleep(restart_delay)
-            delay = min(delay * 2, _PLUGIN_RESTART_MAX_DELAY_SEC)
+            delay = _next_restart_delay(delay, consecutive_failures)
 
     async def stop_plugin_supervisor(self, plugin_path: str) -> None:
         self._desired_plugin_paths.discard(plugin_path)
@@ -1457,6 +1477,7 @@ class PluginManager:
 
         digest = worker.artifact.digest
         delay = _PLUGIN_RESTART_INITIAL_DELAY_SEC
+        consecutive_failures = 0
         while (
             not self._shutting_down
             and self._shared_workers.get(digest) is worker
@@ -1492,12 +1513,14 @@ class PluginManager:
             uptime = asyncio.get_running_loop().time() - started_at
             if uptime >= _PLUGIN_STABLE_WINDOW_SEC:
                 delay = _PLUGIN_RESTART_INITIAL_DELAY_SEC
+                consecutive_failures = 0
+            consecutive_failures += 1
             worker.ready_event.clear()
             restart_delay = delay * random.uniform(0.8, 1.2)
             self.ops_metrics.record_shared_backoff(restart_delay)
             await asyncio.sleep(restart_delay)
             self.ops_metrics.clear_shared_backoff()
-            delay = min(delay * 2, _PLUGIN_RESTART_MAX_DELAY_SEC)
+            delay = _next_restart_delay(delay, consecutive_failures)
 
     async def _watch_worker(self, runtime):
         monitor = WorkerWatchdog()
@@ -1904,6 +1927,7 @@ class PluginManager:
 
         binding = runtime.binding
         delay = _PLUGIN_RESTART_INITIAL_DELAY_SEC
+        consecutive_failures = 0
         attempt_number = 0
         while (
             not self._shutting_down
@@ -1941,6 +1965,8 @@ class PluginManager:
             uptime = asyncio.get_running_loop().time() - started_at
             if uptime >= _PLUGIN_STABLE_WINDOW_SEC:
                 delay = _PLUGIN_RESTART_INITIAL_DELAY_SEC
+                consecutive_failures = 0
+            consecutive_failures += 1
             restart_delay = delay * random.uniform(0.8, 1.2)
             logger.warning(
                 "Plugin installation worker exited unexpectedly; restarting %s "
@@ -1951,7 +1977,7 @@ class PluginManager:
             self.ops_metrics.record_dedicated_backoff(restart_delay)
             await asyncio.sleep(restart_delay)
             self.ops_metrics.clear_dedicated_backoff()
-            delay = min(delay * 2, _PLUGIN_RESTART_MAX_DELAY_SEC)
+            delay = _next_restart_delay(delay, consecutive_failures)
             attempt_number += 1
 
     async def _run_installation_worker_attempt(

@@ -8,6 +8,17 @@ import sqlalchemy
 from .base import Base
 
 
+class WorkspaceMessageUsageDaily(Base):
+    __tablename__ = 'workspace_message_usage_daily'
+
+    workspace_uuid = sqlalchemy.Column(
+        sqlalchemy.String(36), sqlalchemy.ForeignKey('workspaces.uuid', ondelete='CASCADE'), primary_key=True
+    )
+    usage_date = sqlalchemy.Column(sqlalchemy.Date, primary_key=True)
+    message_count = sqlalchemy.Column(sqlalchemy.Integer, nullable=False)
+    updated_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())
+
+
 class WorkspaceType(enum.StrEnum):
     PERSONAL = 'personal'
     TEAM = 'team'

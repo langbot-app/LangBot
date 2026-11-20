@@ -181,6 +181,7 @@ class ProfileTests(unittest.TestCase):
             {'arrival_mode': 'unknown'},
             {'arrival_mode': []},
             {'arrival_mode': {}},
+            {'scenario_weights': [['chat', 1]]},
             {'queue_capacity': 0},
             {'queue_capacity': True},
             {'queue_capacity': 1.5},

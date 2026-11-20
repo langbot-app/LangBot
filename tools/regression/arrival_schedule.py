@@ -2,8 +2,9 @@
 
 from collections import Counter, deque
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-import math
 import time
+
+from tools.regression.mixload_pacing import planned_group_slots
 
 
 def run_open_loop(*, started, duration, rps, workers, queue_capacity, execute, key_for, blocked, settle, stop):
@@ -14,7 +15,7 @@ def run_open_loop(*, started, duration, rps, workers, queue_capacity, execute, k
     arrival exactly once, including work that never reaches the target service.
     """
     deadline = started + duration
-    scheduled = math.ceil(duration * rps)
+    scheduled = planned_group_slots(duration, rps)
     next_arrival = 0
     pending = deque()
     active = {}

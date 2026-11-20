@@ -29,9 +29,7 @@ def test_sample_process_resources_parses_proc_files(monkeypatch):
     statm = "1024 250 100 1 0 200 0\n"
     # Fields after comm: state ppid pgrp session tty tpgid flags minflt cminflt
     # majflt cmajflt utime stime => utime=100, stime=50 at tail offsets 11/12.
-    stat = (
-        b"4242 (python worker) S 1 4242 4242 0 -1 4194560 1 0 0 0 100 50 0 0 20 0 1 0\n"
-    )
+    stat = b"4242 (python (worker)) S 1 4242 4242 0 -1 4194560 1 0 0 0 100 50 0 0 20 0 1 0\n"
 
     def _fake_open(path, *args, **kwargs):
         payload = statm if path == "/proc/self/statm" else stat
@@ -56,8 +54,8 @@ def test_sample_process_resources_parses_proc_files(monkeypatch):
 
     snapshot = ops_metrics.sample_process_resources()
 
-    assert snapshot["pid"] > 0
-    assert snapshot["rss_bytes"] > 0
+    assert snapshot["pid"] == os.getpid()
+    assert snapshot["rss_bytes"] == 250 * 4096
     # 150 clock ticks at 100 Hz == 1.5 seconds.
     assert snapshot["cpu_seconds"] == pytest.approx(1.5)
 

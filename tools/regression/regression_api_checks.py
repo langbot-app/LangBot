@@ -3,9 +3,9 @@
 from contextlib import contextmanager
 from uuid import uuid4
 
-from tools.entrypoints.regression_coverage import checked
+from tools.regression.evidence import checked
 from tools.regression.regression_local_cases import api, require
-from tools.regression.regression_resource_cases import cleanup, journal
+from tools.regression.resource_cleanup import cleanup, journal
 
 
 def check(row, name, condition, message):

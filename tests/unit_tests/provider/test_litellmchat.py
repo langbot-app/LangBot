@@ -25,6 +25,7 @@ class MockRuntimeModel:
         self.model_entity = Mock()
         self.model_entity.name = model_name
         self.model_entity.extra_args = {}
+        self.model_entity.abilities = []
         self.provider = Mock()
         self.provider.token_mgr = Mock()
         self.provider.token_mgr.get_token = Mock(return_value=api_key)

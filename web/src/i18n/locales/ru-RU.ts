@@ -1459,6 +1459,14 @@ const ruRU = {
       resetSuccess: 'Контекст сброшен.',
       resetError:
         'Не удалось сбросить контекст. Дождитесь завершения активных задач и повторите попытку.',
+      resetScopeMember:
+        'Этот чат хранит отдельный контекст для каждого участника группы, поэтому сбросится только контекст этого участника.',
+      resetScopeGroup:
+        'У этой группы один общий контекст, поэтому сбросится беседа всей группы, а не только этого участника.',
+      inGroup: 'в {{group}}',
+      filterByGroup: 'Та же группа',
+      groupFilterActive: 'Группа {{group}}',
+      clearGroupFilter: 'Показать все сеансы',
 
       title: 'Сессии',
       sessions: 'Сессии',
@@ -2201,6 +2209,10 @@ const ruRU = {
     updating: 'Обновление...',
     updateSuccess: 'Плагин успешно обновлён',
     updateError: 'Ошибка обновления: ',
+    installedVersion: 'Установленная версия v{{version}}',
+    updateToVersion: 'Обновить до v{{version}}',
+    confirmUpdatePluginVersion:
+      'Обновить плагин {{author}}/{{name}} с v{{from}} до v{{to}}?',
     saveConfigSuccessNormal: 'Конфигурация успешно сохранена',
     saveConfigError: 'Ошибка сохранения конфигурации: ',
     config: 'Настройки',
@@ -2267,6 +2279,12 @@ const ruRU = {
       depsProgress:
         '{{installed}}/{{total}} установлено · {{remaining}} осталось',
       installComplete: 'Плагин успешно установлен',
+      followUp: {
+        nextSteps: 'Дальнейшие шаги',
+        agents: 'Создайте Agent или обработчик плагина',
+        pipelines: 'Создайте конвейер',
+        knowledge: 'Создайте базу знаний',
+      },
       updateComplete: 'Плагин успешно обновлён',
       installCompletePlugin: 'Плагин успешно установлен',
       installCompleteMCP: 'Сервер MCP успешно установлен',
@@ -3064,6 +3082,32 @@ const ruRU = {
     space_account_binding_requiredTitle: 'LangBot Account connection required',
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
+  },
+  dailyMessageQuota: {
+    planLimited: '{{count}} сообщений в день',
+    planUnlimited: 'Сообщения в день без ограничений',
+    planHelp:
+      'Сколько сообщений боты могут обработать за сутки (UTC); сброс в 00:00 UTC. Учитываются только сообщения, которые бот действительно обработал. После исчерпания новые сообщения в этот день не обрабатываются, а пользователь получает уведомление.',
+    title: 'Сообщения сегодня',
+    usage: '{{used}} / {{limit}}',
+    remaining: 'Осталось {{count}}',
+    resetsAt: 'Сброс {{time}}',
+    today: 'сегодня {{time}}',
+    tomorrow: 'завтра {{time}}',
+    exhausted: 'Лимит на сегодня исчерпан',
+    exhaustedHint: 'Новые сообщения не обрабатываются до {{time}}',
+    nearLimit: 'Почти исчерпан',
+    upgrade: 'Улучшить тариф',
+    unlimited: 'Без ограничений',
+    settingsTitle: 'Дневной лимит сообщений',
+    settingsDescription:
+      'Сколько сообщений боты могут обработать за день, включая отладочный чат. Считается по суткам UTC; сообщения в группах, не адресованные боту, не учитываются.',
+    unlimitedDescription: 'Ваш тариф не ограничивает число сообщений в день.',
+    errorTitle: 'Дневной лимит сообщений исчерпан',
+    errorBody:
+      'Это рабочее пространство уже обработало {{limit}} сообщений сегодня, поэтому это сообщение не обработано. Лимит сбросится {{time}}.',
+    errorUpgrade: 'Улучшить тариф для большего лимита',
+    unavailable: 'Сейчас не удаётся получить данные за сегодня',
   },
   workspace: {
     dedicatedSpaceMembersHint:

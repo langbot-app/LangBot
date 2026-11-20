@@ -10,7 +10,11 @@ class ClassicNotes(note.LaunchNote):
     """Classic launch information"""
 
     async def need_show(self) -> bool:
-        return True
+        # Restricted/offline deployments can opt out of the startup network call.
+        disabled = self.ap.instance_config.data.get('space', {}).get('disable_release_check', False)
+        return not (
+            disabled is True or isinstance(disabled, str) and disabled.strip().lower() in {'true', '1', 'yes', 'on'}
+        )
 
     async def yield_note(self) -> typing.AsyncGenerator[typing.Tuple[str, int], None]:
         yield await self.ap.ver_mgr.show_version_update()

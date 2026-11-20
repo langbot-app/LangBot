@@ -15,7 +15,7 @@
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb)](https://discord.gg/wdNEHETs87)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/langbot-app/LangBot)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/langbot-app/LangBot)](https://github.com/langbot-app/LangBot/releases/latest)
-<img src="https://img.shields.io/badge/python-3.10 ~ 3.13 -blue.svg" alt="python">
+<img src="https://img.shields.io/badge/python-3.11%20~%203.14-blue.svg" alt="python">
 [![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
 
 <a href="https://langbot.app">ホーム</a> ｜
@@ -70,13 +70,21 @@ LangBot は、AI搭載のインスタントメッセージングボットを構�
 
 デプロイ不要、すぐに使えます。
 
-### ワンライン起動
+### ワンラインインストール（セルフホスト推奨）
+
+macOS / Linux:
 
 ```bash
-uvx langbot
+curl -fsSL https://langbot.app/install.sh | bash
 ```
 
-> [uv](https://docs.astral.sh/uv/getting-started/installation/) が必要です。http://localhost:5300 にアクセスして完了。
+Windows (PowerShell):
+
+```powershell
+irm https://langbot.app/install.ps1 | iex
+```
+
+> [lbctl](https://github.com/langbot-app/langbot-cli)（LangBot CLI）をインストールし、LangBot をデプロイします。デフォルトはネイティブ実行（Python は自動セットアップ）、Docker も選択可能で、管理者権限は不要です。完了後 http://localhost:5300 にアクセスしてください。アップグレードは `lbctl upgrade` で。
 
 ### Docker Compose
 

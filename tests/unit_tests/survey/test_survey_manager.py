@@ -10,9 +10,10 @@ Tests cover:
 
 from __future__ import annotations
 
+import httpx
 import pytest
 import json
-from unittest.mock import Mock, AsyncMock, MagicMock
+from unittest.mock import Mock, AsyncMock
 from importlib import import_module
 
 
@@ -47,33 +48,6 @@ def scalar_result(value=None):
 
 class TestSurveyManagerInit:
     """Tests for SurveyManager initialization."""
-
-    def test_init_stores_app_reference(self):
-        """Test that __init__ stores Application reference."""
-        survey_module = get_survey_module()
-        mock_app = create_mock_app()
-
-        manager = survey_module.SurveyManager(mock_app)
-
-        assert manager.ap is mock_app
-
-    def test_init_creates_empty_triggered_events(self):
-        """Test that triggered_events starts as empty set."""
-        survey_module = get_survey_module()
-        mock_app = create_mock_app()
-
-        manager = survey_module.SurveyManager(mock_app)
-
-        assert manager._triggered_events == set()
-
-    def test_init_pending_survey_is_none(self):
-        """Test that pending_survey starts as None."""
-        survey_module = get_survey_module()
-        mock_app = create_mock_app()
-
-        manager = survey_module.SurveyManager(mock_app)
-
-        assert manager._pending_survey is None
 
     @pytest.mark.asyncio
     async def test_initialize_loads_space_url(self):
@@ -210,16 +184,20 @@ class TestTriggerEvent:
 
     @pytest.mark.asyncio
     async def test_skips_when_space_not_configured(self):
-        """Test that event is skipped when space not configured."""
+        """Without Space, an event is not persisted or scheduled."""
         survey_module = get_survey_module()
         mock_app = create_mock_app()
-
+        mock_app.instance_config.data = {}
+        mock_app.persistence_mgr.execute_async.return_value = scalar_result()
         manager = survey_module.SurveyManager(mock_app)
-        manager._space_url = ''
+        await manager.initialize()
+        mock_app.persistence_mgr.execute_async.reset_mock()
 
         await manager.trigger_event('new_event')
 
-        assert 'new_event' not in manager._triggered_events
+        mock_app.persistence_mgr.execute_async.assert_not_awaited()
+        mock_app.task_mgr.create_task.assert_not_called()
+        assert manager.get_pending_survey() is None
 
     @pytest.mark.asyncio
     async def test_adds_new_event_and_saves(self):
@@ -372,95 +350,59 @@ class TestPendingSurvey:
         assert manager._pending_survey is None
 
 
-class TestSubmitResponse:
-    """Tests for submit_response method."""
+@pytest.mark.asyncio
+@pytest.mark.parametrize('operation', ['respond', 'dismiss'])
+@pytest.mark.parametrize(
+    'status',
+    [
+        pytest.param(None, id='no-space'),
+        pytest.param(200, id='success'),
+        pytest.param(503, id='retryable-failure'),
+    ],
+)
+async def test_survey_write_checks_actual_transport_and_pending_state(monkeypatch, operation, status):
+    survey_module = get_survey_module()
+    app = create_mock_app()
+    app.instance_config.data = {} if status is None else {'space': {'url': 'https://space.example.invalid/'}}
+    app.persistence_mgr.execute_async.return_value = scalar_result()
+    manager = survey_module.SurveyManager(app)
+    await manager.initialize()
+    pending = {'survey_id': 'survey-123'}
+    manager._pending_survey = pending
+    requests = []
 
-    @pytest.mark.asyncio
-    async def test_returns_false_when_space_not_configured(self):
-        """Test returns False when space not configured."""
-        survey_module = get_survey_module()
-        mock_app = create_mock_app()
+    def record(request):
+        requests.append(request)
+        return httpx.Response(status or 500)
 
-        manager = survey_module.SurveyManager(mock_app)
-        manager._space_url = ''
+    real_async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        'AsyncClient',
+        lambda **kwargs: real_async_client(transport=httpx.MockTransport(record), **kwargs),
+    )
 
-        result = await manager.submit_response('survey123', {'q1': 'answer1'})
+    body = {'survey_id': pending['survey_id'], 'instance_id': survey_module.constants.instance_id}
+    if operation == 'respond':
+        answers = {'q1': 'answer-1'}
+        result = await manager.submit_response(pending['survey_id'], answers, completed=False)
+        body.update(
+            answers=answers,
+            completed=False,
+            metadata={
+                'version': survey_module.constants.semantic_version,
+                'instance_id': survey_module.constants.instance_id,
+            },
+        )
+    else:
+        result = await manager.dismiss_survey(pending['survey_id'])
 
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_clears_pending_on_success(self):
-        """Test that pending survey is cleared on success."""
-        survey_module = get_survey_module()
-        mock_app = create_mock_app()
-
-        manager = survey_module.SurveyManager(mock_app)
-        manager._space_url = 'https://space.example.com'
-        manager._pending_survey = {'survey_id': 'survey123'}
-
-        # Mock successful HTTP response
-        import httpx
-
-        mock_response = Mock()
-        mock_response.status_code = 200
-
-        with pytest.MonkeyPatch().context() as m:
-            m.setattr(
-                httpx,
-                'AsyncClient',
-                lambda **kwargs: MagicMock(
-                    __aenter__=AsyncMock(return_value=Mock(post=AsyncMock(return_value=mock_response))),
-                    __aexit__=AsyncMock(return_value=None),
-                ),
-            )
-            result = await manager.submit_response('survey123', {'q1': 'answer1'})
-
-        assert result is True
-        assert manager._pending_survey is None
-
-
-class TestDismissSurvey:
-    """Tests for dismiss_survey method."""
-
-    @pytest.mark.asyncio
-    async def test_returns_false_when_space_not_configured(self):
-        """Test returns False when space not configured."""
-        survey_module = get_survey_module()
-        mock_app = create_mock_app()
-
-        manager = survey_module.SurveyManager(mock_app)
-        manager._space_url = ''
-
-        result = await manager.dismiss_survey('survey123')
-
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_clears_pending_on_success(self):
-        """Test that pending survey is cleared on success."""
-        survey_module = get_survey_module()
-        mock_app = create_mock_app()
-
-        manager = survey_module.SurveyManager(mock_app)
-        manager._space_url = 'https://space.example.com'
-        manager._pending_survey = {'survey_id': 'survey123'}
-
-        # Mock successful HTTP response
-        import httpx
-
-        mock_response = Mock()
-        mock_response.status_code = 200
-
-        with pytest.MonkeyPatch().context() as m:
-            m.setattr(
-                httpx,
-                'AsyncClient',
-                lambda **kwargs: MagicMock(
-                    __aenter__=AsyncMock(return_value=Mock(post=AsyncMock(return_value=mock_response))),
-                    __aexit__=AsyncMock(return_value=None),
-                ),
-            )
-            result = await manager.dismiss_survey('survey123')
-
-        assert result is True
-        assert manager._pending_survey is None
+    assert result is (status == 200)
+    assert manager.get_pending_survey() == (None if status == 200 else pending)
+    if status is None:
+        assert requests == []
+    else:
+        assert [(request.method, str(request.url)) for request in requests] == [
+            ('POST', f'https://space.example.invalid/api/v1/survey/{operation}')
+        ]
+        assert json.loads(requests[0].content) == body

@@ -233,7 +233,7 @@ class ExecutionWindow:
                 error = f'Resource recovery evidence unavailable: {exc}'
                 result['errors'].append(error)
                 result.setdefault('incomplete', []).append(error)
-        from tools.regression.regression_smoke import reconcile_scenario_runs
+        from tools.regression.run_ledger import reconcile_scenario_runs
 
         reconcile_scenario_runs(self.suite, result, key='ledger_closeout')
         self.mark('finished')

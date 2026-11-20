@@ -15,7 +15,7 @@ English / [简体中文](README_CN.md) / [繁體中文](README_TW.md) / [日本�
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb)](https://discord.gg/wdNEHETs87)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/langbot-app/LangBot)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/langbot-app/LangBot)](https://github.com/langbot-app/LangBot/releases/latest)
-<img src="https://img.shields.io/badge/python-3.10 ~ 3.13 -blue.svg" alt="python">
+<img src="https://img.shields.io/badge/python-3.11%20~%203.14-blue.svg" alt="python">
 [![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
 
 <a href="https://langbot.app">Website</a> ｜
@@ -63,8 +63,6 @@ Click the Star and Watch buttons in the top-right corner of the repository to ge
 
 ## Quick Start
 
-Official plugin source index: [plugins/README.md](plugins/README.md) · [machine-readable catalog](plugins/catalog.json) · [independent plugin releases](plugins/RELEASING.md). Plugins are installed separately and are not bundled in Core releases.
-
 ### ☁️ LangBot Cloud (Recommended)
 
 [![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://space.langbot.app/cloud)
@@ -73,13 +71,21 @@ Official plugin source index: [plugins/README.md](plugins/README.md) · [machine
 
 Zero deployment, ready to use.
 
-### One-Line Launch
+### One-Line Install (Recommended for Self-Hosting)
+
+macOS / Linux:
 
 ```bash
-uvx langbot
+curl -fsSL https://langbot.app/install.sh | bash
 ```
 
-> Requires [uv](https://docs.astral.sh/uv/getting-started/installation/). Visit http://localhost:5300 — done.
+Windows (PowerShell):
+
+```powershell
+irm https://langbot.app/install.ps1 | iex
+```
+
+> Installs [lbctl](https://github.com/langbot-app/langbot-cli) (the LangBot CLI), then deploys LangBot — natively by default, with Python set up automatically, or with Docker. No admin rights needed. When it finishes, open http://localhost:5300. Upgrade later with `lbctl upgrade`.
 
 ### Docker Compose
 

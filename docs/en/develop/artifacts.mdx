@@ -1,0 +1,124 @@
+---
+title: "Artifact file API"
+description: "Upload, read, retain and delete caller-owned files through HTTP or MCP."
+---
+
+Artifacts provide an opaque reference and metadata for a file. An account or API key can access only its own files in the authenticated Workspace. Knowing an ID does not grant access, including to another member of the same Workspace.
+
+Use the normal Workspace HTTP authentication. Reads require `resource.view`; creating, retaining, releasing and deleting require `resource.manage`.
+
+| Action | HTTP |
+| --- | --- |
+| Upload | `POST /api/v1/artifacts`, multipart `file`, optional `ttl_seconds` |
+| Metadata | `GET /api/v1/artifacts/{id}` |
+| Download | `GET /api/v1/artifacts/{id}/content`, optional `max_bytes` |
+| Read structured content | `GET /api/v1/artifacts/{id}/read`, optional `mode`, `offset`, `max_chars`, `page_start`, `page_end` |
+| Retain | `POST /api/v1/artifacts/{id}/retain` |
+| Release | `POST /api/v1/artifacts/{id}/release` |
+| Delete | `DELETE /api/v1/artifacts/{id}` |
+
+Uploads return metadata containing an `id`. Downloads return the original bytes with attachment disposition and a digest ETag. Uploads and downloads are limited to 10 MiB. `max_bytes` limits the entire object; it does not request a byte range. A larger object is rejected rather than truncated.
+
+A newly uploaded file expires after 24 hours by default; `ttl_seconds` accepts 1 second through 7 days. Retain adds a persistent pin without changing who may access the file. Release removes that pin and restores a 24-hour grace period. Repeating release does not extend the grace period. Delete refuses a pinned file; release it first. Expired assets cannot be read or revived. Cleanup reclaims expired temporary content.
+
+Missing, deleted and unauthorized IDs return 404. An expired owned file returns `artifact_expired` (410), pinned deletion returns `artifact_in_use` (409), excessive reads return `artifact_too_large` (413), and failed integrity checks return `artifact_integrity_failed` (422).
+
+Deletion blocks subsequent access; maintenance reclaims the underlying bytes. Bounded downloads hold a temporary read lease, so cleanup skips the file until the read finishes or its lease expires. An active run also protects the outputs it is using while its execution lease remains valid.
+
+Deleting an Artifact does not retract files already delivered to a platform or remove message history retained under its own rules.
+
+Structured PDF reads, including native reads, reject malformed or password-protected files with `artifact_pdf_unreadable` (422). Raw download still returns the authorized original bytes.
+
+## Fixed-version Skill resources
+
+`POST /api/v1/artifacts/skill-resources` creates a caller-owned reference to one file in a published, database-backed Skill package. The JSON body contains `skill_name`, the explicit `revision`, `path` relative to the package, and optional `ttl_seconds`. Both `resource.view` and `resource.manage` are required. The equivalent ApplicationAPI operation is `artifact.skill_resource.create`; MCP exposes `create_skill_resource_artifact` with the same arguments.
+
+Registration reuses the existing immutable package in ContentStore. It does not upload or duplicate the file or package. The reference binds the stored version identity and canonical package path, with the file's digest, size and MIME type. Publishing a new version does not change an existing reference. Use the normal Artifact metadata, download and structured-read endpoints; no Box session is required.
+
+Only the creating account or API key may use this reference. Sharing the ID or retaining it does not grant another principal access. Source references are not ordinary uploaded attachments: do not assume that passing one as a debug run's `artifact_ids` grants a run access. Package-source references are not exposed as plugin Workspace operations, default model tools or `lbctl` commands.
+
+Release and Artifact cleanup reclaim the reference, not the shared Skill package. A live reference protects its retained version, and temporary read leases protect in-flight reads. Deleting a Skill's current catalog entry does not rewrite retained versions. Filesystem-only Skill storage is not supported by this reference API; use database-backed Skill persistence. The original text-resource interface remains available.
+
+A repeat registration for the same owner, version and path returns the same reference without extending its expiry. Collect an expired or deleted reference before registering it again.
+
+
+Within an authorized live run, `read_skill_resource` uses the frozen activated Skill revision and the same bounded reader. Text results keep the text contract and expose continuation when truncated; image and native-PDF results use structured model content rather than base64 in ordinary text. Registration verifies bounded source bytes. Source materialization is charged once per immutable Artifact in a run, with limits of 256 KiB per file and 1 MiB per run. A separate 1 MiB per-run budget counts cumulative returned JSON UTF-8 and media payload bytes. Every continuation rechecks authorization even when the source was already charged. The legacy text path is unchanged. Native PDF still requires a supporting model. Outside this live-run path, legacy text reading remains available; binary source access is not granted implicitly.
+
+## MCP
+
+Native PDF input requires trusted model capability information. For an alias whose provider has confirmed PDF support but which the capability catalog does not recognize, an administrator can declare `pdf_input` in the model's existing `abilities` field. Undeclared, unknown capability rejects native PDF input; text mode remains available.
+
+The built-in `/mcp` server exposes `create_artifact`, `get_artifact`, `read_artifact`, `read_artifact_content`, `retain_artifact`, `release_artifact` and `delete_artifact` with the same ownership and permission checks. Creation takes `filename`, `content_base64`, optional `mime_type` and `ttl_seconds`. Raw reading takes `artifact_id` and optional `max_bytes`, returning base64 plus metadata. `read_artifact_content` takes the structured-read parameters from the HTTP `/read` endpoint and returns native MCP text, image or embedded-PDF content rather than base64 inside ordinary text. The Workspace operation is `artifact.read_content`.
+
+`read_artifact` transfers the original bytes. Plugin grants and typed methods do not grant access to account-owned files; installation-owned Artifact operations are described below. Account management is not added to default model tools or `lbctl`. Existing upload and run `file_id` interfaces continue to use their existing contracts.
+
+## Agent reads
+
+Runner inputs initially contain attachment references, names, MIME types and sizes. Image/file bytes and source URLs stay in the Host registry; they are not inserted into the initial model message. Current-message and quoted-message attachments retain separate references. The Agent requests content only when needed, under the current run's frozen attachment grant. References from another run do not grant access.
+
+`read_input_attachment_content` returns structured content and supports these modes:
+
+| Mode | Behavior |
+| --- | --- |
+| `auto` | Read UTF-8 text, return a structured image, or extract PDF text. |
+| `text` | Read a bounded character range; PDF results identify the selected pages and exclude visual content. |
+| `native` | Return image/PDF content for a model that supports that input; unsupported models report a visible error. |
+| `pages` | Page rendering is currently unsupported and returns an explicit error. |
+
+Text uses zero-based `offset` and `max_chars` (default 8192, maximum 16384). Results include `truncated` and `next_offset`; continue from that position rather than treating a partial result as the full file. PDF text uses one-based `page_start` and optional `page_end`, at most ten pages per read, and reports the next page. It does not perform OCR or preserve images/layout. Other binary formats fail explicitly; caller-owned uploads remain available through authenticated download.
+
+Agent debug API requests may include `artifact_ids`, up to 20 distinct IDs from the caller's uploads. The Host checks the authenticated caller's ownership before starting the run and gives that run references only. Supplying an event `actor` does not change ownership. The separate Workspace management assistant does not accept attachment inputs in this phase. The existing raw-byte `read_input_attachment` API remains available to authorized Runner code.
+
+## Runner output files
+
+`ctx.export_box_files(paths)` registers the selected sandbox files as temporary Artifacts. The returned `BoxFile.id` remains a UUID file handle for the exporting run. Export metadata also includes `artifact_id`, `mime_type`, `digest`, `lifecycle` and `expires_at`; `artifact_id` does not grant access through the account Artifact API.
+
+Use `ctx.read_run_file(file_id, mode="auto", offset=0, max_chars=8192, page_start=1, page_end=None)` to read bounded structured content with the modes above. To publish selected outputs, an authenticated account or named API key must first enable a publication policy for the Agent or Pipeline:
+
+```http
+PUT /api/v1/artifacts/producers/agent/{agent_id}/publication
+Content-Type: application/json
+
+{"enabled": true}
+```
+
+Use `pipeline` for a Pipeline or `event_processor` for an event processor. The server selects the authenticated principal as the recipient; request fields cannot name another recipient. This requires both `resource.view` and `resource.manage`. The policy belongs to that principal; other Workspace members cannot take it over. New and copied producers have no policy. Global and legacy compatibility API keys cannot receive published outputs; use a named Workspace API key.
+
+The Host freezes the policy when a run starts. `ctx.commit_run_files(file_ids)` rechecks the policy and the recipient's current authorization, then adds a persistent recipient pin and returns updated metadata. Missing, changed, disabled or revoked authorization rejects commit. Exporting, reading and replying do not commit files, and the model's default tools do not include commit. Repeating a successful commit does not undo a recipient's later release.
+
+After commit, the recipient can use the existing Artifact metadata, content, retain, release and delete endpoints with `artifact_id`, including after the run or Core restarts. Other accounts, keys and runs gain no access. The original `file_id` remains local to its live run. Release restores the 24-hour grace period. Delete returns `artifact_in_use` (409) while a persistent pin or active-use lease remains; retry after it ends.
+
+Management requires the ID: Runner implementations must return the `artifact_id` from commit to the recipient in their application result. There is no Artifact listing endpoint.
+
+Read the policy with `GET` on the same URL; disable it with `DELETE`. These actions are also available through MCP as `get_artifact_publication`, `set_artifact_publication` and `disable_artifact_publication`. Disabling stops future publication without removing previously published files.
+
+At run completion, failure or cancellation, the Host attempts bounded cleanup to expire unpublished outputs for maintenance collection. A Core crash, cleanup failure or timeout can defer expiry to their original 24-hour lifetime.
+
+`ctx.reply_files` and Pipeline file replies read the registered Artifact bytes through the existing platform delivery path. There is no separate run-file HTTP download endpoint. See the [Runner API](/en/plugin/dev/apis/agent-run#box-and-attachments) for the complete flow.
+
+## Knowledge-base Artifact imports
+
+To index an existing owned Artifact without uploading it again, use `knowledge.file.store_artifact` with `kb_uuid`, `artifact_id` and optional `parser_plugin_id`, or send the latter two fields as JSON to `POST /api/v1/knowledge/bases/{kb_uuid}/files/artifact`. Both `resource.view` and `resource.manage` are required. MCP exposes `add_knowledge_file_artifact` with the same arguments. The response keeps the existing indexing `task_id` contract. Existing upload and `file_id` ingestion paths remain available.
+
+This account/API-key entry point creates a durable knowledge-file business reference; it is not an access grant from merely knowing an Artifact ID. Skill-package and run-owned sources are not accepted by this import path. Deleting the knowledge file or knowledge base releases only its business reference, not another consumer's reference or shared bytes. An active business reference prevents Artifact deletion.
+
+KnowledgeEngine plugins continue to read `context.file_object.storage_path` through `get_knowledge_file_stream`. For an Artifact import, this field is an opaque `artifact:<knowledge_file_uuid>` token, not a filesystem path, URL or public download key. Core checks that the installed caller is the engine assigned to the knowledge base before reading through the shared Artifact service. Do not open this token locally or pass it to another installation as an access grant.
+
+
+## Plugin-owned Artifacts
+
+Plugins may explicitly request `artifact.create`, `artifact.get`, `artifact.read`, `artifact.read_content`, `artifact.retain`, `artifact.release` and `artifact.delete`. List the seven needed operation IDs individually: `artifact.*` is rejected because it also includes account-only publication and Skill-source operations. Typed calls use `self.plugin.workspace.artifact.<method>(...)`, or the run-bound `ctx.api.workspace` proxy.
+
+These Artifacts belong to the installation UUID, not the plugin's author/name, an account or a run. Every operation rechecks the current enabled installation and effective grants; a revoked grant or reinstallation with a new UUID cannot access old assets. Knowing an ID or retaining it does not share access. Account uploads, Skill sources and run handles cannot be imported through these plugin operations. `artifact.skill_resource.create` and `artifact.publication.get/set/disable` remain account/API-key only. See [Artifact API](/en/develop/artifacts).
+
+For the JSON RPC path, create with `filename`, `content_base64`, optional `mime_type` and `ttl_seconds`. The decoded input is limited to 256 KiB; plugin raw reads use the same 256 KiB ceiling and return `metadata` plus `content_base64`. Prefer `read_content` for bounded text/structured media. This smaller transport limit does not change existing authenticated HTTP upload/download contracts. Retain/release concern this installation's pin; deletion refuses active business references.
+
+## Legacy uploads and shared retention
+
+`/api/v1/files/images` and `/api/v1/files/documents` preserve their existing `file_key` and `file_id` responses. New uploads using persistent storage additionally return `artifact_id`. The legacy alias and Artifact reference share one underlying content object, not duplicate bytes. The alias holds its own durable reference; deleting the alias releases that reference only, leaving other holders intact. Nonpersistent legacy storage returns only the original fields. Existing opaque keys are not migrated or reinterpreted as Artifact IDs.
+
+Persistent legacy uploads are rejected with HTTP 413 before writing when they exceed the lower of `storage.max_object_read_bytes` and the Artifact size limit. Ordinary filenames longer than 255 characters remain accepted; only the Artifact display name is bounded, retaining its extension and MIME type. The returned legacy handle and stored bytes are unchanged.
+
+Knowledge-file imports accept account/API-key-owned plain uploads only. Published run outputs and Skill-package sources remain excluded to avoid expanding their original rights. Knowledge-base deletion blocks new file admissions with a durable deletion fence. Failed or uncertain deletion retains holders and the retryable fence, rather than reclaiming possibly in-use bytes.
+
+Knowledge-file listings add `artifact_id` (`null` for legacy files); they do not add digest, size or MIME fields through this change. If upstream base deletion fails, is cancelled or has an unknown outcome, retry the explicit delete operation, including after a Core restart. The fence keeps new ingestion closed until deletion completes. Active or interrupted ingestion blocks deletion before a fence is installed.

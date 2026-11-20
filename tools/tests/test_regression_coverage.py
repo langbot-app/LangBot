@@ -6,8 +6,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from tools.regression.evidence import checked
+
 from tools.entrypoints.regression_coverage import (
-    checked,
     collect,
     http_observations,
     load_catalog,

@@ -14,26 +14,6 @@ CATALOG = Path(__file__).resolve().parents[1] / 'contracts' / 'regression_contra
 STATES = ('passed', 'failed', 'incomplete', 'skipped', 'not_run', 'missing_test')
 
 
-def checked(row, name, action):
-    """Record an evaluated assertion; transport failures leave it unverified."""
-    assertions = row.setdefault('assertions', {})
-    try:
-        result = action()
-    except ValueError:
-        assertions[name] = 'failed'
-        raise
-    assertions[name] = 'passed'
-    return result
-
-
-def check_response(data, expected, forbidden=()):
-    text = json.dumps(data, ensure_ascii=False)
-    if expected not in text:
-        raise ValueError('Response does not contain the expected business result')
-    if any(value in text for value in forbidden):
-        raise ValueError('Response contains forbidden content')
-
-
 def load_catalog(path=CATALOG):
     catalog = json.loads(Path(path).read_text())
     if catalog.get('version') != 1 or not catalog.get('scope'):

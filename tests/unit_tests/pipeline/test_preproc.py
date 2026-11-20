@@ -45,8 +45,9 @@ def attach_runner_descriptor(app):
         config_schema=[
             {'name': 'model', 'type': 'model-fallback-selector'},
             {'name': 'prompt', 'type': 'prompt-editor', 'default': []},
+            {'name': 'knowledge-bases', 'type': 'knowledge-base-multi-selector'},
         ],
-        capabilities={'tool_calling': True, 'multimodal_input': True},
+        capabilities={'tool_calling': True, 'multimodal_input': True, 'knowledge_retrieval': True},
     )
     app.runner_registry = Mock()
     app.runner_registry.get = AsyncMock(return_value=descriptor)
@@ -98,20 +99,26 @@ class TestPreProcessorNormalText:
         model.model_entity = Mock(uuid='test-model', abilities=['func_call'])
         app.model_mgr.get_model_by_uuid = AsyncMock(return_value=model)
         observed_hooks = []
+        attach_runner_descriptor(app)
+        query = text_query('hello')
+        query.pipeline_config['ai']['runner_config'][RUNNER_ID]['knowledge-bases'] = ['kb-memory', 'kb-docs']
 
         async def edit_prompts(event, bound_plugins):
             observed_hooks.append(event.event_name)
+            assert query.variables['_knowledge_base_uuids'] == ['kb-memory', 'kb-docs']
+            query.variables['_knowledge_base_uuids'].remove('kb-memory')
             ctx = EventContext.model_validate(EventContext.from_event(event).model_dump())
             ctx.event.default_prompt = [Message(role='system', content='plugin system prompt')]
             ctx.event.prompt = [Message(role='assistant', content='plugin history')]
             return ctx
 
         app.plugin_connector.emit_event = AsyncMock(side_effect=edit_prompts)
-        query = text_query('hello')
 
         await get_preproc_module().PreProcessor(app).process(query, 'PreProcessor')
 
         assert observed_hooks == ['PromptPreProcessing']
+        assert query.variables['_knowledge_base_uuids'] == ['kb-docs']
+        assert query.variables['_host_configured_knowledge_base_uuids'] == ['kb-memory', 'kb-docs']
         assert query.prompt.messages[0].content == 'plugin system prompt'
         assert query.messages[0].content == 'plugin history'
 
@@ -309,15 +316,9 @@ class TestPreProcessorImageSegment:
         from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
         from langbot_plugin.api.entities.builtin.provider.message import ContentElement
 
-        expected_image = (
-            ContentElement.from_image_base64('data:image/png;base64,abc123')
-            if image_source == 'base64'
-            else ContentElement.from_image_url('https://cdn.example/image.png')
-        )
         assert result.new_query.user_message.content == [
             ContentElement.from_text('look at this'),
             ContentElement.from_text('[attachment att-1: image]'),
-            expected_image,
         ]
         attachments = QueryEntryAdapter._build_input(result.new_query).attachments
         assert len(attachments) == 1

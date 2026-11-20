@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest.mock import Mock
 
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
+import pytest
 
 # Initialize the application import graph before importing a leaf handler. This
 # matches normal startup and avoids handler -> app -> handler partial imports.
@@ -17,6 +18,19 @@ class _StubHandler(MessageHandler):
 
 
 handler = _StubHandler(ap=Mock())
+
+
+@pytest.mark.parametrize(
+    'source,summary',
+    [
+        ('short text', 'short text'),
+        ('0123456789abcdefghij', '0123456789abcdefghij'),
+        ('0123456789abcdefghijk', '0123456789abcdefghij...'),
+        ('first line\nsecond line', 'first line...'),
+    ],
+)
+def test_shared_log_preview_keeps_only_the_bounded_first_line(source, summary):
+    assert handler.cut_str(source) == summary
 
 
 def test_chat_handler_formats_tool_call_request_log():

@@ -7,8 +7,10 @@ import base64
 from contextlib import asynccontextmanager
 import datetime as dt
 import hashlib
+import io
 import logging
 from types import SimpleNamespace
+import zipfile
 
 from aiohttp.test_utils import TestServer
 import pytest
@@ -43,7 +45,7 @@ _MAX_BYTES = 2 * 1024 * 1024
 
 
 @pytest.fixture
-async def network_box(tmp_path, monkeypatch):
+async def network_box(tmp_path, monkeypatch, request):
     """Keep Core staging and Runtime workspace in separate directory trees."""
     monkeypatch.delenv("LANGBOT_BOX_CONFIG", raising=False)
     runtime_root = tmp_path / "runtime"
@@ -59,7 +61,14 @@ async def network_box(tmp_path, monkeypatch):
         instance_id=_CONTEXT.instance_uuid,
         data_dir=runtime_root / "identity",
     )
-    runtime.init({"backend": "host", "limits": {"max_rpc_file_bytes": _MAX_BYTES}})
+    mode = getattr(request, "param", "legacy")
+    runtime.init(
+        {
+            "backend": "host",
+            "file_transfer_mode": mode,
+            "limits": {"max_rpc_file_bytes": _MAX_BYTES},
+        }
+    )
     await runtime.initialize()
     test_server = TestServer(
         create_app(
@@ -104,7 +113,10 @@ async def network_box(tmp_path, monkeypatch):
     try:
         async with connect() as (client, handler):
             await client.create_session(
-                BoxSpec(session_id="files", host_path=str(workspace)),
+                BoxSpec(
+                    session_id="files",
+                    host_path=str(workspace) if mode == "legacy" else None,
+                ),
                 action_context=_CONTEXT,
             )
             yield SimpleNamespace(
@@ -677,3 +689,64 @@ async def test_download_timeout_cleans_partial_receiver_and_can_retry(
         )
         == content
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("network_box", ["network"], indirect=True)
+async def test_generation_fences_all_file_rpcs_after_replacement(network_box):
+    from langbot_plugin.box.errors import BoxSessionNotFoundError
+
+    client = network_box.client
+    first = await client.get_session("files", action_context=_CONTEXT)
+    await client.delete_session("files", action_context=_CONTEXT)
+    second = await client.create_session(
+        BoxSpec(session_id="files"),
+        action_context=_CONTEXT,
+    )
+    generation = second["session_generation"]
+    assert generation != first["session_generation"]
+    await client.upload_file(
+        "files",
+        "/workspace/inbox/draft/SKILL.md",
+        b"new draft",
+        action_context=_CONTEXT,
+        expected_session_generation=generation,
+    )
+    stale = {
+        "action_context": _CONTEXT,
+        "expected_session_generation": first["session_generation"],
+    }
+    with pytest.raises(BoxSessionNotFoundError):
+        await client.upload_file(
+            "files", "/workspace/inbox/draft/SKILL.md", b"old overwrite", **stale
+        )
+    with pytest.raises(BoxSessionNotFoundError):
+        await client.download_file("files", "/workspace/inbox/draft/SKILL.md", **stale)
+    with pytest.raises(BoxSessionNotFoundError):
+        await client.download_file(
+            "files", "/workspace/inbox/draft", directory_archive=True, **stale
+        )
+    await client.cleanup_run_files("files", "draft", **stale)
+    await client.create_session(BoxSpec(session_id="other"), action_context=_CONTEXT)
+    with pytest.raises(BoxError):
+        await client.download_file(
+            "other", "/workspace/inbox/draft/SKILL.md", action_context=_CONTEXT
+        )
+    assert (
+        await client.download_file(
+            "files",
+            "/workspace/inbox/draft/SKILL.md",
+            action_context=_CONTEXT,
+            expected_session_generation=generation,
+        )
+        == b"new draft"
+    )
+    snapshot = await client.download_file(
+        "files",
+        "/workspace/inbox/draft",
+        action_context=_CONTEXT,
+        directory_archive=True,
+        expected_session_generation=generation,
+    )
+    with zipfile.ZipFile(io.BytesIO(snapshot)) as archive:
+        assert archive.read("SKILL.md") == b"new draft"

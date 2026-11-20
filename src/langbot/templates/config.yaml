@@ -149,6 +149,16 @@ system:
         max_pipelines: -1
         max_extensions: -1
         max_knowledge_bases: -1
+    gc:
+        # Long-running processes with a large heap rarely reach CPython's
+        # automatic full-collection threshold, so cyclic garbage (for example
+        # closed TLS connections of reconnecting adapters) accumulates. A full
+        # collection runs every collect_interval_seconds (0 disables).
+        # freeze_after_seconds > 0 freezes the startup heap out of collection
+        # after that many seconds; it shortens collections but leaks startup
+        # objects that later become cyclic garbage, so it is off by default.
+        freeze_after_seconds: 0
+        collect_interval_seconds: 1800
     task_retention:
         # Keep at most this many completed async task records in memory
         completed_limit: 200
@@ -185,6 +195,10 @@ database:
     use: sqlite
     sqlite:
         path: 'data/langbot.db'
+        # Experimental: queue Artifact publication, Ledger and monitoring writes within this Core process.
+        # Set to artifact_ledger to leave monitoring writes out of the queue.
+        experimental_write_queue: false
+        experimental_write_timing: false
     postgresql:
         # Optional SQLAlchemy URL (postgresql[+asyncpg]://...). When set, it
         # overrides the structured fields and preserves TLS/query options.
@@ -456,6 +470,7 @@ box:
     # Requires a compatible Core SDK and Runtime; startup checks the handshake.
     # 'legacy' explicitly preserves shared Core/Box transfer paths.
     file_transfer_mode: 'network'
+    workspace_mode: 'private'
     runtime:
         # LANGBOT_BOX_CONTROL_TOKEN is optional for OSS external WebSocket
         # runtimes. To protect an exposed endpoint, set the same strong secret
@@ -540,6 +555,8 @@ space:
     # OAuth authorization page URL (user will be redirected here)
     oauth_authorize_url: 'https://space.langbot.app/auth/authorize'
     disable_models_service: false
+    # Skip the startup release-list request when running without Space access.
+    disable_release_check: false
     # Optional telemetry is enabled by default. Set true to disable usage,
     # heartbeat and execution reporting; restart after changing this setting.
     disable_telemetry: false

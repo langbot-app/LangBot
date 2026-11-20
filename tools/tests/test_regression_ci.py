@@ -106,6 +106,7 @@ class CIProfileTest(unittest.TestCase):
                 ['--suite', 'smoke', '--load-profile', str(settings_path)],
                 ['--suite', 'smoke', '--budget-seconds', '1800'],
                 ['--suite', 'endurance', '--budget-seconds', '0'],
+                ['--suite', 'endurance', '--load-profile', str(settings_path), '--mixload-profile', str(settings_path)],
                 ['--suite', 'endurance', '--load-profile', str(root / 'missing.json')],
             ):
                 with (
@@ -241,7 +242,8 @@ class DailySummaryTest(unittest.TestCase):
                     'GITHUB_STEP_SUMMARY': str(summary),
                     'GITHUB_SHA': 'core-revision',
                 }
-                subprocess.run(['bash', '-e', '-c', command], cwd=root, env=env, check=True, capture_output=True)
+                result = subprocess.run(['bash', '-e', '-c', command], cwd=root, env=env, capture_output=True)
+                self.assertEqual(result.returncode, 0 if gate and gate.get('passed') else 1)
                 text = summary.read_text()
                 self.assertIn(expected, text)
                 self.assertIn('langbot-team/LocalAgent@1.2.3', text)
@@ -279,10 +281,9 @@ class DailySummaryTest(unittest.TestCase):
                 if actual_suite is not None:
                     (target / 'summary.json').write_text(json.dumps(actual_suite))
                 summary = root / 'summary.md'
-                subprocess.run(
+                result = subprocess.run(
                     ['bash', '-e', '-c', command],
                     cwd=root,
-                    check=True,
                     capture_output=True,
                     env={
                         **os.environ,
@@ -292,6 +293,7 @@ class DailySummaryTest(unittest.TestCase):
                         'GITHUB_RUN_ID': '456',
                     },
                 )
+                self.assertEqual(result.returncode, 0 if gate and gate.get('passed') else 1)
                 text = summary.read_text()
                 self.assertIn(expected, text)
                 self.assertIn('not reported', text)
@@ -398,10 +400,9 @@ class MixedScheduleTest(unittest.TestCase):
                 if mixed is not None:
                     (target.parent / 'mixed.json').write_text(json.dumps(mixed))
                 summary = root / 'summary.md'
-                subprocess.run(
+                result = subprocess.run(
                     ['bash', '-e', '-c', command],
                     cwd=root,
-                    check=True,
                     capture_output=True,
                     env={
                         **os.environ,
@@ -410,7 +411,49 @@ class MixedScheduleTest(unittest.TestCase):
                         'GITHUB_SHA': 'candidate',
                     },
                 )
-                self.assertEqual('Daily regression: PASS' in summary.read_text(), bool(mixed and mixed['passed']))
+                passed = bool(mixed and mixed['passed'])
+                self.assertEqual(result.returncode, 0 if passed else 1)
+                self.assertEqual('Daily regression: PASS' in summary.read_text(), passed)
+
+    def test_required_daily_jobs_fail_for_cancel_skip_missing_and_failure(self):
+        path = Path(__file__).resolve().parents[2] / '.github/workflows/daily-endurance.yml'
+        jobs = yaml.safe_load(path.read_text())['jobs']
+        verdict = jobs['verdict']
+        self.assertEqual(set(verdict['needs']), jobs.keys() - {'verdict'})
+        daily = dict.fromkeys(verdict['needs'], 'success')
+        manual = {**daily, 'dify-cloud': 'skipped'}
+        persistence = jobs['persistence-runtime']
+        self.assertEqual(persistence['uses'], './.github/workflows/persistence-acceptance.yml')
+        self.assertNotIn('if', persistence)
+        matrix = {name for name, job in jobs.items() if "inputs.validation_scope == 'full'" in job.get('if', '')}
+        workload_only = {**manual, **dict.fromkeys(matrix, 'skipped')}
+        commands = [
+            (True, True, daily, 0),
+            (True, False, manual, 0),
+            (False, False, workload_only, 0),
+            (False, False, {**workload_only, 'persistence-runtime': 'skipped'}, 1),
+            (True, True, {name: state for name, state in daily.items() if name != 'migrations'}, 1),
+            *[(True, True, {**daily, 'migrations': state}, 1) for state in ('failure', 'skipped', 'cancelled')],
+        ]
+        for full, dify, results, expected in commands:
+            with self.subTest(full=full, dify=dify, migrations=results.get('migrations')):
+                with tempfile.TemporaryDirectory() as folder:
+                    summary = Path(folder) / 'summary.md'
+                    result = subprocess.run(
+                        ['bash', '-e', '-c', verdict['steps'][0]['run']],
+                        capture_output=True,
+                        env={
+                            **os.environ,
+                            'PATH': str(Path(sys.executable).parent) + os.pathsep + os.environ['PATH'],
+                            'FULL_MATRIX': str(full).lower(),
+                            'LIVE_DIFY': str(dify).lower(),
+                            'JOB_RESULTS': json.dumps({name: {'result': value} for name, value in results.items()}),
+                            'GITHUB_STEP_SUMMARY': str(summary),
+                            'GITHUB_SHA': 'candidate',
+                        },
+                    )
+                    self.assertEqual(result.returncode, expected, result.stderr)
+                    self.assertIn('migrations', summary.read_text())
 
 
 if __name__ == '__main__':

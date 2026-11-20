@@ -281,6 +281,36 @@ class RunnerContextAPIMixin:
             data=data,
         )
 
+    async def read_input_attachment_content(
+        self,
+        ref: str,
+        *,
+        mode: str = "auto",
+        offset: int = 0,
+        max_chars: int = 8192,
+        page_start: int = 1,
+        page_end: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Read bounded model content using the current run's attachment grant."""
+        self._require_context_api("input_attachments")
+        response = await self._api.plugin_runtime_handler.call_action(
+            PluginToRuntimeAction.READ_INPUT_ATTACHMENT_CONTENT,
+            {
+                "run_id": self.run_id,
+                "ref": ref,
+                "mode": mode,
+                "offset": offset,
+                "max_chars": max_chars,
+                "page_start": page_start,
+                "page_end": page_end,
+            },
+            self._bounded_timeout(default=120.0),
+            cancel_peer_on_cancel=True,
+        )
+        return self._expect_key(
+            response, "contents", PluginToRuntimeAction.READ_INPUT_ATTACHMENT_CONTENT
+        )
+
     async def steering_ack(self, delivery_ids: list[str]) -> SteeringAckResult:
         """Acknowledge claimed steering inputs after applying them."""
         self._require_context_api("steering_ack")

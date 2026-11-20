@@ -117,6 +117,8 @@ class BoxRuntimeClient(abc.ABC):
         path: str,
         content: bytes,
         action_context: ActionContext | None = None,
+        *,
+        expected_session_generation: str | None = None,
     ) -> dict:
         raise NotImplementedError
 
@@ -127,6 +129,7 @@ class BoxRuntimeClient(abc.ABC):
         action_context: ActionContext | None = None,
         *,
         directory_archive: bool = False,
+        expected_session_generation: str | None = None,
     ) -> bytes:
         raise NotImplementedError
 
@@ -135,6 +138,8 @@ class BoxRuntimeClient(abc.ABC):
         session_id: str,
         io_scope: str,
         action_context: ActionContext | None = None,
+        *,
+        expected_session_generation: str | None = None,
     ) -> dict:
         raise NotImplementedError
 
@@ -225,9 +230,11 @@ class ActionRPCBoxClient(BoxRuntimeClient):
         if action in {
             LangBotToBoxAction.EXEC,
             LangBotToBoxAction.CREATE_SESSION,
-        } and not data.get("artifact_mounts"):
+        }:
             data = {
-                key: value for key, value in data.items() if key != "artifact_mounts"
+                key: value
+                for key, value in data.items()
+                if key not in {"artifact_mounts", "local_mounts"} or value
             }
         try:
             return await self.handler.call_action(
@@ -310,6 +317,8 @@ class ActionRPCBoxClient(BoxRuntimeClient):
         path: str,
         content: bytes,
         action_context: ActionContext | None = None,
+        *,
+        expected_session_generation: str | None = None,
     ) -> dict:
         """Publish a complete file; retrying identical bytes is safe."""
         if action_context is None:
@@ -328,6 +337,11 @@ class ActionRPCBoxClient(BoxRuntimeClient):
                 LangBotToBoxAction.UPLOAD_FILE,
                 {
                     "session_id": session_id,
+                    **(
+                        {"expected_session_generation": expected_session_generation}
+                        if expected_session_generation is not None
+                        else {}
+                    ),
                     "path": path,
                     "file_key": file_key,
                     "size": len(content),
@@ -348,6 +362,7 @@ class ActionRPCBoxClient(BoxRuntimeClient):
         action_context: ActionContext | None = None,
         *,
         directory_archive: bool = False,
+        expected_session_generation: str | None = None,
     ) -> bytes:
         """Read one complete file and verify its transfer receipt."""
         if action_context is None:
@@ -358,6 +373,11 @@ class ActionRPCBoxClient(BoxRuntimeClient):
                 LangBotToBoxAction.DOWNLOAD_FILE,
                 {
                     "session_id": session_id,
+                    **(
+                        {"expected_session_generation": expected_session_generation}
+                        if expected_session_generation is not None
+                        else {}
+                    ),
                     "path": path,
                     "file_key": file_key,
                     **({"directory_archive": True} if directory_archive else {}),
@@ -617,12 +637,22 @@ class ActionRPCBoxClient(BoxRuntimeClient):
         session_id: str,
         io_scope: str,
         action_context: ActionContext | None = None,
+        *,
+        expected_session_generation: str | None = None,
     ) -> dict:
         if action_context is None:
             raise ValueError("Run cleanup requires a trusted Workspace context")
         return await self._call(
             LangBotToBoxAction.CLEANUP_RUN_FILES,
-            {"session_id": session_id, "io_scope": io_scope},
+            {
+                "session_id": session_id,
+                "io_scope": io_scope,
+                **(
+                    {"expected_session_generation": expected_session_generation}
+                    if expected_session_generation is not None
+                    else {}
+                ),
+            },
             timeout=45.0,
             action_context=action_context,
         )

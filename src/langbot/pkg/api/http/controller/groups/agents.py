@@ -121,6 +121,8 @@ class AgentsRouterGroup(group.RouterGroup):
                     agent_uuid,
                     json_data or {},
                 )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
             except RunnerExecutionError as exc:

@@ -3,6 +3,8 @@
 
 import argparse
 from contextlib import ExitStack
+from hashlib import file_digest
+from html import escape
 import json
 import os
 from pathlib import Path
@@ -29,6 +31,19 @@ from tools.entrypoints.regression_suite import Suite, number, validate
 from tools.entrypoints.regression_traffic import owned_box_containers, read_endpoint_snapshot
 
 ROOT = Path(__file__).resolve().parents[2]
+# The Runtime CLI does not expose a bind address. Restrict both of its
+# listeners in the explicitly local Host lane without changing Runtime defaults.
+HOST_RUNTIME = """
+from langbot_plugin.runtime.io.controllers.ws import server
+
+class LocalController(server.WebSocketServerController):
+    def __init__(self, port, *, host="127.0.0.1", **kwargs):
+        super().__init__(port, host="127.0.0.1", **kwargs)
+
+server.WebSocketServerController = LocalController
+from langbot_plugin.cli.__init__ import main
+main()
+"""
 SUITE_BUDGETS = {
     'smoke': 60,
     'scenarios': 300,
@@ -155,11 +170,68 @@ def allocate_ports():
         return ports
 
 
+def host_wheel_index(private, wheelhouse):
+    """Publish a private, file-based PEP 503 index for the OSS installer."""
+    from packaging.utils import parse_wheel_filename
+
+    index = private / 'wheel-index'
+    index.mkdir()
+    entries = {}
+    for wheel in sorted(wheelhouse.glob('*.whl')):
+        package, _, _, _ = parse_wheel_filename(wheel.name)
+        with wheel.open('rb') as contents:
+            digest = file_digest(contents, 'sha256').hexdigest()
+        href = escape(f'{wheel.resolve().as_uri()}#sha256={digest}', quote=True)
+        entries.setdefault(package, []).append(f'<a href="{href}">{escape(wheel.name)}</a>')
+    for package, links in entries.items():
+        destination = index / package
+        destination.mkdir()
+        (destination / 'index.html').write_text('\n'.join(links) + '\n')
+    return index.as_uri() + '/'
+
+
+def host_environment(private, wheelhouse):
+    """Remove ambient credentials and use only prefetched dependency wheels."""
+    home = private / 'home'
+    home.mkdir(mode=0o700)
+    scratch = private / 'tmp'
+    scratch.mkdir(mode=0o700)
+    # Control tools and trusted fixture scripts only: Host Box is not a sandbox.
+    # These proxy settings are defense in depth for cooperative HTTP clients,
+    # not an operating-system network isolation boundary.
+    proxy = 'http://127.0.0.1:9'
+    loopback = '127.0.0.1,localhost,::1'
+    keep = ('PATH', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ')
+    env = {name: os.environ[name] for name in keep if name in os.environ}
+    env.update(
+        HOME=str(home),
+        TMPDIR=str(scratch),
+        PIP_CONFIG_FILE=os.devnull,
+        PIP_DISABLE_PIP_VERSION_CHECK='1',
+        LANGBOT_PLUGIN_PYPI_INDEX_URL=host_wheel_index(private, wheelhouse),
+        UV_OFFLINE='1',
+        ANONYMIZED_TELEMETRY='False',
+        HTTP_PROXY=proxy,
+        HTTPS_PROXY=proxy,
+        ALL_PROXY=proxy,
+        NO_PROXY=loopback,
+        http_proxy=proxy,
+        https_proxy=proxy,
+        all_proxy=proxy,
+        no_proxy=loopback,
+    )
+    return env
+
+
 def run(args):
+    host = args.box_backend == 'host'
     ports = allocate_ports()
-    if subprocess.check_output(
-        ['docker', 'ps', '-a', '--filter', 'label=langbot.box=true', '--format', '{{.ID}}'], text=True, timeout=10
-    ).strip():
+    if (
+        not host
+        and subprocess.check_output(
+            ['docker', 'ps', '-a', '--filter', 'label=langbot.box=true', '--format', '{{.ID}}'], text=True, timeout=10
+        ).strip()
+    ):
         raise RuntimeError('CI needs a dedicated Docker daemon with no existing Box sandboxes')
     root = args.output.resolve()
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
@@ -170,7 +242,7 @@ def run(args):
     owned_services = {}
     key, runtime_token, box_token = (secrets.token_urlsafe(32) for _ in range(3))
     env = dict(
-        os.environ,
+        host_environment(private, args.plugin_wheelhouse.resolve()) if host else os.environ,
         LANGBOT_QA_API_KEY=key,
         LANGBOT_DATA_ROOT=str(private / 'data'),
         PYTHONPATH=str(ROOT / 'src'),
@@ -252,10 +324,14 @@ def run(args):
         config['api'].update(global_api_key=key, host='127.0.0.1')
         config['plugin'].update(enable=True, runtime_ws_url=f'ws://127.0.0.1:{ports["runtime"]}/control/ws')
         config['box'].update(
-            enabled=True, backend='local', runtime={'endpoint': f'ws://127.0.0.1:{ports["box"]}/control/ws'}
+            enabled=True,
+            backend='host' if host else 'local',
+            runtime={'endpoint': f'ws://127.0.0.1:{ports["box"]}/control/ws'},
         )
         config['box']['local'].update(
-            host_root=str(private / 'box'), allowed_mount_roots=[str(private / 'box')], image='python:3.12-alpine'
+            host_root=str(private / 'box'),
+            allowed_mount_roots=[str(private / 'box')],
+            image='' if host else 'python:3.12-alpine',
         )
         config_path.write_text(yaml.safe_dump(config))
         groups = args.scenario_groups
@@ -268,6 +344,15 @@ def run(args):
         profile, profile_path = suite_profile(
             args.suite, secrets.token_hex(8), groups, args.api_seed, args.load_settings
         )
+        if host:
+            profile.get('resource_limits', {}).pop('containers', None)
+            if args.mixload_profile is None:
+                for case in profile['cases']:
+                    oracle = case.get('box_exec')
+                    if oracle and oracle.get('backend') == 'docker':
+                        # Preserve the full count/output/exit oracle, but insist
+                        # on actual Host execution rather than mislabel Docker.
+                        oracle['backend'] = 'host'
         cli_config = private / 'lbctl.yaml'
         cli_config.write_text(
             yaml.safe_dump(
@@ -314,7 +399,13 @@ def run(args):
         if args.suite == 'endurance':
             mocks.update(mock_box=ports['mock_box'], mock_rag=ports['mock_rag'])
             # Fixed provider/tool latency makes overlap observable; this is not a performance baseline.
-            scenarios = mixed_scenarios((args.load_settings or {}).get('box_command_delay_seconds', 1))
+            if args.mixload_profile is not None:
+                from tools.regression.mixload_cases import configure_mock_scenarios
+
+                scenarios = json.loads((ROOT / 'tools/fixtures/mock_llm_scenarios.json').read_text())
+                scenarios = configure_mock_scenarios(scenarios, box_backend=args.box_backend)
+            else:
+                scenarios = mixed_scenarios((args.load_settings or {}).get('box_command_delay_seconds', 1))
             scenario_path = private / 'mixed-scenarios.json'
             scenario_path.write_text(json.dumps(scenarios, indent=2))
             profile['vars']['mock_scenarios_file'] = str(scenario_path)
@@ -336,8 +427,7 @@ def run(args):
             'runtime',
             [
                 sys.executable,
-                '-m',
-                'langbot_plugin.cli.__init__',
+                *(['-c', HOST_RUNTIME] if host else ['-m', 'langbot_plugin.cli.__init__']),
                 'rt',
                 '--ws-control-port',
                 str(ports['runtime']),
@@ -369,8 +459,23 @@ def run(args):
             },
             'pids': pids,
         }
-        if args.suite in ('daily', 'endurance'):
+        if not host and args.suite in ('daily', 'endurance'):
             profile['observe']['box_data_root'] = str(private / 'box')
+        if host:
+            profile['observe']['health']['runtime'] = f'http://127.0.0.1:{ports["runtime"]}/healthz'
+        budget = SUITE_BUDGETS[args.suite]
+        if args.mixload_profile is not None:
+            from tools.regression.profiled_mixload import prepare_profile
+
+            profile = prepare_profile(profile, args.mixload_profile, box_backend=args.box_backend)
+            if any(case['name'] == 'memory_chat' for case in profile['cases']):
+                require(
+                    any(entry['id'] == 'langbot-team/LongTermMemory' for entry in packages['plugins']),
+                    'memory_chat requires the LongTermMemory fixture (--extra-plugins KnowledgeEngine/LongTermMemory)',
+                )
+            budget = 120 + sum(
+                phase['duration_seconds'] + phase.get('cooldown_seconds', 0) for phase in profile['phases']
+            )
         for url in profile['observe']['health'].values():
             ready(url, processes)
         preparation = root / 'preparation'
@@ -382,7 +487,7 @@ def run(args):
         cli_data = yaml.safe_load(cli_config.read_text())
         cli_data['contexts']['smoke']['expected_workspace_uuid'] = identity['workspace_uuid']
         cli_config.write_text(yaml.safe_dump(cli_data))
-        if packages['plugins'] or {'resources', 'api'} & set(groups) or args.restart_services:
+        if packages['plugins'] or {'resources', 'api'} & set(groups) or args.restart_services or args.suite == 'state':
             # Account creation is restricted to this runner's newly created private database.
             credentials = {'user': 'regression@langbot.test', 'password': secrets.token_urlsafe(32)}
             suite.secrets.append(credentials['password'])
@@ -465,22 +570,24 @@ def run(args):
                     str(root / 'gate/suite'),
                 ],
                 root / 'gate',
-                (args.budget_seconds or SUITE_BUDGETS[args.suite]) - restart_elapsed,
+                (args.budget_seconds or budget) - restart_elapsed,
                 pids,
                 env,
             )
         if args.suite == 'endurance':
-            from tools.regression.regression_mixed import verify_mixed
+            provider_records = {
+                'chat': root / 'mock-requests.jsonl',
+                'box': root / 'mock_box-requests.jsonl',
+                'rag_chat': root / 'mock_rag-requests.jsonl',
+            }
+            if args.mixload_profile is not None:
+                from tools.regression.profiled_mixload import verify_profiled_run
 
-            mixed = verify_mixed(
-                root / 'gate/suite',
-                private / 'data/langbot.db',
-                {
-                    'chat': root / 'mock-requests.jsonl',
-                    'box': root / 'mock_box-requests.jsonl',
-                    'rag_chat': root / 'mock_rag-requests.jsonl',
-                },
-            )
+                mixed = verify_profiled_run(root / 'gate/suite', private / 'data/langbot.db', provider_records, profile)
+            else:
+                from tools.regression.regression_mixed import verify_mixed
+
+                mixed = verify_mixed(root / 'gate/suite', private / 'data/langbot.db', provider_records)
             (root / 'gate/mixed.json').write_text(json.dumps(mixed, indent=2) + '\n')
             result['mixed'] = mixed
             result['passed'] = result['passed'] and mixed['passed']
@@ -492,6 +599,9 @@ def run(args):
         coverage = write_report(evidence, root / 'gate/suite', http_logs=[root / 'core.log'])
         result['coverage_errors'] = coverage['evidence_errors']
         result['scenario_groups'] = groups
+        result['box_backend'] = args.box_backend
+        if host:
+            result['docker_container_evidence'] = 'not_applicable_host'
         if args.suite == 'api':
             result['api_seed'] = args.api_seed
             result['case_order'] = [case['name'] for case in profile['cases']]
@@ -511,8 +621,9 @@ def run(args):
         for log in logs:
             log.close()
         # This is a disposable CI daemon; still delete only this run's mounted sandboxes.
-        for container in owned_box_containers(private / 'box'):
-            subprocess.run(['docker', 'rm', '-f', container], check=True, capture_output=True)
+        if not host:
+            for container in owned_box_containers(private / 'box'):
+                subprocess.run(['docker', 'rm', '-f', container], check=True, capture_output=True)
 
 
 def main():
@@ -526,12 +637,23 @@ def main():
         '--extra-plugins', nargs='*', default=[], help='Additional paths under --plugins, e.g. misc/HelloPlugin'
     )
     parser.add_argument('--suite', choices=tuple(SUITE_BUDGETS), default='smoke')
-    parser.add_argument(
+    profiles = parser.add_mutually_exclusive_group()
+    profiles.add_argument(
         '--load-profile',
         type=Path,
         help='Endurance JSON overrides for load geometry, thresholds, resource limits and Box command delay',
     )
     parser.add_argument('--budget-seconds', type=int, help='Endurance execution guard, excluding service preparation')
+    parser.add_argument(
+        '--box-backend',
+        choices=('docker', 'host'),
+        default='docker',
+        help='Host is an unsafe, loopback-only fixture lane, not Docker or a sandbox acceptance test',
+    )
+    parser.add_argument('--plugin-wheelhouse', type=Path, help='Prefetched local plugin dependency wheels for Host')
+    profiles.add_argument(
+        '--mixload-profile', type=Path, help='Run a configured mixed benchmark (endurance suite only)'
+    )
     parser.add_argument(
         '--scenario-groups',
         nargs='*',
@@ -556,6 +678,17 @@ def main():
             suite_profile('endurance', 'validation', load_settings=args.load_settings)
         except (OSError, ValueError) as exc:
             parser.error(str(exc))
+    if args.mixload_profile is not None and args.suite != 'endurance':
+        parser.error('--mixload-profile requires --suite endurance')
+    if args.box_backend == 'host':
+        if args.plugins is None or args.plugins.resolve() != (ROOT / 'plugins').resolve():
+            parser.error('Host requires --plugins pointing to this checkout’s bundled trusted fixtures')
+        if args.plugin_wheelhouse is None or not any(args.plugin_wheelhouse.glob('*.whl')):
+            parser.error('Host requires --plugin-wheelhouse with prefetched local wheels')
+        if args.suite == 'endurance' and args.mixload_profile is None:
+            parser.error('Host endurance requires --mixload-profile; the stock verifier is Docker only')
+    elif args.plugin_wheelhouse is not None:
+        parser.error('--plugin-wheelhouse is only supported for --box-backend host')
     if args.output.exists():
         parser.error('--output must be a new directory')
     try:
@@ -563,7 +696,7 @@ def main():
     except Exception as exc:
         verdict = args.output / 'gate' / 'gate.json'
         result = json.loads(verdict.read_text()) if verdict.exists() else {}
-        result.update(passed=False, infrastructure_error=f'{type(exc).__name__}: {exc}')
+        result.update(passed=False, infrastructure_error=f'{type(exc).__name__}: {exc}', box_backend=args.box_backend)
         restart_summary = args.output / 'restart-checks/summary.json'
         if restart_summary.exists():
             result['restart_checks'] = json.loads(restart_summary.read_text())

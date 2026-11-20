@@ -1,0 +1,172 @@
+---
+title: "lbctl で LangBot を管理する"
+description: "lbctl で LangBot のインストール、アップグレード、起動・停止、ログ、診断、自動起動、複数インスタンス、アンインストールを行い、既存の Docker Compose デプロイも lbctl の管理下に移行します。"
+---
+
+[lbctl](https://github.com/langbot-app/langbot-cli) は LangBot 公式のコマンドラインツールです。[ワンラインインストール](/ja/deploy/langbot/one-line)で自動的にインストールされます。セルフホストした LangBot の日常的な運用は lbctl に任せられるので、`docker compose` や `uvx` を手で実行したり、アーカイブをダウンロードしたりする必要はありません。
+
+<Info>
+lbctl はシステムの言語に合わせて英語または中国語で出力します。`--lang en` / `--lang zh-Hans` で指定できます。すべてのコマンドで `-o json` を付けると機械可読な出力になり、スクリプトや AI エージェントから扱いやすくなります。
+</Info>
+
+## lbctl で置き換えられる作業
+
+| 作業 | 従来の方法 | lbctl では |
+|---|---|---|
+| インストール | `uvx langbot`、または `git clone` 後に `docker compose up` | ワンラインインストール、または `lbctl install`（Docker なら `--driver docker`） |
+| LangBot のアップグレード | `git pull` + `docker compose up --force-recreate --pull always`、`uvx langbot@latest` の再実行、リリースアーカイブで上書き | `lbctl upgrade --yes`（自動バックアップとヘルスチェック付き） |
+| 状態とバージョンの確認 | `docker compose ps`、または WebUI で確認 | `lbctl status` |
+| ログの確認 | `docker logs langbot` | `lbctl logs`、`lbctl logs -f` |
+| 起動 / 停止 / 再起動 | `docker compose up -d` / `down` / `restart` | `lbctl start` / `stop` / `restart` |
+| 環境のトラブルシューティング | Docker、ポート、ディスク、ネットワークを手動で確認 | `lbctl doctor` |
+| 起動時の自動実行 | systemd / launchd / タスクスケジューラを手動で設定 | インストール時に自動設定、`lbctl autostart status/enable/disable` |
+| SeekDB、Milvus、Valkey などのオプション依存 | `uv sync --extra ...`、またはイメージタグを手動で変更 | `lbctl install --extra seekdb`（または `milvus`、`valkey`） |
+| 中国本土向けミラー | PyPI や Docker レジストリの設定を手動で変更 | 地域を自動判定して利用可能なソースを選択、または `--region cn` |
+| 複数インスタンスの運用 | ディレクトリをコピーしてポートを手動で変更 | `lbctl install --name <インスタンス名> --port <ポート>`、`lbctl list` |
+| アンインストール | コンテナとディレクトリを手動で削除 | `lbctl uninstall`（デフォルトでデータは保持） |
+| lbctl 自体の更新 | 再ダウンロード | `lbctl update` |
+| コマンドラインからローカルインスタンスに接続 | WebUI で API キーを作成して `lbctl context add` | インストール後に自動接続、そのまま `lbctl bot list` |
+
+## 状態の確認と診断
+
+```bash
+lbctl status     # 稼働状態、LangBot と lbctl のバージョン、URL、デプロイ方式
+lbctl doctor     # Python/Docker、ポート、ディスク、ネットワーク、イメージソース、サンドボックスを確認
+lbctl list       # このマシン上のすべての LangBot インスタンスを一覧表示
+```
+
+問題が起きたら、まず `lbctl doctor` を実行してください。失敗した項目と、次に実行すべきコマンドが表示されます。
+
+## 起動・停止とログ
+
+```bash
+lbctl start
+lbctl stop
+lbctl restart
+
+lbctl logs                            # 直近 200 行
+lbctl logs -f                         # 追従表示
+lbctl logs --tail 1000                # 直近 1000 行（最大 5000）
+lbctl logs --service langbot_plugin_runtime   # Docker デプロイで Plugin Runtime のログを表示
+```
+
+ネイティブデプロイのログはインスタンスディレクトリの `logs/langbot.log` に保存され、自動でローテーションされます。
+
+## LangBot のアップグレード
+
+```bash
+lbctl upgrade --dry-run    # 変更せずに確認とアップグレード計画の表示のみ
+lbctl upgrade --yes        # 最新の安定版にアップグレード
+lbctl upgrade --version v4.11.8 --yes   # 指定したバージョンにアップグレード
+```
+
+アップグレードの流れ：
+
+- **ネイティブ**：新しいバージョンの実行環境を先に準備してから、サービスを停止し、データをバックアップし、バージョンを切り替えて `/healthz` を確認します。新しいバージョンの起動に失敗した場合は、元のバージョンとデータに自動で戻します。
+- **Docker**：新しいイメージを取得して検証してから、サービスを停止し、データと Compose ファイルをバックアップし、新しいバージョンを起動して、すべてのサービスのヘルスチェックが通るまで待ちます。
+- バックアップはデータディレクトリと同じ階層の `backups/` に保存されます。ネイティブデプロイでは最新 3 件が保持されます。
+- すでに最新バージョンの場合、`lbctl upgrade --yes` はその旨を表示し、何も変更しません。
+- `lbctl update` は lbctl 自体を更新するもので、LangBot には影響しません。
+
+## 既存の Docker Compose デプロイを lbctl に移行する
+
+[Docker デプロイ](/ja/deploy/langbot/docker)の手順で `docker compose` を使ってデプロイしている場合、再インストールは不要です。lbctl をインストールして、既存のデプロイを引き継ぎます（adopt）。
+
+```bash
+# lbctl だけをインストールし、新しい LangBot はデプロイしない
+curl -fsSL https://langbot.app/install.sh | bash -s -- --lbctl-only
+
+# LangBot/docker ディレクトリで実行し、既存のデプロイを引き継ぐ（ポートは環境に合わせて変更）
+lbctl --endpoint http://127.0.0.1:5300 adopt \
+  --file "$(pwd)/docker-compose.yaml" --project docker --profile all
+
+lbctl status
+lbctl upgrade --dry-run
+lbctl upgrade --yes
+```
+
+- `--project` には Compose のプロジェクト名を指定します。`docker compose ls` で確認できます（`LangBot/docker` で起動した場合は `docker`）。`lbctl context list --discover` でも、このマシン上で引き継げるデプロイを一覧表示できます。
+- 引き継いでも Compose ファイルは変更されません。アップグレード時に置き換えるのは `langbot`、`langbot_plugin_runtime`、`langbot_box` の 3 サービスのイメージだけで、ポート、マウント、環境変数、その他のサービスはそのまま残ります。
+- 自動アップグレードには、サービスが `rockchin/langbot:<タグ>` イメージを直接使い、データがすべて Compose ディレクトリ配下の `data` バインドマウント（SQLite、Chroma、ローカルストレージ）にあることが必要です。条件を満たさない場合は `lbctl upgrade --dry-run` が理由を表示します。その場合は [LangBot の更新](/ja/deploy/update)の手順で手動でアップグレードしてください。
+- Compose ファイルを手動で編集したら、もう一度 `adopt` を実行してください。
+- 引き継ぎ後は `status`、`logs`、`start`、`stop`、`restart`、`doctor`、`upgrade` がすべて使えます。
+
+<Warning>
+引き継いだ Docker デプロイのアップグレードには lbctl v0.5.9 以降が必要です。`lbctl version` で確認し、`lbctl update` で更新してください。
+</Warning>
+
+## 起動時の自動実行
+
+ワンラインインストールでは、起動時・ログイン時の自動実行がデフォルトで有効になります。Linux では systemd、macOS では launchd、Windows では現在のユーザーのログイン時起動（管理者権限は不要）、Docker では `restart: unless-stopped` を使います。
+
+```bash
+lbctl autostart status
+lbctl autostart disable    # 実行中のインスタンスを止めずに自動起動を無効化
+lbctl autostart enable
+```
+
+Linux の非 root ユーザーには systemd のユーザーサービスが使われます。ログアウト後も動かし続けたい場合は `loginctl enable-linger` を実行してください。
+
+## インストールオプション
+
+```bash
+lbctl install                        # ネイティブデプロイ（推奨）、Python を自動で準備
+lbctl install --driver docker        # Docker Compose デプロイ
+lbctl install --port 5300            # HTTP ポート
+lbctl install --extra seekdb         # オプション依存：seekdb、milvus、valkey
+lbctl install --version v4.11.8      # 指定したバージョン
+lbctl install --region cn            # ネットワーク地域：auto、cn、global
+lbctl install --dry-run              # 前提条件の確認とインストール計画の表示のみ
+```
+
+- ネイティブデプロイは lbctl が管理する uv と Python を使い、システムの Python を使ったり変更したりすることはありません。
+- ネイティブデプロイのインストールに失敗した場合は、同じインスタンス名とポートで `lbctl install` を再実行すれば修復でき、既存のデータとバージョンは保持されます。
+- インスタンスはデフォルトで `~/.langbot/instances/<インスタンス名>` に置かれます（root ユーザーは `/opt/langbot`、Windows は `%LOCALAPPDATA%\LangBot`）。`LANGBOT_HOME` で変更できます。
+
+## 複数インスタンス
+
+```bash
+lbctl install --driver docker --name second --port 5310 --project langbot-second
+lbctl list
+lbctl stop --name second
+lbctl start --name second
+```
+
+`start`、`stop`、`restart`、`upgrade`、`uninstall`、`autostart` は `--name` でインスタンスを選べます。`status`、`logs`、`doctor` は現在の接続先に対して動作します。接続先は `lbctl context list` で確認し、`lbctl context use <名前>` で切り替えます。
+
+複数のインスタンスを同時に動かす場合は Docker を使ってください。ネイティブデプロイはプラグインデバッグ用のポート 5401 とサンドボックス用のポート 5410 を占有します。
+
+## アンインストール
+
+```bash
+lbctl uninstall --yes               # サービスを停止・削除し、データとバックアップは保持
+lbctl uninstall --purge-data --yes  # lbctl が管理するデータディレクトリも削除
+```
+
+## コマンドラインでボット、プラグイン、モデルを管理する（任意）
+
+日常的な設定は WebUI で行うのが簡単です。lbctl は HTTP API 経由で Workspace のリソースも管理でき、スクリプトや AI エージェントに向いています。
+
+lbctl でインストールまたは引き継いだローカルインスタンスは自動で接続されます（lbctl v0.5.11 以降）。lbctl はインスタンスごとに API キーを生成して `data/config.yaml` の `api.global_api_key` に書き込み、そのインスタンスの接続先に設定します。設定なしでそのまま使えます。
+
+```bash
+lbctl whoami
+lbctl bot list
+lbctl plugin list
+lbctl model list
+lbctl knowledge-base list
+```
+
+- 既存のインスタンスは、次に `lbctl start`、`restart`、`upgrade` を実行したときにキーが追加されます。引き継いだデプロイでは、案内に従って `lbctl restart` を一度実行してください。
+- キーはインスタンスディレクトリにのみ保存され（権限 0600）、lbctl の設定ファイル、`-o json` の出力、ログには表示されません。MCP クライアントなどに設定する場合は `lbctl auth show-key --yes` で確認できます。
+- ローカルに複数のインスタンスがある場合は、`lbctl context list` で接続先を確認し、`--context <名前>` で対象を指定します。
+
+リモートのインスタンスや LangBot Cloud に接続する場合は、WebUI で API キーを作成してから接続先を追加します。
+
+```bash
+export LANGBOT_API_KEY=<あなたの API キー>
+lbctl context add remote --endpoint https://your-langbot.example.com --api-key-env LANGBOT_API_KEY
+lbctl --context remote whoami
+```
+
+すべてのコマンドは `lbctl help` または [lbctl リポジトリ](https://github.com/langbot-app/langbot-cli)を参照してください。

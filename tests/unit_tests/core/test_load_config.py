@@ -26,6 +26,7 @@ def test_content_defaults_preserve_old_config_and_explicit_choices():
     assert old['skills']['persistence'] == 'filesystem'
     assert old['storage']['use'] == 'local'
     assert old['box']['file_transfer_mode'] == 'legacy'
+    assert old['box']['workspace_mode'] == 'private'
     current = complete(
         {
             'skills': {'persistence': 'database'},
@@ -36,6 +37,9 @@ def test_content_defaults_preserve_old_config_and_explicit_choices():
     assert current['skills']['persistence'] == 'database'
     assert current['storage']['use'] == 'persistent'
     assert current['box']['file_transfer_mode'] == 'network'
+    assert current['box']['workspace_mode'] == 'shared'
+    current['box']['workspace_mode'] = 'private'
+    assert complete(current)['box']['workspace_mode'] == 'private'
 
 
 def test_required_migration_source_env_remains_boolean():

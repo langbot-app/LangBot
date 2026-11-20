@@ -793,6 +793,10 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     if 'Message_too_long' in str(exc):
                         args['text'] = self._process_markdown(content[:4000] + '\n\n… (truncated)')
                         await self.bot.edit_message_text(**args)
+                    elif 'Message is not modified' in str(exc):
+                        # The message already shows this exact content (e.g. the
+                        # final chunk repeats the last edit); nothing to deliver.
+                        pass
                     else:
                         raise
                 self.msg_stream_id[message_id] = (chat_mode, stream_id, True)

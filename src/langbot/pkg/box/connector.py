@@ -44,7 +44,7 @@ _HEARTBEAT_FAILURE_THRESHOLD = 3
 
 # Top-level keys under ``box`` that are LangBot-internal and should not be
 # forwarded to the Box runtime.
-_INTERNAL_BOX_CONFIG_KEYS = frozenset({'runtime'})
+_INTERNAL_BOX_CONFIG_KEYS = frozenset({'runtime', 'local_mounts', 'workspace_mode'})
 
 
 def _get_box_config(ap) -> dict:
@@ -68,6 +68,8 @@ def _get_runtime_endpoint(box_cfg: dict) -> str:
 
 def _filter_config_for_runtime(box_cfg: dict) -> dict:
     config = {k: v for k, v in box_cfg.items() if k not in _INTERNAL_BOX_CONFIG_KEYS}
+    if config.get('file_transfer_mode') == 'network' and box_cfg.get('workspace_mode') == 'shared':
+        config['file_transfer_mode'] = 'legacy'
     if config.get('file_transfer_mode') == 'network':
         local = dict(config.get('local') or {})
         for key in ('host_root', 'default_workspace', 'allowed_mount_roots', 'skills_root'):
@@ -248,7 +250,11 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             or self._trusted_instance_uuid
         )
         if self._filtered_box_config:
-            env['LANGBOT_BOX_CONFIG'] = json.dumps(self._filtered_box_config)
+            config = dict(self._filtered_box_config)
+            local_mounts = _get_box_config(self.ap).get('local_mounts')
+            if local_mounts is not None:
+                config['local_mounts'] = local_mounts
+            env['LANGBOT_BOX_CONFIG'] = json.dumps(config)
 
         connected = asyncio.Event()
         connect_error: list[Exception] = []

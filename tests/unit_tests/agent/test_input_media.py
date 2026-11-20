@@ -39,8 +39,8 @@ def test_markers_place_each_media_and_attachments_are_metadata_only():
     )
 
     assert rendered.text == 'compare [attachment att-1: image] with [attachment att-2: file report.pdf]'
-    assert [item.type for item in rendered.contents] == ['text', 'text', 'image_base64', 'text', 'text', 'file_base64']
-    assert rendered.plain_text == 'compare  with '
+    assert [item.type for item in rendered.contents] == ['text', 'text', 'text', 'text']
+    assert rendered.plain_text == 'compare [Image] with '
     assert rendered.attachments() == [
         {
             'ref': 'att-1',
@@ -91,7 +91,6 @@ def test_empty_quote_and_text_only_models_render_without_payloads():
             platform_message.Image(url=IMAGE_URL, base64=IMAGE_BASE64),
         ),
         include_quotes=True,
-        keep_images=False,
     )
 
     assert _texts(rendered.contents) == [('text', '[attachment att-1: image]')]
@@ -112,6 +111,7 @@ def test_event_first_input_hands_payloads_to_the_run_registry_only():
 
     assert agent_input.text == 'look[attachment att-1: image]'
     assert agent_input.attachments[0].content == IMAGE_BASE64
+    assert all(item.type == 'text' for item in agent_input.contents)
 
     # Event runs execute against a text-only chain; the envelope payload is registered by ref.
     query = SimpleNamespace(message_chain=_chain(platform_message.Plain(text=agent_input.text)))

@@ -6,6 +6,15 @@ on:
     - cron: '23 19 * * *'
   workflow_dispatch:
     inputs:
+      validation_scope:
+        description: 'Full compatibility/regression matrix or just the existing Daily workloads'
+        type: choice
+        options: [full, workload_only]
+        default: full
+      require_live_dify:
+        description: 'Also require the credentialed Dify Cloud check for a manual run'
+        type: boolean
+        default: false
       workload:
         description: 'Mixed business load or the finite fault/lifecycle contract pass'
         type: choice
@@ -32,6 +41,68 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  core-matrix:
+    name: Full Core compatibility and regression
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/run-tests.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  sdk-matrix:
+    name: Full SDK compatibility
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/sdk-tests.yml
+
+  sdk-box:
+    name: Real SDK Docker Box acceptance
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/sdk-box-docker.yml
+
+  lint:
+    name: Core static checks
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/lint.yml
+
+  dependency-contracts:
+    name: Dependency contracts
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/optional-contracts.yml
+
+  migrations:
+    name: SQLite and PostgreSQL migrations
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/test-migrations.yml
+
+  frontend:
+    name: Full WebUI and browser regression
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/frontend-tests.yml
+
+  packaging:
+    name: Core packaging boundary and production image
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/core-packaging.yml
+
+  plugin-runner:
+    name: Official Runner compatibility
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/plugins-runner-tests.yml
+
+  plugin-knowledgeengine:
+    name: Official KnowledgeEngine compatibility
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/plugins-knowledgeengine-shared-tests.yml
+
+  plugin-misc:
+    name: Official misc plugin checks
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/plugins-misc-tests.yml
+
+  plugin-catalog:
+    name: Official plugin catalog contract
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/plugins-plugin-catalog.yml
+
   endurance:
     name: Daily mixed load / weekly contracts
     runs-on: ubuntu-latest
@@ -166,6 +237,8 @@ jobs:
                   errors.append('Missing verdict; inspect preparation and service logs.')
               for error in errors:
                   out.write(f"\n- {error}\n")
+          if not passed:
+              raise SystemExit('Daily regression failed or its required verdict is missing')
           PY_SUMMARY
       - name: Preserve verdicts and observations
         if: always()
@@ -273,6 +346,8 @@ jobs:
                   errors.append('Missing verdict; inspect preparation and service logs.')
               for error in errors:
                   out.write(f"- {error}\n")
+          if not passed:
+              raise SystemExit('Daily API regression failed or its required verdict is missing')
           PY_SUMMARY
       - name: Preserve API verdicts and evidence
         if: always()
@@ -299,6 +374,7 @@ jobs:
 
   dify-cloud:
     name: Daily Dify Cloud Agent regression
+    if: github.event_name == 'schedule' || inputs.require_live_dify
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -322,20 +398,20 @@ jobs:
           DIFY_LIVE_OUTPUT: ${{ github.workspace }}/.qa/dify-live/summary.json
         run: |
           if [[ -z "$DIFY_AGENT_API_KEY" ]]; then
-            if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
-              echo "DIFY_AGENT_API_KEY is required for the scheduled live Dify regression." >&2
-              exit 1
-            fi
-            echo "DIFY_AGENT_API_KEY is not configured; skipping manual live Dify regression."
-            exit 0
+            echo "DIFY_AGENT_API_KEY is required for the selected live Dify regression." >&2
+            exit 1
           fi
           uv run --no-sync python http-certification-tests/live_dify_agent.py
       - name: Publish Dify regression summary
         if: always()
         run: |
-          if [[ -f "$GITHUB_WORKSPACE/.qa/dify-live/summary.json" ]]; then
-            cat "$GITHUB_WORKSPACE/.qa/dify-live/summary.json" >> "$GITHUB_STEP_SUMMARY"
+          summary="$GITHUB_WORKSPACE/.qa/dify-live/summary.json"
+          if [[ ! -f "$summary" ]]; then
+            echo "No Dify verdict was produced." >&2
+            exit 1
           fi
+          cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          python -c 'import json, sys; sys.exit(json.load(open(sys.argv[1])).get("passed") is not True)' "$summary"
       - name: Preserve Dify regression evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -431,9 +507,13 @@ jobs:
       - name: Publish latest n8n summary
         if: always()
         run: |
-          if [[ -f "$GITHUB_WORKSPACE/.qa/n8n-live/summary.json" ]]; then
-            cat "$GITHUB_WORKSPACE/.qa/n8n-live/summary.json" >> "$GITHUB_STEP_SUMMARY"
+          summary="$GITHUB_WORKSPACE/.qa/n8n-live/summary.json"
+          if [[ ! -f "$summary" ]]; then
+            echo "No n8n verdict was produced." >&2
+            exit 1
           fi
+          cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          python -c 'import json, sys; sys.exit(json.load(open(sys.argv[1])).get("passed") is not True)' "$summary"
       - name: Preserve latest n8n evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -444,145 +524,69 @@ jobs:
           retention-days: 30
 
   persistence-runtime:
-    name: Daily Skill persistence and Plugin Runtime contracts
+    uses: ./.github/workflows/persistence-acceptance.yml
+    with:
+      uploaded_artifacts: ${{ github.event_name == 'schedule' || inputs.validation_scope == 'full' }}
+
+  verdict:
+    name: Daily regression verdict
+    if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      SPACE__DISABLE_TELEMETRY: 'true'
-      LANGBOT_NETWORK_PLUGIN_E2E: '1'
-      LANGBOT_CORE_NETWORK_BACKEND: host
-      LANGBOT_PERSISTENCE_CORE_E2E: '1'
-      LANGBOT_SKILL_NETWORK_E2E: '1'
-      LANGBOT_PERSISTENCE_POSTGRES_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/langbot_test
-      LANGBOT_PERSISTENCE_CORE_POSTGRES_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/langbot_core
-      LANGBOT_PERSISTENCE_MINIO_ENDPOINT: http://127.0.0.1:9000
-      # Disposable loopback-only CI service credentials, never external accounts.
-      LANGBOT_PERSISTENCE_MINIO_ACCESS_KEY: minioadmin
-      LANGBOT_PERSISTENCE_MINIO_SECRET_KEY: minioadmin
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_DB: langbot_test
-          POSTGRES_HOST_AUTH_METHOD: trust
-        ports:
-          - '127.0.0.1:5432:5432'
-        options: >-
-          --health-cmd="pg_isready -U postgres -d langbot_test"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=5
+    timeout-minutes: 5
+    needs:
+      - core-matrix
+      - sdk-matrix
+      - sdk-box
+      - lint
+      - dependency-contracts
+      - migrations
+      - frontend
+      - packaging
+      - plugin-runner
+      - plugin-knowledgeengine
+      - plugin-misc
+      - plugin-catalog
+      - endurance
+      - api-contracts
+      - dify-cloud
+      - n8n-latest
+      - persistence-runtime
     steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - uses: astral-sh/setup-uv@v4
-      - name: Install Core with the in-tree SDK
-        run: |
-          uv sync --dev --frozen
-      - name: Prepare disposable PostgreSQL and MinIO
+      - name: Confirm selected jobs succeeded
         env:
-          GH_TOKEN: ${{ github.token }}
+          JOB_RESULTS: ${{ toJSON(needs) }}
+          FULL_MATRIX: ${{ github.event_name == 'schedule' || inputs.validation_scope == 'full' }}
+          LIVE_DIFY: ${{ github.event_name == 'schedule' || inputs.require_live_dify }}
         run: |
-          mkdir -p .qa/persistence-runtime
-          docker exec "${{ job.services.postgres.id }}" \
-            psql -U postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE langbot_core;'
-          docker exec "${{ job.services.postgres.id }}" \
-            psql -U postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE langbot_skill_network;'
-          minio_binary=minio.linux-amd64.RELEASE.2025-09-07T16-13-09Z
-          gh release download RELEASE.2025-09-07T16-13-09Z --repo minio/minio \
-            --pattern "$minio_binary" --dir .qa/persistence-runtime
-          printf '7c5bd8512c6e966455b1d198209358b2d191c77a83ab377c4073281065fb855f  %s\n' \
-            ".qa/persistence-runtime/$minio_binary" | sha256sum --check
-          chmod +x ".qa/persistence-runtime/$minio_binary"
-          unset GH_TOKEN
-          MINIO_ROOT_USER="$LANGBOT_PERSISTENCE_MINIO_ACCESS_KEY" \
-            MINIO_ROOT_PASSWORD="$LANGBOT_PERSISTENCE_MINIO_SECRET_KEY" \
-            ".qa/persistence-runtime/$minio_binary" server "$PWD/.qa/persistence-runtime/minio-data" \
-            --address 127.0.0.1:9000 --console-address 127.0.0.1:9001 \
-            > .qa/persistence-runtime/minio.log 2>&1 &
-          echo "$!" > .qa/persistence-runtime/minio.pid
-          python - <<'PY_READY'
-          import os, time, urllib.error, urllib.request
-          deadline = time.monotonic() + 60
-          while time.monotonic() < deadline:
-              try:
-                  with urllib.request.urlopen(os.environ['LANGBOT_PERSISTENCE_MINIO_ENDPOINT'] + '/minio/health/ready', timeout=2) as response:
-                      if response.status == 200:
-                          break
-              except (OSError, urllib.error.URLError):
-                  pass
-              time.sleep(1)
-          else:
-              raise SystemExit('MinIO did not become ready within 60 seconds; inspect minio.log')
-          PY_READY
-      - name: Run full-process network file delivery on host
-        run: |
-          uv run --no-sync pytest tests/e2e/test_network_file_plugin_runtime.py \
-            --required-suite network_plugin -q --tb=short -rs \
-            --junitxml=.qa/persistence-runtime/network-plugin.xml
-      - name: Run Skill publications, media, RLS and two-Core recovery
-        run: |
-          uv run --no-sync pytest tests/integration/skill/test_persistent_skill_replicas.py \
-            tests/integration/skill/test_legacy_skill_migration.py tests/integration/storage/test_legacy_storage_migration.py \
-            tests/integration/persistence/test_skill_content_postgres.py tests/e2e/test_skill_persistence_replicas.py \
-            --required-suite skill_persistence -q --tb=short -rs \
-            --basetemp=.qa/persistence-runtime/processes \
-            --junitxml=.qa/persistence-runtime/skill-persistence.xml
-      - name: Run two-Core Skill execution and draft publication without shared paths
-        env:
-          LANGBOT_PERSISTENCE_CORE_POSTGRES_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/langbot_skill_network
-        run: |
-          uv run --no-sync pytest tests/e2e/test_skill_network_runtime.py \
-            --required-suite skill_network -q --tb=short -rs \
-            --basetemp=.qa/persistence-runtime/skill-network-processes \
-            --junitxml=.qa/persistence-runtime/skill-network.xml
-      - name: Preserve execution scope and service logs
-        if: always()
-        run: |
-          mkdir -p .qa/persistence-runtime
-          printf 'Candidate: %s\nSDK: in-tree\nBox: host\nStorage: PostgreSQL + MinIO\nE2B/nsjail: not exercised\n' \
-            "$GITHUB_SHA" | tee .qa/persistence-runtime/scope.txt >> "$GITHUB_STEP_SUMMARY"
-      - name: Remove owned MinIO
-        if: always()
-        run: |
-          python - <<'PY_STOP'
-          import os, signal, time
-          from pathlib import Path
-          pid_file = Path('.qa/persistence-runtime/minio.pid')
-          if not pid_file.exists():
-              raise SystemExit(0)
-          pid = int(pid_file.read_text())
-          expected = Path('.qa/persistence-runtime/minio.linux-amd64.RELEASE.2025-09-07T16-13-09Z').resolve()
-          def owned_process():
-              try:
-                  actual = Path(f'/proc/{pid}/exe').resolve(strict=True)
-              except FileNotFoundError:
-                  return False
-              if actual != expected:
-                  raise SystemExit('MinIO PID belongs to a different executable; refusing cleanup')
-              return True
-          if owned_process():
-              os.kill(pid, signal.SIGTERM)
-              deadline = time.monotonic() + 10
-              while owned_process() and time.monotonic() < deadline:
-                  time.sleep(0.1)
-              if owned_process():
-                  os.kill(pid, signal.SIGKILL)
-          PY_STOP
-      - name: Upload persistence and Runtime evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: daily-persistence-runtime-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            .qa/persistence-runtime/*.xml
-            .qa/persistence-runtime/*.txt
-            .qa/persistence-runtime/*.log
-            .qa/persistence-runtime/processes/**/langbot.*.log
-            .qa/persistence-runtime/processes/**/before-restart-*.log
-          if-no-files-found: warn
-          retention-days: 30
+          python3 - <<'PY_VERDICT'
+          import json, os
+
+          jobs = json.loads(os.environ['JOB_RESULTS'])
+          full_matrix = os.environ['FULL_MATRIX'] == 'true'
+          live_dify = os.environ['LIVE_DIFY'] == 'true'
+          matrix = {'core-matrix', 'sdk-matrix', 'sdk-box', 'lint', 'dependency-contracts',
+                    'migrations', 'frontend', 'packaging', 'plugin-runner',
+                    'plugin-knowledgeengine', 'plugin-misc', 'plugin-catalog'}
+          required = {'endurance', 'api-contracts', 'persistence-runtime', 'n8n-latest'}
+          if full_matrix:
+              required |= matrix
+          if live_dify:
+              required.add('dify-cloud')
+          expected = required | matrix | {'dify-cloud'}
+          failures = []
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f"## Daily regression\n\nCandidate: `{os.environ['GITHUB_SHA']}`\n\n")
+              summary.write('| Suite | Selected | Result |\n| --- | --- | --- |\n')
+              for job in sorted(expected | jobs.keys()):
+                  result = jobs.get(job, {}).get('result', 'missing')
+                  selected = job in required
+                  summary.write(f"| {job} | {'yes' if selected else 'no'} | {result} |\n")
+                  if job not in expected or result != ('success' if selected else 'skipped'):
+                      failures.append(f'{job}: {result}')
+              if not full_matrix:
+                  summary.write('\nWorkload-only run: no matrix or migration acceptance.\n')
+              if not live_dify:
+                  summary.write('\nManual run did not select credentialed Dify acceptance.\n')
+          if failures:
+              raise SystemExit('Selected validation failed or is incomplete: ' + ', '.join(failures))
+          PY_VERDICT

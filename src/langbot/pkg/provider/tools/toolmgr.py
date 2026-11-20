@@ -411,8 +411,13 @@ class ToolManager:
         if launcher_type is None or launcher_id is None:
             return None
 
-        launcher_type_value = launcher_type.value if hasattr(launcher_type, 'value') else launcher_type
-        return f'{launcher_type_value}_{launcher_id}'
+        from ...pipeline.monitoring_helper import build_monitoring_session_id
+
+        return build_monitoring_session_id(
+            launcher_type,
+            launcher_id,
+            getattr(query, 'sender_id', None),
+        )
 
     async def _record_tool_call(
         self,

@@ -1434,6 +1434,14 @@ const viVN = {
       resetSuccess: 'Đã đặt lại ngữ cảnh.',
       resetError:
         'Không thể đặt lại. Hãy đợi các tác vụ đang chạy hoàn tất rồi thử lại.',
+      resetScopeMember:
+        'Cuộc trò chuyện này lưu ngữ cảnh riêng cho từng thành viên nhóm, nên chỉ ngữ cảnh của thành viên này được đặt lại.',
+      resetScopeGroup:
+        'Nhóm này dùng chung một ngữ cảnh, nên cuộc hội thoại của cả nhóm sẽ được đặt lại, không chỉ của thành viên này.',
+      inGroup: 'trong {{group}}',
+      filterByGroup: 'Cùng nhóm',
+      groupFilterActive: 'Nhóm {{group}}',
+      clearGroupFilter: 'Hiện tất cả phiên',
 
       title: 'Phiên',
       sessions: 'Phiên',
@@ -2167,6 +2175,10 @@ const viVN = {
     updating: 'Đang cập nhật...',
     updateSuccess: 'Cập nhật plugin thành công',
     updateError: 'Cập nhật thất bại: ',
+    installedVersion: 'Phiên bản đã cài v{{version}}',
+    updateToVersion: 'Cập nhật lên v{{version}}',
+    confirmUpdatePluginVersion:
+      'Cập nhật plugin {{author}}/{{name}} từ v{{from}} lên v{{to}}?',
     saveConfigSuccessNormal: 'Lưu cấu hình thành công',
     saveConfigError: 'Lưu cấu hình thất bại: ',
     config: 'Cấu hình',
@@ -2232,6 +2244,12 @@ const viVN = {
       depsInfo: '{{count}} phụ thuộc cần cài đặt',
       depsProgress: 'Đã cài {{installed}}/{{total}} · Còn lại {{remaining}}',
       installComplete: 'Cài đặt plugin thành công',
+      followUp: {
+        nextSteps: 'Bước tiếp theo',
+        agents: 'Tạo Agent hoặc bộ xử lý plugin',
+        pipelines: 'Tạo pipeline',
+        knowledge: 'Tạo cơ sở tri thức',
+      },
       updateComplete: 'Đã cập nhật plugin thành công',
       installCompletePlugin: 'Đã cài đặt plugin thành công',
       installCompleteMCP: 'Đã cài đặt máy chủ MCP thành công',
@@ -3024,6 +3042,32 @@ const viVN = {
     space_account_binding_requiredTitle: 'LangBot Account connection required',
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
+  },
+  dailyMessageQuota: {
+    planLimited: '{{count}} tin nhắn mỗi ngày',
+    planUnlimited: 'Không giới hạn tin nhắn mỗi ngày',
+    planHelp:
+      'Số tin nhắn bot có thể xử lý mỗi ngày, tính theo ngày UTC và đặt lại lúc 00:00 UTC. Chỉ tính tin nhắn bot thực sự xử lý. Khi hết hạn mức, tin nhắn mới trong ngày sẽ không được xử lý và người dùng sẽ được thông báo.',
+    title: 'Tin nhắn hôm nay',
+    usage: '{{used}} / {{limit}}',
+    remaining: 'Còn {{count}}',
+    resetsAt: 'Đặt lại {{time}}',
+    today: 'hôm nay {{time}}',
+    tomorrow: 'ngày mai {{time}}',
+    exhausted: 'Đã hết hạn mức hôm nay',
+    exhaustedHint: 'Tin nhắn mới tạm dừng đến {{time}}',
+    nearLimit: 'Sắp hết',
+    upgrade: 'Nâng cấp gói',
+    unlimited: 'Không giới hạn',
+    settingsTitle: 'Hạn mức tin nhắn mỗi ngày',
+    settingsDescription:
+      'Số tin nhắn bot có thể xử lý mỗi ngày, gồm cả trò chuyện gỡ lỗi. Tính theo ngày UTC; tin nhắn nhóm không kích hoạt bot sẽ không bị tính.',
+    unlimitedDescription: 'Gói của bạn không giới hạn tin nhắn mỗi ngày.',
+    errorTitle: 'Đã hết hạn mức tin nhắn hôm nay',
+    errorBody:
+      'Không gian làm việc này đã xử lý {{limit}} tin nhắn hôm nay nên tin nhắn này không được xử lý. Hạn mức sẽ đặt lại {{time}}.',
+    errorUpgrade: 'Nâng cấp để có hạn mức cao hơn',
+    unavailable: 'Hiện không lấy được mức sử dụng hôm nay',
   },
   workspace: {
     dedicatedSpaceMembersHint:

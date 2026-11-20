@@ -12,6 +12,8 @@ import shutil
 import shlex
 from pathlib import Path
 from types import SimpleNamespace
+
+from tests.utils.artifact_store import named_key_context, seed_run, _artifact_store  # noqa: F401 -- fixture
 import uuid
 
 from aiohttp.test_utils import TestServer
@@ -31,7 +33,7 @@ from langbot_plugin.box.tenancy import namespace_session_id
 from langbot_plugin.runtime.io.connections.ws import WebSocketConnection
 from langbot_plugin.runtime.io.handler import Handler
 from langbot_plugin.runtime.security import PLUGIN_FILE_STORAGE_DIR_ENV
-from langbot.pkg.box.runner import RunnerBoxService, exported_message
+from langbot.pkg.box.runner import RunnerBoxService, exported_message, run_artifact_context
 from langbot.pkg.box.service import BoxService
 from tests.unit_tests.box.test_box_service import _ACTION_CONTEXT, _CONTEXT, make_app, make_query
 
@@ -78,7 +80,7 @@ async def _require_existing_docker_image():
 
 
 @pytest.fixture
-async def network_files(tmp_path, monkeypatch):
+async def network_files(tmp_path, monkeypatch, artifact_store):
     backend_name = os.environ.get('LANGBOT_CORE_NETWORK_BACKEND', 'host')
     if backend_name not in {'host', 'docker', 'nsjail', 'e2b'}:
         pytest.fail('LANGBOT_CORE_NETWORK_BACKEND must select host, docker, nsjail or e2b')
@@ -97,6 +99,16 @@ async def network_files(tmp_path, monkeypatch):
         json.dumps({'local': {'host_root': runtime_workspace_root, 'default_workspace': 'default'}}),
     )
     config = {'backend': backend_name, 'file_transfer_mode': 'network', 'limits': {'max_sessions': 1}}
+    if backend_name == 'docker':
+        dataset = tmp_path / 'dataset'
+        dataset.mkdir()
+        (dataset / 'sample.txt').write_text('local data')
+        runtime_config = json.loads(os.environ['LANGBOT_BOX_CONFIG'])
+        runtime_config['local_mounts'] = {
+            'sample': {'path': str(dataset), 'workspaces': [context.workspace_uuid]},
+            'private': {'path': str(dataset), 'workspaces': ['another-workspace']},
+        }
+        monkeypatch.setenv('LANGBOT_BOX_CONFIG', json.dumps(runtime_config))
     if backend_name in {'docker', 'nsjail'}:
         output_root = '/tmp/core-network-files-' + uuid.uuid4().hex
         if backend_name == 'docker':
@@ -212,12 +224,14 @@ async def network_files(tmp_path, monkeypatch):
             ap.instance_config.data['box']['backend'] = config['backend']
             ap.instance_config.data['box']['file_transfer_mode'] = 'network'
             ap.instance_config.data['box']['runtime']['endpoint'] = url
+            await artifact_store(ap, context)
             service = BoxService(ap, client=client)
             service._available = True
             assert service.default_workspace is None
             assert runtime.network_workspace is True
             query = make_query()
             object.__setattr__(query, 'instance_uuid', instance_uuid)
+            object.__setattr__(query, '_execution_context', context)
             object.__setattr__(query, '_box_binding', None)
             object.__setattr__(query, '_sandbox_backend', backend_name)
             object.__setattr__(
@@ -233,6 +247,14 @@ async def network_files(tmp_path, monkeypatch):
             if e2b_connection is not None:
                 image = e2b_connection.template
             acquire_request = {'reuse_key': 'network-file-fixture', 'options': {'image': image}}
+            if backend_name == 'docker':
+                with pytest.raises(BoxError, match="Local mount 'private'.*Workspace allowlist"):
+                    await RunnerBoxService(service).acquire(
+                        context,
+                        {**acquire_request, 'options': {'image': image, 'mounts': ['private']}},
+                        query,
+                    )
+                acquire_request['options']['mounts'] = ['sample']
             box = SimpleNamespace(
                 service=service,
                 client=client,
@@ -257,9 +279,13 @@ async def network_files(tmp_path, monkeypatch):
                 if backend_name == 'nsjail':
                     Path(session.info.host_path).chmod(0o777)
                 await box.runner.bind(context, query, 'run-' + uuid.uuid4().hex, acquired_session)
+                await seed_run(ap, context, query._box_binding.run_id)
                 assert query._box_binding.session_id == acquired_session
                 assert len(runtime._sessions) == 1
                 await _command(box, 'mkdir -p -- ' + shlex.quote(output_root))
+                if backend_name == 'docker':
+                    assert await _command(box, 'cat /datasets/sample/sample.txt') == 'local data'
+                    await _command(box, 'if touch /datasets/sample/blocked 2>/dev/null; then exit 1; fi')
                 if backend_name == 'e2b':
                     session = runtime._sessions[namespace_session_id(action_context, query._box_binding.session_id)]
                     assert runtime._backend is backend and session.info.backend_name == 'e2b'
@@ -273,6 +299,9 @@ async def network_files(tmp_path, monkeypatch):
                 try:
                     if acquired_session is not None:
                         await client.delete_session(acquired_session, action_context=action_context)
+                    if backend_name == 'docker':
+                        assert (dataset / 'sample.txt').read_text() == 'local data'
+                        assert not (dataset / 'blocked').exists()
                 finally:
                     await handler.close()
                     await asyncio.gather(handler_task, return_exceptions=True)
@@ -299,16 +328,21 @@ async def test_network_import_preserves_same_name_files_from_separate_refs(netwo
     box = network_files
     query = box.query
     second = b'second attachment'
+    manager = await named_key_context(box.service.ap, box.context)
+    artifacts = box.service.ap.artifact_service
+    asset = await artifacts.create(manager, 'same.bin', second, 'application/octet-stream')
+    await artifacts.bind_run_inputs(manager, run_artifact_context(query), [asset['id']])
+    object.__setattr__(query, '_input_artifact_ids', frozenset({asset['id']}))
     object.__setattr__(
         query,
         '_input_components',
         {
             'att-a': File(name='same.bin', base64=base64.b64encode(_CONTENT).decode()),
-            'att-b': File(name='same.bin', base64=base64.b64encode(second).decode()),
+            asset['id']: File(name='same.bin'),
         },
     )
     first_import = await box.runner.import_attachments(query, ['att-a'])
-    second_import = await box.runner.import_attachments(query, ['att-b'])
+    second_import = await box.runner.import_attachments(query, [asset['id']])
     first = first_import['items'][0]
     last = second_import['items'][0]
     assert first['path'] != last['path']
@@ -335,8 +369,8 @@ async def test_network_selected_export_preserves_large_private_output_and_unsele
     item = result['items'][0]
     assert item['name'] == 'private-output.bin'
     assert item['size'] == len(_CONTENT)
-    assert 'base64' not in item
-    message = exported_message(box.query, [item['id']])
+    assert 'base64' not in item and 'content' not in item
+    message = await exported_message(box.service.ap, box.query, [item['id']])
     assert _decode(message[0].base64) == _CONTENT
     assert await _command(box, f'test ! -e {shlex.quote(selected)} && cat {shlex.quote(unselected)}') == 'retained'
     assert await _command(box, "find /workspace/.langbot-snapshots -name '.langbot-export-*'") == ''
@@ -518,7 +552,7 @@ async def test_network_cleanup_warning_keeps_accepted_handles_and_changed_source
     assert len(result['items']) == 1
     item = result['items'][0]
     assert item['id'] in box.query._box_binding.exported
-    assert _decode(exported_message(box.query, [item['id']])[0].base64) == b'original'
+    assert _decode((await exported_message(box.service.ap, box.query, [item['id']]))[0].base64) == b'original'
     assert await _command(box, f'cat {shlex.quote(path)}') == 'changed'
     assert await _command(box, "find /workspace/.langbot-snapshots -name '.langbot-export-*'") == ''
 

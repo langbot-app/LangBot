@@ -3,9 +3,9 @@
 import subprocess
 
 from tools.regression.regression_api_checks import check, request, tracked_resource, unique_name
-from tools.entrypoints.regression_coverage import checked
+from tools.regression.evidence import checked
 from tools.regression.regression_local_cases import require
-from tools.regression.regression_resource_cases import journal
+from tools.regression.resource_cleanup import journal
 
 CASE_NAMES = ('cli.identity', 'cli.pipeline_roundtrip', 'cli.invalid_credential')
 

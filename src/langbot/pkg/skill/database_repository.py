@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import mimetypes
 import tempfile
 import uuid
 from collections import OrderedDict
@@ -85,6 +86,43 @@ class DatabaseSkillRepository:
                     continue
             raise
 
+    async def _resource_archive_row(self, uow, context, content_ref):
+        """Check live authority before considering a disposable archive cache hit."""
+        cache_key = (context.instance_uuid, context.workspace_uuid, content_ref)
+        cached = self._resource_archives.get(cache_key)
+        row = await self.content._row(uow, context.workspace_uuid, content_ref, metadata_only=cached is not None)
+        if cached is not None and (cached['size'], cached['digest']) != (row['size'], row['digest']):
+            self._discard_resource_archive(cache_key)
+            cached = None
+            row = await self.content._row(uow, context.workspace_uuid, content_ref)
+        return cache_key, cached, row
+
+    async def _read_resource_archive(self, cache_key, cached, row, reader, *args, **kwargs):
+        """Share bounded verified package bytes, never authorization or extracted files.
+
+        Callers hold the repository Workspace lock and have released the database
+        connection before entering this helper. A cache hit still verifies the live
+        digest and full archive manifest on the bounded worker scope.
+        """
+        content = self.content
+        try:
+            archive = cached['value'] if cached is not None else bytes(await content._read(row, MAX_PUBLICATION_BYTES))
+            read_resource = partial(reader, archive, *args, **kwargs)
+            scope_limit = getattr(getattr(self.ap, 'blocking_executor', None), 'max_inflight_per_scope', 0)
+            if cached is not None and isinstance(scope_limit, int) and scope_limit >= 2:
+                result = await self._read_resource_parallel(
+                    partial(content._validated_value, archive, row, MAX_PUBLICATION_BYTES), read_resource
+                )
+            else:
+                if cached is not None:
+                    content._validated_value(archive, row, MAX_PUBLICATION_BYTES)
+                result = await run_blocking_atomic(read_resource)
+        except BaseException:
+            self._discard_resource_archive(cache_key)
+            raise
+        self._remember_resource_archive(cache_key, archive, row)
+        return result
+
     @staticmethod
     def _scope(model, context):
         return (
@@ -124,7 +162,92 @@ class DatabaseSkillRepository:
                 'skill': dict(registry.skill_json if registry is not None else version.skill_json),
                 'manifest': version.manifest_json,
                 'content_ref': version.content_ref,
+                'version_id': version.uuid,
             }
+
+    @staticmethod
+    def _artifact_resource_metadata(record, path):
+        """Describe a manifest member, never an object-store key supplied by a caller."""
+        path = SkillStore._publication_resource_path(path)
+        _, revision, manifest = SkillStore._publication_manifest_identity(record['skill'], record['manifest'])
+        entry = next((item for item in manifest['files'] if item['path'] == path), None)
+        if entry is None:
+            raise FileNotFoundError('Skill resource not found')
+        # Match the existing SDK's verified publication reader ceiling.
+        if entry['size'] > 1024 * 1024:
+            raise ValueError('Skill resource exceeds the 1048576-byte limit')
+        return {
+            'version_id': record['version_id'],
+            'content_ref': record['content_ref'],
+            'revision': revision,
+            'path': path,
+            'digest': entry['sha256'],
+            'size': entry['size'],
+            'mime_type': mimetypes.guess_type(path)[0] or 'application/octet-stream',
+            'name': record['skill']['name'],
+        }
+
+    async def resolve_artifact_resource(self, context, name, path, *, expected_revision, max_bytes=1024 * 1024):
+        """Resolve an explicitly pinned publication; authorization belongs to the caller."""
+        if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes <= 0:
+            raise ValueError('Skill resource read limit must be a positive integer')
+        if not expected_revision:
+            raise ValueError('Skill Artifact resources require an explicit revision')
+        await self._validate_context(context)
+        record = await self._record(context, name, expected_revision)
+        if record is None:
+            raise FileNotFoundError('Skill resource not found')
+        source = self._artifact_resource_metadata(record, path)
+        # Enforce the caller's remaining budget before fetching or verifying archive bytes.
+        if source['size'] > max_bytes:
+            raise ValueError('Skill resource exceeds the requested read limit')
+        # Do not return a successful reference to a corrupt or unavailable package.
+        await self.read_artifact_resource(context, source, max_bytes=max_bytes)
+        return source
+
+    async def read_artifact_resource(self, context, source, *, max_bytes):
+        """Read a version UUID, independent of registry names, aliases and local caches."""
+        if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes <= 0:
+            raise ValueError('Skill resource read limit must be a positive integer')
+        await self._validate_context(context)
+        async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+            version = (
+                await uow.execute(
+                    sqlalchemy.select(SkillVersion).where(
+                        *self._scope(SkillVersion, context), SkillVersion.uuid == source.get('version_id')
+                    )
+                )
+            ).scalar_one_or_none()
+            if version is None:
+                raise FileNotFoundError('Skill resource not found')
+            record = {
+                'version_id': version.uuid,
+                'content_ref': version.content_ref,
+                'skill': dict(version.skill_json),
+                'manifest': version.manifest_json,
+            }
+            expected = self._artifact_resource_metadata(record, source.get('path'))
+            # MIME is persisted presentation metadata, not immutable byte identity.
+            # Replacement hosts may have different system MIME registries.
+            for key in ('content_ref', 'revision', 'path', 'digest', 'size'):
+                if source.get(key) != expected[key]:
+                    raise ValueError('Skill resource identity does not match its publication')
+            if expected['size'] > max_bytes:
+                raise ValueError('Skill resource exceeds the requested read limit')
+            await self.content._validate(context)
+            cache_key, cached, row = await self._resource_archive_row(uow, context, record['content_ref'])
+        # The Artifact read lease protects this package during object-store IO.
+        _, _, value = await self._read_resource_archive(
+            cache_key,
+            cached,
+            row,
+            partial(SkillStore._publication_resource, record['skill'], record['manifest']),
+            expected['path'],
+            expected['revision'],
+        )
+        if value is None or len(value) != expected['size'] or hashlib.sha256(value).hexdigest() != expected['digest']:
+            raise ValueError('Skill resource content does not match its publication')
+        return value
 
     async def _archive(self, context, record: dict) -> bytes:
         return await self.content.get(context, record['content_ref'], max_bytes=MAX_PUBLICATION_BYTES)
@@ -426,15 +549,7 @@ class DatabaseSkillRepository:
                 if method == 'list_skill_resources':
                     content._validate_ref(record['content_ref'])
                 else:
-                    cache_key = (context.instance_uuid, context.workspace_uuid, record['content_ref'])
-                    cached = self._resource_archives.get(cache_key)
-                    row = await content._row(
-                        uow, context.workspace_uuid, record['content_ref'], metadata_only=cached is not None
-                    )
-                    if cached is not None and (cached['size'], cached['digest']) != (row['size'], row['digest']):
-                        self._discard_resource_archive(cache_key)
-                        cached = None
-                        row = await content._row(uow, context.workspace_uuid, record['content_ref'])
+                    cache_key, cached, row = await self._resource_archive_row(uow, context, record['content_ref'])
             if method == 'list_skill_resources':
                 return await run_blocking_atomic(
                     SkillStore.list_publication_manifest_resources,
@@ -444,32 +559,14 @@ class DatabaseSkillRepository:
                     **kwargs,
                 )
             # Release the database connection before object-store IO and ZIP validation.
-            try:
-                archive = (
-                    cached['value'] if cached is not None else bytes(await content._read(row, MAX_PUBLICATION_BYTES))
-                )
-                read_resource = partial(
-                    SkillStore.read_publication_resource,
-                    record['skill'],
-                    record['manifest'],
-                    archive,
-                    *args[1:],
-                    **kwargs,
-                )
-                scope_limit = getattr(getattr(self.ap, 'blocking_executor', None), 'max_inflight_per_scope', 0)
-                if cached is not None and isinstance(scope_limit, int) and scope_limit >= 2:
-                    result = await self._read_resource_parallel(
-                        partial(content._validated_value, archive, row, MAX_PUBLICATION_BYTES), read_resource
-                    )
-                else:
-                    if cached is not None:
-                        content._validated_value(archive, row, MAX_PUBLICATION_BYTES)
-                    result = await run_blocking_atomic(read_resource)
-            except BaseException:
-                self._discard_resource_archive(cache_key)
-                raise
-            self._remember_resource_archive(cache_key, archive, row)
-            return result
+            return await self._read_resource_archive(
+                cache_key,
+                cached,
+                row,
+                partial(SkillStore.read_publication_resource, record['skill'], record['manifest']),
+                *args[1:],
+                **kwargs,
+            )
         if method in {'list_skill_files', 'read_skill_file', 'list_skill_resources', 'read_skill_resource'}:
             record = await self._record(context, args[0], kwargs.get('expected_revision'))
             if record is None:

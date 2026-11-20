@@ -19,6 +19,13 @@ The directory boundaries are intentional:
 
 Imports use the `tools.entrypoints` and `tools.regression` package paths. Keep commands rooted at the repository so profile and fixture paths resolve consistently.
 
+Common workload primitives live in `regression/http_bot.py` (group requests
+and signing), `regression/run_ledger.py` (read-only RunLedger evidence),
+`regression/resource_cleanup.py` (owned-resource journals and cleanup checks),
+and `regression/evidence.py` (assertion receipts). Import these from runners and
+cases rather than routing through an executable entrypoint. Keep
+scenario-specific expected outcomes and workflows with their scenarios.
+
 Run the deterministic OpenAI Chat Completions endpoint with Python 3.11+, without
 API credentials or third-party dependencies:
 
@@ -533,6 +540,10 @@ The existing required check names remain `Regression tools` and `Core smoke (60s
 soak tests use the existing Suite and Job entry points with separately calibrated
 latency, throughput and resource budgets; the one-minute smoke does not replace them.
 
+For the optional JSON-configurable transaction mix used for local smoke,
+pressure and soak tests, see [Configurable mixload](mixload.md). It does
+not change the stock Daily job described below.
+
 ## Daily mixed workload and weekly contracts
 
 `Daily Endurance` keeps one owned Core/Runtime/Box deployment per run. At the
@@ -645,7 +656,9 @@ retrieval empty; normal Suite cleanup checks the owned configuration resources.
 The business chain has a 270-second budget and a 30-second cleanup reserve;
 plugin installation and initial service startup are outside this budget.
 `gate/suite/cases.json` retains assertions, process replacement receipts, exact
-HTTP statuses and retrieved content. A missing phase or failed assertion fails
+HTTP statuses and retrieved content. Authenticated monitoring requests read back
+each exact completed run and its conversation ID, and verify selected historical
+runs after subsequent process replacements. A missing phase or failed assertion fails
 the job. The job is opt-in and does not change Smoke or the daily schedule. It
 checks graceful process restart durability, not abrupt power loss or migrations.
 
@@ -926,3 +939,7 @@ Finite scenarios record successful request rate and full-step P95 as observation
 only configured RPS/P95 thresholds. Business assertions, unresolved results,
 health failures, and process/container resource limits still determine success.
 The default load mode remains `gate` for existing benchmark users.
+
+## CI selection and regression tiers
+
+See the [CI tiers and evidence guide](../dev-docs/CROSS_COMPONENT_TESTING.md#ci-tiers-and-evidence) for PR selection, required smoke, and full daily/manual verification. The CI tooling tests can be run locally with `python -m unittest discover -s tools/tests -p "test_*.py"` in a Python environment with PyYAML.

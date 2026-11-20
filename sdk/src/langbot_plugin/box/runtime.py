@@ -12,6 +12,7 @@ import logging
 import os
 from pathlib import Path
 import posixpath
+import re
 import stat
 import tempfile
 import time
@@ -219,6 +220,10 @@ class BoxRuntime:
                     f"Failed to parse LANGBOT_BOX_CONFIG: {config_json[:100]}"
                 )
 
+        self._local_mounts = self._box_config.get("local_mounts", {})
+        if not isinstance(self._local_mounts, dict):
+            raise BoxValidationError("Runtime local_mounts must be a mapping")
+
         # Build backend list
         if backends is None:
             backends = [
@@ -411,7 +416,9 @@ class BoxRuntime:
             )
         previous_admission_policy = self._admission_policy
         candidate_config = dict(self._box_config)
-        candidate_config.update(config)
+        candidate_config.update(
+            {key: value for key, value in config.items() if key != "local_mounts"}
+        )
         mode = candidate_config.get("file_transfer_mode", "legacy")
         if mode not in {"legacy", "network"}:
             raise BoxValidationError("file_transfer_mode must be legacy or network")
@@ -534,6 +541,12 @@ class BoxRuntime:
     def _validate_network_spec(
         self, spec: BoxSpec, context: ActionContext | None
     ) -> None:
+        if spec.local_mounts and (
+            not self.network_workspace or self.admission_required
+        ):
+            raise BoxValidationError(
+                "Local mounts require a self-hosted Docker Box with a private network workspace"
+            )
         if not self.network_workspace:
             return
         if context is None:
@@ -546,6 +559,57 @@ class BoxRuntime:
             )
         if spec.mount_path != DEFAULT_BOX_MOUNT_PATH:
             raise BoxValidationError("Network workspace mount_path must be /workspace")
+
+    def _resolve_local_mounts(
+        self, spec: BoxSpec, context: ActionContext | None
+    ) -> BoxSpec:
+        if not spec.local_mounts:
+            return spec
+        if len(set(spec.local_mounts)) != len(spec.local_mounts):
+            raise BoxValidationError("Duplicate local mount names")
+        mounts = []
+        for name in sorted(spec.local_mounts):
+            if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,62}", name):
+                raise BoxValidationError(
+                    "Invalid local mount name: use lowercase letters, digits, underscores or hyphens, "
+                    "starting with a letter or digit (up to 63 characters)"
+                )
+            entry = self._local_mounts.get(name)
+            if (
+                not isinstance(entry, dict)
+                or not isinstance(entry.get("workspaces"), list)
+                or context is None
+                or context.workspace_uuid not in entry["workspaces"]
+            ):
+                raise BoxValidationError(
+                    f"Local mount '{name}' is unavailable for this Workspace. "
+                    "Ask the Box administrator to check the Runtime's local_mounts configuration "
+                    "and Workspace allowlist."
+                )
+            source = entry.get("path")
+            if not isinstance(source, str) or not os.path.isabs(source):
+                raise BoxValidationError(
+                    f"Local mount '{name}' needs an absolute directory path in the Box Runtime configuration."
+                )
+            try:
+                source = str(Path(source).resolve(strict=True))
+            except (OSError, RuntimeError, ValueError):
+                raise BoxValidationError(
+                    f"Local mount '{name}' source is unavailable. "
+                    "Check that the Box Runtime and Docker daemon can see the directory at the same absolute path."
+                ) from None
+            if source == "/" or not os.path.isdir(source):
+                raise BoxValidationError(
+                    f"Local mount '{name}' must point to a dedicated directory."
+                )
+            mounts.append(
+                BoxMountSpec(
+                    host_path=source,
+                    mount_path=f"/datasets/{name}",
+                    mode=BoxHostMountMode.READ_ONLY,
+                )
+            )
+        return spec.model_copy(update={"extra_mounts": mounts})
 
     def _allocate_network_workspace(
         self, context: ActionContext, session_id: str
@@ -1612,6 +1676,7 @@ done
         if not spec.cmd:
             raise BoxValidationError("cmd must not be empty")
         self._validate_network_spec(spec, action_context)
+        spec = self._resolve_local_mounts(spec, action_context)
         if self.admission_required:
             if action_context is None:
                 raise BoxAdmissionError(
@@ -1719,10 +1784,18 @@ done
         path: str,
         content: bytes,
         action_context: ActionContext,
+        *,
+        expected_session_generation: str | None = None,
     ) -> None:
         if len(content) > self.max_rpc_file_bytes:
             raise BoxValidationError("File exceeds the configured transfer size limit")
-        await self._transfer_file(session_id, path, action_context, content=content)
+        await self._transfer_file(
+            session_id,
+            path,
+            action_context,
+            content=content,
+            expected_session_generation=expected_session_generation,
+        )
 
     async def download_file(
         self,
@@ -1731,23 +1804,35 @@ done
         action_context: ActionContext,
         *,
         directory_archive: bool = False,
+        expected_session_generation: str | None = None,
     ) -> bytes:
         if directory_archive and not self.network_workspace:
             raise BoxValidationError(
                 "Directory archives require network workspace mode"
             )
         return await self._transfer_file(
-            session_id, path, action_context, directory_archive=directory_archive
+            session_id,
+            path,
+            action_context,
+            directory_archive=directory_archive,
+            expected_session_generation=expected_session_generation,
         )
 
     async def _enforce_network_workspace_quota(
         self, session: _RuntimeSession, spec: BoxSpec, phase: str
     ) -> None:
-        if session.owned_workspace is None or spec.workspace_quota_mb <= 0:
+        if not self.network_workspace or spec.workspace_quota_mb <= 0:
+            return
+        limit = spec.workspace_quota_mb * 1024 * 1024
+        if session.backend.name == "e2b":
+            await session.backend.check_workspace_quota(
+                session.info, limit, self.max_workspace_entries, phase
+            )
+            return
+        if session.owned_workspace is None:
             return
         from .file_io import workspace_usage
 
-        limit = spec.workspace_quota_mb * 1024 * 1024
         try:
             used, entries, exceeded = await self._artifact_work(
                 workspace_usage,
@@ -1769,7 +1854,12 @@ done
             )
 
     async def cleanup_run_files(
-        self, session_id: str, io_scope: str, action_context: ActionContext
+        self,
+        session_id: str,
+        io_scope: str,
+        action_context: ActionContext,
+        *,
+        expected_session_generation: str | None = None,
     ) -> None:
         from .file_io import run_files_cleanup_script, run_files_present
         from .tenancy import session_belongs_to_placement
@@ -1785,12 +1875,31 @@ done
             await self.require_sandbox_admission(action_context)
         async with self._lock:
             session = self._sessions.get(session_id)
-            if session is None or session.closing:
+            if (
+                session is None
+                or session.closing
+                or (
+                    expected_session_generation is not None
+                    and session.info.session_generation != expected_session_generation
+                )
+            ):
+                if expected_session_generation is not None:
+                    return  # The old incarnation is gone; never clean its replacement.
                 raise BoxSessionNotFoundError(f"session {session_id} not found")
             self._session_leases[session_id] += 1
         try:
             async with session.lock:
-                if session.closing or self._sessions.get(session_id) is not session:
+                if (
+                    session.closing
+                    or self._sessions.get(session_id) is not session
+                    or (
+                        expected_session_generation is not None
+                        and session.info.session_generation
+                        != expected_session_generation
+                    )
+                ):
+                    if expected_session_generation is not None:
+                        return
                     raise BoxSessionNotFoundError(
                         f"session {session_id} is being deleted"
                     )
@@ -1798,6 +1907,17 @@ done
                     await self.require_sandbox_admission(action_context)
                 if session.info.host_path_mode == BoxHostMountMode.READ_ONLY:
                     raise BoxValidationError("Cannot clean a read-only workspace")
+                if (
+                    os.name == "nt"
+                    and session.backend.name == "host"
+                    and session.owned_workspace is not None
+                ):
+                    from .windows_file_io import run_files
+
+                    await self._artifact_work(
+                        run_files, session.owned_workspace, request.io_scope, True
+                    )
+                    return
                 if (
                     session.owned_workspace is not None
                     and not await self._artifact_work(
@@ -1845,6 +1965,7 @@ done
         *,
         content: bytes | None = None,
         directory_archive: bool = False,
+        expected_session_generation: str | None = None,
     ):
         from .file_io import workspace_relative_path
         from .tenancy import session_belongs_to_placement
@@ -1857,12 +1978,27 @@ done
             await self.require_sandbox_admission(action_context)
         async with self._lock:
             session = self._sessions.get(session_id)
-            if session is None or session.closing:
+            if (
+                session is None
+                or session.closing
+                or (
+                    expected_session_generation is not None
+                    and session.info.session_generation != expected_session_generation
+                )
+            ):
                 raise BoxSessionNotFoundError(f"session {session_id} not found")
             self._session_leases[session_id] += 1
         try:
             async with session.lock:
-                if session.closing or self._sessions.get(session_id) is not session:
+                if (
+                    session.closing
+                    or self._sessions.get(session_id) is not session
+                    or (
+                        expected_session_generation is not None
+                        and session.info.session_generation
+                        != expected_session_generation
+                    )
+                ):
                     raise BoxSessionNotFoundError(
                         f"session {session_id} is being deleted"
                     )
@@ -2009,6 +2145,7 @@ done
         action_context: ActionContext | None = None,
     ) -> dict:
         self._validate_network_spec(spec, action_context)
+        spec = self._resolve_local_mounts(spec, action_context)
         if self.admission_required:
             if action_context is None:
                 raise BoxAdmissionError(
@@ -2335,9 +2472,8 @@ done
             f"Managed sandbox isolation is not ready (failed checks: {detail})"
         )
 
-    @staticmethod
     def _limit_capabilities(
-        name: str, backend: BaseSandboxBackend | None = None
+        self, name: str, backend: BaseSandboxBackend | None = None
     ) -> dict:
         local = name in ("docker", "nsjail")
         hard_resources = local
@@ -2354,7 +2490,7 @@ done
             and bool(getattr(backend, "cpu_limit_enabled", True)),
             "memory_mb": hard_resources,
             "pids_limit": hard_resources,
-            "workspace_quota_mb": local,
+            "workspace_quota_mb": local or (name == "e2b" and self.network_workspace),
         }
 
     async def _probe_backend(
@@ -2464,7 +2600,9 @@ done
     async def get_backend_info(self) -> dict:
         if self.admission_required:
             readiness = await self.get_readiness()
+            details = readiness.get("backend", {}).get("details", {})
             return {
+                **({"shell": details["shell"]} if "shell" in details else {}),
                 "name": readiness.get("backend", {}).get("name"),
                 "available": bool(readiness.get("ready", False)),
                 "readiness": readiness,
@@ -2483,6 +2621,8 @@ done
         result = {"name": backend.name, "available": available}
         if getattr(backend, "unsafe_direct_execution", False):
             result["unsafe_direct_execution"] = True
+        if isinstance(backend, HostProcessBackend):
+            result["shell"] = (await backend.get_readiness())["shell"]
         return result
 
     def get_sessions(self) -> list[dict]:
@@ -2596,6 +2736,10 @@ done
                 )
         else:
             backend = await self._get_backend(spec.backend, spec.e2b_config)
+        if spec.local_mounts and backend.name != "docker":
+            raise BoxValidationError(
+                "Local mounts require a self-hosted Docker network Box"
+            )
         signature_spec = spec
         if backend.content_addressed_mounts:
             signature_spec = spec.model_copy(
@@ -2645,6 +2789,18 @@ done
                                 "Sandbox admission session limit reached"
                             )
 
+                    if spec.expected_session_generation is not None:
+                        bound = self._sessions.get(spec.session_id)
+                        if (
+                            bound is None
+                            or bound.closing
+                            or bound.info.session_generation
+                            != spec.expected_session_generation
+                            or spec.session_id in self._closing_session_tasks
+                        ):
+                            raise BoxSessionNotFoundError(
+                                "Bound Box generation is no longer available; start a new run and explicitly acquire a Box"
+                            )
                     cleanup_task = self._closing_session_tasks.get(spec.session_id)
                     if cleanup_task is None:
                         existing = self._sessions.get(spec.session_id)
@@ -2797,6 +2953,8 @@ done
 
                     async def start_session():
                         info = await backend.start_session(backend_spec)
+                        info.session_generation = uuid.uuid4().hex
+                        info.local_mounts = sorted(spec.local_mounts)
                         info._runtime_workspace_owner = owned_workspace
                         runtime_session = _RuntimeSession(
                             info=info,

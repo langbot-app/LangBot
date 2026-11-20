@@ -1,106 +1,137 @@
 name: SDK / Tests
 
-# Plugin SDK (`langbot-plugin`, `lbp`, Plugin Runtime, Box Runtime) lives in sdk/
-# and is tested in its own environment, independent of Core's lockfile.
-
+# The standalone SDK keeps its independent environment; Core consumers use the
+# locked in-tree SDK in the Core workflows.
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'sdk/**'
-      - '.github/workflows/sdk-tests.yml'
   pull_request:
     paths:
       - 'sdk/**'
-      - '.github/workflows/sdk-tests.yml'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'scripts/generate_plugin_workspace_api.py'
+      - 'scripts/check_sdk_release_pin.py'
+      - 'Dockerfile'
+      - 'packaging/**'
+      - '.github/workflows/**'
+      - '.github/actions/**'
+      - 'scripts/classify_test_changes.py'
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: sdk-tests-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-defaults:
-  run:
-    working-directory: sdk
+  group: sdk-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  windows-host:
+    name: Windows host Box
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+      - run: uv run --python 3.12 pytest -qs tests/box/test_windows_host_backend.py
+        working-directory: sdk
+      - run: uv run --python 3.12 pytest -q tests/unit_tests/provider/test_tool_manager_native.py -k host_executes
+
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.versions }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: changes
+        if: github.event_name == 'pull_request'
+        uses: ./.github/actions/classify-test-changes
+      - id: matrix
+        shell: bash
+        env:
+          FULL: ${{ github.event_name != 'pull_request' || steps.changes.outputs.compatibility == 'true' || steps.changes.outputs.packaging == 'true' }}
+        run: |
+          versions='["3.12"]'
+          if [[ "$FULL" == true ]]; then
+            versions='["3.10","3.11","3.12","3.13","3.14"]'
+          fi
+          printf 'versions=%s\n' "$versions" >> "$GITHUB_OUTPUT"
+
   unit-tests:
     name: Unit Tests
+    needs: scope
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ${{ fromJSON(needs.scope.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-      - name: Set up Python
-        run: uv python install ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: sdk/pyproject.toml
       - name: Run tests with coverage
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
         run: |
-          uv run --python ${{ matrix.python-version }} pytest \
+          uv run --python "$PYTHON_VERSION" pytest \
             --ignore=tests/packaging \
             --cov=langbot_plugin \
             --cov-report=term-missing \
-            --cov-fail-under=84
+            --cov-fail-under=84 \
+            --junitxml="$RUNNER_TEMP/sdk-unit.xml"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: sdk-unit-${{ matrix.python-version }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sdk-unit.xml
 
-  test-lint:
-    name: Lint and Format
+  sdk-checks:
+    name: SDK lint, type, protocol and package
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: sdk/pyproject.toml
+      - id: install
+        name: Install SDK development environment
+        run: uv sync --python 3.12
       - name: Ruff check
-        run: uv run ruff check src tests --output-format=concise
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: uv run --no-sync ruff check src tests --output-format=concise
       - name: Ruff format check
-        run: uv run ruff format --check src tests
-
-  package-smoke:
-    name: Package Smoke
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-      - name: Set up Python
-        run: uv python install 3.12
-      - name: Installed wheel CLI smoke
-        run: uv run --python 3.12 pytest -q tests/packaging
-
-  scoped-type-check:
-    name: Scoped Type Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: uv run --no-sync ruff format --check src tests
       - name: Mypy scoped modules
-        run: uv run mypy
-
-  action-consistency:
-    name: Action Protocol Consistency
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: uv run --no-sync mypy
       - name: Check action enum / proxy / handler consistency
-        run: python scripts/check_action_consistency.py
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: uv run --no-sync python scripts/check_action_consistency.py
+      - name: Installed wheel CLI smoke
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: uv run --no-sync pytest -q tests/packaging --junitxml="$RUNNER_TEMP/sdk-package.xml"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        with:
+          name: sdk-package-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sdk-package.xml
