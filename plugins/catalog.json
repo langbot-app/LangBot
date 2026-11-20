@@ -22,7 +22,7 @@
   },
   {
     "id": "langbot-team/LongTermMemory",
-    "version": "0.2.8",
+    "version": "0.2.9",
     "category": "KnowledgeEngine",
     "path": "KnowledgeEngine/LongTermMemory",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/KnowledgeEngine/LongTermMemory"
