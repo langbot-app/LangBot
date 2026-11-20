@@ -27,7 +27,7 @@ from tools.regression.regression_plugins import (
     prepare_source_plugins,
 )
 from tools.regression.regression_local_cases import DEFAULT_GROUPS, api, require
-from tools.entrypoints.regression_suite import Suite
+from tools.entrypoints.regression_suite import Suite, number, validate
 from tools.entrypoints.regression_traffic import owned_box_containers, read_endpoint_snapshot
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -59,7 +59,7 @@ sys.path.insert(0, str(ROOT))
 from tests.e2e.utils.config_factory import create_minimal_config, create_test_directories  # noqa: E402
 
 
-def suite_profile(name, run_id, groups=(), api_seed=1, *, api_fixed_only=False):
+def suite_profile(name, run_id, groups=(), api_seed=1, load_settings=None, *, api_fixed_only=False):
     profile_path = ROOT / 'tools/profiles' / ('endurance.json' if name == 'endurance' else 'smoke.json')
     if name in ('scenarios', 'daily'):
         from tools.regression.regression_scenarios import expanded_profile
@@ -117,7 +117,33 @@ def suite_profile(name, run_id, groups=(), api_seed=1, *, api_fixed_only=False):
                     # This workload measures repeated tool use; each pipeline owns one sandbox per CI run.
                     config['box-session-id-template'] = f'qa-{run_id}-{resource["id"]}'
     profile.update(cleanup='always', performance_mode='observe')
+    if load_settings is not None:
+        if name != 'endurance':
+            raise ValueError('A load profile requires --suite endurance')
+        if not isinstance(load_settings, dict) or not load_settings:
+            raise ValueError('A load profile must be a non-empty object')
+        allowed = {'phases', 'thresholds', 'resource_limits', 'performance_mode', 'box_command_delay_seconds'}
+        if extra := load_settings.keys() - allowed:
+            raise ValueError(f'Unsupported load profile fields: {sorted(extra)}')
+        number(load_settings.get('box_command_delay_seconds', 1), 'box_command_delay_seconds')
+        profile.update({key: value for key, value in load_settings.items() if key != 'box_command_delay_seconds'})
+        validate(profile)
     return profile, profile_path
+
+
+def mixed_scenarios(box_command_delay_seconds=1):
+    """Build the measured mixed stimulus with an explicit Box command duration."""
+    number(box_command_delay_seconds, 'box_command_delay_seconds')
+    scenarios = json.loads((ROOT / 'tools/fixtures/mock_llm_scenarios.json').read_text())
+    for model in ('mock-chat', 'mock-smoke-box', 'mock-rag'):
+        scenarios[model]['delay_seconds'] = 0.6
+    for step in scenarios['mock-smoke-box']['steps']:
+        for call in step.get('tool_calls', []):
+            call['arguments']['command'] = (
+                'printf \'LB_BOX_HOST=%s\\n\' "$(hostname)"; '
+                f'sleep {box_command_delay_seconds}; ' + call['arguments']['command']
+            )
+    return scenarios
 
 
 def ready(url, processes, timeout=120):
@@ -316,7 +342,12 @@ def run(args):
             if 'plugins' in groups and not {'misc/EssentialCommands', 'misc/FAQManager'} <= set(args.extra_plugins):
                 groups.remove('plugins')
         profile, profile_path = suite_profile(
-            args.suite, secrets.token_hex(8), groups, args.api_seed, api_fixed_only=args.api_fixed_only
+            args.suite,
+            secrets.token_hex(8),
+            groups,
+            args.api_seed,
+            load_settings=args.load_settings,
+            api_fixed_only=args.api_fixed_only,
         )
         if host:
             profile.get('resource_limits', {}).pop('containers', None)
@@ -373,21 +404,16 @@ def run(args):
         if args.suite == 'endurance':
             mocks.update(mock_box=ports['mock_box'], mock_rag=ports['mock_rag'])
             # Fixed provider/tool latency makes overlap observable; this is not a performance baseline.
-            scenarios = json.loads((ROOT / 'tools/fixtures/mock_llm_scenarios.json').read_text())
             if args.mixload_profile is not None:
                 from tools.regression.mixload_cases import configure_mock_scenarios
 
+                scenarios = json.loads((ROOT / 'tools/fixtures/mock_llm_scenarios.json').read_text())
                 scenarios = configure_mock_scenarios(scenarios, box_backend=args.box_backend)
             else:
-                for model in ('mock-chat', 'mock-smoke-box', 'mock-rag'):
-                    scenarios[model]['delay_seconds'] = 0.6
-                for step in scenarios['mock-smoke-box']['steps']:
-                    for call in step.get('tool_calls', []):
-                        call['arguments']['command'] = (
-                            'printf \'LB_BOX_HOST=%s\\n\' "$(hostname)"; sleep 1; ' + call['arguments']['command']
-                        )
+                scenarios = mixed_scenarios((args.load_settings or {}).get('box_command_delay_seconds', 1))
             scenario_path = private / 'mixed-scenarios.json'
             scenario_path.write_text(json.dumps(scenarios, indent=2))
+            profile['vars']['mock_scenarios_file'] = str(scenario_path)
             mock_args = ['--scenarios', str(scenario_path)]
         for name, port in mocks.items():
             pids[name] = start(
@@ -549,7 +575,7 @@ def run(args):
                     str(root / 'gate/suite'),
                 ],
                 root / 'gate',
-                budget - restart_elapsed,
+                (args.budget_seconds or budget) - restart_elapsed,
                 pids,
                 env,
             )
@@ -617,6 +643,13 @@ def main():
         '--extra-plugins', nargs='*', default=[], help='Additional paths under --plugins, e.g. misc/HelloPlugin'
     )
     parser.add_argument('--suite', choices=tuple(SUITE_BUDGETS), default='smoke')
+    profiles = parser.add_mutually_exclusive_group()
+    profiles.add_argument(
+        '--load-profile',
+        type=Path,
+        help='Endurance JSON overrides for load geometry, thresholds, resource limits and Box command delay',
+    )
+    parser.add_argument('--budget-seconds', type=int, help='Endurance execution guard, excluding service preparation')
     parser.add_argument(
         '--box-backend',
         choices=('docker', 'host'),
@@ -624,7 +657,9 @@ def main():
         help='Host is an unsafe, loopback-only fixture lane, not Docker or a sandbox acceptance test',
     )
     parser.add_argument('--plugin-wheelhouse', type=Path, help='Prefetched local plugin dependency wheels for Host')
-    parser.add_argument('--mixload-profile', type=Path, help='Run a configured mixed benchmark (endurance suite only)')
+    profiles.add_argument(
+        '--mixload-profile', type=Path, help='Run a configured mixed benchmark (endurance suite only)'
+    )
     parser.add_argument(
         '--scenario-groups',
         nargs='*',
@@ -641,6 +676,17 @@ def main():
         parser.error('--extra-plugins requires --plugins')
     if args.suite not in ('scenarios', 'daily') and (args.scenario_groups is not None or args.restart_services):
         parser.error('Optional scenarios and restarts require --suite scenarios or --suite daily')
+    if args.suite != 'endurance' and (args.load_profile is not None or args.budget_seconds is not None):
+        parser.error('--load-profile and --budget-seconds require --suite endurance')
+    if args.budget_seconds is not None and args.budget_seconds <= 0:
+        parser.error('--budget-seconds must be positive')
+    args.load_settings = None
+    if args.load_profile is not None:
+        try:
+            args.load_settings = json.loads(args.load_profile.read_text())
+            suite_profile('endurance', 'validation', load_settings=args.load_settings)
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
     if args.mixload_profile is not None and args.suite != 'endurance':
         parser.error('--mixload-profile requires --suite endurance')
     if args.box_backend == 'host':
