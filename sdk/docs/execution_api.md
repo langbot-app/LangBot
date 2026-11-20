@@ -149,6 +149,8 @@ async for chunk in api.execution.stream(
 | `execution.list_application_operations` | `plugin_or_run` | 否 | 否 | 列出本次运行被授权的 ApplicationAPI 工作区操作及其 schema |
 | `execution.call_application_operation` | `plugin_or_run` | 是 | 否 | 以处理器身份调用本次运行被授权的 ApplicationAPI 工作区操作 |
 
+外部队列重新入队后，`execution.run_cancel_ack` 要求传入处理取消时保存的 `metadata.retry_count`，字段名为 `expected_retry_count`。同一确认重发时复用该值。首次执行和拥有新 ID 的运行可以省略。
+
 ---
 
 ## 内部通信/传输动作审计说明

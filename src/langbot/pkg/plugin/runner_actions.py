@@ -527,7 +527,11 @@ def register(h):
                     detail={'cleanup_confirmed': confirmed},
                 )
             updated = await store.acknowledge_cancel(
-                run_id=str(target_run_id), reason=data.get('reason'), cleanup_confirmed=confirmed, admin_audit=audit
+                run_id=str(target_run_id),
+                reason=data.get('reason'),
+                cleanup_confirmed=confirmed,
+                expected_retry_count=data.get('expected_retry_count'),
+                admin_audit=audit,
             )
             if not updated:
                 return handler.ActionResponse.error(message=f'Run {target_run_id} not found')

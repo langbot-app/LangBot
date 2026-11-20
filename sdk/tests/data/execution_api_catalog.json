@@ -4818,6 +4818,19 @@
           "default": true,
           "title": "Cleanup Confirmed",
           "type": "boolean"
+        },
+        "expected_retry_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Retry Count"
         }
       },
       "title": "ExecutionCancelAckInput",

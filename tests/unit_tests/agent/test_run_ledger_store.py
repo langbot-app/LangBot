@@ -503,7 +503,7 @@ async def test_retry_resume_and_cancel_ack_persist_lifecycle_metadata(store):
 @pytest.mark.asyncio
 async def test_cancel_ack_is_monotonic_and_concurrent_across_stores(store, db_engine):
     run_id = 'cancel-ack'
-    await store.create_run(run_id=run_id, event_id=None, binding_id=None, runner_id='runner')
+    await store.create_run(run_id=run_id, event_id=None, binding_id=None, runner_id='runner', queue_name='external')
     other_engine = create_async_engine(db_engine.url)
     try:
         other = RunLedgerStore(other_engine)
@@ -527,7 +527,17 @@ async def test_cancel_ack_is_monotonic_and_concurrent_across_stores(store, db_en
         await store.finalize_run(run_id=run_id, status='cancelled')
         next_attempt = await store.retry_run(run_id=run_id)
         assert 'cancel_ack' not in next_attempt['metadata']
-        await store.acknowledge_cancel(run_id=run_id, reason='second attempt')
+        await store.finalize_run(
+            run_id=run_id,
+            status='queued',
+            metadata={'retry_count': 0, 'cancel_ack': pending['metadata']['cancel_ack'], 'user_note': 'keep'},
+        )
+        current = await store.get_run(run_id)
+        assert current['metadata']['retry_count'] == 1 and current['metadata']['user_note'] == 'keep'
+        assert 'cancel_ack' not in current['metadata']
+        with pytest.raises(ValueError, match='does not match'):
+            await other.acknowledge_cancel(run_id=run_id, expected_retry_count=0)
+        await store.acknowledge_cancel(run_id=run_id, reason='second attempt', expected_retry_count=1)
         events, *_ = await store.page_run_events(run_id=run_id)
         assert [e['sequence'] for e in events] == [1, 2, 3]
     finally:

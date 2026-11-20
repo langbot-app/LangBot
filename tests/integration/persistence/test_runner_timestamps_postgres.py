@@ -141,6 +141,45 @@ async def test_concurrent_cancel_ack_is_single_in_history(pg_engine):
 
 
 @pytest.mark.contract('runner_timestamps')
+async def test_ack_waiting_on_external_requeue_checks_committed_attempt(pg_engine, monkeypatch):
+    retrying = run_ledger_store.RunLedgerStore(pg_engine)
+    acknowledging = run_ledger_store.RunLedgerStore(pg_engine)
+    await retrying.create_run(run_id='requeue', event_id=None, binding_id=None, runner_id='runner', queue_name='work')
+    await retrying.finalize_run(run_id='requeue', status='cancelled')
+    retry_locked, release = asyncio.Event(), asyncio.Event()
+    ack_pid = asyncio.get_running_loop().create_future()
+    read_retry = retrying._get_run_row
+    lock_ack = acknowledging._lock_run
+
+    async def pause_retry(*args):
+        row = await read_retry(*args)
+        retry_locked.set()
+        await release.wait()
+        return row
+
+    async def begin_ack(session, run_id):
+        ack_pid.set_result(await session.scalar(sa.text('SELECT pg_backend_pid()')))
+        return await lock_ack(session, run_id)
+
+    monkeypatch.setattr(retrying, '_get_run_row', pause_retry)
+    monkeypatch.setattr(acknowledging, '_lock_run', begin_ack)
+    retry = asyncio.create_task(retrying.retry_run(run_id='requeue'))
+    try:
+        await asyncio.wait_for(retry_locked.wait(), 5)
+        ack = asyncio.create_task(acknowledging.acknowledge_cancel(run_id='requeue', expected_retry_count=0))
+        pid = await asyncio.wait_for(ack_pid, 5)
+        async with pg_engine.connect() as observer, asyncio.timeout(5):
+            while not await observer.scalar(sa.text('SELECT pg_blocking_pids(:pid)'), {'pid': pid}):
+                await asyncio.sleep(0.01)
+    finally:
+        release.set()
+    assert (await retry)['metadata']['retry_count'] == 1
+    with pytest.raises(ValueError, match='does not match'):
+        await ack
+    assert (await acknowledging.page_run_events(run_id='requeue'))[0] == []
+
+
+@pytest.mark.contract('runner_timestamps')
 async def test_run_lifecycle_deadline_events_and_stats(pg_engine):
     store = run_ledger_store.RunLedgerStore(pg_engine)
     deadline = NOW + dt.timedelta(minutes=5)

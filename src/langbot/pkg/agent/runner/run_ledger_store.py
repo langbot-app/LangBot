@@ -335,9 +335,9 @@ class RunLedgerStore:
         """
         async with write_slot(self.engine), self._session_factory() as session:
             if sequence is None:
-                sequence = await self._next_host_sequence(session, run_id)
-                if sequence is None:
+                if not await self._lock_run(session, run_id):
                     raise ValueError(f'Run {run_id} not found')
+                sequence = await self._next_host_sequence(session, run_id)
             result = await session.execute(
                 sqlalchemy.select(AgentRunEvent).where(
                     AgentRunEvent.run_id == run_id,
@@ -371,13 +371,14 @@ class RunLedgerStore:
             inflight_hub.notify_run(run_id, event_type)
             return self._event_to_dict(row)
 
-    async def _next_host_sequence(self, session: AsyncSession, run_id: str) -> int | None:
-        # Serialize Host allocation across store instances and database connections.
+    async def _lock_run(self, session: AsyncSession, run_id: str) -> bool:
+        # A write takes the same per-run gate on SQLite and PostgreSQL.
         locked = await session.execute(
             sqlalchemy.update(AgentRun).where(AgentRun.run_id == run_id).values(updated_at=AgentRun.updated_at)
         )
-        if not locked.rowcount:
-            return None
+        return bool(locked.rowcount)
+
+    async def _next_host_sequence(self, session: AsyncSession, run_id: str) -> int:
         maximum = await session.scalar(
             sqlalchemy.select(sqlalchemy.func.max(AgentRunEvent.sequence)).where(AgentRunEvent.run_id == run_id)
         )
@@ -443,6 +444,8 @@ class RunLedgerStore:
         """Update a run to a terminal or current status."""
         status = _validate_run_status(status)
         async with write_slot(self.engine), self._session_factory() as session:
+            if metadata is not None and not await self._lock_run(session, run_id):
+                return None
             now = _utc_now()
             run = await self._get_run_row(session, run_id)
             if run is None:
@@ -478,6 +481,9 @@ class RunLedgerStore:
             if cost is not None:
                 run.cost_json = _json_dumps(cost)
             if metadata is not None:
+                if run.queue_name is not None:
+                    # A finalizer may replay a stale metadata snapshot. The Host owns the attempt and ACK.
+                    metadata = {k: v for k, v in metadata.items() if k not in ('retry_count', 'cancel_ack')}
                 # Discard legacy image bytes before merging; new metadata still uses the write contract.
                 existing_metadata = MediaCache.redact_inline_images(_json_loads(run.metadata_json, {}))
                 if isinstance(existing_metadata, dict):
@@ -537,10 +543,10 @@ class RunLedgerStore:
         and idempotent.
         """
         async with write_slot(self.engine), self._session_factory() as session:
+            if not await self._lock_run(session, run_id):
+                return None
             now = _utc_now()
             run = await self._get_run_row(session, run_id)
-            if run is None:
-                return None
             if run.status not in TERMINAL_STATUSES:
                 raise ValueError(f'Run {run_id} is not terminal and cannot be retried')
             metadata = MediaCache.redact_inline_images(_json_loads(run.metadata_json, {}))
@@ -644,26 +650,24 @@ class RunLedgerStore:
         run_id: str,
         reason: str | None = None,
         cleanup_confirmed: bool = True,
+        expected_retry_count: int | None = None,
         admin_audit: dict[str, typing.Any] | None = None,
     ) -> dict[str, typing.Any] | None:
         """Record pending or confirmed cleanup once per attempt, with its Host audit."""
         cleanup_confirmed = bool(cleanup_confirmed)
         async with write_slot(self.engine), self._session_factory() as session:
-            sequence = await self._next_host_sequence(session, run_id)
-            if sequence is None:
+            if not await self._lock_run(session, run_id):
                 return None
             run = await self._get_run_row(session, run_id)
             metadata = MediaCache.redact_inline_images(_json_loads(run.metadata_json, {}))
             if not isinstance(metadata, dict):
                 metadata = {}
-            if (
-                run.queue_name is not None
-                and metadata.get('retry_count')
-                and run.cancel_requested_at is None
-                and run.status in ('queued', 'claimed', 'running')
-            ):
-                # A requeued external run reuses its ID. A late ACK must not confirm its new active attempt.
-                return self._run_to_dict(run)
+            attempt = int(metadata.get('retry_count') or 0) if run.queue_name is not None else 0
+            if expected_retry_count is None:
+                if attempt:
+                    raise ValueError('expected_retry_count is required for a requeued external run')
+            elif type(expected_retry_count) is not int or expected_retry_count < 0 or expected_retry_count != attempt:
+                raise ValueError('expected_retry_count does not match this run attempt')
             previous = metadata.get('cancel_ack')
             previous_state = previous.get('cleanup_confirmed') if isinstance(previous, dict) else None
             if previous_state is True and not cleanup_confirmed:
@@ -689,6 +693,7 @@ class RunLedgerStore:
                 metadata['cancel_ack'] = {'acknowledged_at': _datetime_to_epoch(now), **data}
                 run.metadata_json = _json_dumps(metadata)
             run.updated_at = now
+            sequence = await self._next_host_sequence(session, run_id)
             events = [('run.cancel_ack', data, None)]
             if admin_audit is not None:
                 events.append(('admin.run_cancel_ack', admin_audit, {'permission': admin_audit['permission']}))

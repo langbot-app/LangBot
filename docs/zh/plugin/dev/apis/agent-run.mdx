@@ -274,13 +274,13 @@ Box 是否启用、何时创建以及如何复用，由运行器决定。获取�
 | `await ctx.run_cancel(run_id=None, reason=None)` | `AgentRun` | `run_cancel` |
 | `await ctx.run_retry(run_id=None, reason=None)` | `AgentRun` | `run_retry` |
 | `await ctx.run_resume(run_id=None, from_sequence=None, reason=None)` | `AgentRun` | `run_resume` |
-| `await ctx.run_cancel_ack(run_id=None, reason=None, cleanup_confirmed=True)` | `AgentRun` | `run_cancel_ack` |
+| `await ctx.run_cancel_ack(run_id=None, reason=None, cleanup_confirmed=True, *, expected_retry_count=None)` | `AgentRun` | `run_cancel_ack` |
 | `await ctx.run_append_result(result)` | `AgentRunEvent` | `run_append_result` |
 | `await ctx.run_finalize(run_id=None, status=None, reason=None)` | `AgentRun` | `run_finalize` |
 
 取消请求先记录到运行账本。Runner 完成清理后调用 `ctx.run_cancel_ack()`。清理待确认（`cleanup_confirmed=False`）可更新为已确认。同一执行尝试中，重复调用保留该状态第一次确认的时间和原因。已确认状态不会回退。
 
-外部队列重试会复用运行 ID。新的执行尝试尚在进行、且没有收到新的取消请求时，Host 会忽略迟到的 ACK。收到新取消请求后，ACK 本身没有执行尝试标识，调用方需区分不同尝试的确认。
+外部队列重试会复用运行 ID。处理取消时，从返回的运行记录保存 `run.metadata.get("retry_count", 0)`。确认清理时传入 `expected_retry_count`，重发时沿用保存的值。首次重新入队后，缺少轮次或轮次不匹配的确认会被拒绝，运行状态保持原值。其他运行可省略此字段。外部队列可以在结束运行时补充元数据，其中 `retry_count` 和 `cancel_ack` 由 Host 维护。
 
 `claim=False` 保留拉取即消费语义；`claim=True` 领取后，需要用 `steering_ack` 确认已接受的 delivery ID，未确认的租约可被重投。ACK 和恢复控制在原 Run 结束后仍需校验授权。Host 的 retry/resume 创建具有新期限和当前授权的新 Run；resume 必须有已提交的检查点，不会回退外部副作用。
 
