@@ -6,6 +6,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
+from .entitlements import EntitlementUnavailableError
 from .plan_policy import workspace_entitlement
 from ..entity.persistence.workspace import WorkspaceMessageUsageDaily as Usage
 
@@ -62,3 +63,11 @@ async def daily_message_quota(ap, workspace_uuid, *, reserve=False):
 async def message_quota_status(ap, workspace_uuid):
     _, status = await daily_message_quota(ap, workspace_uuid)
     return status
+
+
+async def message_quota_display(ap, workspace_uuid):
+    """Quota for read-only Workspace summaries; None when the entitlement is unavailable."""
+    try:
+        return await message_quota_status(ap, workspace_uuid)
+    except EntitlementUnavailableError:
+        return None

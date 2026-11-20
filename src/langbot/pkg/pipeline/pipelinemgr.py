@@ -1020,11 +1020,15 @@ class PipelineManager:
         stage_containers: list[StageInstContainer] = []
         stages = list(pipeline_entity.stages)
         if 'RequireDailyMessageQuota' not in stages:
+            # Stored pipelines predate this stage: meter right before the
+            # rate limiter (or the processor). Pipelines that never reach a
+            # processor have nothing to meter.
             index = next(
                 (stages.index(name) for name in ('RequireRateLimitOccupancy', 'MessageProcessor') if name in stages),
-                len(stages),
+                None,
             )
-            stages.insert(index, 'RequireDailyMessageQuota')
+            if index is not None:
+                stages.insert(index, 'RequireDailyMessageQuota')
         for stage_name in stages:
             if stage_name not in self.stage_dict:
                 self.ap.logger.warning(f'Pipeline stage {stage_name} is not registered; skipping')

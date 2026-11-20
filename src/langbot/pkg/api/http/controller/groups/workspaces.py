@@ -4,7 +4,7 @@ import typing
 
 import quart
 
-from .....cloud.message_quota import message_quota_status
+from .....cloud.message_quota import message_quota_display, message_quota_status
 
 from ...authz import Permission, permissions_for_role
 from ...context import PrincipalType, RequestContext
@@ -222,7 +222,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
             plan_name: str | None = None
             limitation = None
             current_plan = None
-            quota = await message_quota_status(self.ap, request_context.workspace_uuid)
+            quota = await message_quota_display(self.ap, request_context.workspace_uuid)
             resolver = getattr(self.ap, 'entitlement_resolver', None)
             if workspace.source == WorkspaceSource.CLOUD_PROJECTION.value and resolver is not None:
                 entitlement = await resolver.resolve(
