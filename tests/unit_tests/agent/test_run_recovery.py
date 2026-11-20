@@ -221,6 +221,51 @@ async def test_cancelled_result_retains_cleanup_ack_in_history(clean_agent_state
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('admin', [False, True])
+async def test_late_cancel_ack_replay_preserves_authorization_and_audit(clean_agent_state, admin):
+    from langbot.pkg.plugin import runner_actions
+
+    host = ActionHost(clean_agent_state)
+    runner_actions.register(host)
+    host.ap.instance_config = SimpleNamespace(data={'runner': {'admin_plugins': {'test/ops': ['agent_run:admin']}}})
+    store = RunLedgerStore(clean_agent_state)
+    await store.create_run(
+        run_id='cancelled',
+        event_id=None,
+        binding_id=None,
+        runner_id='runner',
+        authorization={'plugin_identity': 'test/runner', 'available_apis': {'run_cancel_ack': True}},
+    )
+    await store.request_cancel(run_id='cancelled')
+    await store.finalize_run(run_id='cancelled', status='cancelled')
+    ack = host.actions['run_cancel_ack']
+    data = {'target_run_id': 'cancelled', 'reason': 'stopped', 'cleanup_confirmed': True}
+    if admin:
+        data['caller_plugin_identity'] = 'test/ops'
+    else:
+        data.update(run_id='cancelled', caller_plugin_identity='test/runner')
+    denied = await ack({**data, 'caller_plugin_identity': 'test/other'})
+    assert denied.code != 0
+    assert (await store.page_run_events(run_id='cancelled'))[0] == []
+    first = await ack(data)
+    replay = await ack(data)
+    assert first.code == replay.code == 0
+    assert first.data['metadata'] == replay.data['metadata']
+    denied = await ack({**data, 'caller_plugin_identity': 'test/other'})
+    assert denied.code != 0
+    events, *_ = await store.page_run_events(run_id='cancelled')
+    assert [e['type'] for e in events] == (['run.cancel_ack', 'admin.run_cancel_ack'] if admin else ['run.cancel_ack'])
+    if admin:
+        assert events[1]['data'] == {
+            'action': 'run_cancel_ack',
+            'caller_plugin_identity': 'test/ops',
+            'permission': 'agent_run:admin',
+            'target_run_id': 'cancelled',
+            'detail': {'cleanup_confirmed': True},
+        }
+
+
+@pytest.mark.asyncio
 async def test_external_queue_retry_clears_expired_deadline(clean_agent_state):
     store = RunLedgerStore(clean_agent_state)
     expired = int(time.time()) - 60

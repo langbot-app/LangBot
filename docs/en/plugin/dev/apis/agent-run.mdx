@@ -276,6 +276,8 @@ External runners use the same flow through `AgentRunExternalTools`: `langbot_get
 | `await ctx.run_append_result(result)` | `AgentRunEvent` | `run_append_result` |
 | `await ctx.run_finalize(run_id=None, status=None, reason=None)` | `AgentRun` | `run_finalize` |
 
+Cancellation records the request first. After the Runner finishes cleanup, call `ctx.run_cancel_ack()`. A pending acknowledgement (`cleanup_confirmed=False`) can advance to confirmed. For the same attempt, retries preserve the time and reason of the first acknowledgement in each state, and confirmation is final.
+
 `claim=False` consumes steering on pull. With `claim=True`, acknowledge accepted delivery IDs with `steering_ack`; unacknowledged leases can be redelivered. ACK and recovery controls retain authorization after the source Run ends. Host retry/resume creates a new Run with a fresh deadline and current grants; resume requires a committed checkpoint and does not rewind external effects.
 
 `run_id=None` refers to the current run. The SDK completes a normal event handler automatically. When a custom `run(ctx)` yields `RunnerResult`, do not register the same result again with `run_append_result()`.

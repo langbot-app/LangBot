@@ -335,16 +335,9 @@ class RunLedgerStore:
         """
         async with write_slot(self.engine), self._session_factory() as session:
             if sequence is None:
-                # Serialize Host allocation across store instances and database connections.
-                locked = await session.execute(
-                    sqlalchemy.update(AgentRun).where(AgentRun.run_id == run_id).values(updated_at=AgentRun.updated_at)
-                )
-                if not locked.rowcount:
+                sequence = await self._next_host_sequence(session, run_id)
+                if sequence is None:
                     raise ValueError(f'Run {run_id} not found')
-                maximum = await session.execute(
-                    sqlalchemy.select(sqlalchemy.func.max(AgentRunEvent.sequence)).where(AgentRunEvent.run_id == run_id)
-                )
-                sequence = int(maximum.scalar_one_or_none() or 0) + 1
             result = await session.execute(
                 sqlalchemy.select(AgentRunEvent).where(
                     AgentRunEvent.run_id == run_id,
@@ -377,6 +370,18 @@ class RunLedgerStore:
             await commit_write(session)
             inflight_hub.notify_run(run_id, event_type)
             return self._event_to_dict(row)
+
+    async def _next_host_sequence(self, session: AsyncSession, run_id: str) -> int | None:
+        # Serialize Host allocation across store instances and database connections.
+        locked = await session.execute(
+            sqlalchemy.update(AgentRun).where(AgentRun.run_id == run_id).values(updated_at=AgentRun.updated_at)
+        )
+        if not locked.rowcount:
+            return None
+        maximum = await session.scalar(
+            sqlalchemy.select(sqlalchemy.func.max(AgentRunEvent.sequence)).where(AgentRunEvent.run_id == run_id)
+        )
+        return int(maximum or 0) + 1
 
     async def append_audit_event(
         self,
@@ -543,6 +548,7 @@ class RunLedgerStore:
                 metadata = {}
             retry_count = int(metadata.get('retry_count') or 0) + 1
             metadata['retry_count'] = retry_count
+            metadata.pop('cancel_ack', None)
             metadata['retry_requested_at'] = _datetime_to_epoch(now)
             metadata['retry_reason'] = status_reason
             if resume_from_sequence is not None:
@@ -638,25 +644,61 @@ class RunLedgerStore:
         run_id: str,
         reason: str | None = None,
         cleanup_confirmed: bool = True,
+        admin_audit: dict[str, typing.Any] | None = None,
     ) -> dict[str, typing.Any] | None:
-        """Persist an explicit cancellation cleanup acknowledgement."""
+        """Record pending or confirmed cleanup once per attempt, with its Host audit."""
+        cleanup_confirmed = bool(cleanup_confirmed)
         async with write_slot(self.engine), self._session_factory() as session:
-            now = _utc_now()
-            run = await self._get_run_row(session, run_id)
-            if run is None:
+            sequence = await self._next_host_sequence(session, run_id)
+            if sequence is None:
                 return None
+            run = await self._get_run_row(session, run_id)
             metadata = MediaCache.redact_inline_images(_json_loads(run.metadata_json, {}))
             if not isinstance(metadata, dict):
                 metadata = {}
-            metadata['cancel_ack'] = {
-                'acknowledged_at': _datetime_to_epoch(now),
-                'cleanup_confirmed': bool(cleanup_confirmed),
-                'reason': reason,
-            }
-            run.metadata_json = _json_dumps(metadata)
-            run.updated_at = as_naive_utc(now)
+            previous = metadata.get('cancel_ack')
+            previous_state = previous.get('cleanup_confirmed') if isinstance(previous, dict) else None
+            if previous_state is True and not cleanup_confirmed:
+                return self._run_to_dict(run)
+            now = as_naive_utc(_utc_now())
+            data = {'cleanup_confirmed': cleanup_confirmed, 'reason': reason}
+            if previous_state is cleanup_confirmed:
+                last_event = await session.scalar(
+                    sqlalchemy.select(AgentRunEvent.data_json)
+                    .where(
+                        AgentRunEvent.run_id == run_id,
+                        AgentRunEvent.type == 'run.cancel_ack',
+                        AgentRunEvent.source == 'host',
+                    )
+                    .order_by(AgentRunEvent.sequence.desc())
+                    .limit(1)
+                )
+                last_payload = _json_loads(last_event, None)
+                if isinstance(last_payload, dict) and last_payload.get('cleanup_confirmed') is cleanup_confirmed:
+                    return self._run_to_dict(run)
+                # Older Hosts could commit the ACK without its event. Audit this retry at its actual time.
+            else:
+                metadata['cancel_ack'] = {'acknowledged_at': _datetime_to_epoch(now), **data}
+                run.metadata_json = _json_dumps(metadata)
+            run.updated_at = now
+            events = [('run.cancel_ack', data, None)]
+            if admin_audit is not None:
+                events.append(('admin.run_cancel_ack', admin_audit, {'permission': admin_audit['permission']}))
+            for index, (kind, payload, event_metadata) in enumerate(events):
+                session.add(
+                    AgentRunEvent(
+                        run_id=run_id,
+                        sequence=sequence + index,
+                        type=kind,
+                        data_json=_json_dumps(payload),
+                        source='host',
+                        metadata_json=_json_dumps(event_metadata),
+                        created_at=now,
+                    )
+                )
             await commit_write(session)
             inflight_hub.notify(run.workspace_id)
+            inflight_hub.notify_run(run_id, events[-1][0])
             return self._run_to_dict(run)
 
     async def get_run(self, run_id: str) -> dict[str, typing.Any] | None:

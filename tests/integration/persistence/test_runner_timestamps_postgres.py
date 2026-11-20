@@ -6,6 +6,7 @@ unique schema and an unprivileged role; no existing tables or policies change.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import importlib
 import os
@@ -123,6 +124,20 @@ async def _legacy_run(engine, *, status='queued'):
                 else None,
             )
         )
+
+
+@pytest.mark.contract('runner_timestamps')
+async def test_concurrent_cancel_ack_is_single_in_history(pg_engine):
+    stores = [run_ledger_store.RunLedgerStore(pg_engine) for _ in range(3)]
+    await stores[0].create_run(run_id='cancel', event_id=None, binding_id=None, runner_id='runner')
+    replies = await asyncio.gather(*(store.acknowledge_cancel(run_id='cancel') for store in stores))
+    assert all(
+        reply['metadata']['cancel_ack']
+        == {'acknowledged_at': int(NOW.timestamp()), 'cleanup_confirmed': True, 'reason': None}
+        for reply in replies
+    )
+    history, *_ = await stores[0].page_run_events(run_id='cancel')
+    assert [(e['sequence'], e['type']) for e in history] == [(1, 'run.cancel_ack')]
 
 
 @pytest.mark.contract('runner_timestamps')
