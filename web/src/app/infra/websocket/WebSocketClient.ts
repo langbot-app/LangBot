@@ -4,7 +4,10 @@
  */
 import { getActiveWorkspaceUuid } from '@/app/infra/http/workspaceContext';
 import { backendWebSocketURL } from './url';
-import type { MessageChainComponent } from '@/app/infra/entities/message';
+import type {
+  MessageChainComponent,
+  MessageError,
+} from '@/app/infra/entities/message';
 
 export interface WebSocketMessage {
   id: number;
@@ -14,6 +17,7 @@ export interface WebSocketMessage {
   timestamp: string;
   is_final?: boolean;
   connection_id?: string;
+  error?: MessageError | null;
 }
 
 export interface WebSocketResponse {

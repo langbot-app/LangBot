@@ -3058,6 +3058,32 @@ const enUS = {
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
+  dailyMessageQuota: {
+    planLimited: '{{count}} messages per day',
+    planUnlimited: 'Unlimited daily messages',
+    planHelp:
+      'Messages your bots can process per day, counted per UTC day and reset at 00:00 UTC. Only messages a bot actually handles count. Once used up, new messages that day are not processed and the user is told why.',
+    title: "Today's messages",
+    usage: '{{used}} / {{limit}}',
+    remaining: '{{count}} left',
+    resetsAt: 'Resets {{time}}',
+    today: 'today {{time}}',
+    tomorrow: 'tomorrow {{time}}',
+    exhausted: "Today's quota is used up",
+    exhaustedHint: 'New messages are paused until {{time}}',
+    nearLimit: 'Almost used up',
+    upgrade: 'Upgrade plan',
+    unlimited: 'Unlimited',
+    settingsTitle: 'Daily message quota',
+    settingsDescription:
+      'Messages your bots can process per day, including Debug Chat. Counted per UTC day; group messages that do not trigger a bot are not counted.',
+    unlimitedDescription: 'Your plan does not limit daily messages.',
+    errorTitle: "Today's message quota is used up",
+    errorBody:
+      'This workspace has already processed {{limit}} messages today, so this message was not processed. The quota resets {{time}}.',
+    errorUpgrade: 'Upgrade for a higher quota',
+    unavailable: "Today's usage is unavailable right now",
+  },
   workspace: {
     dedicatedSpaceMembersHint:
       'Members who sign in with their LangBot Account are invited from the Cloud page on LangBot Space. The invitation below creates a separate password account on this instance.',

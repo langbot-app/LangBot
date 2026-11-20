@@ -130,6 +130,7 @@ import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogs
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
 import type {
   CurrentWorkspace,
+  MessageQuota,
   Workspace,
   WorkspaceInvitation,
   WorkspaceInvitationDelivery,
@@ -2156,6 +2157,10 @@ export class BackendClient extends BaseHttpClient {
 
   public getCurrentWorkspace(): Promise<CurrentWorkspace> {
     return this.get('/api/v1/workspaces/current');
+  }
+
+  public getMessageQuota(): Promise<MessageQuota> {
+    return this.get('/api/v1/workspaces/current/message-quota');
   }
 
   public getWorkspace(

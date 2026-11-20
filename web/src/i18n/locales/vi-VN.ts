@@ -3035,6 +3035,32 @@ const viVN = {
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
+  dailyMessageQuota: {
+    planLimited: '{{count}} tin nhắn mỗi ngày',
+    planUnlimited: 'Không giới hạn tin nhắn mỗi ngày',
+    planHelp:
+      'Số tin nhắn bot có thể xử lý mỗi ngày, tính theo ngày UTC và đặt lại lúc 00:00 UTC. Chỉ tính tin nhắn bot thực sự xử lý. Khi hết hạn mức, tin nhắn mới trong ngày sẽ không được xử lý và người dùng sẽ được thông báo.',
+    title: 'Tin nhắn hôm nay',
+    usage: '{{used}} / {{limit}}',
+    remaining: 'Còn {{count}}',
+    resetsAt: 'Đặt lại {{time}}',
+    today: 'hôm nay {{time}}',
+    tomorrow: 'ngày mai {{time}}',
+    exhausted: 'Đã hết hạn mức hôm nay',
+    exhaustedHint: 'Tin nhắn mới tạm dừng đến {{time}}',
+    nearLimit: 'Sắp hết',
+    upgrade: 'Nâng cấp gói',
+    unlimited: 'Không giới hạn',
+    settingsTitle: 'Hạn mức tin nhắn mỗi ngày',
+    settingsDescription:
+      'Số tin nhắn bot có thể xử lý mỗi ngày, gồm cả trò chuyện gỡ lỗi. Tính theo ngày UTC; tin nhắn nhóm không kích hoạt bot sẽ không bị tính.',
+    unlimitedDescription: 'Gói của bạn không giới hạn tin nhắn mỗi ngày.',
+    errorTitle: 'Đã hết hạn mức tin nhắn hôm nay',
+    errorBody:
+      'Không gian làm việc này đã xử lý {{limit}} tin nhắn hôm nay nên tin nhắn này không được xử lý. Hạn mức sẽ đặt lại {{time}}.',
+    errorUpgrade: 'Nâng cấp để có hạn mức cao hơn',
+    unavailable: 'Hiện không lấy được mức sử dụng hôm nay',
+  },
   workspace: {
     dedicatedSpaceMembersHint:
       'Thành viên đăng nhập bằng tài khoản LangBot được mời từ trang Cloud trên LangBot Space. Lời mời bên dưới tạo một tài khoản mật khẩu riêng trên instance này.',

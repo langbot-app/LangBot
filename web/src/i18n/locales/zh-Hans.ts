@@ -2864,6 +2864,32 @@ const zhHans = {
     space_account_binding_required:
       '此本地账户必须先在账户设置中绑定 LangBot 账号，才能使用 LangBot 账号登录。',
   },
+  dailyMessageQuota: {
+    planLimited: '每日消息 {{count}} 条',
+    planUnlimited: '每日消息不限',
+    planHelp:
+      '机器人每天可处理的消息数，按 UTC 自然日计算，00:00（北京时间 08:00）重置。只有机器人实际处理的消息才计入，群内未触发机器人的消息不计。用完后当天的新消息不再处理，并提示用户。',
+    title: '今日消息',
+    usage: '{{used}} / {{limit}}',
+    remaining: '剩余 {{count}} 条',
+    resetsAt: '{{time}} 重置',
+    today: '今天 {{time}}',
+    tomorrow: '明天 {{time}}',
+    exhausted: '今日额度已用完',
+    exhaustedHint: '新消息暂不处理，{{time}} 恢复',
+    nearLimit: '即将用完',
+    upgrade: '升级计划',
+    unlimited: '不限',
+    settingsTitle: '每日消息额度',
+    settingsDescription:
+      '工作区内机器人每天可处理的消息数（含调试对话），按 UTC 自然日计算。群内未触发机器人的消息不计入。',
+    unlimitedDescription: '当前计划不限制每日消息数。',
+    errorTitle: '今日消息额度已用完',
+    errorBody:
+      '本工作区今天已处理 {{limit}} 条消息，这条消息没有被处理。额度将于{{time}}重置。',
+    errorUpgrade: '升级计划提高额度',
+    unavailable: '暂时无法获取今日用量',
+  },
   workspace: {
     dedicatedSpaceMembersHint:
       '使用 LangBot 账号登录的成员请在 LangBot Space 的 Cloud 页面邀请。下方邀请会在本实例创建独立的密码账号。',
