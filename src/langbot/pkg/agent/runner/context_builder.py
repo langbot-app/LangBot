@@ -298,13 +298,7 @@ class RunnerContextBuilder:
                 # after create_new_conversation(). This is a Core context
                 # contract: session_id is reset-stable while conversation_id
                 # remains the current Host conversation UUID.
-                stable_launcher_type = identity.session_launcher_type
-                stable_launcher_id = identity.session_launcher_id
-                if stable_launcher_type not in ('group', 'person') or not stable_launcher_id:
-                    stable_launcher_type = identity.query_launcher_type
-                    stable_launcher_id = identity.query_launcher_id
-                if stable_launcher_type in ('group', 'person') and stable_launcher_id:
-                    conversation['session_id'] = f'{stable_launcher_type}_{stable_launcher_id}'
+                conversation['session_id'] = identity.session_id
             if (
                 binding.runner_config.get('user-id-source') == 'legacy-session'
                 and identity is not None

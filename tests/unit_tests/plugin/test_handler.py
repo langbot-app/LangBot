@@ -73,7 +73,16 @@ async def test_knowledge_retrieval_counts_on_the_authorized_run(monkeypatch, act
 
 
 @pytest.mark.asyncio
-async def test_plugin_reset_clears_runner_history_in_the_authorized_scope(monkeypatch):
+@pytest.mark.parametrize(
+    ('group_context', 'expected'),
+    [
+        # Member isolation is the default when the Chat has no setting.
+        (None, 'groupmember_7_guild-a_user-a'),
+        ('member', 'groupmember_7_guild-a_user-a'),
+        ('group', 'group_guild-a'),
+    ],
+)
+async def test_plugin_reset_clears_runner_history_in_the_authorized_scope(monkeypatch, group_context, expected):
     reset = AsyncMock()
     monkeypatch.setattr('langbot.pkg.agent.runner.context_reset.reset_runner_context', reset)
     transactions = []
@@ -90,6 +99,7 @@ async def test_plugin_reset_clears_runner_history_in_the_authorized_scope(monkey
         sender_id='user-a',
         variables={},
         session=SimpleNamespace(using_conversation=SimpleNamespace(uuid=None)),
+        pipeline_config={'ai': {'runner': {'group-context': group_context}}} if group_context else None,
     )
     app = SimpleNamespace(
         query_pool=SimpleNamespace(cached_queries={'query-a': query}),
@@ -99,7 +109,7 @@ async def test_plugin_reset_clears_runner_history_in_the_authorized_scope(monkey
     h = make_handler(app)
     response = await h.actions[PluginToRuntimeAction.CREATE_NEW_CONVERSATION.value]({'query_id': 'query-a'})
     assert response.code == 0
-    reset.assert_awaited_once_with(app.persistence_mgr, 'workspace-a', 'bot-a', 'group_guild-a')
+    reset.assert_awaited_once_with(app.persistence_mgr, 'workspace-a', 'bot-a', expected)
     assert transactions == ['workspace-a']
     assert query.session.using_conversation is None
 

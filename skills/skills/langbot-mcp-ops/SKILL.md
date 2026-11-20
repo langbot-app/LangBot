@@ -285,7 +285,7 @@ execution, not the individual model/tool call outcome. Calls without a recorded
 execution link are excluded when an execution filter is active.
 
 Session lists support `bot_ids`, `pipeline_ids`, `start_time`, `end_time`,
-`user_query`, `is_active`, and pagination. For execution status or real/debug
+`user_query`, `launcher_id`, `is_active`, and pagination. For execution status or real/debug
 filters, use `get_monitoring_executions`; HTTP `/monitoring/sessions` rejects
 them. In HTTP `/monitoring/data`, `sessions` and `totalCount.sessions` use only
 bot/pipeline/time filters; execution filters apply to the other records.

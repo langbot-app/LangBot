@@ -1447,6 +1447,14 @@ const enUS = {
         'Context reset. New messages will start a fresh conversation.',
       resetError:
         'Could not reset context. Wait for active tasks to finish and try again.',
+      resetScopeMember:
+        "This chat keeps a separate context for each group member, so only this member's context is reset.",
+      resetScopeGroup:
+        "This group shares one context, so the whole group's conversation is reset, not just this member's.",
+      inGroup: 'in {{group}}',
+      filterByGroup: 'Same group',
+      groupFilterActive: 'Group {{group}}',
+      clearGroupFilter: 'Show all sessions',
 
       title: 'Sessions',
       sessions: 'Sessions',

@@ -1434,6 +1434,14 @@ const viVN = {
       resetSuccess: 'Đã đặt lại ngữ cảnh.',
       resetError:
         'Không thể đặt lại. Hãy đợi các tác vụ đang chạy hoàn tất rồi thử lại.',
+      resetScopeMember:
+        'Cuộc trò chuyện này lưu ngữ cảnh riêng cho từng thành viên nhóm, nên chỉ ngữ cảnh của thành viên này được đặt lại.',
+      resetScopeGroup:
+        'Nhóm này dùng chung một ngữ cảnh, nên cuộc hội thoại của cả nhóm sẽ được đặt lại, không chỉ của thành viên này.',
+      inGroup: 'trong {{group}}',
+      filterByGroup: 'Cùng nhóm',
+      groupFilterActive: 'Nhóm {{group}}',
+      clearGroupFilter: 'Hiện tất cả phiên',
 
       title: 'Phiên',
       sessions: 'Phiên',
