@@ -1351,6 +1351,14 @@ const zhHans = {
         '重置后，新消息将从空上下文开始。监控历史会保留，文件和长期记忆不受影响。请等待当前任务结束后再重置。',
       resetSuccess: '上下文已重置，新消息将开启新的对话。',
       resetError: '重置失败，请等待当前任务结束后重试。',
+      resetScopeMember:
+        '该聊天为每个群成员保存独立上下文，只会重置这位成员的上下文。',
+      resetScopeGroup:
+        '该群共享一段上下文，重置会清空整个群的对话，而不只是这位成员。',
+      inGroup: '群 {{group}}',
+      filterByGroup: '同群会话',
+      groupFilterActive: '群 {{group}}',
+      clearGroupFilter: '显示全部会话',
 
       title: '会话监控',
       sessions: '会话列表',

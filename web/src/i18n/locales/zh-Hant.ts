@@ -1348,6 +1348,14 @@ const zhHant = {
         '重設後，新訊息將從空上下文開始。監控歷史會保留，檔案和長期記憶不受影響。請等待目前任務結束後再重設。',
       resetSuccess: '上下文已重設，新訊息將開始新的對話。',
       resetError: '重設失敗，請等待目前任務結束後重試。',
+      resetScopeMember:
+        '此聊天為每位群成員保存獨立上下文，只會重設這位成員的上下文。',
+      resetScopeGroup:
+        '此群共享一段上下文，重設會清空整個群的對話，而不只是這位成員。',
+      inGroup: '群 {{group}}',
+      filterByGroup: '同群會話',
+      groupFilterActive: '群 {{group}}',
+      clearGroupFilter: '顯示全部會話',
 
       title: '會話監控',
       sessions: '會話列表',

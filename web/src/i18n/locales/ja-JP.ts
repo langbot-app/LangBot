@@ -1452,6 +1452,14 @@ const jaJP = {
       resetSuccess: 'コンテキストをリセットしました。',
       resetError:
         'リセットできませんでした。実行中のタスクが完了してから再試行してください。',
+      resetScopeMember:
+        'このチャットはグループメンバーごとに独立したコンテキストを保持するため、このメンバーのコンテキストのみリセットされます。',
+      resetScopeGroup:
+        'このグループは 1 つのコンテキストを共有しているため、このメンバーだけでなくグループ全体の会話がリセットされます。',
+      inGroup: 'グループ {{group}}',
+      filterByGroup: '同じグループ',
+      groupFilterActive: 'グループ {{group}}',
+      clearGroupFilter: 'すべてのセッションを表示',
 
       title: 'セッション監視',
       sessions: 'セッション一覧',

@@ -1464,6 +1464,14 @@ const esES = {
       resetSuccess: 'Contexto restablecido.',
       resetError:
         'No se pudo restablecer. Espere a que terminen las tareas activas y vuelva a intentarlo.',
+      resetScopeMember:
+        'Este chat guarda un contexto independiente para cada miembro del grupo, así que solo se restablece el de este miembro.',
+      resetScopeGroup:
+        'Este grupo comparte un único contexto, así que se restablece la conversación de todo el grupo, no solo la de este miembro.',
+      inGroup: 'en {{group}}',
+      filterByGroup: 'Mismo grupo',
+      groupFilterActive: 'Grupo {{group}}',
+      clearGroupFilter: 'Mostrar todas las sesiones',
 
       title: 'Sesiones',
       sessions: 'Sesiones',

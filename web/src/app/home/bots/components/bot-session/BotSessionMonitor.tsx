@@ -37,6 +37,8 @@ import {
   ShieldCheck,
   ShieldOff,
   Wrench,
+  Users,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import BotAdminsDialog, {
@@ -53,6 +55,11 @@ import {
   Voice,
 } from '@/app/infra/entities/message';
 import { PIPELINE_DISCARD } from '@/app/home/bots/components/bot-form/EventBindingsEditor';
+import {
+  parseGroupMemberSessionId,
+  parseSessionType,
+  sessionGroupId,
+} from './session-scope';
 
 interface SessionInfo {
   session_id: string;
@@ -158,6 +165,10 @@ const BotSessionMonitor = forwardRef<
   const canReset = workspace?.permissions.includes('resource.manage') ?? false;
   const [resetTarget, setResetTarget] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
+  // How far a reset reaches for the selected group session: one member, or the
+  // whole group when its Chat shares context (or the session predates per-member
+  // records). null = not a group session, or the Chat could not be read.
+  const [resetScope, setResetScope] = useState<'member' | 'group' | null>(null);
   const resetContext = async () => {
     if (!resetTarget || resetting) return;
     setResetting(true);
@@ -178,6 +189,7 @@ const BotSessionMonitor = forwardRef<
   const [endDate, setEndDate] = useState('');
   const [userQuery, setUserQuery] = useState('');
   const [appliedUserQuery, setAppliedUserQuery] = useState('');
+  const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     null,
   );
@@ -206,16 +218,13 @@ const BotSessionMonitor = forwardRef<
   const [adminsDialogOpen, setAdminsDialogOpen] = useState(false);
   const [togglingAdmin, setTogglingAdmin] = useState<string | null>(null);
 
-  const parseSessionType = (sessionId: string): string | null => {
-    const lower = sessionId.toLowerCase();
-    // Bot admins are people, not group chats. Group sessions never map to an
-    // admin target, so the UI cannot grant a whole group admin privileges.
-    if (lower.includes('person')) return 'person';
-    return null;
-  };
+  // Bot admins are people, not group chats. Group sessions never map to an
+  // admin target, so the UI cannot grant a whole group admin privileges.
+  const adminLauncherType = (sessionId: string): 'person' | null =>
+    parseSessionType(sessionId) === 'person' ? 'person' : null;
 
   const isSessionAdmin = (session: SessionInfo): boolean => {
-    const type = parseSessionType(session.session_id);
+    const type = adminLauncherType(session.session_id);
     const lid =
       session.user_id ??
       session.session_id.replace(
@@ -228,7 +237,7 @@ const BotSessionMonitor = forwardRef<
   };
 
   const toggleAdmin = async (session: SessionInfo) => {
-    const type = parseSessionType(session.session_id);
+    const type = adminLauncherType(session.session_id);
     if (!type) return;
     const lid =
       session.user_id ??
@@ -284,6 +293,7 @@ const BotSessionMonitor = forwardRef<
           ? localDateBoundaryToISOString(endDate, true)
           : undefined,
         userQuery: appliedUserQuery || undefined,
+        launcherId: groupFilter ?? undefined,
       });
       if (requestId !== sessionRequestIdRef.current) return;
       setSessions(response.sessions ?? []);
@@ -298,7 +308,7 @@ const BotSessionMonitor = forwardRef<
         setLoadingSessions(false);
       }
     }
-  }, [appliedUserQuery, botId, endDate, sessionPage, startDate]);
+  }, [appliedUserQuery, botId, endDate, groupFilter, sessionPage, startDate]);
 
   useImperativeHandle(
     ref,
@@ -399,7 +409,7 @@ const BotSessionMonitor = forwardRef<
   useEffect(() => {
     setSelectedSessionId(null);
     setMessagePage(0);
-  }, [appliedUserQuery, botId, endDate, sessionPage, startDate]);
+  }, [appliedUserQuery, botId, endDate, groupFilter, sessionPage, startDate]);
 
   useEffect(() => {
     retriedImageMessagesRef.current.clear();
@@ -745,6 +755,45 @@ const BotSessionMonitor = forwardRef<
   const selectedSession = sessions.find(
     (s) => s.session_id === selectedSessionId,
   );
+  const selectedGroupId = selectedSessionId
+    ? sessionGroupId(selectedSessionId)
+    : null;
+
+  const resetScopeRequestRef = useRef(0);
+  const openReset = (session: SessionInfo) => {
+    const requestId = ++resetScopeRequestRef.current;
+    setResetTarget(session.session_id);
+    setResetScope(null);
+    if (!parseGroupMemberSessionId(session.session_id)) {
+      // Whole-group IDs always reset the shared group conversation.
+      if (sessionGroupId(session.session_id)) setResetScope('group');
+      return;
+    }
+    if (!session.pipeline_id) {
+      setResetScope('member');
+      return;
+    }
+    httpClient
+      .getPipeline(session.pipeline_id)
+      .then((resp) => {
+        if (requestId !== resetScopeRequestRef.current) return;
+        const runner = (
+          resp.pipeline.config?.ai as
+            { runner?: Record<string, unknown> } | undefined
+        )?.runner;
+        setResetScope(
+          runner?.['group-context'] === 'group' ? 'group' : 'member',
+        );
+      })
+      .catch(() => {
+        // Keep the generic description when the Chat cannot be read.
+      });
+  };
+
+  const applyGroupFilter = (groupId: string | null) => {
+    setSessionPage(0);
+    setGroupFilter(groupId);
+  };
   const sessionPageCount = Math.max(
     1,
     Math.ceil(sessionTotal / SESSION_PAGE_SIZE),
@@ -831,6 +880,25 @@ const BotSessionMonitor = forwardRef<
                 className="h-7 min-w-0 rounded border bg-background px-1 text-[10px]"
               />
             </div>
+            {groupFilter && (
+              <div className="flex items-center gap-1 rounded border bg-muted/50 px-2 py-1 text-[11px]">
+                <Users className="size-3 shrink-0" />
+                <span className="min-w-0 flex-1 truncate" title={groupFilter}>
+                  {t('bots.sessionMonitor.groupFilterActive', {
+                    group: abbreviateId(groupFilter),
+                  })}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => applyGroupFilter(null)}
+                  className="shrink-0 text-muted-foreground hover:text-foreground"
+                  aria-label={t('bots.sessionMonitor.clearGroupFilter')}
+                  title={t('bots.sessionMonitor.clearGroupFilter')}
+                >
+                  <X className="size-3" />
+                </button>
+              </div>
+            )}
           </div>
           {/* Session List */}
           <ScrollArea className="flex-1 min-h-0">
@@ -854,6 +922,9 @@ const BotSessionMonitor = forwardRef<
                   const isSelected = selectedSessionId === session.session_id;
                   const sessionType = parseSessionType(session.session_id);
                   const sessionIsAdmin = isSessionAdmin(session);
+                  const memberGroup = parseGroupMemberSessionId(
+                    session.session_id,
+                  )?.groupId;
                   return (
                     <div
                       key={session.session_id}
@@ -882,6 +953,16 @@ const BotSessionMonitor = forwardRef<
                         {sessionType && (
                           <span className="px-1 py-0.5 rounded bg-muted text-[10px]">
                             {sessionType}
+                          </span>
+                        )}
+                        {memberGroup && (
+                          <span
+                            className="truncate text-[10px]"
+                            title={memberGroup}
+                          >
+                            {t('bots.sessionMonitor.inGroup', {
+                              group: abbreviateId(memberGroup),
+                            })}
                           </span>
                         )}
 
@@ -976,31 +1057,46 @@ const BotSessionMonitor = forwardRef<
                         </span>
                       </>
                     )}
-                    {selectedSession && parseSessionType(selectedSessionId) && (
+                    {selectedSession &&
+                      adminLauncherType(selectedSessionId) && (
+                        <>
+                          <span>·</span>
+                          <button
+                            type="button"
+                            className={cn(
+                              'inline-flex items-center gap-1 transition-colors',
+                              isSessionAdmin(selectedSession)
+                                ? 'text-blue-500'
+                                : 'text-muted-foreground hover:text-blue-500',
+                            )}
+                            disabled={togglingAdmin === selectedSessionId}
+                            title={
+                              isSessionAdmin(selectedSession)
+                                ? t('bots.admins.removeAdminTitle')
+                                : t('bots.admins.setAdminTitle')
+                            }
+                            onClick={() => toggleAdmin(selectedSession)}
+                          >
+                            {isSessionAdmin(selectedSession) ? (
+                              <ShieldCheck className="size-3.5" />
+                            ) : (
+                              <ShieldOff className="size-3.5" />
+                            )}
+                            <span>{t('bots.admins.adminBadge')}</span>
+                          </button>
+                        </>
+                      )}
+                    {selectedGroupId && groupFilter !== selectedGroupId && (
                       <>
                         <span>·</span>
                         <button
                           type="button"
-                          className={cn(
-                            'inline-flex items-center gap-1 transition-colors',
-                            isSessionAdmin(selectedSession)
-                              ? 'text-blue-500'
-                              : 'text-muted-foreground hover:text-blue-500',
-                          )}
-                          disabled={togglingAdmin === selectedSessionId}
-                          title={
-                            isSessionAdmin(selectedSession)
-                              ? t('bots.admins.removeAdminTitle')
-                              : t('bots.admins.setAdminTitle')
-                          }
-                          onClick={() => toggleAdmin(selectedSession)}
+                          className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+                          title={selectedGroupId}
+                          onClick={() => applyGroupFilter(selectedGroupId)}
                         >
-                          {isSessionAdmin(selectedSession) ? (
-                            <ShieldCheck className="size-3.5" />
-                          ) : (
-                            <ShieldOff className="size-3.5" />
-                          )}
-                          <span>{t('bots.admins.adminBadge')}</span>
+                          <Users className="size-3.5" />
+                          <span>{t('bots.sessionMonitor.filterByGroup')}</span>
                         </button>
                       </>
                     )}
@@ -1012,7 +1108,9 @@ const BotSessionMonitor = forwardRef<
                     size="sm"
                     className="h-7 shrink-0 gap-1.5"
                     disabled={resetting}
-                    onClick={() => setResetTarget(selectedSessionId)}
+                    onClick={() =>
+                      selectedSession && openReset(selectedSession)
+                    }
                   >
                     <RotateCcw className="size-3.5" />
                     {t('bots.sessionMonitor.resetContext')}
@@ -1312,6 +1410,13 @@ const BotSessionMonitor = forwardRef<
             <DialogDescription>
               {t('bots.sessionMonitor.resetDescription')}
             </DialogDescription>
+            {resetScope && (
+              <p className="text-sm text-muted-foreground">
+                {resetScope === 'member'
+                  ? t('bots.sessionMonitor.resetScopeMember')
+                  : t('bots.sessionMonitor.resetScopeGroup')}
+              </p>
+            )}
           </DialogHeader>
           <DialogFooter>
             <Button
