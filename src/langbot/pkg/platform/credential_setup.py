@@ -5,10 +5,23 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
+import os
 
 from langbot.pkg.api.context import RequestContext
 from langbot.pkg.core.errors import TaskCapacityError
 from langbot.pkg.utils import httpclient
+
+# DingTalk's one-click app registration (Device Flow) only honours sources on
+# DingTalk's allowlist; any other value (including the old 'langbot') yields a
+# QR page that fails with "当前组织无法使用此接入方". DING_DWS_CLAW is the source
+# used by DingTalk's official OpenClaw connector (DingTalk-Real-AI/
+# dingtalk-openclaw-connector). Override via DINGTALK_REGISTRATION_SOURCE once
+# LangBot has its own registered source.
+DEFAULT_DINGTALK_REGISTRATION_SOURCE = 'DING_DWS_CLAW'
+
+
+def dingtalk_registration_source() -> str:
+    return os.getenv('DINGTALK_REGISTRATION_SOURCE', '').strip() or DEFAULT_DINGTALK_REGISTRATION_SOURCE
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -524,7 +537,7 @@ class CredentialSetupService:
                         # Step 1: Init — get nonce
                         async with http.post(
                             f'{DINGTALK_BASE_URL}/app/registration/init',
-                            json={'source': 'langbot'},
+                            json={'source': dingtalk_registration_source()},
                         ) as resp:
                             try:
                                 data = await httpclient.read_json_limited(resp)
