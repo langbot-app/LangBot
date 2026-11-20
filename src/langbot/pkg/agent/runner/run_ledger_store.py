@@ -83,6 +83,16 @@ def _json_loads(value: str | None, default: typing.Any) -> typing.Any:
         return default
 
 
+def _run_metadata(run: AgentRun) -> typing.Any:
+    metadata = _json_loads(run.metadata_json, {})
+    if run.queue_name is not None and isinstance(metadata, dict):
+        ack = metadata.get('cancel_ack')
+        # Old requeues could retain an ACK from a prior attempt, even in the same second.
+        if isinstance(ack, dict) and ack.get('retry_count', 0) != metadata.get('retry_count', 0):
+            metadata.pop('cancel_ack')
+    return metadata
+
+
 def _validate_run_status(status: str) -> str:
     normalized = str(status)
     if normalized not in RUN_STATUSES:
@@ -659,7 +669,7 @@ class RunLedgerStore:
             if not await self._lock_run(session, run_id):
                 return None
             run = await self._get_run_row(session, run_id)
-            metadata = MediaCache.redact_inline_images(_json_loads(run.metadata_json, {}))
+            metadata = MediaCache.redact_inline_images(_run_metadata(run))
             if not isinstance(metadata, dict):
                 metadata = {}
             attempt = int(metadata.get('retry_count') or 0) if run.queue_name is not None else 0
@@ -674,6 +684,8 @@ class RunLedgerStore:
                 return self._run_to_dict(run)
             now = as_naive_utc(_utc_now())
             data = {'cleanup_confirmed': cleanup_confirmed, 'reason': reason}
+            if attempt:
+                data['retry_count'] = attempt
             if previous_state is cleanup_confirmed:
                 last_event = await session.scalar(
                     sqlalchemy.select(AgentRunEvent.data_json)
@@ -686,7 +698,11 @@ class RunLedgerStore:
                     .limit(1)
                 )
                 last_payload = _json_loads(last_event, None)
-                if isinstance(last_payload, dict) and last_payload.get('cleanup_confirmed') is cleanup_confirmed:
+                if (
+                    isinstance(last_payload, dict)
+                    and last_payload.get('retry_count', 0) == attempt
+                    and last_payload.get('cleanup_confirmed') is cleanup_confirmed
+                ):
                     return self._run_to_dict(run)
                 # Older Hosts could commit the ACK without its event. Audit this retry at its actual time.
             else:
@@ -1072,7 +1088,7 @@ class RunLedgerStore:
             'cancel_requested_at': _datetime_to_epoch(row.cancel_requested_at),
             'usage': _json_loads(row.usage_json, None),
             'cost': _json_loads(row.cost_json, None),
-            'metadata': _json_loads(row.metadata_json, {}),
+            'metadata': _run_metadata(row),
         }
         if include_claim_token:
             data['claim_token'] = row.claim_token

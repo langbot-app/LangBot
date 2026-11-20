@@ -581,6 +581,35 @@ async def test_cancel_ack_replay_preserves_legacy_metadata_and_records_missing_a
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('first_state', [False, True])
+async def test_legacy_external_ack_has_no_claim_on_new_attempt(store, first_state):
+    original = {'acknowledged_at': 12345, 'reason': 'old cleanup', 'cleanup_confirmed': True}
+    await store.create_run(
+        run_id='upgraded',
+        runner_id='runner',
+        binding_id=None,
+        event_id=None,
+        queue_name='ext',
+        metadata={'retry_count': 1, 'retry_requested_at': 12345, 'cancel_ack': original},
+    )
+    assert 'cancel_ack' not in (await store.get_run('upgraded'))['metadata']
+    old_event = await store.append_audit_event(
+        run_id='upgraded', event_type='run.cancel_ack', data={'reason': 'old cleanup', 'cleanup_confirmed': True}
+    )
+    for state in (first_state, first_state, True, True):
+        got = await store.acknowledge_cancel(
+            run_id='upgraded', cleanup_confirmed=state, expected_retry_count=1, reason='new cleanup'
+        )
+        receipt = got['metadata']['cancel_ack']
+        assert (receipt['retry_count'], receipt['reason'], receipt['cleanup_confirmed']) == (1, 'new cleanup', state)
+    events, *_ = await store.page_run_events(run_id='upgraded')
+    assert events[0] == old_event
+    assert [(e['data']['retry_count'], e['data']['cleanup_confirmed']) for e in events[1:]] == (
+        [(1, True)] if first_state else [(1, False), (1, True)]
+    )
+
+
+@pytest.mark.asyncio
 async def test_cancel_ack_audit_failure_rolls_back_metadata(store, db_engine):
     await store.create_run(run_id='failure', event_id=None, binding_id=None, runner_id='runner')
 
