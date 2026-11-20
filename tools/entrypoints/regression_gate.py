@@ -11,7 +11,7 @@ import sys
 import time
 
 from tools.entrypoints.regression_suite import Suite, validate
-from tools.entrypoints.regression_traffic import read_process_snapshot
+from tools.regression.observations import read_process_snapshot
 
 
 def supervise(command, output, budget, pids, env=None):

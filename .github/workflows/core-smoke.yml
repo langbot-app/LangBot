@@ -83,6 +83,7 @@ jobs:
           chmod +x lbctl_linux_amd64
           docker pull python:3.12-alpine
       - name: Prepare real services and run smoke with plugin scenarios
+        id: execute
         run: |
           uv run --no-sync python -m tools.entrypoints.regression_ci \
             --suite scenarios --scenario-groups plugins \
@@ -90,29 +91,11 @@ jobs:
             --lbctl .smoke-bin/lbctl_linux_amd64 --plugins plugins --output .qa/core-smoke
       - name: Publish gate result
         if: always()
+        env:
+          RUN_OUTCOME: ${{ steps.execute.outcome }}
         run: |
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          root = Path('.qa/core-smoke')
-          path = root / 'gate/gate.json'
-          manifest = root / 'plugins/manifest.json'
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
-              if manifest.exists():
-                  for plugin in json.loads(manifest.read_text())['plugins']:
-                      out.write(f"Plugin: `{plugin['id']}@{plugin['version']}`; installation readback: `{plugin.get('installed', 'not confirmed')}`.\n\n")
-              if path.exists():
-                  data = json.loads(path.read_text())
-                  out.write(f"Core smoke: {'PASS' if data['passed'] else 'FAIL'}; "
-                            f"{data.get('elapsed_seconds', 0):.2f}/300 seconds; {data.get('requests', 0)} requests.\n")
-                  if data.get('infrastructure_error'):
-                      out.write('Preparation or teardown failed; inspect service logs.\n')
-                  for error in data.get('coverage_errors', []):
-                      out.write(f"Coverage evidence error: {error}\n")
-                  out.write('Service/dependency preparation is outside the 300-second execution budget.\n')
-              else:
-                  out.write('Core smoke did not produce a verdict; inspect preparation failure.\n')
-          PY
+          python -m tools.entrypoints.regression_report core-smoke .qa/core-smoke \
+            --sha "$GITHUB_SHA" --step-outcome "$RUN_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve verdicts and resource samples
         if: always()
         uses: actions/upload-artifact@v4

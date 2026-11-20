@@ -28,7 +28,8 @@ from tools.regression.regression_plugins import (
 )
 from tools.regression.regression_local_cases import DEFAULT_GROUPS, api, require
 from tools.entrypoints.regression_suite import Suite, number, validate
-from tools.entrypoints.regression_traffic import owned_box_containers, read_endpoint_snapshot
+from tools.entrypoints.regression_traffic import owned_box_containers
+from tools.regression.observations import read_endpoint_snapshot
 
 ROOT = Path(__file__).resolve().parents[2]
 # The Runtime CLI does not expose a bind address. Restrict both of its
@@ -152,7 +153,7 @@ def ready(url, processes, timeout=120):
         if any(p.poll() is not None for p in processes):
             raise RuntimeError('A regression dependency exited; inspect service logs')
         try:
-            read_endpoint_snapshot(url, timeout_seconds=1)
+            read_endpoint_snapshot(url, timeout_seconds=1, require_ready_json=True)
             return
         except (RuntimeError, OSError):
             time.sleep(0.2)

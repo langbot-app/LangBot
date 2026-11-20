@@ -64,7 +64,26 @@ def number(value, label, *, minimum=0, integer=False):
         raise ValueError(f'{label} must be {"an integer " if integer else ""}>= {minimum}')
 
 
-def validate(profile):
+LOAD_ARGUMENTS = (
+    ('--duration', 'duration_seconds', float, 'Override duration_seconds in every phase'),
+    ('--rps', 'rps', float, 'Override RPS in every phase'),
+    ('--workers', 'workers', int, 'Override workers in every phase'),
+    ('--groups', 'groups', int, 'Override group count in every group phase'),
+    ('--members-per-group', 'members_per_group', int, 'Override member count per group'),
+)
+
+
+def add_load_arguments(parser):
+    for flag, field, kind, help_text in LOAD_ARGUMENTS:
+        parser.add_argument(flag, dest=field, type=kind, help=help_text)
+
+
+def phase_overrides(args):
+    return {field: value for _, field, _, _ in LOAD_ARGUMENTS if (value := getattr(args, field)) is not None}
+
+
+def validate(profile, *, load_overrides=None):
+    """Apply explicit load overrides to every phase and validate the resulting suite."""
     if not isinstance(profile, dict) or profile.get('version') != 1:
         raise ValueError('profile version must be 1')
     allowed = {
@@ -96,6 +115,11 @@ def validate(profile):
             not isinstance(profile[field], list) or any(not isinstance(item, dict) for item in profile[field])
         ):
             raise ValueError(f'{field} must be an array of objects')
+    if load_overrides:
+        if 'smoke' in profile:
+            raise ValueError('Load overrides are not applicable to smoke mode')
+        for phase in profile.get('phases', []):
+            phase.update(load_overrides)
     if 'coverage_suite' in profile and not re.fullmatch(r'[a-z][a-z0-9_-]*', str(profile['coverage_suite'])):
         raise ValueError('coverage_suite must be a stable suite identifier')
     if profile.get('performance_mode', 'gate') not in {'gate', 'observe'}:
@@ -964,29 +988,11 @@ def main():
     parser.add_argument('action', choices=('validate', 'run', 'cleanup'))
     parser.add_argument('--profile', required=True, type=Path)
     parser.add_argument('--output', type=Path, help='New run directory; existing run directory for cleanup')
-    parser.add_argument('--duration', type=float, help='Override duration_seconds in every phase')
-    parser.add_argument('--rps', type=float, help='Override RPS in every phase')
-    parser.add_argument('--workers', type=int, help='Override workers in every phase')
-    parser.add_argument('--groups', type=int, help='Override group count in every group phase')
-    parser.add_argument('--members-per-group', type=int)
+    add_load_arguments(parser)
     args = parser.parse_args()
     try:
         profile = json.loads(args.profile.read_text())
-        if 'smoke' in profile and any(
-            getattr(args, flag) is not None for flag in ('duration', 'rps', 'workers', 'groups', 'members_per_group')
-        ):
-            raise ValueError('Load overrides are not applicable to smoke mode')
-        for phase in profile.get('phases', []):
-            for flag, field in [
-                ('duration', 'duration_seconds'),
-                ('rps', 'rps'),
-                ('workers', 'workers'),
-                ('groups', 'groups'),
-                ('members_per_group', 'members_per_group'),
-            ]:
-                if getattr(args, flag) is not None:
-                    phase[field] = getattr(args, flag)
-        validate(profile)
+        validate(profile, load_overrides=phase_overrides(args))
         if args.action == 'validate':
             print('Profile valid (no services or resources changed).')
             return

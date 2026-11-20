@@ -111,8 +111,9 @@ python3 -m tools.entrypoints.regression_traffic \
 
 Add `--container CONTAINER_ID` for Docker CPU/memory/PID statistics. The executing
 account must be able to inspect the selected process trees and Docker daemon.
-Resource collection reuses `scripts/cloud_runtime_soak.py`; it does not require
-cgroup v2. PID resource totals include descendants, so select disjoint trees.
+Traffic and cloud soak share the process and endpoint probes in
+`regression/observations.py`. Traffic collection works without cgroup v2. PID resource totals
+include descendants, so select disjoint trees.
 
 The result directory contains `requests.jsonl`, `resources.jsonl`, `progress.json`,
 and `summary.json`. The requested rate is a target: four workers bound concurrency,
@@ -702,6 +703,21 @@ Inspect `gate/gate.json` for the verdict, seed and exact case order;
 An HTTP route hit includes rejected requests and is not proof of all behavior
 behind that route. Invalid MCP modes must return HTTP 400 and leave the original
 configuration unchanged. Any failed contract or cleanup makes the job fail.
+
+## Read a saved regression report
+
+Pass the directory that contains `gate/`. The command reads the existing evidence and
+writes Markdown to stdout. A failed or incomplete run exits with status 1.
+
+```sh
+python -m tools.entrypoints.regression_report api-fixed .qa/api
+python -m tools.entrypoints.regression_report api-daily /path/to/unpacked-daily-api-artifact
+python -m tools.entrypoints.regression_report daily /path/to/unpacked-daily-artifact/daily
+python -m tools.entrypoints.regression_report core-smoke .qa/core-smoke
+```
+
+For Daily, keep `daily-workload.txt` beside the run directory when unpacking the artifact.
+CI also supplies the tested SHA and runner step outcome. Use `--help` for those optional inputs.
 
 ## Concurrent isolation job
 
