@@ -1476,13 +1476,13 @@ const enUS = {
     admins: {
       title: 'Admins',
       description:
-        "Launchers (person/group IDs) that have admin privilege for this bot's commands",
+        "Users (by person ID) with admin privilege for this bot's commands",
       addAdmin: 'Add Admin',
       launcherType: 'Type',
-      launcherId: 'ID',
+      launcherId: 'User ID',
       typePerson: 'Person',
       typeGroup: 'Group',
-      placeholderId: 'User or group ID',
+      placeholderId: 'User ID',
       addSuccess: 'Admin added',
       addError: 'Failed to add admin: ',
       deleteSuccess: 'Admin removed',

@@ -208,8 +208,9 @@ const BotSessionMonitor = forwardRef<
 
   const parseSessionType = (sessionId: string): string | null => {
     const lower = sessionId.toLowerCase();
+    // Bot admins are people, not group chats. Group sessions never map to an
+    // admin target, so the UI cannot grant a whole group admin privileges.
     if (lower.includes('person')) return 'person';
-    if (lower.includes('group')) return 'group';
     return null;
   };
 
