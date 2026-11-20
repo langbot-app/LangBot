@@ -1,0 +1,83 @@
+{
+  "actions": [
+    {
+      "command": [
+        "sudo",
+        "-n",
+        "rm",
+        "--",
+        "/etc/systemd/system/langbot-dev.service.d/90-eval-proxy.conf"
+      ],
+      "returncode": 0,
+      "stderr": ""
+    },
+    {
+      "command": [
+        "sudo",
+        "-n",
+        "systemctl",
+        "daemon-reload"
+      ],
+      "returncode": 0,
+      "stderr": ""
+    },
+    {
+      "command": [
+        "sudo",
+        "-n",
+        "systemctl",
+        "restart",
+        "langbot-dev.service"
+      ],
+      "returncode": 0,
+      "stderr": ""
+    }
+  ],
+  "temporary_proxy_removed": true,
+  "retained_task_ports": [
+    8766,
+    8769,
+    8770
+  ],
+  "health_runtimes": {
+    "bots": 1,
+    "knowledge_bases": 14,
+    "mcp_dispatch_tasks": 0,
+    "mcp_host_tasks": 0,
+    "mcp_projection_reconcile_active": 0,
+    "mcp_projection_retirements": 0,
+    "mcp_sessions": 0,
+    "message_aggregation_buffers": 0,
+    "message_aggregation_scopes": 0,
+    "pipelines": 6,
+    "plugin_installations": 4,
+    "plugin_runtime_connected": true
+  },
+  "plugins": [
+    {
+      "name": "LongTermMemory",
+      "status": "initialized",
+      "enabled": true,
+      "digest": "e4a3c418d552094ab866eac3eb552ef7b1b6176b3f053825bba7b65e4cb8d834"
+    },
+    {
+      "name": "PowerContext",
+      "status": "initialized",
+      "enabled": true,
+      "digest": "c380005158936293a992d9a879476644c579ba7da4f22879981c386f27809078"
+    },
+    {
+      "name": "LangRAG",
+      "status": "initialized",
+      "enabled": true,
+      "digest": "453a6f60095fc58e9300cd05e390660ca27801eed6d59af2bca15c328ff114c6"
+    },
+    {
+      "name": "LocalAgent",
+      "status": "initialized",
+      "enabled": true,
+      "digest": "c5fdb5c5d2712423bb44919f2d1708c4a8652dfa6df0a6011071453748f5ef87"
+    }
+  ],
+  "service": "MainPID=1333876\nActiveState=active\n"
+}

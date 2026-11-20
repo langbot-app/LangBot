@@ -26,6 +26,13 @@ metadata:
     es_ES: LongTermMemory
   icon: assets/icon.svg
 spec:
+  permissions:
+    capabilities:
+      - knowledge.read
+      - knowledge.vector
+      - models.invoke
+      - storage.plugin
+    workspace_operations: []
   config:
   - name: max_profile_traits
     type: integer
