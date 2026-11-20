@@ -261,6 +261,7 @@ class TestHandlerQueryVariables:
         'key',
         [
             '_host_box_scope',
+            '_host_configured_knowledge_base_uuids',
             '_host_tool_source_refs',
             '_pipeline_bound_plugins',
             '_pipeline_bound_mcp_servers',

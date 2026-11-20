@@ -259,14 +259,17 @@ class Memory(Command):
 
     @staticmethod
     async def _is_memory_kb_active(
-        store,
-        api: QueryBasedAPIProxy,
-        kb_id: str | None,
+        ctx: _RuntimeContext,
     ) -> bool:
-        if not kb_id:
+        if not ctx.kb_id:
             return False
-        pipeline_kbs = await api.list_pipeline_knowledge_bases()
-        return any(kb.get("uuid") == kb_id for kb in pipeline_kbs)
+        key = "_host_configured_knowledge_base_uuids"
+        if key in ctx.query_vars:
+            configured = ctx.query_vars[key]
+            return isinstance(configured, list) and ctx.kb_id in configured
+        # Older Core versions expose only the effective retrieval list.
+        pipeline_kbs = await ctx.api.list_pipeline_knowledge_bases()
+        return any(kb.get("uuid") == ctx.kb_id for kb in pipeline_kbs)
 
     @staticmethod
     async def _run_metadata_filter_probe(
@@ -307,7 +310,7 @@ class Memory(Command):
                 if sender_id
                 else {}
             )
-            kb_active = await self._is_memory_kb_active(store, ctx.api, ctx.kb_id)
+            kb_active = await self._is_memory_kb_active(ctx)
 
             lines = [f"[Memory] mode: {ctx.isolation}"]
             lines.append(f"Session: {ctx.session_key}")
@@ -364,11 +367,7 @@ class Memory(Command):
                 statuses.append("ERROR")
                 lines.append(self._health_line("ERROR", "no memory KB configured"))
 
-            kb_active = await self._is_memory_kb_active(
-                self.plugin.memory_store,
-                ctx.api,
-                ctx.kb_id,
-            )
+            kb_active = await self._is_memory_kb_active(ctx)
             if kb_active:
                 statuses.append("OK")
                 lines.append(self._health_line("OK", "memory KB is active in this pipeline"))
@@ -483,7 +482,7 @@ class Memory(Command):
             store = self.plugin.memory_store
             ctx = await self._build_runtime_context(self.plugin, context)
 
-            if not ctx.kb_id or not await self._is_memory_kb_active(store, ctx.api, ctx.kb_id):
+            if not ctx.kb_id or not await self._is_memory_kb_active(ctx):
                 yield CommandReturn(
                     text="[Memory] Memory knowledge base is not configured for the current pipeline."
                 )
@@ -549,7 +548,7 @@ class Memory(Command):
             store = self.plugin.memory_store
             ctx = await self._build_runtime_context(self.plugin, context)
 
-            if not ctx.kb_id or not await self._is_memory_kb_active(store, ctx.api, ctx.kb_id):
+            if not ctx.kb_id or not await self._is_memory_kb_active(ctx):
                 yield CommandReturn(
                     text="[Memory] Memory knowledge base is not configured for the current pipeline."
                 )
@@ -619,7 +618,7 @@ class Memory(Command):
             store = self.plugin.memory_store
             ctx = await self._build_runtime_context(self.plugin, context)
 
-            if not ctx.kb_id or not await self._is_memory_kb_active(store, ctx.api, ctx.kb_id):
+            if not ctx.kb_id or not await self._is_memory_kb_active(ctx):
                 yield CommandReturn(
                     text="[Memory] Memory knowledge base is not configured for the current pipeline."
                 )
@@ -662,7 +661,7 @@ class Memory(Command):
             store = self.plugin.memory_store
             ctx = await self._build_runtime_context(self.plugin, context)
 
-            if not ctx.kb_id or not await self._is_memory_kb_active(store, ctx.api, ctx.kb_id):
+            if not ctx.kb_id or not await self._is_memory_kb_active(ctx):
                 yield CommandReturn(
                     text="[Memory] Memory knowledge base is not configured for the current pipeline."
                 )
@@ -830,7 +829,7 @@ class Memory(Command):
             ctx = await self._build_runtime_context(self.plugin, context)
 
             if context.crt_params and context.crt_params[0] == "l2":
-                if not ctx.kb_id or not await self._is_memory_kb_active(store, ctx.api, ctx.kb_id):
+                if not ctx.kb_id or not await self._is_memory_kb_active(ctx):
                     yield CommandReturn(
                         text="[Memory] Memory knowledge base is not configured for the current pipeline."
                     )
@@ -933,7 +932,7 @@ class Memory(Command):
             if len(context.crt_params) < 2 or context.crt_params[0] != "l2":
                 yield CommandReturn(text="Usage: !memory import l2 <json>")
                 return
-            if not ctx.kb_id or not await self._is_memory_kb_active(store, ctx.api, ctx.kb_id):
+            if not ctx.kb_id or not await self._is_memory_kb_active(ctx):
                 yield CommandReturn(
                     text="[Memory] Memory knowledge base is not configured for the current pipeline."
                 )
@@ -983,7 +982,7 @@ class Memory(Command):
             store = self.plugin.memory_store
             ctx = await self._build_runtime_context(self.plugin, context)
 
-            if not ctx.kb_id or not await self._is_memory_kb_active(store, ctx.api, ctx.kb_id):
+            if not ctx.kb_id or not await self._is_memory_kb_active(ctx):
                 yield CommandReturn(
                     text="[Memory] Memory knowledge base is not configured for the current pipeline."
                 )
@@ -1041,7 +1040,7 @@ class Memory(Command):
             if len(context.crt_params) > 2 or (context.crt_params[0] == "preview" and len(context.crt_params) != 1):
                 yield CommandReturn(text="Usage: !memory consolidate preview|run [proposal_id]")
                 return
-            if not ctx.kb_id or not await self._is_memory_kb_active(store, ctx.api, ctx.kb_id):
+            if not ctx.kb_id or not await self._is_memory_kb_active(ctx):
                 yield CommandReturn(
                     text="[Memory] Memory knowledge base is not configured for the current pipeline."
                 )
@@ -1266,7 +1265,7 @@ class Memory(Command):
             needs_l2_write = candidate_preview.get("candidate_type") == "l2_episode"
             if needs_l2_write and (
                 not ctx.kb_id
-                or not await self._is_memory_kb_active(store, ctx.api, ctx.kb_id)
+                or not await self._is_memory_kb_active(ctx)
             ):
                 yield CommandReturn(
                     text="[Memory] Memory knowledge base is not configured for the current pipeline."
@@ -1313,7 +1312,7 @@ class Memory(Command):
         store = self.plugin.memory_store
         ctx = await self._build_runtime_context(self.plugin, context)
 
-        if not ctx.kb_id or not await self._is_memory_kb_active(store, ctx.api, ctx.kb_id):
+        if not ctx.kb_id or not await self._is_memory_kb_active(ctx):
             yield CommandReturn(
                 text="[Memory] Memory knowledge base is not configured for the current pipeline."
             )
@@ -1359,7 +1358,7 @@ class Memory(Command):
         store = self.plugin.memory_store
         ctx = await self._build_runtime_context(self.plugin, context)
 
-        if not ctx.kb_id or not await self._is_memory_kb_active(store, ctx.api, ctx.kb_id):
+        if not ctx.kb_id or not await self._is_memory_kb_active(ctx):
             yield CommandReturn(
                 text="[Memory] Memory knowledge base is not configured for the current pipeline."
             )
