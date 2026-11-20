@@ -512,6 +512,44 @@ async def test_memory_candidate_accept_writes_audit(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("configured", "effective", "expected"),
+    [
+        (["kb-1"], [], True),  # LTM suppressed duplicate automatic retrieval.
+        ([], [{"uuid": "kb-1"}], False),  # Effective scope is not configuration.
+        (["other-kb"], [{"uuid": "kb-1"}], False),
+        ("kb-1", [{"uuid": "kb-1"}], False),  # Malformed snapshot fails closed.
+    ],
+)
+async def test_memory_candidate_accept_uses_host_configured_binding(
+    monkeypatch, configured, effective, expected
+):
+    class ScopedAPI(FakeAPI):
+        async def get_query_vars(self) -> dict:
+            return {
+                **await super().get_query_vars(),
+                "_host_configured_knowledge_base_uuids": configured,
+            }
+
+        async def list_pipeline_knowledge_bases(self) -> list[dict]:
+            return effective
+
+    monkeypatch.setattr("components.commands.memory.QueryBasedAPIProxy", lambda **_: ScopedAPI())
+    command = Memory()
+    command.plugin = FakePlugin()
+
+    output = await _run(command, "candidate", ["accept", "cand-1"])
+
+    assert ("accepted" in output) is expected
+    assert command.plugin.memory_store.accepted_candidates == (["cand-1"] if expected else [])
+    assert [entry["operation"] for entry in command.plugin.memory_store.audit_entries] == (
+        ["candidate_accept"] if expected else []
+    )
+    if not expected:
+        assert "Memory knowledge base is not configured" in output
+
+
+@pytest.mark.asyncio
 async def test_memory_candidate_accept_l1_does_not_require_active_kb(monkeypatch):
     class InactiveAPI(FakeAPI):
         async def list_pipeline_knowledge_bases(self) -> list[dict]:

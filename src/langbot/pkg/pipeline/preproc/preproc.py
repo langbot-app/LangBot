@@ -358,10 +358,11 @@ class PreProcessor(stage.PipelineStage):
 
         # Extract configured KB UUIDs into query variables so PromptPreProcessing
         # plugins can still adjust the authorized retrieval set before run_runner.
-        query.variables['_knowledge_base_uuids'] = config_schema.extract_knowledge_base_uuids(
-            descriptor,
-            runner_config,
-        )
+        configured_kb_uuids = config_schema.extract_knowledge_base_uuids(descriptor, runner_config)
+        query.variables['_knowledge_base_uuids'] = configured_kb_uuids
+        # Management commands need the Pipeline binding even when a prompt
+        # hook narrows the effective retrieval list. Plugins cannot set _host_ vars.
+        query.variables['_host_configured_knowledge_base_uuids'] = configured_kb_uuids.copy()
         # Telemetry: the knowledge bases this lane may retrieve from, plus the
         # schema-declared selector fields that selected them.
         try:

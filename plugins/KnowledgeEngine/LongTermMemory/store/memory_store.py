@@ -2093,12 +2093,14 @@ class MemoryStore:
                         {
                             "content": text_a,
                             "user_key": user_a,
+                            "file_id": id_a,
                             "source": "health_probe",
                             "timestamp": timestamp,
                         },
                         {
                             "content": text_b,
                             "user_key": user_b,
+                            "file_id": id_b,
                             "source": "health_probe",
                             "timestamp": timestamp,
                         },
@@ -2153,7 +2155,20 @@ class MemoryStore:
                 if deleted == 1:
                     add("delete", "OK", "vector_delete respects user_key metadata filter")
                 elif deleted == 0:
-                    add("delete", "WARN", "vector_delete filter did not delete its own probe record")
+                    # Chroma does not report a delete count. Verify both sides
+                    # of the filter instead of treating zero as a no-op.
+                    remaining_a = await self.plugin.vector_list(
+                        collection_id=collection_id, filters={"user_key": user_a}, limit=5,
+                    )
+                    remaining_b = await self.plugin.vector_list(
+                        collection_id=collection_id, filters={"user_key": user_b}, limit=5,
+                    )
+                    if not any(item.get("id") == id_b for item in remaining_b.get("items", [])):
+                        add("delete", "ERROR", "vector_delete filter removed the other probe record")
+                    elif any(item.get("id") == id_a for item in remaining_a.get("items", [])):
+                        add("delete", "WARN", "vector_delete filter did not delete its own probe record")
+                    else:
+                        add("delete", "OK", "vector_delete respects user_key metadata filter")
                 else:
                     add("delete", "ERROR", "vector_delete filter deleted more probe records than expected")
             except Exception as exc:
