@@ -86,3 +86,28 @@ WeChat Official Accounts は http（ポート 80）と https（ポート 443）�
 「LoadingMessage」は `auto` と `passive` の処理中メッセージを設定します。「enable」を「true」に設定します。
 
 正常に入力した後、LangBot ホームページで対応するボットを有効にして選択し、設定ページをクリックして入り、Webhook コールバックアドレスをコピーし、WeChat Official Account ボット設定ページに戻って「URL」に入力します。たとえば、URL を「https://your_domain_name/bots/xxxxx」として入力します。ここで「your_domain_name」は Caddy に入力したドメイン名です。保存をクリックします。正常に保存できれば、デプロイは成功です。**システムエラー、後でもう一度お試しください**が表示された場合は、上記の設定内容が正しく入力されているかどうかを再確認してください。
+
+### コールバック有効化後、カスタムメニューに「カスタムメニュー未有効」と表示される
+
+サーバー設定（メッセージプッシュ）を有効にすると、公式アカウントは開発者モードになります。WeChat は Web コンソールで編集したカスタムメニューを停止し、カスタムメニューのページに「開発者が API でメニュー設定を変更したため、現在のメニュー設定は無効化され停止されました」と表示します。これは WeChat プラットフォームの仕様であり、**LangBot はメニュー API を一切呼び出さず**、メニューを変更・削除することもありません。
+
+対応方法は 2 つあります。
+
+- **LangBot を使い続け、API でメニューを公開する（推奨）**：メッセージプッシュは有効のまま、AppID と AppSecret で WeChat の[カスタムメニュー作成 API](https://developers.weixin.qq.com/doc/service/api/custommenu/api_createcustommenu.html) を呼び出します。
+- **メッセージプッシュを停止する**：「WeChat 開発者プラットフォーム → マイビジネス → 公式アカウント → 基本情報」で停止すると Web で編集したメニューは戻りますが、LangBot は公式アカウントのメッセージを受信できなくなります。
+
+API でメニューを公開する場合は、API IP ホワイトリストに登録済みのマシンで実行してください。
+
+```bash
+# 1. access_token を取得。stable_token で force_refresh を false にすると、LangBot が使用中のトークンを無効化しません
+curl -s -X POST 'https://api.weixin.qq.com/cgi-bin/stable_token' \
+  -H 'Content-Type: application/json' \
+  -d '{"grant_type":"client_credential","appid":"YOUR_APPID","secret":"YOUR_APPSECRET","force_refresh":false}'
+
+# 2. 返された access_token でメニューを公開（既存メニュー全体を置き換えます）
+curl -s -X POST 'https://api.weixin.qq.com/cgi-bin/menu/create?access_token=ACCESS_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{"button":[{"type":"view","name":"Website","url":"https://example.com"}]}'
+```
+
+`{"errcode":0,"errmsg":"ok"}` が返れば公開成功です。通常、ユーザーが公式アカウントに入り直すと反映されます。ボタンは `view`（Web ページを開く）または `miniprogram` タイプを推奨します。`click` タイプはクリックイベントをコールバック URL に送信しますが、LangBot は現在このイベントを処理しないため、ユーザーに返信されません。API 権限とメニュー形式は WeChat 公式ドキュメントと API の応答に従ってください。

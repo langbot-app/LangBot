@@ -86,3 +86,28 @@ Select `auto`, `passive`, or `drop` in `Mode` using the comparison above. The de
 The `LoadingMessage` option controls the loading message for `auto` and `passive`. Set `enable` to `true`.
 
 After filling in successfully, on the LangBot homepage, enable and select the corresponding bot, click to enter the configuration page, copy the Webhook callback address, return to the WeChat Official Account bot configuration page, and fill it into `URL`. For example, if the URL is filled as `https://your_domain_name/bots/xxxxx`, where `your_domain_name` is the domain name filled in Caddy. Click Save. If it can be saved successfully, it means the deployment is successful. If you see **System error, please try again later**, please recheck whether the above configuration content is filled in correctly.
+
+### Custom menu shows "Custom menu not enabled" after enabling the callback
+
+Once the server configuration (message push) is enabled, the Official Account runs in developer mode. WeChat then disables the custom menu edited in the web console and shows "Because the developer modified the menu configuration through the API, the current menu configuration has expired and been disabled" on the Custom Menu page. This is a WeChat platform rule: **LangBot never calls any menu API** and does not modify or delete your menu.
+
+You have two options:
+
+- **Keep using LangBot and publish the menu through the API (recommended)**: leave message push enabled and call WeChat's [Create Custom Menu API](https://developers.weixin.qq.com/doc/service/api/custommenu/api_createcustommenu.html) with your AppID and AppSecret.
+- **Disable message push**: disabling it under "WeChat Developer Platform → My Business → Official Account → Basic Info" restores the web-edited menu, but LangBot will no longer receive messages from the account.
+
+To publish the menu through the API, run the following on a machine in the API IP whitelist:
+
+```bash
+# 1. Get an access_token. stable_token with force_refresh=false does not invalidate the token LangBot is using
+curl -s -X POST 'https://api.weixin.qq.com/cgi-bin/stable_token' \
+  -H 'Content-Type: application/json' \
+  -d '{"grant_type":"client_credential","appid":"YOUR_APPID","secret":"YOUR_APPSECRET","force_refresh":false}'
+
+# 2. Publish the menu with the returned access_token (replaces the whole existing menu)
+curl -s -X POST 'https://api.weixin.qq.com/cgi-bin/menu/create?access_token=ACCESS_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{"button":[{"type":"view","name":"Website","url":"https://example.com"}]}'
+```
+
+A response of `{"errcode":0,"errmsg":"ok"}` means the menu was published; users usually see it after re-entering the account. Prefer `view` (open a web page) or `miniprogram` buttons: `click` buttons push a click event to the callback URL, which LangBot does not currently handle, so users get no reply. API permissions and the menu format follow WeChat's official documentation and API responses.
