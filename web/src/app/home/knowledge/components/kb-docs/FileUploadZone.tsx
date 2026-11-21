@@ -291,7 +291,6 @@ export default function FileUploadZone({
               id="file-upload"
               className="hidden"
               onChange={handleFileSelect}
-              accept=".pdf,.doc,.docx,.txt,.md,.html,.zip"
               disabled={isUploading || loadingParsers}
             />
 
