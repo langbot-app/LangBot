@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: LLMAPIRequester
+metadata:
+  name: standardcompute-chat-completions
+  label:
+    en_US: Standard Compute
+    zh_Hans: Standard Compute
+  icon: standardcompute.svg
+spec:
+  litellm_provider: openai
+  config:
+  - name: base_url
+    label:
+      en_US: Base URL
+      zh_Hans: 基础 URL
+    type: string
+    required: true
+    default: https://api.stdcmpt.com/v1
+  - name: timeout
+    label:
+      en_US: Timeout
+      zh_Hans: 超时时间
+    type: integer
+    required: true
+    default: 120
+  alias: "standardcompute StandardCompute standard compute stdcmpt router gpt claude gemini deepseek qwen kimi minimax glm grok openai-compatible"
+  support_type:
+  - llm
+  provider_category: maas
