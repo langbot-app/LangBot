@@ -16,23 +16,17 @@ runs:
     - name: Install locked dependencies
       shell: bash
       run: uv sync --dev --frozen
-    - name: Prepare CLI and sandbox image
+    - uses: ./.github/actions/build-lbctl
+      id: lbctl
+    - name: Prepare sandbox image
       shell: bash
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: |
-        mkdir -p .api-bin
-        gh release download v0.3.0 --repo langbot-app/langbot-cli --dir .api-bin \
-          --pattern lbctl_linux_amd64 --pattern checksums.txt
-        cd .api-bin
-        sha256sum --check --ignore-missing checksums.txt
-        chmod +x lbctl_linux_amd64
-        docker pull python:3.12-alpine
+      run: docker pull python:3.12-alpine
     - name: Run API contracts
       id: execute
       shell: bash
       env:
         API_FIXED_ONLY: ${{ inputs.fixed-only }}
+        LBCTL_BIN: ${{ steps.lbctl.outputs.binary }}
       run: |
         args=(--api-seed "$GITHUB_RUN_ID")
         if [[ "$API_FIXED_ONLY" == 'true' ]]; then
@@ -40,7 +34,7 @@ runs:
         fi
         uv run --no-sync python -m tools.entrypoints.regression_ci \
           --suite api "${args[@]}" \
-          --lbctl .api-bin/lbctl_linux_amd64 --plugins plugins --output .qa/api
+          --lbctl "$LBCTL_BIN" --plugins plugins --output .qa/api
     - name: Publish API result
       if: always()
       shell: bash
