@@ -230,6 +230,64 @@ def make_handler_query(text):
     return query
 
 
+LOCAL_AGENT_ID = 'plugin:langbot-team/LocalAgent/default'
+GENERIC_RUNNER_HINT = 'Agent runner execution failed.'
+LEVEL_ERROR = (
+    'Reasoning level "high" is not supported by model deepseek-flash. '
+    'Available levels: provider_default, disabled, enabled'
+)
+# How a level failure reads once it has crossed the plugin boundary.
+LEVEL_FAILURE = f'ActionCallError: Token counting failed: Model request failed: {LEVEL_ERROR}'
+UNRELATED_FAILURE = 'Model deepseek-flash failed after first chunk (no fallback possible)'
+
+
+def make_failed_run(error_message, output_config, level):
+    """Build a non-retryable Runner failure on a Pipeline that stores this reasoning level."""
+    from langbot.pkg.api.http.context import ExecutionContext
+
+    model = SimpleNamespace(
+        model_entity=SimpleNamespace(name='deepseek-flash', abilities=['reasoning'], extra_args={}),
+        provider=SimpleNamespace(
+            provider_entity=SimpleNamespace(requester='deepseek-chat-completions'),
+            requester=SimpleNamespace(
+                get_reasoning_capabilities=MagicMock(
+                    return_value={'supported': True, 'levels': ['provider_default', 'disabled', 'enabled']}
+                )
+            ),
+        ),
+    )
+    mock_ap = MockApplication(
+        orchestrator=MockAgentRunOrchestrator(error=RunnerExecutionError(LOCAL_AGENT_ID, error_message))
+    )
+    mock_ap.model_mgr.get_model_by_uuid = AsyncMock(return_value=model)
+
+    query = MockQuery()
+    query._execution_context = ExecutionContext(
+        instance_uuid='instance',
+        workspace_uuid='workspace',
+        placement_generation=1,
+    )
+    query.pipeline_config['output'] = output_config
+    query.pipeline_config['ai']['runner_config'] = {
+        LOCAL_AGENT_ID: {'model': {'primary': 'model-uuid', 'fallbacks': [], 'reasoning': {'model-uuid': level}}},
+    }
+    return mock_ap, query
+
+
+async def run_failing_handler(mock_ap, query):
+    """Return what ChatMessageHandler yields for a run that fails."""
+    from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler
+
+    def make_result(*args, **kwargs):
+        return MagicMock(result_type=kwargs.get('result_type'), user_notice=kwargs.get('user_notice'))
+
+    with (
+        patch('langbot.pkg.pipeline.process.handlers.chat.events'),
+        patch('langbot.pkg.pipeline.entities.StageProcessResult', side_effect=make_result),
+    ):
+        return [result async for result in ChatMessageHandler(mock_ap).handle(query)]
+
+
 class TestErrorHandling:
     """Tests for orchestrator error handling."""
 
@@ -759,6 +817,91 @@ class TestChatHandlerAsyncBehavior:
         assert len(results) == 1
         assert results[0].result_type == entities.ResultType.INTERRUPT
         assert 'temporarily unavailable' in results[0].user_notice
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ('output_config', 'error_message', 'level', 'expected_notice'),
+        [
+            pytest.param(
+                {'misc': {'exception-handling': 'show-error'}},
+                LEVEL_FAILURE,
+                'high',
+                f'Agent runner {LOCAL_AGENT_ID} execution failed: {LEVEL_FAILURE}',
+                id='show-error-level-error',
+            ),
+            pytest.param(
+                {'misc': {'exception-handling': 'show-error'}},
+                UNRELATED_FAILURE,
+                'enabled',
+                f'Agent runner {LOCAL_AGENT_ID} execution failed: {UNRELATED_FAILURE}',
+                id='show-error-unrelated-error',
+            ),
+            pytest.param(
+                {'misc': {'exception-handling': 'show-hint'}},
+                LEVEL_FAILURE,
+                'high',
+                LEVEL_ERROR,
+                id='show-hint-level-error',
+            ),
+            pytest.param(
+                {'misc': {'exception-handling': 'show-hint'}},
+                UNRELATED_FAILURE,
+                'enabled',
+                GENERIC_RUNNER_HINT,
+                id='show-hint-unrelated-error',
+            ),
+            pytest.param({}, LEVEL_FAILURE, 'high', LEVEL_ERROR, id='no-output-config-level-error'),
+            pytest.param({}, UNRELATED_FAILURE, 'enabled', GENERIC_RUNNER_HINT, id='no-output-config-unrelated-error'),
+            pytest.param(
+                {'misc': {'exception-handling': 'hide'}},
+                LEVEL_FAILURE,
+                'high',
+                GENERIC_RUNNER_HINT,
+                id='hide-level-error',
+            ),
+        ],
+    )
+    async def test_runner_execution_error_not_retryable_follows_exception_handling(
+        self, output_config, error_message, level, expected_notice
+    ):
+        """show-error exposes any reason; show-hint names only a stored level that cannot work."""
+        from langbot.pkg.pipeline import entities
+
+        mock_ap, query = make_failed_run(error_message, output_config, level)
+
+        results = await run_failing_handler(mock_ap, query)
+
+        assert len(results) == 1
+        assert results[0].result_type == entities.ResultType.INTERRUPT
+        assert results[0].user_notice == expected_notice
+
+    @pytest.mark.asyncio
+    async def test_reasoning_level_check_is_scoped_to_the_failed_run(self):
+        """The repeated check must resolve models in the Workspace of the failed run."""
+        mock_ap, query = make_failed_run(LEVEL_FAILURE, {'misc': {'exception-handling': 'show-hint'}}, 'high')
+
+        await run_failing_handler(mock_ap, query)
+
+        context, model_uuid = mock_ap.model_mgr.get_model_by_uuid.await_args.args
+        assert context.workspace_uuid == 'workspace'
+        assert context.pipeline_uuid == query.pipeline_uuid
+        assert model_uuid == 'model-uuid'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('broken_step', ['model-lookup', 'execution-context'])
+    async def test_runner_failure_keeps_generic_hint_when_level_check_cannot_run(self, broken_step):
+        """A check that cannot run must not replace the notice or put its own error in it."""
+        mock_ap, query = make_failed_run(LEVEL_FAILURE, {'misc': {'exception-handling': 'show-hint'}}, 'high')
+        if broken_step == 'model-lookup':
+            mock_ap.model_mgr.get_model_by_uuid = AsyncMock(side_effect=RuntimeError('database unavailable'))
+        else:
+            # The resulting ExecutionContextRequiredError is a ValueError, as level errors are.
+            del query._execution_context
+
+        results = await run_failing_handler(mock_ap, query)
+
+        assert [result.user_notice for result in results] == [GENERIC_RUNNER_HINT]
+        mock_ap.logger.warning.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_prevented_default_with_reply(self):
