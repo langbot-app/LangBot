@@ -59,6 +59,14 @@ spec:
       type: string
       required: true
       default: ""
+    - name: auto_accept_friend
+      label:
+        en_US: Automatically accept friend requests
+        zh_CN: 自动同意好友申请
+        zh_Hant: 自動同意好友申請
+      type: boolean
+      required: false
+      default: false
 execution:
   python:
     path: ./wechatpad.py
