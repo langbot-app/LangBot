@@ -16,6 +16,9 @@ class WorkspaceMessageUsageDaily(Base):
     )
     usage_date = sqlalchemy.Column(sqlalchemy.Date, primary_key=True)
     message_count = sqlalchemy.Column(sqlalchemy.Integer, nullable=False)
+    # Set when the owner was emailed that today's usage reached the warning
+    # threshold; claimed with a compare-and-set so replicas mail only once.
+    quota_warning_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True)
     updated_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())
 
 

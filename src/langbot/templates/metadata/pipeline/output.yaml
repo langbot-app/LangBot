@@ -131,6 +131,10 @@ stages:
         type: string
         required: false
         default: ''
+        show_if:
+          field: __system.is_cloud
+          operator: eq
+          value: true
       - name: content-filter-hint
         label:
           en_US: Content Filter Hint
