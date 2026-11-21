@@ -156,6 +156,106 @@ async def test_daily_message_quota(workspace_api, monkeypatch):
     assert accepted and fresh['used'] == 1 and fresh['period_start'] == exhausted['resets_at']
 
 
+async def test_daily_message_quota_warning_email(workspace_api, monkeypatch):
+    import asyncio
+    from langbot.pkg.cloud import message_quota, quota_warning
+    from langbot.pkg.entity.persistence.workspace import WorkspaceMessageUsageDaily as Usage
+    from langbot.pkg.notification.email import EmailSendResult, EmailService
+
+    ap, client, engine, token = workspace_api
+    start = datetime.datetime(2026, 11, 20, tzinfo=datetime.UTC)
+    monkeypatch.setattr(message_quota, 'period_start', lambda: start)
+    monkeypatch.setattr(quota_warning, '_settled', set())
+    sent: list[dict] = []
+    outcome = {'status': 'sent'}
+
+    async def fake_send(self, *, to, subject, text, html, purpose='email'):
+        sent.append({'to': to, 'subject': subject, 'text': text, 'html': html})
+        return EmailSendResult(status=outcome['status'], provider='resend')
+
+    monkeypatch.setattr(EmailService, 'capability', lambda self: {'enabled': True, 'provider': 'resend'})
+    monkeypatch.setattr(EmailService, 'send', fake_send)
+
+    response = await client.get('/api/v1/workspaces/current', headers=_auth(token))
+    ws = (await response.get_json())['data']['workspace']['uuid']
+    ap.deployment = SimpleNamespace(mode='cloud')
+    snapshot = SimpleNamespace(limits={'messages.daily': 10})
+    ap.entitlement_resolver = SimpleNamespace(resolve=AsyncMock(return_value=snapshot))
+
+    async def reserve(count):
+        for _ in range(count):
+            await message_quota.daily_message_quota(ap, ws, reserve=True)
+        await asyncio.gather(*list(quota_warning._tasks))
+
+    async def warned_at(day):
+        async with engine.connect() as connection:
+            return (
+                await connection.execute(
+                    sqlalchemy.select(Usage.quota_warning_at).where(Usage.workspace_uuid == ws, Usage.usage_date == day)
+                )
+            ).scalar_one()
+
+    await reserve(7)
+    assert sent == [] and await warned_at(start.date()) is None
+
+    # A failed delivery releases the claim so the next message retries.
+    outcome['status'] = 'failed'
+    await reserve(1)
+    assert len(sent) == 1 and await warned_at(start.date()) is None
+
+    outcome['status'] = 'sent'
+    await asyncio.gather(*(message_quota.daily_message_quota(ap, ws, reserve=True) for _ in range(4)))
+    await asyncio.gather(*list(quota_warning._tasks))
+    assert len(sent) == 2 and await warned_at(start.date()) is not None
+    mail = sent[-1]
+    assert mail['to'] == ['owner@example.com']
+    assert "of today's messages (" in mail['subject'] and '/10)' in mail['subject']
+    assert 'https://langbot.example/home/monitoring?workspace=' + ws + '&amp;open=plans' in mail['html']
+    assert '2026-11-21 00:00 UTC' in mail['text']
+
+    # Once settled, more messages the same day never mail again, even from a new process.
+    quota_warning._settled.clear()
+    quota_warning.maybe_schedule(ap, ws, used=10, limit=10, usage_date=start.date())
+    await reserve(3)
+    assert len(sent) == 2
+
+    # The next UTC day warns again; unlimited plans never warn.
+    start += datetime.timedelta(days=1)
+    await reserve(8)
+    assert len(sent) == 3
+    start += datetime.timedelta(days=1)
+    snapshot.limits = {}
+    await reserve(20)
+    assert len(sent) == 3
+
+
+def test_daily_quota_warning_email_render():
+    from langbot.pkg.cloud.quota_warning import render_quota_warning_email, warning_threshold
+
+    assert [warning_threshold(limit) for limit in (1, 2, 10, 50, 51)] == [1, 2, 8, 40, 41]
+    subject, text, body = render_quota_warning_email(
+        workspace_name='客服 <bot>',
+        used=40,
+        limit=50,
+        resets_at=datetime.datetime(2026, 11, 22),
+        message_language='zh_Hans',
+        plans_url='https://cloud.langbot.app/home/monitoring?workspace=w&open=plans',
+    )
+    assert subject == '[LangBot] 「客服 <bot>」今日消息已用 80%（40/50）'
+    assert '客服 &lt;bot&gt;' in body and '<bot>' not in body
+    assert '2026-11-22 00:00 UTC（北京时间 08:00）' in text and '剩余: 10 条' in text
+    assert 'width:80%' in body and '查看套餐' in body
+    _, text, body = render_quota_warning_email(
+        workspace_name='Support',
+        used=55,
+        limit=50,
+        resets_at=datetime.datetime(2026, 11, 22),
+        message_language='en_US',
+        plans_url=None,
+    )
+    assert 'Remaining: 0 messages' in text and 'width:100%' in body and 'View plans' not in body
+
+
 @pytest.mark.skipif('backend' not in BoxSpec.model_fields, reason='requires in-tree Box SDK')
 async def test_workspace_sandbox_reset_clears_only_its_overrides_and_is_idempotent(workspace_api):
     from langbot.pkg.box.service import BoxService

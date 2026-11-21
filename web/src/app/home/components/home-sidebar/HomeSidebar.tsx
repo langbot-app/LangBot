@@ -1904,6 +1904,19 @@ export default function HomeSidebar({
   const openCloudPlansDialog = useCallback(() => setCloudPlansOpen(true), []);
   // Quota views elsewhere (Debug Chat, settings) open the plans dialog here.
   useOpenCloudPlansListener(openCloudPlansDialog);
+  // Quota emails link to /home/monitoring?open=plans.
+  useEffect(() => {
+    if (searchParams.get('open') !== 'plans' || !currentWorkspace) return;
+    if (currentWorkspace.workspace.source === 'cloud_projection') {
+      setCloudPlansOpen(true);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('open');
+    const query = next.toString();
+    navigate(`${location.pathname}${query ? `?${query}` : ''}`, {
+      replace: true,
+    });
+  }, [searchParams, currentWorkspace, location.pathname, navigate]);
   const [userEmail, setUserEmail] = useState<string>('');
   const [starCount, setStarCount] = useState<number | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);

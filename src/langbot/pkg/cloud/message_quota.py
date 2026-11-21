@@ -8,6 +8,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from .entitlements import EntitlementUnavailableError
 from .plan_policy import workspace_entitlement
+from .quota_warning import maybe_schedule as schedule_quota_warning
 from ..entity.persistence.workspace import WorkspaceMessageUsageDaily as Usage
 
 
@@ -45,6 +46,8 @@ async def daily_message_quota(ap, workspace_uuid, *, reserve=False):
                             Usage.workspace_uuid == workspace_uuid, Usage.usage_date < start.date() - timedelta(days=35)
                         )
                     )
+            if accepted:
+                schedule_quota_warning(ap, workspace_uuid, used=used, limit=limit, usage_date=start.date())
         else:
             async with manager.tenant_uow(workspace_uuid) as uow:
                 used = (await uow.execute(read)).scalar_one_or_none() or 0

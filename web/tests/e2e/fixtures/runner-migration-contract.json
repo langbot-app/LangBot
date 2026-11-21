@@ -5710,7 +5710,12 @@
             },
             "type": "string",
             "required": false,
-            "default": ""
+            "default": "",
+            "show_if": {
+              "field": "__system.is_cloud",
+              "operator": "eq",
+              "value": true
+            }
           },
           {
             "name": "content-filter-hint",
