@@ -155,6 +155,46 @@ class PreProcessor(stage.PipelineStage):
             return True
         return hasattr(type(persistence_mgr), 'get_db_engine')
 
+    async def _reset_expired_runner_context(self, query: pipeline_query.Query, session: typing.Any) -> None:
+        """Drop conversation-scoped Runner state after idle expiry.
+
+        Matches plugin ``CREATE_NEW_CONVERSATION``: reset inside the caller's
+        tenant unit of work, using the conversation id the Runner will read.
+        """
+        from ...agent.runner.context_reset import get_reset_generation, reset_runner_context
+        from ...agent.runner.query_entry_adapter import QueryEntryAdapter
+
+        if not self._has_declared_db_engine():
+            return
+
+        execution_context = get_query_execution_context(query)
+        conversation_id = QueryEntryAdapter._build_conversation_context(query).conversation_id
+        if not conversation_id:
+            return
+
+        async with self.ap.persistence_mgr.tenant_uow(execution_context.workspace_uuid):
+            await reset_runner_context(
+                self.ap.persistence_mgr,
+                execution_context.workspace_uuid,
+                query.bot_uuid,
+                conversation_id,
+            )
+
+        # get_session drops a cached session when this marker no longer matches.
+        # That would replace the session that already holds the pipeline lock.
+        # Only the session-id marker is consulted, so sync it when that is the
+        # id we just reset.
+        cached_conversation_id = f'{str(query.launcher_type.value).lower()}_{query.launcher_id}'
+        if conversation_id != cached_conversation_id:
+            return
+        generation = await get_reset_generation(
+            self.ap.persistence_mgr.get_db_engine(),
+            execution_context.workspace_uuid,
+            query.bot_uuid,
+            conversation_id,
+        )
+        object.__setattr__(session, '_context_generation', generation)
+
     async def _load_runner_history_messages(
         self,
         runner_id: str | None,
@@ -256,7 +296,12 @@ class PreProcessor(stage.PipelineStage):
                     self.ap.logger.info(
                         f'Conversation({query.query_id}) is expired (idle: {conversation_idle_time}s), create new conversation'
                     )
+                    # Conversation.uuid is not the Runner state key. Clear it for
+                    # legacy readers, then reset the id QueryEntryAdapter actually
+                    # uses (the stable session id when uuid is empty).
                     conversation.uuid = None
+                    await self._reset_expired_runner_context(query, session)
+                    session.using_conversation = None
 
         # Treat every preprocess pass as a conversation activity update. This
         # makes future expiry checks use the latest incoming message/preprocess
