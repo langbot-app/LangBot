@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: LLMAPIRequester
+metadata:
+  name: wiro-chat-completions
+  label:
+    en_US: Wiro AI
+    zh_Hans: Wiro AI
+  icon: wiro.svg
+spec:
+  litellm_provider: openai
+  config:
+  - name: base_url
+    label:
+      en_US: Base URL
+      zh_Hans: 基础 URL
+    type: string
+    required: true
+    default: https://llm.wiro.ai/v1
+  - name: timeout
+    label:
+      en_US: Timeout
+      zh_Hans: 超时时间
+    type: integer
+    required: true
+    default: 120
+  alias: "wiro Wiro wiroai wiro.ai gateway aggregator claude gpt gemini grok deepseek qwen kimi glm"
+  support_type:
+  - llm
+  provider_category: maas
