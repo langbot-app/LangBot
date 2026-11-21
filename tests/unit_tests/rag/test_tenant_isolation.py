@@ -386,7 +386,7 @@ async def test_pgvector_first_write_binds_dimension_and_later_mismatch_fails(ten
 
     with pytest.raises(ValueError, match='dimension is 1, not 2'):
         await manager.upsert(context, 'kb-a', [[0.1, 0.2]], ['chunk-b'])
-    with pytest.raises(ValueError, match='not enabled'):
+    with pytest.raises(ValueError, match=r'Embedding dimension 3 is not enabled .*\(enabled: 1, 2\)'):
         await manager.search(context, 'kb-a', [0.1, 0.2, 0.3], 3)
 
 

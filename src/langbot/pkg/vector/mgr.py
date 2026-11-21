@@ -104,7 +104,7 @@ class VectorDBManager:
                 use_business_database = pgvector_config.get('use_business_database', False)
                 allowed_dimensions = pgvector_config.get(
                     'allowed_dimensions',
-                    [384, 512, 768, 1024, 1536, 3072],
+                    [384, 512, 768, 1024, 1536, 2048, 3072],
                 )
                 common_options = {
                     'use_business_database': use_business_database,
@@ -291,7 +291,11 @@ class VectorDBManager:
         if pgvector is None:  # pragma: no cover - private call invariant
             raise RuntimeError('pgvector scope requested for another vector backend')
         if expected_dimension is not None and expected_dimension not in pgvector.allowed_dimensions:
-            raise ValueError(f'Embedding dimension {expected_dimension} is not enabled for this deployment')
+            enabled = ', '.join(str(item) for item in sorted(pgvector.allowed_dimensions))
+            raise ValueError(
+                f'Embedding dimension {expected_dimension} is not enabled for this deployment '
+                f'(enabled: {enabled}); choose an embedding model with an enabled dimension'
+            )
 
         async with self.ap.persistence_mgr.tenant_uow(execution_context.workspace_uuid):
             query = sqlalchemy.select(persistence_rag.KnowledgeBase.embedding_dimension).where(

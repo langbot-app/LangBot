@@ -18,7 +18,7 @@ from langbot.pkg.vector.vdb import VectorDatabase
 
 Base = declarative_base()
 
-DEFAULT_ALLOWED_DIMENSIONS = (384, 512, 768, 1024, 1536, 3072)
+DEFAULT_ALLOWED_DIMENSIONS = (384, 512, 768, 1024, 1536, 2048, 3072)
 
 # pgvector schema only stores these metadata fields.
 _PG_SUPPORTED_FIELDS = {'text', 'file_id', 'chunk_uuid'}
