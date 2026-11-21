@@ -1795,3 +1795,283 @@ async def test_cancelled_file_transfer_logs_only_safe_custom_service_error(
     assert "RuntimeError" in caplog.text
     assert secret not in caplog.text
     assert "private-provider-body" not in caplog.text
+
+
+@pytest.mark.anyio
+async def test_deleted_remote_file_is_removed_from_host_on_sync(backend, tmp_path):
+    """A file deleted inside the sandbox must not survive the host sync. #2877"""
+    (tmp_path / "kept.txt").write_bytes(b"kept")
+    (tmp_path / "deleted.txt").write_bytes(b"deleted")
+
+    # The sandbox only has the file the agent left behind.
+    class Files:
+        async def list(self, root, depth):
+            return [
+                SimpleNamespace(
+                    path=f"{root}/kept.txt",
+                    size=4,
+                    type=SimpleNamespace(value="file"),
+                )
+            ]
+
+        async def read(self, path, **kwargs):
+            async def chunks():
+                yield b"kept"
+
+            return chunks()
+
+    await backend._sync_e2b_tree_to_host(
+        SimpleNamespace(files=Files()), host_root=str(tmp_path), remote_root="/remote"
+    )
+
+    assert (tmp_path / "kept.txt").read_bytes() == b"kept"
+    assert not (tmp_path / "deleted.txt").exists(), (
+        "a file deleted in the sandbox was resurrected by the download sync"
+    )
+
+
+@pytest.mark.anyio
+async def test_deleted_remote_directory_is_removed_from_host_on_sync(backend, tmp_path):
+    (tmp_path / "gone").mkdir()
+    (tmp_path / "gone" / "nested.txt").write_bytes(b"x")
+    (tmp_path / "kept.txt").write_bytes(b"kept")
+
+    class Files:
+        async def list(self, root, depth):
+            return [
+                SimpleNamespace(
+                    path=f"{root}/kept.txt",
+                    size=4,
+                    type=SimpleNamespace(value="file"),
+                )
+            ]
+
+        async def read(self, path, **kwargs):
+            async def chunks():
+                yield b"kept"
+
+            return chunks()
+
+    await backend._sync_e2b_tree_to_host(
+        SimpleNamespace(files=Files()), host_root=str(tmp_path), remote_root="/remote"
+    )
+
+    assert not (tmp_path / "gone").exists()
+
+
+@pytest.mark.anyio
+async def test_host_side_untracked_file_is_pruned_like_the_remote(backend, tmp_path):
+    """The sandbox is authoritative, so a host-only file is removed too.
+
+    Otherwise the next upload pass would push it back into the sandbox, which is
+    the resurrection this fix targets.
+    """
+    (tmp_path / "host-only.txt").write_bytes(b"host")
+    (tmp_path / "tracked.txt").write_bytes(b"old")
+
+    class Files:
+        async def list(self, root, depth):
+            return [
+                SimpleNamespace(
+                    path=f"{root}/tracked.txt",
+                    size=3,
+                    type=SimpleNamespace(value="file"),
+                )
+            ]
+
+        async def read(self, path, **kwargs):
+            async def chunks():
+                yield b"new"
+
+            return chunks()
+
+    await backend._sync_e2b_tree_to_host(
+        SimpleNamespace(files=Files()), host_root=str(tmp_path), remote_root="/remote"
+    )
+
+    assert not (tmp_path / "host-only.txt").exists()
+    assert (tmp_path / "tracked.txt").read_bytes() == b"new"
+
+
+@pytest.mark.anyio
+async def test_remote_sync_preserves_excluded_projection_paths(backend, tmp_path):
+    """An extra mount projected inside the workspace is not deleted by the primary sync."""
+    (tmp_path / "shadowed").mkdir()
+    (tmp_path / "shadowed" / "skill.py").write_bytes(b"skill")
+
+    class Files:
+        async def list(self, root, depth):
+            return []
+
+        async def read(self, path, **kwargs):
+            async def chunks():
+                yield b""
+
+            return chunks()
+
+    await backend._sync_e2b_tree_to_host(
+        SimpleNamespace(files=Files()),
+        host_root=str(tmp_path),
+        remote_root="/remote",
+        excluded_relative_paths={"shadowed"},
+    )
+
+    assert (tmp_path / "shadowed" / "skill.py").read_bytes() == b"skill"
+
+
+@pytest.mark.anyio
+async def test_remote_sync_below_file_count_cap_still_deletes(
+    backend, tmp_path, monkeypatch
+):
+    """A truncated listing still removes host copies of the files it did see."""
+    import langbot_plugin.box.e2b_backend as module
+
+    monkeypatch.setattr(module, "_MAX_E2B_SYNC_FILES", 1)
+    (tmp_path / "a.txt").write_bytes(b"old")
+    (tmp_path / "b.txt").write_bytes(b"old")
+
+    class Files:
+        async def list(self, root, depth):
+            return [
+                SimpleNamespace(
+                    path=f"{root}/{name}.txt",
+                    size=1,
+                    type=SimpleNamespace(value="file"),
+                )
+                for name in ("a", "b", "c")
+            ]
+
+        async def read(self, path, **kwargs):
+            async def chunks():
+                yield b"a"
+
+            return chunks()
+
+    await backend._sync_e2b_tree_to_host(
+        SimpleNamespace(files=Files()), host_root=str(tmp_path), remote_root="/remote"
+    )
+
+    assert (tmp_path / "a.txt").read_bytes() == b"a"
+    # b.txt is beyond the per-sync file cap, so its host copy stays.
+    assert (tmp_path / "b.txt").read_bytes() == b"old"
+
+
+@pytest.mark.anyio
+async def test_depth_truncated_listing_does_not_prune(backend, tmp_path):
+    """A file at the depth cap may have unlisted children: prune nothing. (#2877)"""
+    import langbot_plugin.box.e2b_backend as module
+
+    # Depth 2 for the test: "a/b" sits at the cap.
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "b").mkdir()
+    (tmp_path / "a" / "b" / "deep.txt").write_bytes(b"host copy")
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(module, "_E2B_SYNC_MAX_DEPTH", 2)
+    try:
+
+        class Files:
+            async def list(self, root, depth):
+                # "a" (depth 1) and "a/b" (depth 2, at the cap).
+                return [
+                    SimpleNamespace(
+                        path=f"{root}/a", type=SimpleNamespace(value="dir")
+                    ),
+                    SimpleNamespace(
+                        path=f"{root}/a/b", type=SimpleNamespace(value="dir")
+                    ),
+                ]
+
+        await backend._sync_e2b_tree_to_host(
+            SimpleNamespace(files=Files()),
+            host_root=str(tmp_path),
+            remote_root="/remote",
+        )
+    finally:
+        monkeypatch.undo()
+
+    assert (tmp_path / "a" / "b" / "deep.txt").read_bytes() == b"host copy"
+
+
+@pytest.mark.anyio
+async def test_shallow_listing_still_prunes(backend, tmp_path):
+    """Nothing sits at the cap, so the listing is known to be complete. (#2877)"""
+    import langbot_plugin.box.e2b_backend as module
+
+    (tmp_path / "deleted.txt").write_bytes(b"gone")
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(module, "_E2B_SYNC_MAX_DEPTH", 4)
+    try:
+
+        class Files:
+            async def list(self, root, depth):
+                return [
+                    SimpleNamespace(
+                        path=f"{root}/kept.txt",
+                        size=4,
+                        type=SimpleNamespace(value="file"),
+                    )
+                ]
+
+            async def read(self, path, **kwargs):
+                async def chunks():
+                    yield b"kept"
+
+                return chunks()
+
+        await backend._sync_e2b_tree_to_host(
+            SimpleNamespace(files=Files()),
+            host_root=str(tmp_path),
+            remote_root="/remote",
+        )
+    finally:
+        monkeypatch.undo()
+
+    assert not (tmp_path / "deleted.txt").exists()
+
+
+@pytest.mark.anyio
+async def test_symlink_name_survives_pruning(backend, tmp_path):
+    """The listing names the link, so its own name must be kept. (#2877)"""
+    (tmp_path / "real.txt").write_bytes(b"body")
+    (tmp_path / "alias.txt").symlink_to("real.txt")
+
+    class Files:
+        async def list(self, root, depth):
+            return [
+                SimpleNamespace(
+                    path=f"{root}/real.txt", size=4, type=SimpleNamespace(value="file")
+                )
+            ]
+
+        async def read(self, path, **kwargs):
+            async def chunks():
+                yield b"body"
+
+            return chunks()
+
+    await backend._sync_e2b_tree_to_host(
+        SimpleNamespace(files=Files()), host_root=str(tmp_path), remote_root="/remote"
+    )
+
+    assert (tmp_path / "alias.txt").is_symlink()
+    assert (tmp_path / "real.txt").read_bytes() == b"body"
+
+
+@pytest.mark.anyio
+async def test_symlink_target_is_kept_even_when_unlisted(backend, tmp_path):
+    """The link stays usable: its target is kept because upload dereferences it."""
+    (tmp_path / "real.txt").write_bytes(b"old")
+    (tmp_path / "alias.txt").symlink_to("real.txt")
+
+    class Files:
+        async def list(self, root, depth):
+            return []
+
+    await backend._sync_e2b_tree_to_host(
+        SimpleNamespace(files=Files()), host_root=str(tmp_path), remote_root="/remote"
+    )
+
+    # Both names survive, so the link is not left dangling.
+    assert (tmp_path / "alias.txt").is_symlink()
+    assert (tmp_path / "real.txt").read_bytes() == b"old"
