@@ -25,6 +25,19 @@ xml_template = """
 _MAX_CALLBACK_BODY_BYTES = 1024 * 1024
 
 
+def _callback_error_response():
+    """Return a response for a callback that raised.
+
+    Both handlers swallow the exception to keep serving later callbacks, but a
+    bare fall-through returns ``None``, which Quart reports as
+    ``TypeError: The response value returned by the view function cannot be None``
+    and turns into a 500. An explicit 400 lets WeChat retry and tells the
+    operator that this particular callback was rejected.
+    """
+
+    return 'error', 400
+
+
 async def _read_callback_xml(client, req):
     body = await req.data
     if len(body) > _MAX_CALLBACK_BODY_BYTES:
@@ -234,6 +247,7 @@ class OAClient:
         except Exception:
             await self.logger.error(f'handle_callback_request失败: {traceback.format_exc()}')
             traceback.print_exc()
+            return _callback_error_response()
 
     async def get_message(self, xml_msg: str):
         root = await asyncio.to_thread(ET.fromstring, xml_msg)
@@ -519,6 +533,7 @@ class OAClientForLongerResponse:
         except Exception:
             await self.logger.error(f'handle_callback_request失败: {traceback.format_exc()}')
             traceback.print_exc()
+            return _callback_error_response()
 
     async def get_message(self, xml_msg: str):
         root = await asyncio.to_thread(ET.fromstring, xml_msg)
