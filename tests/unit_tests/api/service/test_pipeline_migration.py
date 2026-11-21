@@ -196,6 +196,34 @@ async def rows(env):
     return configs, backups
 
 
+@pytest.mark.asyncio
+async def test_plugin_only_batch_migrates_without_runner_install_and_archives_sources(env, monkeypatch):
+    from langbot.pkg.pipeline.legacy_config_migration import plan_legacy_pipeline
+
+    monkeypatch.setattr(env.m, 'plan_legacy_pipeline', plan_legacy_pipeline)
+    env.ap.instance_config.data['system'] = {'plugin_only': True}
+    original = {
+        'ai': {'runner': {'runner': 'local-agent'}, 'local-agent': {'model': {'primary': '', 'fallbacks': []}}},
+        'output': {'keep': True},
+    }
+    async with env.engine.begin() as conn:
+        await conn.execute(
+            sa.update(LegacyPipeline)
+            .where(LegacyPipeline.workspace_uuid == WS)
+            .values(config=original, extensions_preferences={'enable_all_plugins': False, 'plugins': []})
+        )
+    task = await execute(env, {'confirmed': True, 'all': True, 'install_plugins': True})
+    assert all(item['state'] == 'migrated' for item in task.task_context.metadata['results'])
+    configs, backups = await rows(env)
+    assert configs['one']['ai'] == {'runner': {'id': ''}, 'runner_config': {}}
+    assert configs['two']['output'] == original['output']
+    assert configs['foreign'] == SOURCE
+    assert len(backups) == 2
+    assert all(row['state'] == 'active' and row['source_snapshot']['config'] == original for row in backups)
+    assert (await env.svc.preview(context()))['items'][0]['state'] == 'already_current'
+    env.ap.runner_registry.list_runners.assert_not_awaited()
+
+
 def test_strict_confirmation_and_selection():
     m = module()
     valid = {'confirmed': True, 'items': [{'pipeline_uuid': 'one', 'preview_token': 'token'}]}

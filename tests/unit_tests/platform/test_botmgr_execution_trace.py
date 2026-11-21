@@ -75,6 +75,21 @@ class FakeAdapter:
         return []
 
 
+@pytest.mark.asyncio
+async def test_plugin_only_blocks_agent_route_and_keeps_pipeline_route():
+    bot, _, _ = make_bot([])
+    bot.ap.instance_config = SimpleNamespace(data={'system': {'plugin_only': True}})
+    bot._record_event_route_trace = AsyncMock(return_value={'status': 'discarded'})
+    bot._dispatch_eba_message_to_pipeline = AsyncMock()
+    event = message_received_event()
+    await bot._dispatch_eba_event_to_processor(event, FakeAdapter(), {'target_type': 'agent', 'target_uuid': 'agent-1'})
+    bot.ap.agent_service.get_agent.assert_not_awaited()
+    await bot._dispatch_eba_event_to_processor(
+        event, FakeAdapter(), {'target_type': 'pipeline', 'target_uuid': 'pipeline-1'}
+    )
+    bot._dispatch_eba_message_to_pipeline.assert_awaited_once()
+
+
 async def flushed_records(counters, manager) -> list[dict]:
     """Flush buffered telemetry and return everything the event emitted.
 

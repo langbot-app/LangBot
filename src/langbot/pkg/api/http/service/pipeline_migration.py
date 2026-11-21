@@ -346,7 +346,10 @@ class PipelineMigrationService:
         return {'durable': durable, 'native': native}, blocked or bool(native)
 
     async def _plan(self, ctx, row):
-        plan = plan_legacy_pipeline(row['config'], row['extensions_preferences'])
+        instance_data = getattr(getattr(self.ap, 'instance_config', None), 'data', {})
+        plugin_only = isinstance(instance_data, dict) and instance_data.get('system', {}).get('plugin_only') is True
+        planner_options = {'plugin_only': True} if plugin_only else {}
+        plan = plan_legacy_pipeline(row['config'], row['extensions_preferences'], **planner_options)
         pending = None
         if plan['state'] == 'already_current':
             t = PipelineMigrationSnapshot.__table__
@@ -364,14 +367,14 @@ class PipelineMigrationService:
             if snapshots:
                 pending = dict(snapshots[0]._mapping)
                 source = pending['source_snapshot']
-                plan = plan_legacy_pipeline(source['config'], source['extensions_preferences'])
+                plan = plan_legacy_pipeline(source['config'], source['extensions_preferences'], **planner_options)
                 candidate = _candidate(row, plan)
                 if plan['state'] != 'ready' or _fingerprint(candidate) != _fingerprint(row):
                     raise MigrationError('planner_changed')
         facts = await self._plugin(ctx, plan)
         state = 'activation_pending' if pending else plan['state']
         blockers = list(plan['blockers'])
-        if state in ('ready', 'activation_pending'):
+        if state in ('ready', 'activation_pending') and plan.get('target_plugin'):
             if facts is None:
                 state = 'needs_plugin'
                 blockers.append({'code': 'plugin_missing'})
@@ -543,7 +546,12 @@ class PipelineMigrationService:
                             continue
                         target = plan.get('target_plugin')
                         if not target:
-                            raise MigrationError('migration_blocked')
+                            selection = {
+                                'pipeline_uuid': source['uuid'],
+                                'preview_token': self._token(ctx, current[0], plan, facts, pending),
+                            }
+                            await self._run(ctx, execution, [selection], task_context, results=[result], data_only=True)
+                            continue
                         if not install_plugins:
                             selection = {
                                 'pipeline_uuid': source['uuid'],
@@ -986,24 +994,25 @@ class PipelineMigrationService:
                 try:
                     await self._authorize(ctx)
                     row, plan, facts, pending = await self._selected(ctx, selection, data_only=data_only)
-                    runtime_schema = None if data_only else await self._verify_runtime(execution, plan)
+                    item_data_only = data_only or plan.get('target_plugin') is None
+                    runtime_schema = None if item_data_only else await self._verify_runtime(execution, plan)
                     RunnerConfigResolver.validate_pipeline_config(plan['config'])
                     candidate_entity = {k: copy.deepcopy(v) for k, v in row.items() if not k.startswith('_')}
                     candidate_entity['config'] = copy.deepcopy(plan['config'])
                     if plan.get('extensions_preferences') is not None:
                         candidate_entity['extensions_preferences'] = copy.deepcopy(plan['extensions_preferences'])
                     runtime = await self.ap.pipeline_mgr.prepare_pipeline(execution, copy.deepcopy(candidate_entity))
-                    if not data_only and await self._verify_runtime(execution, plan) != runtime_schema:
+                    if not item_data_only and await self._verify_runtime(execution, plan) != runtime_schema:
                         raise MigrationError('runner_schema_changed')
                     # Runtime awaits are over. Recheck authorization/source/plugin
                     # facts under database locks, then atomically journal and CAS.
                     commit_attempted = True
                     snapshot_uuid, target_fingerprint = await self._commit(
-                        ctx, selection, facts, candidate_entity, **({'data_only': True} if data_only else {})
+                        ctx, selection, facts, candidate_entity, **({'data_only': True} if item_data_only else {})
                     )
                     committed = True
                     await self._activate(ctx, selection, snapshot_uuid, target_fingerprint, runtime, plan, facts)
-                    result.update(state='migrated', code='data_only' if data_only else None)
+                    result.update(state='migrated', code='data_only' if item_data_only else None)
                 except (Exception, asyncio.CancelledError) as exc:
                     cancelled = isinstance(exc, asyncio.CancelledError)
                     reconciliation_cancel = None

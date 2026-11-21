@@ -107,6 +107,8 @@ class ChatMessageHandler(handler.MessageHandler):
                     f'NormalMessageReceived event prevented default for query {query.query_id} without reply'
                 )
                 yield entities.StageProcessResult(result_type=entities.ResultType.INTERRUPT, new_query=query)
+        elif self.plugin_only():
+            yield entities.StageProcessResult(result_type=entities.ResultType.INTERRUPT, new_query=query)
         else:
             if event_ctx.event.user_message_alter is not None:
                 if isinstance(event_ctx.event.user_message_alter, list):

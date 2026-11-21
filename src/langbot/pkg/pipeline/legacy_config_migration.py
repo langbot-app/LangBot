@@ -757,7 +757,7 @@ def _legacy_section(ai, legacy):
     return None
 
 
-def plan_legacy_pipeline(config, extensions_preferences=None) -> dict:
+def plan_legacy_pipeline(config, extensions_preferences=None, *, plugin_only=False) -> dict:
     """Return a detached config candidate or safe, value-free diagnostics."""
     result = {
         'state': 'not_legacy',
@@ -799,6 +799,8 @@ def plan_legacy_pipeline(config, extensions_preferences=None) -> dict:
             # A blank runner id paired with no legacy runner section means the
             # saved pipeline simply has no runner selected: nothing to migrate.
             if type(current) is str and not current.strip() and not any(name in ai for name in _TARGETS):
+                if plugin_only is True:
+                    result['state'] = 'already_current'
                 return result
             if type(current) is str and current in _TARGETS and _legacy_section(ai, current) is not None:
                 # A pre-4.11 runner name saved in the 4.11 id field, with that
@@ -844,6 +846,23 @@ def plan_legacy_pipeline(config, extensions_preferences=None) -> dict:
         _warn(result, 'migration.invalid_value_defaulted', 'ai.runner.expire-time')
     elif type(expiry) is not int:
         _warn(result, 'migration.value_coerced', 'ai.runner.expire-time')
+    if plugin_only is True and not result['blockers']:
+        # The migration journal retains the entire original AI configuration.
+        # Plugin listeners need no model or Runner grant to process messages.
+        candidate = copy.deepcopy(config)
+        candidate['ai'] = {'runner': {'id': ''}, 'runner_config': {}}
+        if 'expire-time' in selection:
+            candidate['ai']['runner']['expire-time'] = expiry_value
+        result.update(
+            state='ready',
+            target_runner_id=None,
+            target_plugin=None,
+            config=candidate,
+            changed_paths=['ai.runner', 'ai.runner_config', *[f'ai.{key}' for key in ai if key != 'runner']],
+        )
+        _warn(result, 'migration.history_reset', 'ai.runner')
+        _warn(result, 'migration.legacy_sections_archived', 'ai')
+        return result
     if set(ai) - set(_TARGETS) - {'runner', 'runner_config'}:
         _warn(result, 'migration.unknown_section_archived', 'ai')
     if set(selection) - {'runner', 'expire-time', 'id'}:

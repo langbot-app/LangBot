@@ -13,6 +13,30 @@ from unittest.mock import AsyncMock, Mock
 from tests.factories import FakeApp
 
 
+@pytest.mark.usefixtures('mock_circular_import_chain')
+@pytest.mark.asyncio
+@pytest.mark.parametrize('plugin_reply', [False, True])
+async def test_plugin_only_chat_preserves_plugins_and_skips_runner(fake_app, mock_event_ctx, plugin_reply):
+    from tests.factories import text_query, text_chain
+
+    fake_app.instance_config.data.setdefault('system', {})['plugin_only'] = True
+    fake_app.agent_run_orchestrator.try_claim_steering_from_query = AsyncMock(
+        side_effect=AssertionError('plugin-only mode must not enter the runner')
+    )
+    mock_event_ctx.is_prevented_default.return_value = plugin_reply
+    mock_event_ctx.event.reply_message_chain = text_chain('plugin reply') if plugin_reply else None
+    fake_app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+    query = text_query('ordinary group message')
+    results = [result async for result in get_chat_handler().ChatMessageHandler(fake_app).handle(query)]
+    fake_app.plugin_connector.emit_event.assert_awaited_once()
+    fake_app.agent_run_orchestrator.try_claim_steering_from_query.assert_not_awaited()
+    assert results[0].result_type == (
+        get_entities().ResultType.CONTINUE if plugin_reply else get_entities().ResultType.INTERRUPT
+    )
+    assert bool(query.resp_messages) is plugin_reply
+    assert not results[0].user_notice
+
+
 # ============== FIXTURE USING IMPORT ISOLATION UTILITY ==============
 
 
