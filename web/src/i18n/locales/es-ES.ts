@@ -2794,7 +2794,7 @@ const esES = {
       dragAndDrop: 'Arrastra y suelta archivos aquí o haz clic para subir',
       uploading: 'Subiendo...',
       supportedFormats:
-        'Admite PDF, Word, TXT, Markdown, HTML, ZIP y otros formatos de documentos',
+        'Los formatos admitidos dependen del motor de conocimiento y de los analizadores instalados.',
       uploadSuccess: '¡Archivo subido correctamente!',
       uploadError: 'Error al subir el archivo: ',
       uploadingFile: 'Subiendo archivo...',
