@@ -1,4 +1,5 @@
 import slackSetup from './slack-setup/zh-Hant';
+import wxoaMenu from './wxoa-menu/zh-Hant';
 import pipelineMigration from './pipeline-migration/zh-Hant';
 import pluginPermissions from './plugin-permissions/zh-Hant';
 const zhHant = {
@@ -196,6 +197,7 @@ const zhHant = {
     saveFailed: '語言設定儲存失敗',
   },
   slackSetup,
+  wxoaMenu,
   inflight: {
     autoCollapse: '自動摺疊',
     empty: '目前沒有正在處理的事件',

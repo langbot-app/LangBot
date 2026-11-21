@@ -344,6 +344,7 @@ _BINDINGS = (
     ),
     ('bot.message.send', 'bot_service', 'bot', 'BotService', 'send_message', 'RUNTIME_OPERATE', True),
     ('bot.message.test', 'bot_service', 'bot', 'BotService', 'send_http_bot_test_message', 'RESOURCE_MANAGE', True),
+    ('bot.platform_api.call', 'bot_service', 'bot', 'BotService', 'call_platform_api', 'RESOURCE_MANAGE', True),
     ('bot.admins.list', 'bot_service', 'bot', 'BotService', 'get_bot_admins', 'RESOURCE_VIEW', False),
     ('bot.admins.add', 'bot_service', 'bot', 'BotService', 'add_bot_admin', 'RESOURCE_MANAGE', True),
     ('bot.admins.delete', 'bot_service', 'bot', 'BotService', 'delete_bot_admin', 'RESOURCE_MANAGE', True),
@@ -915,7 +916,13 @@ def _operation(operation_id, service_name, method, permission, side_effect):
     principals = (
         frozenset({PrincipalType.ACCOUNT, PrincipalType.API_KEY})
         if operation_id
-        in {'bot.routes.bind', 'knowledge.file.store_artifact', 'skill.package.preview', 'skill.package.publish'}
+        in {
+            'bot.routes.bind',
+            'bot.platform_api.call',
+            'knowledge.file.store_artifact',
+            'skill.package.preview',
+            'skill.package.publish',
+        }
         else None
     )
     return Operation(

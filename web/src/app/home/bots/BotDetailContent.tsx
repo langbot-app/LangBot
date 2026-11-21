@@ -18,6 +18,8 @@ import BotForm, {
 } from '@/app/home/bots/components/bot-form/BotForm';
 import { BotLogListComponent } from '@/app/home/bots/components/bot-log/view/BotLogListComponent';
 import BotSessionMonitor from '@/app/home/bots/components/bot-session/BotSessionMonitor';
+import WxoaMenuEditor from '@/app/home/bots/components/bot-menu/WxoaMenuEditor';
+import { MENU_PUBLISH_ACTION } from '@/app/home/bots/components/bot-menu/wxoa-menu-model';
 import type { BotSessionMonitorHandle } from '@/app/home/bots/components/bot-session/BotSessionMonitor';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
@@ -29,6 +31,7 @@ import {
   RefreshCw,
   Trash2,
   Loader2,
+  PanelBottom,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -65,10 +68,12 @@ export default function BotDetailContent({ id }: { id: string }) {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get('tab');
+  // Adapters that can publish a custom menu (WeChat Official Account) get a menu tab.
+  const [supportsMenu, setSupportsMenu] = useState(false);
   const activeTab =
     !isCreateMode &&
-    canViewMonitoring &&
-    ['logs', 'sessions'].includes(requestedTab || '')
+    ((canViewMonitoring && ['logs', 'sessions'].includes(requestedTab || '')) ||
+      (supportsMenu && requestedTab === 'menu'))
       ? requestedTab!
       : 'config';
   const setActiveTab = (tab: string) =>
@@ -89,6 +94,26 @@ export default function BotDetailContent({ id }: { id: string }) {
   const [isRefreshingSessions, setIsRefreshingSessions] = useState(false);
   const sessionMonitorRef = useRef<BotSessionMonitorHandle>(null);
   const botFormRef = useRef<BotFormHandle>(null);
+
+  useEffect(() => {
+    const adapterName = bot?.adapter;
+    if (!adapterName) return;
+    let cancelled = false;
+    httpClient
+      .getAdapter(adapterName)
+      .then((res) => {
+        if (cancelled) return;
+        setSupportsMenu(
+          (res.adapter.spec.platform_specific_apis || []).some(
+            (item) => item.action === MENU_PUBLISH_ACTION,
+          ),
+        );
+      })
+      .catch(() => setSupportsMenu(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [bot?.adapter]);
 
   // Track whether the form has unsaved changes
   const [formDirty, setFormDirty] = useState(false);
@@ -329,6 +354,12 @@ export default function BotDetailContent({ id }: { id: string }) {
                 <Settings className="size-3.5" />
                 {t('bots.configuration')}
               </TabsTrigger>
+              {supportsMenu && (
+                <TabsTrigger value="menu" className="gap-1.5">
+                  <PanelBottom className="size-3.5" />
+                  {t('wxoaMenu.tab')}
+                </TabsTrigger>
+              )}
               {canViewMonitoring && (
                 <TabsTrigger value="logs" className="gap-1.5">
                   <FileText className="size-3.5" />
@@ -388,6 +419,21 @@ export default function BotDetailContent({ id }: { id: string }) {
               </fieldset>
             </div>
           </TabsContent>
+
+          {/* Tab: Custom menu */}
+          {supportsMenu && (
+            <TabsContent
+              value="menu"
+              className="mt-4 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
+            >
+              <WxoaMenuEditor
+                botId={id}
+                botName={bot?.name || ''}
+                enabled={botEnabled}
+                canManage={canManage}
+              />
+            </TabsContent>
+          )}
 
           {/* Tab: Logs */}
           {canViewMonitoring && (
