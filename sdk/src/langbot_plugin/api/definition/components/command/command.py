@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from langbot_plugin.api.definition.components.base import BaseComponent
 from langbot_plugin.api.entities.builtin.command import context
+from langbot_plugin.api.entities.builtin.command.context import CommandReturn
 from langbot_plugin.api.entities.builtin.command.errors import CommandNotFoundError
 
 
@@ -90,7 +91,8 @@ class Command(BaseComponent):
                         yield return_value
                         return
 
-            raise CommandNotFoundError(next_crt_command)
+            yield CommandReturn(error=CommandNotFoundError(next_crt_command))
+            return
 
         context.shift()
 
