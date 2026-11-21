@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from langbot_plugin.api.definition.components.base import BaseComponent, NoneComponent
@@ -17,6 +19,7 @@ from langbot_plugin.api.definition.components.page import (
 from langbot_plugin.api.definition.components.parser.parser import Parser
 from langbot_plugin.api.definition.components.tool.tool import Tool
 from langbot_plugin.api.entities.builtin.command.context import CommandReturn
+from langbot_plugin.api.entities.builtin.command.errors import CommandNotFoundError
 from langbot_plugin.api.entities.events import PersonMessageReceived
 
 
@@ -72,6 +75,25 @@ def test_command_subcommand_default_aliases_should_not_be_shared():
     first.registered_subcommands["first"].aliases.append("alias")
 
     assert second.registered_subcommands["second"].aliases == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("params", [["missing"], []])
+async def test_command_unknown_subcommand_returns_not_found_error(params):
+    command = Command()
+
+    async def handler(_self, _ctx):
+        yield CommandReturn(text="ran")
+
+    command.subcommand("run")(handler)
+    ctx = SimpleNamespace(crt_params=params)
+
+    results = [result async for result in command._execute(ctx)]
+
+    assert len(results) == 1
+    assert isinstance(results[0].error, CommandNotFoundError)
+    assert str(results[0].error) == f"未知命令: {params[0] if params else ''}"
+    assert results[0].text is None
 
 
 def test_page_request_response_helpers_and_default_handler():
