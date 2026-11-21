@@ -119,20 +119,14 @@ jobs:
           enable-cache: true
       - name: Install locked dependencies
         run: uv sync --dev --frozen
-      - name: Prepare CLI and sandbox image
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p .endurance-bin
-          gh release download v0.3.0 --repo langbot-app/langbot-cli --dir .endurance-bin \
-            --pattern lbctl_linux_amd64 --pattern checksums.txt
-          cd .endurance-bin
-          sha256sum --check --ignore-missing checksums.txt
-          chmod +x lbctl_linux_amd64
-          docker pull python:3.12-alpine
+      - uses: ./.github/actions/build-lbctl
+        id: lbctl
+      - name: Prepare sandbox image
+        run: docker pull python:3.12-alpine
       - name: Run mixed load or weekly contracts
         id: execute
         env:
+          LBCTL_BIN: ${{ steps.lbctl.outputs.binary }}
           WORKLOAD: ${{ inputs.workload }}
           SCENARIO_GROUPS: ${{ github.event_name == 'schedule' && 'faults resources lifecycle plugins' || inputs.scenario_groups }}
           EXTRA_PLUGINS: ${{ github.event_name == 'schedule' && 'misc/EssentialCommands misc/FAQManager' || inputs.extra_plugins }}
@@ -158,7 +152,7 @@ jobs:
           mkdir -p .qa
           printf '%s\n' "$WORKLOAD" > .qa/daily-workload.txt
           uv run --no-sync python -m tools.entrypoints.regression_ci \
-            "${args[@]}" --lbctl .endurance-bin/lbctl_linux_amd64 --plugins plugins --output .qa/daily
+            "${args[@]}" --lbctl "$LBCTL_BIN" --plugins plugins --output .qa/daily
       - name: Publish observations
         if: always()
         env:
