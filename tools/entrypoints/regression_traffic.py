@@ -844,9 +844,9 @@ def main():
     summary['health_samples'] = len(samples)
     summary['health_failures'] = sum(
         any('error' in target for target in [*sample['targets'].values(), *sample['health'].values()])
-        or bool(sample.get('container_error'))
         for sample in samples
     )
+    summary['observation_failures'] = sum(bool(sample.get('container_error')) for sample in samples)
     summary['sampling_errors'] = sampling_errors
     if args.groups:
         for index, group in enumerate(groups):

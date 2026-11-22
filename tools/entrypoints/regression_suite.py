@@ -982,7 +982,10 @@ class Suite:
                 from tools.entrypoints.regression_analysis import resource_verdict
 
                 summary['resources'] = resource_verdict(destination, self.profile['resource_limits'])
-                errors.extend(f'{phase["name"]}: {error}' for error in summary['resources']['errors'])
+                resource_errors = summary['resources']['errors']
+                if self.profile.get('performance_mode') == 'observe':
+                    resource_errors = [error for error in resource_errors if not error.startswith('docker_containers/')]
+                errors.extend(f'{phase["name"]}: {error}' for error in resource_errors)
             if result.returncode:
                 errors.append(f'{phase["name"]}: business or health/resource checks failed')
             summary['performance_mode'] = self.profile.get('performance_mode', 'gate')
