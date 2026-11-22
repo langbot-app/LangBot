@@ -1,5 +1,9 @@
+1 file already formatted
 #!/usr/bin/env python3
-"""Fail CI when a service job/action can start Core without disabling telemetry."""
+"""Fail CI when a service job/action can start Core without disabling telemetry.
+
+Local reusable workflow callees are checked recursively.
+"""
 
 from __future__ import annotations
 
