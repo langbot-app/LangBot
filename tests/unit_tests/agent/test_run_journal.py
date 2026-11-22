@@ -75,6 +75,26 @@ async def test_invalid_steering_time_does_not_prevent_audit(event_log_writer, va
 
 
 @pytest.mark.asyncio
+async def test_get_run_uses_short_cache_and_finalize_refreshes_it():
+    journal = AgentRunJournal(SimpleNamespace())
+    ledger = SimpleNamespace(
+        get_run=AsyncMock(return_value={'run_id': 'run-1', 'status': 'running'}),
+        finalize_run=AsyncMock(return_value={'run_id': 'run-1', 'status': 'completed'}),
+    )
+    journal._run_ledger_store = ledger
+
+    assert await journal.get_run('run-1') == {'run_id': 'run-1', 'status': 'running'}
+    assert await journal.get_run('run-1') == {'run_id': 'run-1', 'status': 'running'}
+    ledger.get_run.assert_awaited_once_with('run-1')
+
+    assert await journal.finalize_run(run_id='run-1', status='completed') == {
+        'run_id': 'run-1',
+        'status': 'completed',
+    }
+    assert await journal.get_run('run-1') == {'run_id': 'run-1', 'status': 'completed'}
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('event_type', ['message.received', 'group.member_joined'])
 async def test_agent_run_snapshot_records_identity_and_redacts_inline_attachments(event_type):
     journal = AgentRunJournal(SimpleNamespace())
