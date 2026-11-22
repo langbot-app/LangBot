@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import math
+import time
 import typing
 
 from ...core import app
@@ -13,6 +14,9 @@ from .errors import RunnerProtocolError
 from .host_models import AgentBinding, AgentEventEnvelope
 from .persistent_state_store import PersistentStateStore, get_persistent_state_store
 from .run_ledger_store import RunLedgerStore
+
+
+_RUN_SNAPSHOT_CACHE_TTL_SECONDS = 0.25
 
 
 class AgentRunJournal:
@@ -27,6 +31,7 @@ class AgentRunJournal:
         self.ap = ap
         self._persistent_state_store = None
         self._run_ledger_store = None
+        self._run_snapshot_cache: dict[str, tuple[float, dict[str, typing.Any] | None]] = {}
 
     def _get_run_ledger_store(self) -> RunLedgerStore:
         if self._run_ledger_store is None:
@@ -205,17 +210,25 @@ class AgentRunJournal:
         metadata: dict[str, typing.Any] | None = None,
     ) -> dict[str, typing.Any] | None:
         """Finalize or update the Host-owned run ledger record."""
-        return await self._get_run_ledger_store().finalize_run(
+        updated = await self._get_run_ledger_store().finalize_run(
             run_id=run_id,
             status=status,
             status_reason=status_reason,
             usage=usage,
             metadata=metadata,
         )
+        self._run_snapshot_cache[run_id] = (time.monotonic(), updated)
+        return updated
 
     async def get_run(self, run_id: str) -> dict[str, typing.Any] | None:
         """Return the persisted run ledger record."""
-        return await self._get_run_ledger_store().get_run(run_id)
+        now = time.monotonic()
+        cached = self._run_snapshot_cache.get(run_id)
+        if cached is not None and now - cached[0] < _RUN_SNAPSHOT_CACHE_TTL_SECONDS:
+            return cached[1]
+        snapshot = await self._get_run_ledger_store().get_run(run_id)
+        self._run_snapshot_cache[run_id] = (now, snapshot)
+        return snapshot
 
     async def handle_state_updated_event(
         self,
