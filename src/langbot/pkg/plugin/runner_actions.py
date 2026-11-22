@@ -43,7 +43,7 @@ def register(h):
             total_ms = (time.perf_counter() - timing_started) * 1000
             if total_ms < 100:
                 return
-            h.ap.logger.info(
+            h.ap.logger.warning(
                 f'run_get_timing target_run_id={data.get("target_run_id") or data.get("run_id")} '
                 f'session_validation_ms={timing.get("session_validation_ms", 0):.3f} '
                 f'store_init_ms={timing.get("store_init_ms", 0):.3f} '
