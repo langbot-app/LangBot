@@ -2,7 +2,7 @@
 title: "Component: Command"
 ---
 
-Command components are triggered by user command messages starting with a prefix (such as `/` or custom prefixes). You can now directly bind plugin commands in bot settings; when matched, commands execute directly at the routing layer and bypass plugin processors and pipelines. Here's an example of triggering a command:
+Command components are triggered by user messages that start with a command prefix (set in the bot's "Plugin commands", `/` by default). Commands belong to the **bot**: only plugins enabled on the bot (or on the route the message matches) have their commands matched. Here's an example of triggering a command:
 
 <img width="600" src="/images/zh/plugin/dev/components/command_use.png" />
 
@@ -53,6 +53,14 @@ execution:
     attr: Info  # Command handler class name, matches the class name in info.py
 ```
 
+## How commands match and apply
+
+- Commands apply only to `message.received`. They match by "prefix + registered command name" **before route rules**; a matched command runs directly instead of going to a Chat, an Agent or a plugin processor.
+- A command uses the message policy of the route the message would otherwise match (group response rules, access control, rate limit, content filter, long text, @mention, quote). When no route matches, the bot default policy applies.
+- Command messages also fire `*MessageReceived`; after admission and before execution, `*CommandSent` fires and plugins can intercept it. See [Message Lifecycle Events](/en/plugin/dev/apis/pipeline-events).
+- Query-bound APIs such as `context.reply()` and `get_bot_uuid()` work while a command runs.
+- Commands do not take part in message aggregation. `/stop` still stops an AI reply in progress.
+
 ## Command Configuration
 
 A command can declare a configuration form in its manifest `spec.config`, using the same format as a Runner's `spec.config`:
@@ -68,7 +76,7 @@ spec:
       default: plain
 ```
 
-Users create a **command processor** on the processors page by selecting a plugin, then fill in the configuration of each of its commands. One plugin can have several command processors, each bound to different bots. At execution time, read the values of the instance bound to the current bot from `context.config`; missing fields use their `default`. Commands triggered through a Pipeline use the defaults.
+Users create a **command processor** on the processors page by selecting a plugin, then fill in the configuration of each of its commands. One plugin can have several command processors, each bound to different bots. At execution time, read the values of the instance bound to the current bot from `context.config`; missing fields use their `default`. When a plugin is enabled on the bot without a command processor, its commands use the defaults.
 
 Commands without `spec.config` need no changes: create a command processor and they work as before, with `context.config` as an empty dict. Plugin-level settings are still available through `self.get_plugin_config()`.
 

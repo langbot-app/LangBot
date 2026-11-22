@@ -450,7 +450,7 @@ Treat the global API key, JWT secret, database credentials, S3 credentials, emai
 
 ### Admission and capacity limits
 
-- `concurrency` bounds running and queued pipeline work globally and per Workspace.
+- `concurrency` bounds running and queued Chat work globally and per Workspace.
 - `webhooks` bounds enabled destinations per Workspace and instance-wide outbound requests. Full request admission fails open rather than retaining an unbounded task queue.
 - `cloud.directory` contains operational safety ceilings for one logical Cloud instance, not subscription entitlements. Oversized authoritative directory updates are rejected atomically instead of being truncated. Most self-hosted deployments should keep these defaults.
 - `system.blocking_executor`, `task_retention`, `session_retention`, `websocket_retention`, and `response_limits` bound process-local workers, cached records, sockets, and upstream output.
@@ -477,7 +477,7 @@ Treat the global API key, JWT secret, database credentials, S3 credentials, emai
 - `box.enabled` is the master switch. Disabling it also disables native sandbox tools, Skill add/edit, and stdio MCP, while read-only Skill listing and HTTP/SSE MCP remain available.
 - `box.backend` selects `local`, `docker`, `nsjail`, or `e2b`; `runtime.endpoint` connects an external WebSocket Runtime.
 - `box.limits` bounds sessions, processes, workspace scans, retained admission fences, and RPC file size.
-- `box.admission` is the Cloud v2 hard-admission policy. OSS defaults to `required: false`; pipelines, Workspace entitlements, and tool calls cannot relax Runtime-owned limits.
+- `box.admission` is the Cloud v2 hard-admission policy. OSS defaults to `required: false`; Chats, Workspace entitlements, and tool calls cannot relax Runtime-owned limits.
 - `box.local` controls workspace roots and mount allowlists. In Docker deployments, use an absolute `host_root` that the Box container can mount.
 - `box.default_memory_mb` is the default nsjail cgroup limit for each stdio MCP process. Node.js MCP servers usually need more memory than Python servers; too little commonly produces exit code `137`.
 
@@ -522,9 +522,9 @@ If `SPACE__DISABLE_TELEMETRY` is set in your deployment, it overrides the file a
 
 ### Per-event execution chains
 
-Current 4.11 execution telemetry defaults to full reporting of eligible executions, covering platform events, routing, Pipeline / Agent / plugin event processors, and the platform API and tool calls they cause. Each completed node generates a record, followed by a closure record when the execution ends; Space reconstructs the chain. These are the defaults in the same `space` section; restart after changing them:
+Current 4.11 execution telemetry defaults to full reporting of eligible executions, covering platform events, routing, Chat / Agent / plugin event processors, and the platform API and tool calls they cause. Each completed node generates a record, followed by a closure record when the execution ends; Space reconstructs the chain. These are the defaults in the same `space` section; restart after changing them:
 
-Platform events without a matching business route, or ignored by a `discard` rule with no matching plugin subscription, upload no execution records. Local logs and monitoring keep their existing behavior. Matching subscriptions, valid interaction resumptions and independent WebUI/API/Pipeline calls remain eligible, as do unavailable targets, execution failures or Pipeline filtering after a route matches. Eligibility is checked before sampling; neither Cloud's `all` nor failure fallback bypasses it. A Core upgrade is required.
+Platform events without a matching business route, or ignored by a `discard` rule with no matching plugin subscription, upload no execution records. Local logs and monitoring keep their existing behavior. Matching subscriptions, valid interaction resumptions and independent WebUI/API/Chat calls remain eligible, as do unavailable targets, execution failures or Chat filtering after a route matches. Eligibility is checked before sampling; neither Cloud's `all` nor failure fallback bypasses it. A Core upgrade is required.
 
 ```yaml
 space:

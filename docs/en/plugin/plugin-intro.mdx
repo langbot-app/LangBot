@@ -12,7 +12,7 @@ Plugins are managed uniformly by the Plugin Runtime. Most plugins use a dedicate
 
 Plugins can provide the following components based on their specific functionality:
 
-- Event Handlers: Listen to events during pipeline execution and modify context or pipelines.
+- Event Handlers: Listen to events while a bot processes messages and modify the context or processing flow.
 - Commands: Triggered by user command messages starting with `!` (or other configured prefixes).
 - Tools: Called by LLMs during execution of LangBot's built-in Local Agent.
 - Knowledge Engines: Manage document indexing and retrieval for knowledge bases.
@@ -32,7 +32,7 @@ Or click the Plugin Marketplace tab, select a plugin, and click install.
 
 <img width="600" src="/images/zh/plugin/install_from_marketplace.png" />
 
-After installing plugins, you need to select the plugin in your pipeline configuration page.
+After installing plugins, you need to enable the plugin in the bot's **Message policy** tab.
 
 <img width="600" src="/images/zh/plugin/pipeline_extensions.png" />
 

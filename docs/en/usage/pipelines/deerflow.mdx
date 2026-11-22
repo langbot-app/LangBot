@@ -1,6 +1,6 @@
 ---
 title: "Using DeerFlow with LangBot"
-description: "Use DeerFlow with LangBot to power your AI bot's conversation pipeline across messaging platforms."
+description: "Use DeerFlow with LangBot to power your AI bot's Chat across messaging platforms."
 ---
 
 [DeerFlow](https://github.com/bytedance/deer-flow) is an open-source AI Agent framework based on Large Language Models (LLMs), developed by ByteDance. It focuses on deep research, information retrieval, and multi-agent collaborative orchestration.  
@@ -8,7 +8,7 @@ The framework is built on LangGraph with a configurable workflow engine, support
 
 Current integration targets DeerFlow **2.0 `main` branch**. The DeerFlow official team has migrated the original Deep Research framework to the `main-1.x` branch for ongoing maintenance. Therefore, if you are using version 2.0, please refer to the official documentation and backend API of the `main` branch.
 
-LangBot currently supports DeerFlow as an `AI Capabilities` runner, bringing deep research and agent orchestration capabilities to your conversation pipelines.
+LangBot currently supports DeerFlow as an `AI Capabilities` runner, bringing deep research and agent orchestration capabilities to your Chats.
 
 ## Deploying DeerFlow
 
@@ -30,7 +30,7 @@ After deployment, please confirm that DeerFlow has started normally and note its
 
 ## Configuring LangBot
 
-Open the LangBot WebUI page, add a new pipeline or switch to the `AI Capabilities` configuration page in an existing pipeline.
+Open the LangBot WebUI page, add a new Chat or switch to the `AI Capabilities` configuration page in an existing Chat.
 
 ![deerflow](/images/zh/deploy/pipelines/deerflow/creat_langbot_pipeline.png)
 
@@ -54,7 +54,7 @@ Open the LangBot WebUI page, add a new pipeline or switch to the `AI Capabilitie
 
 </Info>
 
-After completion, you can use DeerFlow in the pipeline to complete deep research and intelligent Q&A.
+After completion, you can use DeerFlow in the Chat to complete deep research and intelligent Q&A.
 
 ## Frequently Asked Questions
 
@@ -63,4 +63,4 @@ After completion, you can use DeerFlow in the pipeline to complete deep research
 - **Cannot select `DeerFlow API`**: Please verify that your current LangBot version supports this runner; if not supported, please upgrade to a version that includes the DeerFlow runner.
 - **Meaning of DeerFlow configuration items**: Please refer to the DeerFlow official documentation regarding runtime parameters and capabilities, or consult the DeerFlow community for recommended configurations.
 
-For more pipeline general configuration instructions, please refer to [Modifying Conversation Pipeline Configuration](/en/usage/pipelines/readme).
+For more general Chat configuration instructions, please refer to [Modifying Chat Configuration](/en/usage/pipelines/readme).

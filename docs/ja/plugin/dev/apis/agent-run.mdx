@@ -23,7 +23,7 @@ title: "コンテキスト API"
 
 ## EventListener
 
-EventListener はパイプラインイベントを処理します。イベントハンドラーは `EventContext` を受け取ります。
+EventListener はメッセージライフサイクルイベントを処理します。イベントハンドラーは `EventContext` を受け取ります。
 
 ```python
 event = event_context.event
@@ -36,13 +36,13 @@ sender_id = event.sender_id
 | --- | --- | --- |
 | `event` | `BaseEventModel` | 現在のイベントオブジェクト。実際の型は登録したイベント型と一致します |
 | `event_name` | `str` | 現在のイベントクラス名 |
-| `query_id` | `int` | 現在のパイプラインリクエスト ID |
-| `query_uuid` | `str \| None` | 現在のパイプラインリクエストの安定した識別子 |
+| `query_id` | `int` | 現在のリクエスト ID |
+| `query_uuid` | `str \| None` | 現在のリクエストの安定した識別子 |
 | `eid` | `int` | Plugin Runtime 内の一時的なイベント番号。永続化しないでください |
 | `is_prevent_default` | `bool` | デフォルト処理を停止済みか。変更には `prevent_default()` を使用します |
 | `is_prevent_postorder` | `bool` | 後続プラグインを停止済みか。変更には `prevent_postorder()` を使用します |
 
-イベントのフィールドと購読可能なイベントは[パイプラインイベント](/ja/plugin/dev/apis/pipeline-events)を参照してください。
+イベントのフィールドと購読可能なイベントは[メッセージライフサイクルイベント](/ja/plugin/dev/apis/pipeline-events)を参照してください。
 
 ### コンテキストメソッド
 
@@ -53,15 +53,15 @@ sender_id = event.sender_id
 | `await event_context.set_query_var(key, value)` | - | 現在のリクエストに変数を設定 |
 | `await event_context.get_query_var(key)` | `Any` | リクエスト変数を 1 つ取得 |
 | `await event_context.get_query_vars()` | `dict[str, Any]` | すべてのリクエスト変数を取得 |
-| `await event_context.create_new_conversation()` | `dict[str, Any]` | 現在のパイプライン会話をクリアし、後続リクエストで新しい会話を作成 |
-| `await event_context.list_pipeline_knowledge_bases()` | `list[dict[str, Any]]` | 現在のパイプラインの Local Agent に設定されたナレッジベースを取得 |
-| `await event_context.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)` | `list[dict[str, Any]]` | 現在のパイプラインに設定されたナレッジベースを検索 |
+| `await event_context.create_new_conversation()` | `dict[str, Any]` | 現在のチャット会話をクリアし、後続リクエストで新しい会話を作成 |
+| `await event_context.list_pipeline_knowledge_bases()` | `list[dict[str, Any]]` | 現在のチャットの Local Agent に設定されたナレッジベースを取得 |
+| `await event_context.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)` | `list[dict[str, Any]]` | 現在のチャットに設定されたナレッジベースを検索 |
 | `event_context.prevent_default()` | - | 現在のイベントのデフォルト処理を停止 |
 | `event_context.prevent_postorder()` | - | 後続プラグインによる現在のイベント処理を停止 |
 
-`reply()` は [MessageChain](/ja/plugin/dev/apis/messages) を受け取ります。リクエスト変数、返信、パイプラインのナレッジベース API には、関連付けられたパイプラインリクエストが必要です。`retrieve_knowledge()` の `kb_id` は `list_pipeline_knowledge_bases()` の結果から指定します。
+`reply()` は [MessageChain](/ja/plugin/dev/apis/messages) を受け取ります。リクエスト変数、返信、チャットのナレッジベース API には、関連付けられたリクエストが必要です。`retrieve_knowledge()` の `kb_id` は `list_pipeline_knowledge_bases()` の結果から指定します。
 
-`prevent_default()` はデフォルトフローを停止できるイベントにのみ作用します。詳細は[パイプラインイベント](/ja/plugin/dev/apis/pipeline-events#デフォルト動作を阻止)を参照してください。
+`prevent_default()` はデフォルトフローを停止できるイベントにのみ作用します。詳細は[メッセージライフサイクルイベント](/ja/plugin/dev/apis/pipeline-events#デフォルト動作を阻止)を参照してください。
 
 ## Command
 
@@ -84,8 +84,8 @@ session = context.session
 | `params` | `list[str]` | ルートコマンド以降のすべての引数 |
 | `crt_params` | `list[str]` | 現在のサブコマンドで未処理の引数 |
 | `privilege` | `int` | 現在のユーザーのコマンド権限レベル |
-| `query_id` | `int` | 現在のパイプラインリクエスト ID |
-| `query_uuid` | `str \| None` | 現在のパイプラインリクエストの安定した識別子 |
+| `query_id` | `int` | 現在のリクエスト ID |
+| `query_uuid` | `str \| None` | 現在のリクエストの安定した識別子 |
 
 SDK は現在のサブコマンドに入る前に `context.shift()` を呼び出します。コンポーネントから直接呼び出す必要はありません。
 
@@ -98,9 +98,9 @@ SDK は現在のサブコマンドに入る前に `context.shift()` を呼び出
 | `await context.set_query_var(key, value)` | - | 現在のリクエストに変数を設定 |
 | `await context.get_query_var(key)` | `Any` | リクエスト変数を 1 つ取得 |
 | `await context.get_query_vars()` | `dict[str, Any]` | すべてのリクエスト変数を取得 |
-| `await context.create_new_conversation()` | `dict[str, Any]` | 現在のパイプライン会話をクリアし、後続リクエストで新しい会話を作成 |
-| `await context.list_pipeline_knowledge_bases()` | `list[dict[str, Any]]` | 現在のパイプラインの Local Agent に設定されたナレッジベースを取得 |
-| `await context.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)` | `list[dict[str, Any]]` | 現在のパイプラインに設定されたナレッジベースを検索 |
+| `await context.create_new_conversation()` | `dict[str, Any]` | 現在のチャット会話をクリアし、後続リクエストで新しい会話を作成 |
+| `await context.list_pipeline_knowledge_bases()` | `list[dict[str, Any]]` | 現在のチャットの Local Agent に設定されたナレッジベースを取得 |
+| `await context.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)` | `list[dict[str, Any]]` | 現在のチャットに設定されたナレッジベースを検索 |
 
 これらのリクエストメソッドは EventListener と同じ動作です。登録方法と戻り値は [Command コンポーネント](/ja/plugin/dev/components/command)を参照してください。
 
@@ -118,7 +118,7 @@ sender_id = session.sender_id
 | --- | --- |
 | `params` | ツールの JSON Schema に基づいてモデルまたは呼び出し元が生成した引数 |
 | `session` | 現在のセッションデータ |
-| `query_id` | 現在のパイプラインリクエスト ID。リクエストコンテキストが必要な LangBot API にそのまま渡します |
+| `query_id` | 現在のリクエスト ID。リクエストコンテキストが必要な LangBot API にそのまま渡します |
 
 `Session` の主なプロパティは次のとおりです。
 
@@ -128,8 +128,8 @@ sender_id = session.sender_id
 | `launcher_id` | 個人チャットのユーザー ID またはグループ ID |
 | `sender_id` | 現在のメッセージ送信者 ID |
 | `bot_uuid` | 現在の Bot UUID |
-| `using_conversation` | 現在のパイプライン会話 |
-| `conversations` | この Session に保存されたパイプライン会話 |
+| `using_conversation` | 現在のチャット会話 |
+| `conversations` | この Session に保存されたチャット会話 |
 | `use_prompt_name` | 使用中のプロンプト名 |
 | `create_time`、`update_time` | Session の作成時刻と更新時刻 |
 
@@ -233,7 +233,7 @@ Box の有効化、取得、再利用方針は Runner が決めます。リソ�
 
 ネイティブツールやファイル操作の前に Box をバインドします。Box を共有しても添付ディレクトリは実行ごとに分かれます。`ctx.variables` の公開リクエスト変数で再利用キーを計算できます。
 
-Pipeline では `ctx.delivery.automatic_reply` が `True` になり、`RunnerResult.message_completed(ctx.run_id, message, file_ids=[...])` で添付を返せます。Agent とプラグインプロセッサーは `ctx.reply_files()` で明示的に送信します。
+チャットでは `ctx.delivery.automatic_reply` が `True` になり、`RunnerResult.message_completed(ctx.run_id, message, file_ids=[...])` で添付を返せます。Agent とプラグインプロセッサーは `ctx.reply_files()` で明示的に送信します。
 
 自動返信では、`RunnerResult.message_completed` はそれぞれ独立したメッセージとして送信されるため、Runner は回答の前に進捗メッセージを送れます。`RunnerResult.message_delta` はストリーミング対応プラットフォームでは 1 つのストリーミングメッセージを更新します。それ以外では完了したメッセージだけが送信され、delta だけで終わる実行は最後の結果を 1 回送信します。
 
@@ -286,7 +286,7 @@ Pipeline では `ctx.delivery.automatic_reply` が `True` になり、`RunnerRes
 
 `run_id=None` は現在の実行を指します。通常のイベントハンドラーは SDK が自動的に完了します。独自の `run(ctx)` が `RunnerResult` を yield する場合、同じ結果を `run_append_result()` で重複登録しないでください。
 
-Pipeline の retry と resume は現在の出力フィルター、応答ラッパー、返信設定を適用します。記録された返信先と元のメッセージ ID を使用し、必要な情報がない場合や復旧時の送信に対応していない場合は明示的なエラーを返します。
+チャットの retry と resume は現在の出力フィルター、応答ラッパー、返信設定を適用します。記録された返信先と元のメッセージ ID を使用し、必要な情報がない場合や復旧時の送信に対応していない場合は明示的なエラーを返します。
 
 ### 利用可否と権限
 
@@ -312,7 +312,7 @@ Runner の実行中に `self.plugin` から呼び出すモデル、ツール、�
 
 ACP daemon は LangBot の既存の run-scoped MCP ブリッジを使用します。Box が利用可能で `event_reply` が許可されている場合、Box をバインドしてファイルを生成し、`langbot_export_box_files` で選択した絶対パスをエクスポートしてから、返された ID を `langbot_reply_files` に渡します。メディアのアップロードと配信はプラットフォームアダプターが担当し、ACP Agent にプラットフォーム認証情報は不要です。
 
-ファイル ID はエクスポート元の run の中でのみ有効です。Pipeline フィルターが処理中のテキストを書き換えても、返信先は元の受信メッセージのままです。
+ファイル ID はエクスポート元の run の中でのみ有効です。フィルターが処理中のテキストを書き換えても、返信先は元の受信メッセージのままです。
 
 ## run 内のインストール所有 Artifact
 

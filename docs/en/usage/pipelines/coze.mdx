@@ -3,7 +3,7 @@ title: "Integrating Coze API"
 description: "Integrate Coze with LangBot. Connect your Coze bots and agents to Discord, Telegram, WeChat and other messaging platforms."
 ---
 
-This document explains how to obtain the Token and Bot ID from the Coze platform and enter them into the LangBot pipeline configuration.
+This document explains how to obtain the Token and Bot ID from the Coze platform and enter them into the LangBot Chat configuration.
 
 ## 1. Obtaining the Token and Bot ID
 
@@ -29,7 +29,7 @@ Please securely store the following two pieces of information:
 
 ## 2. Entering the Configuration in LangBot
 
-1. Open the LangBot WebUI and navigate to the configuration page of a pipeline (or create a new pipeline and enter its configuration page)
+1. Open the LangBot WebUI and navigate to the configuration page of a Chat (or create a new Chat and enter its configuration page)
 
 2. Under "AI Capabilities", select the runner as `Coze API`
 
@@ -38,15 +38,15 @@ Please securely store the following two pieces of information:
    - **bot_id**: Paste the corresponding Bot ID
    - Please select the `API Base URL` according to the Coze site you are using: coze.cn please fill in `https://api.coze.cn`; coze.com please fill in `https://api.coze.com`
    
-   ![Pipeline Configuration](/images/zh/deploy/pipelines/coze/coze08.png)
+   ![Chat Configuration](/images/zh/deploy/pipelines/coze/coze08.png)
 
 4. Click "Save" to complete the configuration
 
-Once completed, you can invoke the Coze agent within this pipeline for dialogue processing
+Once completed, you can invoke the Coze agent within this Chat for dialogue processing
 
 ## Frequently Asked Questions (FAQ)
 
 - **Save fails or invocation returns an error**: Please verify that the token and bot_id are correct and do not contain extra spaces
 - **Unable to select `Coze API`**: Please confirm whether the current version supports this runner. If not yet supported, please upgrade to a version that includes the Coze runner
 
-For more general pipeline configuration instructions, please refer to [Modifying Dialogue Pipeline Configuration](/en/usage/pipelines/readme)
+For more general Chat configuration instructions, please refer to [Modifying Chat Configuration](/en/usage/pipelines/readme)

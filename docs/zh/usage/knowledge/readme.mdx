@@ -3,7 +3,7 @@ title: "知识库 (Knowledge Base)"
 description: "在 LangBot 中构建 RAG 知识库，为 AI 机器人提供文档检索与基于知识的回答。"
 ---
 
-LangBot 原生支持 RAG（Retrieval-Augmented Generation，即检索增强生成），您可以创建知识库，并将其与流水线绑定，流水线将根据知识库中的内容回答问题。
+LangBot 原生支持 RAG（Retrieval-Augmented Generation，即检索增强生成），您可以创建知识库，并将其与聊天绑定，聊天将根据知识库中的内容回答问题。
 
 知识库由 RAG 引擎插件驱动，不同的 RAG 引擎提供不同的索引和检索策略。您可以在[插件市场](https://space.langbot.app/market)中查找可用的 RAG 引擎插件。
 
@@ -26,7 +26,7 @@ LangRAG 内置文本解析器会优先识别 UTF-8 和 Unicode 字节顺序标�
 
 ## 使用知识库
 
-请到流水线配置中，"AI 能力"页，选择`内置 Agent`作为运行器，并在下方选择您刚刚创建的知识库。
+请到聊天配置中，"AI 能力"页，选择`内置 Agent`作为运行器，并在下方选择您刚刚创建的知识库。
 
 <img width="400px" src="/images/zh/deploy/knowledge/use_local_agent.png" alt="use_kb" />
 
@@ -47,7 +47,7 @@ LangRAG 内置文本解析器会优先识别 UTF-8 和 Unicode 字节顺序标�
 仅当运行器为`内置 Agent`时，才可以使用 LangBot 原生知识库，若要在使用其他运行器时使用知识库，请参考所使用的运行器对应产品的文档。
 </Info>
 
-现在即可在`对话调试`或流水线所绑定的机器人上使用知识库进行对话：
+现在即可在`对话调试`或该聊天所绑定的机器人上使用知识库进行对话：
 
 <img width="400px" src="/images/zh/deploy/knowledge/use_kb_in_chat.png" alt="use_kb_in_chat" />
 

@@ -3,7 +3,7 @@ title: "Connect Langflow to KOOK"
 description: "Step-by-step guide to running your Langflow app as a KOOK bot with LangBot: Langflow setup, bot credentials, networking, testing and troubleshooting."
 ---
 
-This recipe puts your Langflow app behind a KOOK bot. LangBot receives messages from KOOK, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+This recipe puts your Langflow app behind a KOOK bot. LangBot receives messages from KOOK, runs them through a Chat, and sends the answer back, so you do not write any platform code.
 
 Langflow builds agents and flows with a drag-and-drop editor. LangBot runs a flow through the Langflow API for every message.
 
@@ -23,9 +23,9 @@ The KOOK adapter only needs a bot token; LangBot connects out to KOOK.
 2. Create an API key under **Settings**.
 3. Copy the **Flow ID** from **Share → API access**.
 
-## 2. Create a pipeline
+## 2. Create a Chat
 
-Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows. If the runner is not listed, install the official runner plugin from **Plugins** or the [LangBot Space marketplace](https://space.langbot.app/market).
+Open **Chats** in the LangBot WebUI, create a Chat (or edit the default one) and set **AI** as follows. If the runner is not listed, install the official runner plugin from **Plugins** or the [LangBot Space marketplace](https://space.langbot.app/market).
 
 | Field | Value |
 | --- | --- |
@@ -41,15 +41,15 @@ Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default 
 
 ## 4. Bind and test
 
-Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+Open the bot, select the Chat you created, save and make sure the bot is enabled.
 
 Send a message that matches the trigger rules in a channel the bot can read.
 
 ## Troubleshooting
 
 - Connection refused: `http://localhost:7860` only works when Langflow runs on the same host and network namespace as LangBot.
-- No reply in a channel: check the bot's channel permissions and the pipeline's group trigger rules.
-- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+- No reply in a channel: check the bot's channel permissions and the group trigger rules in the bot's message policy.
+- Check **Monitoring** in the WebUI: every message, Chat run and error is recorded there.
 
 ## FAQ
 
@@ -63,7 +63,7 @@ Check the [platform feature matrix](/en/insight/platform-features) for what this
 
 ### Can the same Langflow setup serve other platforms too?
 
-Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+Yes. A Chat can be bound to many bots, so one configuration can answer on several platforms at once.
 
 ## Related guides
 

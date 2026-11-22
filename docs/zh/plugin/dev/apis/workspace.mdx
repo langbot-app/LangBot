@@ -1,9 +1,9 @@
 ---
 title: 工作区 API
-description: 在插件中读取和管理 Agent、流水线、机器人、模型、知识库等工作区资源。
+description: 在插件中读取和管理 Agent、聊天、机器人、模型、知识库等工作区资源。
 ---
 
-工作区 API 让插件可以操作它所安装的工作区：列出和修改 Agent 与流水线、查询机器人、管理模型和知识库、读取监控数据等。它开放的操作与 LangBot 的 HTTP API、MCP 服务和工作区助手完全相同，因此成员能通过这些途径完成的事，插件都可以在成员授权的范围内自动完成。
+工作区 API 让插件可以操作它所安装的工作区：列出和修改 Agent 与聊天、查询机器人、管理模型和知识库、读取监控数据等。它开放的操作与 LangBot 的 HTTP API、MCP 服务和工作区助手完全相同，因此成员能通过这些途径完成的事，插件都可以在成员授权的范围内自动完成。
 
 每个操作都有一个稳定的 ID，例如 `pipeline.list` 或 `knowledge.base.retrieve`。插件只能调用自己[在 manifest 中声明](/zh/plugin/dev/permissions#声明权限)、并且已由成员授予该安装的操作。
 
@@ -46,7 +46,7 @@ result = await self.plugin.workspace.call("knowledge.base.retrieve", kb_uuid=kb_
 
 运行器通过 `ctx.api.workspace` 拿到与本次运行绑定的代理。它提供相同的方法，也由相同的安装授权控制；区别在于 LangBot 会把每次调用记录到当前运行下。
 
-发起本次运行的 Agent 或流水线，可能限定了模型应当看到哪些工作区操作，这个选择通过 `ctx.resources.workspace_operations` 传入。如果运行器要把工作区操作作为工具提供给模型，应当只提供这些操作；列表为空时，一个都不要提供。LangBot 内置的 LocalAgent 就是这样做的。
+发起本次运行的 Agent 或聊天，可能限定了模型应当看到哪些工作区操作，这个选择通过 `ctx.resources.workspace_operations` 传入。如果运行器要把工作区操作作为工具提供给模型，应当只提供这些操作；列表为空时，一个都不要提供。LangBot 内置的 LocalAgent 就是这样做的。
 
 ## 返回结果与错误
 
@@ -215,25 +215,25 @@ result = await self.plugin.workspace.call("knowledge.base.retrieve", kb_uuid=kb_
 | 代币消耗统计 | `monitoring.tokens`<br/>`workspace.monitoring.tokens()` | 读 | `resource.view` |
 | 工具调用统计 | `monitoring.tool_calls`<br/>`workspace.monitoring.tool_calls()` | 读 | `resource.view` |
 
-### 流水线 (`pipeline`)
+### 聊天 (`pipeline`)
 
 | 操作 | ID 与方法 | 风险 | 授予者需要 |
 | --- | --- | --- | --- |
 | 广播聊天消息 | `pipeline.chat.broadcast`<br/>`workspace.pipeline.chat.broadcast()` | 高危 | `runtime.operate` |
-| 流水线连接状态 | `pipeline.chat.connections`<br/>`workspace.pipeline.chat.connections()` | 读 | `runtime.operate` |
-| 流水线聊天历史 | `pipeline.chat.history`<br/>`workspace.pipeline.chat.history()` | 读 | `runtime.operate` |
+| 聊天连接状态 | `pipeline.chat.connections`<br/>`workspace.pipeline.chat.connections()` | 读 | `runtime.operate` |
+| 聊天调试历史 | `pipeline.chat.history`<br/>`workspace.pipeline.chat.history()` | 读 | `runtime.operate` |
 | 重置聊天会话 | `pipeline.chat.reset`<br/>`workspace.pipeline.chat.reset()` | 高危 | `runtime.operate` |
-| 复制流水线 | `pipeline.copy`<br/>`workspace.pipeline.copy()` | 写 | `resource.manage` |
-| 创建流水线 | `pipeline.create`<br/>`workspace.pipeline.create()` | 写 | `resource.manage` |
-| 流水线默认配置 | `pipeline.defaults`<br/>`workspace.pipeline.defaults()` | 读 | `resource.view` |
-| 删除流水线 | `pipeline.delete`<br/>`workspace.pipeline.delete()` | 高危 | `resource.manage` |
-| 获取流水线扩展 | `pipeline.extensions.get`<br/>`workspace.pipeline.extensions.get()` | 读 | `resource.view` |
-| 更新流水线扩展 | `pipeline.extensions.update`<br/>`workspace.pipeline.extensions.update()` | 写 | `resource.manage` |
-| 流水线详情 | `pipeline.get`<br/>`workspace.pipeline.get()` | 读 | `resource.view` |
-| 流水线列表 | `pipeline.list`<br/>`workspace.pipeline.list()` | 读 | `resource.view` |
-| 流水线元数据 | `pipeline.metadata`<br/>`workspace.pipeline.metadata()` | 读 | `resource.view` |
-| 执行流水线 | `pipeline.run`<br/>`workspace.pipeline.run()` | 写 | `runtime.operate` |
-| 更新流水线 | `pipeline.update`<br/>`workspace.pipeline.update()` | 写 | `resource.manage` |
+| 复制聊天 | `pipeline.copy`<br/>`workspace.pipeline.copy()` | 写 | `resource.manage` |
+| 创建聊天 | `pipeline.create`<br/>`workspace.pipeline.create()` | 写 | `resource.manage` |
+| 聊天默认配置 | `pipeline.defaults`<br/>`workspace.pipeline.defaults()` | 读 | `resource.view` |
+| 删除聊天 | `pipeline.delete`<br/>`workspace.pipeline.delete()` | 高危 | `resource.manage` |
+| 获取聊天扩展 | `pipeline.extensions.get`<br/>`workspace.pipeline.extensions.get()` | 读 | `resource.view` |
+| 更新聊天扩展 | `pipeline.extensions.update`<br/>`workspace.pipeline.extensions.update()` | 写 | `resource.manage` |
+| 聊天详情 | `pipeline.get`<br/>`workspace.pipeline.get()` | 读 | `resource.view` |
+| 聊天列表 | `pipeline.list`<br/>`workspace.pipeline.list()` | 读 | `resource.view` |
+| 聊天元数据 | `pipeline.metadata`<br/>`workspace.pipeline.metadata()` | 读 | `resource.view` |
+| 执行聊天 | `pipeline.run`<br/>`workspace.pipeline.run()` | 写 | `runtime.operate` |
+| 更新聊天 | `pipeline.update`<br/>`workspace.pipeline.update()` | 写 | `resource.manage` |
 
 ### 插件 (`plugin`)
 

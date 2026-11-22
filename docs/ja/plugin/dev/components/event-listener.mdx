@@ -3,10 +3,10 @@ title: "コンポーネント: イベントリスナー"
 ---
 
 <Info>
-このコンポーネントはパイプラインの処理を拡張します。メッセージ受信やメンバー参加などの Bot イベントを処理する場合は、[イベントプロセッサー](/ja/plugin/dev/components/runner)を参照してください。
+このコンポーネントはボットのメッセージライフサイクルにフックし、チャット、Agent、プラグインコマンドのいずれにも適用されます。プラグインはボットで有効にする必要があります。メッセージ受信やメンバー参加などの Bot イベントを単独で（ルートの処理先として）処理する場合は、[イベントプロセッサー](/ja/plugin/dev/components/runner)を参照してください。
 </Info>
 
-LangBotのパイプラインは実行時にイベントを生成し、プラグインがフックして処理できるようにします。各プラグインは1つのイベントリスナー(components/event_listener/default.yaml)のみを持つことができますが、その中で任意の数のイベントを登録できます。
+LangBot のボットはメッセージ処理の各段階でイベントを生成し、プラグインがフックして処理できるようにします。詳細は[メッセージライフサイクルイベント](/ja/plugin/dev/apis/pipeline-events)を参照してください。各プラグインは1つのイベントリスナー(components/event_listener/default.yaml)のみを持つことができますが、その中で任意の数のイベントを登録できます。
 
 ## イベントリスナーコンポーネントの追加
 
@@ -114,6 +114,6 @@ class EventContext(pydantic.BaseModel):
 
 イベントリスナーの基本情報を学びました。次は:
 
-- [パイプラインイベント](/ja/plugin/dev/apis/pipeline-events)でイベントの種類とフィールドを確認します。
+- [メッセージライフサイクルイベント](/ja/plugin/dev/apis/pipeline-events)でイベントの種類、フィールド、各イベントが有効な処理先を確認します。
 - 完全な [`EventContext` API リファレンス](/ja/plugin/dev/apis/agent-run#eventlistener)を確認します。
 - [LangBot API](/ja/plugin/dev/apis/common)を確認します。

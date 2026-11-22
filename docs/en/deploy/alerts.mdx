@@ -1,6 +1,6 @@
 ---
 title: "Alerts"
-description: "Notify admins by email (your SMTP/Resend or the official LangBot Space sender) and webhooks when bots, Pipelines or models keep failing."
+description: "Notify admins by email (your SMTP/Resend or the official LangBot Space sender) and webhooks when bots, Chats or models keep failing."
 ---
 
 LangBot watches each Workspace for repeated failures. When a threshold is reached it opens an alert and notifies the Workspace owners and admins. Configure it in **Settings → Alerts** (owner or admin role).
@@ -11,7 +11,7 @@ Alerts are **off by default**, LangBot Cloud included: nothing is evaluated or s
 
 | Rule | Default trigger | Recovery |
 | --- | --- | --- |
-| Pipeline failures | At least 5 failures of one Pipeline within 10 minutes | No new failure for 15 minutes |
+| Chat failures | At least 5 failures of one Chat within 10 minutes | No new failure for 15 minutes |
 | Model call failures | At least 10 failures of one model within 10 minutes | No new failure for 15 minutes |
 | Bot stopped with an error | A platform adapter exits with an error (fires on the first one) | The bot starts again |
 

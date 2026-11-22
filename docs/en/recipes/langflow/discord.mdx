@@ -3,7 +3,7 @@ title: "Connect Langflow to Discord"
 description: "Step-by-step guide to running your Langflow app as a Discord bot with LangBot: Langflow setup, bot credentials, networking, testing and troubleshooting."
 ---
 
-This recipe puts your Langflow app behind a Discord bot. LangBot receives messages from Discord, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+This recipe puts your Langflow app behind a Discord bot. LangBot receives messages from Discord, runs them through a Chat, and sends the answer back, so you do not write any platform code.
 
 Langflow builds agents and flows with a drag-and-drop editor. LangBot runs a flow through the Langflow API for every message.
 
@@ -23,9 +23,9 @@ Discord bots connect out to the Discord gateway, so no public webhook URL is req
 2. Create an API key under **Settings**.
 3. Copy the **Flow ID** from **Share → API access**.
 
-## 2. Create a pipeline
+## 2. Create a Chat
 
-Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows. If the runner is not listed, install the official runner plugin from **Plugins** or the [LangBot Space marketplace](https://space.langbot.app/market).
+Open **Chats** in the LangBot WebUI, create a Chat (or edit the default one) and set **AI** as follows. If the runner is not listed, install the official runner plugin from **Plugins** or the [LangBot Space marketplace](https://space.langbot.app/market).
 
 | Field | Value |
 | --- | --- |
@@ -41,7 +41,7 @@ Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default 
 
 ## 4. Bind and test
 
-Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+Open the bot, select the Chat you created, save and make sure the bot is enabled.
 
 Send a message that matches the trigger rules in a server channel, then try a DM from the bot's profile.
 
@@ -50,7 +50,7 @@ Send a message that matches the trigger rules in a server channel, then try a DM
 - Connection refused: `http://localhost:7860` only works when Langflow runs on the same host and network namespace as LangBot.
 - Gateway login fails: check the current token and that both privileged intents are enabled and saved.
 - Discord limits message length, so long streaming replies arrive as several messages.
-- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+- Check **Monitoring** in the WebUI: every message, Chat run and error is recorded there.
 
 ## FAQ
 
@@ -64,7 +64,7 @@ Yes. Enable streaming on the bot; the AI back end must also stream. See the [pla
 
 ### Can the same Langflow setup serve other platforms too?
 
-Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+Yes. A Chat can be bound to many bots, so one configuration can answer on several platforms at once.
 
 ## Related guides
 

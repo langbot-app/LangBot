@@ -1,6 +1,6 @@
 ---
 title: "LangBot で DeerFlow を使用する"
-description: "DeerFlow を LangBot と組み合わせ、AI ボットの会話パイプラインを構築。"
+description: "DeerFlow を LangBot と組み合わせ、AI ボットのチャットを構築。"
 ---
 
 [DeerFlow](https://github.com/bytedance/deer-flow) は、ByteDance がオープンソース化した大規模言語モデル（LLM）ベースの AI エージェントフレームワークであり、深度研究、情報検索、マルチエージェントの協調オーケストレーションに焦点を当てています。  
@@ -8,7 +8,7 @@ description: "DeerFlow を LangBot と組み合わせ、AI ボットの会話パ
 
 現在の統合は DeerFlow **2.0 `main` ブランチ**を対象としています。DeerFlow 公式は元の Deep Research フレームワークを `main-1.x` ブランチに移管して継続的にメンテナンスしています。そのため、バージョン 2.0 を使用している場合は、`main` ブランチの公式ドキュメントとバックエンド API を参照してください。
 
-LangBot は現在、DeerFlow を `AI 機能` ランナーとして会話パイプラインに接続し、深度研究とエージェントオーケストレーション機能を提供します。
+LangBot は現在、DeerFlow を `AI 機能` ランナーとしてチャットに接続し、深度研究とエージェントオーケストレーション機能を提供します。
 
 ## DeerFlow のデプロイ
 
@@ -30,7 +30,7 @@ LangBot は現在、DeerFlow を `AI 機能` ランナーとして会話パイ�
 
 ## LangBot の設定
 
-LangBot WebUI ページを開き、新しいパイプラインを追加するか、既存のパイプラインで `AI 機能` 設定ページに切り替えます。
+LangBot WebUI ページを開き、新しいチャットを追加するか、既存のチャットで `AI 機能` 設定ページに切り替えます。
 
 ![deerflow](/images/zh/deploy/pipelines/deerflow/creat_langbot_pipeline.png)
 
@@ -54,7 +54,7 @@ LangBot WebUI ページを開き、新しいパイプラインを追加するか
 
 </Info>
 
-完了後、パイプラインで DeerFlow を使用して深度研究とインテリジェント Q&A を完了できます。
+完了後、チャットで DeerFlow を使用して深度研究とインテリジェント Q&A を完了できます。
 
 ## よくある質問
 
@@ -63,4 +63,4 @@ LangBot WebUI ページを開き、新しいパイプラインを追加するか
 - **`DeerFlow API` を選択できない**：現在の LangBot バージョンがこのランナーをサポートしているか確認してください。サポートされていない場合は、DeerFlow ランナーを含むバージョンにアップグレードしてください。
 - **DeerFlow 設定項目の意味**：ランタイムパラメータと機能に関する DeerFlow 公式ドキュメントを参照するか、DeerFlow コミュニティに推奨設定を相談してください。
 
-パイプラインの一般的な設定の詳細については、[会話パイプライン設定の変更](/ja/usage/pipelines/readme) を参照してください。
+チャットの一般的な設定の詳細については、[チャット設定の変更](/ja/usage/pipelines/readme) を参照してください。

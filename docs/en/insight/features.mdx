@@ -19,7 +19,7 @@ LangBot is an **open-source, production-grade**, LLM-native instant messaging bo
 - **MCP Protocol** — acts as a client into the Model Context Protocol tool ecosystem, supporting both Stdio and HTTP transports.
 - **Web Management Panel** — configure, manage and monitor bots visually in the browser, no manual config editing.
 - **Production-grade Plugin System** — hundreds of community plugins on a cross-process, event-driven architecture that's safe and hot-pluggable.
-- **Multi-pipeline Architecture** — run multiple pipelines per instance so different bots serve different scenarios, with access control, rate limiting, sensitive-word filtering and comprehensive monitoring.
+- **Multiple Chats with message policies** — run multiple Chats and Agents per instance so different bots serve different scenarios; each bot's message policy adds access control, rate limiting and sensitive-word filtering, with comprehensive monitoring.
 
 ## Instant Messaging Platform Support
 
@@ -129,7 +129,7 @@ LangBot offers a complete extension surface for secondary development and enterp
 - **HTTP Service API**: access LangBot's entities through HTTP interfaces with API-key authentication, for easy integration with existing systems.
 - **Outgoing Webhook**: push LangBot's internal events to external systems in real time, enabling event-driven automation.
 - **Production-grade Plugin System**: built on cross-process communication and async technology, supporting various component extensions — safe, stable and hot-pluggable; hundreds of community plugins install in one click from the [extension marketplace](https://space.langbot.app).
-- **Web Management Panel**: do all your bot, model, pipeline, knowledge-base and plugin configuration and monitoring visually.
+- **Web Management Panel**: do all your bot, model, Chat, knowledge-base and plugin configuration and monitoring visually.
 
 ## Deployment Options
 
@@ -143,11 +143,11 @@ See the [deployment docs](/en/deploy/langbot/kubernetes) and [quick start](/en/i
 
 ## Case Screenshots
 
-![LangBot bot configuration page: bind a web page bot to a pipeline in the web dashboard](/images/zh/insight/features/bot-page.png)
+![LangBot bot configuration page: route a web page bot's messages to a Chat in the web dashboard](/images/zh/insight/features/bot-page.png)
 
 ![LangBot model configuration: connect any OpenAI / Anthropic API-compatible LLM such as OpenAI or Anthropic](/images/zh/insight/features/create-model.png)
 
-![LangBot pipeline AI configuration: choose the built-in Agent runner and primary model](/images/zh/insight/features/edit-pipeline.png)
+![LangBot Chat AI configuration: choose the built-in Agent runner and primary model](/images/zh/insight/features/edit-pipeline.png)
 
 ![LangBot extension marketplace: one-click install for hundreds of community plugins and MCP tools](/images/zh/insight/features/plugin-market.png)
 

@@ -7,7 +7,7 @@ title: "LangBot API"
 リトライ、タイムアウト、数値思考予算、prompt caching、ヘッダー、ストリーム終了は [LLM リクエスト設定](/ja/plugin/dev/apis/llm-requests)を参照してください。
 
 <Info>
-このページのほとんどのメソッドには、プラグインが `manifest.yaml` で宣言し、インストール後にワークスペースのメンバーが許可した機能が必要です。たとえば `invoke_llm` には `models.invoke`、`send_message` には `bot.message.send` が必要です。許可のない呼び出しは `permission_denied` になります。各メソッドに必要な機能は[プラグインの権限](/ja/plugin/dev/permissions#機能)を参照してください。Agent、パイプライン、ボットなどのワークスペースリソースを管理するには[ワークスペース API](/ja/plugin/dev/apis/workspace) を使います。
+このページのほとんどのメソッドには、プラグインが `manifest.yaml` で宣言し、インストール後にワークスペースのメンバーが許可した機能が必要です。たとえば `invoke_llm` には `models.invoke`、`send_message` には `bot.message.send` が必要です。許可のない呼び出しは `permission_denied` になります。各メソッドに必要な機能は[プラグインの権限](/ja/plugin/dev/permissions#機能)を参照してください。Agent、チャット、ボットなどのワークスペースリソースを管理するには[ワークスペース API](/ja/plugin/dev/apis/workspace) を使います。
 </Info>
 
 ## LangBot API
@@ -412,7 +412,7 @@ file_bytes = await self.plugin.get_config_file("key")
 
 ## ナレッジベース API
 
-これらのAPIは通常のコンポーネントから`self.plugin`経由でアクセスでき、パイプライン制限なしにLangBotインスタンス内のすべてのナレッジベースの一覧取得と検索が可能です。
+これらのAPIは通常のコンポーネントから`self.plugin`経由でアクセスでき、チャットの制限なしにLangBotインスタンス内のすべてのナレッジベースの一覧取得と検索が可能です。
 
 ### すべてのナレッジベースの一覧取得
 
@@ -470,7 +470,7 @@ for entry in results:
 ```
 
 <Tip>
-これらのAPIは`query_id`を必要とせず、通常のコンポーネント（Toolコンポーネントを含む）で使用できます。現在のパイプライン設定に制限されることなく、すべてのナレッジベースにアクセスできます。
+これらのAPIは`query_id`を必要とせず、通常のコンポーネント（Toolコンポーネントを含む）で使用できます。現在のチャット設定に制限されることなく、すべてのナレッジベースにアクセスできます。
 </Tip>
 
 ## RAG API

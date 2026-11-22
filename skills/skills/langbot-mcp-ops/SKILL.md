@@ -1,6 +1,6 @@
 ---
 name: langbot-mcp-ops
-description: Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, agents, pipelines, models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (web-UI lbk_ keys and the config.yaml global key), the tool surface, and client configuration. Triggers on "langbot mcp", "manage langbot via mcp", "langbot /mcp", "langbot mcp server".
+description: Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, agents, Chats (pipelines), models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (web-UI lbk_ keys and the config.yaml global key), the tool surface, and client configuration. Triggers on "langbot mcp", "manage langbot via mcp", "langbot /mcp", "langbot mcp server".
 ---
 
 # LangBot MCP Operations
@@ -13,7 +13,15 @@ are not necessarily the catalog operation IDs.
 
 ## Endpoint
 
-`create_bot` and `update_bot` accept `bot_data.message_policy.plugins`, for example `{"enable_all":false,"plugins":[{"author":"example","name":"assistant"}]}`. Selection applies to commands and listeners; use `event_bindings[].policy.plugins` for a route override. `list_bot_plugin_registrations` and `GET /api/v1/platform/bots/<uuid>/plugin-registrations` optionally take `route_id`; by default they list only plugins enabled there, and `include_disabled` (HTTP `?include_disabled=1`) lists every installed plugin. Each plugin's `event_processors` maps hook names to `messaging`, `agent` or `command`; `plugins: null` means the Runtime cannot report registrations.
+### Naming, message policy and plugin enablement
+
+The WebUI calls the pipeline processor **Chat** (zh 聊天). Tool names, HTTP paths, fields (`pipeline_uuid`, `target_type: "pipeline"`) and the `pipeline` processor kind keep their old identifiers.
+
+`bot_data.message_policy` holds the bot-level message policy: `trigger` (group response rules, access control, ignore rules, message aggregation), `safety` (content filter, rate limit), `output` (long text, forced delay, `at-sender`, `quote-origin`, exception handling and hint texts) and `plugins`. It applies to `message.received` on every route: Chat, Agent and plugin commands. Each `event_bindings[]` item may carry a `policy` override with the same shape. On `update_bot`, an omitted `policy` keeps the stored override; send `"policy": null` to remove it. HTTP `GET /api/v1/platform/bots/_/message-policy/metadata` (no MCP tool) returns the form schema plus `default` (new bots) and `neutral` (admit everything, change nothing) values. Chat configs no longer hold `trigger`/`safety` or the general `output` items; old clients that send them are accepted and the keys are ignored.
+
+`message_policy.plugins` enables plugins on the bot, for example `{"enable_all":false,"plugins":[{"author":"example","name":"assistant"}]}`. Enabling a plugin enables both its commands and its EventListener hooks (`*MessageReceived`, `*NormalMessageReceived`, `*CommandSent`, `NormalMessageResponded`, `PromptPreProcessing`, platform notifications such as `MessageDeleted`). Hooks are dispatched in list order. Use `event_bindings[].policy.plugins` for a route override; send `"plugins": null` inside a route policy to clear it. A Chat's own plugin extension list only authorizes AI-callable tools. `list_bot_plugin_registrations` and `GET /api/v1/platform/bots/<uuid>/plugin-registrations` optionally take `route_id`; by default they list only plugins enabled there, and `include_disabled` (HTTP `?include_disabled=1`) lists every installed plugin. Each plugin's `event_processors` maps hook names to `messaging` (Chat), `agent` or `command`; `plugins: null` means the Runtime cannot report registrations. `PromptPreProcessing` applies only to Chats, and `NormalMessageResponded` only observes streamed replies.
+
+Route diagnostics (`list_bot_event_route_statuses`, HTTP `POST /api/v1/platform/bots/<uuid>/event-routes/dry-run`) report policy drops with `failure_code: "message_policy"` and a reason such as `route:r1: safety.rate-limit`.
 
 ```
 http://<langbot-host>:5300/mcp
@@ -145,8 +153,9 @@ already have a default pipeline.
 
 ## How to use
 
-Pipeline plugin extension switches authorize only EventListener, Tool and Command
-components. Select the Runner independently in AI settings. An empty extension
+Chat (pipeline) plugin extension switches authorize only the AI-callable Tool
+components; EventListener hooks and Commands are enabled on the bot through
+`message_policy.plugins`. Select the Runner independently in AI settings. An empty extension
 allowlist does not prevent saving, copying or running that Runner. Never enable
 all plugins or add its plugin to the allowlist as a Runner workaround: that also
 authorizes its other components. The Runner plugin must still be installed and
@@ -225,7 +234,7 @@ that full default config. Configure an authorized model before testing replies.
 Explicit routes on create are preserved; `update_bot` never automatically
 replaces manual routes, including an intentionally empty list. The WebUI message
 template uses the same private/group conditions and preserves existing routes
-when applied repeatedly. Unmentioned group messages do not enter the Pipeline.
+when applied repeatedly. Unmentioned group messages do not enter the Chat.
 An existing broad route can still match first; inspect route order and diagnostics
 before changing a member's configuration.
 
@@ -245,7 +254,7 @@ route from executing. Installation alone never activates a handler. Reusing an
 instance shares its configuration and runtime state. Use a separate instance for
 independent settings. Optional plugin behavior belongs in the Runner config schema.
 `debug_agent` accepts the complete typed event in `payload.data` for this kind.
-Legacy EventListener plugins remain in the Pipeline lifecycle.
+EventListener plugins are message lifecycle hooks on the bot and are enabled through `message_policy.plugins`; they fire for Chat, Agent and command routes alike (see above).
 
 ## Command processors
 
@@ -270,7 +279,12 @@ unchanged. Create several instances of one plugin for different settings and bin
 one per bot through `command_settings.processors` (`[{"processor_uuid", "enabled"}]`,
 priority order). Bot-level commands only react to `message.received`; a message whose
 first word after a bot prefix equals a registered command name is handled by that
-command and skips plugin processors, event routes and the Pipeline.
+command and skips plugin processors and the Chat or Agent. Only plugins enabled in
+`message_policy.plugins` match; an enabled plugin without a command processor uses its
+default command config, and a processor binding with `enabled: false` turns that
+plugin's commands off. Commands use the policy of the route the message would otherwise
+match (bot default when none), fire `*MessageReceived` and then `*CommandSent`, and can
+call `context.reply()` because the entry Query is registered.
 
 Every command execution, from a bot or from debugging, is recorded as a run of its
 command processor: `list_processor_runs` lists them and `get_processor_run_events`
@@ -334,7 +348,7 @@ bot/pipeline/time filters; execution filters apply to the other records.
 `/api/v1/workspaces/current/language` (PUT body: `{"language":"ja_JP"}`).
 The API key's Workspace remains authoritative. The setting controls new backend
 messages and default bot notices, independently of personal UI language.
-Pipeline `output.misc` hint fields override defaults; empty values inherit this
+Message policy `output.misc` hint fields (and the Chat AI-specific hints) override defaults; empty values inherit this
 setting. Existing custom text and historical logs are not rewritten.
 
 ### Workspace default LLM model

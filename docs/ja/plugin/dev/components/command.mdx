@@ -2,7 +2,7 @@
 title: "コンポーネント: Command"
 ---
 
-Commandコンポーネントは、`!`(または他の設定されたプレフィックス)で始まるユーザーコマンドメッセージによってトリガーされます。`!help`コマンドをトリガーする例を次に示します:
+Command コンポーネントは、コマンドプレフィックス（ボットの「プラグインコマンド」で設定、既定は `/`）で始まるユーザーメッセージによってトリガーされます。コマンドは**ボット**に属し、ボット（またはメッセージが一致するルート）で有効なプラグインのコマンドだけが一致します。コマンドをトリガーする例を次に示します:
 
 <img width="600" src="/images/zh/plugin/dev/components/command_use.png" />
 
@@ -52,6 +52,33 @@ execution:
     path: info.py  # コマンドハンドラ、変更しないでください
     attr: Info  # コマンドハンドラクラス名、info.pyのクラス名と一致
 ```
+
+## コマンドの一致と適用
+
+- コマンドは `message.received` にのみ適用され、「プレフィックス + 登録済みコマンド名」で**ルートのルールより先に**照合されます。一致したコマンドはそのまま実行され、チャット、Agent、プラグイン処理には渡されません。
+- コマンドには、そのメッセージが本来一致するルートのメッセージポリシー（グループ応答ルール、アクセス制御、レート制限、コンテンツフィルタ、長文、@メンション、引用）が適用されます。一致するルートがない場合はボットの既定ポリシーが使われます。
+- コマンドメッセージも `*MessageReceived` を発火します。受付後・実行前に `*CommandSent` が発火し、プラグインでインターセプトできます。[メッセージライフサイクルイベント](/ja/plugin/dev/apis/pipeline-events)を参照してください。
+- コマンド実行中も `context.reply()` や `get_bot_uuid()` などクエリに依存する API を使えます。
+- コマンドはメッセージ集約の対象外です。`/stop` は引き続き進行中の AI 返信を停止できます。
+
+## コマンド設定
+
+コマンドはマニフェストの `spec.config` で設定フォームを宣言できます。形式は Runner の `spec.config` と同じです。
+
+```yaml
+spec:
+  config:
+    - name: style
+      type: string
+      label:
+        en_US: Style
+        zh_Hans: 风格
+      default: plain
+```
+
+ユーザーは処理ページで**コマンド処理**（プラグインを選択）を作成し、そのプラグインの各コマンドの設定を入力します。同じプラグインで複数のコマンド処理を作り、別々のボットに割り当てられます。実行時は `context.config` から現在のボットに割り当てられたインスタンスの設定を読み取り、未入力の項目は `default` を使います。コマンド処理を作らずにボットでプラグインを有効にした場合は既定値が使われます。
+
+`spec.config` を宣言していないコマンドは変更不要です。コマンド処理を作成すればそのまま使え、`context.config` は空の辞書になります。プラグイン単位の設定は引き続き `self.get_plugin_config()` で読み取れます。
 
 ## プラグイン処理
 
@@ -217,6 +244,31 @@ yield CommandReturn(
 - installation 単位でプロセス内キャッシュを保持する場合は、`on_installation_revoked(binding)` で解放してください。
 
 完全な仕様は[認証プラグインと共有実行](/ja/plugin/certified-plugins)を参照してください。
+
+## プラットフォームのコマンドメニュー
+
+ボットの「プラグインコマンド」で「プラットフォームに登録」をオンにし、有効なコマンド処理が提供するコマンドを選びます。
+設定を保存したら「今すぐ同期」をクリックできます。登録はプラットフォーム側のすべてのコマンド（管理画面で手動設定したものを含む）を上書きします。
+オフにすると、それまで管理していたコマンド一覧を消去します。現在このパネルは Telegram と Discord でのみ表示されます。
+
+同名のコマンドは処理の割り当て順で重複を除き、先頭のプラグインを優先します。説明はマニフェストの `metadata.description` から
+Workspace のメッセージ言語で選び、対応していれば多言語版も登録します。プラットフォームの制限を満たさないコマンドは登録されず、
+画面に理由が表示されます。Telegram は最大 100 件、名前は `[a-z0-9_]{1,32}`、説明は 1〜256 文字です。
+Discord は最大 100 件のグローバルなチャット入力コマンドで、名前は Unicode の命名規則に従い 1〜32 文字、
+説明は 1〜100 文字、各コマンドに任意の文字列引数 `args` が 1 つ付きます。
+
+Telegram は引き続きテキストメッセージで実行されるため、ボットのプレフィックスに `/` を含める必要があります。Discord はまずインタラクションを遅延応答し、
+`message.received` に変換してプレフィックスの検証を省略し、返信はインタラクションの followup で送ります。ほかのイベント種別には影響しません。
+
+ボットの起動、設定の保存、プラグインの変更時に自動で同期し、内容が変わっていなければプラットフォームへの書き込みを省略します。
+`GET /api/v1/platform/bots/{uuid}` は `platform_command_sync` とフィルタの診断を返します。
+手動同期は `POST /api/v1/bots/{uuid}/platform-commands/sync`（`resource.manage` が必要）で、
+MCP ツール `sync_bot_platform_commands` に対応します。現時点では Telegram の既定スコープと Discord のグローバルスコープを使います。
+
+プラットフォームの制限は [Telegram BotCommand](https://core.telegram.org/bots/api#botcommand)、
+[setMyCommands](https://core.telegram.org/bots/api#setmycommands)、
+[Discord Application Commands](https://docs.discord.com/developers/interactions/application-commands)、
+[インタラクション応答](https://docs.discord.com/developers/interactions/receiving-and-responding)に従います。
 
 ## 次のステップ
 

@@ -3,10 +3,10 @@ title: "Component: Event Listener"
 ---
 
 <Info>
-This component extends Pipeline processing steps. To handle Bot events such as incoming messages and new group members, see [Event Processor](/en/plugin/dev/components/runner).
+This component hooks into the bot message lifecycle and applies to Chats, Agents and plugin commands alike; the plugin must be enabled on the bot. To handle bot events such as incoming messages and new group members on their own (as the processor of a route), see [Event Processor](/en/plugin/dev/components/runner).
 </Info>
 
-LangBot's pipeline generates events during runtime for plugins to hook into and process. Each plugin can only have one event listener (components/event_listener/default.yaml), but can register any number of events within it.
+LangBot bots emit events at each stage of handling a message for plugins to hook into and process; see [Message Lifecycle Events](/en/plugin/dev/apis/pipeline-events). Each plugin can only have one event listener (components/event_listener/default.yaml), but can register any number of events within it.
 
 ## Adding Event Listener Component
 
@@ -114,6 +114,6 @@ See [Certified plugins and shared runtime](/en/plugin/certified-plugins) for the
 
 You have learned the basic information about event listeners. Next, you can:
 
-- See [Pipeline Events](/en/plugin/dev/apis/pipeline-events) for event types and fields.
+- See [Message Lifecycle Events](/en/plugin/dev/apis/pipeline-events) for event types, fields, and which processors each event applies to.
 - See the complete [`EventContext` API reference](/en/plugin/dev/apis/agent-run#eventlistener).
 - Check out [Plugin Common APIs](/en/plugin/dev/apis/common)

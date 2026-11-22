@@ -23,7 +23,7 @@ LangBot 支持调用来自 MCP 服务器的工具。添加 MCP 后，启用了�
 </Note>
 
 <Note>
-MCP 工具需要流水线使用**内置 Agent**，并选择**已开启工具使用能力**的模型——见[模型](../models/readme)。Dify、n8n、Langflow、Coze 等外部运行器使用各自平台的工具机制。
+MCP 工具需要聊天使用**内置 Agent**，并选择**已开启工具使用能力**的模型——见[模型](../models/readme)。Dify、n8n、Langflow、Coze 等外部运行器使用各自平台的工具机制。
 </Note>
 
 ## 安装 MCP 服务器
@@ -48,14 +48,14 @@ MCP 工具需要流水线使用**内置 Agent**，并选择**已开启工具使�
 
 <img width="400px" src="/images/zh/deploy/mcp/mcp05.png" alt="MCP 服务器详情" />
 
-## 在流水线启用
+## 在聊天中启用
 
-MCP 服务器添加后，还要在流水线扩展配置里决定 Agent 能看到哪些：
+MCP 服务器添加后，还要在聊天的扩展配置里决定 Agent 能看到哪些：
 
 - 开启"启用所有 MCP Server"，或
 - 只绑定指定 MCP Server
 
-未绑定的 MCP 工具不会进入该流水线的工具列表。
+未绑定的 MCP 工具不会进入该聊天的工具列表。
 
 ## stdio MCP 高级配置
 
@@ -118,4 +118,4 @@ stdio MCP 在 Box 中运行，依赖安装和进程启动受 sandbox profile、�
 | stdio MCP 一直连接中 | Box Runtime 是否可用，`startup_timeout_sec` 是否过短 |
 | 依赖安装失败 | sandbox 是否允许网络，依赖文件是否正确 |
 | 本地文件无法访问 | `host_path` 是否存在，是否在 `allowed_mount_roots` 内 |
-| Agent 看不到 MCP 工具 | 流水线是否使用内置 Agent、模型是否启用工具使用能力、MCP 是否在流水线中绑定 |
+| Agent 看不到 MCP 工具 | 聊天是否使用内置 Agent、模型是否启用工具使用能力、MCP 是否在聊天中绑定 |

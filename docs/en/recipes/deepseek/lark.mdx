@@ -3,7 +3,7 @@ title: "Build a Lark (Feishu) AI Bot with DeepSeek"
 description: "Step-by-step guide to running a DeepSeek-powered AI bot on Lark (Feishu) with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
 ---
 
-This recipe puts a DeepSeek model behind a Lark (Feishu) bot. LangBot receives messages from Lark (Feishu), runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+This recipe puts a DeepSeek model behind a Lark (Feishu) bot. LangBot receives messages from Lark (Feishu), runs them through a Chat, and sends the answer back, so you do not write any platform code.
 
 Use DeepSeek models directly with LangBot's built-in Agent: no separate agent platform needed, with optional knowledge bases, MCP tools and Skills.
 
@@ -24,9 +24,9 @@ The default WebSocket long connection needs no public IP. Where long connection 
 3. Enable **Tool Use** if the model supports function calling; MCP tools, Skills and the sandbox need it.
 4. Typical model IDs are `deepseek-chat` and `deepseek-reasoner`; check DeepSeek's documentation for the current list.
 
-## 2. Create a pipeline
+## 2. Create a Chat
 
-Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+Open **Chats** in the LangBot WebUI, create a Chat (or edit the default one) and set **AI** as follows.
 
 | Field | Value |
 | --- | --- |
@@ -42,7 +42,7 @@ Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default 
 
 ## 4. Bind and test
 
-Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+Open the bot, select the Chat you created, save and make sure the bot is enabled.
 
 Search for the bot in Feishu/Lark, send it a direct message, then add it to a group and mention it.
 
@@ -50,7 +50,7 @@ Search for the bot in Feishu/Lark, send it a direct message, then add it to a gr
 
 - 401 errors: the API key is wrong or has no balance in the DeepSeek console.
 - No messages arrive: confirm the app version is published and the event subscription uses the same mode (long connection or webhook) as LangBot.
-- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+- Check **Monitoring** in the WebUI: every message, Chat run and error is recorded there.
 
 ## FAQ
 
@@ -64,7 +64,7 @@ Yes. Enable streaming on the bot; the AI back end must also stream. See the [pla
 
 ### Can the same DeepSeek setup serve other platforms too?
 
-Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+Yes. A Chat can be bound to many bots, so one configuration can answer on several platforms at once.
 
 ## Related guides
 

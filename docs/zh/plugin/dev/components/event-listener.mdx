@@ -3,10 +3,10 @@ title: "组件：事件监听器"
 ---
 
 <Info>
-本组件用于扩展流水线的处理流程。如果您需要处理机器人收到的消息、成员入群等事件，请参阅[事件处理器](/zh/plugin/dev/components/runner)。
+本组件在机器人的消息生命周期中挂接钩子，对聊天、Agent 和插件命令都生效，插件需要在机器人上启用。如果您需要独立处理机器人收到的消息、成员入群等事件（作为路由的处理器），请参阅[事件处理器](/zh/plugin/dev/components/runner)。
 </Info>
 
-LangBot 的流水线在运行期间会产生一些事件，供插件 Hook 并处理。每个插件中只允许添加一个事件监听器(components/event_listener/default.yaml)，但在其中可以注册任意数量的事件。
+LangBot 的机器人在处理消息的各个阶段会产生事件，供插件 Hook 并处理，详见[消息生命周期事件](/zh/plugin/dev/apis/pipeline-events)。每个插件中只允许添加一个事件监听器(components/event_listener/default.yaml)，但在其中可以注册任意数量的事件。
 
 ## 添加事件监听器组件
 
@@ -114,6 +114,6 @@ class EventContext(pydantic.BaseModel):
 
 您已经了解了事件监听器的基本信息，接下来可以：
 
-- 在[流水线事件](/zh/plugin/dev/apis/pipeline-events)中查看可监听的事件及字段
+- 在[消息生命周期事件](/zh/plugin/dev/apis/pipeline-events)中查看可监听的事件、字段及各事件在哪些处理器上生效
 - 查看完整的 [`EventContext` 上下文 API](/zh/plugin/dev/apis/agent-run#eventlistener)
 - 查看 [LangBot API](/zh/plugin/dev/apis/common)
