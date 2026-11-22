@@ -21,6 +21,7 @@ from urllib.parse import urlsplit
 from ..request_policy import current_call, RequestPolicy, error_metadata
 
 import litellm
+import litellm.exceptions as litellm_exceptions
 from litellm import acompletion, aembedding, arerank, atranscription, aspeech
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
 from litellm.secret_managers.main import get_secret, get_secret_bool
@@ -1365,6 +1366,20 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             return True
         return bool(cls._QUOTA_MESSAGE_PATTERN.search(text or ''))
 
+    @staticmethod
+    def _is_stream_eof_without_finish(e: Exception) -> bool:
+        """True when LiteLLM gave up only because no finish_reason arrived.
+
+        Newer LiteLLM raises ``MidStreamFallbackError`` when a stream closes
+        after content without a finish_reason. Those bytes are already
+        delivered, so a caller that does not need the marker has a complete
+        answer and must not see it as a failed request.
+        """
+        cls = getattr(litellm_exceptions, 'MidStreamFallbackError', None)
+        if cls is None or not isinstance(e, cls):
+            return False
+        return not getattr(e, 'is_pre_first_chunk', False)
+
     def _handle_litellm_error(self, e: Exception) -> None:
         """Convert LiteLLM exceptions to RequesterError. Never returns, always raises."""
         if isinstance(e, errors.RequesterError):
@@ -1761,6 +1776,31 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         raw_content_parts: list[str] = []
         response = None
 
+        async def _finish():
+            """Emit the chunks that close a stream, in the order callers expect."""
+            if raw_content_parts:
+                yield provider_message.MessageChunk(
+                    role=role,
+                    is_final=True,
+                    provider_specific_fields={minimax.RAW_CONTENT_FIELD: ''.join(raw_content_parts)},
+                )
+
+            if reasoning_started and not reasoning_closed:
+                yield provider_message.MessageChunk(
+                    role=role,
+                    content='\n</think>\n',
+                    is_final=True,
+                )
+
+            if think_state is not None:
+                pending_content = think_state.flush()
+                if pending_content:
+                    yield provider_message.MessageChunk(
+                        role=role,
+                        content=pending_content,
+                        is_final=True,
+                    )
+
         async with self._client_args(args) as args:
             try:
                 response = await self._completion(args)
@@ -1882,31 +1922,19 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     yield provider_message.MessageChunk(**chunk_data)
                     chunk_idx += 1
 
-                if raw_content_parts:
-                    yield provider_message.MessageChunk(
-                        role=role,
-                        is_final=True,
-                        provider_specific_fields={minimax.RAW_CONTENT_FIELD: ''.join(raw_content_parts)},
-                    )
-
-                if reasoning_started and not reasoning_closed:
-                    yield provider_message.MessageChunk(
-                        role=role,
-                        content='\n</think>\n',
-                        is_final=True,
-                    )
-
-                if think_state is not None:
-                    pending_content = think_state.flush()
-                    if pending_content:
-                        yield provider_message.MessageChunk(
-                            role=role,
-                            content=pending_content,
-                            is_final=True,
-                        )
+                async for chunk in _finish():
+                    yield chunk
 
             except Exception as e:
-                self._handle_litellm_error(e)
+                # A provider can close the stream after the last content delta
+                # without ever sending a finish_reason. LiteLLM reports that as
+                # a mid-stream transport failure; for the caller it is the end
+                # of a complete answer, so close it out instead of failing.
+                if chunk_idx and self._is_stream_eof_without_finish(e):
+                    async for chunk in _finish():
+                        yield chunk
+                else:
+                    self._handle_litellm_error(e)
 
             finally:
                 # Closing a downstream async generator must release the provider's
