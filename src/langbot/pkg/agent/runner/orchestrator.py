@@ -488,10 +488,8 @@ class AgentRunOrchestrator:
                             yield result_dict
                 finally:
                     self.ap.logger.info(
-                        'agent_runner_timing run_id=%s runner=%s duration_ms=%.3f',
-                        run_id,
-                        descriptor.id,
-                        (time.monotonic() - started) * 1000,
+                        f'agent_runner_timing run_id={run_id} runner={descriptor.id} '
+                        f'duration_ms={(time.monotonic() - started) * 1000:.3f}'
                     )
 
             with trace_mod.stage_scope() as node:
