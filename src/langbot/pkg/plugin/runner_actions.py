@@ -36,6 +36,22 @@ def register(h):
     @h.action(_plugin_runtime_action('RUN_GET', 'run_get'))
     async def run_get(data: dict[str, Any]) -> handler.ActionResponse:
         """Get one Host-owned run record visible to the current run."""
+        timing_started = time.perf_counter()
+        timing: dict[str, float] = {}
+
+        def log_timing() -> None:
+            total_ms = (time.perf_counter() - timing_started) * 1000
+            if total_ms < 100:
+                return
+            h.ap.logger.info(
+                f'run_get_timing target_run_id={data.get("target_run_id") or data.get("run_id")} '
+                f'session_validation_ms={timing.get("session_validation_ms", 0):.3f} '
+                f'store_init_ms={timing.get("store_init_ms", 0):.3f} '
+                f'db_get_ms={timing.get("db_get_ms", 0):.3f} '
+                f'auth_ms={timing.get("auth_ms", 0):.3f} '
+                f'audit_ms={timing.get("audit_ms", 0):.3f} total_ms={total_ms:.3f}'
+            )
+
         run_id = data.get('run_id')
         target_run_id = data.get('target_run_id') or run_id
         caller_plugin_identity = data.get('caller_plugin_identity')
@@ -50,6 +66,7 @@ def register(h):
         if not target_run_id:
             return handler.ActionResponse.error(message='target_run_id is required')
 
+        stage_started = time.perf_counter()
         session, error = await _validate_agent_run_session(
             run_id,
             caller_plugin_identity,
@@ -59,22 +76,30 @@ def register(h):
             allow_persistent_authorization=True,
             admin_permission=AGENT_RUN_ADMIN_PERMISSION,
         )
+        timing['session_validation_ms'] = (time.perf_counter() - stage_started) * 1000
         if error:
             return error
 
         from ..agent.runner.run_ledger_store import RunLedgerStore
 
+        stage_started = time.perf_counter()
         store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        timing['store_init_ms'] = (time.perf_counter() - stage_started) * 1000
 
         try:
+            stage_started = time.perf_counter()
             run = await store.get_run(str(target_run_id))
+            timing['db_get_ms'] = (time.perf_counter() - stage_started) * 1000
             if not run:
                 return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
             if not is_admin:
+                stage_started = time.perf_counter()
                 auth_error = _authorize_target_run(session, run)
+                timing['auth_ms'] = (time.perf_counter() - stage_started) * 1000
                 if auth_error:
                     return auth_error
             if is_admin:
+                stage_started = time.perf_counter()
                 await _record_runner_admin_action(
                     h.ap,
                     store,
@@ -83,8 +108,11 @@ def register(h):
                     permission=AGENT_RUN_ADMIN_PERMISSION,
                     detail={'target_run_id': str(target_run_id)},
                 )
+                timing['audit_ms'] = (time.perf_counter() - stage_started) * 1000
+            log_timing()
             return handler.ActionResponse.success(data=run)
         except Exception as e:
+            log_timing()
             h.ap.logger.error(f'RUN_GET error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Run get error: {e}')
 
