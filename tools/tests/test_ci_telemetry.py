@@ -89,6 +89,32 @@ class CITelemetryPolicyTests(unittest.TestCase):
             self.assertIn('job e2e', errors[0])
             self.assertIn('missing SPACE__DISABLE_TELEMETRY=true', errors[0])
 
+    def test_reusable_workflow_callee_is_checked(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'core-smoke.yml').write_text(
+                'jobs:\n  p0:\n    uses: ./.github/workflows/p0-acceptance.yml\n',
+                encoding='utf-8',
+            )
+            (root / 'p0-acceptance.yml').write_text(
+                'jobs:\n  permissions:\n    run: uv run pytest tests/integration/api\n',
+                encoding='utf-8',
+            )
+            errors = check_workflows(root)
+            self.assertEqual(len(errors), 1)
+            self.assertIn('p0-acceptance.yml job permissions', errors[0])
+
+    def test_missing_reusable_workflow_callee_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'core-smoke.yml').write_text(
+                'jobs:\n  p0:\n    uses: ./.github/workflows/missing.yml\n',
+                encoding='utf-8',
+            )
+            errors = check_workflows(root)
+            self.assertEqual(len(errors), 1)
+            self.assertIn('local workflow missing.yml not found', errors[0])
+
     def test_composite_action_without_flag_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
