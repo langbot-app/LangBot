@@ -480,8 +480,22 @@ class AgentRunOrchestrator:
                     event_log_id=event_log_id,
                 )
 
+            async def timed_runner_results():
+                started = time.monotonic()
+                try:
+                    async with contextlib.aclosing(self.invoker.invoke(descriptor, context)) as results:
+                        async for result_dict in results:
+                            yield result_dict
+                finally:
+                    self.ap.logger.info(
+                        'agent_runner_timing run_id=%s runner=%s duration_ms=%.3f',
+                        run_id,
+                        descriptor.id,
+                        (time.monotonic() - started) * 1000,
+                    )
+
             with trace_mod.stage_scope() as node:
-                async with contextlib.aclosing(self.invoker.invoke(descriptor, context)) as results:
+                async with contextlib.aclosing(timed_runner_results()) as results:
                     async for result_dict in results:
                         result_dict = dict(result_dict)
                         sequence = result_dict.get('sequence')
