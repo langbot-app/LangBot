@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail CI when a service job can start Core without disabling product telemetry."""
+"""Fail CI when a service job/action can start Core without disabling product telemetry."""
 
 from __future__ import annotations
 
@@ -115,9 +115,30 @@ def check_workflows(workflows_root: Path) -> list[str]:
     return violations
 
 
+def check_actions(actions_root: Path) -> list[str]:
+    """Return step-scoped violations for composite actions that start Core."""
+    violations: list[str] = []
+    for action in sorted(actions_root.rglob('action.y*ml')):
+        data = yaml.safe_load(action.read_text(encoding='utf-8')) or {}
+        runs = data.get('runs') if isinstance(data, dict) else None
+        if not isinstance(runs, dict) or runs.get('using') != 'composite':
+            continue
+        steps = runs.get('steps')
+        if not isinstance(steps, list):
+            continue
+        for index, step in enumerate(steps):
+            if not isinstance(step, dict) or not _has_marker(step):
+                continue
+            violation = _check_value(action, f'step {index}', _env(step.get('env')).get(ENV_NAME))
+            if violation:
+                violations.append(violation)
+    return violations
+
+
 def main() -> int:
-    root = Path(__file__).resolve().parents[1] / '.github' / 'workflows'
-    violations = check_workflows(root)
+    root = Path(__file__).resolve().parents[1] / '.github'
+    violations = check_workflows(root / 'workflows')
+    violations.extend(check_actions(root / 'actions'))
     if violations:
         print('\n'.join(violations), file=sys.stderr)
         return 1
