@@ -175,6 +175,10 @@ class BoxService:
         self._reconnect_task: asyncio.Task | None = None
         self._closing = False
         self._available = False
+        # Backend identity is stable for one connected Box Runtime. Avoid a
+        # round-trip for every Runner Box acquisition and clear it on reconnect.
+        self._runtime_backend_info: dict | None = None
+        self._runtime_backend_info_lock = asyncio.Lock()
         self._connector_error: str = ''
         self._reconnecting = False
         # Optional explicit override for shares_filesystem_with_box. None means
@@ -195,6 +199,7 @@ class BoxService:
         return self._cloud_managed
 
     async def initialize(self):
+        self._runtime_backend_info = None
         if not self._enabled:
             # Disabled by config: do NOT connect to a remote runtime, do NOT
             # fork a stdio subprocess. Every consumer of box_service should
@@ -289,6 +294,7 @@ class BoxService:
             return  # Another reconnect loop is already running
         self._reconnecting = True
         self._available = False
+        self._runtime_backend_info = None
         self._connector_error = 'Disconnected from Box runtime'
         self.ap.logger.warning('Box runtime disconnected, sandbox features temporarily disabled.')
         reconnect = self._reconnect_loop(connector)
@@ -317,6 +323,7 @@ class BoxService:
                     if not self._cloud_managed and self.file_transfer_mode != 'network':
                         await self._purge_attachment_dirs()
                     self._available = True
+                    self._runtime_backend_info = None
                     self._connector_error = ''
                     self.ap.logger.info('Box runtime reconnected, sandbox features restored.')
                     return
@@ -1853,6 +1860,7 @@ class BoxService:
             return
         self._closing = True
         self._available = False
+        self._runtime_backend_info = None
         reconnect_task = self._reconnect_task
         self._reconnect_task = None
         if reconnect_task is not None and reconnect_task is not asyncio.current_task():
@@ -1962,14 +1970,24 @@ class BoxService:
             return {'backend': None, 'e2b': {}, 'limits': {}}
         backend = saved['backend']
         backend_info_ms = 0.0
+        backend_cache_hit = False
         if backend is None and self._available:
-            backend_started = time.perf_counter()
-            backend = (await self.client.get_backend_info()).get('name')
-            backend_info_ms = (time.perf_counter() - backend_started) * 1000
+            async with self._runtime_backend_info_lock:
+                if self._runtime_backend_info is None:
+                    backend_started = time.perf_counter()
+                    backend_info = await self.client.get_backend_info()
+                    backend_info_ms = (time.perf_counter() - backend_started) * 1000
+                    if backend_info.get('available') is True and backend_info.get('name'):
+                        self._runtime_backend_info = dict(backend_info)
+                else:
+                    backend_info = self._runtime_backend_info
+                    backend_cache_hit = True
+            backend = backend_info.get('name')
         self.ap.logger.info(
             'box_selection_timing '
             f'workspace_uuid={require_workspace_uuid(context)} '
             f'settings_ms={settings_ms:.3f} backend_info_ms={backend_info_ms:.3f} '
+            f'backend_cache_hit={backend_cache_hit} '
             f'total_ms={(time.perf_counter() - timing_started) * 1000:.3f}'
         )
         return {'backend': backend, 'e2b': saved['e2b'] or {}, 'limits': saved.get('limits') or {}}

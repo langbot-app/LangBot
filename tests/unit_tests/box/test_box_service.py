@@ -6,7 +6,7 @@ import os
 import pathlib
 import tempfile
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -1439,6 +1439,27 @@ async def test_runtime_get_backend_info_when_no_backend():
     info = await runtime.get_backend_info()
     assert info['name'] is None
     assert info['available'] is False
+
+
+@pytest.mark.asyncio
+async def test_workspace_selection_reuses_connected_runtime_backend_info():
+    logger = Mock()
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    client = _InProcessBoxRuntimeClient(logger, runtime)
+    client.get_backend_info = AsyncMock(return_value={'name': 'fake', 'available': True})
+    service = BoxService(make_app(logger), client=client)
+    await service.initialize()
+
+    with patch(
+        'langbot.pkg.box.settings.get_settings',
+        new=AsyncMock(return_value={'backend': None, 'e2b': {}, 'limits': {}}),
+    ):
+        first = await service.resolve_workspace_selection(_CONTEXT)
+        second = await service.resolve_workspace_selection(_CONTEXT)
+
+    assert first['backend'] == second['backend'] == 'fake'
+    client.get_backend_info.assert_awaited_once()
 
 
 @pytest.mark.asyncio
