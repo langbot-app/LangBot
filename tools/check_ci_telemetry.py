@@ -47,11 +47,7 @@ def _has_marker(value: object) -> bool:
 def _service_steps(job: object) -> list[tuple[int, dict[object, object]]]:
     if not isinstance(job, dict) or not isinstance(job.get('steps'), list):
         return []
-    return [
-        (index, step)
-        for index, step in enumerate(job['steps'])
-        if isinstance(step, dict) and _has_marker(step)
-    ]
+    return [(index, step) for index, step in enumerate(job['steps']) if isinstance(step, dict) and _has_marker(step)]
 
 
 def _job_without_steps(job: object) -> object:
