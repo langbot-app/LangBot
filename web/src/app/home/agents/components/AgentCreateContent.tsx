@@ -196,7 +196,7 @@ export default function AgentCreateContent({
                     },
                   }
                 : {}
-            : { config }),
+              : { config }),
         });
         toast.success(t('agents.createSuccess'));
         onCreated(response.uuid);

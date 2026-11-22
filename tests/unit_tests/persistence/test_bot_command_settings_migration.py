@@ -65,6 +65,14 @@ class FakePersistenceMgr:
             return conn.execute(stmt, *args, **kwargs)
 
 
+def _register_all_tables():
+    """Register every entity so foreign keys of bots resolve regardless of test order."""
+    from langbot.pkg.entity import persistence
+    from langbot.pkg.utils import importutil
+
+    importutil.import_modules_in_pkg(persistence)
+
+
 @pytest.mark.asyncio
 async def test_startup_migration_from_yaml_custom_prefix():
     """Startup migration reads custom prefix from instance_config.data['command'], updates bots, removes keys from YAML and records flag."""
@@ -74,6 +82,7 @@ async def test_startup_migration_from_yaml_custom_prefix():
     from langbot.pkg.entity.persistence.bot import Bot
     from langbot.pkg.entity.persistence.metadata import Metadata
 
+    _register_all_tables()
     db_metadata.create_all(engine, tables=[Bot.__table__, Metadata.__table__])
 
     with engine.begin() as conn:
@@ -137,6 +146,7 @@ async def test_startup_migration_does_not_run_second_time_on_restart():
     from langbot.pkg.entity.persistence.bot import Bot
     from langbot.pkg.entity.persistence.metadata import Metadata
 
+    _register_all_tables()
     db_metadata.create_all(engine, tables=[Bot.__table__, Metadata.__table__])
 
     with engine.begin() as conn:
