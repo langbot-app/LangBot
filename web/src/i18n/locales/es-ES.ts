@@ -1082,6 +1082,21 @@ const esES = {
       globallyDisabled: 'Plugin deshabilitado',
       hooksUnknown: 'Hooks desconocidos',
       enablePlugin: 'Habilitar {{plugin}} en este bot',
+      commands: {
+        label: 'Comandos de plugins',
+        hint: 'Solo para mensajes recibidos. Los comandos se evalúan antes que las reglas de ruta y siguen la política de mensajes de la ruta que habría tomado el mensaje. Si varios plugins comparten un nombre de comando, gana el que está más arriba en la lista.',
+      },
+      commandConfig: {
+        button: 'Ajustes de comandos',
+        title: 'Ajustes de comandos de {{plugin}}',
+        description:
+          'Solo se aplica a este bot. Sin cambios, los comandos usan los valores predeterminados del plugin.',
+        custom: 'Ajustes de comandos personalizados',
+        commandsOff: 'Comandos desactivados',
+        useDefaults: 'Restaurar valores predeterminados',
+        saved: 'Ajustes de comandos guardados.',
+        created: 'Ajustes de comandos creados. Guarda el bot para aplicarlos.',
+      },
       processors: {
         messaging: 'Chat',
         agent: 'Agent',
@@ -1136,32 +1151,13 @@ const esES = {
       },
     },
     pluginCommands: {
-      missingProcessor: 'Procesador no disponible',
-      instanceHint: 'Vincula un procesador configurado.',
-      createDefault: 'Crear instancia predeterminada',
-      createDefaultHint: 'Usa los valores predeterminados.',
-      title: 'Vinculaciones de comandos de complementos',
-      description:
-        'Solo se aplica a eventos message.received. Los comandos se comparan antes que las reglas de enrutamiento y usan la política de mensajes de la ruta que habría coincidido. Los comandos de los plugins habilitados funcionan directamente; vincula aquí un procesador de comandos para configurarlos y fijar su prioridad.',
       prefixes: 'Prefijos de comando',
       prefixPlaceholder: 'Ingrese prefijo y presione Enter (ej. / o !)',
       addPrefix: 'Agregar prefijo',
       prefixInvalid:
         'El prefijo no puede estar vacío ni contener espacios en blanco',
       prefixDuplicate: 'El prefijo ya existe',
-      plugins: 'Comandos de complementos vinculados',
-      empty:
-        'No hay procesadores de comandos vinculados; los comandos de los plugins habilitados usan su configuración predeterminada.',
-      addPlugin: 'Agregar complemento',
-      noAvailablePlugins:
-        'No hay complementos disponibles con componentes de comando.',
-      selectPlugins: 'Seleccionar complementos para vincular',
-      dragHint:
-        'Arrastre para reordenar la prioridad (los complementos superiores tienen prioridad)',
-      commandsCount: '{{count}} comandos',
-      noCommands: 'No hay comandos declarados por este complemento',
       overriddenBy: 'Sobrescrito por {{plugin}} (mayor prioridad)',
-      remove: 'Desvincular',
     },
     pluginSubscriptions: {
       incompleteEvents:

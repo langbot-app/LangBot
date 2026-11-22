@@ -1073,6 +1073,21 @@ const jaJP = {
       globallyDisabled: 'プラグイン無効',
       hooksUnknown: 'フック不明',
       enablePlugin: 'このボットで {{plugin}} を有効にする',
+      commands: {
+        label: 'プラグインコマンド',
+        hint: '受信メッセージにのみ適用されます。ルートルールより先に照合され、本来一致するルートのメッセージポリシーに従います。同名のコマンドがある場合は、リストの上にあるプラグインが優先されます。',
+      },
+      commandConfig: {
+        button: 'コマンド設定',
+        title: '{{plugin}} のコマンド設定',
+        description:
+          'このボットにのみ適用されます。変更しない場合はプラグインの既定値を使います。',
+        custom: 'カスタムコマンド設定',
+        commandsOff: 'コマンド停止中',
+        useDefaults: '既定値に戻す',
+        saved: 'コマンド設定を保存しました。',
+        created: 'コマンド設定を作成しました。ボットを保存すると反映されます。',
+      },
       processors: {
         messaging: 'チャット',
         agent: 'Agent',
@@ -1128,32 +1143,13 @@ const jaJP = {
       },
     },
     pluginCommands: {
-      missingProcessor: 'プロセッサーが見つかりません',
-      instanceHint: '設定済みプロセッサーを紐付けます。',
-      createDefault: '既定のインスタンスを作成',
-      createDefaultHint: 'コマンドの既定設定を使用します。',
-      title: 'プラグインコマンドバインド',
-      description:
-        'message.received イベントのみが対象です。コマンドはルーティングルールより先に照合され、そのメッセージが本来一致したルートのメッセージポリシーが適用されます。有効なプラグインのコマンドはそのまま使えます。ここでコマンドプロセッサーを紐付けると、コマンド設定と照合の優先度を設定できます。',
       prefixes: 'コマンドプレフィックス',
       prefixPlaceholder: 'プレフィックスを入力してEnter（例: / または !）',
       addPrefix: 'プレフィックスを追加',
       prefixInvalid:
         'プレフィックスは空にできず、空白文字を含めることはできません',
       prefixDuplicate: 'プレフィックスは既に存在します',
-      plugins: 'バインドされたプラグインコマンド',
-      empty:
-        'コマンドプロセッサーは紐付けられていません。有効なプラグインのコマンドは既定の設定で動作します。',
-      addPlugin: 'プラグインを追加',
-      noAvailablePlugins:
-        'コマンドコンポーネントを含む利用可能なプラグインはありません。',
-      selectPlugins: 'バインドするプラグインを選択',
-      dragHint:
-        'ドラッグして優先順位を並べ替えます（上位のプラグインが優先されます）',
-      commandsCount: '{{count}} 個のコマンド',
-      noCommands: 'このプラグインにはコマンドが定義されていません',
       overriddenBy: '{{plugin}} により上書き（優先度高）',
-      remove: 'バインド解除',
     },
     pluginSubscriptions: {
       incompleteEvents:

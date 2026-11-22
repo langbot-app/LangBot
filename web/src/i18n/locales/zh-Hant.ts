@@ -1002,6 +1002,20 @@ const zhHant = {
       globallyDisabled: '插件已停用',
       hooksUnknown: '鉤子未知',
       enablePlugin: '在此機器人上啟用 {{plugin}}',
+      commands: {
+        label: '外掛指令',
+        hint: '僅對收到的訊息生效，先於路由規則比對，並沿用這則訊息原本會命中的路由的訊息策略。不同外掛的指令同名時，排在清單前面的外掛優先。',
+      },
+      commandConfig: {
+        button: '指令設定',
+        title: '{{plugin}} 的指令設定',
+        description: '只對這個機器人生效。未修改時，指令使用外掛的預設設定。',
+        custom: '自訂指令設定',
+        commandsOff: '指令已停用',
+        useDefaults: '恢復預設設定',
+        saved: '指令設定已儲存。',
+        created: '指令設定已建立，儲存機器人後生效。',
+      },
       processors: {
         messaging: '聊天',
         agent: 'Agent',
@@ -1054,29 +1068,12 @@ const zhHant = {
       },
     },
     pluginCommands: {
-      missingProcessor: '處理器不存在',
-      instanceHint: '綁定已設定的命令處理器。',
-      createDefault: '建立預設實例',
-      createDefaultHint: '使用命令預設設定。',
-      title: '外掛程式命令綁定',
-      description:
-        '僅對收到訊息事件生效，先於路由規則比對，並沿用這則訊息原本會命中的路由的訊息策略。已啟用插件的指令可直接使用；在這裡綁定指令處理器可設定指令配置和比對優先順序。',
       prefixes: '命令前綴',
       prefixPlaceholder: '輸入前綴，按 Enter 新增（如 / 或 !）',
       addPrefix: '新增前綴',
       prefixInvalid: '前綴不能為空且不能包含空白字元',
       prefixDuplicate: '前綴已存在',
-      plugins: '綁定的外掛程式命令',
-      empty: '未單獨綁定指令處理器，已啟用插件的指令按預設配置生效。',
-      addPlugin: '新增外掛程式',
-      noAvailablePlugins: '沒有包含命令組件的可用外掛程式。',
-      selectPlugins: '選擇要綁定的外掛程式',
-      dragHint:
-        '拖曳以調整外掛程式命令匹配優先順序（排在前面的外掛程式優先匹配）',
-      commandsCount: '{{count}} 個命令',
-      noCommands: '該外掛程式未定義命令',
       overriddenBy: '被 {{plugin}} 覆蓋（優先級更高）',
-      remove: '解除綁定',
     },
     pluginSubscriptions: {
       incompleteEvents:

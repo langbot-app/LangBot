@@ -1067,6 +1067,21 @@ const enUS = {
       globallyDisabled: 'Plugin disabled',
       hooksUnknown: 'Hooks unknown',
       enablePlugin: 'Enable {{plugin}} on this bot',
+      commands: {
+        label: 'Plugin commands',
+        hint: 'Only for received messages. Commands match before route rules and follow the message policy of the route the message would have taken. When plugins share a command name, the plugin higher in the list wins.',
+      },
+      commandConfig: {
+        button: 'Command settings',
+        title: 'Command settings for {{plugin}}',
+        description:
+          'Applies to this bot only. Without changes, commands use the plugin defaults.',
+        custom: 'Custom command settings',
+        commandsOff: 'Commands off',
+        useDefaults: 'Restore defaults',
+        saved: 'Command settings saved.',
+        created: 'Command settings created. Save the bot to apply them.',
+      },
       processors: {
         messaging: 'Chat',
         agent: 'Agent',
@@ -1121,29 +1136,12 @@ const enUS = {
       },
     },
     pluginCommands: {
-      missingProcessor: 'Processor unavailable',
-      instanceHint: 'Bind a configured command processor.',
-      createDefault: 'Create default instance',
-      createDefaultHint: 'Use command defaults.',
-      title: 'Plugin Command Bindings',
-      description:
-        'Only applies to message.received events. Commands are matched before routing rules and use the message policy of the route the message would have matched. Commands of enabled plugins work directly; bind a command processor here to configure commands and set match priority.',
       prefixes: 'Command Prefixes',
       prefixPlaceholder: 'Enter prefix and press Enter (e.g. / or !)',
       addPrefix: 'Add Prefix',
       prefixInvalid: 'Prefix cannot be empty and cannot contain whitespace',
       prefixDuplicate: 'Prefix already exists',
-      plugins: 'Bound Plugin Commands',
-      empty:
-        'No command processor bound; commands of enabled plugins use their default configuration.',
-      addPlugin: 'Add Plugin',
-      noAvailablePlugins: 'No available plugins declare command components.',
-      selectPlugins: 'Select plugins to bind',
-      dragHint: 'Drag to reorder priority (higher plugins match first)',
-      commandsCount: '{{count}} commands',
-      noCommands: 'No commands declared by this plugin',
       overriddenBy: 'Overridden by {{plugin}} (higher priority)',
-      remove: 'Unbind',
     },
     pluginSubscriptions: {
       incompleteEvents:

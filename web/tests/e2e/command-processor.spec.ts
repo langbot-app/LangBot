@@ -53,9 +53,50 @@ test('loading a bot preserves saved command processor bindings and prefixes', as
   await page.route('**/api/v1/platform/bots/command-bot', (route) =>
     route.fulfill({ json: { code: 0, data: { bot } } }),
   );
+  await page.route('**/api/v1/plugins', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        data: {
+          plugins: [
+            {
+              status: 'mounted',
+              enabled: true,
+              install_source: 'local',
+              manifest: {
+                manifest: {
+                  kind: 'Plugin',
+                  metadata: {
+                    name: 'draw',
+                    author: 'qa',
+                    label: { en_US: 'QA draw' },
+                  },
+                  spec: {},
+                },
+              },
+              components: [
+                {
+                  manifest: {
+                    manifest: {
+                      kind: 'Command',
+                      metadata: { name: 'draw' },
+                      spec: {},
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    }),
+  );
   await page.goto('/home/bots?id=command-bot');
-  await expect(page.getByRole('link', { name: /Saved command/ })).toBeVisible();
-  await expect(page.getByText('!draw', { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Plugins' }).click({ timeout: 30_000 });
+  // The saved binding shows as custom command settings on the plugin's row.
+  const draw = page.locator('[data-plugin="qa/draw"]');
+  await expect(draw).toContainText('!draw', { timeout: 15_000 });
+  await expect(draw.getByTestId('command-config-custom')).toBeVisible();
   await page.getByRole('button', { name: 'Command Prefixes' }).click();
   const prefixInput = page.getByRole('textbox', { name: 'Add Prefix' });
   await prefixInput.fill('#');

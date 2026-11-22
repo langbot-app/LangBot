@@ -1170,6 +1170,11 @@ class RuntimeBot:
                 for name in (allowed if allowed is not None else commands_by_plugin)
                 if name not in configured
             )
+            if allowed is not None:
+                # Duplicate command names resolve in the order plugins are enabled on the bot,
+                # the same order lifecycle hooks are dispatched in.
+                position = {name: index for index, name in enumerate(allowed)}
+                resolved.sort(key=lambda item: position.get(item[0], len(position)))
         for plugin_id, agent in resolved:
             if command_name in commands_by_plugin.get(plugin_id, set()):
                 return (

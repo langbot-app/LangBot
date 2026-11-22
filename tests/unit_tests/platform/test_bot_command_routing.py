@@ -310,6 +310,35 @@ async def test_duplicate_command_priority_order():
 
 
 @pytest.mark.asyncio
+async def test_duplicate_command_follows_bot_plugin_order():
+    """With an entry query, duplicate command names resolve in the bot's plugin order."""
+    bot = make_bot(
+        command_settings={
+            'enabled': True,
+            'prefixes': ['/'],
+            'processors': [{'processor_uuid': 'proc-plugin_a', 'enabled': True}],
+        }
+    )
+    bot.ap.plugin_connector.list_commands.return_value = [
+        FakeCommandManifest('author/plugin_a', 'draw'),
+        FakeCommandManifest('author/plugin_b', 'draw'),
+    ]
+    ev = make_message_event('/draw a cat')
+    query = SimpleNamespace()
+    object.__setattr__(ev, '_entry_query', query)
+
+    query._listener_plugins = ['author/plugin_b', 'author/plugin_a']
+    matched = await bot._match_plugin_command(ev)
+    assert matched[0] == 'author/plugin_b'
+
+    # A bound instance keeps its configuration but not a separate priority.
+    query._listener_plugins = ['author/plugin_a', 'author/plugin_b']
+    matched = await bot._match_plugin_command(ev)
+    assert matched[0] == 'author/plugin_a'
+    assert matched[5] == 'proc-plugin_a'
+
+
+@pytest.mark.asyncio
 async def test_disabled_plugin_will_not_hit():
     """A disabled plugin in command_settings.plugins is not matched."""
     bot = make_bot(

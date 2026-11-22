@@ -1060,6 +1060,21 @@ const viVN = {
       globallyDisabled: 'Plugin đã tắt',
       hooksUnknown: 'Không rõ hook',
       enablePlugin: 'Bật {{plugin}} trên bot này',
+      commands: {
+        label: 'Lệnh plugin',
+        hint: 'Chỉ áp dụng cho tin nhắn nhận được. Lệnh được so khớp trước quy tắc định tuyến và theo chính sách tin nhắn của tuyến mà tin nhắn lẽ ra sẽ đi. Khi các plugin trùng tên lệnh, plugin đứng trước trong danh sách được ưu tiên.',
+      },
+      commandConfig: {
+        button: 'Cài đặt lệnh',
+        title: 'Cài đặt lệnh của {{plugin}}',
+        description:
+          'Chỉ áp dụng cho bot này. Nếu không thay đổi, lệnh dùng giá trị mặc định của plugin.',
+        custom: 'Cài đặt lệnh tùy chỉnh',
+        commandsOff: 'Đã tắt lệnh',
+        useDefaults: 'Khôi phục mặc định',
+        saved: 'Đã lưu cài đặt lệnh.',
+        created: 'Đã tạo cài đặt lệnh. Lưu bot để áp dụng.',
+      },
       processors: {
         messaging: 'Chat',
         agent: 'Agent',
@@ -1115,30 +1130,12 @@ const viVN = {
       },
     },
     pluginCommands: {
-      missingProcessor: 'Không tìm thấy bộ xử lý',
-      instanceHint: 'Liên kết bộ xử lý đã cấu hình.',
-      createDefault: 'Tạo phiên bản mặc định',
-      createDefaultHint: 'Dùng cấu hình mặc định.',
-      title: 'Ràng buộc lệnh plugin',
-      description:
-        'Chỉ áp dụng cho sự kiện message.received. Lệnh được so khớp trước quy tắc định tuyến và dùng chính sách tin nhắn của tuyến mà tin nhắn lẽ ra khớp. Lệnh của plugin đã bật dùng được ngay; liên kết bộ xử lý lệnh ở đây để cấu hình lệnh và đặt độ ưu tiên.',
       prefixes: 'Tiền tố lệnh',
       prefixPlaceholder: 'Nhập tiền tố và nhấn Enter (ví dụ: / hoặc !)',
       addPrefix: 'Thêm tiền tố',
       prefixInvalid: 'Tiền tố không được để trống và không chứa khoảng trắng',
       prefixDuplicate: 'Tiền tố đã tồn tại',
-      plugins: 'Các lệnh plugin đã ràng buộc',
-      empty:
-        'Chưa liên kết bộ xử lý lệnh; lệnh của plugin đã bật dùng cấu hình mặc định.',
-      addPlugin: 'Thêm plugin',
-      noAvailablePlugins:
-        'Không có plugin khả dụng nào khai báo thành phần lệnh.',
-      selectPlugins: 'Chọn plugin để ràng buộc',
-      dragHint: 'Kéo để sắp xếp lại mức ưu tiên (plugin ở trên khớp trước)',
-      commandsCount: '{{count}} lệnh',
-      noCommands: 'Không có lệnh nào được khai báo bởi plugin này',
       overriddenBy: 'Bị ghi đè bởi {{plugin}} (ưu tiên cao hơn)',
-      remove: 'Hủy ràng buộc',
     },
     pluginSubscriptions: {
       incompleteEvents:

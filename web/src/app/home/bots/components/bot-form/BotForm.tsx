@@ -40,17 +40,14 @@ import {
   ChevronRight,
   Webhook,
   Search,
-  TerminalSquare,
   Route,
   Puzzle,
   ShieldCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Switch } from '@/components/ui/switch';
 import EventBindingsEditor from './EventBindingsEditor';
 import EventRoutingHelp from './EventRoutingHelp';
 import LegacyAdapterHelp from './LegacyAdapterHelp';
-import PluginCommandBindings from './PluginCommandBindings';
 import PluginProcessorBindings from './PluginProcessorBindings';
 import BotPluginsPanel from './BotPluginsPanel';
 import BotMessagePolicyPanel from './BotMessagePolicyPanel';
@@ -883,9 +880,6 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
     form.setValue('event_bindings', bindings, { shouldDirty: true });
   const setBotPolicy = (policy: MessagePolicy) =>
     form.setValue('message_policy', policy, { shouldDirty: true });
-  const commandProcessorCount = (
-    form.watch('command_settings')?.processors ?? []
-  ).length;
   const pluginProcessorCount = (form.watch('plugin_processors') ?? []).length;
 
   if (loadFailed)
@@ -1500,54 +1494,23 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                       agents={agentNameList}
                       scope={policyScope}
                       onScopeChange={setPolicyScope}
-                      commandPrefix={
-                        form.watch('command_settings')?.prefixes?.[0] || '/'
+                      commandSettings={form.watch('command_settings')}
+                      onCommandSettingsChange={(value) =>
+                        form.setValue('command_settings', value, {
+                          shouldDirty: true,
+                        })
                       }
+                      onAgentCreated={(agent) =>
+                        setAgentNameList((items) => [
+                          ...items.filter((item) => item.uuid !== agent.uuid),
+                          agent,
+                        ])
+                      }
+                      registrationCapability={
+                        commandCapabilities[currentAdapter]
+                      }
+                      dirty={form.formState.isDirty}
                     >
-                      <RoutingLayer
-                        icon={TerminalSquare}
-                        title={t('bots.routingLayers.commands')}
-                        description={t('bots.pluginCommands.description')}
-                        count={commandProcessorCount}
-                        action={
-                          <Switch
-                            checked={
-                              form.watch('command_settings')?.enabled ?? true
-                            }
-                            onCheckedChange={(enabled) =>
-                              form.setValue(
-                                'command_settings',
-                                {
-                                  prefixes: ['/'],
-                                  processors: [],
-                                  ...form.getValues('command_settings'),
-                                  enabled,
-                                },
-                                { shouldDirty: true },
-                              )
-                            }
-                            aria-label={t('bots.routingLayers.commands')}
-                          />
-                        }
-                      >
-                        <PluginCommandBindings
-                          registrationCapability={
-                            commandCapabilities[currentAdapter]
-                          }
-                          botId={initBotId}
-                          dirty={form.formState.isDirty}
-                          value={form.watch('command_settings')}
-                          onChange={(value) =>
-                            form.setValue('command_settings', value, {
-                              shouldDirty: true,
-                            })
-                          }
-                          agents={agentNameList}
-                          onCreated={(agent) =>
-                            setAgentNameList((items) => [...items, agent])
-                          }
-                        />
-                      </RoutingLayer>
                       <RoutingLayer
                         icon={Puzzle}
                         title={t('bots.routingLayers.processors')}

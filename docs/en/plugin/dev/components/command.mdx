@@ -2,7 +2,7 @@
 title: "Component: Command"
 ---
 
-Command components are triggered by user messages that start with a command prefix (set in the bot's "Plugin commands", `/` by default). Commands belong to the **bot**: only plugins enabled on the bot (or on the route the message matches) have their commands matched. Here's an example of triggering a command:
+Command components are triggered by user messages that start with a command prefix (set in the **Plugin commands** bar of the bot's **Plugins** tab, `/` by default). Commands belong to the **bot**: only plugins enabled on the bot (or on the route the message matches) have their commands matched. Here's an example of triggering a command:
 
 <img width="600" src="/images/zh/plugin/dev/components/command_use.png" />
 
@@ -76,9 +76,9 @@ spec:
       default: plain
 ```
 
-Users create a **command processor** on the processors page by selecting a plugin, then fill in the configuration of each of its commands. One plugin can have several command processors, each bound to different bots. At execution time, read the values of the instance bound to the current bot from `context.config`; missing fields use their `default`. When a plugin is enabled on the bot without a command processor, its commands use the defaults.
+On the bot's **Plugins** tab, users click **Command settings** on a plugin's row and fill in the configuration of each of its commands for that bot. At execution time, read these values from `context.config`; missing fields use their `default`. Plugins without saved command settings use the defaults. **Command settings** only appears for plugins with at least one command that declares `spec.config`.
 
-Commands without `spec.config` need no changes: create a command processor and they work as before, with `context.config` as an empty dict. Plugin-level settings are still available through `self.get_plugin_config()`.
+Commands without `spec.config` need no changes: enable the plugin on the bot and they work as before, with `context.config` as an empty dict. Plugin-level settings are still available through `self.get_plugin_config()`.
 
 ## Plugin Processing
 
@@ -214,7 +214,7 @@ class ExecuteContext(pydantic.BaseModel):
     """Session privilege level"""
 
     config: dict[str, Any]
-    """Configuration of the bound command processor instance, filled from spec.config"""
+    """Command settings of this plugin on the current bot, filled from spec.config"""
 
     ...
 ```
@@ -250,14 +250,14 @@ See [Certified plugins and shared runtime](/en/plugin/certified-plugins) for the
 
 ## Platform command menus
 
-In the bot's **Plugin commands** section, enable **Register on platform** and select
-commands from its enabled command processor instances. Save the bot before using
+On the bot's **Plugins** tab, enable **Register on platform** and select
+commands from its enabled plugins. Save the bot before using
 **Sync now**. Registration replaces the entire platform list, including manually
 configured commands. Disabling it clears the previously managed lists. Other adapters
 do not expose this panel.
 
-The effective list follows processor priority: the first plugin providing a command
-name wins. Descriptions come from `metadata.description` in the Workspace language,
+The effective list follows the order of the plugin list: the first plugin providing a
+command name wins, the same rule used to match commands. Descriptions come from `metadata.description` in the Workspace language,
 with localized variants registered where supported. Invalid names or descriptions
 are excluded with a reason shown in the panel. Telegram allows 100 commands, names
 matching `[a-z0-9_]{1,32}`, and descriptions of 1–256 characters. Discord allows 100

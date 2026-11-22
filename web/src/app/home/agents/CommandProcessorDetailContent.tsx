@@ -27,7 +27,7 @@ import EntityLoadState from '@/components/EntityLoadState';
 import ProcessorDetailWorkbench from '@/app/home/components/processor-detail/ProcessorDetailWorkbench';
 import EntityTitleEditButton from '@/app/home/components/entity-basic-info/EntityTitleEditButton';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
-import { commandProcessorPluginId } from '@/app/home/bots/components/bot-form/PluginCommandBindings';
+import { commandProcessorPluginId } from '@/app/home/bots/components/bot-form/command-processors';
 import RunnerSelect from './components/RunnerSelect';
 import ProcessorRunList from './components/ProcessorRunList';
 import CommandDebugPanel, {

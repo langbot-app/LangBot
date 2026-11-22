@@ -103,6 +103,44 @@ test('platform menu shows constraints, rejection reasons and synchronization sta
       });
     },
   );
+  await page.route('**/api/v1/plugins', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        data: {
+          plugins: [
+            {
+              status: 'mounted',
+              enabled: true,
+              install_source: 'local',
+              manifest: {
+                manifest: {
+                  kind: 'Plugin',
+                  metadata: {
+                    name: 'draw',
+                    author: 'qa',
+                    label: { en_US: 'QA draw' },
+                  },
+                  spec: {},
+                },
+              },
+              components: [
+                {
+                  manifest: {
+                    manifest: {
+                      kind: 'Command',
+                      metadata: { name: 'draw' },
+                      spec: {},
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    }),
+  );
   await page.goto('/home/bots?id=menu-bot');
   await page.getByRole('tab', { name: 'Plugins' }).click({ timeout: 30_000 });
   const panel = page.getByRole('region', { name: 'Register on platform' });

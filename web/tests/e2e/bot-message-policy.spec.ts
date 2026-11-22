@@ -342,3 +342,137 @@ test('custom route plugin selection is saved as a route override', async ({
   // The Chat route keeps its section override; it has no plugin override.
   expect(body.event_bindings[0].policy).toMatchObject({ plugins: null });
 });
+
+test('plugin commands are configured from the plugin list', async ({
+  page,
+}) => {
+  const saved = await setup(page);
+  const created: Record<string, unknown>[] = [];
+  // Registered after setup, so these take precedence.
+  await page.route('**/api/v1/agents**', (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/v1/agents/_/metadata')
+      return route.fulfill({
+        json: {
+          code: 0,
+          data: {
+            runners: [],
+            event_processors: [],
+            command_processors: [
+              {
+                id: 'plugin:qa/draw',
+                plugin_id: 'qa/draw',
+                commands: [
+                  {
+                    name: 'draw',
+                    label: { en_US: 'Draw' },
+                    config_schema: [
+                      {
+                        id: 'style',
+                        name: 'style',
+                        label: { en_US: 'Style' },
+                        type: 'string',
+                        required: false,
+                        default: 'sketch',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      });
+    if (path === '/api/v1/agents' && route.request().method() === 'POST') {
+      created.push(route.request().postDataJSON());
+      return route.fulfill({
+        json: { code: 0, data: { uuid: 'cmd-1', kind: 'command_processor' } },
+      });
+    }
+    return route.fallback();
+  });
+  // The listener also registers /draw; it is listed first, so it owns it.
+  await page.route('**/policy-bot/plugin-registrations**', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        data: {
+          plugins: {
+            'qa/listener': {
+              commands: ['draw'],
+              events: ['GroupMessageReceived'],
+              event_processors: {
+                GroupMessageReceived: ['messaging', 'agent', 'command'],
+              },
+            },
+            'qa/draw': { commands: ['draw'], events: [], event_processors: {} },
+          },
+        },
+      },
+    }),
+  );
+
+  await page.setViewportSize({ width: 1440, height: 1400 });
+  await page.goto('/home/bots?id=policy-bot');
+  await page.getByRole('tab', { name: 'Plugins' }).click();
+
+  const settings = page.getByTestId('bot-command-settings');
+  await expect(settings).toBeVisible({ timeout: 15_000 });
+  await expect(settings).toContainText('Plugin commands');
+  await expect(page.getByTestId('command-prefix-button')).toContainText('/');
+  // The separate command binding section is gone.
+  await expect(page.getByText('Add Plugin', { exact: true })).toHaveCount(0);
+
+  const draw = page.locator('[data-plugin="qa/draw"]');
+  const listener = page.locator('[data-plugin="qa/listener"]');
+  await expect(draw.locator('[data-command="draw"]')).toHaveAttribute(
+    'data-overridden',
+    'true',
+  );
+  await expect(listener.locator('[data-command="draw"]')).toHaveAttribute(
+    'data-overridden',
+    'false',
+  );
+  await expect(listener.getByTestId('command-config-button')).toHaveCount(0);
+
+  await draw.getByTestId('command-config-button').click();
+  const dialog = page.getByTestId('command-config-dialog');
+  await expect(dialog).toContainText('/draw');
+  await dialog.getByRole('textbox').fill('oil');
+  await page.screenshot({
+    path: 'test-results/bot-command-config.png',
+    fullPage: true,
+  });
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(() => created.length).toBe(1);
+  expect(created[0]).toMatchObject({
+    kind: 'command_processor',
+    component_ref: 'plugin:qa/draw',
+    config: { command_config: { draw: { style: 'oil' } } },
+  });
+  await expect(draw.getByTestId('command-config-custom')).toBeVisible();
+  // Binding the new settings is an unsaved bot change.
+  await expect(page.getByRole('button', { name: 'Save' })).toBeEnabled();
+  await page.screenshot({
+    path: 'test-results/bot-plugins-commands.png',
+    fullPage: true,
+  });
+
+  await settings.getByRole('switch').click();
+  await expect(draw.getByTestId('command-config-button')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect.poll(() => saved.length).toBe(1);
+  const body = saved[0] as {
+    command_settings: {
+      enabled: boolean;
+      prefixes: string[];
+      processors: { processor_uuid: string; enabled: boolean }[];
+    };
+  };
+  expect(body.command_settings).toMatchObject({
+    enabled: false,
+    prefixes: ['/'],
+    processors: [{ processor_uuid: 'cmd-1', enabled: true }],
+  });
+});

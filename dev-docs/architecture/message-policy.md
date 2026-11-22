@@ -46,7 +46,7 @@ RuntimeBot._begin_message
 
 - `message_policy.plugins` decides which plugins receive hooks and whose commands match (`enabled_plugins`). `None` means all. Order is the dispatch order.
 - The Chat extension list only authorizes AI-callable tools. Exception: queries without a bot policy (debug chat, `pipeline.run`) bind the neutral policy and use the Chat's plugin list for hooks, as before.
-- Command processors (`command_settings.processors`) give per-bot command configuration and priority; an enabled plugin without a processor uses default config, a processor bound with `enabled: false` disables that plugin's commands.
+- Command processors (`command_settings.processors`) only carry per-bot command configuration; the WebUI edits them as **Command settings** on a plugin's row in the bot's Plugins tab. An enabled plugin without a processor uses default config; a legacy processor bound with `enabled: false` still disables that plugin's commands. When plugins share a command name, the order of the effective plugin list (the same order hooks are dispatched in) decides the winner; with `enable_all` the Runtime's command list order applies. The WebUI keeps `plugins` sorted in list order when it writes a selection.
 - `GET /api/v1/platform/bots/<uuid>/plugin-registrations[?route_id=&include_disabled=1]` / MCP `list_bot_plugin_registrations` return each plugin's commands, events and `event_processors` (hook → `messaging` / `agent` / `command`).
 
 ## SDK and compatibility

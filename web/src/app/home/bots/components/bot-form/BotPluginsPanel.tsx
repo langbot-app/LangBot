@@ -11,13 +11,18 @@ import {
   TerminalSquare,
   Workflow,
   Eye,
+  Settings2,
+  AlertCircle,
 } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import type {
   Agent,
+  BotCommandSettings,
+  CommandProcessorDescriptor,
   EventBinding,
   HookProcessor,
   MessagePolicy,
+  PlatformCommandCapability,
   PluginRegistration,
   PluginSelection,
 } from '@/app/infra/entities/api';
@@ -25,6 +30,7 @@ import type { Plugin } from '@/app/infra/entities/plugin';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { AuthenticatedPluginIcon } from '@/components/AuthenticatedPluginIcon';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -36,6 +42,14 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import PolicyScopeSelect, { BOT_SCOPE } from './PolicyScopeSelect';
+import CommandPrefixPopover from './CommandPrefixPopover';
+import CommandConfigDialog from './CommandConfigDialog';
+import PlatformCommandRegistration from './PlatformCommandRegistration';
+import {
+  DEFAULT_COMMAND_SETTINGS,
+  commandProcessorPluginId,
+  hasCommandSettings,
+} from './command-processors';
 import {
   DEFAULT_PLUGIN_SELECTION,
   LIFECYCLE_STEPS,
@@ -126,7 +140,11 @@ export default function BotPluginsPanel({
   agents,
   scope,
   onScopeChange,
-  commandPrefix,
+  commandSettings,
+  onCommandSettingsChange,
+  onAgentCreated,
+  registrationCapability,
+  dirty,
   children,
 }: {
   botId: string;
@@ -137,7 +155,11 @@ export default function BotPluginsPanel({
   agents: Agent[];
   scope: string;
   onScopeChange: (scope: string) => void;
-  commandPrefix: string;
+  commandSettings: BotCommandSettings | undefined;
+  onCommandSettingsChange: (settings: BotCommandSettings) => void;
+  onAgentCreated: (agent: Agent) => void;
+  registrationCapability?: PlatformCommandCapability;
+  dirty?: boolean;
   children?: React.ReactNode;
 }) {
   const { t } = useTranslation();
@@ -147,6 +169,29 @@ export default function BotPluginsPanel({
     PluginRegistration
   > | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [descriptors, setDescriptors] = useState<CommandProcessorDescriptor[]>(
+    [],
+  );
+  const [configuring, setConfiguring] = useState<string | null>(null);
+
+  const commands = { ...DEFAULT_COMMAND_SETTINGS, ...(commandSettings ?? {}) };
+  const prefixes = commands.prefixes?.length ? commands.prefixes : ['/'];
+  const commandPrefix = prefixes[0];
+
+  useEffect(() => {
+    let cancelled = false;
+    httpClient
+      .getAgentMetadata()
+      .then((metadata) => {
+        if (!cancelled) setDescriptors(metadata.command_processors ?? []);
+      })
+      .catch(() => {
+        // Without descriptors plugins simply show no command settings.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -234,7 +279,16 @@ export default function BotPluginsPanel({
     });
   }
 
-  function writeSelection(next: PluginSelection) {
+  function writeSelection(selected: PluginSelection) {
+    // Keep enabled plugins in list order: duplicate command names and hooks
+    // resolve in this order, so it must match what the user sees.
+    const order = new Map(rows.map((row, index) => [row.id, index]));
+    const position = (item: { author: string; name: string }) =>
+      order.get(`${item.author}/${item.name}`) ?? Number.MAX_SAFE_INTEGER;
+    const next = {
+      ...selected,
+      plugins: [...selected.plugins].sort((a, b) => position(a) - position(b)),
+    };
     if (!route) {
       onBotPolicyChange({ ...(botPolicy ?? {}), plugins: next });
       return;
@@ -263,10 +317,82 @@ export default function BotPluginsPanel({
   const enabledRows = rows.filter((row) =>
     selectionIncludes(selection, row.id),
   );
+
+  const descriptorMap = useMemo(
+    () => new Map(descriptors.map((item) => [item.plugin_id, item])),
+    [descriptors],
+  );
+  const commandInstances = useMemo(
+    () =>
+      new Map(
+        agents
+          .filter((agent) => agent.kind === 'command_processor' && agent.uuid)
+          .map((agent) => [agent.uuid as string, agent]),
+      ),
+    [agents],
+  );
+  // Older Runtimes cannot report registrations; fall back to the commands the
+  // plugin declares in its manifest.
+  function commandsOf(row: PluginRow): string[] {
+    return (
+      row.registration?.commands ??
+      descriptorMap.get(row.id)?.commands.map((command) => command.name) ??
+      []
+    );
+  }
+  function instanceBinding(pluginId: string) {
+    return (commands.processors ?? []).find(
+      (binding) =>
+        binding.processor_uuid &&
+        commandProcessorPluginId(
+          commandInstances.get(binding.processor_uuid),
+        ) === pluginId,
+    );
+  }
+  function updateCommands(patch: Partial<BotCommandSettings>) {
+    onCommandSettingsChange({ ...commands, prefixes, ...patch });
+  }
+  function bindInstance(pluginId: string, agent: Agent) {
+    onAgentCreated(agent);
+    updateCommands({
+      processors: [
+        ...(commands.processors ?? []).filter(
+          (binding) => binding !== instanceBinding(pluginId),
+        ),
+        { processor_uuid: agent.uuid as string, enabled: true },
+      ],
+    });
+  }
+  function unbindInstance(pluginId: string) {
+    const binding = instanceBinding(pluginId);
+    updateCommands({
+      processors: (commands.processors ?? []).filter(
+        (item) => item !== binding,
+      ),
+    });
+  }
+
+  // The first enabled plugin in list order owns a command name.
+  const commandOwners = new Map<string, PluginRow>();
+  const overriddenBy = new Map<string, string>();
+  for (const row of enabledRows) {
+    for (const command of commandsOf(row)) {
+      const owner = commandOwners.get(command);
+      if (owner) overriddenBy.set(`${row.id}:${command}`, owner.label);
+      else commandOwners.set(command, row);
+    }
+  }
+  const configuringRow = rows.find((row) => row.id === configuring);
+  const configuringDescriptor = configuring
+    ? descriptorMap.get(configuring)
+    : undefined;
+  const configuringBinding = configuring
+    ? instanceBinding(configuring)
+    : undefined;
   const stepPlugins = (step: LifecycleStep) =>
     enabledRows.filter((row) => {
-      if (step === 'command' && (row.registration?.commands?.length ?? 0) > 0)
-        return true;
+      if (step === 'command')
+        return commands.enabled && commandsOf(row).length > 0;
       return hookStates(row).some((hook) => hook.active && hook.step === step);
     });
   const routeTarget = route
@@ -421,6 +547,37 @@ export default function BotPluginsPanel({
           </div>
         </div>
 
+        <div
+          data-testid="bot-command-settings"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border bg-muted/30 px-3 py-2"
+        >
+          <TerminalSquare
+            className="size-4 text-muted-foreground"
+            strokeWidth={1.5}
+          />
+          <Label htmlFor="bot-commands-enabled" className="text-sm">
+            {t('bots.pluginHooks.commands.label')}
+          </Label>
+          <Switch
+            id="bot-commands-enabled"
+            checked={commands.enabled}
+            onCheckedChange={(enabled) => updateCommands({ enabled })}
+          />
+          <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+            {t('bots.pluginCommands.prefixes')}
+            <CommandPrefixPopover
+              prefixes={prefixes}
+              disabled={!commands.enabled}
+              onChange={(next) => updateCommands({ prefixes: next })}
+            />
+          </span>
+          <p className="basis-full text-xs text-muted-foreground">
+            {commands.enabled
+              ? t('bots.pluginHooks.commands.hint')
+              : t('bots.routingLayers.commandsDisabled')}
+          </p>
+        </div>
+
         {loadFailed ? (
           <p className="text-sm text-destructive">
             {t('bots.pluginHooks.loadFailed')}
@@ -451,7 +608,9 @@ export default function BotPluginsPanel({
             {rows.map((row) => {
               const enabled = selectionIncludes(selection, row.id);
               const hooks = hookStates(row);
-              const commands = row.registration?.commands ?? [];
+              const rowCommands = commandsOf(row);
+              const descriptor = descriptorMap.get(row.id);
+              const binding = instanceBinding(row.id);
               return (
                 <li
                   key={row.id}
@@ -477,6 +636,17 @@ export default function BotPluginsPanel({
                       <span className="truncate text-xs text-muted-foreground">
                         {row.id}
                       </span>
+                      {binding && (
+                        <Badge
+                          variant="outline"
+                          className="text-[11px]"
+                          data-testid="command-config-custom"
+                        >
+                          {binding.enabled === false
+                            ? t('bots.pluginHooks.commandConfig.commandsOff')
+                            : t('bots.pluginHooks.commandConfig.custom')}
+                        </Badge>
+                      )}
                       {!row.globallyEnabled && (
                         <Badge variant="outline" className="text-[11px]">
                           {t('bots.pluginHooks.globallyDisabled')}
@@ -484,16 +654,40 @@ export default function BotPluginsPanel({
                       )}
                     </div>
                     <div className="flex flex-wrap gap-1">
-                      {commands.map((command) => (
-                        <Badge
-                          key={`cmd-${command}`}
-                          variant="secondary"
-                          className="font-mono text-[11px]"
-                        >
-                          {commandPrefix}
-                          {command}
-                        </Badge>
-                      ))}
+                      {rowCommands.map((command) => {
+                        const owner = overriddenBy.get(`${row.id}:${command}`);
+                        const chip = (
+                          <Badge
+                            key={`cmd-${command}`}
+                            variant="secondary"
+                            data-command={command}
+                            data-overridden={Boolean(owner)}
+                            className={cn(
+                              'gap-1 font-mono text-[11px]',
+                              (!commands.enabled || !enabled) &&
+                                'text-muted-foreground',
+                              owner &&
+                                'bg-amber-50 text-amber-700 line-through dark:bg-amber-950/30 dark:text-amber-400',
+                            )}
+                          >
+                            {owner && <AlertCircle className="size-3" />}
+                            {commandPrefix}
+                            {command}
+                          </Badge>
+                        );
+                        return owner ? (
+                          <Tooltip key={`cmd-${command}`}>
+                            <TooltipTrigger asChild>{chip}</TooltipTrigger>
+                            <TooltipContent>
+                              {t('bots.pluginCommands.overriddenBy', {
+                                plugin: owner,
+                              })}
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          chip
+                        );
+                      })}
                       {hooks.map((hook) => (
                         <Tooltip key={`hook-${hook.event}`}>
                           <TooltipTrigger asChild>
@@ -543,6 +737,19 @@ export default function BotPluginsPanel({
                         </p>
                       ))}
                   </div>
+                  {commands.enabled && hasCommandSettings(descriptor) && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 shrink-0 gap-1 px-2 text-xs"
+                      onClick={() => setConfiguring(row.id)}
+                      data-testid="command-config-button"
+                    >
+                      <Settings2 className="size-3.5" />
+                      {t('bots.pluginHooks.commandConfig.button')}
+                    </Button>
+                  )}
                   <Switch
                     checked={enabled}
                     disabled={!editable || selection.enable_all}
@@ -558,7 +765,34 @@ export default function BotPluginsPanel({
             })}
           </ul>
         )}
+        {registrationCapability && commands.enabled && (
+          <PlatformCommandRegistration
+            value={commands}
+            onChange={onCommandSettingsChange}
+            capability={registrationCapability}
+            botId={botId}
+            dirty={dirty}
+            names={[...commandOwners.keys()]}
+          />
+        )}
       </section>
+
+      {configuringRow && configuringDescriptor && (
+        <CommandConfigDialog
+          open
+          onOpenChange={(open) => !open && setConfiguring(null)}
+          descriptor={configuringDescriptor}
+          pluginLabel={configuringRow.label}
+          instance={
+            configuringBinding
+              ? commandInstances.get(configuringBinding.processor_uuid)
+              : undefined
+          }
+          prefix={commandPrefix}
+          onBind={(agent) => bindInstance(configuringRow.id, agent)}
+          onUnbind={() => unbindInstance(configuringRow.id)}
+        />
+      )}
 
       {children}
     </div>
