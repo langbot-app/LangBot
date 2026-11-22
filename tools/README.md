@@ -551,12 +551,11 @@ not change the stock Daily job described below.
 
 ## Daily mixed workload and weekly contracts
 
-`Daily Endurance` keeps one owned Core/Runtime/Box deployment per run. At the
-existing 19:23 UTC schedule (03:23 Asia/Shanghai), Monday through Saturday run the
-mixed business load; Sunday runs the finite contract pass. Selection uses the
-Asia/Shanghai weekday when the scheduled run starts, so delayed GitHub runs may
-start later than the cron time. Manual dispatch selects `workload: mixed` or
-`contracts`. The job is independent of PR merge checks.
+`Daily Endurance` keeps one owned Core/Runtime/Box deployment per run. The
+19:23 UTC schedule (03:23 Asia/Shanghai) runs the mixed business load every day,
+so each day produces comparable throughput, latency and resource observations.
+Manual dispatch can additionally select `workload: contracts` for a finite
+contract pass. The job is independent of PR merge checks.
 
 The mixed mode uses the existing `endurance` profile and harness:
 
@@ -597,7 +596,7 @@ live Box session or container does not by itself prove busy execution. Business,
 resource and mixed-evidence failures still fail the job. Throughput/P95 remain
 observations on hosted runners; no performance threshold is calibrated or changed.
 
-The Sunday/manual contract mode runs `--suite scenarios` once, under the existing
+The manual contract mode runs `--suite scenarios` once, under the existing
 300-second execution guard, with the existing optional restart checks. It retains
 the base cases and these selected local groups:
 

@@ -383,24 +383,19 @@ class MixedScheduleTest(unittest.TestCase):
         return {step.get('name'): step.get('run') for step in steps}
 
     def test_one_owned_deployment_selects_mixed_or_finite_contracts(self):
-        command = self.commands()['Run mixed load or weekly contracts']
-        for event, requested, weekday, suite in [
-            ('schedule', '', '6', 'endurance'),
-            ('schedule', '', '7', 'scenarios'),
-            ('workflow_dispatch', 'mixed', '7', 'endurance'),
-            ('workflow_dispatch', 'contracts', '6', 'scenarios'),
+        command = self.commands()['Run daily mixed load or explicit manual contracts']
+        for event, requested, suite in [
+            ('schedule', 'mixed', 'endurance'),
+            ('workflow_dispatch', 'mixed', 'endurance'),
+            ('workflow_dispatch', 'contracts', 'scenarios'),
         ]:
             with self.subTest(event=event, requested=requested), tempfile.TemporaryDirectory() as folder:
                 root = Path(folder)
                 bindir = root / 'bin'
                 bindir.mkdir()
-                for name, body in {
-                    'date': 'printf "%s\\n" "$TEST_WEEKDAY"',
-                    'uv': 'printf "%s\\n" "$@" >> "$TEST_ARGS"',
-                }.items():
-                    path = bindir / name
-                    path.write_text('#!/bin/sh\n' + body + '\n')
-                    path.chmod(0o700)
+                path = bindir / 'uv'
+                path.write_text('#!/bin/sh\nprintf "%s\\n" "$@" >> "$TEST_ARGS"\n')
+                path.chmod(0o700)
                 subprocess.run(
                     ['bash', '-e', '-c', command],
                     cwd=root,
@@ -411,7 +406,6 @@ class MixedScheduleTest(unittest.TestCase):
                         'PATH': str(bindir) + os.pathsep + os.environ['PATH'],
                         'GITHUB_EVENT_NAME': event,
                         'WORKLOAD': requested,
-                        'TEST_WEEKDAY': weekday,
                         'TEST_ARGS': str(root / 'args'),
                         'SCENARIO_GROUPS': 'faults lifecycle',
                         'EXTRA_PLUGINS': 'misc/EssentialCommands',

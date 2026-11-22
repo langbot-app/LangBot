@@ -42,6 +42,9 @@ jobs:
     name: Core runtime smoke
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      SPACE__DISABLE_TELEMETRY: 'true'
+      ANONYMIZED_TELEMETRY: 'False'
     steps:
       - uses: actions/checkout@v4
         with:

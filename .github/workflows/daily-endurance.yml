@@ -104,7 +104,7 @@ jobs:
     uses: ./.github/workflows/plugins-plugin-catalog.yml
 
   endurance:
-    name: Daily mixed load / weekly contracts
+    name: Daily mixed load (manual contracts available)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -123,19 +123,17 @@ jobs:
         id: lbctl
       - name: Prepare sandbox image
         run: docker pull python:3.12-alpine
-      - name: Run mixed load or weekly contracts
+      - name: Run daily mixed load or explicit manual contracts
         id: execute
         env:
           LBCTL_BIN: ${{ steps.lbctl.outputs.binary }}
-          WORKLOAD: ${{ inputs.workload }}
+          SPACE__DISABLE_TELEMETRY: 'true'
+          ANONYMIZED_TELEMETRY: 'False'
+          WORKLOAD: ${{ github.event_name == 'schedule' && 'mixed' || inputs.workload }}
           SCENARIO_GROUPS: ${{ github.event_name == 'schedule' && 'faults resources lifecycle plugins' || inputs.scenario_groups }}
           EXTRA_PLUGINS: ${{ github.event_name == 'schedule' && 'misc/EssentialCommands misc/FAQManager' || inputs.extra_plugins }}
           RESTART_SERVICES: ${{ github.event_name == 'schedule' || inputs.restart_services }}
         run: |
-          if [[ "$GITHUB_EVENT_NAME" == schedule ]]; then
-            WORKLOAD=mixed
-            if [[ "$(TZ=Asia/Shanghai date +%u)" == 7 ]]; then WORKLOAD=contracts; fi
-          fi
           args=()
           case "$WORKLOAD" in
             mixed)
