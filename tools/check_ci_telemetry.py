@@ -9,15 +9,22 @@ import sys
 import yaml
 
 SERVICE_MARKERS = ('regression_ci', 'LANGBOT_DATA_ROOT', 'SPACE__URL')
+# These are the workflow entry points that can reach a Core/service lane through
+# a local reusable-workflow call. Keep this inventory explicit: a new caller
+# must add its service jobs here (or add a service marker) before it can merge.
 KNOWN_SERVICE_WORKFLOWS = {
     'artifact-accelerated-soak.yml',
     'artifact-qa.yml',
     'core-smoke.yml',
     'daily-endurance.yml',
+    'p0-acceptance.yml',
     'persistence-acceptance.yml',
     'run-tests.yml',
 }
 KNOWN_SERVICE_JOBS = {
+    # p0-acceptance is called by core-smoke/p0 and its permission lifecycle
+    # starts a real Core even though the command itself has no service marker.
+    'p0-acceptance.yml': {'permissions'},
     'persistence-acceptance.yml': {'persistence-runtime'},
     'run-tests.yml': {'e2e'},
 }
