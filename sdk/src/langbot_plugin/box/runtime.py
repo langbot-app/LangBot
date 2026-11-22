@@ -2868,6 +2868,7 @@ done
                     continue
 
                 if existing is not None:
+                    probe_started = time.perf_counter()
                     try:
                         try:
                             alive = await backend.is_session_alive(existing.info)
@@ -2878,10 +2879,16 @@ done
                                 f"session_id={spec.session_id} error={exc}"
                             )
                     finally:
+                        probe_ms = (time.perf_counter() - probe_started) * 1000
                         async with self._lock:
                             self._session_leases[spec.session_id] -= 1
                             if self._session_leases[spec.session_id] <= 0:
                                 self._session_leases.pop(spec.session_id, None)
+                    self.logger.info(
+                        "box_session_probe_timing "
+                        f"session_id={spec.session_id} probe_ms={probe_ms:.3f} "
+                        f"alive={alive}"
+                    )
 
                     async with self._lock:
                         current = self._sessions.get(spec.session_id)
