@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import datetime
 import math
-import time
 import typing
 
 from ...core import app
@@ -14,9 +13,6 @@ from .errors import RunnerProtocolError
 from .host_models import AgentBinding, AgentEventEnvelope
 from .persistent_state_store import PersistentStateStore, get_persistent_state_store
 from .run_ledger_store import RunLedgerStore
-
-
-_RUN_SNAPSHOT_CACHE_TTL_SECONDS = 0.25
 
 
 class AgentRunJournal:
@@ -31,25 +27,11 @@ class AgentRunJournal:
         self.ap = ap
         self._persistent_state_store = None
         self._run_ledger_store = None
-        self._run_snapshot_cache: dict[str, tuple[float, dict[str, typing.Any] | None]] = {}
 
     def _get_run_ledger_store(self) -> RunLedgerStore:
         if self._run_ledger_store is None:
             self._run_ledger_store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
         return self._run_ledger_store
-
-    def _cache_run_snapshot(self, run_id: str, snapshot: dict[str, typing.Any] | None, now: float) -> None:
-        self._run_snapshot_cache[run_id] = (now, snapshot)
-        if len(self._run_snapshot_cache) <= 1024:
-            return
-        cutoff = now - _RUN_SNAPSHOT_CACHE_TTL_SECONDS
-        self._run_snapshot_cache = {key: value for key, value in self._run_snapshot_cache.items() if value[0] >= cutoff}
-        if len(self._run_snapshot_cache) > 1024:
-            for key, _ in sorted(
-                self._run_snapshot_cache.items(),
-                key=lambda item: item[1][0],
-            )[:-1024]:
-                del self._run_snapshot_cache[key]
 
     @staticmethod
     def _to_plain_dict(value: typing.Any) -> dict[str, typing.Any]:
@@ -230,18 +212,11 @@ class AgentRunJournal:
             usage=usage,
             metadata=metadata,
         )
-        self._cache_run_snapshot(run_id, updated, time.monotonic())
         return updated
 
     async def get_run(self, run_id: str) -> dict[str, typing.Any] | None:
         """Return the persisted run ledger record."""
-        now = time.monotonic()
-        cached = self._run_snapshot_cache.get(run_id)
-        if cached is not None and now - cached[0] < _RUN_SNAPSHOT_CACHE_TTL_SECONDS:
-            return cached[1]
-        snapshot = await self._get_run_ledger_store().get_run(run_id)
-        self._cache_run_snapshot(run_id, snapshot, now)
-        return snapshot
+        return await self._get_run_ledger_store().get_run(run_id)
 
     async def handle_state_updated_event(
         self,
