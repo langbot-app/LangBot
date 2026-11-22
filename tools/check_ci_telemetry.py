@@ -8,7 +8,7 @@ import sys
 
 import yaml
 
-SERVICE_MARKERS = ('regression_ci', 'LANGBOT_DATA_ROOT', 'SPACE__URL', 'tests/e2e')
+SERVICE_MARKERS = ('regression_ci', 'LANGBOT_DATA_ROOT', 'SPACE__URL')
 KNOWN_SERVICE_WORKFLOWS = {
     'artifact-accelerated-soak.yml',
     'artifact-qa.yml',
