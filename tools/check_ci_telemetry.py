@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail CI when a service job can start Core without disabling product telemetry."""
+"""Fail CI when a service job/action can start Core without disabling telemetry."""
 
 from __future__ import annotations
 
@@ -9,9 +9,6 @@ import sys
 import yaml
 
 SERVICE_MARKERS = ('regression_ci', 'LANGBOT_DATA_ROOT', 'SPACE__URL')
-# These are the workflow entry points that can reach a Core/service lane through
-# a local reusable-workflow call. Keep this inventory explicit: a new caller
-# must add its service jobs here (or add a service marker) before it can merge.
 KNOWN_SERVICE_WORKFLOWS = {
     'artifact-accelerated-soak.yml',
     'artifact-qa.yml',
@@ -22,8 +19,6 @@ KNOWN_SERVICE_WORKFLOWS = {
     'run-tests.yml',
 }
 KNOWN_SERVICE_JOBS = {
-    # p0-acceptance is called by core-smoke/p0 and its permission lifecycle
-    # starts a real Core even though the command itself has no service marker.
     'p0-acceptance.yml': {'permissions'},
     'persistence-acceptance.yml': {'persistence-runtime'},
     'run-tests.yml': {'e2e'},
@@ -63,11 +58,7 @@ def _job_without_steps(job: object) -> object:
     return {key: value for key, value in job.items() if key != 'steps'}
 
 
-def _effective_value(
-    workflow_env: object,
-    job_env: object,
-    step_env: object = None,
-) -> object:
+def _effective_value(workflow_env: object, job_env: object, step_env: object = None) -> object:
     value = _env(workflow_env).get(ENV_NAME)
     value = _env(job_env).get(ENV_NAME, value)
     return _env(step_env).get(ENV_NAME, value)
@@ -112,19 +103,34 @@ def check_workflows(workflows_root: Path) -> list[str]:
                         violations.append(violation)
                 continue
 
-            violation = _check_value(
-                workflow,
-                f'job {name}',
-                _effective_value(workflow_env, job_env),
-            )
+            violation = _check_value(workflow, f'job {name}', _effective_value(workflow_env, job_env))
+            if violation:
+                violations.append(violation)
+    return violations
+
+
+def check_actions(actions_root: Path) -> list[str]:
+    """Return step-scoped violations for composite actions that start Core."""
+    violations: list[str] = []
+    for action in sorted(actions_root.glob('**/action.y*ml')):
+        data = yaml.safe_load(action.read_text(encoding='utf-8')) or {}
+        runs = data.get('runs') if isinstance(data, dict) else None
+        steps = runs.get('steps') if isinstance(runs, dict) else None
+        if not isinstance(steps, list):
+            continue
+        for index, step in enumerate(steps):
+            if not isinstance(step, dict) or not _has_marker(step):
+                continue
+            violation = _check_value(action, f'step {index}', _env(step.get('env')).get(ENV_NAME))
             if violation:
                 violations.append(violation)
     return violations
 
 
 def main() -> int:
-    root = Path(__file__).resolve().parents[1] / '.github' / 'workflows'
-    violations = check_workflows(root)
+    root = Path(__file__).resolve().parents[1]
+    violations = check_workflows(root / '.github' / 'workflows')
+    violations.extend(check_actions(root / '.github' / 'actions'))
     if violations:
         print('\n'.join(violations), file=sys.stderr)
         return 1
