@@ -602,7 +602,7 @@ class AgentRunOrchestrator:
                             await result_observer(result_dict)
                         observer_ms = (time.monotonic() - observer_started) * 1000
                         if journal_ms + observer_ms >= 100:
-                            self.ap.logger.debug(
+                            self.ap.logger.info(
                                 f'Slow runner event consumer run={run_id} type={result_type} '
                                 f'journal_ms={journal_ms:.1f} observer_ms={observer_ms:.1f}'
                             )
@@ -648,6 +648,7 @@ class AgentRunOrchestrator:
                             )
                             assistant_transcript_written = True
 
+                        normalize_started = time.monotonic()
                         try:
                             result = await self.result_normalizer.normalize(result_dict, descriptor)
                         except RunnerExecutionError as exc:
@@ -660,6 +661,12 @@ class AgentRunOrchestrator:
                                     usage=terminal_usage,
                                 )
                             raise
+                        normalize_ms = (time.monotonic() - normalize_started) * 1000
+                        if normalize_ms >= 100:
+                            self.ap.logger.info(
+                                f'Slow runner result normalization run={run_id} type={result_type} '
+                                f'normalize_ms={normalize_ms:.1f}'
+                            )
                         file_ids = result_dict.get('data', {}).get('file_ids', [])
                         if file_ids:
                             if result_type != 'message.completed' or result is None:
