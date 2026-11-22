@@ -430,9 +430,15 @@ def run(args):
             # Fixed provider/tool latency makes overlap observable; this is not a performance baseline.
             if args.mixload_profile is not None:
                 from tools.regression.mixload_cases import configure_mock_scenarios
+                from tools.regression.mixload_profile import load_mixload
 
                 scenarios = json.loads((ROOT / 'tools/fixtures/mock_llm_scenarios.json').read_text())
-                scenarios = configure_mock_scenarios(scenarios, box_backend=args.box_backend)
+                workload = load_mixload(args.mixload_profile).box_workload
+                scenarios = configure_mock_scenarios(
+                    scenarios,
+                    box_backend=args.box_backend,
+                    box_workload=workload,
+                )
             else:
                 scenarios = mixed_scenarios((args.load_settings or {}).get('box_command_delay_seconds', 1))
             scenario_path = private / 'mixed-scenarios.json'

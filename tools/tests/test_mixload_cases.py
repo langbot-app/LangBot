@@ -58,6 +58,26 @@ class MixloadCaseTests(unittest.TestCase):
     def test_mock_preserves_real_tool_feedback_and_backend_identity_docker(self):
         self._test_mock_preserves_real_tool_feedback_and_backend_identity('docker')
 
+    def test_box_workloads_are_recorded_and_keep_the_oracle(self):
+        scenarios = read('fixtures/mock_llm_scenarios.json')
+        for workload, marker in (
+            ('noop', 'printf %s LANGBOT_BOX_SENTINEL'),
+            ('cpu', 'hashlib.sha256'),
+            ('io', 'write_bytes'),
+            ('overlap', 'sleep 1'),
+        ):
+            with self.subTest(workload=workload):
+                configured = configure_mock_scenarios(
+                    scenarios,
+                    box_backend='host',
+                    box_workload=workload,
+                )
+                steps = configured['mock-smoke-box']['steps']
+                calls = [step['tool_calls'][0]['arguments']['command'] for step in steps[:-1]]
+                self.assertEqual(configured['mock-smoke-box']['box_workload'], workload)
+                self.assertIn('LANGBOT_BOX_SENTINEL', calls[0])
+                self.assertTrue(any(marker in call for call in calls))
+
     def _test_mock_preserves_real_tool_feedback_and_backend_identity(self, backend):
         scenarios = read('fixtures/mock_llm_scenarios.json')
         original = deepcopy(scenarios)

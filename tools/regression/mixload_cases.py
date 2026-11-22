@@ -26,6 +26,7 @@ CASE_RECEIPTS = {
 }
 _MOCK_SENTINEL = 'LANGBOT_BOX_SENTINEL'
 _BOX_FILE = 'mixload-box-probe.txt'
+_BOX_WORKLOADS = frozenset({'noop', 'cpu', 'io', 'overlap'})
 
 
 def _validate_backend(box_backend):
@@ -144,9 +145,11 @@ def memory_scenario():
     }
 
 
-def configure_mock_scenarios(scenarios, *, box_backend):
+def configure_mock_scenarios(scenarios, *, box_backend, box_workload='overlap'):
     """Return per-run model scenarios whose ordinary steps are fully scripted."""
     _validate_backend(box_backend)
+    if box_workload not in _BOX_WORKLOADS:
+        raise ValueError(f'unknown Box workload: {box_workload}')
     result = deepcopy(scenarios)
     for name in ('mock-chat', 'mock-smoke-box', 'mock-rag'):
         result[name]['delay_seconds'] = 0.6
@@ -175,13 +178,33 @@ def configure_mock_scenarios(scenarios, *, box_backend):
     # Docker can additionally report the real container hostname. For host,
     # the external oracle uses the real persisted Box result session ID.
     prefix = 'printf \'LB_BOX_HOST=%s\\n\' "$(hostname)"; ' if box_backend == 'docker' else ''
-    commands = (
-        f'{prefix}sleep 1; printf %s {_MOCK_SENTINEL} > {_BOX_FILE} && cat {_BOX_FILE}',
-        f'{prefix}sleep 1; cat {_BOX_FILE}',
-    )
+    if box_workload == 'noop':
+        commands = (
+            f'{prefix}printf %s {_MOCK_SENTINEL} > {_BOX_FILE} && cat {_BOX_FILE}',
+            f'{prefix}cat {_BOX_FILE}',
+        )
+    elif box_workload == 'cpu':
+        cpu = 'python3 -c \'import hashlib; x=b"langbot"; [hashlib.sha256(x).digest() for _ in range(300000)]\''
+        commands = (
+            f'{prefix}{cpu}; printf %s {_MOCK_SENTINEL} > {_BOX_FILE} && cat {_BOX_FILE}',
+            f'{prefix}{cpu}; cat {_BOX_FILE}',
+        )
+    elif box_workload == 'io':
+        write = 'python3 -c \'from pathlib import Path; Path("mixload-box-payload.bin").write_bytes(b"x" * 65536)\''
+        read = 'python3 -c \'from pathlib import Path; Path("mixload-box-payload.bin").read_bytes()\' >/dev/null'
+        commands = (
+            f'{prefix}{write}; printf %s {_MOCK_SENTINEL} > {_BOX_FILE} && cat {_BOX_FILE}',
+            f'{prefix}{read} && cat {_BOX_FILE}',
+        )
+    else:
+        commands = (
+            f'{prefix}sleep 1; printf %s {_MOCK_SENTINEL} > {_BOX_FILE} && cat {_BOX_FILE}',
+            f'{prefix}sleep 1; cat {_BOX_FILE}',
+        )
     tool_calls = [call for step in result['mock-smoke-box']['steps'] for call in step.get('tool_calls', [])]
     if len(tool_calls) != len(commands) or any(call['name'] != 'exec' for call in tool_calls):
         raise ValueError('stock Box fixture no longer has the expected two exec steps')
     for call, command in zip(tool_calls, commands, strict=True):
         call['arguments']['command'] = command
+    result[CASE_MODELS['box']]['box_workload'] = box_workload
     return result

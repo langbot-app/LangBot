@@ -20,6 +20,7 @@ from typing import Any
 _MAX_TOTAL_WEIGHT = 1_000
 _MAX_PLANNED_SLOTS = 10_000_000
 _NAME = re.compile(r'[a-zA-Z][a-zA-Z0-9_-]*')
+_BOX_WORKLOADS = frozenset({'noop', 'cpu', 'io', 'overlap'})
 _PHASE_FIELDS = frozenset(
     {
         'name',
@@ -47,6 +48,7 @@ class MixloadProfile:
     weights: dict[str, int]
     phases: tuple[dict[str, Any], ...] | None
     seed: int | None
+    box_workload: str
 
 
 @dataclass(frozen=True)
@@ -167,7 +169,7 @@ def parse_mixload(value) -> MixloadProfile:
     """Validate a profile object without resolving case references yet."""
     _fields(
         value,
-        allowed={'version', 'seed', 'include', 'exclude', 'weights', 'phases'},
+        allowed={'version', 'seed', 'include', 'exclude', 'weights', 'phases', 'box_workload'},
         required={'version'},
         label='mixload profile',
     )
@@ -179,12 +181,16 @@ def parse_mixload(value) -> MixloadProfile:
         raise ValueError(f'scenarios are both included and excluded: {", ".join(sorted(overlap))}')
     if 'seed' in value:
         _number(value['seed'], 'seed', maximum=2**32 - 1, integer=True)
+    box_workload = value.get('box_workload', 'overlap')
+    if box_workload not in _BOX_WORKLOADS:
+        raise ValueError(f'box_workload must be one of {sorted(_BOX_WORKLOADS)}')
     return MixloadProfile(
         include=include,
         exclude=exclude,
         weights=_weights(value.get('weights', {}), 'weights', minimum=1),
         phases=_phases(value['phases']) if 'phases' in value else None,
         seed=value.get('seed'),
+        box_workload=box_workload,
     )
 
 
