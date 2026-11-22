@@ -29,7 +29,11 @@ def supervise(command, output, budget, pids, env=None):
                     os.killpg(process.pid, signal.SIGKILL)
                     process.wait()
                     break
-                sample = {'elapsed_seconds': time.monotonic() - started, 'processes': {}, 'system': read_system_snapshot()}
+                sample = {
+                    'elapsed_seconds': time.monotonic() - started,
+                    'processes': {},
+                    'system': read_system_snapshot(),
+                }
                 for name, pid in pids.items():
                     try:
                         sample['processes'][name] = read_process_snapshot(pid)
