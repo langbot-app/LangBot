@@ -1700,11 +1700,13 @@ done
         artifact_digests: list[str],
         artifact_owner: str | None,
     ) -> BoxExecutionResult:
+        execute_started = time.perf_counter()
         session = await self._get_or_create_session(
             spec,
             track_active_exec=True,
             action_context=action_context,
         )
+        session_acquire_ms = (time.perf_counter() - execute_started) * 1000
         if self.network_workspace:
             spec = spec.model_copy(update={"host_path": session.info.host_path})
 
@@ -1761,6 +1763,7 @@ done
             self.logger.info(
                 "box_execute_timing "
                 f"session_id={spec.session_id} lock_wait_ms={lock_wait_ms:.3f} "
+                f"session_acquire_ms={session_acquire_ms:.3f} "
                 f"backend_exec_ms={backend_exec_ms:.3f} "
                 f"runtime_ms={(time.perf_counter() - runtime_started) * 1000:.3f}"
             )
