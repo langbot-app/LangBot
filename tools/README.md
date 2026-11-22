@@ -149,7 +149,11 @@ Load phases can set `arrival_mode: "open-loop"` and a positive `queue_capacity`
 (default 128). Arrivals follow a fixed schedule throughout `duration_seconds`,
 even when responses slow down. A bounded client queue retains waiting arrivals;
 workers still bound in-flight requests, and each group still executes one turn
-at a time. Omit `arrival_mode` to keep the existing paced behavior.
+at a time. Use `drain_all: true`, `queue_capacity: 0`, and a `sender_workers`
+value up to 256 when the sender must drain every scheduled arrival after the
+load window. The summary records sender workers, queue mode, and drain settings
+so this mode can separate sender admission from service failures. Omit
+`arrival_mode` to keep the existing paced behavior.
 `max_requests` is available only in paced mode.
 
 Every planned arrival is recorded in `arrivals.jsonl` with an `arrival_id`,

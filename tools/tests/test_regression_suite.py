@@ -177,6 +177,13 @@ class ProfileTests(unittest.TestCase):
         current['phases'][0].update(arrival_mode='open-loop', queue_capacity=8)
         current['thresholds'] = {'max_arrival_p95_seconds': {'chat': 2}}
         validate(current)
+        current['phases'][0].update(
+            drain_all=True,
+            queue_capacity=0,
+            sender_workers=256,
+            drain_timeout_seconds=600,
+        )
+        validate(current)
         for patch_value in (
             {'arrival_mode': 'unknown'},
             {'arrival_mode': []},
@@ -190,6 +197,7 @@ class ProfileTests(unittest.TestCase):
         ):
             with self.subTest(patch_value=patch_value):
                 invalid = copy.deepcopy(current)
+                invalid['phases'][0]['drain_all'] = False
                 invalid['phases'][0].update(patch_value)
                 with self.assertRaises(ValueError):
                     validate(invalid)

@@ -21,7 +21,21 @@ _MAX_TOTAL_WEIGHT = 1_000
 _MAX_PLANNED_SLOTS = 10_000_000
 _NAME = re.compile(r'[a-zA-Z][a-zA-Z0-9_-]*')
 _PHASE_FIELDS = frozenset(
-    {'name', 'duration_seconds', 'rps', 'workers', 'cooldown_seconds', 'groups', 'members_per_group', 'max_requests'}
+    {
+        'name',
+        'duration_seconds',
+        'rps',
+        'workers',
+        'sender_workers',
+        'cooldown_seconds',
+        'groups',
+        'members_per_group',
+        'max_requests',
+        'arrival_mode',
+        'queue_capacity',
+        'drain_all',
+        'drain_timeout_seconds',
+    }
 )
 _REQUIRED_PHASE_FIELDS = frozenset({'name', 'duration_seconds', 'rps', 'workers'})
 
@@ -110,6 +124,8 @@ def _phases(value):
         for setting in ('duration_seconds', 'rps'):
             _number(phase[setting], f'{label}.{setting}', minimum=0.001)
         _number(phase['workers'], f'{label}.workers', minimum=1, maximum=32, integer=True)
+        if 'sender_workers' in phase:
+            _number(phase['sender_workers'], f'{label}.sender_workers', minimum=1, maximum=256, integer=True)
         if 'cooldown_seconds' in phase:
             _number(phase['cooldown_seconds'], f'{label}.cooldown_seconds')
         if 'groups' in phase:
@@ -120,6 +136,19 @@ def _phases(value):
             _number(phase['min_delivery_ratio'], f'{label}.min_delivery_ratio', maximum=1)
         if 'max_requests' in phase:
             _number(phase['max_requests'], f'{label}.max_requests', minimum=1, integer=True)
+        arrival_mode = phase.get('arrival_mode', 'paced')
+        if arrival_mode not in {'paced', 'open-loop'}:
+            raise ValueError(f'{label}.arrival_mode must be paced or open-loop')
+        if 'queue_capacity' in phase:
+            _number(phase['queue_capacity'], f'{label}.queue_capacity', minimum=0, integer=True)
+            if arrival_mode != 'open-loop':
+                raise ValueError(f'{label}.queue_capacity requires open-loop arrival_mode')
+        if 'drain_all' in phase and type(phase['drain_all']) is not bool:
+            raise ValueError(f'{label}.drain_all must be boolean')
+        if phase.get('drain_all') and arrival_mode != 'open-loop':
+            raise ValueError(f'{label}.drain_all requires open-loop arrival_mode')
+        if 'drain_timeout_seconds' in phase:
+            _number(phase['drain_timeout_seconds'], f'{label}.drain_timeout_seconds', minimum=0.001)
         slot_budget = float(phase['duration_seconds']) * float(phase['rps'])
         if not math.isfinite(slot_budget):
             raise ValueError(f'{label}: duration_seconds * rps must be finite')

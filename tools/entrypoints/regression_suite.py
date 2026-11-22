@@ -407,12 +407,15 @@ def validate(profile, *, load_overrides=None):
             'duration_seconds',
             'rps',
             'workers',
+            'sender_workers',
             'cooldown_seconds',
             'groups',
             'members_per_group',
             'max_requests',
             'arrival_mode',
             'queue_capacity',
+            'drain_all',
+            'drain_timeout_seconds',
             'scenario_weights',
             'min_delivery_ratio',
         }:
@@ -420,6 +423,10 @@ def validate(profile, *, load_overrides=None):
         number(phase.get('duration_seconds'), 'duration_seconds', minimum=0.001)
         number(phase.get('rps'), 'rps', minimum=0.001)
         number(phase.get('workers'), 'workers', minimum=1, integer=True)
+        if 'sender_workers' in phase:
+            number(phase['sender_workers'], 'sender_workers', minimum=1, integer=True)
+            if phase['sender_workers'] > 256:
+                raise ValueError('sender_workers must be <= 256')
         number(phase.get('cooldown_seconds', 0), 'cooldown_seconds')
         if 'max_requests' in phase:
             number(phase['max_requests'], 'max_requests', minimum=1, integer=True)
@@ -427,9 +434,17 @@ def validate(profile, *, load_overrides=None):
         if not isinstance(arrival_mode, str) or arrival_mode not in {'paced', 'open-loop'}:
             raise ValueError('arrival_mode must be paced or open-loop')
         if 'queue_capacity' in phase:
-            number(phase['queue_capacity'], 'queue_capacity', minimum=1, integer=True)
+            number(phase['queue_capacity'], 'queue_capacity', minimum=0, integer=True)
             if phase.get('arrival_mode') != 'open-loop':
                 raise ValueError('queue_capacity requires open-loop arrival_mode')
+            if phase['queue_capacity'] == 0 and not phase.get('drain_all'):
+                raise ValueError('queue_capacity zero requires drain_all')
+        if 'drain_all' in phase and not isinstance(phase['drain_all'], bool):
+            raise ValueError('drain_all must be boolean')
+        if 'drain_timeout_seconds' in phase:
+            number(phase['drain_timeout_seconds'], 'drain_timeout_seconds', minimum=0.001)
+        if phase.get('drain_all') and arrival_mode != 'open-loop':
+            raise ValueError('drain_all requires open-loop arrival_mode')
         if phase.get('arrival_mode') == 'open-loop' and 'max_requests' in phase:
             raise ValueError('open-loop arrival_mode cannot use max_requests')
         if phase['workers'] > 32:
@@ -940,8 +955,14 @@ class Suite:
                 command += ['--max-requests', str(phase['max_requests'])]
             if 'arrival_mode' in phase:
                 command += ['--arrival-mode', phase['arrival_mode']]
+            if 'sender_workers' in phase:
+                command += ['--sender-workers', str(phase['sender_workers'])]
             if 'queue_capacity' in phase:
                 command += ['--queue-capacity', str(phase['queue_capacity'])]
+            if phase.get('drain_all'):
+                command.append('--drain-all')
+            if 'drain_timeout_seconds' in phase:
+                command += ['--drain-timeout', str(phase['drain_timeout_seconds'])]
             with (self.output / f'{phase["name"]}.log').open('w') as log:
                 result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, env=self.env)
             phase_summary = destination / 'summary.json'
