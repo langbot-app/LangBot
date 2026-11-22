@@ -26,7 +26,7 @@ class CITelemetryPolicyTests(unittest.TestCase):
             root = Path(directory)
             (root / 'bad.yml').write_text(
                 "jobs:\n  good:\n    env:\n      SPACE__DISABLE_TELEMETRY: 'true'\n"
-                "    run: regression_ci\n  bad:\n    run: regression_ci\n",
+                '    run: regression_ci\n  bad:\n    run: regression_ci\n',
                 encoding='utf-8',
             )
             errors = check_workflows(root)
@@ -39,9 +39,9 @@ class CITelemetryPolicyTests(unittest.TestCase):
             root = Path(directory)
             (root / 'good.yml').write_text(
                 "env:\n  SPACE__DISABLE_TELEMETRY: 'true'\n"
-                "jobs:\n  service:\n    steps:\n"
-                "      - run: regression_ci\n"
-                "        env:\n"
+                'jobs:\n  service:\n    steps:\n'
+                '      - run: regression_ci\n'
+                '        env:\n'
                 "          SPACE__DISABLE_TELEMETRY: 'true'\n",
                 encoding='utf-8',
             )
@@ -52,12 +52,12 @@ class CITelemetryPolicyTests(unittest.TestCase):
             root = Path(directory)
             (root / 'bad.yml').write_text(
                 "env:\n  SPACE__DISABLE_TELEMETRY: 'true'\n"
-                "jobs:\n  service:\n"
-                "    env:\n"
+                'jobs:\n  service:\n'
+                '    env:\n'
                 "      SPACE__DISABLE_TELEMETRY: 'true'\n"
-                "    steps:\n"
-                "      - run: regression_ci\n"
-                "        env:\n"
+                '    steps:\n'
+                '      - run: regression_ci\n'
+                '        env:\n'
                 "          SPACE__DISABLE_TELEMETRY: 'false'\n",
                 encoding='utf-8',
             )
@@ -71,10 +71,10 @@ class CITelemetryPolicyTests(unittest.TestCase):
             root = Path(directory)
             (root / 'good.yml').write_text(
                 "env:\n  SPACE__DISABLE_TELEMETRY: 'false'\n"
-                "jobs:\n  service:\n"
-                "    env:\n"
+                'jobs:\n  service:\n'
+                '    env:\n'
                 "      SPACE__DISABLE_TELEMETRY: 'true'\n"
-                "    run: regression_ci\n",
+                '    run: regression_ci\n',
                 encoding='utf-8',
             )
             self.assertEqual(check_workflows(root), [])
@@ -95,8 +95,7 @@ class CITelemetryPolicyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'bad.yml').write_text(
-                "jobs:\n  service:\n    run: regression_ci\n    env:\n"
-                "      SPACE__DISABLE_TELEMETRY: '1'\n",
+                "jobs:\n  service:\n    run: regression_ci\n    env:\n      SPACE__DISABLE_TELEMETRY: '1'\n",
                 encoding='utf-8',
             )
             errors = check_workflows(root)
@@ -107,8 +106,7 @@ class CITelemetryPolicyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'bad.yml').write_text(
-                "jobs:\n  bad:\n    run: regression_ci\n    env:\n"
-                "      SPACE__DISABLE_TELEMETRY: 'false'\n",
+                "jobs:\n  bad:\n    run: regression_ci\n    env:\n      SPACE__DISABLE_TELEMETRY: 'false'\n",
                 encoding='utf-8',
             )
             errors = check_workflows(root)
