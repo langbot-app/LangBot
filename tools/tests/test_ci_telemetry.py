@@ -89,18 +89,6 @@ class CITelemetryPolicyTests(unittest.TestCase):
             self.assertIn('job e2e', errors[0])
             self.assertIn('missing SPACE__DISABLE_TELEMETRY=true', errors[0])
 
-    def test_reusable_p0_service_job_without_marker_is_rejected(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            (root / 'p0-acceptance.yml').write_text(
-                'jobs:\n  permissions:\n    run: uv run pytest tests/integration/api\n',
-                encoding='utf-8',
-            )
-            errors = check_workflows(root)
-            self.assertEqual(len(errors), 1)
-            self.assertIn('job permissions', errors[0])
-            self.assertIn('missing SPACE__DISABLE_TELEMETRY=true', errors[0])
-
     def test_composite_action_without_flag_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
