@@ -43,9 +43,7 @@ class AgentRunJournal:
         if len(self._run_snapshot_cache) <= 1024:
             return
         cutoff = now - _RUN_SNAPSHOT_CACHE_TTL_SECONDS
-        self._run_snapshot_cache = {
-            key: value for key, value in self._run_snapshot_cache.items() if value[0] >= cutoff
-        }
+        self._run_snapshot_cache = {key: value for key, value in self._run_snapshot_cache.items() if value[0] >= cutoff}
         if len(self._run_snapshot_cache) > 1024:
             for key, _ in sorted(
                 self._run_snapshot_cache.items(),
