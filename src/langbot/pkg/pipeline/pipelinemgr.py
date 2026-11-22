@@ -196,9 +196,13 @@ class RuntimePipeline:
         await self._assert_execution_active(query)
         # The message policy of the route this message matched is laid over the
         # Messaging config, so stages and plugins read it under the legacy keys.
-        await self.ap.message_policy_mgr.bind_query(query, self.pipeline_entity.config)
+        policy = await self.ap.message_policy_mgr.bind_query(query, self.pipeline_entity.config)
         # Store bound plugins and MCP servers in query for filtering
         query.variables['_pipeline_bound_plugins'] = self.bound_plugins
+        if policy is await self.ap.message_policy_mgr.neutral_runtime():
+            # No bot policy (debug chat, pipeline.run): there is no bot plugin
+            # selection, so the Chat's plugin list keeps choosing the listeners.
+            object.__setattr__(query, '_listener_plugins', self.bound_plugins)
         query.variables['_pipeline_bound_mcp_servers'] = self.bound_mcp_servers
         query.variables['_pipeline_mcp_resource_attachments'] = self.mcp_resource_attachments
         query.variables['_pipeline_mcp_resource_agent_read_enabled'] = self.mcp_resource_agent_read_enabled
@@ -686,7 +690,8 @@ class RuntimePipeline:
             if not getattr(query, '_message_received_dispatched', False):
                 await self._assert_execution_active(query)
                 ctx = await self.ap.plugin_connector.emit_event(
-                    message_received_event(query), query.variables.get('_pipeline_bound_plugins')
+                    message_received_event(query),
+                    getattr(query, '_listener_plugins', query.variables.get('_pipeline_bound_plugins')),
                 )
                 await self._assert_execution_active(query)
                 if ctx.is_prevented_default():

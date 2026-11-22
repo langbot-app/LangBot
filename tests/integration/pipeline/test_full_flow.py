@@ -761,6 +761,8 @@ async def runtime_pipeline_factory(pipeline_app, load_pipeline_modules):
         from langbot.pkg.message_policy import schema as policy_schema
 
         messaging_config, policy_override = policy_schema.split_legacy_config(query.pipeline_config)
+        # Migration 0060 moves the Chat's plugin selection to the route as well.
+        policy_override['plugins'] = {'enable_all': False, 'plugins': [{'author': 'test', 'name': 'observer'}]}
         bot_entity = SimpleNamespace(
             uuid=query.bot_uuid,
             message_policy=policy_schema.neutral_policy(),
@@ -840,6 +842,24 @@ class TestStageChainIntegration:
         ]
         assert [call.args[1] for call in emitted] == [['test/observer']] * 4
         pipeline_app.query_pool.remove_query.assert_awaited_once_with(query)
+
+    @pytest.mark.asyncio
+    async def test_query_without_bot_uses_chat_plugin_list_for_hooks(
+        self, pipeline_app, fake_platform_adapter, set_fake_runner, runtime_pipeline_factory, passthrough_plugin
+    ):
+        """Debug chat and pipeline.run have no bot selection; every hook keeps the Chat's list."""
+        adapter, _platform = fake_platform_adapter
+        set_fake_runner(FakeRunner.returns('LANGBOT_FAKE_PONG'))
+        query = text_query('ping', pipeline_config=create_minimal_pipeline_config())
+        query.adapter = adapter
+        runtime = await runtime_pipeline_factory(query)
+        pipeline_app.platform_mgr = SimpleNamespace(find_runtime_bot=lambda _context, _bot_uuid: None)
+
+        await runtime.run(query)
+
+        emitted = pipeline_app.plugin_connector.emit_event.await_args_list
+        assert len(emitted) == 4
+        assert [call.args[1] for call in emitted] == [['test/observer']] * 4
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(

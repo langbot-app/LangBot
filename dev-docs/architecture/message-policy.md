@@ -45,7 +45,7 @@ RuntimeBot._begin_message
 ## Plugin enablement
 
 - `message_policy.plugins` decides which plugins receive hooks and whose commands match (`enabled_plugins`). `None` means all. Order is the dispatch order.
-- The Chat extension list only authorizes AI-callable tools.
+- The Chat extension list only authorizes AI-callable tools. Exception: queries without a bot policy (debug chat, `pipeline.run`) bind the neutral policy and use the Chat's plugin list for hooks, as before.
 - Command processors (`command_settings.processors`) give per-bot command configuration and priority; an enabled plugin without a processor uses default config, a processor bound with `enabled: false` disables that plugin's commands.
 - `GET /api/v1/platform/bots/<uuid>/plugin-registrations[?route_id=&include_disabled=1]` / MCP `list_bot_plugin_registrations` return each plugin's commands, events and `event_processors` (hook → `messaging` / `agent` / `command`).
 
