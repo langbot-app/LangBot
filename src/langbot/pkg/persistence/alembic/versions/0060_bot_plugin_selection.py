@@ -8,8 +8,8 @@ import sqlalchemy as sa
 from langbot.pkg.command.processor import COMMAND_PROCESSOR_KIND, plugin_id_from_component_ref
 from langbot.pkg.pipeline.extension_preferences import normalize_extension_preferences
 
-revision = '0057_bot_plugin_selection'
-down_revision = '0056_bot_message_policy'
+revision = '0060_bot_plugin_selection'
+down_revision = '0059_bot_message_policy'
 branch_labels = None
 depends_on = None
 

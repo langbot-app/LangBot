@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import contextlib
 import sqlite3
 import subprocess
 import tempfile
@@ -419,7 +420,7 @@ def _turn(client, bot_id, request, *, url=None, session='file-owner'):
 
 
 def _read_installation(db_path):
-    with sqlite3.connect(f'file:{db_path}?mode=ro', uri=True) as db:
+    with contextlib.closing(sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)) as db:
         row = db.execute(
             'SELECT installation_uuid, artifact_digest, runtime_revision, enabled, '
             'permission_grants, permission_snapshot, workspace_uuid FROM plugin_settings '
@@ -435,7 +436,7 @@ def _read_installation(db_path):
 def _completed_snapshot(db_path, run_id):
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
-        with sqlite3.connect(f'file:{db_path}?mode=ro', uri=True) as db:
+        with contextlib.closing(sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)) as db:
             row = db.execute(
                 'SELECT status, runner_id, authorization_json FROM agent_run WHERE run_id=?', (run_id,)
             ).fetchone()
@@ -628,7 +629,7 @@ def test_registered_runner_persistent_grants_and_tcp_file_delivery(
     revoked, files = _turn(client, bot_id, {'operation': 'revoked'})
     assert revoked.get('error') and 'unexpected_sandbox_access' not in revoked and not files, revoked
     assert any(word in revoked['error'].lower() for word in ('permission', 'capability', 'sandbox', 'denied')), revoked
-    with sqlite3.connect(f'file:{db_path}?mode=ro', uri=True) as db:
+    with contextlib.closing(sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)) as db:
         grants = db.execute(
             'SELECT permission_grants FROM plugin_settings WHERE installation_uuid=?', (before[0],)
         ).fetchone()

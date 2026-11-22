@@ -1,7 +1,7 @@
 """Add command_settings to bots table.
 
-Revision ID: 0054_bot_command_settings
-Revises: 0053_knowledge_artifact_sources
+Revision ID: 0057_bot_command_settings
+Revises: 0056_daily_usage_quota_warning
 Create Date: 2026-10-31
 """
 
@@ -10,8 +10,8 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-revision = '0054_bot_command_settings'
-down_revision = '0053_knowledge_artifact_sources'
+revision = '0057_bot_command_settings'
+down_revision = '0056_daily_usage_quota_warning'
 branch_labels = None
 depends_on = None
 

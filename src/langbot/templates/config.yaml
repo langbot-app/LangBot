@@ -145,6 +145,16 @@ system:
         max_pipelines: -1
         max_extensions: -1
         max_knowledge_bases: -1
+    gc:
+        # Long-running processes with a large heap rarely reach CPython's
+        # automatic full-collection threshold, so cyclic garbage (for example
+        # closed TLS connections of reconnecting adapters) accumulates. A full
+        # collection runs every collect_interval_seconds (0 disables).
+        # freeze_after_seconds > 0 freezes the startup heap out of collection
+        # after that many seconds; it shortens collections but leaks startup
+        # objects that later become cyclic garbage, so it is off by default.
+        freeze_after_seconds: 0
+        collect_interval_seconds: 1800
     task_retention:
         # Keep at most this many completed async task records in memory
         completed_limit: 200
@@ -181,6 +191,10 @@ database:
     use: sqlite
     sqlite:
         path: 'data/langbot.db'
+        # Experimental: queue Artifact publication, Ledger and monitoring writes within this Core process.
+        # Set to artifact_ledger to leave monitoring writes out of the queue.
+        experimental_write_queue: false
+        experimental_write_timing: false
     postgresql:
         # Optional SQLAlchemy URL (postgresql[+asyncpg]://...). When set, it
         # overrides the structured fields and preserves TLS/query options.
@@ -239,7 +253,7 @@ vdb:
         # keep this false when deliberately using an external pgvector DB.
         use_business_database: false
         # Release migrations create one partial ANN index per enabled value.
-        allowed_dimensions: [384, 512, 768, 1024, 1536, 3072]
+        allowed_dimensions: [384, 512, 768, 1024, 1536, 2048, 3072]
         host: '127.0.0.1'
         port: 5433
         database: 'langbot'

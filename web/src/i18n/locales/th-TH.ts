@@ -1545,6 +1545,14 @@ const thTH = {
       resetSuccess: 'รีเซ็ตบริบทแล้ว',
       resetError:
         'รีเซ็ตไม่สำเร็จ โปรดรอให้งานที่กำลังทำอยู่เสร็จแล้วลองอีกครั้ง',
+      resetScopeMember:
+        'แชทนี้เก็บบริบทแยกสำหรับสมาชิกแต่ละคนในกลุ่ม จึงรีเซ็ตเฉพาะบริบทของสมาชิกคนนี้',
+      resetScopeGroup:
+        'กลุ่มนี้ใช้บริบทร่วมกัน การรีเซ็ตจะล้างการสนทนาของทั้งกลุ่ม ไม่ใช่เฉพาะสมาชิกคนนี้',
+      inGroup: 'ในกลุ่ม {{group}}',
+      filterByGroup: 'กลุ่มเดียวกัน',
+      groupFilterActive: 'กลุ่ม {{group}}',
+      clearGroupFilter: 'แสดงเซสชันทั้งหมด',
 
       title: 'เซสชัน',
       sessions: 'เซสชัน',
@@ -2374,6 +2382,10 @@ const thTH = {
     updating: 'กำลังอัปเดต...',
     updateSuccess: 'อัปเดตปลั๊กอินสำเร็จ',
     updateError: 'อัปเดตล้มเหลว: ',
+    installedVersion: 'เวอร์ชันที่ติดตั้ง v{{version}}',
+    updateToVersion: 'อัปเดตเป็น v{{version}}',
+    confirmUpdatePluginVersion:
+      'อัปเดตปลั๊กอิน {{author}}/{{name}} จาก v{{from}} เป็น v{{to}} หรือไม่?',
     saveConfigSuccessNormal: 'บันทึกการกำหนดค่าสำเร็จ',
     saveConfigError: 'บันทึกการกำหนดค่าล้มเหลว: ',
     config: 'การกำหนดค่า',
@@ -3228,6 +3240,32 @@ const thTH = {
     space_account_binding_requiredTitle: 'LangBot Account connection required',
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
+  },
+  dailyMessageQuota: {
+    planLimited: '{{count}} ข้อความต่อวัน',
+    planUnlimited: 'ข้อความต่อวันไม่จำกัด',
+    planHelp:
+      'จำนวนข้อความที่บอตประมวลผลได้ต่อวัน นับตามวัน UTC และรีเซ็ตเวลา 00:00 UTC นับเฉพาะข้อความที่บอตประมวลผลจริง เมื่อใช้ครบแล้ว ข้อความใหม่ของวันนั้นจะไม่ถูกประมวลผลและผู้ใช้จะได้รับแจ้ง',
+    title: 'ข้อความวันนี้',
+    usage: '{{used}} / {{limit}}',
+    remaining: 'เหลือ {{count}}',
+    resetsAt: 'รีเซ็ต {{time}}',
+    today: 'วันนี้ {{time}}',
+    tomorrow: 'พรุ่งนี้ {{time}}',
+    exhausted: 'ใช้โควตาวันนี้ครบแล้ว',
+    exhaustedHint: 'ข้อความใหม่จะหยุดประมวลผลจนถึง {{time}}',
+    nearLimit: 'ใกล้หมดแล้ว',
+    upgrade: 'อัปเกรดแผน',
+    unlimited: 'ไม่จำกัด',
+    settingsTitle: 'โควตาข้อความรายวัน',
+    settingsDescription:
+      'จำนวนข้อความที่บอตประมวลผลได้ต่อวัน รวมแชตดีบัก นับตามวัน UTC ข้อความในกลุ่มที่ไม่ได้เรียกบอตจะไม่ถูกนับ',
+    unlimitedDescription: 'แผนของคุณไม่จำกัดจำนวนข้อความต่อวัน',
+    errorTitle: 'ใช้โควตาข้อความวันนี้ครบแล้ว',
+    errorBody:
+      'เวิร์กสเปซนี้ประมวลผลไปแล้ว {{limit}} ข้อความในวันนี้ ข้อความนี้จึงไม่ถูกประมวลผล โควตาจะรีเซ็ต {{time}}',
+    errorUpgrade: 'อัปเกรดเพื่อเพิ่มโควตา',
+    unavailable: 'ไม่สามารถดึงการใช้งานวันนี้ได้ในขณะนี้',
   },
   workspace: {
     dedicatedSpaceMembersHint:

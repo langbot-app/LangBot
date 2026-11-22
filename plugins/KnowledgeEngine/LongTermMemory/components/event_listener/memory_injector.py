@@ -83,31 +83,7 @@ class MemoryInjector(EventListener):
             )
             return
 
-        # Remove memory KB from naive RAG pre-processing; L2 episodic
-        # retrieval is handled below so it works regardless of whether
-        # AgenticRAG is installed.
         query_vars = await api.get_query_vars()
-        raw_kb_uuids = query_vars.get("_knowledge_base_uuids", [])
-        if "_knowledge_base_uuids" not in query_vars:
-            logger.warning(
-                "[LongTermMemory] naive RAG suppression unavailable: query_id=%s kb_id=%s reason=missing_kb_uuid_query_var",
-                event_ctx.query_id,
-                kb_id,
-            )
-        elif not isinstance(raw_kb_uuids, list):
-            logger.warning(
-                "[LongTermMemory] naive RAG suppression skipped: query_id=%s kb_id=%s reason=invalid_kb_uuid_query_var",
-                event_ctx.query_id,
-                kb_id,
-            )
-        else:
-            kb_uuids: list[str] = raw_kb_uuids
-            if kb_id not in kb_uuids:
-                kb_uuids = []
-            else:
-                kb_uuids = [u for u in kb_uuids if u != kb_id]
-                await api.set_query_var("_knowledge_base_uuids", kb_uuids)
-
         # --- L2 episodic memory retrieval ---
         retrieved_episodes: list[dict] = []
         user_message_text: str = query_vars.get("user_message_text", "")
@@ -158,6 +134,27 @@ class MemoryInjector(EventListener):
                     event_ctx.query_id,
                     kb_id,
                 )
+
+        # Suppress duplicate automatic RAG only after scoped L2 recall.
+        # The Host checks recall against the effective list for this query,
+        # so removing this KB before recall would deny the plugin's own lookup.
+        naive_rag_suppressed = False
+        raw_kb_uuids = query_vars.get("_knowledge_base_uuids")
+        if "_knowledge_base_uuids" not in query_vars:
+            logger.warning(
+                "[LongTermMemory] naive RAG suppression unavailable: query_id=%s kb_id=%s reason=missing_kb_uuid_query_var",
+                event_ctx.query_id,
+                kb_id,
+            )
+        elif not isinstance(raw_kb_uuids, list):
+            logger.warning(
+                "[LongTermMemory] naive RAG suppression skipped: query_id=%s kb_id=%s reason=invalid_kb_uuid_query_var",
+                event_ctx.query_id,
+                kb_id,
+            )
+        elif kb_id in raw_kb_uuids:
+            await api.set_query_var("_knowledge_base_uuids", [u for u in raw_kb_uuids if u != kb_id])
+            naive_rag_suppressed = True
 
         isolation = config.get("isolation", "session")
         bot_uuid = await api.get_bot_uuid()
@@ -233,7 +230,7 @@ class MemoryInjector(EventListener):
                     "kb_id": kb_id,
                     "isolation": isolation,
                     "speaker": {"id": sender_id, "name": sender_name},
-                    "naive_rag_suppressed": "_knowledge_base_uuids" in query_vars,
+                    "naive_rag_suppressed": naive_rag_suppressed,
                     "session_profile": _profile_summary(session_profile),
                     "speaker_profile": _profile_summary(speaker_profile),
                     "episodes": retrieved_episodes,

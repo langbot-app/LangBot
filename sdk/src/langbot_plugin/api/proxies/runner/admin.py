@@ -380,15 +380,20 @@ class RunnerAdminAPIProxy:
         run_id: str,
         reason: str | None = None,
         cleanup_confirmed: bool = True,
+        *,
+        expected_retry_count: int | None = None,
     ) -> AgentRun:
         """Record cancellation cleanup completion for a run."""
+        data = {
+            "target_run_id": run_id,
+            "reason": reason,
+            "cleanup_confirmed": cleanup_confirmed,
+        }
+        if expected_retry_count is not None:
+            data["expected_retry_count"] = expected_retry_count
         resp = await self._call_action(
             PluginToRuntimeAction.RUN_CANCEL_ACK,
-            {
-                "target_run_id": run_id,
-                "reason": reason,
-                "cleanup_confirmed": cleanup_confirmed,
-            },
+            data,
             15.0,
         )
         return AgentRun.model_validate(resp)

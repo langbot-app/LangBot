@@ -440,6 +440,7 @@ class MessagePolicyRuntime:
         notice: platform_message.MessageChain,
         *,
         before_send: typing.Callable[[], typing.Awaitable[typing.Any]] | None = None,
+        reply_options: dict[str, typing.Any] | None = None,
     ) -> None:
         """Send a prepared user notice (hint, error) to the conversation."""
         stream_output_supported = await query.adapter.is_stream_output_supported()
@@ -458,6 +459,7 @@ class MessagePolicyRuntime:
                 message_source=query.message_event,
                 message=notice,
                 quote_origin=self.quote_origin,
+                **(reply_options or {}),
             )
 
 

@@ -104,10 +104,21 @@ export default function HomeLayout({
   // selector and therefore returns the selected Workspace's wizard metadata.
   useEffect(() => {
     let cancelled = false;
-    bootstrapWorkspaceSession()
+    // Links in Workspace emails carry ?workspace=<uuid> to open that Workspace.
+    const linkParams = new URLSearchParams(location.search);
+    const linkedWorkspaceUuid = linkParams.get('workspace')?.trim() || '';
+    linkParams.delete('workspace');
+    const searchWithoutWorkspace = linkParams.toString()
+      ? `?${linkParams.toString()}`
+      : '';
+    bootstrapWorkspaceSession(
+      linkedWorkspaceUuid
+        ? { preferredWorkspaceUuid: linkedWorkspaceUuid }
+        : {},
+    )
       .then(async (result) => {
         if (result.status === 'selection-required') {
-          const returnTo = `${location.pathname}${location.search}`;
+          const returnTo = `${location.pathname}${searchWithoutWorkspace}`;
           navigate(
             `/workspaces/select?returnTo=${encodeURIComponent(returnTo)}`,
             { replace: true },
@@ -118,6 +129,12 @@ export default function HomeLayout({
           throw new Error('No Workspace is available for this Account');
         }
         await initializeSystemInfo({ throwOnError: true });
+        if (linkedWorkspaceUuid) {
+          navigate(`${location.pathname}${searchWithoutWorkspace}`, {
+            replace: true,
+          });
+          return false;
+        }
         return true;
       })
       .then((ready) => {

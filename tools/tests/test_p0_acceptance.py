@@ -16,15 +16,22 @@ class TestP0Scope(unittest.TestCase):
         workflow = yaml.safe_load(
             (Path(__file__).resolve().parents[2] / '.github/workflows/core-smoke.yml').read_text()
         )
-        smoke = workflow['jobs']['smoke']
-        self.assertEqual(smoke['needs'], 'p0')
-        self.assertEqual(smoke['if'], 'always()')
-        gate = smoke['steps'][0]
+        jobs = workflow['jobs']
+        self.assertNotIn('needs', jobs['smoke'])
+        verdict = jobs['verdict']
+        self.assertEqual(verdict['name'], 'Core smoke (60s)')
+        self.assertEqual(set(verdict['needs']), {'p0', 'smoke'})
+        self.assertEqual(verdict['if'], 'always()')
+        gate = verdict['steps'][0]
         self.assertEqual(gate['env']['P0_RESULT'], '${{ needs.p0.result }}')
-        for state in ('success', 'failure', 'cancelled', 'skipped', ''):
-            with self.subTest(state=state):
-                result = subprocess.run(['bash', '-c', gate['run']], env={'P0_RESULT': state})
-                self.assertEqual(result.returncode == 0, state == 'success')
+        self.assertEqual(gate['env']['SMOKE_RESULT'], '${{ needs.smoke.result }}')
+        for key in gate['env']:
+            for state in ('success', 'failure', 'cancelled', 'skipped', ''):
+                with self.subTest(job=key, state=state):
+                    env = dict.fromkeys(gate['env'], 'success')
+                    env[key] = state
+                    result = subprocess.run(['bash', '-c', gate['run']], env=env)
+                    self.assertEqual(result.returncode == 0, state == 'success')
 
     def test_backend_changes_never_escape_acceptance(self):
         for path in (

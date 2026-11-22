@@ -125,6 +125,26 @@ class JobTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'requires published'):
                 load_profile(path)
 
+    def test_validate_applies_phase_overrides_before_checking_worker_limit(self):
+        from tools.entrypoints.regression_suite import main as suite_main
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            suite = profile()
+            suite['phases'][0]['workers'] = 33
+            suite_path = root / 'suite.json'
+            suite_path.write_text(json.dumps(suite))
+            job_path = root / 'job.json'
+            job_path.write_text(json.dumps({'version': 1, 'suite': 'suite.json', 'deployment': {'version': 'v4.11.0'}}))
+            with self.assertRaisesRegex(ValueError, 'workers must be <= 32'):
+                load_profile(job_path)
+            for entry, path in ((suite_main, suite_path), (main, job_path)):
+                with (
+                    self.subTest(profile=path.name),
+                    patch.object(sys, 'argv', ['regression', 'validate', '--profile', str(path), '--workers', '4']),
+                ):
+                    entry()
+
     def test_mixed_profile_uses_owned_compose_backend_addresses(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / 'job.json'
@@ -269,7 +289,7 @@ class JobTests(unittest.TestCase):
                     patch.object(job, 'prepare', side_effect=prepare),
                     patch.object(job, 'collect', side_effect=lambda: events.append('collect')),
                     patch.object(job, 'cleanup', side_effect=lambda: events.append('teardown')),
-                    patch('tools.entrypoints.regression_traffic.read_endpoint_snapshot', return_value={'http.ok': 1}),
+                    patch('tools.regression.observations.read_endpoint_snapshot', return_value={'http.ok': 1}),
                 ):
                     result = job.run()
                 self.assertFalse(result['passed'])

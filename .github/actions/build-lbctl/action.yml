@@ -1,0 +1,39 @@
+name: Build lbctl
+description: Build the official LangBot CLI for Core compatibility tests
+inputs:
+  ref:
+    description: Ref in langbot-app/langbot-cli
+    default: main
+outputs:
+  binary:
+    description: Path to the compiled lbctl
+    value: ${{ steps.build.outputs.binary }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: langbot-app/langbot-cli
+        ref: ${{ inputs.ref }}
+        path: .ci-lbctl-source
+        persist-credentials: false
+    - uses: actions/setup-go@v5
+      with:
+        go-version: '1.26.8'
+        cache-dependency-path: .ci-lbctl-source/go.sum
+    - name: Build and record the resolved CLI commit
+      id: build
+      shell: bash
+      working-directory: .ci-lbctl-source
+      env:
+        GOTOOLCHAIN: local
+        CGO_ENABLED: '0'
+      run: |
+        commit=$(git rev-parse HEAD)
+        binary="$RUNNER_TEMP/lbctl"
+        go mod download
+        go mod verify
+        go build -mod=readonly -trimpath -ldflags "-X main.commit=$commit" -o "$binary" ./cmd/lbctl
+        go version -m "$binary"
+        printf 'lbctl commit: `%s`\n' "$commit" >> "$GITHUB_STEP_SUMMARY"
+        printf 'binary=%s\n' "$binary" >> "$GITHUB_OUTPUT"

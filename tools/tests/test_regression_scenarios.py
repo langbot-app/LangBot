@@ -207,7 +207,7 @@ class ScenarioExecutionTests(unittest.TestCase):
         self.profile['observe']['pids'] = {'missing': 999999999}
         window = ExecutionWindow(self.suite)
         result = {'errors': []}
-        with patch('tools.entrypoints.regression_traffic.read_endpoint_snapshot', return_value={'http.ok': 1}):
+        with patch('tools.regression.observations.read_endpoint_snapshot', return_value={'http.ok': 1}):
             window.start()
             window.finish(result)
         self.assertTrue(any('process sample failed' in error for error in result['errors']))

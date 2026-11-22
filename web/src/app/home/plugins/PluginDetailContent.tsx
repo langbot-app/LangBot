@@ -31,7 +31,13 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useAsyncTask, AsyncTaskStatus } from '@/hooks/useAsyncTask';
-import { Bug, Puzzle, Trash2, Upload } from 'lucide-react';
+import { ArrowUp, Bug, Puzzle, Trash2, Upload } from 'lucide-react';
+import { getCloudServiceClient } from '@/app/infra/http';
+import { isNewerVersion } from '@/app/utils/versionCompare';
+import {
+  pluginTaskKey,
+  usePluginInstallTasks,
+} from '@/app/home/plugins/components/plugin-install-task';
 import PluginSpaceUploadDialog from './components/plugin-installed/PluginSpaceUploadDialog';
 import { toast } from 'sonner';
 
@@ -49,6 +55,15 @@ export default function PluginDetailContent({ id }: { id: string }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteData, setDeleteData] = useState(false);
   const [showSpaceUpload, setShowSpaceUpload] = useState(false);
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
+  const [showUpdateConfirm, setShowUpdateConfirm] = useState(false);
+  const [updateSubmitting, setUpdateSubmitting] = useState(false);
+  const {
+    addTask,
+    setSelectedTaskId,
+    registerOnTaskComplete,
+    unregisterOnTaskComplete,
+  } = usePluginInstallTasks();
 
   // Parse "author/name" composite key
   const slashIndex = id.indexOf('/');
@@ -102,6 +117,77 @@ export default function PluginDetailContent({ id }: { id: string }) {
       cancelled = true;
     };
   }, [pluginAuthor, pluginName, loadAttempt]);
+
+  const installedVersion = pluginInfo?.manifest.manifest.metadata.version ?? '';
+  const installSource = pluginInfo?.install_source ?? plugin?.installSource;
+  const isMarketplaceInstall =
+    !pluginInfo?.debug && installSource === 'marketplace';
+  const hasUpdate =
+    isMarketplaceInstall &&
+    !!latestVersion &&
+    isNewerVersion(latestVersion, installedVersion);
+
+  // Ask the marketplace for this plugin's latest version directly, so update
+  // detection does not depend on the plugin appearing in a paged list.
+  useEffect(() => {
+    if (!isMarketplaceInstall) {
+      setLatestVersion(null);
+      return;
+    }
+    let cancelled = false;
+    getCloudServiceClient()
+      .then((client) => client.getPluginDetail(pluginAuthor, pluginName))
+      .then((res) => {
+        if (!cancelled) setLatestVersion(res.plugin?.latest_version || null);
+      })
+      .catch(() => {
+        if (!cancelled) setLatestVersion(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isMarketplaceInstall, pluginAuthor, pluginName, loadAttempt]);
+
+  useEffect(() => {
+    const onComplete = (
+      _taskId: number,
+      success: boolean,
+      error?: string,
+      operation?: 'install' | 'upgrade',
+    ) => {
+      if (operation !== 'upgrade') return;
+      if (success) {
+        toast.success(t('plugins.updateSuccess'));
+        void refreshPlugins();
+        setLoadAttempt((attempt) => attempt + 1);
+      } else {
+        toast.error(t('plugins.updateError') + (error ?? ''));
+      }
+    };
+    registerOnTaskComplete(onComplete);
+    return () => unregisterOnTaskComplete(onComplete);
+  }, [registerOnTaskComplete, unregisterOnTaskComplete, refreshPlugins, t]);
+
+  function executeUpdate() {
+    setUpdateSubmitting(true);
+    httpClient
+      .upgradePlugin(pluginAuthor, pluginName)
+      .then((res) => {
+        addTask({
+          taskId: res.task_id,
+          pluginName: `${pluginAuthor}/${pluginName}`,
+          source: 'marketplace',
+          extensionType: 'plugin',
+          operation: 'upgrade',
+        });
+        setSelectedTaskId(pluginTaskKey(res.task_id, 'marketplace', 'upgrade'));
+        setShowUpdateConfirm(false);
+      })
+      .catch((error) => {
+        toast.error(t('plugins.updateError') + error.message);
+      })
+      .finally(() => setUpdateSubmitting(false));
+  }
 
   function handleFormSubmit(timeout?: number) {
     if (timeout) {
@@ -230,10 +316,32 @@ export default function PluginDetailContent({ id }: { id: string }) {
                 {t('plugins.spaceUpload.menuAction')}
               </Button>
             )}
+            {hasUpdate && (
+              <Button
+                type="button"
+                size="sm"
+                className="order-last ml-auto shrink-0"
+                onClick={() => setShowUpdateConfirm(true)}
+              >
+                <ArrowUp className="mr-1.5 size-4" />
+                {t('plugins.updateToVersion', { version: latestVersion })}
+              </Button>
+            )}
             <Badge variant="outline" className="shrink-0 text-[0.7rem]">
               <Puzzle className="size-3.5" />
               {t('market.typePlugin')}
             </Badge>
+            {installedVersion && (
+              <Badge
+                variant="outline"
+                className="shrink-0 font-mono text-[0.7rem]"
+                title={t('plugins.installedVersion', {
+                  version: installedVersion,
+                })}
+              >
+                v{installedVersion}
+              </Badge>
+            )}
             {sourceBadge}
             {componentBadges}
           </div>
@@ -356,6 +464,34 @@ export default function PluginDetailContent({ id }: { id: string }) {
                 {t('plugins.close')}
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showUpdateConfirm} onOpenChange={setShowUpdateConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('plugins.updateConfirm')}</DialogTitle>
+            <DialogDescription>
+              {t('plugins.confirmUpdatePluginVersion', {
+                author: pluginAuthor,
+                name: pluginName,
+                from: installedVersion,
+                to: latestVersion,
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowUpdateConfirm(false)}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button onClick={executeUpdate} disabled={updateSubmitting}>
+              {updateSubmitting
+                ? t('plugins.updating')
+                : t('plugins.confirmUpdate')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

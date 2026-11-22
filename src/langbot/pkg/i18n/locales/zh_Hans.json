@@ -1,4 +1,10 @@
 {
+  "Daily message quota reached ({limit} per day). It resets at 00:00 UTC. Upgrade your plan for a higher quota.": "今日消息额度已用完（每天 {limit} 条），将于 UTC 00:00 重置。升级套餐可提高额度。",
+  "The bot route changed. Read the current binding.": "Bot 路由已变化。请读取当前绑定。",
+  "Skill not found": "Skill 不存在",
+  "Skill package name must match the requested Skill": "包内 Skill 名称必须与请求的 Skill 一致",
+  "file and base_revision are required": "file 和 base_revision 为必填项",
+  "Skill package exceeds the 10MB upload limit": "Skill 包超过 10MB 上传限制",
   "Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. If startup failed, check the installation task and runtime logs, then retry.": "找不到 Agent 运行器：{runner}。请打开插件页面，检查是否已安装、启用并确认权限。如果启动失败，请检查安装任务和运行时日志后重试。",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "插件 {plugin} 未声明权限。请在插件设置中确认兼容模式访问权限。",
   "platform_commands.enabled must be a boolean": "platform_commands.enabled 必须是布尔值",

@@ -24,10 +24,11 @@ class FakeStoragePlugin:
 class FakeVectorPlugin(FakeStoragePlugin):
     """Simulates a vector backend, optionally one that ignores metadata filters."""
 
-    def __init__(self, *, leak: bool = False, delete_leak: bool = False):
+    def __init__(self, *, leak: bool = False, delete_leak: bool = False, delete_reports_count: bool = True):
         super().__init__()
         self.leak = leak
         self.delete_leak = delete_leak
+        self.delete_reports_count = delete_reports_count
         self.records: dict[str, dict] = {}
         self.deleted: list[str] = []
 
@@ -55,8 +56,8 @@ class FakeVectorPlugin(FakeStoragePlugin):
     async def vector_delete(self, collection_id, file_ids=None, filters=None):
         count = 0
         if file_ids:
-            for item_id in file_ids:
-                if item_id in self.records:
+            for item_id, record in list(self.records.items()):
+                if record["metadata"].get("file_id") in file_ids:
                     self.records.pop(item_id)
                     self.deleted.append(item_id)
                     count += 1
@@ -69,7 +70,18 @@ class FakeVectorPlugin(FakeStoragePlugin):
                 self.records.pop(item_id)
                 self.deleted.append(item_id)
                 count += 1
-        return count
+        return count if self.delete_reports_count else 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("delete_leak", [False, True])
+async def test_probe_verifies_uncounted_deletion_and_cleans_up(delete_leak):
+    plugin = FakeVectorPlugin(delete_leak=delete_leak, delete_reports_count=False)
+
+    result = await MemoryStore(plugin).run_metadata_filter_probe("kb-1", "emb-1")
+
+    assert result["status"] == ("ERROR" if delete_leak else "OK")
+    assert plugin.records == {}
 
 
 @pytest.mark.asyncio

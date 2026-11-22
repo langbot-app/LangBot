@@ -1,14 +1,27 @@
 import os
 import sys
 
+_TRUE_VALUES = {'1', 'true', 'yes', 'on'}
+_FALSE_VALUES = {'0', 'false', 'no', 'off'}
+
 
 def get_platform() -> str:
-    """获取当前平台"""
-    # 检查是不是在 docker 里
+    """获取当前平台
 
-    DOCKER_ENV = os.environ.get('DOCKER_ENV', 'false')
+    An explicitly set ``DOCKER_ENV`` wins over the ``/.dockerenv`` heuristic, so
+    native deployments that happen to run inside a container (CI, devcontainers,
+    some NAS images) can set ``DOCKER_ENV=false`` and still launch the local
+    plugin runtime / Box. When ``DOCKER_ENV`` is unset (or unrecognized) we fall
+    back to probing ``/.dockerenv``.
+    """
+    docker_env = os.environ.get('DOCKER_ENV', '').strip().lower()
 
-    if os.path.exists('/.dockerenv') or DOCKER_ENV == 'true':
+    if docker_env in _TRUE_VALUES:
+        return 'docker'
+    if docker_env in _FALSE_VALUES:
+        return sys.platform
+
+    if os.path.exists('/.dockerenv'):
         return 'docker'
 
     return sys.platform

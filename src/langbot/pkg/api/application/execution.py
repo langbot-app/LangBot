@@ -627,6 +627,7 @@ EXECUTION_OPERATIONS = (
             target_run_id=(Text | None, None),
             reason=(str | None, None),
             cleanup_confirmed=(bool, True),
+            expected_retry_count=(Nonnegative | None, None),
         ),
         RunOutput,
         'runner_admin',

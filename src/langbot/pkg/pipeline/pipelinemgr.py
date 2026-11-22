@@ -258,13 +258,26 @@ class RuntimePipeline:
         if result.user_notice or result.debug_notice or result.console_notice or result.error_notice:
             await self._assert_execution_active(query)
         if result.user_notice:
+            if result.structured_error and '_cli_run_status' in query.variables:
+                query.variables['_cli_run_error'] = result.structured_error
             policy = await self.ap.message_policy_mgr.for_query(query)
             result.user_notice = policy.build_notice(query.message_event, result.user_notice)
 
             async def before_send() -> None:
                 await self._assert_execution_active(query)
 
-            await policy.send_notice(query, result.user_notice, before_send=before_send)
+            reply_options = {}
+            if result.structured_error:
+                from ..platform.sources.websocket_adapter import WebSocketAdapter
+
+                if isinstance(query.adapter, WebSocketAdapter):
+                    reply_options['error'] = result.structured_error
+            await policy.send_notice(
+                query,
+                result.user_notice,
+                before_send=before_send,
+                reply_options=reply_options,
+            )
         if result.debug_notice:
             self.ap.logger.debug(result.debug_notice)
         if result.console_notice:
@@ -303,7 +316,7 @@ class RuntimePipeline:
                     bot_name=bot_name,
                     pipeline_id=self.pipeline_entity.uuid,
                     pipeline_name=pipeline_name,
-                    error_type='PipelineError',
+                    error_type=result.structured_error['error_code'] if result.structured_error else 'PipelineError',
                     error_message=result.error_notice,
                     session_id=session_id,
                     stack_trace=result.debug_notice if result.debug_notice else None,
@@ -993,7 +1006,18 @@ class PipelineManager:
 
         # initialize stage containers according to pipeline_entity.stages
         stage_containers: list[StageInstContainer] = []
-        for stage_name in pipeline_entity.stages:
+        stages = list(pipeline_entity.stages)
+        if 'RequireDailyMessageQuota' not in stages:
+            # Stored pipelines predate this stage: meter right before the
+            # rate limiter (or the processor). Pipelines that never reach a
+            # processor have nothing to meter.
+            index = next(
+                (stages.index(name) for name in ('RequireRateLimitOccupancy', 'MessageProcessor') if name in stages),
+                None,
+            )
+            if index is not None:
+                stages.insert(index, 'RequireDailyMessageQuota')
+        for stage_name in stages:
             if stage_name not in self.stage_dict:
                 self.ap.logger.warning(f'Pipeline stage {stage_name} is not registered; skipping')
                 continue

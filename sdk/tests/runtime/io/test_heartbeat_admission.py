@@ -160,25 +160,23 @@ async def test_full_lanes_do_not_block_unary_or_stream_response_routing(peer):
             return [
                 chunk
                 async for chunk in handler.call_action_generator(
-                    GatedAction.WORK, {}, timeout=1
+                    GatedAction.WORK, {"lane": "stream"}, timeout=1
                 )
             ]
 
         unary = asyncio.create_task(
-            handler.call_action(GatedAction.WORK, {}, timeout=1)
+            handler.call_action(GatedAction.WORK, {"lane": "unary"}, timeout=1)
         )
         stream = asyncio.create_task(consume_stream())
         try:
+            # Both lanes are unblocked at once, so the order their requests reach
+            # the wire is not part of the contract; identify them by the marker
+            # they carry instead of by arrival position.
             requests = await connection.sent_messages(2)
-            await connection.send_peer_response(
-                requests[0]["seq_id"], data={"unary": True}
-            )
-            await connection.send_peer_response(
-                requests[1]["seq_id"], data={"chunk": 1}
-            )
-            await connection.send_peer_response(
-                requests[1]["seq_id"], chunk_status="end"
-            )
+            by_lane = {item["data"]["lane"]: item["seq_id"] for item in requests}
+            await connection.send_peer_response(by_lane["unary"], data={"unary": True})
+            await connection.send_peer_response(by_lane["stream"], data={"chunk": 1})
+            await connection.send_peer_response(by_lane["stream"], chunk_status="end")
             assert await unary == {"unary": True}
             assert await stream == [{"chunk": 1}]
             assert not handler.resp_waiters

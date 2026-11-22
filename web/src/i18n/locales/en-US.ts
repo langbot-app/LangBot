@@ -1585,6 +1585,14 @@ const enUS = {
         'Context reset. New messages will start a fresh conversation.',
       resetError:
         'Could not reset context. Wait for active tasks to finish and try again.',
+      resetScopeMember:
+        "This chat keeps a separate context for each group member, so only this member's context is reset.",
+      resetScopeGroup:
+        "This group shares one context, so the whole group's conversation is reset, not just this member's.",
+      inGroup: 'in {{group}}',
+      filterByGroup: 'Same group',
+      groupFilterActive: 'Group {{group}}',
+      clearGroupFilter: 'Show all sessions',
 
       title: 'Sessions',
       sessions: 'Sessions',
@@ -1614,13 +1622,13 @@ const enUS = {
     admins: {
       title: 'Admins',
       description:
-        "Launchers (person/group IDs) that have admin privilege for this bot's commands",
+        "Users (by person ID) with admin privilege for this bot's commands",
       addAdmin: 'Add Admin',
       launcherType: 'Type',
-      launcherId: 'ID',
+      launcherId: 'User ID',
       typePerson: 'Person',
       typeGroup: 'Group',
-      placeholderId: 'User or group ID',
+      placeholderId: 'User ID',
       addSuccess: 'Admin added',
       addError: 'Failed to add admin: ',
       deleteSuccess: 'Admin removed',
@@ -2431,6 +2439,10 @@ const enUS = {
     updating: 'Updating...',
     updateSuccess: 'Plugin updated successfully',
     updateError: 'Update failed: ',
+    installedVersion: 'Installed version v{{version}}',
+    updateToVersion: 'Update to v{{version}}',
+    confirmUpdatePluginVersion:
+      'Update plugin {{author}}/{{name}} from v{{from}} to v{{to}}?',
     saveConfigSuccessNormal: 'Configuration saved successfully',
     saveConfigError: 'Configuration save failed: ',
     config: 'Configuration',
@@ -3304,6 +3316,32 @@ const enUS = {
     space_account_binding_requiredTitle: 'LangBot Account connection required',
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
+  },
+  dailyMessageQuota: {
+    planLimited: '{{count}} messages per day',
+    planUnlimited: 'Unlimited daily messages',
+    planHelp:
+      'Messages your bots can process per day, counted per UTC day and reset at 00:00 UTC. Only messages a bot actually handles count. Once used up, new messages that day are not processed and the user is told why.',
+    title: "Today's messages",
+    usage: '{{used}} / {{limit}}',
+    remaining: '{{count}} left',
+    resetsAt: 'Resets {{time}}',
+    today: 'today {{time}}',
+    tomorrow: 'tomorrow {{time}}',
+    exhausted: "Today's quota is used up",
+    exhaustedHint: 'New messages are paused until {{time}}',
+    nearLimit: 'Almost used up',
+    upgrade: 'Upgrade plan',
+    unlimited: 'Unlimited',
+    settingsTitle: 'Daily message quota',
+    settingsDescription:
+      'Messages your bots can process per day, including Debug Chat. Counted per UTC day; group messages that do not trigger a bot are not counted.',
+    unlimitedDescription: 'Your plan does not limit daily messages.',
+    errorTitle: "Today's message quota is used up",
+    errorBody:
+      'This workspace has already processed {{limit}} messages today, so this message was not processed. The quota resets {{time}}.',
+    errorUpgrade: 'Upgrade for a higher quota',
+    unavailable: "Today's usage is unavailable right now",
   },
   workspace: {
     dedicatedSpaceMembersHint:

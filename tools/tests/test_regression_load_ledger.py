@@ -14,7 +14,8 @@ import unittest
 from unittest.mock import patch, Mock
 from uuid import uuid4
 
-from tools.entrypoints.regression_traffic import main, reconcile_runs, sample_containers
+from tools.entrypoints.regression_traffic import main, sample_containers
+from tools.regression.run_ledger import reconcile_runs
 
 
 class LoadLedgerTests(unittest.TestCase):
@@ -282,7 +283,7 @@ class LoadLedgerTests(unittest.TestCase):
                 'tools.entrypoints.regression_traffic.time',
                 SimpleNamespace(monotonic=monotonic, time=time.time),
             ),
-            patch('tools.entrypoints.regression_traffic.sqlite3.connect', side_effect=slow_connect),
+            patch('tools.regression.run_ledger.sqlite3.connect', side_effect=slow_connect),
             patch('tools.entrypoints.regression_traffic.group_request', side_effect=response),
             redirect_stdout(io.StringIO()),
         ):

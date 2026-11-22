@@ -9,6 +9,7 @@ from ..core import entities as core_entities
 from ..workspace.errors import WorkspaceError, WorkspaceInvariantError
 
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+from .command_text import command_name_from_chain
 from .pool import get_query_execution_context
 from .process.command_settings import get_bot_command_settings
 
@@ -31,18 +32,10 @@ class Controller:
         cmd_enable, cmd_prefixes = await get_bot_command_settings(self.ap, query)
         if not cmd_enable:
             return None
-        message_chain = getattr(query, 'message_chain', None)
-        try:
-            components = list(message_chain or [])
-        except TypeError:
-            components = []
-        text_parts = [str(getattr(component, 'text', '')) for component in components]
-        message_text = ''.join(text_parts).strip() or str(message_chain or '').strip()
-        for prefix in sorted(cmd_prefixes, key=len, reverse=True):
-            if message_text.startswith(prefix):
-                command_text = message_text[len(prefix) :].strip()
-                return command_text.split(maxsplit=1)[0].lower() if command_text else None
-        return None
+        return command_name_from_chain(
+            getattr(query, 'message_chain', None),
+            sorted(cmd_prefixes, key=len, reverse=True),
+        )
 
     async def _handle_stop_command(
         self,

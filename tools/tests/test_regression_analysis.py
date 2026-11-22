@@ -1,6 +1,7 @@
 """Counterexamples for load resource recovery and compatible-run comparisons."""
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -169,6 +170,22 @@ class AnalysisTests(unittest.TestCase):
         before = workload_contract(profile, self.root / 'profile.json')
         fixture.write_text('after')
         self.assertNotEqual(before, workload_contract(profile, self.root / 'profile.json'))
+
+    def test_mock_scenario_fingerprint_uses_actual_relative_or_absolute_stimulus(self):
+        fixture = self.root / 'mixed-scenarios.json'
+        fixture.write_text('{"box_command_delay_seconds": 1}')
+        profile = {'vars': {'mock_scenarios_file': fixture.name}}
+        before = workload_contract(profile, self.root / 'profile.json')
+        self.assertEqual(before['mock_scenarios_sha256'], hashlib.sha256(fixture.read_bytes()).hexdigest())
+        profile['vars']['mock_scenarios_file'] = str(fixture)
+        self.assertEqual(before, workload_contract(profile, self.root / 'profile.json'))
+        fixture.write_text('{"box_command_delay_seconds": 4}')
+        self.assertNotEqual(before, workload_contract(profile, self.root / 'profile.json'))
+
+    def test_default_mock_scenario_fingerprint_retains_bundled_fixture(self):
+        bundled = Path(__file__).resolve().parents[1] / 'fixtures/mock_llm_scenarios.json'
+        contract = workload_contract({}, self.root / 'profile.json')
+        self.assertEqual(contract['mock_scenarios_sha256'], hashlib.sha256(bundled.read_bytes()).hexdigest())
 
 
 if __name__ == '__main__':

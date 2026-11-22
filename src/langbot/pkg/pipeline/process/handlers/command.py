@@ -3,6 +3,7 @@ import typing
 
 from .. import handler
 from ... import entities
+from ...command_text import command_text_from_chain, strip_command_prefix
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
@@ -14,20 +15,12 @@ class CommandHandler(handler.MessageHandler):
     ) -> typing.AsyncGenerator[entities.StageProcessResult, None]:
         """Process"""
 
-        full_command_text = str(query.message_chain).strip()
+        full_command_text = command_text_from_chain(query.message_chain)
 
         from ..command_settings import get_bot_command_settings
 
         _, cmd_prefix = await get_bot_command_settings(self.ap, query)
-
-        matched_prefix = '/'
-        sorted_prefixes = sorted(cmd_prefix, key=len, reverse=True)
-        for p in sorted_prefixes:
-            if p and full_command_text.startswith(p):
-                matched_prefix = p
-                break
-
-        command_text = full_command_text[len(matched_prefix) :].strip()
+        command_text = strip_command_prefix(full_command_text, sorted(cmd_prefix, key=len, reverse=True))
 
         session = await self.ap.sess_mgr.get_session(query)
 

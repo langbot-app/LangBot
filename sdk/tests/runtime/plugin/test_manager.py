@@ -1428,6 +1428,60 @@ async def test_plugin_supervisor_restarts_after_crash(monkeypatch, tmp_path):
     assert str(plugin_path) not in manager._desired_plugin_paths
 
 
+def test_restart_backoff_extends_cap_after_persistent_failures():
+    from langbot_plugin.runtime.plugin import mgr as manager_module
+
+    delay = manager_module._PLUGIN_RESTART_INITIAL_DELAY_SEC
+    delays = []
+    for failures in range(1, 16):
+        delays.append(delay)
+        delay = manager_module._next_restart_delay(delay, failures)
+
+    threshold = manager_module._PLUGIN_PERSISTENT_FAILURE_THRESHOLD
+    # Transient crashes keep the short 60s cap so recovery stays fast.
+    assert max(delays[:threshold]) == manager_module._PLUGIN_RESTART_MAX_DELAY_SEC
+    # A worker that never stabilises backs off up to the long cap.
+    assert delays[-1] == manager_module._PLUGIN_PERSISTENT_FAILURE_MAX_DELAY_SEC
+    assert delays == sorted(delays)
+
+
+@pytest.mark.asyncio
+async def test_plugin_supervisor_backs_off_for_persistently_failing_plugin(
+    monkeypatch, tmp_path
+):
+    from langbot_plugin.runtime.plugin import mgr as manager_module
+
+    monkeypatch.chdir(tmp_path)
+    plugin_path = tmp_path / "data/plugins/tester__broken"
+    plugin_path.mkdir(parents=True)
+    manager = _manager()
+    calls = 0
+    sleeps: list[float] = []
+
+    async def failing_launch(path):
+        # Mirrors a plugin whose initialize() raises on every start (e.g. it
+        # writes next to its read-only code): the worker exits immediately.
+        nonlocal calls
+        calls += 1
+
+    async def record_sleep(delay):
+        sleeps.append(delay)
+        if len(sleeps) >= 14:
+            manager._desired_plugin_paths.discard(str(plugin_path))
+
+    monkeypatch.setattr(manager, "launch_plugin", failing_launch)
+    monkeypatch.setattr(manager_module.random, "uniform", lambda a, b: 1.0)
+    monkeypatch.setattr(manager_module.asyncio, "sleep", record_sleep)
+
+    manager._desired_plugin_paths.add(str(plugin_path))
+    await manager._supervise_plugin(str(plugin_path))
+
+    assert calls == 14
+    assert sleeps[:7] == [1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 60.0]
+    assert sleeps[9] == 60.0
+    assert sleeps[10:] == [120.0, 240.0, 480.0, 900.0]
+
+
 @pytest.mark.asyncio
 async def test_register_plugin_rolls_back_container_when_initialize_fails():
     manager = _manager()

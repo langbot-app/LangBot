@@ -6,6 +6,7 @@ Real Dify Service API integration supporting chat, agent, and workflow app types
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 import mimetypes
@@ -41,6 +42,14 @@ from pkg.scoped_identity import scoped_identity
 logger = logging.getLogger(__name__)
 
 DEFAULT_LANGBOT_ASSET_TOKEN_INPUT = "langbot_asset_run_token"
+
+# Dify binds every conversation to the end user that created it, while one
+# LangBot conversation can carry several provider users (e.g. runs without a
+# Host session id, or state written by older versions). Dify conversation
+# ids are therefore kept per provider user.
+LEGACY_CONVERSATION_ID_KEY = "external.conversation_id"
+CONVERSATION_IDS_KEY = "external.conversation_ids"
+MAX_CONVERSATION_IDS = 256
 
 
 def _to_bool(value: typing.Any, default: bool = False) -> bool:
@@ -89,6 +98,27 @@ def _is_uuid_string(value: typing.Any) -> bool:
     except ValueError:
         return False
     return True
+
+
+def _conversation_owner(user: str) -> str:
+    return hashlib.sha256(user.encode("utf-8")).hexdigest()[:32]
+
+
+def _shared_group_session(ctx: typing.Any) -> str | None:
+    """Return the Host session id when the whole group shares one conversation.
+
+    The Host sets `session_id` to `group_<group id>` when a pipeline shares
+    context across the group, `groupmember_...` when members are isolated and
+    `person_<id>` for private chats.
+    """
+    session_id = getattr(getattr(ctx, "conversation", None), "session_id", None)
+    if isinstance(session_id, str) and session_id.startswith("group_") and len(session_id) > len("group_"):
+        return session_id
+    return None
+
+
+def _is_conversation_not_found(error: DifyAPIError) -> bool:
+    return error.code == "dify.http_error" and " 404 " in error.message and "Conversation Not Exists" in error.message
 
 
 def _attachment_get(attachment: typing.Any, key: str, default: typing.Any = None) -> typing.Any:
@@ -404,7 +434,9 @@ class DefaultRunner(Runner):
     - remove-think: Whether to remove thinking tags from output
 
     Runtime state (from ctx.state):
-    - external.conversation_id: Dify conversation ID for stateful sessions
+    - external.conversation_ids: Dify conversation ID per provider user (hashed)
+    - external.conversation_id: last Dify conversation ID (legacy, read only before
+      external.conversation_ids exists)
 
     Runtime params (from ctx.adapter.extra.params):
     - Workflow inputs passed to Dify workflow endpoint
@@ -478,6 +510,11 @@ class DefaultRunner(Runner):
                 if isinstance(launcher_id, str) and launcher_id:
                     return scoped_identity(self, ctx, f"{conversation.launcher_type}_{launcher_id}")
             raise DifyConfigError("user-id-source requires trusted Host identity", code="dify.identity_unavailable")
+        shared_group = _shared_group_session(ctx)
+        if shared_group:
+            # The whole group shares one LangBot conversation, so it must also
+            # share one Dify conversation; Dify binds conversations to `user`.
+            return scoped_identity(self, ctx, shared_group)
         actor = ctx.actor
         if actor and actor.actor_id:
             return scoped_identity(self, ctx, f"{actor.actor_type}_{actor.actor_id}")
@@ -486,21 +523,71 @@ class DefaultRunner(Runner):
             code="dify.identity_unavailable",
         )
 
-    def _get_external_conversation_id(self, ctx: RunnerContext) -> str:
-        """Get external conversation ID from state or context.
+    def _get_external_conversation_id(self, ctx: RunnerContext, user: str | None = None) -> str:
+        """Get the Dify conversation ID for this provider user.
 
         Priority:
-        1. ctx.state.conversation["external.conversation_id"]
-        2. Empty string (start new conversation)
+        1. ctx.state.conversation["external.conversation_ids"][owner(user)]
+        2. ctx.state.conversation["external.conversation_id"] for state written
+           before per-user ids existed (no per-user map yet)
+        3. Empty string (start new conversation)
         """
-        # Priority 1: State (persistent external conversation ID)
-        external_conv_id = ctx.state.conversation.get("external.conversation_id")
+        conversation_ids = ctx.state.conversation.get(CONVERSATION_IDS_KEY)
+        if user is not None and isinstance(conversation_ids, dict):
+            external_conv_id = conversation_ids.get(_conversation_owner(user))
+            return external_conv_id if _is_uuid_string(external_conv_id) else ""
+
+        external_conv_id = ctx.state.conversation.get(LEGACY_CONVERSATION_ID_KEY)
         if _is_uuid_string(external_conv_id):
             return external_conv_id
 
         # Host conversation ids are LangBot-local and are not guaranteed to be
         # Dify UUIDs. Passing them to Dify makes first-turn Debug Chat fail.
         return ""
+
+    def _conversation_state_updates(self, ctx: RunnerContext, user: str, conversation_id: str) -> list[RunnerResult]:
+        """State updates that remember conversation_id for this provider user only."""
+        current = ctx.state.conversation.get(CONVERSATION_IDS_KEY)
+        conversation_ids = dict(current) if isinstance(current, dict) else {}
+        owner = _conversation_owner(user)
+        conversation_ids.pop(owner, None)
+        conversation_ids[owner] = conversation_id
+        while len(conversation_ids) > MAX_CONVERSATION_IDS:
+            conversation_ids.pop(next(iter(conversation_ids)))
+        return [
+            RunnerResult.state_updated(ctx.run_id, CONVERSATION_IDS_KEY, conversation_ids, scope="conversation"),
+            RunnerResult.state_updated(ctx.run_id, LEGACY_CONVERSATION_ID_KEY, conversation_id, scope="conversation"),
+        ]
+
+    async def _chat_message_events(
+        self,
+        client: AsyncDifyClient,
+        inputs: dict[str, typing.Any],
+        query: str,
+        user: str,
+        conversation_id: str,
+        files: list[dict[str, typing.Any]],
+    ) -> typing.AsyncGenerator[dict[str, typing.Any], None]:
+        """Stream chat-messages, starting a new conversation if the stored one is gone.
+
+        Dify answers 404 "Conversation Not Exists" when the conversation was
+        deleted or belongs to another end user. Retrying once with an empty id
+        is safe because the request failed before any event was produced.
+        """
+        started = False
+        try:
+            async for event in client.chat_messages(
+                inputs=inputs, query=query, user=user, conversation_id=conversation_id, files=files
+            ):
+                started = True
+                yield event
+            return
+        except DifyAPIError as e:
+            if started or not conversation_id or not _is_conversation_not_found(e):
+                raise
+        logger.warning("Stored Dify conversation is unavailable for this user; starting a new conversation")
+        async for event in client.chat_messages(inputs=inputs, query=query, user=user, conversation_id="", files=files):
+            yield event
 
     def _get_or_create_state_id(
         self,
@@ -945,7 +1032,7 @@ class DefaultRunner(Runner):
             asset_registration, inputs = await self._prepare_dify_inputs(ctx, config)
 
             # Get conversation_id from state (not from config!)
-            conversation_id = self._get_external_conversation_id(ctx)
+            conversation_id = self._get_external_conversation_id(ctx, user)
 
             app_type = config["app_type"]
 
@@ -1003,13 +1090,7 @@ class DefaultRunner(Runner):
         usage: dict[str, typing.Any] | None = None
         workflow_run_id = ""
 
-        async for event in client.chat_messages(
-            inputs=inputs,
-            query=input_text,
-            user=user,
-            conversation_id=conversation_id,
-            files=files,
-        ):
+        async for event in self._chat_message_events(client, inputs, input_text, user, conversation_id, files):
             event_type = event.get("event", "")
             logger.debug(f"Dify {app_type} event: {event_type}")
             usage = _usage_from_payload(event) or usage
@@ -1060,12 +1141,8 @@ class DefaultRunner(Runner):
                             MessageChunk(role="assistant", content=content, is_final=True),
                         )
                 if final_conversation_id:
-                    yield RunnerResult.state_updated(
-                        ctx.run_id,
-                        "external.conversation_id",
-                        final_conversation_id,
-                        scope="conversation",
-                    )
+                    for result in self._conversation_state_updates(ctx, user, final_conversation_id):
+                        yield result
                 async for result in self._wait_and_resume_workflow(ctx, client, event, user, remove_think):
                     yield result
                 return
@@ -1188,12 +1265,8 @@ class DefaultRunner(Runner):
 
         # Update state with conversation_id for next run (scoped state)
         if final_conversation_id:
-            yield RunnerResult.state_updated(
-                ctx.run_id,
-                "external.conversation_id",
-                final_conversation_id,
-                scope="conversation",
-            )
+            for result in self._conversation_state_updates(ctx, user, final_conversation_id):
+                yield result
 
         yield RunnerResult.run_completed(ctx.run_id, usage=usage)
 

@@ -122,11 +122,12 @@ def build_plan():
         'test': unit,
         'sqlalchemy-compat': flags['compatibility'] or flags['persistence'],
         'integration': unit and integration == FULL[1],
+        'api-contracts': unit and os.environ.get('GITHUB_EVENT_NAME') == 'pull_request',
         'postgres-contracts': flags['persistence'] or flags['permissions'] or flags['compatibility'],
         'e2e': full_e2e or flags['frontend'],
         'box-integration': box,
     }
-    versions = ['3.12', '3.11', '3.13'] if flags['compatibility'] else ['3.12']
+    versions = ['3.12', '3.11', '3.13', '3.14'] if flags['compatibility'] else ['3.12']
     return {
         'selection': plan,
         'python_versions': versions,

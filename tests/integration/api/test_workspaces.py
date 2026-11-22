@@ -106,6 +106,275 @@ def _auth(token: str, workspace_uuid: str | None = None) -> dict[str, str]:
     return headers
 
 
+async def test_daily_message_quota(workspace_api, monkeypatch):
+    import asyncio
+    from langbot.pkg.cloud import message_quota
+
+    ap, client, _, token = workspace_api
+    current = '/api/v1/workspaces/current'
+    start = datetime.datetime(2026, 11, 20, tzinfo=datetime.UTC)
+    monkeypatch.setattr(message_quota, 'period_start', lambda: start)
+
+    async def get(path):
+        response = await client.get(path, headers=_auth(token))
+        assert response.status_code == 200
+        return (await response.get_json())['data']
+
+    workspace = await get(current)
+    ws = workspace['workspace']['uuid']
+    unlimited = await get(current + '/message-quota')
+    assert (
+        unlimited
+        == workspace['message_quota']
+        == {
+            'enforced': False,
+            'limit': -1,
+            'used': 0,
+            'remaining': -1,
+            'period': 'day',
+            'timezone': 'UTC',
+            'period_start': '2026-11-20T00:00:00Z',
+            'resets_at': '2026-11-21T00:00:00Z',
+        }
+    )
+    assert await message_quota.daily_message_quota(ap, ws, reserve=True) == (True, unlimited)
+    ap.deployment = SimpleNamespace(mode='cloud')
+    snapshot = SimpleNamespace(limits={})
+    ap.entitlement_resolver = SimpleNamespace(resolve=AsyncMock(return_value=snapshot))
+    for limits in ({}, {'messages.daily': 0}):
+        snapshot.limits = limits
+        assert await message_quota.daily_message_quota(ap, ws, reserve=True) == (True, unlimited)
+    snapshot.limits = {'messages.daily': 2}
+    limited = await get(current + '/message-quota')
+    assert limited == dict(unlimited, enforced=True, limit=2, remaining=2)
+    results = await asyncio.gather(*(message_quota.daily_message_quota(ap, ws, reserve=True) for _ in range(10)))
+    assert sum(accepted for accepted, _ in results) == 2
+    exhausted = await get(current + '/message-quota')
+    assert exhausted == (await get(current))['message_quota'] == dict(limited, used=2, remaining=0)
+    start += datetime.timedelta(days=1)
+    accepted, fresh = await message_quota.daily_message_quota(ap, ws, reserve=True)
+    assert accepted and fresh['used'] == 1 and fresh['period_start'] == exhausted['resets_at']
+
+
+async def test_daily_message_quota_warning_email(workspace_api, monkeypatch):
+    import asyncio
+    from langbot.pkg.cloud import message_quota, quota_warning
+    from langbot.pkg.entity.persistence.workspace import WorkspaceMessageUsageDaily as Usage
+    from langbot.pkg.notification.email import EmailSendResult, EmailService
+
+    ap, client, engine, token = workspace_api
+    start = datetime.datetime(2026, 11, 20, tzinfo=datetime.UTC)
+    monkeypatch.setattr(message_quota, 'period_start', lambda: start)
+    monkeypatch.setattr(quota_warning, '_settled', set())
+    sent: list[dict] = []
+    outcome = {'status': 'sent'}
+
+    async def fake_send(self, *, to, subject, text, html, purpose='email'):
+        sent.append({'to': to, 'subject': subject, 'text': text, 'html': html})
+        return EmailSendResult(status=outcome['status'], provider='resend')
+
+    monkeypatch.setattr(EmailService, 'capability', lambda self: {'enabled': True, 'provider': 'resend'})
+    monkeypatch.setattr(EmailService, 'send', fake_send)
+
+    response = await client.get('/api/v1/workspaces/current', headers=_auth(token))
+    ws = (await response.get_json())['data']['workspace']['uuid']
+    ap.deployment = SimpleNamespace(mode='cloud')
+    snapshot = SimpleNamespace(limits={'messages.daily': 10})
+    ap.entitlement_resolver = SimpleNamespace(resolve=AsyncMock(return_value=snapshot))
+
+    async def reserve(count):
+        for _ in range(count):
+            await message_quota.daily_message_quota(ap, ws, reserve=True)
+        await asyncio.gather(*list(quota_warning._tasks))
+
+    async def warned_at(day):
+        async with engine.connect() as connection:
+            return (
+                await connection.execute(
+                    sqlalchemy.select(Usage.quota_warning_at).where(Usage.workspace_uuid == ws, Usage.usage_date == day)
+                )
+            ).scalar_one()
+
+    await reserve(7)
+    assert sent == [] and await warned_at(start.date()) is None
+
+    # A failed delivery releases the claim so the next message retries.
+    outcome['status'] = 'failed'
+    await reserve(1)
+    assert len(sent) == 1 and await warned_at(start.date()) is None
+
+    outcome['status'] = 'sent'
+    await asyncio.gather(*(message_quota.daily_message_quota(ap, ws, reserve=True) for _ in range(4)))
+    await asyncio.gather(*list(quota_warning._tasks))
+    assert len(sent) == 2 and await warned_at(start.date()) is not None
+    mail = sent[-1]
+    assert mail['to'] == ['owner@example.com']
+    assert "of today's messages (" in mail['subject'] and '/10)' in mail['subject']
+    assert 'https://langbot.example/home/monitoring?workspace=' + ws + '&amp;open=plans' in mail['html']
+    assert '2026-11-21 00:00 UTC' in mail['text']
+
+    # Once settled, more messages the same day never mail again, even from a new process.
+    quota_warning._settled.clear()
+    quota_warning.maybe_schedule(ap, ws, used=10, limit=10, usage_date=start.date())
+    await reserve(3)
+    assert len(sent) == 2
+
+    # The next UTC day warns again; unlimited plans never warn.
+    start += datetime.timedelta(days=1)
+    await reserve(8)
+    assert len(sent) == 3
+    start += datetime.timedelta(days=1)
+    snapshot.limits = {}
+    await reserve(20)
+    assert len(sent) == 3
+
+
+def test_daily_quota_warning_email_render():
+    from langbot.pkg.cloud.quota_warning import render_quota_warning_email, warning_threshold
+
+    assert [warning_threshold(limit) for limit in (1, 2, 10, 50, 51)] == [1, 2, 8, 40, 41]
+    subject, text, body = render_quota_warning_email(
+        workspace_name='客服 <bot>',
+        used=40,
+        limit=50,
+        resets_at=datetime.datetime(2026, 11, 22),
+        message_language='zh_Hans',
+        plans_url='https://cloud.langbot.app/home/monitoring?workspace=w&open=plans',
+    )
+    assert subject == '[LangBot] 「客服 <bot>」今日消息已用 80%（40/50）'
+    assert '客服 &lt;bot&gt;' in body and '<bot>' not in body
+    assert '2026-11-22 00:00 UTC（北京时间 08:00）' in text and '剩余: 10 条' in text
+    assert 'width:80%' in body and '查看套餐' in body
+    _, text, body = render_quota_warning_email(
+        workspace_name='Support',
+        used=55,
+        limit=50,
+        resets_at=datetime.datetime(2026, 11, 22),
+        message_language='en_US',
+        plans_url=None,
+    )
+    assert 'Remaining: 0 messages' in text and 'width:100%' in body and 'View plans' not in body
+
+
+@pytest.mark.skipif('backend' not in BoxSpec.model_fields, reason='requires in-tree Box SDK')
+async def test_workspace_sandbox_reset_clears_only_its_overrides_and_is_idempotent(workspace_api):
+    from langbot.pkg.box.service import BoxService
+    from langbot.pkg.box.settings import get_settings, set_backend
+
+    ap, client, engine, token = workspace_api
+    current = (await (await client.get('/api/v1/workspaces/current', headers=_auth(token))).get_json())['data']
+    ws = current['workspace']['uuid']
+    created = await client.post(
+        '/api/v1/apikeys',
+        headers=_auth(token, ws),
+        json={'name': 'Reset test', 'scopes': ['workspace.view', 'workspace.update']},
+    )
+    key = (await created.get_json())['data']['key']['key']
+    headers = {'X-API-Key': key, 'X-Workspace-Id': 'reset-other'}
+    async with engine.begin() as connection:
+        await connection.execute(
+            sqlalchemy.insert(Workspace).values(
+                uuid='reset-other', instance_uuid='reset-other-instance', name='Other', slug='reset-other'
+            )
+        )
+        await connection.execute(
+            sqlalchemy.insert(WorkspaceMetadata).values(workspace_uuid=ws, key='unrelated', value='keep')
+        )
+    await set_backend(ap, ws, 'e2b', e2b_config={'api_key': 'workspace-private-key'}, limits={'timeout_sec': 60})
+    await set_backend(ap, 'reset-other', 'nsjail', e2b_config={'api_key': 'other-private-key'}, limits={'cpus': 1})
+    other = await get_settings(ap, 'reset-other')
+    ap.instance_config.data['box'] = {'e2b': {'api_key': 'deployment-private-key'}}
+    box = BoxService(
+        ap,
+        client=SimpleNamespace(
+            get_backends=AsyncMock(return_value=[{'name': 'docker', 'available': True}]),
+            get_backend_info=AsyncMock(return_value={'name': 'docker'}),
+        ),
+    )
+    box._available = True
+    ap.box_service = box
+    for _ in range(2):
+        reset = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+        assert reset.status_code == 200
+        assert (await reset.get_json())['data'] == {'reset': True}
+        visible = await client.get('/api/v1/workspaces/current/sandbox', headers=headers)
+        public = (await visible.get_json())['data']
+        assert public['backend'] is None and public['effective_backend'] == 'docker'
+        assert public['limits'] == {} and public['e2b']['source'] == 'deployment'
+        assert public['e2b']['api_key_configured']
+        assert 'private-key' not in await reset.get_data(as_text=True)
+        assert await get_settings(ap, ws) == {'backend': None, 'e2b': None, 'limits': None}
+        assert await get_settings(ap, 'reset-other') == other
+    async with engine.begin() as connection:
+        kept = await connection.execute(
+            sqlalchemy.select(WorkspaceMetadata.value).where(
+                WorkspaceMetadata.workspace_uuid == ws, WorkspaceMetadata.key == 'unrelated'
+            )
+        )
+        assert kept.scalar_one() == 'keep'
+
+    await set_backend(ap, ws, 'docker', limits={'timeout_sec': 30})
+    box.client.get_backends.reset_mock()
+    box.client.get_backends.side_effect = RuntimeError('Runtime unavailable')
+    reset = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+    assert reset.status_code == 200 and (await reset.get_json())['data'] == {'reset': True}
+    assert await get_settings(ap, ws) == {'backend': None, 'e2b': None, 'limits': None}
+    box.client.get_backends.assert_not_awaited()
+
+
+@pytest.mark.parametrize('failure_stage', ['execute', 'commit'])
+async def test_workspace_sandbox_reset_rolls_back_and_masks_storage_errors(workspace_api, monkeypatch, failure_stage):
+    from sqlalchemy.ext.asyncio import AsyncSessionTransaction
+
+    from langbot.pkg.box.service import BoxService
+    from langbot.pkg.box.settings import get_settings, set_backend
+    from langbot.pkg.persistence.tenant_uow import TenantUnitOfWork
+
+    ap, client, _, token = workspace_api
+    current = (await (await client.get('/api/v1/workspaces/current', headers=_auth(token))).get_json())['data']
+    workspace_uuid = current['workspace']['uuid']
+    headers = _auth(token, workspace_uuid)
+    ap.box_service = BoxService(ap, client=SimpleNamespace())
+    await set_backend(
+        ap, workspace_uuid, 'docker', e2b_config={'api_key': 'saved-private-key'}, limits={'timeout_sec': 60}
+    )
+    before = await get_settings(ap, workspace_uuid)
+    original_execute = TenantUnitOfWork.execute
+    original_commit = AsyncSessionTransaction.commit
+    deleted = False
+    private_error = 'storage-private-error-must-not-escape'
+
+    async def execute(uow, statement, *args, **kwargs):
+        nonlocal deleted
+        result = await original_execute(uow, statement, *args, **kwargs)
+        if isinstance(statement, sqlalchemy.sql.dml.Delete) and statement.table.name == WorkspaceMetadata.__tablename__:
+            deleted = True
+            if failure_stage == 'execute':
+                raise RuntimeError(private_error)
+        return result
+
+    async def commit(transaction):
+        if deleted:
+            raise RuntimeError(private_error)
+        return await original_commit(transaction)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(TenantUnitOfWork, 'execute', execute)
+        if failure_stage == 'commit':
+            patch.setattr(AsyncSessionTransaction, 'commit', commit)
+        failed = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+
+    assert deleted
+    assert failed.status_code == 400
+    public = await failed.get_data(as_text=True)
+    assert 'Sandbox settings could not be reset' in public
+    assert private_error not in public and 'saved-private-key' not in public
+    assert await get_settings(ap, workspace_uuid) == before
+    retried = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+    assert retried.status_code == 200 and (await retried.get_json())['data'] == {'reset': True}
+    assert await get_settings(ap, workspace_uuid) == {'backend': None, 'e2b': None, 'limits': None}
+
+
 async def test_account_bootstrap_uses_the_account_resolved_from_the_token(workspace_api):
     application, client, _, owner_token = workspace_api
     account = await application.user_service.get_authenticated_account(owner_token)
@@ -510,6 +779,7 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
             'bot.get',
             'bot.create',
             'bot.update',
+            'bot.routes.bind',
             'bot.delete',
             'pipeline.list',
             'pipeline.get',
@@ -534,6 +804,7 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
             'plugin.install.local',
             'plugin.upgrade',
             'plugin.get',
+            'plugin.permissions.get',
             'plugin.list',
             'plugin.config.get',
             'plugin.config.update',
@@ -573,6 +844,8 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
             'skill.files.read',
             'skill.files.write',
             'skill.preview',
+            'skill.package.preview',
+            'skill.package.publish',
             'skill.install.github',
             'skill.install.upload',
             'mcp_server.list',
@@ -605,6 +878,7 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
             'sandbox.errors',
             'workspace.sandbox.get',
             'workspace.sandbox.update',
+            'workspace.sandbox.reset',
             'workspace.sandbox.check',
             'workspace.sandbox.test',
         ]
@@ -1089,6 +1363,14 @@ async def test_workspace_sandbox_setting_routes_new_boxes_and_preserves_old(work
         invalid = await client.put('/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'host'})
         assert unavailable.status_code == invalid.status_code == 400
         assert await get_backend(application, workspace_uuid) == 'e2b'
+        reset = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+        assert reset.status_code == 200
+        assert (await reset.get_json())['data'] == {'reset': True}
+        visible = await client.get('/api/v1/workspaces/current/sandbox', headers=headers)
+        assert (await visible.get_json())['data']['effective_backend'] == 'docker'
+        assert await get_backend(application, workspace_uuid) is None
+        assert new_query._box_binding.spec['backend'] == 'e2b'
+        assert runtime.get_session(new_query._box_binding.session_id) is not None
         async with engine.begin() as connection:
             await connection.execute(
                 sqlalchemy.update(WorkspaceMembership)
@@ -1099,6 +1381,7 @@ async def test_workspace_sandbox_setting_routes_new_boxes_and_preserves_old(work
                 .values(role='viewer')
             )
         assert (await client.get('/api/v1/workspaces/current/sandbox', headers=headers)).status_code == 200
+        assert (await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)).status_code == 403
         assert (
             await client.put('/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'docker'})
         ).status_code == 403

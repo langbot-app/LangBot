@@ -11,12 +11,11 @@ import secrets
 import shutil
 import subprocess
 import time
-import urllib.error
-import urllib.request
 
 import yaml
 
-from tools.entrypoints.regression_suite import Suite, number, resolve, validate
+from tools.entrypoints.regression_suite import Suite, add_load_arguments, number, phase_overrides, resolve, validate
+from tools.regression.observations import read_endpoint_snapshot
 from tools.regression.regression_plugins import install_plugins, prepare_published_plugins
 from tools.entrypoints.regression_traffic import owned_box_containers
 
@@ -31,7 +30,7 @@ def write_json(path, data):
     temporary.replace(path)
 
 
-def load_profile(path):
+def load_profile(path, *, load_overrides=None):
     profile = json.loads(path.read_text())
     if not isinstance(profile, dict) or profile.get('version') != 1:
         raise ValueError('job profile version must be 1')
@@ -89,7 +88,7 @@ def load_profile(path):
     for item in suite.get('resources', []):
         if item['kind'] == 'model' and item.get('type') == 'embedding':
             item['body']['name'] = 'mock-embedding'
-    validate(suite)
+    validate(suite, load_overrides=load_overrides)
     return profile, suite, suite_path.resolve()
 
 
@@ -215,16 +214,12 @@ class Job:
     @staticmethod
     def ready(url):
         deadline = time.monotonic() + 120
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         while time.monotonic() < deadline:
             try:
-                with opener.open(url, timeout=2) as response:
-                    payload = json.load(response)
-                    if response.status == 200 and payload.get('ready') is not False and payload.get('code', 0) == 0:
-                        return
-            except (urllib.error.URLError, TimeoutError, OSError, ValueError):
-                pass
-            time.sleep(0.5)
+                read_endpoint_snapshot(url, timeout_seconds=2, require_ready_json=True)
+                return
+            except (RuntimeError, OSError):
+                time.sleep(0.5)
         raise RuntimeError(f'readiness deadline exceeded: {url}')
 
     def prepare(self):
@@ -501,11 +496,7 @@ def main():
     parser.add_argument('action', choices=('validate', 'run', 'cleanup'))
     parser.add_argument('--profile', type=Path)
     parser.add_argument('--output', type=Path)
-    parser.add_argument('--duration', type=float)
-    parser.add_argument('--rps', type=float)
-    parser.add_argument('--workers', type=int)
-    parser.add_argument('--groups', type=int)
-    parser.add_argument('--members-per-group', type=int)
+    add_load_arguments(parser)
     args = parser.parse_args()
     try:
         if args.action == 'cleanup':
@@ -523,22 +514,7 @@ def main():
             return
         if args.profile is None:
             raise ValueError('--profile is required for run/validate')
-        profile, suite, path = load_profile(args.profile.resolve())
-        if 'smoke' in suite and any(
-            getattr(args, flag) is not None for flag in ('duration', 'rps', 'workers', 'groups', 'members_per_group')
-        ):
-            raise ValueError('Load overrides are not applicable to smoke mode')
-        for phase in suite.get('phases', []):
-            for flag, field in [
-                ('duration', 'duration_seconds'),
-                ('rps', 'rps'),
-                ('workers', 'workers'),
-                ('groups', 'groups'),
-                ('members_per_group', 'members_per_group'),
-            ]:
-                if getattr(args, flag) is not None:
-                    phase[field] = getattr(args, flag)
-        validate(suite)
+        profile, suite, path = load_profile(args.profile.resolve(), load_overrides=phase_overrides(args))
         if args.action == 'validate':
             print('Job profile valid; no deployment or backend changed.')
             return

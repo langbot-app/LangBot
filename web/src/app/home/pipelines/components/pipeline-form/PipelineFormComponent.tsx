@@ -17,6 +17,7 @@ import {
   useState,
 } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
+import { systemInfo } from '@/app/infra/http';
 import { GetPipelineResponseData, Pipeline } from '@/app/infra/entities/api';
 import {
   PipelineConfigTab,
@@ -319,7 +320,12 @@ const PipelineFormComponent = forwardRef<
     setAIConfigTabSchema(installed.configTab);
   }, []);
   const dynamicFormSystemContext = useMemo(
-    () => ({ pipeline_id: pipelineId, prompt_library_kind: 'messaging' }),
+    () => ({
+      pipeline_id: pipelineId,
+      prompt_library_kind: 'messaging',
+      // Cloud-only settings (e.g. the daily quota notice) use show_if on this.
+      is_cloud: systemInfo.edition === 'cloud',
+    }),
     [pipelineId],
   );
 

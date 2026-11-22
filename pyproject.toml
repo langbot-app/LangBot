@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.11.8"
+version = "4.11.9"
 description = "Production-grade platform for building agentic IM bots"
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -65,9 +65,9 @@ dependencies = [
     "python-multipart>=0.0.32",
     "Mako>=1.4.2",
     "langchain-text-splitters>=1.1.2",
-    "chromadb>=1.0.0,<2.0.0",
+    "chromadb>=1.5.3,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
-    "langbot-plugin==0.7.25",
+    "langbot-plugin==0.7.26",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "matrix-nio>=0.25.2",

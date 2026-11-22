@@ -2934,6 +2934,13 @@ class RuntimeConnectionHandler(handler.Handler):
                 results = [entry.model_dump(mode='json') for entry in entries]
                 return handler.ActionResponse.success(data={'results': results})
             except Exception as e:
+                # The error only travels back to the calling plugin; log it so
+                # operators can see why retrievals fail (kb.retrieve telemetry
+                # carries no error text).
+                self.ap.logger.warning(
+                    f'Knowledge base retrieval failed: kb={kb_id} '
+                    f'engine={kb.get_knowledge_engine_plugin_id()} {type(e).__name__}: {e}'
+                )
                 return _make_rag_error_response(e, 'RetrievalError', kb_id=kb_id)
 
         @self.action(PluginToRuntimeAction.LIST_PIPELINE_KNOWLEDGE_BASES)
@@ -3052,6 +3059,13 @@ class RuntimeConnectionHandler(handler.Handler):
                 results = [entry.model_dump(mode='json') for entry in entries]
                 return handler.ActionResponse.success(data={'results': results})
             except Exception as e:
+                # The error only travels back to the calling plugin; log it so
+                # operators can see why retrievals fail (kb.retrieve telemetry
+                # carries no error text).
+                self.ap.logger.warning(
+                    f'Knowledge base retrieval failed: kb={kb_id} '
+                    f'engine={kb.get_knowledge_engine_plugin_id()} {type(e).__name__}: {e}'
+                )
                 return _make_rag_error_response(e, 'RetrievalError', kb_id=kb_id)
 
         # ================= Agent History/Event APIs =================
@@ -3088,12 +3102,16 @@ class RuntimeConnectionHandler(handler.Handler):
 
             prompt = getattr(query, 'prompt', None)
             messages = getattr(prompt, 'messages', []) or []
+            from ..pipeline.preproc.prompt_context import PREPROCESSED_SYSTEM_CONTEXT
+
+            system_context = (getattr(query, 'variables', None) or {}).get(PREPROCESSED_SYSTEM_CONTEXT, [])
             return handler.ActionResponse.success(
                 data={
                     'prompt': [
                         message.model_dump(mode='json') if hasattr(message, 'model_dump') else message
                         for message in messages
-                    ],
+                    ]
+                    + system_context,
                 }
             )
 
@@ -3566,7 +3584,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 timeout=20,
             )
         except Exception:
-            traceback.print_exc()
+            self.ap.logger.exception('Failed to read plugin README for %s/%s', plugin_author, plugin_name)
             return ''
 
         readme_file_key = result.get('readme_file_key')
@@ -3598,7 +3616,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 timeout=20,
             )
         except Exception:
-            traceback.print_exc()
+            self.ap.logger.exception('Failed to read plugin logs for %s/%s', plugin_author, plugin_name)
             return []
 
         return result.get('logs', [])

@@ -11,6 +11,7 @@ import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 from ...api.http.context import ExecutionContext
 from ...core import app
+from ...persistence.session_summary_contract import build_monitoring_session_id, conversation_scope
 from ...pipeline.pool import (
     ExecutionContextMismatchError,
     ExecutionContextRequiredError,
@@ -45,7 +46,7 @@ def _query_session_key(query: pipeline_query.Query) -> tuple[SessionKey, Executi
         execution_context.placement_generation,
         bot_uuid,
         query.launcher_type.value,
-        query.launcher_id,
+        conversation_scope(query),
     )
     return key, execution_context
 
@@ -275,8 +276,13 @@ class SessionManager:
         launcher_type: provider_session.LauncherTypes | str,
         launcher_id: str | int,
         sender_id: str | int | None = None,
+        scope: str | None = None,
     ) -> provider_session.Session:
-        """获取或创建会话（按 launcher 信息，不依赖 Query）"""
+        """Get or create a session from launcher fields, without a Query.
+
+        ``scope`` is the conversation scope (see ``conversation_scope``); it
+        defaults to the launcher-wide scope shared by every group member.
+        """
         if isinstance(launcher_type, str):
             launcher_type_val = launcher_type
             launcher_type_enum = provider_session.LauncherTypes(launcher_type)
@@ -290,7 +296,7 @@ class SessionManager:
             execution_context.placement_generation,
             bot_uuid,
             launcher_type_val,
-            launcher_id,
+            scope or build_monitoring_session_id(launcher_type_val, launcher_id),
         )
         from ...agent.runner.context_reset import get_reset_generation
 
@@ -301,7 +307,7 @@ class SessionManager:
                 persistence.get_db_engine(),
                 execution_context.workspace_uuid,
                 bot_uuid,
-                f'{str(launcher_type_val).lower()}_{launcher_id}',
+                session_key[-1],
             )
         now = time.monotonic()
         session = self._session_index.get(session_key)
@@ -375,6 +381,7 @@ class SessionManager:
             query.launcher_type,
             query.launcher_id,
             query.sender_id,
+            scope=session_key[-1],
         )
 
     async def get_conversation(

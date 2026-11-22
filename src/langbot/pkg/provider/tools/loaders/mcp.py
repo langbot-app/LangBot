@@ -20,6 +20,7 @@ from langbot_plugin.api.entities.events import pipeline_query
 import sqlalchemy
 import asyncio
 import hashlib
+import anyio
 import httpx
 
 import uuid as uuid_module
@@ -988,8 +989,15 @@ class RuntimeMCPSession:
         Long-lived MCP servers (notably UDP/HTTP transports) commonly enforce
         their own session timeout (e.g. ~30 minutes); once it fires, any call
         on the cached session raises this rather than a transport-level error.
+
+        A dead transport is treated the same way: the MCP client's HTTP/SSE
+        writers swallow their own errors and close the session streams, so the
+        cached session stays "connected" while every call raises a bare
+        ``anyio.ClosedResourceError`` / ``BrokenResourceError``.
         """
         for leaf in RuntimeMCPSession._iter_exception_leaves(exc):
+            if isinstance(leaf, (anyio.ClosedResourceError, anyio.BrokenResourceError)):
+                return True
             msg = str(leaf).lower()
             if 'session terminated' in msg or 'session expired' in msg:
                 return True

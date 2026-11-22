@@ -85,9 +85,11 @@ async def clean_database(postgres_engine: AsyncEngine):
     await clean()
 
 
-async def test_upgrade_adds_3072_dimension_index_and_constraint(
+@pytest.mark.parametrize('dimension', [2048, 3072])
+async def test_upgrade_adds_halfvec_dimension_index_and_constraint(
     postgres_engine: AsyncEngine,
     clean_database,
+    dimension: int,
 ) -> None:
     async with postgres_engine.begin() as conn:
         await conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
@@ -103,11 +105,12 @@ async def test_upgrade_adds_3072_dimension_index_and_constraint(
                 "AND conname = 'ck_langbot_vectors_embedding_dimension_enabled'"
             )
         )
-        assert '3072' in constraint
+        assert str(dimension) in constraint
         index_definition = await conn.scalar(
-            text("SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_langbot_vectors_hnsw_cosine_3072'")
+            text(f"SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_langbot_vectors_hnsw_cosine_{dimension}'")
         )
-        assert 'halfvec(3072)' in index_definition
+        # Above 2000 dimensions pgvector can only build HNSW over halfvec.
+        assert f'halfvec({dimension})' in index_definition
         assert 'halfvec_cosine_ops' in index_definition
 
 

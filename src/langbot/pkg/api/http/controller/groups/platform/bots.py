@@ -246,6 +246,8 @@ class BotsRouterGroup(group.RouterGroup):
                     request_context, bot_uuid, launcher_type, launcher_id
                 )
                 return self.success(data={'id': admin_id})
+            except ValueError as e:
+                return self.http_status(400, -1, str(e))
             except IntegrityError as e:
                 return self.http_status(409, -1, str(e))
 

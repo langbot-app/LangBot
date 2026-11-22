@@ -6,6 +6,11 @@ on:
   push:
     branches: [master, develop]
   workflow_dispatch:
+    inputs:
+      lbctl_ref:
+        description: 'Ref in langbot-app/langbot-cli (use a commit SHA for a reproducible run)'
+        default: main
+        type: string
 
 permissions:
   contents: read
@@ -34,17 +39,13 @@ jobs:
         run: timeout 60s python -m unittest discover -s tools/tests -p 'test_*.py' -v
 
   smoke:
-    needs: p0
-    if: always()
-    # Preserve the status context required by the master branch rules.
-    name: Core smoke (60s)
+    name: Core runtime smoke
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      SPACE__DISABLE_TELEMETRY: 'true'
+      ANONYMIZED_TELEMETRY: 'False'
     steps:
-      - name: Require successful P0 acceptance
-        env:
-          P0_RESULT: ${{ needs.p0.result }}
-        run: test "$P0_RESULT" = success
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -71,48 +72,28 @@ jobs:
           name: shared-provider-concurrency-results
           path: shared-provider-concurrency-results.xml
           if-no-files-found: warn
-      - name: Prepare CLI and sandbox image
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p .smoke-bin
-          gh release download v0.3.0 --repo langbot-app/langbot-cli --dir .smoke-bin \
-            --pattern lbctl_linux_amd64 --pattern checksums.txt
-          cd .smoke-bin
-          sha256sum --check --ignore-missing checksums.txt
-          chmod +x lbctl_linux_amd64
-          docker pull python:3.12-alpine
+      - uses: ./.github/actions/build-lbctl
+        id: lbctl
+        with:
+          ref: ${{ inputs.lbctl_ref || 'main' }}
+      - name: Prepare sandbox image
+        run: docker pull python:3.12-alpine
       - name: Prepare real services and run smoke with plugin scenarios
+        id: execute
+        env:
+          LBCTL_BIN: ${{ steps.lbctl.outputs.binary }}
         run: |
           uv run --no-sync python -m tools.entrypoints.regression_ci \
             --suite scenarios --scenario-groups plugins \
             --extra-plugins misc/EssentialCommands misc/FAQManager \
-            --lbctl .smoke-bin/lbctl_linux_amd64 --plugins plugins --output .qa/core-smoke
+            --lbctl "$LBCTL_BIN" --plugins plugins --output .qa/core-smoke
       - name: Publish gate result
         if: always()
+        env:
+          RUN_OUTCOME: ${{ steps.execute.outcome }}
         run: |
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          root = Path('.qa/core-smoke')
-          path = root / 'gate/gate.json'
-          manifest = root / 'plugins/manifest.json'
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
-              if manifest.exists():
-                  for plugin in json.loads(manifest.read_text())['plugins']:
-                      out.write(f"Plugin: `{plugin['id']}@{plugin['version']}`; installation readback: `{plugin.get('installed', 'not confirmed')}`.\n\n")
-              if path.exists():
-                  data = json.loads(path.read_text())
-                  out.write(f"Core smoke: {'PASS' if data['passed'] else 'FAIL'}; "
-                            f"{data.get('elapsed_seconds', 0):.2f}/300 seconds; {data.get('requests', 0)} requests.\n")
-                  if data.get('infrastructure_error'):
-                      out.write('Preparation or teardown failed; inspect service logs.\n')
-                  for error in data.get('coverage_errors', []):
-                      out.write(f"Coverage evidence error: {error}\n")
-                  out.write('Service/dependency preparation is outside the 300-second execution budget.\n')
-              else:
-                  out.write('Core smoke did not produce a verdict; inspect preparation failure.\n')
-          PY
+          python -m tools.entrypoints.regression_report core-smoke .qa/core-smoke \
+            --sha "$GITHUB_SHA" --step-outcome "$RUN_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve verdicts and resource samples
         if: always()
         uses: actions/upload-artifact@v4
@@ -135,3 +116,15 @@ jobs:
             .qa/core-smoke/*.log
           if-no-files-found: warn
           retention-days: 7
+
+  verdict:
+    name: Core smoke (60s)
+    needs: [p0, smoke]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require P0 acceptance and runtime smoke
+        env:
+          P0_RESULT: ${{ needs.p0.result }}
+          SMOKE_RESULT: ${{ needs.smoke.result }}
+        run: test "$P0_RESULT" = success && test "$SMOKE_RESULT" = success

@@ -232,6 +232,37 @@ class TestCommandHandlerReal:
         fake_app.bot_service.get_bot.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_group_mention_command_strips_at_for_dispatch(self, fake_app):
+        """A leading @mention must not hide the command from dispatch."""
+        from langbot_plugin.api.entities.builtin.platform.message import At, MessageChain, Plain
+
+        command = get_command_handler()
+        seen = []
+
+        async def track_execute(command_text, full_command_text, query, session):
+            seen.append((command_text, full_command_text))
+            ret = Mock()
+            ret.text = 'ok'
+            ret.error = None
+            ret.image_url = None
+            ret.image_base64 = None
+            ret.file_url = None
+            yield ret
+
+        fake_app.cmd_mgr.execute = track_execute
+        runtime_bot = Mock()
+        runtime_bot.bot_entity = Mock(command_settings={'enabled': True, 'prefixes': ['!']})
+        fake_app.platform_mgr = Mock(get_bot_by_uuid=AsyncMock(return_value=runtime_bot))
+        query = command_query('!new')
+        query.bot_uuid = 'bot-1'
+        query.message_chain = MessageChain([At(target='bot-1'), Plain(text='!new')])
+
+        results = [result async for result in command.CommandHandler(fake_app).handle(query)]
+
+        assert seen == [('new', '!new')]
+        assert results
+
+    @pytest.mark.asyncio
     async def test_command_result_text(self, fake_app, mock_event_ctx, mock_execute_factory):
         """Text result is added to resp_messages."""
         command = get_command_handler()

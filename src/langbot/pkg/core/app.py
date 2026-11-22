@@ -42,7 +42,7 @@ from ..api.http.service import skill as skill_service
 from ..api.http.service import maintenance as maintenance_service
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
-from ..utils import bounded_executor, event_loop_monitor, logcache
+from ..utils import bounded_executor, event_loop_monitor, gc_maintenance, logcache
 from . import taskmgr
 from . import entities as core_entities
 from ..rag.knowledge import kbmgr as rag_mgr
@@ -236,6 +236,7 @@ class Application:
 
     blocking_executor: bounded_executor.BoundedThreadPoolExecutor | None = None
     event_loop_monitor: event_loop_monitor.EventLoopLagMonitor
+    gc_maintainer: gc_maintenance.GarbageCollectionMaintainer | None = None
 
     def __init__(self):
         self._shutdown_lock = asyncio.Lock()
@@ -341,6 +342,7 @@ class Application:
         return {
             'asyncio_tasks': asyncio_tasks,
             'event_loop': self.event_loop_monitor.snapshot(),
+            'gc': (self.gc_maintainer.snapshot() if self.gc_maintainer is not None else {}),
             'blocking_executor': (self.blocking_executor.snapshot() if self.blocking_executor is not None else {}),
             'application_tasks': task_stats,
             'database_pool': database_stats,
@@ -382,6 +384,7 @@ class Application:
 
         await initialize_application_summaries(self)
         self.event_loop_monitor.start()
+        self._start_gc_maintenance()
         from ..utils.execution_lease import maintain_execution_leases
 
         self.task_mgr.create_task(
@@ -655,6 +658,27 @@ class Application:
             self.logger.error(f'Application runtime fatal exception: {e}')
             self.logger.debug(f'Traceback: {traceback.format_exc()}')
 
+    def _start_gc_maintenance(self) -> None:
+        """Bound cyclic garbage from reconnecting adapters (see gc_maintenance)."""
+
+        if self.gc_maintainer is None:
+            system_cfg = (getattr(self, 'instance_config', None) and self.instance_config.data.get('system')) or {}
+            gc_cfg = system_cfg.get('gc') or {}
+            try:
+                self.gc_maintainer = gc_maintenance.GarbageCollectionMaintainer(
+                    freeze_after_seconds=gc_cfg.get(
+                        'freeze_after_seconds', gc_maintenance.DEFAULT_FREEZE_AFTER_SECONDS
+                    ),
+                    collect_interval_seconds=gc_cfg.get(
+                        'collect_interval_seconds', gc_maintenance.DEFAULT_COLLECT_INTERVAL_SECONDS
+                    ),
+                    logger=self.logger,
+                )
+            except (TypeError, ValueError) as exc:
+                self.logger.warning(f'Invalid system.gc config {gc_cfg!r}: {exc}; using defaults')
+                self.gc_maintainer = gc_maintenance.GarbageCollectionMaintainer(logger=self.logger)
+        self.gc_maintainer.start()
+
     def _get_positive_int_config(self, value, default: int, name: str) -> int:
         try:
             parsed = int(value)
@@ -693,6 +717,9 @@ class Application:
                     await plugin_runtime_task
             with contextlib.suppress(Exception):
                 await self.event_loop_monitor.stop()
+            if self.gc_maintainer is not None:
+                with contextlib.suppress(Exception):
+                    await self.gc_maintainer.stop()
             mcp_mount = getattr(self.http_ctrl, 'mcp_mount', None)
             if mcp_mount is not None:
                 with contextlib.suppress(Exception):

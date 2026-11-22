@@ -125,6 +125,18 @@ For the full spec see [agentskills.io](https://agentskills.io/home). Other field
 | `activate` | Called automatically by the Agent when it sees a match — pulls SKILL.md into context |
 | `register_skill` | Registers a directory prepared in the sandbox as a new skill |
 
+## Update a local package with lbctl
+
+Read the Skill revision before editing its local package. Publish the complete directory with the reviewed revision.
+
+```bash
+lbctl skill get demo -o json
+lbctl skill push demo --dir ./demo --base-revision <revision> --dry-run
+lbctl skill push demo --dir ./demo --base-revision <revision>
+```
+
+The preview validates `SKILL.md`, reports added, modified and deleted files, and shows whether the caller can publish. The package name must match `demo`. Publishing atomically replaces the full package, including binary resources and executable modes. Files absent from the local directory are removed from the new version. Publishing requires `resource.manage` and `resource.view`, and the CLI reads the resulting revision back. A stale revision returns a conflict. Download the latest package, merge the changes and retry with the reviewed revision. Existing runs retain their pinned versions.
+
 ## Share to LangBot Space
 
 Use **Share to Space** on a skill's detail page to submit the current Skill package to the marketplace. The dialog lists the files to be submitted, and files containing credentials such as API keys or tokens are refused. The skill is published under your LangBot Space creator profile after a review of its scripts and outbound requests. Sharing the same name again publishes a new version.

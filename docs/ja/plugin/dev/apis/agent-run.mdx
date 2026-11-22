@@ -272,9 +272,15 @@ Pipeline では `ctx.delivery.automatic_reply` が `True` になり、`RunnerRes
 | `await ctx.run_cancel(run_id=None, reason=None)` | `AgentRun` | `run_cancel` |
 | `await ctx.run_retry(run_id=None, reason=None)` | `AgentRun` | `run_retry` |
 | `await ctx.run_resume(run_id=None, from_sequence=None, reason=None)` | `AgentRun` | `run_resume` |
-| `await ctx.run_cancel_ack(run_id=None, reason=None, cleanup_confirmed=True)` | `AgentRun` | `run_cancel_ack` |
+| `await ctx.run_cancel_ack(run_id=None, reason=None, cleanup_confirmed=True, *, expected_retry_count=None)` | `AgentRun` | `run_cancel_ack` |
 | `await ctx.run_append_result(result)` | `AgentRunEvent` | `run_append_result` |
 | `await ctx.run_finalize(run_id=None, status=None, reason=None)` | `AgentRun` | `run_finalize` |
+
+キャンセル要求は先に実行台帳に記録されます。Runner は後処理を終えたら `ctx.run_cancel_ack()` を呼び出します。後処理が未確認の状態（`cleanup_confirmed=False`）は確認済みに更新できます。同じ実行を再通知しても各状態の最初の確認日時と理由は維持され、確認済みの状態は元に戻りません。
+
+外部キューは再試行時に実行 ID を再利用します。キャンセルを処理するときに、返された実行の `run.metadata.get("retry_count", 0)` を保存してください。後処理の確認にはこの値を `expected_retry_count` として渡し、再送時も保存した値を使います。最初の再キュー後は、回数の省略や不一致があれば Host は実行を変更せずに拒否します。それ以外の実行では省略できます。終了時にメタデータを追加できます。すべての実行の `cancel_ack` と、外部キューの `retry_count` は Host が管理します。
+
+アップグレード時、再キュー済みの実行に試行番号のない古い確認が残っていても、履歴は保持されます。現在の回数を指定した最初の ACK で、この試行の確認日時と理由が記録されます。
 
 `claim=False` は取得時に入力を消費します。`claim=True` では、受け付けた delivery ID を `steering_ack` で確認します。未確認のリースは再配信される場合があります。元の Run が終了した後も ACK と復旧操作は認可を検証します。Host の retry/resume は新しい期限と現在の権限で新しい Run を作成します。resume は確定済みチェックポイントを必要とし、外部の副作用を巻き戻しません。
 

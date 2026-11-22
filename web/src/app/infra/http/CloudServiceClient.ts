@@ -34,6 +34,27 @@ export class CloudServiceClient extends BaseHttpClient {
     });
   }
 
+  /**
+   * Fetch every listed marketplace plugin by walking the paged list.
+   * Update detection must see the whole catalog: a single 100-item page
+   * silently missed plugins once the marketplace grew past it.
+   */
+  public async getAllMarketplacePlugins(
+    pageSize = 100,
+    maxPages = 20,
+  ): Promise<PluginV4[]> {
+    const plugins: PluginV4[] = [];
+    for (let page = 1; page <= maxPages; page++) {
+      const resp = await this.getMarketplacePlugins(page, pageSize);
+      const batch = resp.plugins ?? [];
+      plugins.push(...batch);
+      if (batch.length < pageSize || plugins.length >= (resp.total ?? 0)) {
+        break;
+      }
+    }
+    return plugins;
+  }
+
   public searchMarketplacePlugins(
     query: string,
     page: number,

@@ -236,6 +236,17 @@ class SkillToolLoader(loader.ToolLoader):
             'truncated': bool(resource_listing.get('truncated', False)),
         }
         execution_available = await self._execution_available(query)
+        box = getattr(self.ap, 'box_service', None)
+        windows_host = False
+        if (
+            execution_available
+            and getattr(box, 'file_transfer_mode', None) == 'network'
+            and callable(getattr(box, 'get_backend_status', None))
+        ):
+            backend = (await box.get_backend_status()).get('backend') or {}
+            windows_host = backend.get('name') == 'host' and backend.get('shell') in ('git-bash', 'powershell')
+            if windows_host:
+                execution_available = False
         mount_path = skill_loader.get_virtual_skill_mount_path(skill_name, revision) if execution_available else None
 
         result_content = f'<command-message>The "{skill_name}" skill is activated</command-message>\n'
@@ -247,6 +258,10 @@ class SkillToolLoader(loader.ToolLoader):
         result_content += f'\n## Instructions\n{instructions}\n'
         result_content += '\n## Runtime Context\n'
         result_content += '- Use `list_skill_resources` and `read_skill_resource` for read-only package resources.\n'
+        if windows_host:
+            result_content += (
+                '- To execute this skill on the local Windows host, configure box.file_transfer_mode: legacy.\n'
+            )
         if execution_available:
             result_content += f'- Package files will be prepared read-only at {mount_path} before execution.\n'
         else:

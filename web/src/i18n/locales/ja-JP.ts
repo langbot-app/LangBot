@@ -1595,6 +1595,14 @@ const jaJP = {
       resetSuccess: 'コンテキストをリセットしました。',
       resetError:
         'リセットできませんでした。実行中のタスクが完了してから再試行してください。',
+      resetScopeMember:
+        'このチャットはグループメンバーごとに独立したコンテキストを保持するため、このメンバーのコンテキストのみリセットされます。',
+      resetScopeGroup:
+        'このグループは 1 つのコンテキストを共有しているため、このメンバーだけでなくグループ全体の会話がリセットされます。',
+      inGroup: 'グループ {{group}}',
+      filterByGroup: '同じグループ',
+      groupFilterActive: 'グループ {{group}}',
+      clearGroupFilter: 'すべてのセッションを表示',
 
       title: 'セッション監視',
       sessions: 'セッション一覧',
@@ -2446,6 +2454,10 @@ const jaJP = {
     updating: '更新中...',
     updateSuccess: 'プラグインの更新に成功しました',
     updateError: '更新に失敗しました：',
+    installedVersion: 'インストール済みバージョン v{{version}}',
+    updateToVersion: 'v{{version}} に更新',
+    confirmUpdatePluginVersion:
+      'プラグイン（{{author}}/{{name}}）を v{{from}} から v{{to}} に更新しますか？',
     saveConfigSuccessNormal: '設定を保存しました',
     saveConfigError: '設定の保存に失敗しました：',
     config: '設定',
@@ -3321,6 +3333,33 @@ const jaJP = {
     space_account_binding_requiredTitle: 'LangBot アカウントの連携が必要です',
     space_account_binding_required:
       'LangBot アカウントログインを使用する前に、アカウント設定でこのローカルアカウントを LangBot アカウントに連携してください。',
+  },
+  dailyMessageQuota: {
+    planLimited: '1日 {{count}} 件のメッセージ',
+    planUnlimited: '1日のメッセージ数は無制限',
+    planHelp:
+      'ボットが1日に処理できるメッセージ数です。UTC の日付単位で集計し、00:00 (UTC) にリセットされます。ボットが実際に処理したメッセージのみカウントされます。上限に達すると、その日の新しいメッセージは処理されず、ユーザーに通知されます。',
+    title: '本日のメッセージ',
+    usage: '{{used}} / {{limit}}',
+    remaining: '残り {{count}} 件',
+    resetsAt: '{{time}} にリセット',
+    today: '今日 {{time}}',
+    tomorrow: '明日 {{time}}',
+    exhausted: '本日の上限に達しました',
+    exhaustedHint: '新しいメッセージは {{time}} まで処理されません',
+    nearLimit: '残りわずか',
+    upgrade: 'プランをアップグレード',
+    unlimited: '無制限',
+    settingsTitle: '1日のメッセージ上限',
+    settingsDescription:
+      'ボットが1日に処理できるメッセージ数です（デバッグチャットを含む）。UTC の日付単位で集計し、ボットを起動しないグループメッセージはカウントされません。',
+    unlimitedDescription:
+      '現在のプランでは1日のメッセージ数に上限はありません。',
+    errorTitle: '本日のメッセージ上限に達しました',
+    errorBody:
+      'このワークスペースは本日すでに {{limit}} 件のメッセージを処理したため、このメッセージは処理されませんでした。上限は{{time}}にリセットされます。',
+    errorUpgrade: 'アップグレードして上限を引き上げる',
+    unavailable: '本日の使用量を取得できません',
   },
   workspace: {
     dedicatedSpaceMembersHint:

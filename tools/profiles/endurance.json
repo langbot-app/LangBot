@@ -180,7 +180,8 @@
           "ai": {
             "runner": {
               "id": "plugin:langbot-team/LocalAgent/default",
-              "expire-time": 0
+              "expire-time": 0,
+              "group-context": "group"
             },
             "runner_config": {
               "plugin:langbot-team/LocalAgent/default": {
@@ -237,7 +238,8 @@
           "ai": {
             "runner": {
               "id": "plugin:langbot-team/LocalAgent/default",
-              "expire-time": 0
+              "expire-time": 0,
+              "group-context": "group"
             },
             "runner_config": {
               "plugin:langbot-team/LocalAgent/default": {
@@ -295,7 +297,8 @@
           "ai": {
             "runner": {
               "id": "plugin:langbot-team/LocalAgent/default",
-              "expire-time": 0
+              "expire-time": 0,
+              "group-context": "group"
             },
             "runner_config": {
               "plugin:langbot-team/LocalAgent/default": {

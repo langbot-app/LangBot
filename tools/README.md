@@ -1,5 +1,9 @@
 # LangBot regression tools
 
+Public-dataset quality evaluation uses the [evaluation workflow](evaluation/README.md).
+It prepares pinned question plans, executes installed Pipeline arms, records real
+model inputs, and reports paired answer and evidence metrics.
+
 ## Layout and entrypoints
 
 Run module entrypoints from the repository root:
@@ -18,6 +22,13 @@ The directory boundaries are intentional:
 - `tests/` contains the tool and harness tests. Run them with `python -m unittest discover -s tools/tests -p 'test_*.py' -v`.
 
 Imports use the `tools.entrypoints` and `tools.regression` package paths. Keep commands rooted at the repository so profile and fixture paths resolve consistently.
+
+Common workload primitives live in `regression/http_bot.py` (group requests
+and signing), `regression/run_ledger.py` (read-only RunLedger evidence),
+`regression/resource_cleanup.py` (owned-resource journals and cleanup checks),
+and `regression/evidence.py` (assertion receipts). Import these from runners and
+cases rather than routing through an executable entrypoint. Keep
+scenario-specific expected outcomes and workflows with their scenarios.
 
 Run the deterministic OpenAI Chat Completions endpoint with Python 3.11+, without
 API credentials or third-party dependencies:
@@ -100,8 +111,9 @@ python3 -m tools.entrypoints.regression_traffic \
 
 Add `--container CONTAINER_ID` for Docker CPU/memory/PID statistics. The executing
 account must be able to inspect the selected process trees and Docker daemon.
-Resource collection reuses `scripts/cloud_runtime_soak.py`; it does not require
-cgroup v2. PID resource totals include descendants, so select disjoint trees.
+Traffic and cloud soak share the process and endpoint probes in
+`regression/observations.py`. Traffic collection works without cgroup v2. PID resource totals
+include descendants, so select disjoint trees.
 
 The result directory contains `requests.jsonl`, `resources.jsonl`, `progress.json`,
 and `summary.json`. The requested rate is a target: four workers bound concurrency,
@@ -121,6 +133,65 @@ Latency percentiles include the entire CLI invocation and use successful
 requests only. Achieved request rate is `requests / load_elapsed_seconds`.
 `health_samples` counts sampling rounds; `health_failures` counts rounds with
 any failed health probe or process/container resource read.
+
+## Fixed-arrival load and capacity exploration
+
+Load phases can set `arrival_mode: "open-loop"` and a positive `queue_capacity`
+(default 128). Arrivals follow a fixed schedule throughout `duration_seconds`,
+even when responses slow down. A bounded client queue retains waiting arrivals;
+workers still bound in-flight requests, and each group still executes one turn
+at a time. Omit `arrival_mode` to keep the existing paced behavior.
+`max_requests` is available only in paced mode.
+
+Every planned arrival is recorded in `arrivals.jsonl` with an `arrival_id`,
+scheduled time and final outcome. The summary reconciles scheduled arrivals
+against dispatched, dropped, expired and blocked arrivals. A full client queue
+drops an arrival explicitly. The load deadline expires waiting arrivals and
+drains only requests already dispatched. A failed group blocks its later
+arrivals because their conversation history is uncertain. Every undispatched
+arrival makes the run fail, including when `performance_mode` is `observe`.
+
+`requests.jsonl` contains actual requests with their scheduling, dispatch and
+completion times. Each case reports `arrival_p95_seconds` across all dispatched
+outcomes, including ledger verification, alongside the existing successful
+response-time percentiles. `max_arrival_p95_seconds` sets per-case thresholds
+for open-loop phases. Inspect arrival counts and failures together with latency;
+the percentile population excludes arrivals that never reached the service.
+
+The client queue and the Core/Box health queues have separate observations.
+Worker limits and serialized groups can constrain dispatch. Capacity results
+must state those limits, the workload mix, mock delays and the host resource
+envelope. A saturated run remains failed evidence of that tested configuration.
+A later low-rate phase verifies whether service queues and resources recover.
+
+Use the source-stack entrypoint with the checked-in load overrides:
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_ci \
+  --suite endurance --plugins plugins --lbctl /path/to/lbctl \
+  --load-profile tools/profiles/arrival-ramp.json --budget-seconds 900 \
+  --output .qa/arrival-ramp-001
+
+uv run --no-sync python -m tools.entrypoints.regression_ci \
+  --suite endurance --plugins plugins --lbctl /path/to/lbctl \
+  --load-profile tools/profiles/arrival-soak.json --budget-seconds 1200 \
+  --output .qa/arrival-soak-001
+```
+
+`--load-profile` accepts `phases`, `thresholds`, `resource_limits`,
+`performance_mode` and `box_command_delay_seconds`, validated before service
+creation. The Box command delay must be finite and nonnegative, and defaults to
+one second per command. The existing chat/Box/RAG
+resources, plugin installation, run-ledger verification and independent mixed
+evidence checks remain part of the source-stack run. `--budget-seconds` bounds
+execution after preparation. Both options apply to `--suite endurance`.
+The ramp uses 0.8, 4 and 0.8 aggregate arrivals/second; the soak runs 15 minutes at
+0.8 arrivals/second with a four-second delay in each Box command, so different
+Boxes execute concurrently at that arrival rate. The workload fingerprint
+includes the actual generated mock scenario file. Their latency limits are
+exploratory test settings and need
+calibration against measured workloads. Keep the existing Docker-daemon
+prerequisites of the source-stack runner.
 
 ## Configured regression suites
 
@@ -474,14 +545,17 @@ The existing required check names remain `Regression tools` and `Core smoke (60s
 soak tests use the existing Suite and Job entry points with separately calibrated
 latency, throughput and resource budgets; the one-minute smoke does not replace them.
 
+For the optional JSON-configurable transaction mix used for local smoke,
+pressure and soak tests, see [Configurable mixload](mixload.md). It does
+not change the stock Daily job described below.
+
 ## Daily mixed workload and weekly contracts
 
-`Daily Endurance` keeps one owned Core/Runtime/Box deployment per run. At the
-existing 19:23 UTC schedule (03:23 Asia/Shanghai), Monday through Saturday run the
-mixed business load; Sunday runs the finite contract pass. Selection uses the
-Asia/Shanghai weekday when the scheduled run starts, so delayed GitHub runs may
-start later than the cron time. Manual dispatch selects `workload: mixed` or
-`contracts`. The job is independent of PR merge checks.
+`Daily Endurance` keeps one owned Core/Runtime/Box deployment per run. The
+19:23 UTC schedule (03:23 Asia/Shanghai) runs the mixed business load every day,
+so each day produces comparable throughput, latency and resource observations.
+Manual dispatch can additionally select `workload: contracts` for a finite
+contract pass. The job is independent of PR merge checks.
 
 The mixed mode uses the existing `endurance` profile and harness:
 
@@ -522,7 +596,7 @@ live Box session or container does not by itself prove busy execution. Business,
 resource and mixed-evidence failures still fail the job. Throughput/P95 remain
 observations on hosted runners; no performance threshold is calibrated or changed.
 
-The Sunday/manual contract mode runs `--suite scenarios` once, under the existing
+The manual contract mode runs `--suite scenarios` once, under the existing
 300-second execution guard, with the existing optional restart checks. It retains
 the base cases and these selected local groups:
 
@@ -586,33 +660,32 @@ retrieval empty; normal Suite cleanup checks the owned configuration resources.
 The business chain has a 270-second budget and a 30-second cleanup reserve;
 plugin installation and initial service startup are outside this budget.
 `gate/suite/cases.json` retains assertions, process replacement receipts, exact
-HTTP statuses and retrieved content. A missing phase or failed assertion fails
+HTTP statuses and retrieved content. Authenticated monitoring requests read back
+each exact completed run and its conversation ID, and verify selected historical
+runs after subsequent process replacements. A missing phase or failed assertion fails
 the job. The job is opt-in and does not change Smoke or the daily schedule. It
 checks graceful process restart durability, not abrupt power loss or migrations.
 
-## Daily API contract job
+## Shared PR and Daily API contract jobs
 
-`daily-endurance.yml` runs API contracts alongside the mixed/weekly-contract job
-on separate runners, at the existing daily schedule and on manual dispatch.
-The API job uses the GitHub run ID as its shuffle seed, so each daily run explores
-a different order and a rerun keeps the same seed. It has a 15-minute job timeout,
-including preparation, and is not a required PR check. Its summary and separate
-`daily-api-<run_id>-<attempt>` artifact retain failures, order, coverage and cleanup
-evidence for 30 days.
+The PR API job runs one fixed-order pass of all seven chains on related Core
+changes. Daily runs the same chains in fixed order, then in shuffled order
+(14 case rows), using the GitHub run ID as the shuffle seed. Requests within
+each chain keep their create/read/update/delete order. The seed replays chain
+ordering; resource names and credentials are unique to each run.
 
-To replay locally on a disposable Linux/Docker host, pass the recorded seed:
+To run the PR profile or replay Daily on a disposable Linux/Docker host:
 
 ```sh
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite api --api-fixed-only \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/api-pr-001
 uv run --no-sync python -m tools.entrypoints.regression_ci --suite api --api-seed 20261028 \
-  --lbctl /path/to/lbctl --plugins plugins --output .qa/api-001
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/api-daily-001
 ```
 
-This separate suite executes seven independent operation chains once in fixed
-order, then once in seed-shuffled order (14 case rows). Operations within each
-chain retain their create/read/update/delete dependencies. Reuse the seed to
-replay chain ordering; resource names and credentials remain unique. Preparation
-is outside the 600-second execution guard; a completed run ends immediately.
-The default PR smoke and daily scenario groups do not include these cases.
+Both use a 600-second execution guard after preparation, and a 15-minute CI
+job timeout including preparation. GitHub Actions preserves their separate
+`pr-api-<run_id>-<attempt>` and `daily-api-<run_id>-<attempt>` artifacts for 30 days.
 
 The chains cover Provider and LLM/embedding/rerank model CRUD, Pipeline extension
 validation, API key permissions/revocation, Skill files and revision conflicts,
@@ -624,11 +697,26 @@ loopback addresses. This job does not exercise external MCP servers, real model
 inference, concurrent API mutations, or cross-Workspace isolation.
 
 Inspect `gate/gate.json` for the verdict, seed and exact case order;
-`gate/suite/cases.json` for HTTP steps, assertions and cleanup results; and
+`gate/suite/cases.json` for contract IDs, rounds, HTTP steps, named assertions and cleanup; and
 `gate/suite/coverage.json` for observed route templates and behavior contracts.
 An HTTP route hit includes rejected requests and is not proof of all behavior
 behind that route. Invalid MCP modes must return HTTP 400 and leave the original
 configuration unchanged. Any failed contract or cleanup makes the job fail.
+
+## Read a saved regression report
+
+Pass the directory that contains `gate/`. The command reads the existing evidence and
+writes Markdown to stdout. A failed or incomplete run exits with status 1.
+
+```sh
+python -m tools.entrypoints.regression_report api-fixed .qa/api
+python -m tools.entrypoints.regression_report api-daily /path/to/unpacked-daily-api-artifact
+python -m tools.entrypoints.regression_report daily /path/to/unpacked-daily-artifact/daily
+python -m tools.entrypoints.regression_report core-smoke .qa/core-smoke
+```
+
+For Daily, keep `daily-workload.txt` beside the run directory when unpacking the artifact.
+CI also supplies the tested SHA and runner step outcome. Use `--help` for those optional inputs.
 
 ## Concurrent isolation job
 
@@ -871,3 +959,13 @@ The default load mode remains `gate` for existing benchmark users.
 ## CI selection and regression tiers
 
 See the [CI tiers and evidence guide](../dev-docs/CROSS_COMPONENT_TESTING.md#ci-tiers-and-evidence) for PR selection, required smoke, and full daily/manual verification. The CI tooling tests can be run locally with `python -m unittest discover -s tools/tests -p "test_*.py"` in a Python environment with PyYAML.
+
+
+## Optional public RAG experiments
+
+The opt-in Linux launcher runs in a disposable local Core/Runtime with Chroma.
+See [BEIR SciFact retrieval](vdb-benchmark-public.md) for reproducible public
+relevance and HTTP latency, and [WikiText upload/RAG RSS](vdb-benchmark-memory.md)
+for process memory, mapping categories and the separate allocation diagnostic.
+Public inputs are fetched at runtime and hash-verified. Do not commit source
+corpora, model weights, local profiles with secrets, raw traces or results.

@@ -1,0 +1,118 @@
+{
+  "schema": "langbot.public-eval.artifacts.v1",
+  "hash_encoding": "UTF-8 without BOM, LF line endings",
+  "evaluation_code_sha": "ca6d913e5",
+  "core_candidate_sha": "476b78a23",
+  "parser_fix_sha": "732a1637c",
+  "data_license": "CC-BY-NC-4.0 for embedded LoCoMo excerpts",
+  "files": {
+    "baseline-judged.json": {
+      "sha256": "136298e217f62aa1802c3f3bccf2b979159ade34aee91585ecc715f16ce3b12d",
+      "utf8_lf_bytes": 112871
+    },
+    "combined-judged.json": {
+      "sha256": "2933f062286515b69cb77ac71b946c4333ab0aae0400c58b9d4e549236ccdc94",
+      "utf8_lf_bytes": 302504
+    },
+    "langrag-decoder-replay.json": {
+      "sha256": "0d13b4fa62542ced8b79a34b3d3af20556be4d32a726f4661fba90e04c94b8b2",
+      "utf8_lf_bytes": 2369
+    },
+    "langrag-encoding-audit.json": {
+      "sha256": "50c32b442cce62c0a04c009e9e74b173bd28f83185c07ea605f2db07f986dc38",
+      "utf8_lf_bytes": 6171
+    },
+    "langrag-judged.json": {
+      "sha256": "c7ea63cae301d2119992bc20a7e553a8cfaadc02339d3448bb3898f5e5b79ad3",
+      "utf8_lf_bytes": 265678
+    },
+    "ltm-ingestion.json": {
+      "sha256": "ab5ee61c1523d8ffae2120521fa9293ece6e7abfd3523a074e497cab0df3943d",
+      "utf8_lf_bytes": 1416
+    },
+    "paired-report.json": {
+      "sha256": "5d8c04a7d18cab1ace27e9574270431a1eb78526ddd679c60f2c426b4fee77d2",
+      "utf8_lf_bytes": 19072
+    },
+    "parser-reingestion/answer-ab-audit.json": {
+      "sha256": "dc99fd334d00f7cb4c00d6f131937d478ac769a4d157e7f6af36ed1a9c863163",
+      "utf8_lf_bytes": 4335
+    },
+    "parser-reingestion/chunk-ab-audit.json": {
+      "sha256": "36320c33afaf5a27dd12161fa13c4885ce3d7b4cda1a032a87fa1fe1f085e9db",
+      "utf8_lf_bytes": 858
+    },
+    "parser-reingestion/dependency-environments.json": {
+      "sha256": "53ff0f754481575ede321b5d9d9d9501397f9d82ffbf80c3c39d1140c4650c36",
+      "utf8_lf_bytes": 3086
+    },
+    "parser-reingestion/environment-cleanup.json": {
+      "sha256": "5d7e43913a8d90fba09e77f71190cc3740453eadbd69a62c3344bc29c9bcec48",
+      "utf8_lf_bytes": 1847
+    },
+    "parser-reingestion/langrag-parser-fixed-judged.json": {
+      "sha256": "76c9f1634016cef687d1fc7f3c3d6e4e5f4dca1c6eab15e2b34c2805febfbcd9",
+      "utf8_lf_bytes": 274220
+    },
+    "parser-reingestion/new-environment-decoder-replay.json": {
+      "sha256": "653d2d26328d8ab51cb1ba1df65ceb3303e634b36aef7359c4d190d3443494a2",
+      "utf8_lf_bytes": 4939
+    },
+    "parser-reingestion/new-pipeline.json": {
+      "sha256": "8d6f42159ca169c9c339f6c7241c5236bcef3d063bf84e3a623dac2b1a281605",
+      "utf8_lf_bytes": 4212
+    },
+    "parser-reingestion/old-kb.json": {
+      "sha256": "2e115307a3918e63a9ae298cba4ce667995e9aac439dbcb3fa93c25b44ea328c",
+      "utf8_lf_bytes": 887
+    },
+    "parser-reingestion/old-pipeline.json": {
+      "sha256": "0cc1f968762478032d64f04748cf37f3438060b2e6e0afc2e86345b1e8604cd4",
+      "utf8_lf_bytes": 2951
+    },
+    "parser-reingestion/paired-report.json": {
+      "sha256": "a44c8ddbb983027146bbaf1d0b979621c293aac6f56c816f24ea13c960ae2b3c",
+      "utf8_lf_bytes": 19152
+    },
+    "parser-reingestion/plugin-ab-identity.json": {
+      "sha256": "26e7a699beb47910b3ddc33d5575ace6c57870d65a0df3a20255292d28424f78",
+      "utf8_lf_bytes": 610
+    },
+    "parser-reingestion/profile-parser-fixed-v1.json": {
+      "sha256": "bcabbd5a31a88f5431466fa06d87e6c9c500d487de6051def020cf4bef2318ea",
+      "utf8_lf_bytes": 2235
+    },
+    "parser-reingestion/source-manifest.json": {
+      "sha256": "b853f288391ffbcc16bb886eab58066de113bf9d1c73bcc0c04131eff0bd7584",
+      "utf8_lf_bytes": 5271
+    },
+    "pipelines.json": {
+      "sha256": "da3edae3a923fb3ffd13970156826d21e17e169bae4c93585d3a4e3709075123",
+      "utf8_lf_bytes": 18322
+    },
+    "plan.json": {
+      "sha256": "4d85ce17f7f2c2ec192ccacac0ef53e02f5c037fd2059e061ce5de4f937613f9",
+      "utf8_lf_bytes": 3805
+    },
+    "powercontext-ingestion.json": {
+      "sha256": "2943bca160411fbd84650f681b74c8781e37e0ae126188d65516fc34af284558",
+      "utf8_lf_bytes": 1079
+    },
+    "powercontext-judged.json": {
+      "sha256": "47c30a83b9b4a8eec8fcb65763158e37fc5af1494dd8d5ad181c4c3b90bba553",
+      "utf8_lf_bytes": 246686
+    },
+    "profile.json": {
+      "sha256": "7ce3ad8fc1cf8959ebc7068b14c3e58d4ca46ed90023c0e61ecb248bde288c98",
+      "utf8_lf_bytes": 2417
+    },
+    "README.md": {
+      "sha256": "3fc4a3c2e465c3baacf0fda70f7b1e23dab6879c3c54a96a492758d70c9ad5ad",
+      "utf8_lf_bytes": 12316
+    },
+    "review-findings.json": {
+      "sha256": "ba066eb97d803a0a21b364c68a77463fba3ad587e7d66aa71f72393f4bfc04e2",
+      "utf8_lf_bytes": 2290
+    }
+  }
+}

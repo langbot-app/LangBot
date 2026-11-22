@@ -350,9 +350,8 @@ async def _run_with_shutdown(app: RuntimeApplication) -> None:
 def main(args: argparse.Namespace):
     configure_process_logging()
 
-    app = RuntimeApplication(args)
-
     try:
+        app = RuntimeApplication(args)
         asyncio.run(_run_with_shutdown(app))
     except asyncio.CancelledError:
         logger.info("Runtime application cancelled")
@@ -360,3 +359,6 @@ def main(args: argparse.Namespace):
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt, exiting...")
         return
+    except Exception:
+        logger.exception("Plugin Runtime failed")
+        raise SystemExit(1) from None

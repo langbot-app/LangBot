@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import httpx
 import typing
-import aiofiles
 from datetime import datetime
 from pathlib import Path
 
 import pydantic
+
+if typing.TYPE_CHECKING:
+    import httpx
 
 
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
@@ -357,6 +358,8 @@ class Image(MessageComponent):
     async def get_bytes(self) -> typing.Tuple[bytes, str]:
         """Get image bytes and mimetype"""
         if self.url:
+            import httpx
+
             async with httpx.AsyncClient(timeout=30) as client:
                 async with client.stream("GET", self.url) as response:
                     response.raise_for_status()
@@ -384,6 +387,8 @@ class Image(MessageComponent):
                 raise ValueError(f"Image exceeds the {MAX_IMAGE_BYTES}-byte limit")
             return decoded, mime_type
         elif self.path:
+            import aiofiles
+
             size = await asyncio.to_thread(Path(self.path).stat)
             if size.st_size > MAX_IMAGE_BYTES:
                 raise ValueError(f"Image exceeds the {MAX_IMAGE_BYTES}-byte limit")

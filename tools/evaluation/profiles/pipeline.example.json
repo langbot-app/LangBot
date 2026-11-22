@@ -1,0 +1,34 @@
+{
+  "protocol": {
+    "protocol_id": "locomo-text-pipeline-calibration-v1",
+    "embedding_model": "all-MiniLM-L6-v2:384",
+    "answer_model": "deepseek-flash",
+    "answer_policy": "source-only-v1",
+    "answer_temperature": 0,
+    "answer_max_tokens": 256,
+    "judge_model": "deepseek-flash",
+    "judge_policy": "strict-v1",
+    "judge_request_settings": {"thinking": {"type": "disabled"}},
+    "context_budget_bytes": 12000,
+    "execution_layer": "langbot.pipeline"
+  },
+  "provenance": {
+    "core_sha": "REPLACE_WITH_RUNNING_CORE_SHA",
+    "sdk_version": "REPLACE_WITH_INSTALLED_VERSION_AND_SOURCE",
+    "plugins": {
+      "LocalAgent": "REPLACE_WITH_VERSION_AND_ARCHIVE_SHA256",
+      "LangRAG": "REPLACE_WITH_VERSION_AND_ARCHIVE_SHA256",
+      "LongTermMemory": "REPLACE_WITH_VERSION_AND_ARCHIVE_SHA256",
+      "PowerContext": "REPLACE_WITH_VERSION_AND_ARCHIVE_SHA256"
+    }
+  },
+  "timeout_seconds": 180,
+  "arms": {
+    "langrag_memory": {
+      "pipelines": {"conv-26": "REPLACE_WITH_DEDICATED_COMBINATION_PIPELINE"}
+    },
+    "powercontext": {
+      "pipelines": {"conv-26": "REPLACE_WITH_DEDICATED_POWERCONTEXT_PIPELINE"}
+    }
+  }
+}

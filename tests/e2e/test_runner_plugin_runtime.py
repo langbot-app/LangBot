@@ -11,6 +11,7 @@ import json
 import os
 import signal
 import socket
+import contextlib
 import sqlite3
 import subprocess
 import sys
@@ -906,7 +907,7 @@ def _create_boundary_pipeline(client, token):
 
 
 def _pipeline_failure_diagnostics(directory, pipeline_id):
-    with sqlite3.connect(directory / 'data' / 'langbot.db') as connection:
+    with contextlib.closing(sqlite3.connect(directory / 'data' / 'langbot.db')) as connection:
         messages = connection.execute(
             'SELECT status, level, runner_name FROM monitoring_messages WHERE pipeline_id = ?',
             (pipeline_id,),

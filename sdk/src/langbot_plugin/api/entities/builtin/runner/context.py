@@ -378,12 +378,15 @@ class RunnerContext(pydantic.BaseModel):
         run_id: str | None = None,
         reason: str | None = None,
         cleanup_confirmed: bool = True,
+        *,
+        expected_retry_count: int | None = None,
     ) -> AgentRun:
         """Acknowledge completed cancellation cleanup."""
         return await self.api.run_cancel_ack(
             run_id=run_id,
             reason=reason,
             cleanup_confirmed=cleanup_confirmed,
+            expected_retry_count=expected_retry_count,
         )
 
     async def run_retry(

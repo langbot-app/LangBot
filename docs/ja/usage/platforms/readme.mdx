@@ -11,6 +11,8 @@ Agent ルートでは通常メッセージのリスナーが入力を書き換�
 
 ![arch](/images/zh/deploy/bots/arch.png)
 
+`lbctl bot get <bot>` でルート ID を確認します。`lbctl bot routes bind <bot> --binding <id> --agent <agent> --dry-run` で変更を確認した後、`--yes` で適用します。パイプラインに接続する場合は `--pipeline` を指定します。ルートが同時に変更された場合は競合が返るので、最新の設定を読み直してください。
+
 
 | プラットフォーム | ステータス | 備考 | チュートリアル |
 | ------ | ---- | ---- | ---- |

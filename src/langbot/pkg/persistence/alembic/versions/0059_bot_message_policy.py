@@ -19,8 +19,8 @@ import sqlalchemy as sa
 
 from langbot.pkg.message_policy import schema as policy_schema
 
-revision = '0056_bot_message_policy'
-down_revision = '0055_platform_command_sync'
+revision = '0059_bot_message_policy'
+down_revision = '0058_platform_command_sync'
 branch_labels = None
 depends_on = None
 

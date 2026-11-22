@@ -117,6 +117,27 @@ async def facts(service):
     return expected
 
 
+async def test_new_message_reuses_the_locked_summary_row(service):
+    engine = service.ap.persistence_mgr.get_db_engine()
+    summary = models.MonitoringSession.__table__
+    reads = []
+
+    def observe_sql(connection, cursor, sql, parameters, execution, executemany):
+        statement = getattr(execution.compiled, 'statement', None)
+        if getattr(statement, 'is_select', False) and summary in statement.get_final_froms():
+            reads.append(sql)
+
+    sa.event.listen(engine.sync_engine, 'before_cursor_execute', observe_sql)
+    try:
+        await message(service, 'Alice', 'p')
+        await message(service, 'Alice', 'p')
+    finally:
+        sa.event.remove(engine.sync_engine, 'before_cursor_execute', observe_sql)
+
+    assert not reads
+    assert await projection(service) == await facts(service)
+
+
 @pytest.mark.contract('summary_fact_equivalence')
 @pytest.mark.contract('summary_snapshot')
 @pytest.mark.parametrize('transfer', ['message', 'late_link'])

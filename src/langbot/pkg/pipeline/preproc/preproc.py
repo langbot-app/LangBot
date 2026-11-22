@@ -16,6 +16,7 @@ from ...agent.runner import config_schema, input_media
 from ...agent.runner.resource_policy import ResourcePolicyProjector
 from ...provider.tools.toolmgr import ToolManager
 from ..extension_preferences import normalize_extension_preferences
+from .prompt_context import PREPROCESSED_SYSTEM_CONTEXT, added_system_context, system_messages
 
 
 DEFAULT_PROMPT_CONFIG = [
@@ -266,7 +267,7 @@ class PreProcessor(stage.PipelineStage):
         # Keep per-request identity separate from cached conversation state.
         query.session = session.model_copy(update={'sender_id': query.sender_id, 'bot_uuid': query.bot_uuid})
         query.session.inherit_execution_scope(get_query_execution_context(query))
-        query.prompt = conversation.prompt.copy()
+        query.prompt = conversation.prompt.copy(deep=True)
         query.messages = await self._resolve_history_messages(
             runner_id,
             conversation,
@@ -358,10 +359,11 @@ class PreProcessor(stage.PipelineStage):
 
         # Extract configured KB UUIDs into query variables so PromptPreProcessing
         # plugins can still adjust the authorized retrieval set before run_runner.
-        query.variables['_knowledge_base_uuids'] = config_schema.extract_knowledge_base_uuids(
-            descriptor,
-            runner_config,
-        )
+        configured_kb_uuids = config_schema.extract_knowledge_base_uuids(descriptor, runner_config)
+        query.variables['_knowledge_base_uuids'] = configured_kb_uuids
+        # Management commands need the Pipeline binding even when a prompt
+        # hook narrows the effective retrieval list. Plugins cannot set _host_ vars.
+        query.variables['_host_configured_knowledge_base_uuids'] = configured_kb_uuids.copy()
         # Telemetry: the knowledge bases this lane may retrieve from, plus the
         # schema-declared selector fields that selected them.
         try:
@@ -377,6 +379,7 @@ class PreProcessor(stage.PipelineStage):
 
         # Emit PromptPreProcessing before the runner receives the query.
 
+        original_system_messages = system_messages(query.messages)
         event = events.PromptPreProcessing(
             session_name=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
             default_prompt=query.prompt.messages,
@@ -390,6 +393,7 @@ class PreProcessor(stage.PipelineStage):
 
         query.prompt.messages = event_ctx.event.default_prompt
         query.messages = event_ctx.event.prompt
+        query.variables[PREPROCESSED_SYSTEM_CONTEXT] = added_system_context(original_system_messages, query.messages)
 
         if getattr(self.ap, 'skill_mgr', None) is not None:
             skill_execution_context = get_query_execution_context(query)

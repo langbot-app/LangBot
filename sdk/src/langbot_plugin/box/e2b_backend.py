@@ -126,6 +126,19 @@ def _rewrite_command_paths_for_e2b(command: str) -> str:
     return re.sub(r"(?<![\w.-])/workspace(?=$|/|[^\w.-])", E2B_WORKSPACE_DIR, command)
 
 
+def _drop_shield_exception_log(operation: "asyncio.Future") -> None:
+    """Detach asyncio 3.14's shielded-future exception logger from ``operation``.
+
+    ``asyncio.shield`` attaches ``_log_on_exception`` through a done-callback, so
+    it is only present after the loop has run the cancelled outer future's
+    callback. Removing an absent callback is a no-op, which keeps this safe on
+    earlier interpreters that never install it.
+    """
+    logger = getattr(asyncio.tasks, "_log_on_exception", None)
+    if logger is not None:
+        operation.remove_done_callback(logger)
+
+
 class E2BSandboxBackend(BaseSandboxBackend):
     """E2B/CubeSandbox sandbox backend.
 
@@ -489,6 +502,14 @@ class E2BSandboxBackend(BaseSandboxBackend):
         try:
             return await asyncio.shield(operation)
         except asyncio.CancelledError:
+            # Python 3.14 parks `_log_on_exception` on the inner task via a
+            # done-callback once the shield's outer future is cancelled, and that
+            # logger writes the raw `repr()` of the failure -- bypassing
+            # `_safe_error`, which can echo request credentials. It is attached on
+            # the next loop pass, so detach it from a callback rather than by
+            # awaiting here (an extra yield lets a fast transfer finish and would
+            # change what callers observe on the first cancel).
+            asyncio.get_running_loop().call_soon(_drop_shield_exception_log, operation)
             # Keep the session lock until remote publication and cleanup finish.
             while not operation.done():
                 try:

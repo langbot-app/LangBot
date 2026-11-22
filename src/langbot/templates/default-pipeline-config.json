@@ -1,6 +1,7 @@
 {
     "ai": {
         "runner": {
+            "group-context": "member",
             "id": "",
             "expire-time": 0
         },

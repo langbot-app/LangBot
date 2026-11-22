@@ -108,7 +108,7 @@ Plugin-/run-callable actions belong in the `ExecutionAPI` catalog; never add a s
 
 ## Platform Adapters: Standard Events and APIs
 
-EBA adapters live in `src/langbot/pkg/platform/adapters/<platform>/` (legacy ones in `pkg/platform/sources/`). Standard definitions: `dev-docs/event-based-agents/01-event-system.md` (events) and `02-platform-api.md` (entities and APIs), implemented in the SDK under `langbot_plugin/api/entities/builtin/platform/`.
+EBA adapters live in `src/langbot/pkg/platform/adapters/<platform>/`. `pkg/platform/sources/` holds the legacy single-file adapters and is **frozen**: do not update, fix or extend them, and never add new adapters there. New platforms and all adapter work go into `adapters/<platform>/` (port a platform that only exists in `sources/` instead of patching it). Standard definitions: `dev-docs/event-based-agents/01-event-system.md` (events) and `02-platform-api.md` (entities and APIs), implemented in the SDK under `langbot_plugin/api/entities/builtin/platform/`.
 
 - Align with the standard definitions first. Map native events to a standard event (`message.received`, `message.edited`, `group.member_joined`, `bot.muted`, ...) and native operations to a standard API (`send_message`, `reply_message`, `get_group_info`, ...) whenever the semantics match, even if the platform names or shapes differ. Use `platform.specific` events and `call_platform_api` actions only for capabilities with no standard equivalent.
 - Extend existing standard messages/APIs before inventing new ones (example: Slack threads ride on the standard message APIs).

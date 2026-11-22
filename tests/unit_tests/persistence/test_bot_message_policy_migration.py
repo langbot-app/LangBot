@@ -21,13 +21,13 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.message_policy import schema as policy_schema
 
-migration = importlib.import_module('langbot.pkg.persistence.alembic.versions.0056_bot_message_policy')
+migration = importlib.import_module('langbot.pkg.persistence.alembic.versions.0059_bot_message_policy')
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('all_plugins', [False, True])
 async def test_bot_plugin_selection_round_trip(database, all_plugins, caplog):
-    selection = importlib.import_module('langbot.pkg.persistence.alembic.versions.0057_bot_plugin_selection')
+    selection = importlib.import_module('langbot.pkg.persistence.alembic.versions.0060_bot_plugin_selection')
     caplog.set_level('INFO', logger=selection.__name__)
 
     def scenario(conn):

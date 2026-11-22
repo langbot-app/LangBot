@@ -1606,6 +1606,14 @@ const esES = {
       resetSuccess: 'Contexto restablecido.',
       resetError:
         'No se pudo restablecer. Espere a que terminen las tareas activas y vuelva a intentarlo.',
+      resetScopeMember:
+        'Este chat guarda un contexto independiente para cada miembro del grupo, así que solo se restablece el de este miembro.',
+      resetScopeGroup:
+        'Este grupo comparte un único contexto, así que se restablece la conversación de todo el grupo, no solo la de este miembro.',
+      inGroup: 'en {{group}}',
+      filterByGroup: 'Mismo grupo',
+      groupFilterActive: 'Grupo {{group}}',
+      clearGroupFilter: 'Mostrar todas las sesiones',
 
       title: 'Sesiones',
       sessions: 'Sesiones',
@@ -2470,6 +2478,10 @@ const esES = {
     updating: 'Actualizando...',
     updateSuccess: 'Plugin actualizado correctamente',
     updateError: 'Error al actualizar: ',
+    installedVersion: 'Versión instalada v{{version}}',
+    updateToVersion: 'Actualizar a v{{version}}',
+    confirmUpdatePluginVersion:
+      '¿Actualizar el plugin {{author}}/{{name}} de v{{from}} a v{{to}}?',
     saveConfigSuccessNormal: 'Configuración guardada correctamente',
     saveConfigError: 'Error al guardar la configuración: ',
     config: 'Configuración',
@@ -3363,6 +3375,32 @@ const esES = {
     space_account_binding_requiredTitle: 'LangBot Account connection required',
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
+  },
+  dailyMessageQuota: {
+    planLimited: '{{count}} mensajes al día',
+    planUnlimited: 'Mensajes diarios ilimitados',
+    planHelp:
+      'Mensajes que tus bots pueden procesar al día, contados por día UTC y reiniciados a las 00:00 UTC. Solo cuentan los mensajes que un bot procesa realmente. Al agotarse, los mensajes nuevos de ese día no se procesan y se avisa al usuario.',
+    title: 'Mensajes de hoy',
+    usage: '{{used}} / {{limit}}',
+    remaining: 'Quedan {{count}}',
+    resetsAt: 'Se reinicia {{time}}',
+    today: 'hoy {{time}}',
+    tomorrow: 'mañana {{time}}',
+    exhausted: 'Cuota de hoy agotada',
+    exhaustedHint: 'Los mensajes nuevos se pausan hasta {{time}}',
+    nearLimit: 'Casi agotada',
+    upgrade: 'Mejorar plan',
+    unlimited: 'Ilimitado',
+    settingsTitle: 'Cuota diaria de mensajes',
+    settingsDescription:
+      'Mensajes que tus bots pueden procesar al día, incluido el chat de depuración. Se cuenta por día UTC; los mensajes de grupo que no activan un bot no cuentan.',
+    unlimitedDescription: 'Tu plan no limita los mensajes diarios.',
+    errorTitle: 'Cuota diaria de mensajes agotada',
+    errorBody:
+      'Este espacio de trabajo ya procesó {{limit}} mensajes hoy, por lo que este mensaje no se procesó. La cuota se reinicia {{time}}.',
+    errorUpgrade: 'Mejora para una cuota mayor',
+    unavailable: 'El uso de hoy no está disponible ahora',
   },
   workspace: {
     dedicatedSpaceMembersHint:

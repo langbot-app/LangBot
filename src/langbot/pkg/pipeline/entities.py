@@ -38,3 +38,5 @@ class StageProcessResult(pydantic.BaseModel):
     debug_notice: typing.Optional[str] = ''
 
     error_notice: typing.Optional[str] = ''
+
+    structured_error: dict | None = None

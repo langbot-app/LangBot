@@ -1482,6 +1482,14 @@ const zhHans = {
         '重置后，新消息将从空上下文开始。监控历史会保留，文件和长期记忆不受影响。请等待当前任务结束后再重置。',
       resetSuccess: '上下文已重置，新消息将开启新的对话。',
       resetError: '重置失败，请等待当前任务结束后重试。',
+      resetScopeMember:
+        '该聊天为每个群成员保存独立上下文，只会重置这位成员的上下文。',
+      resetScopeGroup:
+        '该群共享一段上下文，重置会清空整个群的对话，而不只是这位成员。',
+      inGroup: '群 {{group}}',
+      filterByGroup: '同群会话',
+      groupFilterActive: '群 {{group}}',
+      clearGroupFilter: '显示全部会话',
 
       title: '会话监控',
       sessions: '会话列表',
@@ -1510,13 +1518,13 @@ const zhHans = {
     },
     admins: {
       title: '管理员',
-      description: '拥有此机器人命令管理员权限的会话（用户/群组 ID）',
+      description: '拥有此机器人命令管理员权限的用户（按用户 ID 识别）',
       addAdmin: '添加管理员',
       launcherType: '类型',
-      launcherId: 'ID',
-      typePerson: '私聊',
+      launcherId: '用户 ID',
+      typePerson: '用户',
       typeGroup: '群聊',
-      placeholderId: '用户或群组 ID',
+      placeholderId: '用户 ID',
       addSuccess: '添加成功',
       addError: '添加失败：',
       deleteSuccess: '已移除',
@@ -2267,6 +2275,10 @@ const zhHans = {
     updating: '更新中...',
     updateSuccess: '插件更新成功',
     updateError: '更新失败：',
+    installedVersion: '已安装版本 v{{version}}',
+    updateToVersion: '更新到 v{{version}}',
+    confirmUpdatePluginVersion:
+      '确定将插件（{{author}}/{{name}}）从 v{{from}} 更新到 v{{to}} 吗？',
     saveConfigSuccessNormal: '保存配置成功',
     saveConfigError: '保存配置失败：',
     config: '配置',
@@ -3088,6 +3100,32 @@ const zhHans = {
     space_account_binding_requiredTitle: '需要绑定 LangBot 账号',
     space_account_binding_required:
       '此本地账户必须先在账户设置中绑定 LangBot 账号，才能使用 LangBot 账号登录。',
+  },
+  dailyMessageQuota: {
+    planLimited: '每日消息 {{count}} 条',
+    planUnlimited: '每日消息不限',
+    planHelp:
+      '机器人每天可处理的消息数，按 UTC 自然日计算，00:00（北京时间 08:00）重置。只有机器人实际处理的消息才计入，群内未触发机器人的消息不计。用完后当天的新消息不再处理，并提示用户。',
+    title: '今日消息',
+    usage: '{{used}} / {{limit}}',
+    remaining: '剩余 {{count}} 条',
+    resetsAt: '{{time}} 重置',
+    today: '今天 {{time}}',
+    tomorrow: '明天 {{time}}',
+    exhausted: '今日额度已用完',
+    exhaustedHint: '新消息暂不处理，{{time}} 恢复',
+    nearLimit: '即将用完',
+    upgrade: '升级计划',
+    unlimited: '不限',
+    settingsTitle: '每日消息额度',
+    settingsDescription:
+      '工作区内机器人每天可处理的消息数（含调试对话），按 UTC 自然日计算。群内未触发机器人的消息不计入。',
+    unlimitedDescription: '当前计划不限制每日消息数。',
+    errorTitle: '今日消息额度已用完',
+    errorBody:
+      '本工作区今天已处理 {{limit}} 条消息，这条消息没有被处理。额度将于{{time}}重置。',
+    errorUpgrade: '升级计划提高额度',
+    unavailable: '暂时无法获取今日用量',
   },
   workspace: {
     dedicatedSpaceMembersHint:

@@ -9,8 +9,9 @@ import sys
 import urllib.request
 from uuid import uuid4
 
-from tools.entrypoints.regression_coverage import checked
-from tools.regression.regression_local_cases import api, endpoint, headers, record_run, require
+from tools.regression.evidence import checked
+from tools.regression.regression_local_cases import api, endpoint, headers, require
+from tools.regression.run_ledger import record_run
 
 GROUP = 'faults'
 RUNNER = 'plugin:langbot-team/LocalAgent/default'

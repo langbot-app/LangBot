@@ -32,7 +32,7 @@ Comprehensive unit test suite for LangBot's pipeline stages, providing extensibl
 
 **GitHub Actions Workflow** (`.github/workflows/pipeline-tests.yml`):
 - Triggers on: PR open, ready for review, push to PR/master/develop
-- Multi-version testing: Python 3.10, 3.11, 3.12
+- Multi-version testing: Python 3.11, 3.12, 3.13, 3.14
 - Coverage reporting: Integrated with Codecov
 - Auto-runs via `run_tests.sh` script
 

@@ -1,0 +1,64 @@
+{
+  "sample_id": "conv-26",
+  "source_dataset_sha256": "79fa87e90f04081343b8c8debecb80a9a6842b76a7aa537dc9fdf651ea698ff4",
+  "chardet_version": "5.2.0",
+  "parser_sha256": "24f5883cfaf06ef6ed30e663ead694c8bacae8ca7b1f26518ab86b5ead450bea",
+  "assembly": "UTF-8 encoding of newline-joined [session_N_date_time] speaker: text, no trailing newline",
+  "read_only_kb": true,
+  "replays": [
+    {
+      "session": 3,
+      "source_utf8_sha256": "538db1d9e79ff66edeaf3a3d6711dee81bfad9febd5a678a86a8cd4ee69c8066",
+      "detected_encoding": "Windows-1252",
+      "detector_confidence": 0.73,
+      "previous_equals_source": false,
+      "fixed_equals_source": true,
+      "general_parsers_equals_source": true
+    },
+    {
+      "session": 7,
+      "source_utf8_sha256": "be4d7572e8f2d628d4ae403bb24bd4762c031afddfd5ff52e0a301c400333ab3",
+      "detected_encoding": "Windows-1252",
+      "detector_confidence": 0.7266832540025963,
+      "previous_equals_source": false,
+      "fixed_equals_source": true,
+      "general_parsers_equals_source": true
+    },
+    {
+      "session": 13,
+      "source_utf8_sha256": "12d945902a23ef2a03183890275bbaf278decbebb3842273a4d9b069fdcf164c",
+      "detected_encoding": "Windows-1252",
+      "detector_confidence": 0.73,
+      "previous_equals_source": false,
+      "fixed_equals_source": true,
+      "general_parsers_equals_source": true
+    },
+    {
+      "session": 14,
+      "source_utf8_sha256": "b7aedb96b098330d9376733890812fb124be1aa3a867e17c83327c29d6391069",
+      "detected_encoding": "Windows-1252",
+      "detector_confidence": 0.73,
+      "previous_equals_source": false,
+      "fixed_equals_source": true,
+      "general_parsers_equals_source": true
+    },
+    {
+      "session": 16,
+      "source_utf8_sha256": "1e00ffb3eabbf525d9e4dbaa6d4046f7a7a788cd3aa10bfa1769507cc7a12dc6",
+      "detected_encoding": "MacRoman",
+      "detector_confidence": 0.7283661593554163,
+      "previous_equals_source": false,
+      "fixed_equals_source": true,
+      "general_parsers_equals_source": true
+    },
+    {
+      "session": 17,
+      "source_utf8_sha256": "148de156055af560a2ffb250ee5bd32d2b334b7e70efffceb7f7f7fa1fe0af7f",
+      "detected_encoding": "Windows-1252",
+      "detector_confidence": 0.73,
+      "previous_equals_source": false,
+      "fixed_equals_source": true,
+      "general_parsers_equals_source": true
+    }
+  ]
+}

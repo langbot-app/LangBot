@@ -362,6 +362,8 @@ async def test_compiled_cli_against_core_http(service, tmp_path):  # noqa: F811
         ]:
             assert (await cli(*args))['ok']
         await cli('knowledge-engine', 'creation-schema', 'missing/engine', code=5)
+        before = await cli('pipeline', 'extensions', 'get', 'p')
+        assert before['data']['enable_all_plugins'] is True
         body = {
             'bound_plugins': [],
             'bound_mcp_servers': [],
@@ -376,6 +378,8 @@ async def test_compiled_cli_against_core_http(service, tmp_path):  # noqa: F811
         body_path.write_text(json.dumps(body))
         updated = await cli('pipeline', 'extensions', 'update', 'p', '--file', str(body_path))
         assert all(updated['data'][k] == v for k, v in body.items())
+        readback = await cli('pipeline', 'extensions', 'get', 'p')
+        assert {key: readback['data'][key] for key in body} == body
         task = asyncio.create_task(process_next(ap))
         result = await cli('pipeline', 'run', 'p', '--message', 'HTTP smoke')
         await task

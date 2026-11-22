@@ -14,6 +14,7 @@ import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
 import sqlalchemy
 
 from . import database, sqlite_migration_backup
+from .write_admission import write_slot
 from ..entity.persistence import base, metadata, model as persistence_model
 from ..entity.persistence import workspace as persistence_workspace
 from ..entity import persistence
@@ -101,6 +102,7 @@ _ALEMBIC_TENANT_TABLES = {
     'alert_settings',
     'alert_incidents',
     'alert_deliveries',
+    'workspace_message_usage_daily',
     'langbot_vectors',
     'directory_projection_states',
     'directory_projection_inbox',
@@ -120,7 +122,7 @@ _WORKSPACE_ALEMBIC_REVISION = '0009_workspace_tenancy'
 _RESOURCE_SCOPE_ALEMBIC_REVISION = '0010_scope_resources'
 _OSS_WORKSPACE_METADATA_KEY = 'oss_workspace_uuid'
 _RELEASE_MIGRATION_ADVISORY_LOCK_ID = 0x4C414E47424F5432
-_PGVECTOR_ALLOWED_DIMENSIONS = (384, 512, 768, 1024, 1536, 3072)
+_PGVECTOR_ALLOWED_DIMENSIONS = (384, 512, 768, 1024, 1536, 2048, 3072)
 _RUNTIME_SCHEMA = 'public'
 _ALEMBIC_RUNTIME_TABLE = 'alembic_version'
 _RUNTIME_TABLE_PRIVILEGES = frozenset({'SELECT', 'INSERT', 'UPDATE', 'DELETE'})
@@ -1853,6 +1855,15 @@ class PersistenceManager:
 
     def tenant_uow(self, workspace_uuid: str) -> TenantUnitOfWork:
         return self._scoped_uow(PersistenceScope.workspace(workspace_uuid))
+
+    @contextlib.asynccontextmanager
+    async def tenant_write_uow(self, workspace_uuid: str, *, operation: str = 'artifact'):
+        # An already-owned transaction cannot wait behind a writer that needs it to finish.
+        active = self._active_transaction.get()
+        joined = active is not None and active.owner_task is asyncio.current_task()
+        slot = contextlib.nullcontext() if joined else write_slot(self.get_db_engine(), operation)
+        async with slot, self.tenant_uow(workspace_uuid) as uow:
+            yield uow
 
     def tenant_scope(self, workspace_uuid: str) -> PersistenceScopeBoundary:
         """Bind a Workspace without holding a database session between calls."""

@@ -8,6 +8,20 @@ stages:
       en_US: Misc
       zh_Hans: 杂项
     config:
+      - name: daily-message-quota-exceeded
+        label:
+          en_US: Daily Message Quota Reached
+          zh_Hans: 每日消息额度已用完
+        description:
+          en_US: "Leave empty to use the Workspace language."
+          zh_Hans: "留空时使用工作区语言的默认提示。"
+        type: string
+        required: false
+        default: ''
+        show_if:
+          field: __system.is_cloud
+          operator: eq
+          value: true
       - name: tool-call-hint
         label:
           en_US: Tool Call Hint

@@ -100,34 +100,63 @@ class CommandManager:
             getattr(context, 'config', None),
         )
 
+    @staticmethod
+    def _command_actor_id(
+        launcher_type: typing.Any,
+        launcher_id: typing.Any,
+        sender_id: typing.Any = None,
+    ) -> str | None:
+        """Return the person who sent the command, never the group itself.
+
+        Bot admins are people. In a group chat the launcher is the group ID,
+        so using it would either deny every personal admin or, if group admins
+        were accepted, grant every member the admin's privileges. Prefer the
+        sender ID; fall back to the launcher ID only for private chats.
+        """
+
+        if sender_id is not None and str(sender_id).strip():
+            return str(sender_id).strip()
+
+        launcher_type = getattr(launcher_type, 'value', launcher_type)
+        if launcher_type == 'person' and launcher_id is not None and str(launcher_id).strip():
+            return str(launcher_id).strip()
+        return None
+
     async def is_admin(
         self,
-        workspace_uuid: str,
+        workspace_uuid: str | None,
         bot_uuid: str,
         launcher_type: str,
         launcher_id: str,
+        sender_id: str | None = None,
     ) -> bool:
-        """Check if launcher has admin privilege for bot"""
+        """Check whether the person who sent a command is an admin of the bot."""
+        actor_id = self._command_actor_id(launcher_type, launcher_id, sender_id)
+        if actor_id is None:
+            return False
+
         import sqlalchemy as _sa
         from ..entity.persistence.bot import BotAdmin as _BotAdmin
 
-        _admins = await self.ap.persistence_mgr.execute_async(
-            _sa.select(_BotAdmin).where(
-                _BotAdmin.workspace_uuid == workspace_uuid,
-                _BotAdmin.bot_uuid == (bot_uuid or ''),
-                _BotAdmin.launcher_type == launcher_type,
-                _BotAdmin.launcher_id == str(launcher_id),
-            )
-        )
+        conditions = [
+            _BotAdmin.bot_uuid == (bot_uuid or ''),
+            _BotAdmin.launcher_type == 'person',
+            _BotAdmin.launcher_id == actor_id,
+        ]
+        if workspace_uuid:
+            conditions.append(_BotAdmin.workspace_uuid == workspace_uuid)
+
+        _admins = await self.ap.persistence_mgr.execute_async(_sa.select(_BotAdmin).where(*conditions))
         return _admins.first() is not None
 
     async def resolve_privilege(self, query: pipeline_query.Query) -> int:
         """Resolve the command privilege for one platform query."""
         is_adm = await self.is_admin(
-            query.workspace_uuid,
-            query.bot_uuid or '',
-            query.launcher_type.value,
-            str(query.launcher_id),
+            getattr(query, 'workspace_uuid', None),
+            getattr(query, 'bot_uuid', None) or '',
+            getattr(query, 'launcher_type', None),
+            getattr(query, 'launcher_id', None),
+            getattr(query, 'sender_id', None),
         )
         return 2 if is_adm else 1
 
@@ -145,10 +174,11 @@ class CommandManager:
         bot_uuid: str,
         launcher_type: str,
         launcher_id: str,
+        sender_id: str | None = None,
         config: dict | None = None,
     ) -> command_context.ExecuteContext:
         """Construct command execution context."""
-        is_adm = await self.is_admin(workspace_uuid, bot_uuid, launcher_type, launcher_id)
+        is_adm = await self.is_admin(workspace_uuid, bot_uuid, launcher_type, launcher_id, sender_id)
         privilege = 2 if is_adm else 1
 
         ctx = command_context.ExecuteContext(
@@ -204,6 +234,7 @@ class CommandManager:
             bot_uuid=query.bot_uuid or '',
             launcher_type=query.launcher_type.value,
             launcher_id=str(query.launcher_id),
+            sender_id=getattr(query, 'sender_id', None),
         )
 
         async for ret in self.execute_command(ctx, bound_plugins=bound_plugins):

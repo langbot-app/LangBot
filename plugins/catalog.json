@@ -22,7 +22,7 @@
   },
   {
     "id": "langbot-team/LongTermMemory",
-    "version": "0.2.8",
+    "version": "0.2.9",
     "category": "KnowledgeEngine",
     "path": "KnowledgeEngine/LongTermMemory",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/KnowledgeEngine/LongTermMemory"
@@ -92,7 +92,7 @@
   },
   {
     "id": "langbot-team/DifyAgent",
-    "version": "0.2.11",
+    "version": "0.2.12",
     "category": "Runner",
     "path": "Runner/dify-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/dify-agent"
@@ -106,7 +106,7 @@
   },
   {
     "id": "langbot-team/MulticaAgent",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "category": "Runner",
     "path": "Runner/multica-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/multica-agent"

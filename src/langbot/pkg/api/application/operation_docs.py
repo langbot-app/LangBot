@@ -405,6 +405,14 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         risk='write',
         exposure='all',
     ),
+    'bot.routes.bind': OperationDoc(
+        domain='bot',
+        label={'zh_Hans': '切换路由目标', 'en_US': 'Change Route Target'},
+        summary='Preview or change the Agent or Pipeline target of one existing Bot route.',
+        description='Supply the binding returned by bot.get. Concurrent changes return a conflict.',
+        risk='write',
+        exposure='none',
+    ),
     'bot.routes.preview': OperationDoc(
         domain='bot',
         label={'zh_Hans': '路由预览', 'en_US': 'Preview Routes'},
@@ -1453,6 +1461,22 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         risk='read',
         exposure='none',
     ),
+    'skill.package.preview': OperationDoc(
+        domain='skill',
+        label={'zh_Hans': '预览技能整包更新', 'en_US': 'Preview Skill Package Update'},
+        summary='Validate a complete Skill replacement and list added, modified and deleted files.',
+        description='Account/API key transport. Requires resource.view and an explicit base_revision. No Workspace publication is written. The Skill name in SKILL.md must match skill_name.',
+        risk='read',
+        exposure='none',
+    ),
+    'skill.package.publish': OperationDoc(
+        domain='skill',
+        label={'zh_Hans': '发布技能整包更新', 'en_US': 'Publish Skill Package Update'},
+        summary='Atomically replace an existing Skill package using revision compare-and-swap.',
+        description='Account/API key transport. Requires resource.manage and resource.view. Includes binary files and removes absent files. The Skill name in SKILL.md must match skill_name. A stale base_revision fails without replacing the current publication.',
+        risk='write',
+        exposure='none',
+    ),
     'skill.github.install': OperationDoc(
         domain='skill',
         label={'zh_Hans': '从GitHub安装技能', 'en_US': 'Install Skill from GitHub'},
@@ -1563,6 +1587,14 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         summary='Check a draft without saving or creating a sandbox.',
         description='Check backend availability using private draft credentials. Does not create a sandbox.',
         risk='read',
+        exposure='none',
+    ),
+    'workspace.sandbox.reset': OperationDoc(
+        domain='workspace',
+        label={'en_US': 'Reset Sandbox Settings', 'zh_Hans': '恢复默认沙箱配置'},
+        summary='Clear Workspace sandbox overrides and inherit deployment defaults.',
+        description='Remove the saved backend, E2B connection credentials and resource limits for future tasks. Existing tasks retain their snapshots. Requires a member or API key with workspace.update.',
+        risk='dangerous',
         exposure='none',
     ),
     'workspace.sandbox.test': OperationDoc(

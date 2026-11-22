@@ -1,4 +1,10 @@
 {
+  "Daily message quota reached ({limit} per day). It resets at 00:00 UTC. Upgrade your plan for a higher quota.": "Достигнут дневной лимит сообщений ({limit} в день). Он сбрасывается в 00:00 UTC. Перейдите на другой тариф, чтобы увеличить лимит.",
+  "The bot route changed. Read the current binding.": "Маршрут бота изменился. Проверьте текущую привязку.",
+  "Skill not found": "Skill не найден",
+  "Skill package name must match the requested Skill": "Имя Skill в пакете должно совпадать с запрошенным Skill",
+  "file and base_revision are required": "Поля file и base_revision обязательны",
+  "Skill package exceeds the 10MB upload limit": "Пакет Skill превышает лимит загрузки 10MB",
   "Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. If startup failed, check the installation task and runtime logs, then retry.": "Исполнитель агента не найден: {runner}. Откройте раздел плагинов и проверьте установку, включение и разрешения. Если запуск завершился ошибкой, проверьте задачу установки и журналы среды выполнения, затем повторите попытку.",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "Плагин {plugin} не объявляет разрешения. Проверьте доступ в режиме совместимости в настройках плагина.",
   "platform_commands.enabled must be a boolean": "platform_commands.enabled должно быть логическим значением",

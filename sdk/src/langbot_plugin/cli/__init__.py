@@ -2,14 +2,6 @@ import argparse
 import sys
 
 from langbot_plugin.version import __version__
-from langbot_plugin.runtime import app as runtime_app
-from langbot_plugin.cli.commands.initplugin import init_plugin_process
-from langbot_plugin.cli.commands.gencomponent import generate_component_process
-from langbot_plugin.cli.commands.runplugin import run_plugin_process
-from langbot_plugin.cli.commands.buildplugin import build_plugin_process
-from langbot_plugin.cli.commands.login import login_process
-from langbot_plugin.cli.commands.logout import logout_process
-from langbot_plugin.cli.commands.publish import publish_process
 from langbot_plugin.cli.i18n import cli_print
 
 """
@@ -186,14 +178,26 @@ def main():
         case "ver":
             cli_print("version_info", __version__)
         case "login":
+            from langbot_plugin.cli.commands.login import login_process
+
             login_process(token=args.token)
         case "logout":
+            from langbot_plugin.cli.commands.logout import logout_process
+
             logout_process()
         case "init":
+            from langbot_plugin.cli.commands.initplugin import init_plugin_process
+
             init_plugin_process(args.plugin_name if args.plugin_name else "")
         case "comp":
+            from langbot_plugin.cli.commands.gencomponent import (
+                generate_component_process,
+            )
+
             generate_component_process(args.component_type)
         case "run":
+            from langbot_plugin.cli.commands.runplugin import run_plugin_process
+
             cli_print("running_plugin")
             run_plugin_process(
                 args.stdio,
@@ -204,10 +208,16 @@ def main():
                 tag=args.tag,
             )
         case "build":
+            from langbot_plugin.cli.commands.buildplugin import build_plugin_process
+
             build_plugin_process(args.output)
         case "publish":
+            from langbot_plugin.cli.commands.publish import publish_process
+
             publish_process()
         case "rt":
+            from langbot_plugin.runtime import app as runtime_app
+
             runtime_app.main(args)
         case "box":
             from langbot_plugin.box.server import main as box_main

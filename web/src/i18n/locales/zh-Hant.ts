@@ -1480,6 +1480,14 @@ const zhHant = {
         '重設後，新訊息將從空上下文開始。監控歷史會保留，檔案和長期記憶不受影響。請等待目前任務結束後再重設。',
       resetSuccess: '上下文已重設，新訊息將開始新的對話。',
       resetError: '重設失敗，請等待目前任務結束後重試。',
+      resetScopeMember:
+        '此聊天為每位群成員保存獨立上下文，只會重設這位成員的上下文。',
+      resetScopeGroup:
+        '此群共享一段上下文，重設會清空整個群的對話，而不只是這位成員。',
+      inGroup: '群 {{group}}',
+      filterByGroup: '同群會話',
+      groupFilterActive: '群 {{group}}',
+      clearGroupFilter: '顯示全部會話',
 
       title: '會話監控',
       sessions: '會話列表',
@@ -2265,6 +2273,10 @@ const zhHant = {
     updating: '更新中...',
     updateSuccess: '插件更新成功',
     updateError: '更新失敗：',
+    installedVersion: '已安裝版本 v{{version}}',
+    updateToVersion: '更新到 v{{version}}',
+    confirmUpdatePluginVersion:
+      '確定將插件（{{author}}/{{name}}）從 v{{from}} 更新到 v{{to}} 嗎？',
     saveConfigSuccessNormal: '儲存配置成功',
     saveConfigError: '儲存配置失敗：',
     config: '配置',
@@ -3085,6 +3097,32 @@ const zhHant = {
     space_account_binding_requiredTitle: 'LangBot Account connection required',
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
+  },
+  dailyMessageQuota: {
+    planLimited: '每日訊息 {{count}} 則',
+    planUnlimited: '每日訊息不限',
+    planHelp:
+      '機器人每天可處理的訊息數，按 UTC 自然日計算，00:00 重置。只有機器人實際處理的訊息才計入，群組內未觸發機器人的訊息不計。用完後當天的新訊息不再處理，並提示使用者。',
+    title: '今日訊息',
+    usage: '{{used}} / {{limit}}',
+    remaining: '剩餘 {{count}} 則',
+    resetsAt: '{{time}} 重置',
+    today: '今天 {{time}}',
+    tomorrow: '明天 {{time}}',
+    exhausted: '今日額度已用完',
+    exhaustedHint: '新訊息暫不處理，{{time}} 恢復',
+    nearLimit: '即將用完',
+    upgrade: '升級方案',
+    unlimited: '不限',
+    settingsTitle: '每日訊息額度',
+    settingsDescription:
+      '工作區內機器人每天可處理的訊息數（含調試對話），按 UTC 自然日計算。群組內未觸發機器人的訊息不計入。',
+    unlimitedDescription: '目前方案不限制每日訊息數。',
+    errorTitle: '今日訊息額度已用完',
+    errorBody:
+      '本工作區今天已處理 {{limit}} 則訊息，這則訊息沒有被處理。額度將於{{time}}重置。',
+    errorUpgrade: '升級方案提高額度',
+    unavailable: '暫時無法取得今日用量',
   },
   workspace: {
     dedicatedSpaceMembersHint:
