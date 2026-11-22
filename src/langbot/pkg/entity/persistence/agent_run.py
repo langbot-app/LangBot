@@ -204,6 +204,5 @@ class AgentRunEvent(Base):
 
     __table_args__ = (
         sqlalchemy.UniqueConstraint('run_id', 'sequence', name='uq_agent_run_event_run_sequence'),
-        sqlalchemy.Index('ix_agent_run_event_run_sequence', 'run_id', 'sequence'),
         sqlalchemy.Index('ix_agent_run_event_media_ttl', 'created_at', 'id', 'run_id'),
     )
