@@ -14,12 +14,10 @@ KNOWN_SERVICE_WORKFLOWS = {
     'artifact-qa.yml',
     'core-smoke.yml',
     'daily-endurance.yml',
-    'p0-acceptance.yml',
     'persistence-acceptance.yml',
     'run-tests.yml',
 }
 KNOWN_SERVICE_JOBS = {
-    'p0-acceptance.yml': {'permissions'},
     'persistence-acceptance.yml': {'persistence-runtime'},
     'run-tests.yml': {'e2e'},
 }
