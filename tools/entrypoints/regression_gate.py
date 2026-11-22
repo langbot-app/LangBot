@@ -11,7 +11,7 @@ import sys
 import time
 
 from tools.entrypoints.regression_suite import Suite, validate
-from tools.regression.observations import read_process_snapshot
+from tools.regression.observations import read_process_snapshot, read_system_snapshot
 
 
 def supervise(command, output, budget, pids, env=None):
@@ -29,7 +29,7 @@ def supervise(command, output, budget, pids, env=None):
                     os.killpg(process.pid, signal.SIGKILL)
                     process.wait()
                     break
-                sample = {'elapsed_seconds': time.monotonic() - started, 'processes': {}}
+                sample = {'elapsed_seconds': time.monotonic() - started, 'processes': {}, 'system': read_system_snapshot()}
                 for name, pid in pids.items():
                     try:
                         sample['processes'][name] = read_process_snapshot(pid)
