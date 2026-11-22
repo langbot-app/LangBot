@@ -1,4 +1,3 @@
-1 file already formatted
 #!/usr/bin/env python3
 """Fail CI when a service job/action can start Core without disabling telemetry.
 
