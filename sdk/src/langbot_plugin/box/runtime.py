@@ -84,6 +84,8 @@ _MANAGED_PROCESS_STDERR_LOG_CHUNKS_PER_WINDOW = 4
 _MANAGED_PROCESS_STDERR_LOG_WINDOW_SEC = 1.0
 _MANAGED_PROCESS_STDERR_LOG_EXCERPT_CHARS = 512
 _REAPER_INTERVAL_SEC = 30
+# shortcut: a 5-second freshness window can surface one stale exec failure, lower only with an explicit backend health protocol.
+_SESSION_LIVENESS_RECHECK_SEC = 5.0
 _UNSAFE_SOFT_STORAGE_LIMITS_ENV = "LANGBOT_BOX_ALLOW_UNSAFE_SOFT_STORAGE_LIMITS"
 MAX_RUNTIME_SESSIONS = 5_000
 MAX_RUNTIME_MANAGED_PROCESSES = 1_024
@@ -154,6 +156,7 @@ class _RuntimeSession:
     # Signature of the extra bind mounts the container was created with. Used
     # to detect when a reused session would be missing newly-requested mounts.
     extra_mounts_key: frozenset[tuple[str, str, str, str, str]] = frozenset()
+    liveness_checked_at: float | None = None
     closing: bool = False
     idle_ttl_sec: int | None = None
     owned_workspace: tuple[str, int, int] | None = None
@@ -1757,6 +1760,16 @@ done
                     execution_cancelled = True
                     session.closing = True
                     raise
+                except Exception:
+                    session.liveness_checked_at = None
+                    raise
+                if (
+                    result.status == BoxExecutionStatus.COMPLETED
+                    and result.exit_code == 0
+                ):
+                    session.liveness_checked_at = time.monotonic()
+                else:
+                    session.liveness_checked_at = None
                 if result.status == BoxExecutionStatus.TIMED_OUT:
                     # Fence queued callers before releasing the execution lock.
                     session.closing = True
@@ -2868,18 +2881,33 @@ done
                     continue
 
                 if existing is not None:
+                    probe_due = (
+                        existing.liveness_checked_at is None
+                        or time.monotonic() - existing.liveness_checked_at
+                        >= _SESSION_LIVENESS_RECHECK_SEC
+                    )
                     probe_started = time.perf_counter()
                     try:
-                        try:
-                            alive = await backend.is_session_alive(existing.info)
-                        except Exception as exc:
-                            alive = False
-                            self.logger.warning(
-                                "LangBot Box session liveness probe failed: "
-                                f"session_id={spec.session_id} error={exc}"
+                        if probe_due:
+                            try:
+                                alive = await backend.is_session_alive(existing.info)
+                            except Exception as exc:
+                                alive = False
+                                self.logger.warning(
+                                    "LangBot Box session liveness probe failed: "
+                                    f"session_id={spec.session_id} error={exc}"
+                                )
+                            existing.liveness_checked_at = (
+                                time.monotonic() if alive else None
                             )
+                        else:
+                            alive = True
                     finally:
-                        probe_ms = (time.perf_counter() - probe_started) * 1000
+                        probe_ms = (
+                            (time.perf_counter() - probe_started) * 1000
+                            if probe_due
+                            else 0.0
+                        )
                         async with self._lock:
                             self._session_leases[spec.session_id] -= 1
                             if self._session_leases[spec.session_id] <= 0:
@@ -2887,7 +2915,7 @@ done
                     self.logger.info(
                         "box_session_probe_timing "
                         f"session_id={spec.session_id} probe_ms={probe_ms:.3f} "
-                        f"alive={alive}"
+                        f"alive={alive} cached={not probe_due}"
                     )
 
                     async with self._lock:
@@ -2985,6 +3013,7 @@ done
                             lock=asyncio.Lock(),
                             workspace_key=workspace_key,
                             extra_mounts_key=new_extra_mounts_key,
+                            liveness_checked_at=time.monotonic(),
                             idle_ttl_sec=spec.idle_ttl_sec,
                             owned_workspace=owned_workspace,
                         )

@@ -586,7 +586,7 @@ async def test_create_session_creates_new(logger):
 
 @pytest.mark.anyio
 async def test_create_session_reuses_existing(logger):
-    """Same session_id + compatible spec reuses the live session."""
+    """Same session_id + compatible spec reuses a fresh session."""
     backend = FakeBackend(logger)
     with mock.patch("os.getenv", return_value=""):
         runtime = BoxRuntime(logger, backends=[backend])
@@ -595,7 +595,21 @@ async def test_create_session_reuses_existing(logger):
 
     assert backend.started_sessions == 1  # not started again
     assert first["backend_session_id"] == second["backend_session_id"] == "fake-1"
-    backend.is_session_alive.assert_awaited()  # liveness checked on reuse
+    backend.is_session_alive.assert_not_awaited()
+    assert runtime._session_leases == {}
+
+
+@pytest.mark.anyio
+async def test_create_session_rechecks_liveness_after_freshness_expires(logger):
+    """A reused session is probed again after the freshness window."""
+    backend = FakeBackend(logger)
+    with mock.patch("os.getenv", return_value=""):
+        runtime = BoxRuntime(logger, backends=[backend])
+        await runtime.create_session(_make_spec("beta"))
+        runtime._sessions["beta"].liveness_checked_at -= 6
+        await runtime.create_session(_make_spec("beta"))
+
+    backend.is_session_alive.assert_awaited_once()
 
 
 @pytest.mark.anyio
@@ -606,6 +620,7 @@ async def test_reuse_recreates_when_backend_session_dead(logger):
         runtime = BoxRuntime(logger, backends=[backend])
         first = await runtime.create_session(_make_spec("gamma"))
         backend._alive = False
+        runtime._sessions["gamma"].liveness_checked_at -= 6
         second = await runtime.create_session(_make_spec("gamma"))
 
     assert first["backend_session_id"] == "fake-1"
@@ -709,6 +724,21 @@ async def test_execute_timeout_drops_session(logger):
     assert result.status == BoxExecutionStatus.TIMED_OUT
     assert "to" not in runtime._sessions
     backend.stop_session.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_execute_error_forces_next_liveness_probe(logger):
+    """A backend error invalidates the freshness shortcut."""
+    backend = FakeBackend(logger)
+    with mock.patch("os.getenv", return_value=""):
+        runtime = BoxRuntime(logger, backends=[backend])
+        await runtime.create_session(_make_spec("failed-exec"))
+        session = runtime._sessions["failed-exec"]
+        backend.exec = mock.AsyncMock(side_effect=BoxError("backend unavailable"))
+        with pytest.raises(BoxError, match="backend unavailable"):
+            await runtime.execute(_make_spec("failed-exec"))
+
+    assert session.liveness_checked_at is None
 
 
 # ── session expiry / reaping ────────────────────────────────────────────
