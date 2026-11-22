@@ -357,6 +357,12 @@ def run(args):
             allowed_mount_roots=[str(private / 'box')],
             image='' if host else 'python:3.12-alpine',
         )
+        sqlite_queue = os.environ.get('LANGBOT_REGRESSION_SQLITE_WRITE_QUEUE')
+        if sqlite_queue is not None:
+            require(sqlite_queue in {'on', 'off'}, 'LANGBOT_REGRESSION_SQLITE_WRITE_QUEUE must be on or off')
+            sqlite_config = config.setdefault('database', {}).setdefault('sqlite', {})
+            sqlite_config['experimental_write_queue'] = sqlite_queue == 'on'
+            sqlite_config['experimental_write_timing'] = os.environ.get('LANGBOT_REGRESSION_SQLITE_WRITE_TIMING') == '1'
         config_path.write_text(yaml.safe_dump(config))
         groups = args.scenario_groups
         if groups is None:
