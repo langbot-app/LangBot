@@ -139,6 +139,7 @@ def read_process_snapshot(
     open_fds = 0
     cpu_seconds = 0.0
     io_counters = {'read_bytes': 0, 'write_bytes': 0, 'syscr': 0, 'syscw': 0}
+    io_available = False
     for process_id in process_ids:
         process_root = proc_root / str(process_id)
         process_rss, process_threads = _read_process_status(process_root / 'status')
@@ -146,16 +147,21 @@ def read_process_snapshot(
         threads += process_threads
         open_fds += _count_open_fds(process_root / 'fd')
         cpu_seconds += _read_process_cpu_seconds(process_root / 'stat', ticks)
-        for key, value in _read_process_io(process_root / 'io').items():
+        process_io = _read_process_io(process_root / 'io')
+        if process_io:
+            io_available = True
+        for key, value in process_io.items():
             io_counters[key] += value
-    return {
+    result = {
         'rss_bytes': float(rss_bytes),
         'cpu_seconds': cpu_seconds,
         'threads': float(threads),
         'open_fds': float(open_fds),
         'processes': float(len(process_ids)),
-        **{f'io_{key}': float(value) for key, value in io_counters.items()},
     }
+    if io_available:
+        result.update({f'io_{key}': float(value) for key, value in io_counters.items()})
+    return result
 
 
 def _read_numeric_file(path: Path) -> float | None:
@@ -233,10 +239,7 @@ def read_system_snapshot(
                 with contextlib.suppress(ValueError):
                     meminfo[key] = float(fields[0]) * (1024 if len(fields) > 1 and fields[1] == 'kB' else 1)
     result['memory'] = meminfo
-    result['pressure'] = {
-        name: _read_pressure(proc_root / 'pressure' / name)
-        for name in ('cpu', 'memory', 'io')
-    }
+    result['pressure'] = {name: _read_pressure(proc_root / 'pressure' / name) for name in ('cpu', 'memory', 'io')}
     return result
 
 
