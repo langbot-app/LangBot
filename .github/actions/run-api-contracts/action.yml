@@ -14,8 +14,8 @@ runs:
       with:
         enable-cache: true
     - name: Install locked dependencies
-      run: uv sync --dev --frozen
       shell: bash
+      run: uv sync --dev --frozen
     - uses: ./.github/actions/build-lbctl
       id: lbctl
     - name: Prepare sandbox image
@@ -28,12 +28,15 @@ runs:
         API_FIXED_ONLY: ${{ inputs.fixed-only }}
         LBCTL_BIN: ${{ steps.lbctl.outputs.binary }}
         SPACE__DISABLE_TELEMETRY: 'true'
+        ANONYMIZED_TELEMETRY: 'False'
       run: |
         args=(--api-seed "$GITHUB_RUN_ID")
         if [[ "$API_FIXED_ONLY" == 'true' ]]; then
           args=(--api-fixed-only)
         fi
-        uv run --no-sync python -m tools.entrypoints.regression_ci           --suite api "${args[@]}"           --lbctl "$LBCTL_BIN" --plugins plugins --output .qa/api
+        uv run --no-sync python -m tools.entrypoints.regression_ci \
+          --suite api "${args[@]}" \
+          --lbctl "$LBCTL_BIN" --plugins plugins --output .qa/api
     - name: Publish API result
       if: always()
       shell: bash
