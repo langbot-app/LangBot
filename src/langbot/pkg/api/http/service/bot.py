@@ -1251,6 +1251,11 @@ class BotService:
                     policy_mgr.invalidate_bot(workspace_uuid, bot_uuid)
             return
 
+        if update_data.get('command_settings', {}).get('platform_commands', {}).get('enabled') is False:
+            # Clear the managed platform menu before the adapter restarts.
+            runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
+            if runtime_bot is not None and isinstance(runtime_bot.adapter, PlatformCommandRegistrar):
+                await self.sync_platform_commands(context, bot_uuid)
         await self._apply_bot_configuration(context, bot_uuid)
 
     async def bind_event_route(
@@ -1318,10 +1323,6 @@ class BotService:
         # Persisted configuration is distinct from applying it to the running adapter.
         workspace_uuid = require_workspace_uuid(context)
         bot = await self.get_bot(context, bot_uuid, include_secret=True)
-        if update_data.get('command_settings', {}).get('platform_commands', {}).get('enabled') is False:
-            runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
-            if runtime_bot is not None and isinstance(runtime_bot.adapter, PlatformCommandRegistrar):
-                await self.sync_platform_commands(context, bot_uuid)
         try:
             await self.ap.platform_mgr.remove_bot(context, bot_uuid)
             if bot.get('enable'):

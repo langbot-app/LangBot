@@ -400,7 +400,7 @@ async def test_admin_privilege_passed_to_cmd_context():
         full_command_text='/admin_cmd',
     )
 
-    real_cmd_mgr.is_admin.assert_awaited_once_with('ws-1', 'bot-123', 'person', '1001')
+    real_cmd_mgr.is_admin.assert_awaited_once_with('ws-1', 'bot-123', 'person', '1001', '1001')
 
 
 @pytest.mark.asyncio
