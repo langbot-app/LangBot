@@ -574,7 +574,7 @@ class BotService:
                 pipeline_uuid = selected.get('uuid')
             else:
                 pipeline_uuid = await self.ap.pipeline_service.create_pipeline(
-                    context, {'name': t('New Pipeline'), 'description': '', 'emoji': '⚙️'}, default=True
+                    context, {'name': t('New Chat'), 'description': '', 'emoji': '⚙️'}, default=True
                 )
         if not pipeline_uuid:
             return []

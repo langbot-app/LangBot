@@ -52,7 +52,7 @@ def debug_stream_response(service, context, agent_uuid: str, payload: dict) -> q
                 elif isinstance(exc, RunnerNotFoundError):
                     code, message = 'runner_not_found', t('Agent runner temporarily unavailable. Please try again.')
                 elif isinstance(exc, RunnerNotAuthorizedError):
-                    code, message = 'runner_not_authorized', t('Agent runner not authorized for this pipeline.')
+                    code, message = 'runner_not_authorized', t('Agent runner not authorized for this chat.')
                 elif isinstance(exc, RunnerProtocolError):
                     code, message = 'runner_protocol_error', t('The Agent runner returned an invalid response.')
                 elif isinstance(exc, ValueError):

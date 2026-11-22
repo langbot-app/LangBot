@@ -31,7 +31,7 @@ _TEXT = {
             'test': 'Alert emails from Workspace “{workspace}” reach this mailbox. No action is needed.',
         },
         'rule': {
-            'pipeline_failures': 'Pipeline failures',
+            'pipeline_failures': 'Chat failures',
             'model_failures': 'Model call failures',
             'bot_offline': 'Bot stopped with an error',
         },
@@ -59,7 +59,7 @@ _TEXT = {
             'test': '工作区「{workspace}」的告警邮件可以送达此邮箱，无需任何操作。',
         },
         'rule': {
-            'pipeline_failures': '流水线处理失败',
+            'pipeline_failures': '聊天处理失败',
             'model_failures': '模型调用失败',
             'bot_offline': '机器人异常退出',
         },

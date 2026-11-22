@@ -276,7 +276,7 @@ class ChatMessageHandler(handler.MessageHandler):
                     )
                 elif isinstance(e, RunnerNotAuthorizedError):
                     user_notice = pipeline_notice(
-                        query, 'runner-not-authorized-hint', 'Agent runner not authorized for this pipeline.'
+                        query, 'runner-not-authorized-hint', 'Agent runner not authorized for this chat.'
                     )
                 elif isinstance(e, RunnerExecutionError):
                     if e.retryable:

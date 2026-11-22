@@ -491,7 +491,7 @@ class AgentService:
             pipeline_uuid = await self.ap.pipeline_service.create_pipeline(
                 context,
                 {
-                    'name': agent_data.get('name') or t('New Pipeline'),
+                    'name': agent_data.get('name') or t('New Chat'),
                     'description': agent_data.get('description') or '',
                     'emoji': agent_data.get('emoji') or '⚙️',
                 },

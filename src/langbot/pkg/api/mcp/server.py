@@ -42,7 +42,8 @@ if typing.TYPE_CHECKING:
 
 INSTRUCTIONS = """\
 This MCP server manages a LangBot instance. LangBot is an LLM-native instant
-messaging bot platform. Use these tools to inspect and manage bots, agents, pipelines,
+messaging bot platform. Use these tools to inspect and manage bots, agents, Chats
+(stored and named `pipeline` in tool names and fields),
 models, knowledge bases, MCP servers, and skills.
 
 Authentication uses a LangBot API key (web-UI-created `lbk_...` key or the
@@ -96,7 +97,7 @@ class LangBotMCPServer:
                 raise ToolError(error_text(exc.error.code, exc.error.message)) from exc
 
         @mcp.tool(
-            description='Read the output publication policy owned by this authenticated caller for an Agent, Pipeline or event processor.'
+            description='Read the output publication policy owned by this authenticated caller for an Agent, Chat (pipeline) or event processor.'
         )
         async def get_artifact_publication(
             producer_type: typing.Literal['agent', 'pipeline', 'event_processor'], producer_id: str
@@ -403,7 +404,9 @@ class LangBotMCPServer:
         async def list_knowledge_parsers(mime_type: str | None = None) -> str:
             return _dump(await ap.knowledge_service.list_parsers(_authorized(Permission.RESOURCE_VIEW), mime_type))
 
-        @mcp.tool(description='Read Pipeline extension bindings, enable-all switches and available extensions.')
+        @mcp.tool(
+            description='Read Chat (pipeline) extension bindings, which authorize AI tools, enable-all switches and available extensions.'
+        )
         async def get_pipeline_extensions(pipeline_uuid: str) -> str:
             return _dump(
                 await ap.pipeline_service.get_pipeline_extensions(_authorized(Permission.RESOURCE_VIEW), pipeline_uuid)
@@ -411,7 +414,7 @@ class LangBotMCPServer:
 
         @mcp.tool(
             description=(
-                'Replace all Pipeline extension bindings. All binding lists and switches are required. '
+                'Replace all Chat (pipeline) extension bindings (AI tool authorization only; plugin hooks and commands are enabled on the bot). All binding lists and switches are required. '
                 'Plugin switches control EventListener, Tool and Command only, not the independently selected Runner. '
                 'Do not add a Runner plugin here just to run it; installation, global enablement and Workspace access still apply.'
             )
@@ -448,7 +451,7 @@ class LangBotMCPServer:
             return _dump(await ap.pipeline_service.get_pipeline_extensions(context, pipeline_uuid))
 
         @mcp.tool(
-            description='Run one Pipeline turn in a fresh session. Calls configured models/tools. Never retry an unknown outcome automatically.'
+            description='Run one Chat (pipeline) turn in a fresh session. Calls configured models/tools. Never retry an unknown outcome automatically.'
         )
         async def run_pipeline(pipeline_uuid: str, message: str) -> str:
             from ..http.service.pipeline_run import run_pipeline as execute
@@ -645,7 +648,7 @@ class LangBotMCPServer:
                 'Create a bot. Cloud Workspace platform restrictions also apply to this tool. `bot_data` is a JSON object matching the LangBot '
                 'POST /api/v1/platform/bots body: name and adapter are required non-empty strings; '
                 'adapter_config is a required object containing adapter-specific settings. '
-                'Use event_bindings for exclusive Agent/Pipeline routes; plugin_processors is an array '
+                'Use event_bindings for exclusive Agent/Chat (pipeline) routes; plugin_processors is an array '
                 'of {processor_uuid, enabled} subscriptions that automatically match Runner-declared events. '
                 'Subscriptions run independently of each other and of event_bindings. '
                 'command_settings is an object: {enabled: bool, prefixes: [str], processors: [{processor_uuid, enabled}]} '
@@ -670,7 +673,7 @@ class LangBotMCPServer:
                 '{enabled: bool, prefixes: [str], processors: [{processor_uuid, enabled}]}; '
                 'processors are command_processor instances, at most one per plugin, in priority order. '
                 'Include platform_commands: {enabled: bool, selected: [command_name]} to register Telegram/Discord menus; disabling clears the registered list. '
-                'Do not put event_processor targets in event_bindings; those are exclusive Agent/Pipeline routes. '
+                'Do not put event_processor targets in event_bindings; those are exclusive Agent/Chat (pipeline) routes. '
                 'message_policy configures trigger, safety, output and plugins ({enable_all, plugins:[{author,name}]}). '
                 'An event_bindings item keeps its stored `policy` override when the key is omitted; send `policy: null` to remove it.'
             )
@@ -714,8 +717,8 @@ class LangBotMCPServer:
 
         @mcp.tool(
             description=(
-                'Preview promoting the pipeline at-bot trigger rule to a routing-layer '
-                'is_at_bot filter. Reports which bindings and pipelines need migration '
+                'Preview promoting the message-policy at-bot group response rule to a '
+                'routing-layer is_at_bot filter. Reports which routes need migration '
                 'without persisting changes.'
             )
         )
@@ -728,7 +731,7 @@ class LangBotMCPServer:
                 'Apply the group filter migration previewed by '
                 'preview_bot_group_filter_migration. Adds is_at_bot=true filter to group '
                 'message bindings and, when disable_pipeline_at_bot is true (default), '
-                'turns off the pipeline trigger at-bot rule. Idempotent.'
+                "turns off the at-bot rule in those routes' message policy. Idempotent."
             )
         )
         async def apply_bot_group_filter_migration(bot_uuid: str, disable_pipeline_at_bot: bool = True) -> str:
@@ -742,19 +745,19 @@ class LangBotMCPServer:
             )
 
         # ----- Pipelines ----------------------------------------------- #
-        @mcp.tool(description='List all pipelines.')
+        @mcp.tool(description='List all Chats (pipelines).')
         async def list_pipelines() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.pipeline_service.get_pipelines(context))
 
-        @mcp.tool(description='Get a single pipeline by UUID.')
+        @mcp.tool(description='Get a single Chat (pipeline) by UUID.')
         async def get_pipeline(pipeline_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.pipeline_service.get_pipeline(context, pipeline_uuid))
 
         @mcp.tool(
             description=(
-                'Create a pipeline. `pipeline_data` matches the LangBot POST '
+                'Create a Chat (pipeline). `pipeline_data` matches the LangBot POST '
                 '/api/v1/pipelines body. Supplied config and extension preferences are preserved; '
                 'omitting config uses installed Runner defaults. Returns the new pipeline UUID.'
             )
@@ -773,14 +776,14 @@ class LangBotMCPServer:
             )
 
         @mcp.tool(
-            description='Update a pipeline by UUID. `pipeline_data` matches the PUT body. Fetch the pipeline first: config merges top-level sections, preserving omitted sections and replacing each supplied section in full. Supplied sections must be objects. Invalid config is rejected before writing.'
+            description='Update a Chat (pipeline) by UUID. `pipeline_data` matches the PUT body. Fetch the pipeline first: config merges top-level sections, preserving omitted sections and replacing each supplied section in full. Supplied sections must be objects. Invalid config is rejected before writing.'
         )
         async def update_pipeline(pipeline_uuid: str, pipeline_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             await ap.pipeline_service.update_pipeline(context, pipeline_uuid, pipeline_data)
             return _dump({'ok': True})
 
-        @mcp.tool(description='Delete a pipeline by UUID.')
+        @mcp.tool(description='Delete a Chat (pipeline) by UUID.')
         async def delete_pipeline(pipeline_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             await ap.pipeline_service.delete_pipeline(context, pipeline_uuid)
@@ -788,20 +791,20 @@ class LangBotMCPServer:
 
         # ----- Processors ---------------------------------------------- #
         @mcp.tool(
-            description='List product-level processors: Agents, Pipelines, Event processors and Command processors.'
+            description='List product-level processors: Agents, Chats (pipelines), Event processors and Command processors.'
         )
         async def list_processors() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.agent_service.get_agents(context))
 
-        @mcp.tool(description='Get an Agent, Pipeline, Event processor or Command processor by UUID.')
+        @mcp.tool(description='Get an Agent, Chat (pipeline), Event processor or Command processor by UUID.')
         async def get_processor(processor_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.agent_service.get_agent(context, processor_uuid))
 
         @mcp.tool(
             description=(
-                'Create an Agent, Pipeline, Event processor or Command processor. Set `processor_data.kind` to '
+                'Create an Agent, Chat (pipeline), Event processor or Command processor. Set `processor_data.kind` to '
                 '`agent`, `pipeline`, `event_processor` or `command_processor`. Event processors may be created without a component; '
                 'then use update_processor with an installed component_ref from get_processor_metadata and optional '
                 'parameters. Unconfigured instances support no events. A command_processor needs component_ref '
@@ -813,13 +816,13 @@ class LangBotMCPServer:
             context = _authorized(Permission.RESOURCE_MANAGE)
             return _dump(await ap.agent_service.create_agent(context, processor_data))
 
-        @mcp.tool(description='Update an Agent, Pipeline, Event processor or Command processor by UUID.')
+        @mcp.tool(description='Update an Agent, Chat (pipeline), Event processor or Command processor by UUID.')
         async def update_processor(processor_uuid: str, processor_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             await ap.agent_service.update_agent(context, processor_uuid, processor_data)
             return _dump({'ok': True})
 
-        @mcp.tool(description='Delete an Agent, Pipeline, Event processor or Command processor by UUID.')
+        @mcp.tool(description='Delete an Agent, Chat (pipeline), Event processor or Command processor by UUID.')
         async def delete_processor(processor_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             await ap.agent_service.delete_agent(context, processor_uuid)

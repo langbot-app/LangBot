@@ -39,7 +39,9 @@ def make_service(manifests):
     ap = SimpleNamespace(
         plugin_connector=SimpleNamespace(list_commands=AsyncMock(side_effect=list_commands)),
         llm_model_service=SimpleNamespace(apply_default_model=AsyncMock(side_effect=lambda _c, _s, values: values)),
-        pipeline_service=SimpleNamespace(_get_default_values_from_schema=PipelineService._get_default_values_from_schema),
+        pipeline_service=SimpleNamespace(
+            _get_default_values_from_schema=PipelineService._get_default_values_from_schema
+        ),
         logger=SimpleNamespace(warning=Mock()),
     )
     return AgentService(ap)

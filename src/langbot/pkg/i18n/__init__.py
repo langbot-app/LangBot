@@ -59,7 +59,7 @@ _ALIASES = {
     'Invalid TOTP code': 'Invalid TOTP or recovery code',
     'Too many attempts, try again later': 'Too many requests. Please try again later.',
     'The configured Agent runner is unavailable': 'Agent runner temporarily unavailable. Please try again.',
-    'The configured Agent runner is not authorized': 'Agent runner not authorized for this pipeline.',
+    'The configured Agent runner is not authorized': 'Agent runner not authorized for this chat.',
     'The Agent runner could not complete this test': 'Agent runner execution failed.',
     'Forbidden': 'Permission denied',
     'Member removal permission is required': 'Permission denied',
