@@ -4,8 +4,8 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision = '0055_remove_redundant_agent_run_event_index'
-down_revision = '0054_daily_message_usage'
+revision = '0057_remove_redundant_agent_run_event_index'
+down_revision = '0056_daily_usage_quota_warning'
 branch_labels = None
 depends_on = None
 
