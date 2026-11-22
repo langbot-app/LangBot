@@ -38,6 +38,18 @@ class AgentRunJournal:
             self._run_ledger_store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
         return self._run_ledger_store
 
+    def _cache_run_snapshot(self, run_id: str, snapshot: dict[str, typing.Any] | None, now: float) -> None:
+        self._run_snapshot_cache[run_id] = (now, snapshot)
+        if len(self._run_snapshot_cache) <= 1024:
+            return
+        cutoff = now - _RUN_SNAPSHOT_CACHE_TTL_SECONDS
+        self._run_snapshot_cache = {
+            key: value for key, value in self._run_snapshot_cache.items() if value[0] >= cutoff
+        }
+        if len(self._run_snapshot_cache) > 1024:
+            for key, _ in sorted(self._run_snapshot_cache.items(), key=lambda item: item[1][0])[:-1024]:
+                del self._run_snapshot_cache[key]
+
     @staticmethod
     def _to_plain_dict(value: typing.Any) -> dict[str, typing.Any]:
         if hasattr(value, 'model_dump'):
@@ -217,7 +229,7 @@ class AgentRunJournal:
             usage=usage,
             metadata=metadata,
         )
-        self._run_snapshot_cache[run_id] = (time.monotonic(), updated)
+        self._cache_run_snapshot(run_id, updated, time.monotonic())
         return updated
 
     async def get_run(self, run_id: str) -> dict[str, typing.Any] | None:
@@ -227,7 +239,7 @@ class AgentRunJournal:
         if cached is not None and now - cached[0] < _RUN_SNAPSHOT_CACHE_TTL_SECONDS:
             return cached[1]
         snapshot = await self._get_run_ledger_store().get_run(run_id)
-        self._run_snapshot_cache[run_id] = (now, snapshot)
+        self._cache_run_snapshot(run_id, snapshot, now)
         return snapshot
 
     async def handle_state_updated_event(

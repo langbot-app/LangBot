@@ -95,6 +95,19 @@ async def test_get_run_uses_short_cache_and_finalize_refreshes_it():
 
 
 @pytest.mark.asyncio
+async def test_run_snapshot_cache_drops_expired_entries_when_bounded():
+    journal = AgentRunJournal(SimpleNamespace())
+    journal._run_snapshot_cache = {f'old-{index}': (0.0, None) for index in range(1024)}
+    journal._cache_run_snapshot('new', {'run_id': 'new'}, 10.0)
+    assert list(journal._run_snapshot_cache) == ['new']
+
+    journal._run_snapshot_cache = {f'active-{index}': (10.0, None) for index in range(1024)}
+    journal._cache_run_snapshot('newer', {'run_id': 'newer'}, 10.0)
+    assert len(journal._run_snapshot_cache) == 1024
+    assert 'active-0' not in journal._run_snapshot_cache
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('event_type', ['message.received', 'group.member_joined'])
 async def test_agent_run_snapshot_records_identity_and_redacts_inline_attachments(event_type):
     journal = AgentRunJournal(SimpleNamespace())
