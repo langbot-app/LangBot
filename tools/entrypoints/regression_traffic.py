@@ -19,7 +19,7 @@ import uuid
 
 from tools.regression.evidence import check_attachment, check_fields, check_response, checked
 from tools.regression.http_bot import group_request, valid_group_settings
-from tools.regression.observations import read_endpoint_snapshot, read_process_snapshot
+from tools.regression.observations import read_endpoint_snapshot, read_process_snapshot, read_system_snapshot
 from tools.regression.run_ledger import (
     UnresolvedRun,
     check_run,
@@ -460,6 +460,11 @@ def main():
                     'targets': {},
                     'health': {},
                 }
+                # Keep host/cgroup evidence beside per-process samples so a
+                # load result can distinguish service pressure from client
+                # backpressure. Missing procfs/cgroup files are represented by
+                # empty sections rather than fabricated zeros.
+                row['system'] = read_system_snapshot()
                 for name, pid in pids.items():
                     try:
                         row['targets'][name] = read_process_snapshot(pid)

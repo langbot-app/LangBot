@@ -540,7 +540,9 @@ uv run --no-sync python -m tools.entrypoints.regression_gate \
 
 `gate.json` records the budget, measured duration, verdict and process resource
 peaks. `resources.jsonl` samples configured process trees every second (RSS,
-cumulative CPU time, threads and file descriptors); suite artifacts contain
+cumulative CPU time, threads, file descriptors and procfs read/write counters)
+and records a `system` snapshot with cgroup memory/CPU-throttling/IO counters,
+host memory totals and CPU/memory/IO PSI when the deployment exposes them; suite artifacts contain
 per-case timings and business evidence. These are diagnostics, not calibrated
 performance-regression thresholds. Docker sandbox resource sampling remains in
 the longer load runner. A timeout kills the local Suite/CLI process group without

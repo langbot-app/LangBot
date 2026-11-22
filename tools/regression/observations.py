@@ -79,6 +79,25 @@ def _read_process_status(path: Path) -> tuple[int, int]:
     return rss_bytes, threads
 
 
+def _read_process_io(path: Path) -> dict[str, int]:
+    """Read monotonic process I/O counters when procfs exposes them."""
+
+    counters: dict[str, int] = {}
+    text = read_optional_text(path)
+    if text is None:
+        return counters
+    for line in text.splitlines():
+        key, separator, raw = line.partition(':')
+        if not separator:
+            continue
+        field = key.strip()
+        if field not in {'read_bytes', 'write_bytes', 'syscr', 'syscw'}:
+            continue
+        with contextlib.suppress(ValueError):
+            counters[field] = int(raw.strip())
+    return counters
+
+
 def _read_process_cpu_seconds(path: Path, clock_ticks: int) -> float:
     text = read_optional_text(path)
     if text is None:
@@ -119,6 +138,7 @@ def read_process_snapshot(
     threads = 0
     open_fds = 0
     cpu_seconds = 0.0
+    io_counters = {'read_bytes': 0, 'write_bytes': 0, 'syscr': 0, 'syscw': 0}
     for process_id in process_ids:
         process_root = proc_root / str(process_id)
         process_rss, process_threads = _read_process_status(process_root / 'status')
@@ -126,13 +146,98 @@ def read_process_snapshot(
         threads += process_threads
         open_fds += _count_open_fds(process_root / 'fd')
         cpu_seconds += _read_process_cpu_seconds(process_root / 'stat', ticks)
+        for key, value in _read_process_io(process_root / 'io').items():
+            io_counters[key] += value
     return {
         'rss_bytes': float(rss_bytes),
         'cpu_seconds': cpu_seconds,
         'threads': float(threads),
         'open_fds': float(open_fds),
         'processes': float(len(process_ids)),
+        **{f'io_{key}': float(value) for key, value in io_counters.items()},
     }
+
+
+def _read_numeric_file(path: Path) -> float | None:
+    value = read_optional_text(path)
+    if value is None or value == 'max':
+        return None
+    with contextlib.suppress(ValueError):
+        return float(value)
+    return None
+
+
+def _read_cgroup_snapshot(root: Path = Path('/sys/fs/cgroup')) -> dict[str, float]:
+    """Read cgroup v2 limits/throttling counters if available."""
+
+    result: dict[str, float] = {}
+    memory_current = _read_numeric_file(root / 'memory.current')
+    memory_max = _read_numeric_file(root / 'memory.max')
+    if memory_current is not None:
+        result['memory_current_bytes'] = memory_current
+    if memory_max is not None:
+        result['memory_max_bytes'] = memory_max
+    cpu_stat = read_optional_text(root / 'cpu.stat')
+    if cpu_stat:
+        for line in cpu_stat.splitlines():
+            key, separator, raw = line.partition(' ')
+            if separator and key in {'usage_usec', 'nr_throttled', 'throttled_usec'}:
+                with contextlib.suppress(ValueError):
+                    result[f'cpu_{key}'] = float(raw.strip())
+    io_stat = read_optional_text(root / 'io.stat')
+    if io_stat:
+        read_bytes = write_bytes = 0
+        for line in io_stat.splitlines():
+            for token in line.split()[1:]:
+                key, separator, raw = token.partition('=')
+                if not separator:
+                    continue
+                with contextlib.suppress(ValueError):
+                    if key == 'rbytes':
+                        read_bytes += int(raw)
+                    elif key == 'wbytes':
+                        write_bytes += int(raw)
+        result['io_read_bytes'] = float(read_bytes)
+        result['io_write_bytes'] = float(write_bytes)
+    return result
+
+
+def _read_pressure(path: Path) -> dict[str, float]:
+    result: dict[str, float] = {}
+    text = read_optional_text(path)
+    if not text:
+        return result
+    for line in text.splitlines():
+        fields = dict(item.split('=', 1) for item in line.split()[1:] if '=' in item)
+        for key in ('avg10', 'avg60', 'avg300', 'total'):
+            with contextlib.suppress(ValueError, KeyError):
+                result[f'{line.split()[0]}_{key}'] = float(fields[key])
+    return result
+
+
+def read_system_snapshot(
+    *,
+    proc_root: Path = Path('/proc'),
+    cgroup_root: Path = Path('/sys/fs/cgroup'),
+) -> dict[str, object]:
+    """Collect host/cgroup memory, throttling, I/O and pressure evidence."""
+
+    result: dict[str, object] = {'cgroup': _read_cgroup_snapshot(cgroup_root)}
+    meminfo: dict[str, float] = {}
+    text = read_optional_text(proc_root / 'meminfo')
+    if text:
+        for line in text.splitlines():
+            key, separator, raw = line.partition(':')
+            if separator:
+                fields = raw.split()
+                with contextlib.suppress(ValueError):
+                    meminfo[key] = float(fields[0]) * (1024 if len(fields) > 1 and fields[1] == 'kB' else 1)
+    result['memory'] = meminfo
+    result['pressure'] = {
+        name: _read_pressure(proc_root / 'pressure' / name)
+        for name in ('cpu', 'memory', 'io')
+    }
+    return result
 
 
 def _flatten_numeric_json(
