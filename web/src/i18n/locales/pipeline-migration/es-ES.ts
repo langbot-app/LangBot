@@ -14,7 +14,7 @@ export default {
   installDetails: 'Detalles de instalación',
   stageProgress: 'Progreso por etapas',
   downloaded: 'Descargado {{size}}',
-  processed: 'Procesados {{completed}} / {{total}} pipelines',
+  processed: 'Procesados {{completed}} / {{total}} Chats',
   installErrors: {
     plugin_permission_confirmation_required:
       'No se pudieron confirmar los permisos del plugin. Pide a un miembro con los permisos necesarios que los revise y vuelve a intentarlo.',
@@ -31,20 +31,20 @@ export default {
       'El plugin no pudo iniciarse. Revisa el entorno de ejecución.',
   },
   autoDescription:
-    'Los ejecutores antiguos ahora son plugins. Migra todos los pipelines conservando sus ajustes. Se guardará una copia de la configuración y las conversaciones empezarán de nuevo.',
-  viewPipelines: 'Ver pipelines',
+    'Los ejecutores antiguos ahora son plugins. Migra todos los Chats conservando sus ajustes. Se guardará una copia de la configuración y las conversaciones empezarán de nuevo.',
+  viewPipelines: 'Ver Chats',
   autoInstall: 'Instalar plugins y migrar',
   dataOnly: 'Migrar solo los datos',
   dataOnlyHint:
     'Para redes privadas o sin conexión. Instala los plugins de ejecución correspondientes después de la migración.',
   installing: 'Instalando los plugins necesarios…',
-  migrating: 'Migrando pipelines…',
+  migrating: 'Migrando Chats…',
   summary: '{{migrated}} migrados; {{remaining}} requieren atención.',
   installFailed:
     'La instalación falló. Consulta la etapa fallida en los detalles y reintenta, o migra solo los datos.',
 
   activationRetryHint:
-    'Tras comprobar el entorno, actualiza, selecciona esta canalización y confirma para reintentar solo la activación. No se volverá a migrar la configuración guardada.',
+    'Tras comprobar el entorno, actualiza, selecciona este Chat y confirma para reintentar solo la activación. No se volverá a migrar la configuración guardada.',
   details: 'Detalles de migración',
   notices: {
     customRunner:
@@ -58,7 +58,7 @@ export default {
     runnerConfigReplaced:
       'La configuración de runner nueva existente se reemplaza por el resultado de la migración; la original se conserva en la copia de seguridad.',
     runnerAdded:
-      'Se añadió el plugin de runner necesario a la lista de extensiones de esta pipeline.',
+      'Se añadió el plugin de runner necesario a la lista de extensiones de este Chat.',
     extensionPrefs:
       'Se ignoraron entradas no válidas de la configuración de extensiones.',
     runtimeUnavailable:
@@ -107,23 +107,23 @@ export default {
     schemaChanged:
       'La configuración del Runner instalado no coincide con el destino. Revisa la versión del plugin y actualiza.',
     runnerExcluded:
-      'Esta canalización excluye el plugin Runner necesario. Ajusta primero la configuración de extensiones.',
+      'Este Chat excluye el plugin Runner necesario. Ajusta primero la configuración de extensiones.',
     boxTemplateInvalid:
       'Plantilla de reutilización inválida. Use {nombre_variable}; no se admiten campos posicionales, conversiones de formato ni acceso a atributos.',
     pendingInteraction:
       'Hay una conversación esperando una respuesta. Complétala o cancélala antes de migrar.',
   },
-  title: 'Migración de pipelines',
+  title: 'Migración de Chats',
   description:
-    'Selecciona los pipelines que deseas migrar. Se guardará una copia de la configuración y las conversaciones empezarán de nuevo.',
-  detected: '{{count}} pipelines requieren revisión.',
+    'Selecciona los Chats que deseas migrar. Se guardará una copia de la configuración y las conversaciones empezarán de nuevo.',
+  detected: '{{count}} Chats requieren revisión.',
   review: 'Revisar migración',
-  readOnly: 'Solo los gestores del espacio pueden migrar pipelines.',
+  readOnly: 'Solo los gestores del espacio pueden migrar Chats.',
   previewError: 'Vista previa no disponible. Actualícela.',
-  submitting: 'Enviando pipelines seleccionados…',
+  submitting: 'Enviando Chats seleccionados…',
   running: 'Migración en curso. Cerrar el diálogo no cancela la tarea.',
-  finished: 'Tarea finalizada. Revise el resultado de cada pipeline.',
-  failed: 'La tarea falló. Revise el resultado de cada pipeline.',
+  finished: 'Tarea finalizada. Revise el resultado de cada Chat.',
+  failed: 'La tarea falló. Revise el resultado de cada Chat.',
   lost: 'Se perdió el seguimiento de la tarea; se desconoce el resultado. Actualice la vista previa antes de actuar.',
   requestError:
     'Solicitud no completada. Actualice la vista previa y vuelva a seleccionar.',
@@ -136,11 +136,11 @@ export default {
   pluginHint:
     '¿Falta un plugin? Instala o activa su ejecutor en Extensiones y actualiza la vista previa.',
   extensions: 'Abrir Extensiones',
-  results: 'Resultados por pipeline',
+  results: 'Resultados por Chat',
   selection: '{{count}} seleccionados (máximo 50)',
-  confirm: 'Confirmo la migración de los pipelines seleccionados.',
+  confirm: 'Confirmo la migración de los Chats seleccionados.',
   refresh: 'Actualizar vista previa',
-  execute: 'Migrar seleccionados',
+  execute: 'Migrar Chats seleccionados',
   legacyGate:
     'La configuración antigua es de solo lectura hasta la migración. Guardar y depurar no están disponibles para evitar una conversión implícita.',
   states: {

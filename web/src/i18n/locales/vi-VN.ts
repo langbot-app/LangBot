@@ -1845,7 +1845,7 @@ const viVN = {
     agentType: 'Agent',
     agentTypeDescription:
       'Dùng runner để xử lý tin nhắn, thành viên nhóm, bạn bè, phản hồi và các sự kiện nền tảng khác.',
-    pipelineType: 'Quy trình',
+    pipelineType: 'Chat',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Chat',
     groupByKind: 'Nhóm theo loại',
@@ -2760,7 +2760,7 @@ const viVN = {
   pipelines: {
     outputMovedToPolicy:
       'Điều kiện đầu vào, an toàn và thiết lập phản hồi chung (văn bản dài, độ trễ bắt buộc, @người gửi, trích dẫn, gợi ý lỗi) đã chuyển sang tab Chính sách tin nhắn của bot. Ở đây chỉ còn các tùy chọn đầu ra dành cho AI.',
-    title: 'Quy trình',
+    title: 'Chat',
     description:
       'Chat xác định luồng xử lý sự kiện tin nhắn, dùng để liên kết với Bot',
     createPipeline: 'Tạo Chat',

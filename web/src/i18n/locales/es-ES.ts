@@ -351,7 +351,7 @@ const esES = {
       pipelines: {
         title: 'Configurar procesadores',
         description:
-          'Crea flujos, Agents y configuraciones de procesadores de plugins reutilizables y conéctalos a tus bots.',
+          'Crea Chats, Agents y configuraciones de procesadores de plugins reutilizables y conéctalos a tus bots.',
       },
       knowledge: {
         title: 'Gestionar bases de conocimiento',
@@ -412,12 +412,12 @@ const esES = {
       extensions: {
         title: 'Elegir extensiones disponibles',
         description:
-          'Selecciona los plugins, servidores MCP y habilidades que puede usar este flujo para ampliar el procesamiento y las herramientas.',
+          'Selecciona los plugins, servidores MCP y habilidades que puede usar este Chat para ampliar el procesamiento y las herramientas.',
       },
       basic: {
-        title: 'Administrar el flujo',
+        title: 'Administrar el Chat',
         description:
-          'Copia este flujo para crear otra configuración o elimina un flujo que ya no necesites.',
+          'Copia este Chat para crear otra configuración o elimina un Chat que ya no necesites.',
       },
       debug: {
         title: 'Probar una conversación',
@@ -440,7 +440,7 @@ const esES = {
       save: {
         title: 'Guardar y conectar un bot',
         description:
-          'Guarda la configuración y asigna los eventos de mensaje recibido a este flujo en la página del bot.',
+          'Guarda la configuración y asigna los eventos de mensaje recibido a este Chat en la página del bot.',
       },
     },
     pluginProcessor: {
@@ -1316,7 +1316,7 @@ const esES = {
     targetType: 'Tipo de destino',
     target: 'Procesador',
     targetAgent: 'Agent',
-    targetPipeline: 'Flujo',
+    targetPipeline: 'Chat',
     targetDiscard: 'Descartar',
     selectTarget: 'Seleccionar procesador',
     searchTarget: 'Buscar procesadores…',
@@ -1325,8 +1325,7 @@ const esES = {
     enabled: 'Activado',
     eventBindingDescriptionPlaceholder: 'Descripción de la regla',
     noEventBindings: 'No hay rutas de eventos',
-    unsupportedPipelineEvent:
-      'Los flujos solo admiten eventos message.received',
+    unsupportedPipelineEvent: 'Los Chats solo admiten eventos message.received',
     disable: 'Desactivar',
     enable: 'Activar',
     disabledBindings: 'Desactivado',
@@ -1890,7 +1889,7 @@ const esES = {
     agentType: 'Agent',
     agentTypeDescription:
       'Usa un runner para procesar mensajes, miembros de grupo, amigos, retroalimentación y otros eventos de plataforma.',
-    pipelineType: 'Flujo de trabajo',
+    pipelineType: 'Chat',
     kindBadgeAgent: 'Agent',
     kindBadgePipeline: 'Chat',
     groupByKind: 'Agrupar por tipo',
@@ -1909,9 +1908,9 @@ const esES = {
     agentDiagramTitle: 'Agent: decidir y actuar',
     agentDiagramDescription:
       'Un Agent recibe diversos eventos, usa modelos y herramientas para comprender la situación y decide qué hacer.',
-    pipelineDiagramTitle: 'Flujo: seguir pasos definidos',
+    pipelineDiagramTitle: 'Chat: seguir pasos definidos',
     pipelineDiagramDescription:
-      'Un flujo solo procesa eventos de mensajes y ejecuta los pasos en el orden configurado.',
+      'Un Chat solo procesa eventos de mensajes y ejecuta los pasos en el orden configurado.',
     pipelineDiagramFlow: 'Los mensajes siguen una secuencia fija',
     diagramEvents: 'Eventos de plataforma',
     diagramAgentCanUse: 'Disponible para el Agent',
@@ -2551,7 +2550,7 @@ const esES = {
       followUp: {
         nextSteps: 'Próximos pasos',
         agents: 'Crea un Agent o un procesador de plugin',
-        pipelines: 'Crea una canalización',
+        pipelines: 'Crea un Chat',
         knowledge: 'Crea una base de conocimiento',
       },
       updateComplete: 'Plugin actualizado correctamente',
@@ -2580,7 +2579,7 @@ const esES = {
 
     runnerUsage: 'Uso del ejecutor',
     runnerUsageAll: 'Todos',
-    runnerUsageAgent: 'Agent / Flujo',
+    runnerUsageAgent: 'Agent / Chat',
     runnerUsageEvent: 'Procesador de plugin',
     searchPlaceholder: 'Buscar plugins...',
     searchPlaceholderCount:
@@ -2822,7 +2821,7 @@ const esES = {
   pipelines: {
     outputMovedToPolicy:
       'Las condiciones de entrada, la seguridad y los ajustes generales de respuesta (texto largo, retraso forzado, @ al remitente, cita, avisos de error) se movieron a la pestaña Política de mensajes del bot. Aquí solo quedan las opciones de salida específicas de la IA.',
-    title: 'Flujos',
+    title: 'Chats',
     description:
       'Los Chats definen el flujo de procesamiento de eventos de mensajes, se usan para vincular a los Bots',
     createPipeline: 'Crear Chat',
@@ -2843,7 +2842,7 @@ const esES = {
     earliestEdited: 'Editados más antiguos',
     basicInfo: 'Información básica',
     basicInfoDescription: 'Establece el nombre, icono y descripción del Chat',
-    managementDescription: 'Copia o elimina este flujo.',
+    managementDescription: 'Copia o elimina este Chat.',
     aiCapabilities: 'IA',
     triggerConditions: 'Disparador',
     safetyControls: 'Seguridad',

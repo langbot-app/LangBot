@@ -288,10 +288,10 @@ const jaJP = {
       '送信を確認できません。接続を確認して会話を開き直してください。',
     draftPlaceholder: '待機中に次のメッセージを入力できます…',
     operations: {
-      create_pipeline: 'Pipeline 作成',
-      configure_pipeline: 'Pipeline 設定',
+      create_pipeline: 'チャット作成',
+      configure_pipeline: 'チャット設定',
       create_knowledge_base: 'ナレッジベース作成',
-      get_pipeline: 'Pipeline 参照',
+      get_pipeline: 'チャット参照',
       get_knowledge_schema: 'エンジン設定の参照',
       list_operation_logs: '操作ログの参照',
       workspace_search: 'ワークスペース機能を検索',
@@ -301,7 +301,7 @@ const jaJP = {
     resources: {
       models: 'チャットモデル検索',
       embedding_models: '埋め込みモデル検索',
-      pipelines: 'Pipeline 検索',
+      pipelines: 'チャット検索',
       knowledge_bases: 'ナレッジベース検索',
       knowledge_engines: 'エンジン検索',
     },
@@ -310,8 +310,8 @@ const jaJP = {
     newChat: '新しい会話',
     close: '閉じる',
     welcome:
-      '作りたいアプリを教えてください。現在のワークスペースを確認し、ボット、Agent、ナレッジベース、Pipeline などの設定を提案し、承認後に適用します。',
-    discover: '利用できるモデル、ナレッジベース、Pipeline は？',
+      '作りたいアプリを教えてください。現在のワークスペースを確認し、ボット、Agent、ナレッジベース、チャットなどの設定を提案し、承認後に適用します。',
+    discover: '利用できるモデル、ナレッジベース、チャットは？',
     build: 'ナレッジベースを使う質問応答アプリを作りたい。',
     toolResult: '操作結果',
     review: '実行する操作とパラメータを確認してください',
@@ -389,7 +389,7 @@ const jaJP = {
       trigger: {
         title: 'Choose which messages to answer',
         description:
-          'Pipelines handle message events and reply automatically with AI.',
+          'チャットはメッセージイベントを処理し、AI で自動的に返信します。',
       },
       speech: {
         title: 'Configure speech capabilities',
@@ -517,7 +517,7 @@ const jaJP = {
       type: {
         title: 'プロセッサーの種類を選択',
         description:
-          'Pipeline は固定フロー、Agent はモデルとツールによる判断、プラグインプロセッサーは宣言済みイベントを処理します。',
+          'チャットは固定フロー、Agent はモデルとツールによる判断、プラグインプロセッサーは宣言済みイベントを処理します。',
       },
       basic: {
         title: 'プロセッサー情報を入力',
@@ -1306,7 +1306,7 @@ const jaJP = {
     targetType: 'ターゲットタイプ',
     target: 'プロセッサー',
     targetAgent: 'Agent',
-    targetPipeline: 'Pipeline',
+    targetPipeline: 'チャット',
     targetDiscard: '破棄',
     selectTarget: 'プロセッサーを選択',
     searchTarget: 'プロセッサーを検索…',
@@ -1316,7 +1316,7 @@ const jaJP = {
     eventBindingDescriptionPlaceholder: 'ルール説明',
     noEventBindings: 'イベントルートはありません',
     unsupportedPipelineEvent:
-      'Pipeline は message.received イベントにのみ使用できます',
+      'チャットは message.received イベントにのみ使用できます',
     disable: '無効化',
     enable: '有効化',
     disabledBindings: '無効',
@@ -1892,9 +1892,9 @@ const jaJP = {
     agentDiagramTitle: 'Agent：判断して行動',
     agentDiagramDescription:
       'Agent はさまざまなプラットフォームイベントを受け取り、モデルやツールを使って状況を理解し、次の行動を判断します。',
-    pipelineDiagramTitle: 'Pipeline：決めたフローで処理',
+    pipelineDiagramTitle: 'チャット：決めたフローで処理',
     pipelineDiagramDescription:
-      'Pipeline はメッセージイベントのみを、設定した固定ステップの順番で処理します。',
+      'チャットはメッセージイベントのみを、設定した固定ステップの順番で処理します。',
     pipelineDiagramFlow: 'メッセージを固定フローで順番に処理',
     diagramEvents: 'イベント',
     diagramAgentCanUse: 'Agent が利用可能',
@@ -2102,7 +2102,7 @@ const jaJP = {
     goEnable: '有効にする',
     title: '拡張機能',
     description:
-      'LangBotの機能を拡張するプラグインをインストール・設定。流水線設定で使用します',
+      'LangBotの機能を拡張するプラグインをインストール・設定。チャット設定で使用します',
     createPlugin: 'プラグインを作成',
     editPlugin: 'プラグインを編集',
     installed: 'インストール済み',
