@@ -1711,8 +1711,13 @@ done
         result: BoxExecutionResult | None = None
         cleanup_task: asyncio.Task[None] | None = None
         execution_cancelled = False
+        runtime_started = time.perf_counter()
+        lock_wait_started = runtime_started
+        lock_wait_ms = 0.0
+        backend_exec_ms = 0.0
         try:
             async with session.lock:
+                lock_wait_ms = (time.perf_counter() - lock_wait_started) * 1000
                 if session.closing:
                     raise BoxSessionNotFoundError(
                         f"session {spec.session_id} is being deleted"
@@ -1736,7 +1741,9 @@ done
                     await self._enforce_network_workspace_quota(
                         session, spec, "before execution"
                     )
+                    backend_started = time.perf_counter()
                     result = await session.backend.exec(session.info, spec)
+                    backend_exec_ms = (time.perf_counter() - backend_started) * 1000
                     try:
                         await self._enforce_network_workspace_quota(
                             session, spec, "after execution"
@@ -1751,6 +1758,12 @@ done
                 if result.status == BoxExecutionStatus.TIMED_OUT:
                     # Fence queued callers before releasing the execution lock.
                     session.closing = True
+            self.logger.info(
+                "box_execute_timing "
+                f"session_id={spec.session_id} lock_wait_ms={lock_wait_ms:.3f} "
+                f"backend_exec_ms={backend_exec_ms:.3f} "
+                f"runtime_ms={(time.perf_counter() - runtime_started) * 1000:.3f}"
+            )
             return result
         finally:
             async with self._lock:
