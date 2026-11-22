@@ -48,7 +48,8 @@ class AgentRunJournal:
         }
         if len(self._run_snapshot_cache) > 1024:
             for key, _ in sorted(
-                self._run_snapshot_cache.items(), key=lambda item: item[1][0]
+                self._run_snapshot_cache.items(),
+                key=lambda item: item[1][0],
             )[:-1024]:
                 del self._run_snapshot_cache[key]
 
