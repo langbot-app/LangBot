@@ -1485,6 +1485,9 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                     />
                   </TabsContent>
                   <TabsContent value="plugins" className="min-w-0">
+                    <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+                      {t('bots.pluginHooks.tabDescription')}
+                    </p>
                     <BotPluginsPanel
                       botId={initBotId}
                       botPolicy={watchedPolicy}

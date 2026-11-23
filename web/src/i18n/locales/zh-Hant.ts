@@ -987,6 +987,8 @@ const zhHant = {
         '新路由沿用機器人預設訊息策略，可在「訊息策略」頁籤單獨設定。',
     },
     pluginHooks: {
+      tabDescription:
+        '使用下方設定的外掛處理訊息生命週期中對應的環節。具體處理邏輯取決於外掛實作，請參照外掛文件進行調整。',
       routeMode: '此路由的插件啟用',
       lifecycleTitle: '訊息生命週期',
       lifecycleHint: '圖示表示在這一步起作用的已啟用插件',
@@ -1182,7 +1184,7 @@ const zhHant = {
       commands: '外掛指令',
       processors: '外掛處理器',
       rulesDescription:
-        '未命中外掛指令的事件依序比對，交給第一條命中的規則處理。',
+        '使用你設定的 LangBot 處理器（Agent、聊天）呼叫 AI 處理事件。未被外掛指令處理的事件依序比對，交給第一條命中的規則；只想用外掛、不需要 AI 處理時，刪除或停用路由規則即可。',
       commandsDisabled: '外掛指令已關閉，訊息直接進入路由規則。',
     },
     eventRoutingDescription:

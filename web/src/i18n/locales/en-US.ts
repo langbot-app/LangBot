@@ -1050,6 +1050,8 @@ const enUS = {
         'New routes use the bot default message policy. You can set one for this route in the Message policy tab.',
     },
     pluginHooks: {
+      tabDescription:
+        'The plugins below handle their steps of the message lifecycle. What they do depends on each plugin; see its documentation to adjust it.',
       routeMode: 'Plugins for this route',
       lifecycleTitle: 'Message lifecycle',
       lifecycleHint: 'Icons show enabled plugins acting at each step',
@@ -1263,7 +1265,7 @@ const enUS = {
       commands: 'Plugin commands',
       processors: 'Plugin processors',
       rulesDescription:
-        'Events not handled by a plugin command are matched in order; the first matching route handles them.',
+        'Routes send events to LangBot processors you configure (Agents, Chats), which handle them with AI. Events not handled by a plugin command are matched in order, and the first matching route handles them. To use plugins only, without AI, delete or disable the routes.',
       commandsDisabled:
         'Plugin commands are off; messages go straight to routes.',
     },

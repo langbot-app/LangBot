@@ -1064,6 +1064,8 @@ const esES = {
         'Las rutas nuevas usan la política de mensajes predeterminada del bot. Puedes definir una para esta ruta en la pestaña Política de mensajes.',
     },
     pluginHooks: {
+      tabDescription:
+        'Los plugins de abajo gestionan sus pasos del ciclo de vida del mensaje. Lo que hacen depende de cada plugin; consulta su documentación para ajustarlo.',
       routeMode: 'Plugins de esta ruta',
       lifecycleTitle: 'Ciclo de vida del mensaje',
       lifecycleHint: 'Los iconos muestran los plugins activos en cada paso',
@@ -1278,7 +1280,7 @@ const esES = {
       commands: 'Comandos de plugin',
       processors: 'Procesadores de plugin',
       rulesDescription:
-        'Los eventos que no coinciden con un comando de plugin se evalúan en orden; los gestiona la primera ruta que coincida.',
+        'Las rutas envían los eventos a los procesadores de LangBot que configures (Agents, chats), que los gestionan con IA. Los eventos que no gestiona un comando de plugin se evalúan en orden y los gestiona la primera ruta que coincida. Para usar solo plugins, sin IA, elimina o desactiva las rutas.',
       commandsDisabled:
         'Los comandos de plugin están desactivados; los mensajes pasan directamente a las rutas.',
     },

@@ -991,6 +991,8 @@ const zhHans = {
         '新路由沿用机器人默认消息策略，可在「消息策略」页签单独设置。',
     },
     pluginHooks: {
+      tabDescription:
+        '使用下方配置的插件处理消息生命周期中对应的环节。具体处理逻辑取决于插件实现，请参照插件文档进行调整。',
       routeMode: '此路由的插件启用',
       lifecycleTitle: '消息生命周期',
       lifecycleHint: '图标表示在这一步起作用的已启用插件',
@@ -1186,7 +1188,7 @@ const zhHans = {
       commands: '插件命令',
       processors: '插件处理器',
       rulesDescription:
-        '未命中插件命令的事件按顺序匹配，交给第一条命中的规则处理。',
+        '使用你配置的 LangBot 处理器（Agent、聊天）调用 AI 处理事件。未被插件命令处理的事件按顺序匹配，交给第一条命中的规则；只想用插件、不需要 AI 处理时，删除或停用路由规则即可。',
       commandsDisabled: '插件命令已关闭，消息直接进入路由规则。',
     },
     eventRoutingDescription: '设置收到事件后交给哪个处理器。',

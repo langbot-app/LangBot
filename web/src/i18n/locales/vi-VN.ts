@@ -1043,6 +1043,8 @@ const viVN = {
         'Tuyến mới dùng chính sách tin nhắn mặc định của bot. Bạn có thể đặt riêng trong tab Chính sách tin nhắn.',
     },
     pluginHooks: {
+      tabDescription:
+        'Các plugin bên dưới xử lý những bước tương ứng trong vòng đời tin nhắn. Cách xử lý cụ thể tùy vào từng plugin; hãy xem tài liệu của plugin để điều chỉnh.',
       routeMode: 'Plugin của tuyến này',
       lifecycleTitle: 'Vòng đời tin nhắn',
       lifecycleHint: 'Biểu tượng là các plugin đã bật hoạt động ở mỗi bước',
@@ -1254,7 +1256,7 @@ const viVN = {
       commands: 'Lệnh plugin',
       processors: 'Bộ xử lý plugin',
       rulesDescription:
-        'Sự kiện không khớp lệnh plugin được so khớp theo thứ tự; tuyến khớp đầu tiên sẽ xử lý.',
+        'Tuyến chuyển sự kiện tới các bộ xử lý LangBot bạn cấu hình (Agent, trò chuyện) để xử lý bằng AI. Các sự kiện không được lệnh plugin xử lý sẽ được so khớp theo thứ tự và tuyến khớp đầu tiên sẽ xử lý. Nếu chỉ muốn dùng plugin mà không dùng AI, hãy xóa hoặc tắt các tuyến.',
       commandsDisabled:
         'Lệnh plugin đang tắt; tin nhắn đi thẳng tới các tuyến.',
     },
