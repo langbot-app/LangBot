@@ -471,7 +471,7 @@ const getFormSchema = (t: TFunction) =>
         .positive({ message: t('mcp.timeoutMustBePositive') })
         .default(30),
       tool_call_timeout_sec: z
-        .number({ invalid_type_error: t('mcp.timeoutMustBeNumber') })
+        .number({ message: t('mcp.timeoutMustBeNumber') })
         .nonnegative({ message: t('mcp.timeoutNonNegative') })
         .default(300),
       ssereadtimeout: z

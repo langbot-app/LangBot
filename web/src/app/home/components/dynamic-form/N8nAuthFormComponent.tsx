@@ -16,13 +16,6 @@ import { normalizeDynamicFormValuesForSave } from '@/app/home/components/dynamic
 import { shouldShowN8nConfigField } from '@/app/home/components/dynamic-form/N8nAuthFieldVisibility';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 
-const toFormString = (value: unknown): string => {
-  if (value === null || value === undefined) {
-    return '';
-  }
-  return String(value);
-};
-
 /**
  * N8n认证表单组件
  * 根据选择的认证类型动态显示相应的表单项
@@ -106,7 +99,7 @@ export default function N8nAuthFormComponent({
       const value = initialValues?.[item.name] ?? item.default;
       return {
         ...acc,
-        [item.name]: toFormString(value),
+        [item.name]: value,
       };
     }, {} as FormValues),
   });
@@ -138,9 +131,7 @@ export default function N8nAuthFormComponent({
       // 合并默认值和初始值
       const mergedValues = itemConfigList.reduce(
         (acc, item) => {
-          acc[item.name] = toFormString(
-            initialValues[item.name] ?? item.default,
-          );
+          acc[item.name] = initialValues[item.name] ?? item.default;
           return acc;
         },
         {} as Record<string, string>,
