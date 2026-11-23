@@ -194,9 +194,10 @@ class DailyGroupedRotatingFileHandler(logging.handlers.RotatingFileHandler):
 
 
 async def init_logging(extra_handlers: list[logging.Handler] = None) -> logging.Logger:
-    # Remove all existing loggers
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
+        if getattr(handler, '_langbot_owned', False):
+            handler.close()
 
     level = logging.INFO
 
@@ -211,7 +212,7 @@ async def init_logging(extra_handlers: list[logging.Handler] = None) -> logging.
 
     qcg_logger.setLevel(level)
 
-    qcg_logger.propagate = False
+    qcg_logger.propagate = True
     logging.root.setLevel(logging.WARNING)
     stream_handler = NonBlockingConsoleHandler(sys.stdout)
     stream_handler.setFormatter(ServiceFormatter('CORE', sys.stdout))
@@ -224,7 +225,7 @@ async def init_logging(extra_handlers: list[logging.Handler] = None) -> logging.
     for handler in handlers:
         if handler is not stream_handler:
             handler.setFormatter(ServiceFormatter('CORE'))
-        qcg_logger.addHandler(handler)
+        handler._langbot_owned = True
         logging.root.addHandler(handler)
     install_exception_logging()
     install_loop_logging()

@@ -19,7 +19,7 @@ async def test_http_access_and_library_warnings_reach_wf(tmp_path, monkeypatch, 
 
     with (tmp_path / 'console').open('w') as console:
         monkeypatch.setattr(log.sys, 'stdout', console)
-        logger = await log.init_logging()
+        await log.init_logging()
         stop = asyncio.Event()
         task = asyncio.create_task(server._run_task('127.0.0.1', unused_tcp_port, stop.wait))
         try:
@@ -31,8 +31,7 @@ async def test_http_access_and_library_warnings_reach_wf(tmp_path, monkeypatch, 
         finally:
             stop.set()
             await task
-            for handler in logger.handlers[:]:
-                logger.removeHandler(handler)
+            for handler in logging.root.handlers[:]:
                 logging.root.removeHandler(handler)
                 handler.close()
     text = next(tmp_path.glob('*.log.wf')).read_text()
