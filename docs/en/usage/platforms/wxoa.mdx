@@ -98,9 +98,9 @@ To keep using LangBot, publish the menu again from LangBot (see [Custom menu](#c
 Bots using the new Official Account adapter have a **Custom Menu** tab on the bot detail page for editing and publishing the menu at the bottom of the Official Account chat:
 
 1. Make sure the bot is enabled and the LangBot server's outbound IP is in the account's API IP whitelist (shown in the bot's **IP Whitelist** field).
-2. Open the **Custom Menu** tab on the bot detail page. If you had a menu in the WeChat web console, click **Import from WeChat** to read the disabled menu back as it was.
-3. Select a button in the phone preview on the left and change its name and tap action on the right. Click buttons in the preview to see what users get.
-4. Click **Publish to WeChat**. Publishing replaces the whole menu on the account; users usually see it after a few minutes or after re-entering the account.
+2. Open the **Custom Menu** tab on the bot detail page. If you had a menu in the WeChat web console, click **Import from WeChat** to read the disabled menu back as it was; the imported menu is saved to LangBot right away.
+3. Click a button in **Menu structure** and change its name and tap action under **Button settings**. Top-level menus and sub-buttons are added, reordered with the arrows, and deleted in **Menu structure**. Click buttons in the phone preview to see what users get.
+4. Click **Save and sync to WeChat**. The menu is saved to LangBot and then replaces the whole menu on the account; users usually see it after a few minutes or after re-entering the account. While the bot is disabled or a button is incomplete, the menu is only saved to LangBot.
 
 Up to 3 top-level buttons, each with up to 5 sub-buttons. Top-level names are limited to 16 bytes and sub-button names to 60 bytes (a Chinese character is about 3 bytes). Tap actions:
 
@@ -112,9 +112,9 @@ Up to 3 top-level buttons, each with up to 5 sub-buttons. Top-level names are li
 | Let the AI reply | Sends a preset message for the user; the current chat pipeline or Agent answers it. |
 | Trigger event (advanced) | Emits a `platform.specific` event (`officialaccount.CLICK`) whose `data.EventKey` is the button's event key. Add a binding in Event Routing filtered on `data.EventKey` to hand it to an Agent or plugin. |
 
-News, image, voice and video material buttons from the WeChat web console cannot be imported through the API. They are marked as an unsupported type after import and must be changed to another action before publishing.
+News, image, voice and video material buttons from the WeChat web console cannot be imported through the API. They are marked as an unsupported type after import and must be changed to another action before the menu can be synced to WeChat.
 
-If publishing fails, the page shows the WeChat error code and an explanation. Common causes: the server outbound IP is not in the API IP whitelist (`40164`), the account has no custom menu API permission (`48001`, typical for unverified subscription accounts), or the mini program is not linked to the account (`85005`).
+If syncing fails, the page shows the WeChat error code and an explanation. Common causes: the server outbound IP is not in the API IP whitelist (`40164`), the account has no custom menu API permission (`48001`, typical for unverified subscription accounts), or the mini program is not linked to the account (`85005`).
 
 <Note>
 Plugins and Agents can also manage the menu through `call_platform_api` with `menu.get`, `menu.import_console`, `menu.publish` and `menu.delete`. The legacy adapter has no menu editor; switch to the new adapter to use it.

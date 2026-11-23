@@ -5,8 +5,8 @@ export default {
     '编辑公众号聊天窗口底部的菜单按钮。接入 LangBot 后，公众平台网页里编辑的菜单会被微信停用，需要在这里发布。',
   status: {
     published: '已发布',
-    outOfSync: '有修改未发布',
-    unpublished: '未发布',
+    outOfSync: '有修改未同步',
+    unpublished: '未同步到公众号',
     unknown: '发布状态未知',
   },
   actions: {
@@ -14,21 +14,29 @@ export default {
     importing: '正在导入…',
     save: '保存',
     saving: '正在保存…',
-    publish: '发布到公众号',
-    publishing: '正在发布…',
     more: '更多操作',
     deleteRemote: '删除公众号上的菜单',
-    refresh: '刷新发布状态',
+    refresh: '刷新同步状态',
     addTop: '添加菜单',
     addSub: '添加子菜单',
-    deleteButton: '删除此按钮',
-    moveBefore: '前移',
-    moveAfter: '后移',
+    saveAndSync: '保存并同步到公众号',
+    addTopFull: '添加一级菜单',
+    deleteTop: '删除此菜单',
+    deleteSub: '删除此子菜单',
+    moveUp: '上移',
+    moveDown: '下移',
   },
   unsaved: '有未保存的修改',
   botDisabled:
-    '机器人未启用。启用后才能从公众平台导入、发布或删除菜单；你仍可以先编辑并保存。',
-  validationSummary: '还有 {{count}} 个按钮需要完善，修正后才能发布。',
+    '机器人未启用。启用后才能从公众平台导入、同步或删除菜单；你仍可以先编辑并保存。',
+  validationSummary: '还有 {{count}} 个按钮需要完善，修正后才能同步到公众号。',
+  structure: {
+    title: '菜单结构',
+    hint: '点击切换要编辑的按钮，用箭头调整顺序。',
+    needsFix: '需要完善',
+    subFull: '子菜单已满（最多 {{max}} 个）',
+    topFull: '一级菜单已满（最多 {{max}} 个）',
+  },
   empty: {
     title: '还没有菜单',
     description:
@@ -48,7 +56,7 @@ export default {
   },
   editor: {
     title: '按钮设置',
-    noSelection: '在左侧预览中选择一个按钮进行编辑。',
+    noSelection: '在「菜单结构」或预览中选择一个按钮进行编辑。',
     name: '按钮名称',
     nameBytes: '{{used}}/{{max}} 字节（一个汉字约 3 字节）',
     type: '点击后',
@@ -57,7 +65,8 @@ export default {
     defaultTopName: '菜单{{n}}',
     defaultSubName: '子菜单{{n}}',
     subButtons: '子菜单（{{count}}/{{max}}）',
-    groupHint: '一级菜单展开后显示子菜单，点击一级菜单本身不会触发动作。',
+    groupHint:
+      '一级菜单展开后显示子菜单，点击一级菜单本身不会触发动作。子菜单可以在「菜单结构」中添加、排序和删除。',
   },
   types: {
     group: { label: '展开子菜单', description: '把多个按钮收纳在一个菜单下' },
@@ -121,16 +130,10 @@ export default {
     groupEmpty: '至少需要一个子菜单',
     unsupported: '请改为支持的按钮类型',
   },
-  publishConfirm: {
-    title: '发布到公众号？',
-    description:
-      '会先保存当前菜单，再整体替换公众号上的菜单。用户可能需要几分钟或重新进入公众号才能看到新菜单。',
-    confirm: '保存并发布',
-  },
   importConfirm: {
-    title: '用公众平台的菜单覆盖当前编辑内容？',
+    title: '用公众平台的菜单覆盖当前菜单？',
     description:
-      '将读取公众号当前的菜单（包括在公众平台网页中编辑、已被停用的菜单），替换编辑器中的内容。导入后需要保存或发布才会生效。',
+      '将读取公众号当前的菜单（包括在公众平台网页中编辑、已被停用的菜单），并直接保存到 LangBot，替换这里的菜单。之后点击「保存并同步到公众号」才会发布到微信。',
     confirm: '导入',
   },
   deleteConfirm: {
@@ -141,15 +144,17 @@ export default {
   },
   toasts: {
     saved: '菜单已保存',
-    published: '菜单已发布到公众号',
-    imported: '已导入公众平台菜单，请检查后保存或发布',
+    imported: '已导入并保存到 LangBot，检查无误后点击「保存并同步到公众号」',
     importedEmpty: '公众号当前没有菜单',
     importWarnings: '有 {{count}} 个按钮需要调整',
     deleted: '公众号上的菜单已删除',
     saveFailed: '保存菜单失败',
-    publishFailed: '发布失败',
     importFailed: '导入失败',
     deleteFailed: '删除失败',
+    savedBotDisabled: '已保存。机器人启用后再点击保存即可同步到公众号。',
+    savedNotSynced: '已保存到 LangBot，但还不能同步到公众号',
+    synced: '已保存并同步到公众号',
+    syncFailed: '已保存到 LangBot，但同步到公众号失败',
   },
   wechatErrors: {
     credentials: 'AppID 或 AppSecret 不正确，请检查机器人配置。',

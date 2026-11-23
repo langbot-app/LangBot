@@ -5,8 +5,8 @@ export default {
     '編輯公眾號聊天視窗底部的選單按鈕。接入 LangBot 後，公眾平台網頁中編輯的選單會被微信停用，需要在這裡發佈。',
   status: {
     published: '已發佈',
-    outOfSync: '有修改未發佈',
-    unpublished: '未發佈',
+    outOfSync: '有修改未同步',
+    unpublished: '未同步到公眾號',
     unknown: '發佈狀態未知',
   },
   actions: {
@@ -14,21 +14,29 @@ export default {
     importing: '正在匯入…',
     save: '儲存',
     saving: '正在儲存…',
-    publish: '發佈到公眾號',
-    publishing: '正在發佈…',
     more: '更多操作',
     deleteRemote: '刪除公眾號上的選單',
-    refresh: '重新整理發佈狀態',
+    refresh: '重新整理同步狀態',
     addTop: '新增選單',
     addSub: '新增子選單',
-    deleteButton: '刪除此按鈕',
-    moveBefore: '前移',
-    moveAfter: '後移',
+    saveAndSync: '儲存並同步到公眾號',
+    addTopFull: '新增一級選單',
+    deleteTop: '刪除此選單',
+    deleteSub: '刪除此子選單',
+    moveUp: '上移',
+    moveDown: '下移',
   },
   unsaved: '有未儲存的修改',
   botDisabled:
-    '機器人未啟用。啟用後才能從公眾平台匯入、發佈或刪除選單；你仍可以先編輯並儲存。',
-  validationSummary: '還有 {{count}} 個按鈕需要完善，修正後才能發佈。',
+    '機器人未啟用。啟用後才能從公眾平台匯入、同步或刪除選單；你仍可以先編輯並儲存。',
+  validationSummary: '還有 {{count}} 個按鈕需要完善，修正後才能同步到公眾號。',
+  structure: {
+    title: '選單結構',
+    hint: '點擊切換要編輯的按鈕，用箭頭調整順序。',
+    needsFix: '需要完善',
+    subFull: '子選單已滿（最多 {{max}} 個）',
+    topFull: '一級選單已滿（最多 {{max}} 個）',
+  },
   empty: {
     title: '還沒有選單',
     description:
@@ -48,7 +56,7 @@ export default {
   },
   editor: {
     title: '按鈕設定',
-    noSelection: '在左側預覽中選擇一個按鈕進行編輯。',
+    noSelection: '在「選單結構」或預覽中選擇一個按鈕進行編輯。',
     name: '按鈕名稱',
     nameBytes: '{{used}}/{{max}} 位元組（一個漢字約 3 位元組）',
     type: '點擊後',
@@ -57,7 +65,8 @@ export default {
     defaultTopName: '選單{{n}}',
     defaultSubName: '子選單{{n}}',
     subButtons: '子選單（{{count}}/{{max}}）',
-    groupHint: '一級選單展開後顯示子選單，點擊一級選單本身不會觸發動作。',
+    groupHint:
+      '一級選單展開後顯示子選單，點擊一級選單本身不會觸發動作。子選單可以在「選單結構」中新增、排序和刪除。',
   },
   types: {
     group: { label: '展開子選單', description: '把多個按鈕收納在一個選單下' },
@@ -121,16 +130,10 @@ export default {
     groupEmpty: '至少需要一個子選單',
     unsupported: '請改為支援的按鈕類型',
   },
-  publishConfirm: {
-    title: '發佈到公眾號？',
-    description:
-      '會先儲存目前選單，再整體取代公眾號上的選單。使用者可能需要幾分鐘或重新進入公眾號才能看到新選單。',
-    confirm: '儲存並發佈',
-  },
   importConfirm: {
-    title: '用公眾平台的選單覆蓋目前編輯內容？',
+    title: '用公眾平台的選單覆蓋目前選單？',
     description:
-      '將讀取公眾號目前的選單（包括在公眾平台網頁中編輯、已被停用的選單），取代編輯器中的內容。匯入後需要儲存或發佈才會生效。',
+      '將讀取公眾號目前的選單（包括在公眾平台網頁中編輯、已被停用的選單），並直接儲存到 LangBot，取代這裡的選單。之後點擊「儲存並同步到公眾號」才會發佈到微信。',
     confirm: '匯入',
   },
   deleteConfirm: {
@@ -141,15 +144,17 @@ export default {
   },
   toasts: {
     saved: '選單已儲存',
-    published: '選單已發佈到公眾號',
-    imported: '已匯入公眾平台選單，請檢查後儲存或發佈',
+    imported: '已匯入並儲存到 LangBot，檢查無誤後點擊「儲存並同步到公眾號」',
     importedEmpty: '公眾號目前沒有選單',
     importWarnings: '有 {{count}} 個按鈕需要調整',
     deleted: '公眾號上的選單已刪除',
     saveFailed: '儲存選單失敗',
-    publishFailed: '發佈失敗',
     importFailed: '匯入失敗',
     deleteFailed: '刪除失敗',
+    savedBotDisabled: '已儲存。機器人啟用後再點擊儲存即可同步到公眾號。',
+    savedNotSynced: '已儲存到 LangBot，但還不能同步到公眾號',
+    synced: '已儲存並同步到公眾號',
+    syncFailed: '已儲存到 LangBot，但同步到公眾號失敗',
   },
   wechatErrors: {
     credentials: 'AppID 或 AppSecret 不正確，請檢查機器人設定。',

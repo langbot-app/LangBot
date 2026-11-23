@@ -87,3 +87,40 @@ test('reply text changes do not make a published menu out of sync', () => {
   assert.equal(model.isPublishedInSync(renamed, published), false);
   assert.equal(model.isPublishedInSync(menu, null), false);
 });
+
+test('restores LangBot-published reply and AI buttons after import', () => {
+  const imported = {
+    buttons: [
+      { id: 'n1', name: '官网', type: 'view', url: 'https://langbot.app' },
+      {
+        id: 'n2',
+        name: '更多',
+        type: 'group',
+        sub_buttons: [
+          { id: 'n3', name: '营业时间', type: 'event', key: 'lb:r:hours' },
+          { id: 'n4', name: '问 AI', type: 'event', key: 'lb:a:ask' },
+          { id: 'n5', name: '旧按钮', type: 'event', key: 'lb:r:gone' },
+          { id: 'n6', name: '查订单', type: 'event', key: 'ORDER' },
+        ],
+      },
+    ],
+  };
+  const restored = model.restoreLangBotButtons(imported, menu);
+  const subs = restored.buttons[1].sub_buttons;
+  assert.deepEqual(subs[0], {
+    id: 'hours',
+    name: '营业时间',
+    type: 'reply',
+    text: '9:00-18:00',
+  });
+  assert.deepEqual(subs[1], {
+    id: 'ask',
+    name: '问 AI',
+    type: 'ai',
+    text: '介绍产品',
+  });
+  // Unknown LangBot keys and user event keys are left for the user to fix.
+  assert.equal(subs[2].type, 'event');
+  assert.deepEqual(subs[3], imported.buttons[1].sub_buttons[3]);
+  assert.deepEqual(restored.buttons[0], imported.buttons[0]);
+});
