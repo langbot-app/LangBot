@@ -23,6 +23,7 @@ import {
   processorEventCompatibility,
 } from '@/app/home/components/event-patterns/event-pattern-groups';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
+import RunnerSelect from '@/app/home/agents/components/RunnerSelect';
 import { AuthenticatedPluginIcon } from '@/components/AuthenticatedPluginIcon';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -102,6 +103,32 @@ function ProcessorEvents({
   );
 }
 
+/** `plugin:author/name[/component]` → plugin author and name, for its icon. */
+function pluginOf(componentRef?: string | null) {
+  const [author, name] = (componentRef ?? '')
+    .replace(/^plugin:/, '')
+    .split('/');
+  return author && name ? { author, name } : null;
+}
+
+function ProcessorIcon({ agent }: { agent?: Agent }) {
+  const plugin = pluginOf(agent?.component_ref);
+  return plugin ? (
+    <AuthenticatedPluginIcon
+      author={plugin.author}
+      name={plugin.name}
+      className="size-10 shrink-0 rounded-lg border bg-muted object-cover"
+    />
+  ) : (
+    <span
+      className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-muted text-2xl"
+      aria-hidden="true"
+    >
+      {agent?.emoji || '🧩'}
+    </span>
+  );
+}
+
 export default function PluginProcessorBindings({
   value,
   onChange,
@@ -145,6 +172,23 @@ export default function PluginProcessorBindings({
     } catch {
       toast.error(t('agents.eventProcessor.loadError'));
     }
+  }
+
+  function pickComponent(id: string, descriptor?: RunnerDescriptor) {
+    const next = descriptor ?? components.find((item) => item.id === id);
+    setComponentRef(id);
+    validate.current = null;
+    setParameters(
+      Object.fromEntries(
+        (next?.config_schema ?? [])
+          .filter((field) => field.default !== undefined)
+          .map((field) => [field.name, field.default]),
+      ),
+    );
+    if (next && !name.trim())
+      setName(
+        extractI18nObject({ en_US: next.id, zh_Hans: next.id, ...next.label }),
+      );
   }
 
   async function add() {
@@ -225,12 +269,7 @@ export default function PluginProcessorBindings({
             className="gap-0 rounded-lg py-0 shadow-none"
           >
             <CardContent className="flex items-center gap-3 p-3">
-              <span
-                className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-muted text-2xl"
-                aria-hidden="true"
-              >
-                {agent?.emoji || '🧩'}
-              </span>
+              <ProcessorIcon agent={agent} />
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">{title}</div>
                 <p
@@ -365,12 +404,7 @@ export default function PluginProcessorBindings({
                         )
                       }
                     />
-                    <span
-                      className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-muted text-2xl"
-                      aria-hidden="true"
-                    >
-                      {agent.emoji || '🧩'}
-                    </span>
+                    <ProcessorIcon agent={agent} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">
                         {agent.name}
@@ -415,18 +449,7 @@ export default function PluginProcessorBindings({
                         variant="outline"
                         aria-pressed={componentRef === descriptor.id}
                         className="h-auto w-full justify-start gap-3 whitespace-normal p-3 text-left font-normal shadow-none aria-pressed:bg-accent"
-                        onClick={() => {
-                          setComponentRef(descriptor.id);
-                          validate.current = null;
-                          setParameters(
-                            Object.fromEntries(
-                              (descriptor.config_schema ?? [])
-                                .filter((field) => field.default !== undefined)
-                                .map((field) => [field.name, field.default]),
-                            ),
-                          );
-                          if (!name.trim()) setName(label);
-                        }}
+                        onClick={() => pickComponent(descriptor.id)}
                       >
                         <AuthenticatedPluginIcon
                           author={descriptor.plugin_author}
@@ -456,6 +479,39 @@ export default function PluginProcessorBindings({
                       {t('agents.eventProcessor.noComponents')}
                     </p>
                   )}
+                </div>
+                {/* Marketplace plugins that declare processor support,
+                    installable in place; installing selects it above. */}
+                <div className="space-y-2 rounded-lg border border-dashed p-3">
+                  <Label className="text-sm">
+                    {t('bots.pluginSubscriptions.marketplace')}
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {t('bots.pluginSubscriptions.marketplaceHint')}
+                  </p>
+                  <RunnerSelect
+                    usage="event"
+                    options={components.map((descriptor) => ({
+                      name: descriptor.id,
+                      label: {
+                        en_US: descriptor.id,
+                        zh_Hans: descriptor.id,
+                        ...descriptor.label,
+                      },
+                    }))}
+                    label={t('bots.pluginSubscriptions.marketplace')}
+                    value={componentRef}
+                    onValueChange={(id) => pickComponent(id)}
+                    disabled={busy}
+                    installScope="bot-plugin-processor"
+                    onEventProcessorInstalled={(installed) => {
+                      setComponents((current) => [
+                        ...current.filter((item) => item.id !== installed.id),
+                        installed,
+                      ]);
+                      pickComponent(installed.id, installed);
+                    }}
+                  />
                 </div>
                 {component && (
                   <div className="space-y-2">

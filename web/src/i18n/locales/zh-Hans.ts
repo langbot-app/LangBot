@@ -1084,10 +1084,14 @@ const zhHans = {
       overriddenBy: '被 {{plugin}} 覆盖（优先级更高）',
     },
     pluginSubscriptions: {
+      marketplace: '从插件市场安装',
+      marketplaceHint:
+        '在市场中查找声明支持作为插件处理器的插件，安装后会出现在上方并自动选中。',
       incompleteEvents:
         '当前机器人仅支持部分事件（{{events}}），处理器表现可能不完整。',
       description: '自动接收插件声明的事件，与路由规则独立执行。',
-      empty: '尚未绑定插件处理器。',
+      empty:
+        '尚未添加插件处理器。点击下方按钮，可以选择已安装的插件，或直接从插件市场安装。',
       add: '添加插件处理器',
       existing: '选择已有配置',
       new: '新建配置',

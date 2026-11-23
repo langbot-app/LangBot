@@ -1148,11 +1148,15 @@ const enUS = {
       overriddenBy: 'Overridden by {{plugin}} (higher priority)',
     },
     pluginSubscriptions: {
+      marketplace: 'Install from the marketplace',
+      marketplaceHint:
+        'Find plugins that declare plugin processor support. Once installed, they appear above and are selected.',
       incompleteEvents:
         'This bot only supports some of the subscribed events ({{events}}). The processor may not behave as intended in all cases.',
       description:
         'Automatically receive events declared by the plugin, independently of routes.',
-      empty: 'No plugin processors are bound.',
+      empty:
+        'No plugin processors yet. Use the button below to pick an installed plugin or install one from the marketplace.',
       add: 'Add plugin processor',
       existing: 'Choose configuration',
       new: 'New configuration',

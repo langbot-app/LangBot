@@ -1142,11 +1142,15 @@ const viVN = {
       overriddenBy: 'Bị ghi đè bởi {{plugin}} (ưu tiên cao hơn)',
     },
     pluginSubscriptions: {
+      marketplace: 'Cài từ chợ plugin',
+      marketplaceHint:
+        'Tìm các plugin khai báo hỗ trợ làm bộ xử lý plugin. Sau khi cài, plugin sẽ xuất hiện ở trên và được chọn.',
       incompleteEvents:
         'Bot hiện chỉ hỗ trợ một số sự kiện mà bộ xử lý theo dõi ({{events}}). Bộ xử lý có thể không hoạt động đầy đủ trong mọi trường hợp.',
       description:
         'Tự động nhận sự kiện do plugin khai báo, hoạt động độc lập với các tuyến.',
-      empty: 'Chưa liên kết bộ xử lý plugin.',
+      empty:
+        'Chưa có bộ xử lý plugin. Dùng nút bên dưới để chọn plugin đã cài hoặc cài ngay từ chợ plugin.',
       add: 'Thêm bộ xử lý plugin',
       existing: 'Chọn cấu hình',
       new: 'Cấu hình mới',
