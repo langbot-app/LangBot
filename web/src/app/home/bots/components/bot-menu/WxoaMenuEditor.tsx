@@ -930,10 +930,21 @@ function PhonePreview({
           <div className="flex w-10 shrink-0 items-center justify-center border-r border-black/10 dark:border-white/10">
             <Keyboard className="size-4 opacity-60" />
           </div>
-          {menu.buttons.map((button) => (
+          {menu.buttons.map((button, index) => (
             <div key={button.id} className="relative flex min-w-0 flex-1">
               {button.type === 'group' && openGroupId === button.id && (
-                <div className="absolute bottom-full left-1/2 z-10 mb-2 w-[94%] -translate-x-1/2 rounded-md border border-black/10 bg-white shadow-md dark:border-white/10 dark:bg-zinc-800">
+                <div
+                  className={cn(
+                    // Size to the names like WeChat does, but keep the popup
+                    // inside the phone: edge columns anchor to their edge.
+                    'absolute bottom-full z-10 mb-2 w-max min-w-full max-w-[160px] rounded-md border border-black/10 bg-white shadow-md dark:border-white/10 dark:bg-zinc-800',
+                    index === 0
+                      ? 'left-0'
+                      : index === menu.buttons.length - 1
+                        ? 'right-0'
+                        : 'left-1/2 -translate-x-1/2',
+                  )}
+                >
                   {(button.sub_buttons || []).map((sub) => (
                     <button
                       key={sub.id}
@@ -962,8 +973,11 @@ function PhonePreview({
                         <Plus className="size-3.5" />
                       </button>
                     )}
-                  <div className="absolute -bottom-1.5 left-1/2 size-3 -translate-x-1/2 rotate-45 border-b border-r border-black/10 bg-white dark:border-white/10 dark:bg-zinc-800" />
                 </div>
+              )}
+              {button.type === 'group' && openGroupId === button.id && (
+                // Arrow sits under the column centre even when the popup is edge-anchored.
+                <div className="absolute bottom-full left-1/2 z-20 mb-[2px] size-3 -translate-x-1/2 rotate-45 border-b border-r border-black/10 bg-white dark:border-white/10 dark:bg-zinc-800" />
               )}
               <button
                 type="button"
