@@ -102,6 +102,8 @@ Bots using the new Official Account adapter have a **Custom Menu** tab on the bo
 3. Click a button in **Menu structure** and change its name and tap action under **Button settings**. Top-level menus and sub-buttons are added, reordered with the arrows, and deleted in **Menu structure**. Click buttons in the phone preview to see what users get.
 4. Click **Save and sync to WeChat**. The menu is saved to LangBot and then replaces the whole menu on the account; users usually see it after a few minutes or after re-entering the account. While the bot is disabled or a button is incomplete, the menu is only saved to LangBot.
 
+![Custom menu editor: phone preview, menu structure and button settings](/images/en/deploy/bots/wxoa/custom-menu-editor.png)
+
 Up to 3 top-level buttons, each with up to 5 sub-buttons. Top-level names are limited to 16 bytes and sub-button names to 60 bytes (a Chinese character is about 3 bytes). Tap actions:
 
 | Action | Effect |
@@ -111,6 +113,10 @@ Up to 3 top-level buttons, each with up to 5 sub-buttons. Top-level names are li
 | Reply with fixed text | Replies with preset text right away, without calling the AI. |
 | Let the AI reply | Sends a preset message for the user; the current chat pipeline or Agent answers it. |
 | Trigger event (advanced) | Emits a `platform.specific` event (`officialaccount.CLICK`) whose `data.EventKey` is the button's event key. Add a binding in Event Routing filtered on `data.EventKey` to hand it to an Agent or plugin. |
+
+When you choose **Trigger event (advanced)**, the button settings show an Event Routing filter you can copy:
+
+![Event key and routing filter of a trigger-event button](/images/en/deploy/bots/wxoa/custom-menu-event.png)
 
 News, image, voice and video material buttons from the WeChat web console cannot be imported through the API. They are marked as an unsupported type after import and must be changed to another action before the menu can be synced to WeChat.
 
