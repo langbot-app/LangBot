@@ -16,11 +16,17 @@ import {
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// 服务端会把敏感字段（含其中的 file_key）脱敏为该占位符，它不是真实文件
+const REDACTED_FILE_KEY = '***';
+
 const extractFileKeys = (obj: any): string[] => {
   const keys: string[] = [];
   if (obj && typeof obj === 'object') {
-    if ('file_key' in obj && typeof obj.file_key === 'string') {
+    if (
+      'file_key' in obj &&
+      typeof obj.file_key === 'string' &&
+      obj.file_key !== REDACTED_FILE_KEY
+    ) {
       keys.push(obj.file_key);
     }
     for (const value of Object.values(obj)) {
@@ -92,16 +98,14 @@ export default function PluginForm({
 
     try {
       // 保存配置
-      const savedConfig = await httpClient.updatePluginConfig(
+      await httpClient.updatePluginConfig(
         pluginAuthor,
         pluginName,
         currentFormValues.current,
       );
-      setPluginConfig(savedConfig);
-      currentFormValues.current = savedConfig.config;
 
       // 提取最终保存的配置中的所有文件 key
-      const finalFileKeys = new Set(extractFileKeys(savedConfig.config));
+      const finalFileKeys = new Set(extractFileKeys(currentFormValues.current));
 
       // 计算需要删除的文件：
       // 1. 在编辑期间上传的，但最终未保存的文件
