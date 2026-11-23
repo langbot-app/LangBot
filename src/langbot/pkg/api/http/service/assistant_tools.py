@@ -30,7 +30,7 @@ class Arguments(BaseModel):
 
 class ListResources(Arguments):
     kind: Literal[
-        'models', 'embedding_models', 'pipelines', 'knowledge_bases', 'knowledge_engines', 'plugins', 'skills'
+        'models', 'embedding_models', 'pipelines', 'knowledge_bases', 'knowledge_engines', 'plugins', 'skills', 'bots'
     ]
 
 
@@ -334,16 +334,36 @@ async def execute_tool(ap, context, name: str, arguments: dict):
             resources = [dict(row) for row in result.mappings().all()]
             return {'total': len(resources), 'items': resources}
         readers = {
-            'models': ap.llm_model_service.get_llm_models,
-            'embedding_models': ap.embedding_models_service.get_embedding_models,
-            'pipelines': ap.pipeline_service.get_pipelines,
-            'knowledge_bases': ap.knowledge_service.get_knowledge_base_summaries,
-            'knowledge_engines': ap.knowledge_service.list_knowledge_engines,
+            'models': getattr(ap.llm_model_service, 'get_llm_models', None)
+            if hasattr(ap, 'llm_model_service')
+            else None,
+            'embedding_models': getattr(ap.embedding_models_service, 'get_embedding_models', None)
+            if hasattr(ap, 'embedding_models_service')
+            else None,
+            'pipelines': getattr(ap.pipeline_service, 'get_pipelines', None)
+            if hasattr(ap, 'pipeline_service')
+            else None,
+            'knowledge_bases': getattr(ap.knowledge_service, 'get_knowledge_base_summaries', None)
+            if hasattr(ap, 'knowledge_service')
+            else None,
+            'knowledge_engines': getattr(ap.knowledge_service, 'list_knowledge_engines', None)
+            if hasattr(ap, 'knowledge_service')
+            else None,
+            'bots': getattr(ap.bot_service, 'get_bots', None) if hasattr(ap, 'bot_service') else None,
         }
-        resources = await readers[args['kind']](context)
+        reader = readers.get(args['kind'])
+        resources = await reader(context) if reader else []
         if args['kind'] != 'knowledge_engines':
             # Lists discover resources; get_pipeline / get_knowledge_schema supply configuration details.
-            fields = ('uuid', 'name', 'description', 'abilities', 'knowledge_engine_plugin_id', 'initialized')
+            fields = (
+                'uuid',
+                'name',
+                'description',
+                'abilities',
+                'knowledge_engine_plugin_id',
+                'initialized',
+                'adapter',
+            )
             resources = [{key: item[key] for key in fields if key in item} for item in resources]
         return {'total': len(resources), 'items': redact_secrets(resources)}
     if name == 'list_operation_logs':

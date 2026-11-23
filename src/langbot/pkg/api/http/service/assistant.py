@@ -496,11 +496,16 @@ class AssistantService:
                         )
                         repeated_count = repeated_count + 1 if fingerprint == repeated_call else 1
                         repeated_call = fingerprint
-                        try:
-                            for call in calls:
-                                function = call['function']
+                        invalid_calls = {}
+                        valid_calls = []
+                        for call in calls:
+                            function = call['function']
+                            try:
                                 validate_call(context, function['name'], json.loads(function['arguments'] or '{}'))
-                        except Exception:
+                                valid_calls.append(call)
+                            except Exception:
+                                invalid_calls[call['id']] = {'error': 'Invalid or unauthorized tool arguments.'}
+                        if invalid_calls and not valid_calls:
                             for call in calls:
                                 self._append_result(
                                     conversation, call, {'error': 'Invalid or unauthorized tool arguments.'}
@@ -515,11 +520,15 @@ class AssistantService:
                             if stalled:
                                 return conversation
                             continue
-                        if any(call['function']['name'] == 'present_setup_plan' for call in calls):
+                        if invalid_calls:
+                            for call in calls:
+                                if call['id'] in invalid_calls:
+                                    self._append_result(conversation, call, invalid_calls[call['id']])
+                        if any(call['function']['name'] == 'present_setup_plan' for call in valid_calls):
                             if len(calls) == 1:
                                 await self._save(context, conversation, 'choice')
                                 return conversation
-                            for call in calls:
+                            for call in valid_calls:
                                 self._append_result(
                                     conversation, call, {'error': 'Present the setup plan in a separate tool call.'}
                                 )
@@ -538,11 +547,11 @@ class AssistantService:
                                 call['function']['name'],
                                 json.loads(call['function']['arguments'] or '{}'),
                             )
-                            for call in calls
+                            for call in valid_calls
                         ):
                             await self._save(context, conversation, 'approval')
                             return conversation
-                        await self._execute(context, conversation, calls, True, on_event)
+                        await self._execute(context, conversation, valid_calls, True, on_event)
                         if repeated_count >= 3:
                             await self._save(context, conversation, 'paused', 'no_progress')
                             return conversation
