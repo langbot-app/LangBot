@@ -12,6 +12,169 @@ const chat = {
   model_name: null,
 };
 
+test('setup choices survive refresh and submit the selected options', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, {
+    authenticated: true,
+    withAssistant: true,
+  });
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'langbot-assistant:workspace-playwright:account-playwright',
+      'assistant-test',
+    );
+  });
+  const choice = {
+    ...chat,
+    revision: 1,
+    status: 'choice',
+    model_uuid: 'llm-valid',
+    model_name: 'Assistant model',
+    messages: [{ role: 'user', content: 'Build a QQ assistant' }],
+    choice_plan: {
+      summary: 'Create a QQ assistant with knowledge answers.',
+      fields: [
+        {
+          key: 'bot',
+          label: 'Bot',
+          control: 'radio',
+          selected: 'reuse',
+          options: [
+            { id: 'reuse', label: 'Reuse qq', description: 'Keep its routes.' },
+            { id: 'new', label: 'Create new', description: 'Separate bot.' },
+          ],
+        },
+        {
+          key: 'model',
+          label: 'Model',
+          control: 'select',
+          selected: 'model-one',
+          options: [
+            { id: 'model-one', label: 'Model one', description: '' },
+            { id: 'model-two', label: 'Model two', description: '' },
+          ],
+        },
+      ],
+    },
+  };
+  let current: Record<string, unknown> = choice;
+  let submitted: Record<string, unknown> | null = null;
+  await page.route('**/api/v1/assistant/conversations', (route) =>
+    route.fulfill({ json: { code: 0, data: { conversations: [] } } }),
+  );
+  await page.route(
+    '**/api/v1/assistant/conversations/assistant-test',
+    (route) => route.fulfill({ json: { code: 0, data: current } }),
+  );
+  await page.route(
+    '**/api/v1/assistant/conversations/*/turn/stream',
+    (route) => {
+      submitted = route.request().postDataJSON();
+      current = {
+        ...choice,
+        revision: 2,
+        status: 'ready',
+        choice_plan: null,
+        messages: [
+          { role: 'user', content: 'Build a QQ assistant' },
+          { role: 'assistant', content: 'Continuing setup.' },
+        ],
+      };
+      return route.fulfill({
+        contentType: 'application/x-ndjson',
+        body: JSON.stringify({ kind: 'completed', data: current }) + '\n',
+      });
+    },
+  );
+
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.goto('/home/bots');
+  const assistant = page.getByRole('dialog', { name: 'Workspace assistant' });
+  await expect(assistant.getByText('Setup plan')).toBeVisible();
+  await page.reload();
+  const plan = assistant.getByText('Setup plan').locator('..').locator('..');
+  await expect(plan.getByRole('radio', { name: /Reuse qq/ })).toBeChecked();
+  await plan.getByRole('radio', { name: /Create new/ }).check();
+  await plan.getByRole('combobox').click();
+  await page.getByRole('option', { name: 'Model two' }).click();
+  const bounds = (await assistant.boundingBox())!;
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(375);
+  await plan.getByRole('button', { name: 'Continue setup' }).click();
+  await expect(assistant.getByText('Continuing setup.')).toBeVisible();
+  expect(submitted).toEqual({
+    revision: 1,
+    choices: { bot: 'new', model: 'model-two' },
+  });
+});
+
+test('a conversation paused after repeated checks can continue', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, {
+    authenticated: true,
+    withAssistant: true,
+  });
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'langbot-assistant:workspace-playwright:account-playwright',
+      'assistant-test',
+    );
+  });
+  const stopped = {
+    ...chat,
+    revision: 1,
+    status: 'failed',
+    error: 'no_progress',
+    model_uuid: 'llm-valid',
+    model_name: 'Assistant model',
+    messages: [{ role: 'user', content: 'Build a QQ assistant' }],
+  };
+  let current: Record<string, unknown> = stopped;
+  let submitted: Record<string, unknown> | null = null;
+  await page.route('**/api/v1/assistant/conversations', (route) =>
+    route.fulfill({ json: { code: 0, data: { conversations: [] } } }),
+  );
+  await page.route(
+    '**/api/v1/assistant/conversations/assistant-test',
+    (route) => route.fulfill({ json: { code: 0, data: current } }),
+  );
+  await page.route(
+    '**/api/v1/assistant/conversations/*/turn/stream',
+    (route) => {
+      submitted = route.request().postDataJSON();
+      current = {
+        ...stopped,
+        revision: 2,
+        status: 'ready',
+        error: null,
+        messages: [
+          { role: 'user', content: 'Build a QQ assistant' },
+          { role: 'assistant', content: 'Continuing from saved results.' },
+        ],
+      };
+      return route.fulfill({
+        contentType: 'application/x-ndjson',
+        body: JSON.stringify({ kind: 'completed', data: current }) + '\n',
+      });
+    },
+  );
+
+  await page.goto('/home/bots');
+  const assistant = page.getByRole('dialog', { name: 'Workspace assistant' });
+  await expect(
+    assistant.getByText(/paused after repeated checks/),
+  ).toBeVisible();
+  await assistant
+    .getByRole('button', { name: 'Continue', exact: true })
+    .click();
+  await expect(
+    assistant.getByText('Continuing from saved results.'),
+  ).toBeVisible();
+  expect(submitted).toEqual({ revision: 1, continue_run: true });
+});
+
 test('resizes from the top handle, keeps height on reopen, and fits small viewports', async ({
   page,
 }) => {

@@ -400,7 +400,7 @@ def _marketplace_url(ap) -> str:
 
 
 async def marketplace_search(ap, context, payload):
-    await _fence(ap, context)
+    await ap.plugin_connector.validate_workspace_context(context)
     body = payload.model_dump(exclude_none=True)
     if not body.get('tags_filter'):
         body.pop('tags_filter', None)

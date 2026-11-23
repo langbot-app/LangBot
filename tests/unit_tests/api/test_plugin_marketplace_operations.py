@@ -35,6 +35,7 @@ def app(*, marketplace=True, installed=False, space_url='https://space.example/'
     return SimpleNamespace(
         plugin_connector=SimpleNamespace(
             require_workspace_context=AsyncMock(return_value=execution),
+            validate_workspace_context=AsyncMock(return_value=execution),
             list_plugins=AsyncMock(return_value=[]),
         ),
         mcp_service=SimpleNamespace(get_mcp_servers=AsyncMock(return_value=[])),
@@ -92,9 +93,12 @@ def space(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_marketplace_search_proxies_configured_space_and_projects_results(space):
+    ap = app()
     result = await ops.marketplace_search(
-        app(), context(), ops.MarketplaceSearchInput(query='weather', component_filter='Tool')
+        ap, context(), ops.MarketplaceSearchInput(query='weather', component_filter='Tool')
     )
+    ap.plugin_connector.validate_workspace_context.assert_awaited_once()
+    ap.plugin_connector.require_workspace_context.assert_not_awaited()
     request = space.requests[0]
     assert str(request.url) == 'https://space.example/api/v1/marketplace/plugins/search'
     assert json.loads(request.content) == {

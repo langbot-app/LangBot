@@ -160,8 +160,8 @@ const zhHant = {
     providerCheckFailed: '無法檢查模型供應商，請重試。',
     retrySetup: '重試',
     preparing: '正在準備助手…',
-    thinking: '模型回應中 · 第 {{round}} 輪',
-    executing: '正在執行工具…',
+    thinking: '正在整理下一步…',
+    executing: '正在處理工作區…',
     toolRunning: '執行中',
     recommendationFailed: '推薦模型載入失敗，請手動選擇模型。',
     expand: '展開工作區助手',
@@ -195,6 +195,7 @@ const zhHant = {
       pipelines: '查詢 流水線',
       knowledge_bases: '查詢知識庫',
       knowledge_engines: '查詢知識引擎',
+      skills: '查看可用技能',
     },
     title: '工作區助手',
     subtitle: '建構和管理你的應用',
@@ -203,9 +204,17 @@ const zhHant = {
     welcome:
       '告訴我你想建構什麼應用。我可以查看目前工作區，為機器人、Agent、知識庫和 流水線 等提供設定方案，由你確認後執行。',
     discover: '目前有哪些可用的模型、知識庫和 流水線？',
-    build: '幫我建立一個知識庫問答應用。',
+    build: '幫我建立一個在群組中被 @ 時回答問題的 IM 助手。',
     toolResult: '操作結果',
     review: '請檢查具體操作及參數，確認後執行',
+    planTitle: '建置方案',
+    continuePlan: '繼續建置',
+    continueRun: '繼續',
+    retryRun: '重試',
+    roundLimit:
+      '發現重複檢查，已暫停並儲存進度。你可以繼續，或告訴我需要調整的地方。',
+    timeBudget: '這次處理時間較長，進度已儲存。可以從這裡繼續。',
+    revisePlan: '修改需求',
     dangerousWarning:
       '敏感操作提示：此操作風險較高，執行後可能無法復原，請核對參數後再確認。',
     parameters: '參數：',
@@ -213,7 +222,14 @@ const zhHant = {
     decline: '拒絕',
     working: '正在處理…',
     modelUnavailable:
-      '模型暫不可用。請檢查模型設定和存取權限，然後開啟新對話。',
+      '模型暫不可用。請檢查模型設定和存取權限，或切換模型後重試。',
+    modelAuthFailed:
+      '所選模型的 API 憑證無效或未授權。請檢查 API 金鑰或切換模型後重試。',
+    modelPermissionDenied:
+      '所選模型的存取權限不足。請檢查權限或切換模型後重試。',
+    modelQuotaExceeded:
+      '所選模型的額度不足以完成本次請求。請儲值或切換模型後重試。',
+    modelRequestFailed: '所選模型請求失敗。請檢查模型服務或切換模型後重試。',
     error:
       '本輪未完成。請先檢查資源和操作結果，再開啟新對話；系統不會自動重試變更。',
     running:

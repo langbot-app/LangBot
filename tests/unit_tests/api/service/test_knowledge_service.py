@@ -73,6 +73,31 @@ async def test_list_and_get_forward_explicit_context():
 
 
 @pytest.mark.asyncio
+async def test_summaries_are_workspace_scoped_and_do_not_call_plugin_runtime():
+    app = _app()
+    rows = Mock()
+    rows.mappings.return_value.all.return_value = [
+        {
+            'uuid': 'kb-a',
+            'name': 'FAQ',
+            'description': 'Support answers',
+            'knowledge_engine_plugin_id': 'author/engine',
+            'initialized': True,
+        }
+    ]
+    app.persistence_mgr.execute_async.return_value = rows
+
+    summaries = await KnowledgeService(app).get_knowledge_base_summaries(CONTEXT)
+
+    assert summaries == rows.mappings.return_value.all.return_value
+    statement = app.persistence_mgr.execute_async.call_args.args[0]
+    assert 'knowledge_bases.workspace_uuid' in str(statement)
+    assert CONTEXT.workspace_uuid in statement.compile().params.values()
+    app.rag_mgr.get_all_knowledge_base_details.assert_not_awaited()
+    app.plugin_connector.require_workspace_context.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_none_context_fails_closed_before_plugin_or_manager_access():
     app = _app()
     service = KnowledgeService(app)

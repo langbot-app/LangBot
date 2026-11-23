@@ -57,12 +57,24 @@ type PendingCall = {
   };
 };
 
+type SetupPlan = {
+  summary: string;
+  fields: {
+    key: 'bot' | 'model' | 'knowledge' | 'events';
+    label: string;
+    control: 'radio' | 'select';
+    selected: string;
+    options: { id: string; label: string; description: string }[];
+  }[];
+};
+
 type Conversation = {
   uuid: string;
   revision: number;
-  status: 'ready' | 'running' | 'approval' | 'failed';
+  status: 'ready' | 'running' | 'approval' | 'choice' | 'paused' | 'failed';
   messages: { role: string; content: string; tool?: AssistantTool }[];
   pending: PendingCall[];
+  choice_plan: SetupPlan | null;
   error: string | null;
   model_name: string | null;
   model_uuid: string | null;
@@ -73,6 +85,112 @@ type Conversation = {
     tool?: Omit<AssistantTool, 'result'>;
   };
 };
+
+function SetupPlanPanel({
+  plan,
+  busy,
+  onContinue,
+  onRevise,
+}: {
+  plan: SetupPlan;
+  busy: boolean;
+  onContinue: (choices: Record<string, string>) => void;
+  onRevise: () => void;
+}) {
+  const { t } = useTranslation();
+  const [selected, setSelected] = useState<Record<string, string>>(() =>
+    Object.fromEntries(plan.fields.map((field) => [field.key, field.selected])),
+  );
+
+  return (
+    <div className="space-y-3 rounded-lg border bg-background p-3 text-sm">
+      <div>
+        <p className="font-medium">{t('assistant.planTitle')}</p>
+        <p className="mt-1 break-words text-muted-foreground">{plan.summary}</p>
+      </div>
+      {plan.fields.map((field) => (
+        <div key={field.key} className="space-y-1.5 border-t pt-3">
+          <p className="font-medium">{field.label}</p>
+          {field.control === 'select' ? (
+            <Select
+              value={selected[field.key]}
+              onValueChange={(value) =>
+                setSelected((current) => ({ ...current, [field.key]: value }))
+              }
+              disabled={busy}
+            >
+              <SelectTrigger className="w-full min-w-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {field.options.map((option) => (
+                  <SelectItem key={option.id} value={option.id}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <div
+              role="radiogroup"
+              aria-label={field.label}
+              className="space-y-1"
+            >
+              {field.options.map((option) => (
+                <label
+                  key={option.id}
+                  className="flex min-w-0 cursor-pointer gap-2 py-1"
+                >
+                  <input
+                    type="radio"
+                    name={`setup-${field.key}`}
+                    value={option.id}
+                    checked={selected[field.key] === option.id}
+                    disabled={busy}
+                    onChange={() =>
+                      setSelected((current) => ({
+                        ...current,
+                        [field.key]: option.id,
+                      }))
+                    }
+                    className="mt-1 shrink-0 accent-primary"
+                  />
+                  <span className="min-w-0 break-words">
+                    <span className="block font-medium">{option.label}</span>
+                    {option.description && (
+                      <span className="block text-xs text-muted-foreground">
+                        {option.description}
+                      </span>
+                    )}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          {field.control === 'select' &&
+            field.options.find((option) => option.id === selected[field.key])
+              ?.description && (
+              <p className="text-xs text-muted-foreground">
+                {
+                  field.options.find(
+                    (option) => option.id === selected[field.key],
+                  )?.description
+                }
+              </p>
+            )}
+        </div>
+      ))}
+      <div className="flex flex-wrap gap-2 border-t pt-3">
+        <Button size="sm" disabled={busy} onClick={() => onContinue(selected)}>
+          {t('assistant.continuePlan')}
+        </Button>
+        <Button size="sm" variant="outline" disabled={busy} onClick={onRevise}>
+          {t('assistant.revisePlan')}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export default function WorkspaceAssistant() {
   const workspace = useCurrentWorkspace();
@@ -330,6 +448,16 @@ function AssistantPanel({
   const [sending, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const busy = sending || loading || conversation?.status === 'running';
+  const resumable =
+    (conversation?.error === 'round_limit' ||
+      conversation?.error === 'no_progress' ||
+      conversation?.error === 'time_budget' ||
+      conversation?.error === 'model_quota_exceeded' ||
+      conversation?.error === 'model_auth_failed' ||
+      conversation?.error === 'model_permission_denied' ||
+      conversation?.error === 'model_request_failed' ||
+      conversation?.error === 'model_unavailable') &&
+    (conversation.status === 'paused' || conversation.status === 'failed');
   const [stopping, setStopping] = useState(false);
   const [sessions, setSessions] = useState<
     { uuid: string; title: string; status: Conversation['status'] }[]
@@ -342,7 +470,6 @@ function AssistantPanel({
   const [liveText, setLiveText] = useState('');
   const [liveTool, setLiveTool] = useState<AssistantTool | null>(null);
   const [phase, setPhase] = useState<'thinking' | 'tool' | null>(null);
-  const [round, setRound] = useState(1);
   const [pendingText, setPendingText] = useState<string | null>(null);
   const controller = useRef(new AbortController());
   const messageList = useRef<HTMLDivElement>(null);
@@ -445,7 +572,6 @@ function AssistantPanel({
             setConversation(latest);
             setLiveText(latest.progress?.text ?? '');
             setPhase(latest.progress?.phase ?? null);
-            setRound(latest.progress?.round ?? 1);
             setLiveTool(
               latest.progress?.tool
                 ? { ...latest.progress.tool, result: { status: 'running' } }
@@ -506,17 +632,26 @@ function AssistantPanel({
     return () => window.cancelAnimationFrame(frame);
   }, [open, conversation, busy, pendingText, liveText, liveTool, panelHeight]);
 
-  async function submit(approved?: boolean) {
+  async function submit(
+    approved?: boolean,
+    choices?: Record<string, string>,
+    continueRun = false,
+  ) {
+    const sendingText =
+      approved === undefined && choices === undefined && !continueRun;
     if (
       !canUseModels ||
       busy ||
-      (approved === undefined &&
+      (continueRun && !resumable) ||
+      (sendingText &&
         (!text.trim() ||
           !modelUuid ||
-          (conversation && conversation.status !== 'ready')))
+          (conversation &&
+            !['ready', 'choice'].includes(conversation.status) &&
+            !resumable)))
     )
       return;
-    const sentText = approved === undefined ? text.trim() : null;
+    const sentText = sendingText ? text.trim() : null;
     const sentRevision = conversation?.revision ?? 0;
     if (sentText) {
       setPendingText(sentText);
@@ -524,7 +659,6 @@ function AssistantPanel({
     }
     setBusy(true);
     setError(false);
-    setRound(1);
     setPhase('thinking');
     try {
       let current = conversation;
@@ -541,9 +675,18 @@ function AssistantPanel({
         current.uuid,
         {
           revision: current.revision,
-          ...(approved === undefined
+          ...(sendingText
             ? { text: sentText!, model_uuid: modelUuid }
-            : { approved }),
+            : continueRun
+              ? {
+                  continue_run: true,
+                  ...(modelUuid && modelUuid !== conversation?.model_uuid
+                    ? { model_uuid: modelUuid }
+                    : {}),
+                }
+              : choices !== undefined
+                ? { choices }
+                : { approved }),
         },
         (event) => {
           if (event.kind === 'snapshot') {
@@ -565,7 +708,6 @@ function AssistantPanel({
               tool?: Omit<AssistantTool, 'result'>;
             };
             setPhase(state.phase);
-            if (state.round) setRound(state.round);
             setLiveTool(
               state.tool
                 ? { ...state.tool, result: { status: 'running' } }
@@ -1160,6 +1302,55 @@ function AssistantPanel({
                   </div>
                 </div>
               )}
+              {conversation?.status === 'choice' &&
+                conversation.choice_plan && (
+                  <SetupPlanPanel
+                    key={`${conversation.uuid}:${conversation.revision}`}
+                    plan={conversation.choice_plan}
+                    busy={busy}
+                    onContinue={(choices) => void submit(undefined, choices)}
+                    onRevise={() => input.current?.focus()}
+                  />
+                )}
+              {resumable && (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    {t(
+                      conversation.error === 'time_budget'
+                        ? 'assistant.timeBudget'
+                        : conversation.error === 'model_quota_exceeded'
+                          ? 'assistant.modelQuotaExceeded'
+                          : conversation.error === 'model_auth_failed'
+                            ? 'assistant.modelAuthFailed'
+                            : conversation.error === 'model_permission_denied'
+                              ? 'assistant.modelPermissionDenied'
+                              : conversation.error === 'model_request_failed'
+                                ? 'assistant.modelRequestFailed'
+                                : conversation.error === 'model_unavailable'
+                                  ? 'assistant.modelUnavailable'
+                                  : 'assistant.roundLimit',
+                    )}
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void submit(undefined, undefined, true)}
+                  >
+                    {t(
+                      [
+                        'model_quota_exceeded',
+                        'model_auth_failed',
+                        'model_permission_denied',
+                        'model_request_failed',
+                        'model_unavailable',
+                      ].includes(conversation.error ?? '')
+                        ? 'assistant.retryRun'
+                        : 'assistant.continueRun',
+                    )}
+                  </Button>
+                </div>
+              )}
               {busy && (
                 <p className="flex items-center gap-2 text-sm text-muted-foreground">
                   <LoaderCircle className="size-4 animate-spin" />
@@ -1169,7 +1360,6 @@ function AssistantPanel({
                         phase === 'tool'
                           ? 'assistant.executing'
                           : 'assistant.thinking',
-                        { round },
                       )}
                 </p>
               )}
@@ -1178,13 +1368,21 @@ function AssistantPanel({
                   {t('assistant.recommendationFailed')}
                 </p>
               )}
-              {(error || conversation?.status === 'failed') && (
+              {(error || (conversation?.status === 'failed' && !resumable)) && (
                 <p role="alert" className="text-sm text-destructive">
                   {conversation?.error === 'stopped'
                     ? t('assistant.stopped')
-                    : conversation?.error === 'model_unavailable'
-                      ? t('assistant.modelUnavailable')
-                      : t('assistant.error')}
+                    : conversation?.error === 'model_quota_exceeded'
+                      ? t('assistant.modelQuotaExceeded')
+                      : conversation?.error === 'model_auth_failed'
+                        ? t('assistant.modelAuthFailed')
+                        : conversation?.error === 'model_permission_denied'
+                          ? t('assistant.modelPermissionDenied')
+                          : conversation?.error === 'model_request_failed'
+                            ? t('assistant.modelRequestFailed')
+                            : conversation?.error === 'model_unavailable'
+                              ? t('assistant.modelUnavailable')
+                              : t('assistant.error')}
                 </p>
               )}
               {!busy && conversation?.status === 'running' && (
@@ -1259,7 +1457,9 @@ function AssistantPanel({
                           ref: () => {},
                           disabled:
                             sending ||
-                            (!!conversation && conversation.status !== 'ready'),
+                            (!!conversation &&
+                              conversation.status !== 'ready' &&
+                              !resumable),
                         }}
                         requiredModelAbility="func_call"
                         compactModelSelector
@@ -1289,7 +1489,9 @@ function AssistantPanel({
                         busy ||
                         !text.trim() ||
                         !modelUuid ||
-                        (!!conversation && conversation.status !== 'ready')
+                        (!!conversation &&
+                          !['ready', 'choice'].includes(conversation.status) &&
+                          !resumable)
                       }
                     >
                       <Send className="size-4" />

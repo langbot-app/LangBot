@@ -94,7 +94,7 @@ _GITHUB_ASSET_HOSTS = frozenset(
     }
 )
 _HTTP_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
-_DEFAULT_CONNECT_TIMEOUT_SECONDS = 180.0
+_DEFAULT_CONNECT_TIMEOUT_SECONDS = 360.0
 _HEARTBEAT_INTERVAL_SEC = 20.0
 _HEARTBEAT_FAILURE_THRESHOLD = 3
 _RECONNECT_MAX_DELAY_SEC = 60.0
@@ -1314,6 +1314,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         """Validate and select one Workspace for this asyncio request task."""
         execution_context, _settings = await self._prepare_workspace_context(context)
         return execution_context
+
+    async def validate_workspace_context(self, context: TenantContext) -> ExecutionContext:
+        """Validate Workspace placement without requiring a connected Plugin Runtime."""
+        return await self._validate_execution_context(context)
 
     def _inspect_plugin_package(
         self,

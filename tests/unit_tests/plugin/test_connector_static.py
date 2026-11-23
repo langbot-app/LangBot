@@ -63,9 +63,9 @@ def test_runtime_id_is_stable_across_core_restarts(monkeypatch):
     assert connector.PluginRuntimeConnector._build_runtime_id() == 'instance-a:plugin-runtime'
 
 
-def test_runtime_connect_timeout_defaults_to_three_minutes():
+def test_runtime_connect_timeout_allows_reconciliation():
     connector = get_connector_module()
-    assert connector.PluginRuntimeConnector._runtime_connect_timeout({}) == 180.0
+    assert connector.PluginRuntimeConnector._runtime_connect_timeout({}) == 360.0
 
 
 def test_runtime_connect_timeout_reads_typed_plugin_config():

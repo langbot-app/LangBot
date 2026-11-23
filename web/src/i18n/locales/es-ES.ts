@@ -168,8 +168,8 @@ const esES = {
       'No se pudieron comprobar los proveedores. Inténtalo de nuevo.',
     retrySetup: 'Reintentar',
     preparing: 'Preparando asistente…',
-    thinking: 'Modelo respondiendo · Ronda {{round}}',
-    executing: 'Ejecutando herramienta…',
+    thinking: 'Preparando el siguiente paso…',
+    executing: 'Actualizando el espacio de trabajo…',
     toolRunning: 'En ejecución',
     recommendationFailed:
       'No se pudo cargar el modelo recomendado. Selecciona un modelo.',
@@ -206,6 +206,7 @@ const esES = {
       pipelines: 'Buscar Pipelines',
       knowledge_bases: 'Buscar bases de conocimiento',
       knowledge_engines: 'Buscar motores de conocimiento',
+      skills: 'Consultar habilidades disponibles',
     },
     title: 'Asistente del espacio de trabajo',
     subtitle: 'Crea y gestiona tus aplicaciones',
@@ -216,9 +217,18 @@ const esES = {
     discover:
       '¿Qué modelos, bases de conocimiento y Pipelines hay disponibles?',
     build:
-      'Ayúdame a crear una aplicación de preguntas y respuestas con base de conocimiento.',
+      'Crea un asistente de mensajería que responda cuando lo mencionen en un grupo.',
     toolResult: 'Resultado de la operación',
     review: 'Revisa las operaciones exactas antes de ejecutarlas',
+    planTitle: 'Plan de configuración',
+    continuePlan: 'Continuar configuración',
+    continueRun: 'Continuar',
+    retryRun: 'Reintentar',
+    roundLimit:
+      'Pausé tras detectar comprobaciones repetidas y guardé el progreso. Puedes continuar o indicar qué cambiar.',
+    timeBudget:
+      'Esto está tardando más de lo esperado. Se guardó el progreso; continúa desde aquí.',
+    revisePlan: 'Modificar requisitos',
     dangerousWarning:
       'Operación sensible: esta operación es de alto riesgo y puede ser irreversible. Revisa los argumentos con cuidado antes de confirmar.',
     parameters: 'Parámetros:',
@@ -226,7 +236,15 @@ const esES = {
     decline: 'Rechazar',
     working: 'Procesando…',
     modelUnavailable:
-      'Modelo no disponible. Revisa su configuración y acceso, y luego inicia una nueva conversación.',
+      'Modelo no disponible. Revisa su configuración y acceso, o cambia de modelo e inténtalo de nuevo.',
+    modelAuthFailed:
+      'Las credenciales de API del modelo seleccionado no son válidas o no están autorizadas. Comprueba la clave de API o cambia de modelo e inténtalo de nuevo.',
+    modelPermissionDenied:
+      'Se ha denegado el acceso al modelo seleccionado. Comprueba los permisos o cambia de modelo e inténtalo de nuevo.',
+    modelQuotaExceeded:
+      'El modelo seleccionado no tiene cuota suficiente. Añade saldo o cambia de modelo e inténtalo de nuevo.',
+    modelRequestFailed:
+      'Falló la solicitud al modelo seleccionado. Revisa el servicio o cambia de modelo e inténtalo de nuevo.',
     error:
       'Este turno no se completó. Revisa los resultados de los recursos antes de iniciar una nueva conversación; los cambios no se reintentan automáticamente.',
     running:

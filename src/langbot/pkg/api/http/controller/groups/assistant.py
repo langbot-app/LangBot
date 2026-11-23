@@ -23,6 +23,8 @@ class TurnInput(BaseModel):
     revision: int = Field(ge=0, strict=True)
     text: str | None = Field(default=None, min_length=1, max_length=8000)
     approved: bool | None = Field(default=None, strict=True)
+    choices: dict[str, str] | None = Field(default=None, max_length=4)
+    continue_run: bool | None = Field(default=None, strict=True)
     model_uuid: UUID | None = None
 
 
@@ -70,8 +72,14 @@ class AssistantRouterGroup(group.RouterGroup):
         async def turn(conversation_id: str, request_context: RequestContext):
             try:
                 body = TurnInput.model_validate(await quart.request.get_json())
-                if (body.text is None) == (body.approved is None) or (body.text is not None and not body.text.strip()):
-                    return self.http_status(400, 'invalid_input', 'Provide text or an approval decision')
+                if (
+                    sum(value is not None for value in (body.text, body.approved, body.choices, body.continue_run)) != 1
+                    or (body.text is not None and not body.text.strip())
+                    or body.continue_run is False
+                ):
+                    return self.http_status(
+                        400, 'invalid_input', 'Provide text, approval, setup choices or continuation'
+                    )
                 conversation = await service.turn(
                     request_context,
                     conversation_id,
@@ -79,6 +87,8 @@ class AssistantRouterGroup(group.RouterGroup):
                     body.text,
                     body.approved,
                     str(body.model_uuid) if body.model_uuid else None,
+                    choices=body.choices,
+                    continue_run=body.continue_run is True,
                 )
                 return self.success(data=service.public_view(conversation))
             except ValidationError:
@@ -92,8 +102,14 @@ class AssistantRouterGroup(group.RouterGroup):
         async def stream_turn(conversation_id: str, request_context: RequestContext):
             try:
                 body = TurnInput.model_validate(await quart.request.get_json())
-                if (body.text is None) == (body.approved is None) or (body.text is not None and not body.text.strip()):
-                    return self.http_status(400, 'invalid_input', 'Provide text or an approval decision')
+                if (
+                    sum(value is not None for value in (body.text, body.approved, body.choices, body.continue_run)) != 1
+                    or (body.text is not None and not body.text.strip())
+                    or body.continue_run is False
+                ):
+                    return self.http_status(
+                        400, 'invalid_input', 'Provide text, approval, setup choices or continuation'
+                    )
                 await service.get(request_context, conversation_id)
             except ValidationError:
                 return self.http_status(400, 'invalid_input', 'Invalid assistant request')

@@ -14,6 +14,14 @@ LangBot is an **open-source, production-grade**, LLM-native instant messaging bo
 - **Workflow integration**: plug your existing Dify / n8n / Coze workflows straight into chat platforms — no need to rewrite business logic.
 - **Multi-platform reach**: one bot covers every platform, managed centrally from a unified panel.
 
+## Build an IM Bot with the Workspace Assistant
+
+In your Workspace, describe the result to the assistant in the bottom right corner. For example: “Build a knowledge-base assistant for my Lark group that replies only when mentioned.” The assistant checks existing models, adapters, Agents/Pipelines and plugins. When a knowledge engine, LocalAgent or another required capability is missing, it searches the Marketplace, proposes installation and continues configuration afterward. It asks you to choose the bot's model, then creates the required resources and connects the message route. The model used for the management conversation is a separate choice.
+
+Review the exact arguments before confirming each plugin installation, permission change or resource creation. Installation may continue in the background; resume the same conversation when it finishes. Complete platform QR scanning, OAuth authorization and secret entry in the bot configuration page linked by the assistant. Do not send credentials in chat. Finally, send a real message on the IM platform to verify the connection and reply; configuration checks alone do not establish that the bot works end to end.
+
+The assistant keeps the full conversation and operation history while condensing older context for the model. A fixed 16-step limit no longer interrupts the task. If it repeats the same check several times, it pauses with progress saved so you can continue in the same conversation. It can read installed Workspace skills when relevant; repository operation skills can be previewed and installed after your confirmation.
+
 ## Start Here
 
 Follow this path to get familiar with LangBot, then explore the guides relevant to your needs.

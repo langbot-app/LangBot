@@ -35,6 +35,19 @@ class KnowledgeService:
         knowledge_bases = await self.ap.rag_mgr.get_all_knowledge_base_details(context)
         return knowledge_bases if include_secret else [redact_secrets(base) for base in knowledge_bases]
 
+    async def get_knowledge_base_summaries(self, context: TenantContext) -> list[dict]:
+        """List stored knowledge bases without requiring Knowledge Engine runtime enrichment."""
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(
+                persistence_rag.KnowledgeBase.uuid,
+                persistence_rag.KnowledgeBase.name,
+                persistence_rag.KnowledgeBase.description,
+                persistence_rag.KnowledgeBase.knowledge_engine_plugin_id,
+                persistence_rag.KnowledgeBase.initialized,
+            ).where(persistence_rag.KnowledgeBase.workspace_uuid == require_workspace_uuid(context))
+        )
+        return [dict(row) for row in result.mappings().all()]
+
     async def get_knowledge_base(
         self,
         context: TenantContext,

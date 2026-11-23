@@ -38,8 +38,6 @@ def operations_by_id(all_application_operations: list[Operation]) -> dict[str, O
 def in_scope_operation_ids(operations_by_id: dict[str, Operation]) -> set[str]:
     in_scope = set()
     for op_id in operations_by_id:
-        if op_id in {'plugin.permissions.get', 'plugin.permissions.update'}:
-            continue
         if op_id.startswith('monitoring.export.'):
             continue
         if (
@@ -66,8 +64,8 @@ def in_scope_operation_ids(operations_by_id: dict[str, Operation]) -> set[str]:
 
 
 def test_in_scope_operations_coverage(in_scope_operation_ids: set[str], operations_by_id: dict[str, Operation]):
-    assert len(in_scope_operation_ids) == 165
-    assert len(OPERATION_DOCS) == 165
+    assert len(in_scope_operation_ids) == 167
+    assert len(OPERATION_DOCS) == 167
 
     # Check all in-scope operations are documented
     missing = in_scope_operation_ids - set(OPERATION_DOCS.keys())
@@ -86,7 +84,7 @@ def test_out_of_scope_operations_are_none(
     in_scope_operation_ids: set[str], all_application_operations: list[Operation]
 ):
     out_of_scope_ops = [op for op in all_application_operations if op.operation_id not in in_scope_operation_ids]
-    assert len(out_of_scope_ops) == 72
+    assert len(out_of_scope_ops) == 70
 
     for op in out_of_scope_ops:
         doc = get_operation_doc(op.operation_id, side_effect=op.side_effect)
@@ -225,10 +223,12 @@ def test_parameter_descriptions_in_service_contracts(operations_by_id: dict[str,
     assert 'bot.list' in preview_schema['properties']['bot_uuid']['description']
 
 
-def test_permission_management_operations_are_not_exposed(operations_by_id: dict[str, Operation]):
-    for operation_id in ('plugin.permissions.get', 'plugin.permissions.update'):
-        operation = operations_by_id[operation_id]
-        assert get_operation_doc(operation_id, side_effect=operation.side_effect).exposure == 'none'
+def test_plugin_permission_management_is_assistant_only(operations_by_id: dict[str, Operation]):
+    assert get_operation_doc('plugin.permissions.get').exposure == 'assistant'
+    update = operations_by_id['plugin.permissions.update']
+    doc = get_operation_doc(update.operation_id, side_effect=update.side_effect)
+    assert doc.exposure == 'assistant'
+    assert doc.risk == 'dangerous'
 
 
 def test_referenced_operation_ids_exist(

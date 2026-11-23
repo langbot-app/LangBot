@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import importlib.metadata
 import json
@@ -9,6 +10,7 @@ import os
 import pathlib
 import shutil
 import sys
+import tempfile
 from dataclasses import dataclass
 from typing import Any, Callable, Coroutine, Literal, Sequence
 
@@ -383,14 +385,21 @@ class PluginWorkerLauncher:
             requirements,
         )
         tmp_path = self._absolute_runtime_path(staging.tmp_path)
-        process = await asyncio.create_subprocess_exec(
-            *args,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-            env=self._direct_dependency_installer_environment(tmp_path),
-            cwd=str(tmp_path),
+        # pip adds its own nested target directories; staging paths can exceed MAX_PATH on Windows.
+        install_tmp = (
+            tempfile.TemporaryDirectory(prefix='lbp-pip-')
+            if self.platform == 'win32'
+            else contextlib.nullcontext(str(tmp_path))
         )
-        await self._wait_for_dependency_installer(process)
+        with install_tmp as pip_tmp:
+            process = await asyncio.create_subprocess_exec(
+                *args,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+                env=self._direct_dependency_installer_environment(pathlib.Path(pip_tmp)),
+                cwd=pip_tmp,
+            )
+            await self._wait_for_dependency_installer(process)
 
     @staticmethod
     async def _wait_for_dependency_installer(
@@ -441,6 +450,20 @@ class PluginWorkerLauncher:
             staging,
             requirements,
         )
+        uv_executable = shutil.which('uv') if self.platform == 'win32' else None
+        if uv_executable:
+            return [
+                uv_executable,
+                'pip',
+                'install',
+                '--python',
+                str(self.python_executable),
+                '--target',
+                str(site_packages_path),
+                *pkgmgr_helper.get_pip_index_args(),
+                '-r',
+                str(requirements_path),
+            ]
         return [
             str(self.python_executable),
             "-m",

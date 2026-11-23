@@ -613,9 +613,11 @@ async def test_prepare_dependency_environment_selects_profile_installer(
     assert captured["runtime_fingerprint"] != shared_fingerprint
 
 
+@pytest.mark.parametrize('uv_available', [False, True])
 async def test_oss_dependency_installer_targets_environment_without_control_secrets(
     tmp_path,
     monkeypatch,
+    uv_available,
 ):
     staging_root = tmp_path / "staging"
     staging = DependencyEnvironmentStaging(
@@ -634,6 +636,11 @@ async def test_oss_dependency_installer_targets_environment_without_control_secr
     launcher.configure(_policy(require_hard_limits=False), "oss_dev")
     monkeypatch.setenv("LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN", "control-secret")
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.invalid")
+    monkeypatch.setattr(
+        worker_launcher_module.shutil,
+        'which',
+        lambda name: '/usr/bin/uv' if name == 'uv' and uv_available else None,
+    )
 
     class FakeProcess:
         returncode = 0
@@ -665,7 +672,11 @@ async def test_oss_dependency_installer_targets_environment_without_control_secr
     args = captured["args"]
     kwargs = captured["kwargs"]
     assert process.waited is True
-    assert args[0] == sys.executable
+    if uv_available:
+        assert args[:3] == ('/usr/bin/uv', 'pip', 'install')
+        assert args[args.index('--python') + 1] == sys.executable
+    else:
+        assert args[0] == sys.executable
     assert args[args.index("--target") + 1] == str(
         staging.site_packages_path.absolute()
     )
@@ -676,10 +687,13 @@ async def test_oss_dependency_installer_targets_environment_without_control_secr
     assert (staging.tmp_path / "requirements.txt").read_text(encoding="utf-8") == (
         "private-package==1.0.0\n"
     )
-    assert kwargs["cwd"] == str(staging.tmp_path.absolute())
+    assert kwargs["cwd"] != str(staging.tmp_path.absolute())
+    assert pathlib.Path(kwargs["cwd"]).name.startswith("lbp-pip-")
+    assert not pathlib.Path(kwargs["cwd"]).exists()
     assert kwargs["env"]["HTTPS_PROXY"] == "http://proxy.invalid"
     assert "LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN" not in kwargs["env"]
-    assert kwargs["env"]["HOME"] == str(staging.tmp_path.absolute())
+    assert kwargs["env"]["HOME"] == kwargs["cwd"]
+    assert kwargs["env"]["TEMP"] == kwargs["cwd"]
 
 
 @pytest.mark.parametrize("returncode", [0, 7])
