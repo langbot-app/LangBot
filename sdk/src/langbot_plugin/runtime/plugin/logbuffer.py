@@ -77,7 +77,7 @@ class PluginLogBuffer:
                 "text": text,
             }
         )
-        if self.plugin and _level_no(level) >= logging.WARNING:
+        if self.plugin and match and _level_no(level) >= logging.WARNING:
             now = time.monotonic()
             extra = {
                 "log_module": "PLUGIN." + self.plugin,
@@ -89,13 +89,13 @@ class PluginLogBuffer:
                     logger.warning("suppressed %d lines", self._suppressed, extra=extra)
                 self._window, self._forwarded, self._suppressed = now, 0, 0
             if self._forwarded < 50:
-                if match and match.group("trace"):
+                if match.group("trace"):
                     extra["log_trace_id"] = match.group("trace")
                     extra["log_workspace_id"] = match.group("workspace")
                 logger.log(
                     _level_no(level),
                     "%s",
-                    text[match.end() :] if match else text,
+                    text[match.end() :],
                     extra=extra,
                 )
                 self._forwarded += 1

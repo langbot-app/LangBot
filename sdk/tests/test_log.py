@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import logging
 import re
+import pytest
 
 from langbot_plugin.utils.log import (
     ServiceFormatter,
@@ -32,9 +33,30 @@ def test_configure_process_logging_uses_unified_formatter():
     output = stream.getvalue().strip()
     assert re.match(
         r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}[+-]\d{2}:\d{2}\] INFO  "
-        r"\[RUNTIME.TESTS\] \S+ \(test_log.py:\d+\) \[\d+\]\[MainThread/-\]\[ws=-\]\[-\] hello logging$",
+        r"\[RUNTIME.MAIN\] \S+ \(test_log.py:\d+\) \[\d+\]\[MainThread/-\]\[ws=-\]\[-\] hello logging$",
         output,
     )
+
+
+@pytest.mark.parametrize(
+    ("service", "logger", "path", "subsystem"),
+    [
+        ("CORE", "langbot", "/src/langbot/pkg/pipeline/mgr.py", "PIPELINE"),
+        ("CORE", "root", r"C:\src\langbot\pkg\platform\adapter.py", "PLATFORM"),
+        (
+            "RUNTIME",
+            "langbot_plugin.runtime.io",
+            "/sdk/langbot_plugin/runtime/plugin/mgr.py",
+            "PLUGIN",
+        ),
+        ("BOX", "langbot.box.server", "/sdk/langbot_plugin/box/backend.py", "BACKEND"),
+        ("CORE", "httpx", "/venv/httpx/api.py", "HTTPX"),
+        ("CORE", "langbot", "/other/main.py", "MAIN"),
+    ],
+)
+def test_subsystem(service, logger, path, subsystem):
+    record = logging.LogRecord(logger, logging.INFO, path, 1, "hello", (), None)
+    assert f"[{service}.{subsystem}]" in ServiceFormatter(service).format(record)
 
 
 def test_file_exception_is_plain_and_has_tabbed_stack():

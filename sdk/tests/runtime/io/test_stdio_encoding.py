@@ -7,6 +7,7 @@ import sys
 import pytest
 
 from langbot_plugin.runtime.io.connections.stdio import StdioConnection
+from langbot_plugin.entities.io.errors import ConnectionClosedError
 from langbot_plugin.runtime.plugin.worker_launcher import (
     PluginWorkerLauncher,
     PluginWorkerProcessController,
@@ -37,6 +38,17 @@ async def test_stdio_discards_noise_and_keeps_next_message(noise, chunked, caplo
     reader.feed_eof()
     assert await StdioConnection(reader, None).receive() == message
     assert "Skipping" in caplog.text
+
+
+@pytest.mark.parametrize(("stopping", "level"), [(True, "INFO"), (False, "ERROR")])
+async def test_stdio_eof_during_shutdown(caplog, stopping, level):
+    reader = asyncio.StreamReader()
+    reader.feed_eof()
+    conn = StdioConnection(reader, None)
+    conn.expecting_eof = stopping
+    with caplog.at_level("INFO"), pytest.raises(ConnectionClosedError):
+        await conn.receive()
+    assert caplog.records[-1].levelname == level
 
 
 def test_windows_worker_environment_prints_unicode(monkeypatch):

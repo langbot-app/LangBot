@@ -35,6 +35,23 @@ def test_level_filter():
     assert [e["level"] for e in warn_and_up] == ["WARNING", "ERROR"]
 
 
+def test_traceback_only_forwards_header(caplog):
+    buf = PluginLogBuffer(plugin="tester/demo")
+    lines = [
+        "[06-13 10:30:00.123] a.py (1) - [ERROR] : request failed",
+        "\tTraceback (most recent call last):",
+        *['\t  File "a.py", line 1'] * 55,
+        "\tValueError: bad input",
+    ]
+    for line in lines:
+        buf.add_line(line)
+    buf.add_line("[06-13 10:30:00.124] b.py (2) - [WARNING] : next warning")
+    entries = buf.get_logs()
+    assert [row["text"] for row in entries[:-1]] == lines
+    assert all(row["level"] == "ERROR" for row in entries[:-1])
+    assert caplog.messages == ["request failed", "next warning"]
+
+
 def test_ring_buffer_cap():
     buf = PluginLogBuffer(max_lines=5)
     for i in range(20):

@@ -291,6 +291,12 @@ class RuntimeApplication:
             return
         self._closing = True
 
+        from langbot_plugin.runtime.io.connections.stdio import StdioConnection
+
+        for handler in getattr(self.context.plugin_mgr, "plugin_handlers", ()):
+            if isinstance(handler.conn, StdioConnection):
+                handler.conn.expecting_eof = True
+
         async with self._control_handler_lock:
             control_handler = getattr(self.context, "control_handler", None)
             if control_handler is not None:

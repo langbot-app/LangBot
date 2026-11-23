@@ -1444,6 +1444,10 @@ class PluginConnectionHandler(handler.Handler):
         For debug plugins, this will trigger reconnection.
         For production plugins, this is just a notification before shutdown.
         """
+        from langbot_plugin.runtime.io.connections.stdio import StdioConnection
+
+        if isinstance(self.conn, StdioConnection):
+            self.conn.expecting_eof = True
         resp = await self.call_action(
             RuntimeToPluginAction.SHUTDOWN,
             {},

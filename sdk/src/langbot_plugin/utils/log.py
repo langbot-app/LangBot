@@ -65,16 +65,31 @@ class ServiceFormatter(logging.Formatter):
             stream is not None and stream.isatty() and "NO_COLOR" not in os.environ
         )
 
-    def format(self, record):
-        name = record.name.removeprefix("langbot.pkg.").removeprefix("langbot_plugin.")
-        subsystem = (
-            name.split(".")[0].upper()
-            if name not in ("root", "langbot", "langbot_plugin")
-            else "MAIN"
-        )
+    def subsystem(self, record):
         if record.name.startswith("hypercorn."):
-            subsystem = "HTTP"
-        module = getattr(record, "log_module", None) or f"{self.service}.{subsystem}"
+            return "HTTP"
+        if record.name in (
+            "root",
+            "langbot",
+            "langbot.box",
+            "langbot_plugin",
+        ) or record.name.startswith(("langbot.box.", "langbot_plugin.")):
+            path = "/" + record.pathname.replace("\\", "/")
+            for marker in ("/langbot/pkg/", "/langbot_plugin/"):
+                _, found, relative = path.rpartition(marker)
+                if found:
+                    parts = relative.split("/")
+                    if len(parts) > 1 and parts[0].upper() == self.service:
+                        parts = parts[1:]
+                    return parts[0].removesuffix(".py").upper() or "MAIN"
+            return "MAIN"
+        return record.name.removeprefix("langbot.pkg.").split(".")[0].upper()
+
+    def format(self, record):
+        module = (
+            getattr(record, "log_module", None)
+            or f"{self.service}.{self.subsystem(record)}"
+        )
         level = {"WARNING": "WARN", "CRITICAL": "FATAL"}.get(
             record.levelname, record.levelname
         )
