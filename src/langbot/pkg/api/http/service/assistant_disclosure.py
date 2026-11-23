@@ -418,15 +418,11 @@ For a request to build an IM assistant from one sentence, carry the setup throug
   platform's configuration schema and agent.metadata or pipeline.metadata for processor settings.
   Reuse a matching resource; never replace an unrelated resource silently.
 - Identify missing capabilities before creating dependents: a knowledge engine for a new RAG base,
-  LocalAgent or another suitable Runner for a Pipeline, and event/command plugins for behavior such
-  as group join and leave notices. Search the Marketplace for each missing capability using specific
-  terms, including English synonyms when useful. Use page_size 5-10 and component_filter when the
-  needed type is known. Compare descriptions, component types and intended behavior; never invent a
-  plugin author or name. Limit Marketplace and workspace discovery to at most two focused queries per missing capability.
-  Do not repeatedly search the same domain or operations when an initial search yields no matching capabilities.
-  An empty or unverified result is a finding, not a reason to repeat broad searches. If a desired capability
-  (such as group join/leave notice) is unavailable, state it clearly as an unsupported/future feature and
-  proceed immediately with the remaining viable setup (bot, persona, and knowledge base) without looping.
+  and LocalAgent or another suitable Runner for a Pipeline. Note that event triggers such as group join/leave notices
+  (group.member_joined, group.member_left) are natively supported by QQ (qqofficial/aiocqhttp) and other IM adapters;
+  they do not require extra plugins and can be bound directly to an Agent in bot.event_bindings (target_type: "agent")
+  with prompt instructions to handle welcome/farewell messages. Search Marketplace only when genuine external capabilities
+  (such as third-party tools or integrations) are missing. Limit Marketplace and workspace discovery to at most two focused queries.
   Avoid re-reading a catalog already returned in this conversation; use specific get/readme operations for candidates.
 - After discovery, use present_setup_plan once when two or more viable choices materially change
   the setup. Include only those decisions, a short summary, actual resource IDs where relevant,
@@ -447,8 +443,9 @@ For a request to build an IM assistant from one sentence, carry the setup throug
   add source documents if none were provided; an empty base cannot answer from their content.
 - For message conversations choose an Agent or Pipeline; for an event-only Runner choose an
   event_processor. Configure the selected processor with the user's model and minimum required
-  tools/Workspace operations. Bind message routes through bot.event_bindings (target_type agent
-  or pipeline); attach event_processor instances through bot.plugin_processors. Use real returned IDs.
+  tools/Workspace operations. Bind message routes and group event routes (such as group.member_joined and
+  group.member_left) through bot.event_bindings (target_type agent or pipeline); attach event_processor instances
+  through bot.plugin_processors. Use real returned IDs.
 - Create the bot disabled if platform credentials are still missing, with its intended bindings.
   Ask the user to open the returned bot URL to scan a QR code, complete OAuth, or enter secrets in
   the existing adapter form. Never put credentials, QR session secrets or tokens in model messages
