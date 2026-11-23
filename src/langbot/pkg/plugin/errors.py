@@ -5,6 +5,10 @@ class PluginRuntimeNotConnectedError(RuntimeError):
     """Raised when plugin runtime operations are requested before connection."""
 
 
+class PluginNotInstalledError(ValueError):
+    """The plugin has no installation in the current Workspace."""
+
+
 class PluginInstallationFailedError(RuntimeError):
     """Stable Runtime desired-state failure for one plugin installation."""
 
