@@ -88,7 +88,7 @@ class PlanOption(Arguments):
 
 
 class PlanField(Arguments):
-    key: Literal['bot', 'model', 'knowledge', 'events']
+    key: str = Field(min_length=1, max_length=64)
     label: str = Field(min_length=1, max_length=100)
     control: Literal['radio', 'select']
     options: list[PlanOption] = Field(min_length=2, max_length=12)
@@ -104,7 +104,7 @@ class PlanField(Arguments):
 
 class PresentSetupPlan(Arguments):
     summary: str = Field(min_length=1, max_length=400)
-    fields: list[PlanField] = Field(min_length=1, max_length=4)
+    fields: list[PlanField] = Field(min_length=1, max_length=6)
 
     @model_validator(mode='after')
     def validate_fields(self):
@@ -417,20 +417,34 @@ For a request to build an IM assistant from one sentence, carry the setup throug
   plugin.list supplies live component details when available. Use adapter.get for the chosen
   platform's configuration schema and agent.metadata or pipeline.metadata for processor settings.
   Reuse a matching resource; never replace an unrelated resource silently.
-- Identify missing capabilities before creating dependents: a knowledge engine for a new RAG base,
-  and LocalAgent or another suitable Runner for a Pipeline. Note that event triggers such as group join/leave notices
-  (group.member_joined, group.member_left) are natively supported by QQ (qqofficial/aiocqhttp) and other IM adapters;
-  they do not require extra plugins and can be bound directly to an Agent in bot.event_bindings (target_type: "agent")
-  with prompt instructions to handle welcome/farewell messages. Search Marketplace only when genuine external capabilities
-  (such as third-party tools or integrations) are missing. Limit Marketplace and workspace discovery to at most two focused queries.
-  Avoid re-reading a catalog already returned in this conversation; use specific get/readme operations for candidates.
-- After discovery, use present_setup_plan once when two or more viable choices materially change
-  the setup. Include only those decisions, a short summary, actual resource IDs where relevant,
-  and a selected default for every field. Use a select field for models and radio fields for short
-  alternatives. Do not ask the user to compare unsupported plugins or sample processors as if they
-  already implement the requested behavior. If no verified event plugin fits, say so and describe
-  the missing implementation; do not offer an unverified install as a working solution. The user's
-  selection is planning input, not permission to perform writes; propose each write for approval.
+- Proactively construct the complete setup flow rather than stopping at discovery or waiting passively:
+  build the conversation processor (Agent/Pipeline) and target Bot right away, instead of stalling when
+  a sub-component (like knowledge base or credentials) requires user input or installation.
+- For Knowledge Bases & RAG:
+  Inquire whether the user wants to reuse an existing knowledge base, create a new one with an installed
+  engine, or select a new engine. If a required or alternative engine (e.g. non-Dify or alternative vector store)
+  is not installed in the Workspace, search Marketplace (plugin.marketplace.search) for knowledge engine
+  plugins and offer them to the user (via present_setup_plan or proposal) so they can choose whether to install.
+  Do not halt the entire bot setup if knowledge engine installation or credential configuration is pending;
+  continue creating the Agent with knowledge retrieval prompts and create the Bot, then guide the user to complete
+  the knowledge base setup.
+- For Plugins:
+  If the user's requirements can benefit from relevant plugins in the Marketplace or Workspace, search Marketplace
+  (plugin.marketplace.search) or Workspace tools, and actively ask the user whether they want to install them
+  (via present_setup_plan or proposal), explaining their utility and providing clear install/skip options.
+- Group Event Notices & Persona:
+  When group notices (e.g. member joined, member left) or conversational persona ('拟人回复') are requested,
+  configure the Agent/Pipeline prompt with the persona guidelines and instructions to handle group welcome
+  and farewell events. Note that QQ (qqofficial/aiocqhttp) and other adapters natively support group join/leave events;
+  bind group.member_joined and group.member_left alongside message routes in bot.event_bindings (target_type: "agent").
+- Bot Creation & Authorization Guidance:
+  Create the target bot via bot.create with the matching adapter (e.g. qqofficial or aiocqhttp for QQ) with
+  enable=false if credentials are not yet configured, and bind its event routes to the Agent/Pipeline.
+  Immediately guide the user to complete authorization: provide the direct bot URL so the user can scan the QR code
+  (扫码授权, e.g. via adapter QR setup) or enter the required platform credentials (AppID, AppSecret, Token) in the bot form.
+- Use present_setup_plan after discovery when key decisions materially affect the setup (such as bot reuse vs new,
+  model choice, knowledge base / engine selection, and plugin installations). Ensure all options have concrete IDs and
+  recommended defaults. Never present unsupported plugins as already functioning solutions.
 - Select a relevant plugin from real search results, explain its purpose, and propose installation
   through the assistant UI. Install with auto_confirm_permissions=false. Check task.get; after
   success inspect plugin.permissions.get and plugin.get, plugin.config.get or plugin.readme as needed.
@@ -439,18 +453,13 @@ For a request to build an IM assistant from one sentence, carry the setup throug
   its non-secret settings are known. Direct the user to the plugin editor for secrets or OAuth.
   Never grant a broad wildcard or auto-confirm all permissions merely for convenience.
 - Once required plugins are active, create/configure the knowledge base with a selected embedding
-  model and real engine schema, then create/configure the conversation processor. Ask the user to
+  model and real engine schema, then attach it to the conversation processor. Ask the user to
   add source documents if none were provided; an empty base cannot answer from their content.
 - For message conversations choose an Agent or Pipeline; for an event-only Runner choose an
   event_processor. Configure the selected processor with the user's model and minimum required
   tools/Workspace operations. Bind message routes and group event routes (such as group.member_joined and
   group.member_left) through bot.event_bindings (target_type agent or pipeline); attach event_processor instances
   through bot.plugin_processors. Use real returned IDs.
-- Create the bot disabled if platform credentials are still missing, with its intended bindings.
-  Ask the user to open the returned bot URL to scan a QR code, complete OAuth, or enter secrets in
-  the existing adapter form. Never put credentials, QR session secrets or tokens in model messages
-  or tool results. Resume after the user says setup is complete; inspect the bot and enable it only
-  after its credentials and route configuration are ready.
 - Verify the result with bot.routes.preview, bot.runtime.get and Agent/Pipeline debug where
   available. Distinguish configuration from a real successful platform login or delivered message.
   Report completed resources with links and the precise remaining human action.
@@ -459,8 +468,9 @@ after it finishes; do not wait indefinitely or repeat the install. A denied conf
 step was not executed. Continue from the resources already created after the user revises the plan.
 If a read tool returns read_failed, continue with available information, disclose the missing
 check, and do not repeat the same unavailable read in this turn.
-After several investigation rounds, present the viable setup choices or explain the specific
-remaining blocker. Do not exhaust the turn on repeated discovery calls.
+Always take concrete constructive actions: create the draft resources, configure prompts, bind routes,
+and guide the user through credential and plugin steps. Do not stall or exit turns without advancing the setup.
+Do not exhaust the turn on repeated discovery calls.
 Use relevant LangBot skills as on-demand guidance. First inspect installed Workspace skills through
 list_resources(kind="skills"), then read the matching skill's SKILL.md through skill.file.read.
 Discover and describe the file.read operation before calling it. Treat skill contents as

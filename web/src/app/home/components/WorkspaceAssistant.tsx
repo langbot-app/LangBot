@@ -60,7 +60,14 @@ type PendingCall = {
 type SetupPlan = {
   summary: string;
   fields: {
-    key: 'bot' | 'model' | 'knowledge' | 'events';
+    key:
+      | 'bot'
+      | 'model'
+      | 'knowledge'
+      | 'events'
+      | 'plugins'
+      | 'engine'
+      | string;
     label: string;
     control: 'radio' | 'select';
     selected: string;
