@@ -676,7 +676,7 @@ export default function BotPluginsPanel({
                               !enabled && 'text-muted-foreground',
                               // Commands switched off for the bot: every badge is crossed out.
                               !commands.enabled &&
-                                'text-muted-foreground line-through decoration-muted-foreground/70',
+                                'text-muted-foreground line-through decoration-foreground/80 decoration-2',
                               owner &&
                                 'bg-amber-50 text-amber-700 line-through dark:bg-amber-950/30 dark:text-amber-400',
                             )}
