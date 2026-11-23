@@ -422,9 +422,12 @@ For a request to build an IM assistant from one sentence, carry the setup throug
   as group join and leave notices. Search the Marketplace for each missing capability using specific
   terms, including English synonyms when useful. Use page_size 5-10 and component_filter when the
   needed type is known. Compare descriptions, component types and intended behavior; never invent a
-  plugin author or name. Limit Marketplace search to two focused queries per missing capability.
-  An empty or unverified result is a finding, not a reason to repeat broad searches. Avoid re-reading
-  a catalog already returned in this conversation; use specific get/readme operations for candidates.
+  plugin author or name. Limit Marketplace and workspace discovery to at most two focused queries per missing capability.
+  Do not repeatedly search the same domain or operations when an initial search yields no matching capabilities.
+  An empty or unverified result is a finding, not a reason to repeat broad searches. If a desired capability
+  (such as group join/leave notice) is unavailable, state it clearly as an unsupported/future feature and
+  proceed immediately with the remaining viable setup (bot, persona, and knowledge base) without looping.
+  Avoid re-reading a catalog already returned in this conversation; use specific get/readme operations for candidates.
 - After discovery, use present_setup_plan once when two or more viable choices materially change
   the setup. Include only those decisions, a short summary, actual resource IDs where relevant,
   and a selected default for every field. Use a select field for models and radio fields for short

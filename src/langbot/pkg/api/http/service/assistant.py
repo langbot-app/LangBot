@@ -204,7 +204,7 @@ class AssistantService:
                         }
                 else:
                     calls[call.id] = value
-            if len(calls) > 8 or len(json.dumps(message, ensure_ascii=False)) + len(json.dumps(calls)) > 64000:
+            if len(calls) > 32 or len(json.dumps(message, ensure_ascii=False)) + len(json.dumps(calls)) > 128000:
                 raise AssistantError('response_too_large')
             if content or chunk.all_content is not None:
                 await on_event({'kind': 'text', 'data': {'text': message['content']}})
@@ -482,7 +482,7 @@ class AssistantService:
                             on_event,
                         )
                         message = response.model_dump(mode='json')
-                        if len(json.dumps(message, ensure_ascii=False)) > 64000:
+                        if len(json.dumps(message, ensure_ascii=False)) > 128000:
                             raise AssistantError('response_too_large')
                         conversation['messages'].append(message)
                         await self._snapshot(conversation, on_event)
