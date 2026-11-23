@@ -41,6 +41,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { pluginComponentIconMap } from '@/app/home/plugins/components/plugin-market/PluginComponentIcons';
 import PolicyScopeSelect, { BOT_SCOPE } from './PolicyScopeSelect';
 import CommandPrefixPopover from './CommandPrefixPopover';
 import CommandConfigDialog from './CommandConfigDialog';
@@ -92,6 +93,8 @@ interface HookState {
 }
 
 const COMPONENT_KINDS = new Set(['Command', 'EventListener']);
+// Hooks come from EventListener components; reuse that component's icon.
+const EventListenerIcon = pluginComponentIconMap.EventListener;
 
 function pluginRows(
   plugins: Plugin[],
@@ -701,8 +704,13 @@ export default function BotPluginsPanel({
                                   'text-muted-foreground line-through decoration-muted-foreground/60',
                               )}
                             >
-                              {hook.step === null && (
+                              {hook.step === null ? (
                                 <Eye className="size-3" aria-hidden="true" />
+                              ) : (
+                                <EventListenerIcon
+                                  className="size-3"
+                                  aria-hidden="true"
+                                />
                               )}
                               {t(`bots.pluginHooks.events.${hook.event}`, {
                                 defaultValue: hook.event,
