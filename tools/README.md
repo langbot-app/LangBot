@@ -6,6 +6,15 @@ model inputs, and reports paired answer and evidence metrics.
 
 ## Layout and entrypoints
 
+Daily, API and persistence jobs attach `log-anomalies.md` and `log-anomalies.json` alongside the service logs. Findings are informational, not gate failures. To replay an artifact:
+
+```bash
+uv run python -m tools.entrypoints.log_scan --input daily/{core,runtime,box,services}.log \
+  --allowlist tools/log_scan_allowlist.yaml --output report
+```
+
+Pass `--baseline previous1 previous2` with directories containing earlier JSON reports from the same workload to check warning growth. Without baselines, allowlist limits still apply. For a WARN-only replay, use `--input 'data/logs/*.log.wf'` instead of the full logs to avoid double counting.
+
 Run module entrypoints from the repository root:
 
 ```sh
