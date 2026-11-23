@@ -1045,6 +1045,7 @@ class PluginRuntimeHandler(Handler):
             {
                 "plugin_container": self.plugin_container.model_dump(),
                 "prod_mode": prod_mode,
+                "log_trace": True,
                 "plugin_debug_key": plugin_debug_key,
                 "registration_capability": (
                     registration_capability if prod_mode else ""

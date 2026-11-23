@@ -242,6 +242,9 @@ class RouterGroup(abc.ABC):
                                 return await self._localized_auth_error_response(e)
 
                 quart.g.request_context = request_context
+                from langbot_plugin.utils.log import workspace_id
+
+                workspace_id.set(request_context.workspace_uuid if request_context else '-')
                 observed_at = time.monotonic()
                 try:
                     if request_context is not None:

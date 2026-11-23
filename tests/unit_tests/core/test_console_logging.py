@@ -148,7 +148,7 @@ async def test_reinitialization_closes_previous_handlers(tmp_path, monkeypatch):
             logger.info('before reinitialization')
             await logmod.init_logging()
             logger.info('after reinitialization')
-            assert len(logger.handlers) == 2
+            assert len(logger.handlers) == 3
             assert all(handler._closed for handler in previous)
             assert not previous[0]._worker.is_alive()
             assert previous[1].stream is None

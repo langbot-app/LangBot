@@ -21,7 +21,7 @@ from ..context import ExecutionContext
 from .tenant import TenantContext, require_workspace_uuid
 
 
-LOG_FILE_PATTERN = re.compile(r'^langbot-(\d{4}-\d{2}-\d{2})\.log(?:\.\d+)?$')
+LOG_FILE_PATTERN = re.compile(r'^langbot-(\d{4}-\d{2}-\d{2})\.log(?:\.wf)?(?:\.\d+)?$')
 DEFAULT_UPLOAD_FILE_RETENTION_DAYS = 7
 DEFAULT_LOG_RETENTION_DAYS = 3
 DEFAULT_MAX_FILES_PER_RUN = 1000

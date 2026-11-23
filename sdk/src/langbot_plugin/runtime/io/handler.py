@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from contextlib import contextmanager
 from langbot_plugin.runtime.io import connection
 from langbot_plugin.entities.io.req import ActionRequest
+from langbot_plugin.utils.log import log_scope, trace_id
 from langbot_plugin.entities.io.context import (
     ActionEnvelopeContext,
     InstallationBinding,
@@ -780,6 +781,7 @@ class Handler(abc.ABC):
     resp_queues: dict[int, asyncio.Queue[ActionResponse | BaseException]] = {}
 
     seq_id_index: int = 0
+    supports_log_trace: bool = False
 
     _disconnect_callback: Callable[[Handler], Coroutine[Any, Any, bool]] | None
 
@@ -1039,6 +1041,13 @@ class Handler(abc.ABC):
         blocking_scope: str | None = None,
     ) -> None:
         """Keep serialization and transport chunking in one tenant scope."""
+
+        if (
+            isinstance(payload, ActionRequest)
+            and self.supports_log_trace
+            and trace_id.get() != "-"
+        ):
+            payload.log_trace_id = trace_id.get()
 
         inline = bool(getattr(self.conn, "_first_message_send_inline", False))
         if inline:
@@ -1333,6 +1342,10 @@ class Handler(abc.ABC):
             )
 
             with (
+                log_scope(
+                    request.log_trace_id,
+                    getattr(action_context, "workspace_uuid", None),
+                ),
                 audit_correlation_scope(
                     request.data.pop(AUDIT_CORRELATION_FIELD, None)
                 ),

@@ -1035,7 +1035,10 @@ class PluginManager:
 
                 async def new_plugin_connection_callback(connection: Connection):
                     handler = runtime_plugin_handler_cls.PluginConnectionHandler(
-                        connection, self.context, stdio_process=ctrl.process
+                        connection,
+                        self.context,
+                        stdio_process=ctrl.process,
+                        log_plugin=f"{plugin_author}/{plugin_name}",
                     )
                     await self.add_plugin_handler(handler)
 
@@ -2151,6 +2154,7 @@ class PluginManager:
                         self.context.worker_policy.max_file_size_mb * 1024 * 1024
                     ),
                     certified_shared_stdio=True,
+                    log_plugin=f"{worker.artifact.plugin_author}/{worker.artifact.plugin_name}",
                 )
                 plugin_handler.shared_registration_generation = launch_generation
                 worker.pending_plugin_handler = plugin_handler
@@ -2220,6 +2224,7 @@ class PluginManager:
                     self.context,
                     stdio_process=getattr(controller, "process", None),
                     file_storage_dir=str(runtime.paths.root_path / "rpc-transfer"),
+                    log_plugin=f"{runtime.artifact.plugin_author}/{runtime.artifact.plugin_name}",
                     max_file_bytes=(
                         self.context.worker_policy.max_file_size_mb * 1024 * 1024
                     ),

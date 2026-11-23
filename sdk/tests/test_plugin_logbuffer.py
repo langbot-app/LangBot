@@ -45,6 +45,21 @@ def test_ring_buffer_cap():
     ]
 
 
+def test_rate_limited_forwarding_keeps_all_entries(caplog, monkeypatch):
+    from langbot_plugin.runtime.plugin import logbuffer
+
+    clock = [100.0]
+    monkeypatch.setattr(logbuffer.time, "monotonic", lambda: clock[0])
+    buf = PluginLogBuffer(plugin="tester/demo")
+    line = "[06-13 10:30:00.1] a.py (1) - [WARNING] : warning"
+    for _ in range(54):
+        buf.add_line(line)
+    clock[0] += 10
+    buf.add_line(line)
+    assert len(buf.get_logs()) == 55
+    assert caplog.messages == ["warning"] * 50 + ["suppressed 4 lines", "warning"]
+
+
 def test_limit():
     buf = PluginLogBuffer()
     for i in range(50):

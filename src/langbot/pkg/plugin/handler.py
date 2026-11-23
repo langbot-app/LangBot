@@ -3311,6 +3311,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 timeout=10,
             )
         self.supports_event_batch = result.get('event_batch') is True
+        self.supports_log_trace = result.get('log_trace') is True
         return result
 
     async def get_storage_analysis(self) -> dict[str, Any]:
