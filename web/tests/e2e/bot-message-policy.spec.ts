@@ -476,3 +476,42 @@ test('plugin commands are configured from the plugin list', async ({
     processors: [{ processor_uuid: 'cmd-1', enabled: true }],
   });
 });
+
+test('route notes are optional and routes are told apart by their conditions', async ({
+  page,
+}) => {
+  const saved = await setup(page);
+  await page.setViewportSize({ width: 1440, height: 1400 });
+  await page.goto('/home/bots?id=policy-bot');
+
+  // Notes are edited inside a route's expanded panel.
+  const firstRoute = page.locator('[data-testid^="event-route-"]').first();
+  await expect(firstRoute.getByTestId('route-note')).toHaveText('Group chat', {
+    timeout: 15_000,
+  });
+  await firstRoute.getByRole('button', { name: /Conditions/ }).click();
+  const note = firstRoute.getByTestId('route-note-input');
+  await expect(note).toHaveValue('Group chat');
+  await note.fill('Support group');
+  await page.screenshot({
+    path: 'test-results/bot-route-note.png',
+    fullPage: true,
+  });
+
+  // The scope picker shows the note plus where the route goes and when.
+  await page.getByRole('tab', { name: 'Plugins' }).click();
+  await page.getByRole('combobox', { name: 'Applies to' }).click();
+  const option = page.getByRole('option', { name: /Support group/ });
+  await expect(option).toContainText('Support chat · All messages');
+  await page.waitForTimeout(300);
+  await page.screenshot({
+    path: 'test-results/bot-scope-picker.png',
+    fullPage: true,
+  });
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect.poll(() => saved.length).toBe(1);
+  const body = saved[0] as { event_bindings: { description: string }[] };
+  expect(body.event_bindings[0].description).toBe('Support group');
+});

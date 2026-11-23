@@ -1461,6 +1461,14 @@ const thTH = {
     conditionsDescription:
       'ต้องตรงทุกเงื่อนไขจึงจะทำงาน เว้นว่างเพื่อให้ทำงานเสมอ',
     conditionsEmpty: 'ไม่มีเงื่อนไข — ทำงานเสมอ',
+    routeNote: {
+      label: 'หมายเหตุ',
+      placeholder:
+        'ไม่บังคับ เช่น "กลุ่มซัพพอร์ต" จะแสดงในรายการเส้นทางและตัวเลือกขอบเขต',
+    },
+    routeSummary: {
+      always: 'ทุกข้อความ',
+    },
     addFilter: 'เพิ่มเงื่อนไข',
     filterIsAtBot: 'กล่าวถึงบอตนี้',
     mentionYes: 'ใช่',

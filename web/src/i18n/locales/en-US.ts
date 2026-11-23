@@ -1500,6 +1500,14 @@ const enUS = {
     conditionsDescription:
       'All conditions must match to trigger this binding. Leave empty to always trigger.',
     conditionsEmpty: 'No conditions — always triggers.',
+    routeNote: {
+      label: 'Note',
+      placeholder:
+        'Optional, e.g. "Support group". Shown in route lists and the scope picker.',
+    },
+    routeSummary: {
+      always: 'All messages',
+    },
     addFilter: 'Add condition',
     filterIsAtBot: 'Mentions this bot',
     mentionYes: 'Yes',

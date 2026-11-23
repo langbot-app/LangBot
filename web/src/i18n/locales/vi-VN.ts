@@ -1486,6 +1486,14 @@ const viVN = {
     conditionsDescription:
       'Phải khớp mọi điều kiện để kích hoạt. Để trống để luôn kích hoạt.',
     conditionsEmpty: 'Không có điều kiện — luôn kích hoạt.',
+    routeNote: {
+      label: 'Ghi chú',
+      placeholder:
+        'Không bắt buộc, ví dụ "Nhóm hỗ trợ". Hiển thị trong danh sách tuyến và bộ chọn phạm vi.',
+    },
+    routeSummary: {
+      always: 'Mọi tin nhắn',
+    },
     addFilter: 'Thêm điều kiện',
     filterIsAtBot: 'Nhắc đến bot này',
     mentionYes: 'Có',

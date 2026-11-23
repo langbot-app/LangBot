@@ -1518,6 +1518,14 @@ const esES = {
     conditionsDescription:
       'Deben cumplirse todas las condiciones. Déjalo vacío para activar siempre.',
     conditionsEmpty: 'Sin condiciones: siempre se activa.',
+    routeNote: {
+      label: 'Nota',
+      placeholder:
+        'Opcional, p. ej. "Grupo de soporte". Se muestra en las listas de rutas y en el selector de alcance.',
+    },
+    routeSummary: {
+      always: 'Todos los mensajes',
+    },
     addFilter: 'Añadir condición',
     filterIsAtBot: 'Menciona a este bot',
     mentionYes: 'Sí',

@@ -1398,6 +1398,13 @@ const zhHant = {
     conditions: '觸發條件',
     conditionsDescription: '滿足所有條件時才觸發此綁定，不添加則無條件觸發。',
     conditionsEmpty: '無條件，始終觸發。',
+    routeNote: {
+      label: '備註',
+      placeholder: '選填，例如：客服群專用。會顯示在路由列表和適用範圍裡。',
+    },
+    routeSummary: {
+      always: '所有訊息',
+    },
     addFilter: '添加條件',
     filterIsAtBot: '是否 @ 本機器人',
     mentionYes: '是',

@@ -1509,6 +1509,14 @@ const jaJP = {
     conditionsDescription:
       'すべての条件に一致した場合のみこのバインディングが発火します。空の場合は常に発火します。',
     conditionsEmpty: '条件なし。常に発火します。',
+    routeNote: {
+      label: 'メモ',
+      placeholder:
+        '任意。例：サポートグループ用。ルート一覧と適用範囲に表示されます。',
+    },
+    routeSummary: {
+      always: 'すべてのメッセージ',
+    },
     addFilter: '条件を追加',
     filterIsAtBot: 'このボットへのメンション',
     mentionYes: 'はい',

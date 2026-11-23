@@ -11,7 +11,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { isMessageRoute, routeKey, routeLabel } from './message-policy';
+import {
+  isMessageRoute,
+  routeDetail,
+  routeKey,
+  routeLabel,
+} from './message-policy';
 
 export const BOT_SCOPE = 'bot';
 
@@ -47,7 +52,7 @@ export default function PolicyScopeSelect({
         >
           <SelectValue />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="min-w-[20rem]">
           <SelectItem value={BOT_SCOPE}>
             <BotIcon className="size-4" />
             {t('bots.policy.botDefault')}
@@ -56,13 +61,16 @@ export default function PolicyScopeSelect({
             <>
               <SelectSeparator />
               <SelectGroup>
-                <SelectLabel>{t('bots.policy.routes')}</SelectLabel>
+                <SelectLabel className="flex items-center gap-1.5">
+                  <Route className="size-3.5" />
+                  {t('bots.policy.routes')}
+                </SelectLabel>
                 {routes.map(({ binding, index }) => (
                   <SelectItem
                     key={routeKey(binding, index)}
                     value={routeKey(binding, index)}
+                    description={routeDetail(binding, agents, t)}
                   >
-                    <Route className="size-4" />
                     <span className="truncate">
                       {routeLabel(binding, index, agents)}
                     </span>

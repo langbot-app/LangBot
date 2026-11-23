@@ -1401,6 +1401,13 @@ const zhHans = {
     conditions: '触发条件',
     conditionsDescription: '满足所有条件时才触发此绑定，不添加则无条件触发。',
     conditionsEmpty: '无条件，始终触发。',
+    routeNote: {
+      label: '备注',
+      placeholder: '选填，例如：客服群专用。会显示在路由列表和适用范围里。',
+    },
+    routeSummary: {
+      always: '所有消息',
+    },
     addFilter: '添加条件',
     filterIsAtBot: '是否 @ 本机器人',
     mentionYes: '是',

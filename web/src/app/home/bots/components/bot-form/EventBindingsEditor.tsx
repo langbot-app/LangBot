@@ -1443,9 +1443,34 @@ function BindingCardContent({
         </div>
       </div>
 
+      {/* optional note, shown when the card is collapsed */}
+      {!isExpanded && binding.description?.trim() && (
+        <p
+          className="-mt-1 truncate px-3 pb-2 pl-[3.25rem] text-xs text-muted-foreground"
+          data-testid="route-note"
+        >
+          {binding.description}
+        </p>
+      )}
+
       {/* conditions panel */}
       {isExpanded && (
-        <div className="border-t px-3 py-2.5">
+        <div className="space-y-3 border-t px-3 py-2.5">
+          <label className="flex items-center gap-2 text-xs">
+            <span className="shrink-0 text-muted-foreground">
+              {t('bots.routeNote.label')}
+            </span>
+            <Input
+              className="h-8 max-w-sm text-xs"
+              value={binding.description ?? ''}
+              maxLength={60}
+              placeholder={t('bots.routeNote.placeholder')}
+              onChange={(event) =>
+                onUpdate(globalIndex, { description: event.target.value })
+              }
+              data-testid="route-note-input"
+            />
+          </label>
           <FilterConditionsPanel
             filters={(binding.filters as unknown as FilterRow[]) || []}
             onChange={(filters) =>

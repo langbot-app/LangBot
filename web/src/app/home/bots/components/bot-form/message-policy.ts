@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import type {
   Agent,
   EventBinding,
@@ -62,6 +63,74 @@ export function routeLabel(
     : '';
   const description = binding.description?.trim();
   return description || name || `#${index + 1}`;
+}
+
+const ELEMENT_KEYS = new Set([
+  'Image',
+  'Voice',
+  'File',
+  'Forward',
+  'Face',
+  'At',
+  'AtAll',
+  'Quote',
+]);
+
+/** One condition in readable form, e.g. 'Message text contains "agent:"'. */
+function conditionText(filter: Record<string, unknown>, t: TFunction): string {
+  const field = String(filter.field ?? '');
+  const operator = t(`bots.operator_${String(filter.operator ?? 'eq')}`);
+  const raw = filter.value;
+  let fieldLabel = field;
+  let value = `"${String(raw ?? '')}"`;
+  if (field === 'is_at_bot') {
+    fieldLabel = t('bots.filterIsAtBot');
+    value =
+      raw === true || raw === 'true'
+        ? t('bots.mentionYes')
+        : t('bots.mentionNo');
+  } else if (field === 'chat_type') {
+    fieldLabel = t('bots.filterChatType');
+    value =
+      raw === 'group'
+        ? t('bots.sessionTypeGroup')
+        : t('bots.sessionTypePerson');
+  } else if (field === 'message_element_types') {
+    fieldLabel = t('bots.filterMessageElement');
+    if (ELEMENT_KEYS.has(String(raw))) value = t(`bots.element${String(raw)}`);
+  } else if (field === 'chat_id') {
+    fieldLabel = t('bots.filterChatId');
+  } else if (field === 'message_text') {
+    fieldLabel = t('bots.filterMessageText');
+  }
+  return `${fieldLabel} ${operator} ${value}`;
+}
+
+/** When a route applies, derived from its conditions; never needs user input. */
+export function routeConditionSummary(
+  binding: EventBinding,
+  t: TFunction,
+): string {
+  const filters = Array.isArray(binding.filters) ? binding.filters : [];
+  if (filters.length === 0) return t('bots.routeSummary.always');
+  return filters
+    .map((filter) => conditionText(filter as Record<string, unknown>, t))
+    .join(' · ');
+}
+
+/**
+ * Second line under a route's name: where it goes (when the name is a note)
+ * and when it applies.
+ */
+export function routeDetail(
+  binding: EventBinding,
+  agents: Agent[],
+  t: TFunction,
+): string {
+  const conditions = routeConditionSummary(binding, t);
+  if (!binding.description?.trim()) return conditions;
+  const target = agents.find((agent) => agent.uuid === binding.target_uuid);
+  return target ? `${target.name} · ${conditions}` : conditions;
 }
 
 export function routeProcessor(binding: EventBinding): HookProcessor {

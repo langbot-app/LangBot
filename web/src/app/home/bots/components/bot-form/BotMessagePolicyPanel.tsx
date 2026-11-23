@@ -29,6 +29,7 @@ import {
   isMessageRoute,
   mergePolicy,
   resolveRoutePolicy,
+  routeDetail,
   routeKey,
   routeLabel,
   stableJson,
@@ -285,10 +286,15 @@ export default function BotMessagePolicyPanel({
                 >
                   <button
                     type="button"
-                    className="min-w-0 flex-1 truncate text-left hover:underline"
+                    className="group min-w-0 flex-1 text-left"
                     onClick={() => onScopeChange(routeKey(binding, index))}
                   >
-                    {routeLabel(binding, index, agents)}
+                    <span className="block truncate group-hover:underline">
+                      {routeLabel(binding, index, agents)}
+                    </span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {routeDetail(binding, agents, t)}
+                    </span>
                   </button>
                   <Badge
                     variant={
