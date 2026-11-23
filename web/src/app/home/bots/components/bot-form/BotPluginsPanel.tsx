@@ -564,20 +564,23 @@ export default function BotPluginsPanel({
           <Switch
             id="bot-commands-enabled"
             checked={commands.enabled}
+            disabled={Boolean(route)}
             onCheckedChange={(enabled) => updateCommands({ enabled })}
           />
           <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
             {t('bots.pluginCommands.prefixes')}
             <CommandPrefixPopover
               prefixes={prefixes}
-              disabled={!commands.enabled}
+              disabled={!commands.enabled || Boolean(route)}
               onChange={(next) => updateCommands({ prefixes: next })}
             />
           </span>
           <p className="basis-full text-xs text-muted-foreground">
-            {commands.enabled
-              ? t('bots.pluginHooks.commands.hint')
-              : t('bots.routingLayers.commandsDisabled')}
+            {route
+              ? t('bots.pluginHooks.commands.botWide')
+              : commands.enabled
+                ? t('bots.pluginHooks.commands.hint')
+                : t('bots.routingLayers.commandsDisabled')}
           </p>
         </div>
 
@@ -658,7 +661,10 @@ export default function BotPluginsPanel({
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {rowCommands.map((command) => {
-                        const owner = overriddenBy.get(`${row.id}:${command}`);
+                        // A duplicate-name warning is moot while commands are off.
+                        const owner = commands.enabled
+                          ? overriddenBy.get(`${row.id}:${command}`)
+                          : undefined;
                         const chip = (
                           <Badge
                             key={`cmd-${command}`}
@@ -667,8 +673,10 @@ export default function BotPluginsPanel({
                             data-overridden={Boolean(owner)}
                             className={cn(
                               'gap-1 font-mono text-[11px]',
-                              (!commands.enabled || !enabled) &&
-                                'text-muted-foreground',
+                              !enabled && 'text-muted-foreground',
+                              // Commands switched off for the bot: every badge is crossed out.
+                              !commands.enabled &&
+                                'text-muted-foreground line-through decoration-muted-foreground/70',
                               owner &&
                                 'bg-amber-50 text-amber-700 line-through dark:bg-amber-950/30 dark:text-amber-400',
                             )}
@@ -745,19 +753,21 @@ export default function BotPluginsPanel({
                         </p>
                       ))}
                   </div>
-                  {commands.enabled && hasCommandSettings(descriptor) && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 shrink-0 gap-1 px-2 text-xs"
-                      onClick={() => setConfiguring(row.id)}
-                      data-testid="command-config-button"
-                    >
-                      <Settings2 className="size-3.5" />
-                      {t('bots.pluginHooks.commandConfig.button')}
-                    </Button>
-                  )}
+                  {commands.enabled &&
+                    !route &&
+                    hasCommandSettings(descriptor) && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 shrink-0 gap-1 px-2 text-xs"
+                        onClick={() => setConfiguring(row.id)}
+                        data-testid="command-config-button"
+                      >
+                        <Settings2 className="size-3.5" />
+                        {t('bots.pluginHooks.commandConfig.button')}
+                      </Button>
+                    )}
                   <Switch
                     checked={enabled}
                     disabled={!editable || selection.enable_all}

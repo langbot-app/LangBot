@@ -1070,6 +1070,8 @@ const enUS = {
       hooksUnknown: 'Hooks unknown',
       enablePlugin: 'Enable {{plugin}} on this bot',
       commands: {
+        botWide:
+          'The command switch, prefixes and command settings apply to the whole bot. Change them under Bot default.',
         label: 'Plugin commands',
         hint: 'Only for received messages. Commands match before route rules and follow the message policy of the route the message would have taken. When plugins share a command name, the plugin higher in the list wins.',
       },

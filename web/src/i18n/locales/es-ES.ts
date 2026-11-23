@@ -1085,6 +1085,8 @@ const esES = {
       hooksUnknown: 'Hooks desconocidos',
       enablePlugin: 'Habilitar {{plugin}} en este bot',
       commands: {
+        botWide:
+          'El interruptor de comandos, los prefijos y los ajustes de comandos se aplican a todo el bot. Cámbialos en Predeterminado del bot.',
         label: 'Comandos de plugins',
         hint: 'Solo para mensajes recibidos. Los comandos se evalúan antes que las reglas de ruta y siguen la política de mensajes de la ruta que habría tomado el mensaje. Si varios plugins comparten un nombre de comando, gana el que está más arriba en la lista.',
       },

@@ -459,8 +459,26 @@ test('plugin commands are configured from the plugin list', async ({
     fullPage: true,
   });
 
+  // Command settings are bot-wide: read-only while a route is selected.
+  await page.getByRole('combobox', { name: 'Applies to' }).click();
+  await page.getByRole('option', { name: /Private agent/ }).click();
+  await expect(settings.getByRole('switch')).toBeDisabled();
+  await expect(settings).toContainText('apply to the whole bot');
+  await expect(draw.getByTestId('command-config-button')).toHaveCount(0);
+  await page.getByRole('combobox', { name: 'Applies to' }).click();
+  await page.getByRole('option', { name: 'Bot default' }).click();
+
   await settings.getByRole('switch').click();
   await expect(draw.getByTestId('command-config-button')).toHaveCount(0);
+  // Turning commands off crosses out every command badge.
+  for (const plugin of [draw, listener])
+    await expect(plugin.locator('[data-command="draw"]')).toHaveClass(
+      /line-through/,
+    );
+  await page.screenshot({
+    path: 'test-results/bot-commands-off.png',
+    fullPage: true,
+  });
   await page.getByRole('button', { name: 'Save' }).click();
   await expect.poll(() => saved.length).toBe(1);
   const body = saved[0] as {

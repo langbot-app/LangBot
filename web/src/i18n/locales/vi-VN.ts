@@ -1063,6 +1063,8 @@ const viVN = {
       hooksUnknown: 'Không rõ hook',
       enablePlugin: 'Bật {{plugin}} trên bot này',
       commands: {
+        botWide:
+          'Công tắc lệnh, tiền tố và cài đặt lệnh áp dụng cho toàn bộ bot. Hãy thay đổi trong Mặc định của bot.',
         label: 'Lệnh plugin',
         hint: 'Chỉ áp dụng cho tin nhắn nhận được. Lệnh được so khớp trước quy tắc định tuyến và theo chính sách tin nhắn của tuyến mà tin nhắn lẽ ra sẽ đi. Khi các plugin trùng tên lệnh, plugin đứng trước trong danh sách được ưu tiên.',
       },
