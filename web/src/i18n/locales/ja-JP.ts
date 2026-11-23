@@ -1801,7 +1801,7 @@ const jaJP = {
     },
     fromPlugin: 'プラグインから',
     fromPluginDescription:
-      'プラグインのコードで処理し、AI は使いません。処理方法を選んでください：',
+      'プラグインのコードで処理し、AI は使いません。プラグインが宣言したメッセージやその他のイベントを処理します。',
     eventProcessor: {
       configurations: 'プラグインプロセッサー設定',
       configTab: '設定',

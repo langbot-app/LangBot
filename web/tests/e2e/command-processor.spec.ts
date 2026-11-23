@@ -107,7 +107,7 @@ test('loading a bot preserves saved command processor bindings and prefixes', as
   ).toContainText('! #');
 });
 
-test('create a command instance and edit its command configuration', async ({
+test('the create page no longer offers command processors; existing ones stay editable', async ({
   page,
 }) => {
   await installLangBotApiMocks(page, { authenticated: true });
@@ -158,23 +158,23 @@ test('create a command instance and edit its command configuration', async ({
     else return route.fallback();
     await route.fulfill({ json: { code: 0, data } });
   });
+  // Command settings are created from a plugin's row on the bot's Plugins tab.
   await page.goto('/home/agents?id=new');
-  await page.locator('[data-processor-kind="command_processor"]').click();
-  await page.getByRole('combobox').click();
-  await page.getByRole('option', { name: 'qa/draw' }).click();
-  await page.getByRole('button', { name: 'Submit', exact: true }).click();
+  await expect(page.locator('[data-processor-kind="pipeline"]')).toBeVisible();
   await expect(
-    page.getByText('No command settings', { exact: true }),
-  ).toBeVisible();
-  expect(writes[0]).toMatchObject({
-    kind: 'command_processor',
-    component_ref: 'plugin:qa/draw',
-  });
-  expect(writes[0]).not.toHaveProperty('config.runner');
+    page.locator('[data-processor-kind="command_processor"]'),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText('Command processor', { exact: true }),
+  ).toHaveCount(0);
+
+  // An existing instance keeps its detail page for settings and logs.
+  await page.goto('/home/agents?id=command-qa');
+  await expect(page.locator('input[name="style"]')).toHaveValue('plain');
   await page.locator('input[name="style"]').fill('anime');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect.poll(() => writes.length).toBe(2);
-  expect(writes[1]).toMatchObject({
+  await expect.poll(() => writes.length).toBe(1);
+  expect(writes[0]).toMatchObject({
     config: { command_config: { draw: { style: 'anime' } } },
   });
   await page.screenshot({

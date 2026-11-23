@@ -1674,7 +1674,7 @@ const zhHans = {
     },
     fromPlugin: '来自插件',
     fromPluginDescription:
-      '由插件编写的代码处理，不经过 AI。按插件的处理方式选择：',
+      '由插件编写的代码处理，不经过 AI。插件按自己声明的事件处理消息和其他事件。',
     eventProcessor: {
       configurations: '插件处理器配置',
       configTab: '配置',

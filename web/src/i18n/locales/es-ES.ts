@@ -1817,7 +1817,7 @@ const esES = {
     },
     fromPlugin: 'Desde un plugin',
     fromPluginDescription:
-      'Ejecuta lógica escrita por un plugin, sin IA. Elige cómo maneja los eventos:',
+      'Ejecuta lógica escrita por un plugin, sin IA. El plugin gestiona los mensajes y demás eventos que declara.',
     eventProcessor: {
       configurations: 'Configuraciones de procesadores de plugins',
       configTab: 'Configuración',

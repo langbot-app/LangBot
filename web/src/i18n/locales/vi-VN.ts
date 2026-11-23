@@ -1777,7 +1777,7 @@ const viVN = {
     },
     fromPlugin: 'Từ plugin',
     fromPluginDescription:
-      'Chạy logic do plugin viết, không dùng AI. Chọn cách plugin xử lý sự kiện:',
+      'Chạy logic do plugin viết, không dùng AI. Plugin xử lý tin nhắn và các sự kiện khác mà nó khai báo.',
     eventProcessor: {
       configurations: 'Cấu hình bộ xử lý plugin',
       configTab: 'Cấu hình',

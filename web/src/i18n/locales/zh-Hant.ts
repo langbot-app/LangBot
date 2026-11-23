@@ -1671,7 +1671,7 @@ const zhHant = {
     },
     fromPlugin: '來自外掛',
     fromPluginDescription:
-      '由外掛撰寫的程式碼處理，不經過 AI。依外掛的處理方式選擇：',
+      '由外掛撰寫的程式碼處理，不經過 AI。外掛依自己宣告的事件處理訊息和其他事件。',
     eventProcessor: {
       configurations: '外掛處理器設定',
       configTab: '設定',

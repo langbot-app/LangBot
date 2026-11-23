@@ -1796,7 +1796,7 @@ const enUS = {
     },
     fromPlugin: 'From a plugin',
     fromPluginDescription:
-      'Run logic written by a plugin, with no AI involved. Pick how the plugin handles events:',
+      'Run logic written by a plugin, with no AI involved. The plugin handles messages and other events it declares.',
     eventProcessor: {
       configurations: 'Plugin processor configurations',
       configTab: 'Configuration',

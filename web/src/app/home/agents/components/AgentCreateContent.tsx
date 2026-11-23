@@ -232,13 +232,19 @@ export default function AgentCreateContent({
       description: t('agents.eventProcessor.description'),
       bestFor: t('agents.diagram.eventProcessor.bestFor'),
     },
-    {
-      kind: 'command_processor' as const,
-      icon: SquareTerminal,
-      title: t('agents.commandProcessor.type'),
-      description: t('agents.commandProcessor.description'),
-      bestFor: t('agents.diagram.commandProcessor.bestFor'),
-    },
+    // Command settings are created from a plugin's row on the bot's Plugins
+    // tab, so command processors are only offered when a caller asks for them.
+    ...(allowedKinds?.includes('command_processor')
+      ? [
+          {
+            kind: 'command_processor' as const,
+            icon: SquareTerminal,
+            title: t('agents.commandProcessor.type'),
+            description: t('agents.commandProcessor.description'),
+            bestFor: t('agents.diagram.commandProcessor.bestFor'),
+          },
+        ]
+      : []),
   ].filter((option) => !allowedKinds || allowedKinds.includes(option.kind));
   const selectedPlugin = pluginOptions.find((option) => option.kind === kind);
   const optionClass =
@@ -288,6 +294,12 @@ export default function AgentCreateContent({
         <button
           type="button"
           className="flex w-full items-start gap-3 text-left"
+          data-processor-kind={
+            pluginOptions.length === 1 ? pluginOptions[0].kind : undefined
+          }
+          aria-pressed={
+            pluginOptions.length === 1 ? Boolean(selectedPlugin) : undefined
+          }
           onClick={() => {
             if (!selectedPlugin && pluginOptions[0])
               handleKindChange(pluginOptions[0].kind);
@@ -305,23 +317,26 @@ export default function AgentCreateContent({
             </span>
           </span>
         </button>
-        <div className="mt-3 flex flex-wrap gap-2 pl-12">
-          {pluginOptions.map((option) => {
-            const Icon = option.icon;
-            return (
-              <ToggleGroupItem
-                key={option.kind}
-                value={option.kind}
-                data-processor-kind={option.kind}
-                aria-label={`${option.title} ${option.description}`}
-                className="h-8 flex-none gap-1.5 rounded-md border bg-background px-3 text-sm font-normal shadow-none data-[state=on]:border-[#2288ee] data-[state=on]:bg-background data-[state=on]:text-[#2288ee]"
-              >
-                <Icon className="size-4" />
-                {option.title}
-              </ToggleGroupItem>
-            );
-          })}
-        </div>
+        {/* A single plugin kind needs no second choice. */}
+        {pluginOptions.length > 1 && (
+          <div className="mt-3 flex flex-wrap gap-2 pl-12">
+            {pluginOptions.map((option) => {
+              const Icon = option.icon;
+              return (
+                <ToggleGroupItem
+                  key={option.kind}
+                  value={option.kind}
+                  data-processor-kind={option.kind}
+                  aria-label={`${option.title} ${option.description}`}
+                  className="h-8 flex-none gap-1.5 rounded-md border bg-background px-3 text-sm font-normal shadow-none data-[state=on]:border-[#2288ee] data-[state=on]:bg-background data-[state=on]:text-[#2288ee]"
+                >
+                  <Icon className="size-4" />
+                  {option.title}
+                </ToggleGroupItem>
+              );
+            })}
+          </div>
+        )}
         {selectedPlugin && (
           <div className="mt-3 space-y-1 pl-12">
             <p className="text-sm leading-relaxed text-muted-foreground">
