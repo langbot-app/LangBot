@@ -26,6 +26,7 @@ from . import runtime_ops
 from .errors import (
     PluginRuntimeNotConnectedError,
     PluginInstallationFailedError,
+    PluginNotInstalledError,
     MarketplacePluginVersionNotFoundError,
 )
 from .archive import inspect_plugin_archive_metadata
@@ -1388,7 +1389,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
                     fail('permission_denied', f'Plugin {plugin_author}/{plugin_name} is disabled')
                 return execution_context, setting
-        raise ValueError(f'Plugin {plugin_author}/{plugin_name} is not installed in this Workspace')
+        raise PluginNotInstalledError(f'Plugin {plugin_author}/{plugin_name} is not installed in this Workspace')
 
     async def _target_binding(
         self,

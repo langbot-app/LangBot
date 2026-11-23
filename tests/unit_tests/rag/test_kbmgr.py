@@ -11,6 +11,7 @@ import pytest
 
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.entity.persistence.rag import KnowledgeBase
+from langbot.pkg.plugin.errors import PluginNotInstalledError
 from langbot.pkg.rag.knowledge.kbmgr import RAGManager, RuntimeKnowledgeBase
 from langbot.pkg.workspace.entities import WorkspaceExecutionBinding
 from langbot.pkg.workspace.errors import WorkspaceInvariantError, WorkspaceNotFoundError
@@ -697,6 +698,29 @@ class TestRuntimeKnowledgeBaseDispose:
         ).dispose(CONTEXT_A)
 
         app.plugin_connector.rag_on_kb_delete.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_dispose_purges_host_vectors_when_engine_uninstalled(self):
+        app = _app()
+        app.vector_db_mgr = SimpleNamespace(delete_collection=AsyncMock())
+        app.plugin_connector.rag_on_kb_delete.side_effect = PluginNotInstalledError(
+            'Plugin author/engine is not installed in this Workspace'
+        )
+
+        await RuntimeKnowledgeBase(app, _entity(), CONTEXT_A).dispose(CONTEXT_A)
+
+        app.vector_db_mgr.delete_collection.assert_awaited_once_with(CONTEXT_A, 'kb-a')
+
+    @pytest.mark.asyncio
+    async def test_dispose_still_fails_on_ambiguous_plugin_error(self):
+        app = _app()
+        app.vector_db_mgr = SimpleNamespace(delete_collection=AsyncMock())
+        app.plugin_connector.rag_on_kb_delete.side_effect = RuntimeError('remote outcome unknown')
+
+        with pytest.raises(RuntimeError, match='remote outcome unknown'):
+            await RuntimeKnowledgeBase(app, _entity(), CONTEXT_A).dispose(CONTEXT_A)
+
+        app.vector_db_mgr.delete_collection.assert_not_awaited()
 
 
 class TestRAGManagerInit:
