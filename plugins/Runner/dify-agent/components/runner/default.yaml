@@ -16,8 +16,8 @@ spec:
         en_US: Provider User Identity
         zh_Hans: 供应商用户身份
       description:
-        en_US: Sender is the default. Legacy mode requires trusted Host identity; missing identity fails closed. Does not import old sessions.
-        zh_Hans: 默认使用发送者身份。兼容模式需要可信 Host 身份，缺失时拒绝请求；不会导入旧会话。
+        en_US: Sender is the default. In a group whose pipeline shares context across the group, the group identity is used so all members continue one Dify conversation. Legacy mode requires trusted Host identity; missing identity fails closed. Does not import old sessions.
+        zh_Hans: 默认使用发送者身份；若流水线设置为全群共享会话，则使用群身份，使全群成员延续同一个 Dify 会话。兼容模式需要可信 Host 身份，缺失时拒绝请求；不会导入旧会话。
       type: select
       required: false
       default: sender

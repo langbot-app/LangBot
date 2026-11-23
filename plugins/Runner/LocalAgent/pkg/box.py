@@ -35,6 +35,9 @@ def resolve_reuse_key(ctx, template: str) -> str:
         "bot_id": (conversation.bot_id if conversation else None) or ctx.event.data.get("bot_uuid"),
     }
     # Interpolate named scalar fields, never Python expressions or object access.
+    if template == "{launcher_type}_{launcher_id}" and getattr(conversation, "session_id", None):
+        variables["session_id"] = conversation.session_id
+        template = "{session_id}"
     for _, name, spec, conversion in Formatter().parse(template):
         if name is not None and (name not in variables or variables[name] is None or spec or conversion):
             raise ValueError(f"Unavailable or invalid Box template variable: {name}")
@@ -170,7 +173,9 @@ class LocalAgentBox:
         template = self.ctx.config.get("box-session-id-template", "{launcher_type}_{launcher_id}")
         key = status.required_reuse_key or resolve_reuse_key(self.ctx, template)
         # Always try acquisition even at zero remaining capacity: reuse does not consume another slot.
-        box = await self.api.acquire_box(key)
+        mounts = (self.ctx.config.get("box-local-mounts") or "").split(",")
+        names = [name.strip() for name in mounts if name.strip()]
+        box = await self.api.acquire_box(key, {"mounts": names}) if names else await self.api.acquire_box(key)
         self.binding = await self.ctx.bind_box(box.id)
         files = await self.ctx.import_box_attachments() if self.ctx.input.attachments else []
         by_ref = {item.id: item for item in files}

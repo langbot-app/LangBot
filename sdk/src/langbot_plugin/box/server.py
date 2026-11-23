@@ -25,6 +25,7 @@ import asyncio
 import contextlib
 import datetime as dt
 import hmac
+import hashlib
 import logging
 import os
 import sys
@@ -42,19 +43,25 @@ from langbot_plugin.runtime.io.handler import Handler
 from langbot_plugin.runtime.bounded_executor import (
     configure_bounded_default_executor_from_env,
 )
-from langbot_plugin.utils.log import configure_process_logging
+from langbot_plugin.utils.log import configure_process_logging, install_loop_logging
 
 from .actions import LangBotToBoxAction
 from .errors import (
     BoxAdmissionError,
+    BoxArtifactNotPreparedError,
     BoxManagedProcessConflictError,
     BoxManagedProcessNotFoundError,
     BoxReadinessError,
     BoxSessionNotFoundError,
 )
 from .models import (
+    MAX_ARTIFACT_ARCHIVE_BYTES,
+    BoxArtifactDescriptor,
     BoxExecutionResult,
+    BoxFileDownloadRequest,
+    BoxFileUploadRequest,
     BoxManagedProcessSpec,
+    BoxRunFilesCleanupRequest,
     BoxSpec,
     SandboxAdmissionGrant,
     SandboxAdmissionRevocation,
@@ -370,9 +377,9 @@ class BoxServerHandler(Handler):
     _HOST_CONTROL_ACTIONS = frozenset(
         {
             CommonAction.PING.value,
-            CommonAction.FILE_CHUNK.value,
             LangBotToBoxAction.HEALTH.value,
             LangBotToBoxAction.GET_BACKEND_INFO.value,
+            LangBotToBoxAction.GET_BACKENDS.value,
             LangBotToBoxAction.INIT.value,
             LangBotToBoxAction.UPSERT_SANDBOX_ADMISSION_GRANT.value,
             LangBotToBoxAction.REVOKE_SANDBOX_ADMISSION_GRANT.value,
@@ -383,6 +390,11 @@ class BoxServerHandler(Handler):
 
     _SANDBOX_ACTIONS = frozenset(
         {
+            CommonAction.FILE_CHUNK.value,
+            LangBotToBoxAction.UPLOAD_FILE.value,
+            LangBotToBoxAction.DOWNLOAD_FILE.value,
+            LangBotToBoxAction.CLEANUP_RUN_FILES.value,
+            LangBotToBoxAction.PREPARE_ARTIFACT.value,
             LangBotToBoxAction.EXEC.value,
             LangBotToBoxAction.CREATE_SESSION.value,
             LangBotToBoxAction.GET_SESSION.value,
@@ -406,7 +418,7 @@ class BoxServerHandler(Handler):
     ):
         super().__init__(
             connection,
-            max_file_bytes=runtime.max_rpc_file_bytes,
+            max_file_bytes=max(runtime.max_rpc_file_bytes, MAX_ARTIFACT_ARCHIVE_BYTES),
         )
         self._runtime = runtime
         self._host_control_authenticated = bool(host_control_authenticated)
@@ -427,7 +439,10 @@ class BoxServerHandler(Handler):
 
     def _wrap_tenant_actions_with_generation_fence(self) -> None:
         for action, action_handler in tuple(self.actions.items()):
-            if action in self._HOST_CONTROL_ACTIONS:
+            if (
+                action in self._HOST_CONTROL_ACTIONS
+                or action == LangBotToBoxAction.DELETE_FILE_TRANSFER.value
+            ):
                 continue
 
             async def fenced_action(
@@ -436,6 +451,13 @@ class BoxServerHandler(Handler):
                 _handler=action_handler,
                 _action=action,
             ) -> ActionResponse:
+                # Legacy instance-level transfers remain compatible; new file
+                # operations can consume only explicitly Workspace-owned payloads.
+                if (
+                    _action == CommonAction.FILE_CHUNK.value
+                    and self.current_action_context is None
+                ):
+                    return await _handler(data)
                 context = self._action_context()
                 lease_task = asyncio.current_task()
                 if (
@@ -482,6 +504,8 @@ class BoxServerHandler(Handler):
         """
 
         self._require_host_control()
+        if action == CommonAction.FILE_CHUNK.value and action_context is None:
+            return None
         if action in self._HOST_CONTROL_ACTIONS:
             if (
                 action_context is not None
@@ -547,7 +571,7 @@ class BoxServerHandler(Handler):
         @self.action(CommonAction.PING)
         async def ping(data: dict[str, Any]) -> ActionResponse:
             self._require_host_control()
-            return ActionResponse.success({})
+            return ActionResponse.success({"log_trace": True})
 
         @self.action(LangBotToBoxAction.HEALTH)
         async def health(data: dict[str, Any]) -> ActionResponse:
@@ -591,11 +615,102 @@ class BoxServerHandler(Handler):
                         spec,
                         action_context=context,
                     )
+            except BoxArtifactNotPreparedError as exc:
+                return ActionResponse.error(f"BoxArtifactNotPreparedError: {exc}")
             except (pydantic.ValidationError, ValueError) as exc:
+                if data.get("e2b_config") is not None:
+                    return ActionResponse.error(
+                        "BoxValidationError: Invalid E2B connection configuration"
+                    )
                 return ActionResponse.error(f"BoxValidationError: {exc}")
             return ActionResponse.success(
                 self._logical_session_data(_result_to_dict(result))
             )
+
+        @self.action(LangBotToBoxAction.UPLOAD_FILE)
+        async def upload_file(data: dict[str, Any]) -> ActionResponse:
+            request = BoxFileUploadRequest.model_validate(data)
+            context = self._action_context()
+            try:
+                if request.size > self._runtime.max_rpc_file_bytes:
+                    raise ValueError("File exceeds the configured transfer size limit")
+                content = await self.read_local_file(
+                    request.file_key, action_context=context
+                )
+                digest = hashlib.sha256(content).hexdigest()
+                if len(content) != request.size or digest != request.sha256:
+                    raise ValueError("Upload receipt does not match its content")
+                await self._runtime.upload_file(
+                    self._session_id(request.session_id),
+                    request.path,
+                    content,
+                    context,
+                    expected_session_generation=request.expected_session_generation,
+                )
+                return ActionResponse.success(
+                    {"path": request.path, "size": len(content), "sha256": digest}
+                )
+            finally:
+                await self.delete_local_file(request.file_key, action_context=context)
+
+        @self.action(LangBotToBoxAction.DOWNLOAD_FILE)
+        async def download_file(data: dict[str, Any]) -> ActionResponse:
+            request = BoxFileDownloadRequest.model_validate(data)
+            context = self._action_context()
+            content = await self._runtime.download_file(
+                self._session_id(request.session_id),
+                request.path,
+                context,
+                directory_archive=request.directory_archive,
+                expected_session_generation=request.expected_session_generation,
+            )
+            await self.send_file(
+                content, "", action_context=context, file_key=request.file_key
+            )
+            return ActionResponse.success(
+                {
+                    "file_key": request.file_key,
+                    "path": request.path,
+                    "size": len(content),
+                    "sha256": hashlib.sha256(content).hexdigest(),
+                }
+            )
+
+        @self.action(LangBotToBoxAction.DELETE_FILE_TRANSFER)
+        async def delete_file_transfer(data: dict[str, Any]) -> ActionResponse:
+            await self.delete_local_file(
+                data["file_key"], action_context=self._action_context()
+            )
+            return ActionResponse.success({})
+
+        @self.action(LangBotToBoxAction.CLEANUP_RUN_FILES)
+        async def cleanup_run_files(data: dict[str, Any]) -> ActionResponse:
+            request = BoxRunFilesCleanupRequest.model_validate(data)
+            await self._runtime.cleanup_run_files(
+                self._session_id(request.session_id),
+                request.io_scope,
+                self._action_context(),
+                expected_session_generation=request.expected_session_generation,
+            )
+            return ActionResponse.success({"cleaned": True})
+
+        @self.action(LangBotToBoxAction.PREPARE_ARTIFACT)
+        async def prepare_artifact(data: dict[str, Any]) -> ActionResponse:
+            descriptor = BoxArtifactDescriptor.model_validate(data["descriptor"])
+            context = self._action_context()
+            file_key = data.get("file_key")
+            try:
+                content = (
+                    await self.read_local_file(file_key, action_context=context)
+                    if file_key is not None
+                    else None
+                )
+                return ActionResponse.success(
+                    await self._runtime.prepare_artifact(descriptor, content, context)
+                )
+            finally:
+                if file_key is not None:
+                    await self.delete_local_file(file_key, action_context=context)
 
         @self.action(LangBotToBoxAction.CREATE_SESSION)
         async def create_session(data: dict[str, Any]) -> ActionResponse:
@@ -615,6 +730,10 @@ class BoxServerHandler(Handler):
                         action_context=context,
                     )
             except (pydantic.ValidationError, ValueError) as exc:
+                if data.get("e2b_config") is not None:
+                    return ActionResponse.error(
+                        "BoxValidationError: Invalid E2B connection configuration"
+                    )
                 return ActionResponse.error(f"BoxValidationError: {exc}")
             return ActionResponse.success(self._logical_session_data(info))
 
@@ -672,6 +791,31 @@ class BoxServerHandler(Handler):
             )
             return ActionResponse.success(
                 {"stopped": data.get("process_id", "default")}
+            )
+
+        @self.action(LangBotToBoxAction.GET_BACKENDS)
+        async def get_backends(data: dict[str, Any]) -> ActionResponse:
+            self._require_host_control()
+            from .models import E2BConnectionConfig
+
+            options = {}
+            if data.get("validate_e2b_template") is True:
+                options["validate_e2b_template"] = True
+            if data.get("e2b_config") is not None:
+                try:
+                    options["e2b_config"] = E2BConnectionConfig.model_validate(
+                        data["e2b_config"]
+                    )
+                except pydantic.ValidationError:
+                    return ActionResponse.error(
+                        "BoxValidationError: Invalid E2B connection configuration"
+                    )
+            return ActionResponse.success(
+                {
+                    "backends": await self._runtime.get_backends(
+                        refresh=data.get("refresh") is True, **options
+                    )
+                }
             )
 
         @self.action(LangBotToBoxAction.GET_BACKEND_INFO)
@@ -744,8 +888,19 @@ class BoxServerHandler(Handler):
                     "BoxValidationError: host backend requires local stdio control "
                     "or WebSocket control protected by LANGBOT_BOX_CONTROL_TOKEN"
                 )
-            self._runtime.init(data)
-            return ActionResponse.success({"initialized": True})
+            config = dict(data)
+            large_chunks = config.pop("file_chunk_256k", False) is True
+            self._runtime.init(config)
+            self._configure_box_file_chunks(large_chunks)
+            return ActionResponse.success(
+                {
+                    "initialized": True,
+                    "network_workspace": self._runtime.network_workspace,
+                    "directory_archive": True,
+                    "artifact_cache_preflight": True,
+                    **({"file_chunk_256k": True} if large_chunks else {}),
+                }
+            )
 
         @self.action(LangBotToBoxAction.SHUTDOWN)
         async def shutdown(data: dict[str, Any]) -> ActionResponse:
@@ -1083,6 +1238,7 @@ async def _run_server(
     blocking_executor = configure_bounded_default_executor_from_env(
         thread_name_prefix="langbot-box-runtime-blocking",
     )
+    install_loop_logging()
     control_token = str(os.environ.get(BOX_CONTROL_TOKEN_ENV, "")).strip()
     if control_token:
         control_token = validate_control_token(control_token)
@@ -1183,7 +1339,7 @@ def main(args: argparse.Namespace) -> None:
     # default, stdio when `-s`/`--stdio-control` is passed.
     control_mode = "stdio" if args.stdio_control else "ws"
 
-    configure_process_logging(stream=sys.stderr)
+    configure_process_logging(service="BOX", stream=sys.stderr)
     try:
         asyncio.run(
             _run_server(
@@ -1196,3 +1352,6 @@ def main(args: argparse.Namespace) -> None:
         )
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt, Box runtime stopped")
+    except Exception:
+        logger.exception("Box Runtime failed")
+        raise SystemExit(1) from None

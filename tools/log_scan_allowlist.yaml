@@ -1,0 +1,43 @@
+# Daily run 45060526415. Startup banners remain in the unparsed line totals.
+- pattern: 'core||||GET /api/v1/provider/providers/# 404'
+  reason: Cleanup checks confirm deleted resources no longer exist.
+  max_count: 4
+- pattern: 'core||||GET /api/v1/provider/models/llm/# 404'
+  reason: Cleanup checks confirm deleted resources no longer exist.
+  max_count: 3
+- pattern: 'core||||GET /api/v1/provider/models/embedding/# 404'
+  reason: Cleanup checks confirm deleted resources no longer exist.
+  max_count: 1
+- pattern: 'core||||GET /api/v1/platform/bots/# 404'
+  reason: Cleanup checks confirm deleted resources no longer exist.
+  max_count: 3
+- pattern: 'core||||GET /api/v1/pipelines/# 404'
+  reason: Cleanup checks confirm deleted resources no longer exist.
+  max_count: 3
+- pattern: 'core||||GET /api/v1/knowledge/bases/# 404'
+  reason: Cleanup checks confirm deleted resources no longer exist.
+  max_count: 1
+- pattern: 'core|app.py|||WebUI files are missing,*'
+  reason: The headless CI checkout has no built WebUI.
+  max_count: 1
+- pattern: 'core|app.py|||WebUI 文件缺失，*'
+  reason: Chinese version of the same headless startup warning.
+  max_count: 1
+- pattern: 'core|plugin_permissions.py|||Plugin langbot-team/* has no permission declaration.*'
+  reason: Compatibility mode for the regression plugin fixtures.
+  max_count: 2
+- pattern: 'core|api_jwt.py||InsecureKeyLengthWarning|The HMAC key is *'
+  reason: The disposable local JWT fixture uses a short key.
+  max_count: 2
+- pattern: 'runtime|handler.py|||Runtime action delete_plugin failed with ValueError'
+  reason: Plugin setup attempts removal before installing the three fixtures.
+  max_count: 3
+- pattern: 'runtime|stdio.py|||Skipping non-JSON output on stdio connection'
+  reason: One startup output line per fixture plugin.
+  max_count: 3
+- pattern: 'runtime|stdio.py|||Error receiving message: Connection closed'
+  reason: The three stdio connections close during Runtime shutdown.
+  max_count: 3
+- pattern: 'runtime|mgr.py|||Failed to notify revoked plugin worker: Connection closed'
+  reason: Revocation races the closed worker at shutdown.
+  max_count: 1

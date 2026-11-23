@@ -190,15 +190,15 @@ Each item returned by `get_available_tools()` contains `name`, `description`, `p
 
 ### Input attachments
 
-`ctx.input.attachments` describes each image, voice and file of the current message in order of appearance, as metadata only: `ref` (such as `att-1`), `type`, `source` (`message` for the current message, `quote` for a quoted message), `name`, `mime_type`, `size`, the platform `id`, and a directly downloadable `url`. Attachments do not carry file content; the `content` field is deprecated and always empty in current versions.
+`ctx.input.attachments` describes each image, voice and file of the current message in order of appearance, as metadata only: `ref` (such as `att-1`), `type`, `source` (`message` for the current message, `quote` for a quoted message), `name`, `mime_type`, `size`, and the platform `id`. The Host keeps source URLs private. Attachments do not carry file content; the `content` field is deprecated and always empty in current versions.
 
-`ctx.input.text` and `ctx.input.contents` place a marker at the position of each media, such as `[attachment att-1: image photo.jpg]`. A quoted message is wrapped in `[quoted message from <sender>]` and `[/quoted message]`. Images still follow their marker as `image_base64` or `image_url` so models can see them.
+`ctx.input.text` and `ctx.input.contents` place a marker at the position of each media, such as `[attachment att-1: image photo.jpg]`. A quoted message is wrapped in `[quoted message from <sender>]` and `[/quoted message]`. Images and files are not inlined into the initial model input. Read them explicitly when needed.
 
 | Method | Returns | Description |
 | --- | --- | --- |
 | `await ctx.read_input_attachment(attachment)` | `InputAttachmentData \| None` | Reads attachment bytes by `ref` and returns `data`, `name`, `mime_type` and `size`. The argument may also be a `ref` string. Returns `None` when LangBot does not offer this API |
 
-Each attachment is limited to 10 MiB and each run may read up to 50 MiB in total. LangBot neither caches the bytes nor writes them to logs. `ctx.context.available_apis.input_attachments` reports whether the API is available. Follow-up messages steered into the current run carry attachment metadata without a `ref`.
+Each attachment is limited to 10 MiB and each run may read up to 50 MiB in total. The content-reading API materializes the source as a temporary run-owned Artifact on first use; inline bytes are not written to conversation history or tool events. `ctx.context.available_apis.input_attachments` reports whether the API is available. Follow-up messages steered into the current run carry attachment metadata without a `ref`.
 
 The method requires `langbot-plugin` 0.7.23 or later. To support older LangBot or SDK versions, check that the method exists and fall back to the previous logic:
 
@@ -210,6 +210,8 @@ if data is None:
     ...  # Older LangBot: use attachment.content, attachment.url or ctx.input.contents
 ```
 
+`await ctx.read_input_attachment_content(ref, mode="auto", offset=0, max_chars=8192, page_start=1, page_end=None)` returns bounded text or structured media with the same frozen run grant. See [Artifact reading](/en/develop/artifacts) for modes and limits. This new method requires coordinated Core, SDK and Runtime versions; upgrade them and the LocalAgent plugin together.
+
 ### Box and attachments
 
 The Runner owns enablement, acquisition, and reuse policy. Use the [LangBot Box APIs](/en/plugin/dev/apis/common#box-sandbox) for resources and these context methods for the current run.
@@ -218,10 +220,16 @@ The Runner owns enablement, acquisition, and reuse policy. Use the [LangBot Box 
 | --- | --- | --- |
 | `await ctx.bind_box(box_id)` | `BoxBinding` | Bind a Workspace Box; returns `box_id`, `outbox`. A run cannot switch Boxes |
 | `await ctx.import_box_attachments(attachment_ids=None)` | `list[BoxFile]` | Import selected input `ref` values, or all inputs; returns sandbox paths |
-| `await ctx.export_box_files()` | `list[BoxFile]` | Export this run's outbox as file handles; sends no message |
+| `await ctx.export_box_files(paths)` | `list[BoxFile]` | Register selected absolute sandbox paths as temporary Artifacts; sends no message |
+| `await ctx.read_run_file(file_id, **options)` | `list[dict]` | Read an exported file as bounded text or structured image/PDF content |
+| `await ctx.commit_run_files(file_ids)` | `list[BoxFile]` | Publish exported files to the producer policy's authorized recipient |
 | `await ctx.reply_files(file_ids)` | `Any` | Reply with exported IDs, subject to event reply authorization |
 
-`BoxFile` contains `id`, `name`, `type`, `size`, and optional `path`. Input attachment metadata stays unchanged. Files are staged only on explicit import. Output handles belong to this run and cannot be sent twice.
+`BoxFile` contains `id`, `name`, `type`, `size`, and optional `path`. Exported files additionally include `artifact_id`, `mime_type`, `digest`, `lifecycle` and `expires_at`. The `id` remains a UUID run-local handle; use it for reading, committing and replying. `artifact_id` does not authorize account Artifact API access. Input attachment metadata stays unchanged, and sandbox paths are created only on explicit import. Output handles belong to this run and cannot be sent twice.
+
+`read_run_file` accepts the same modes and text/page ranges as [Artifact reads](/en/develop/artifacts), including reads after delivery while the run is still active. Commit requires an explicit producer publication policy, frozen at run start and revalidated on commit. The recipient can manage committed files through the account Artifact API after the run ends; another account, key or run gains no access. Successful publication returns `lifecycle="persistent"` and `expires_at=None`; an idempotent retry preserves any later recipient release. Export, read and reply do not commit automatically. Finalization attempts bounded cleanup of unpublished outputs; Core crashes, cleanup failures and timeouts fall back to their original 24-hour expiry before maintenance collection. See [publication and release](/en/develop/artifacts#runner-output-files) for setup and authorization.
+
+Batch registration must complete before sandbox source files are removed. Registration failure leaves the sources intact; source cleanup failure after acceptance returns the accepted IDs with a warning. Keep those IDs rather than repeating delivery. Platform file replies load the registered Artifact bytes; there is no general run-file HTTP endpoint.
 
 Bind before native sandbox tools or file operations. Runs sharing a Box still have separate attachment directories. `ctx.variables` contains public request variables for computing reuse keys.
 
@@ -229,7 +237,7 @@ Bind before native sandbox tools or file operations. Runs sharing a Box still ha
 
 With automatic replies, every `RunnerResult.message_completed` is sent as its own message, so a Runner can post progress before its answer. `RunnerResult.message_delta` chunks update one streamed message on platforms that support streaming; elsewhere only completed messages are sent, and a run that ends with deltas alone sends its last result once.
 
-External runners use the same flow through `AgentRunExternalTools`: `langbot_get_box_status`, `langbot_list_boxes`, `langbot_acquire_box`, `langbot_bind_box`, `langbot_import_box_attachments`, and `langbot_export_box_files`. `langbot_read_input_attachment` is available when input attachments can be read. `langbot_reply_files` is available when the run has event reply permission. All calls retain the current run authorization.
+External runners use the same flow through `AgentRunExternalTools`: `langbot_get_box_status`, `langbot_list_boxes`, `langbot_acquire_box`, `langbot_bind_box`, `langbot_import_box_attachments`, `langbot_export_box_files` and `langbot_read_run_file`. `langbot_read_input_attachment` is available when input attachments can be read. `langbot_reply_files` is available when the run has event reply permission. All calls retain the current run authorization. Commit is an explicit Runner API call, not a default model tool.
 
 ### Prompt, history, and events
 
@@ -264,9 +272,15 @@ External runners use the same flow through `AgentRunExternalTools`: `langbot_get
 | `await ctx.run_cancel(run_id=None, reason=None)` | `AgentRun` | `run_cancel` |
 | `await ctx.run_retry(run_id=None, reason=None)` | `AgentRun` | `run_retry` |
 | `await ctx.run_resume(run_id=None, from_sequence=None, reason=None)` | `AgentRun` | `run_resume` |
-| `await ctx.run_cancel_ack(run_id=None, reason=None, cleanup_confirmed=True)` | `AgentRun` | `run_cancel_ack` |
+| `await ctx.run_cancel_ack(run_id=None, reason=None, cleanup_confirmed=True, *, expected_retry_count=None)` | `AgentRun` | `run_cancel_ack` |
 | `await ctx.run_append_result(result)` | `AgentRunEvent` | `run_append_result` |
 | `await ctx.run_finalize(run_id=None, status=None, reason=None)` | `AgentRun` | `run_finalize` |
+
+Cancellation records the request first. After the Runner finishes cleanup, call `ctx.run_cancel_ack()`. A pending acknowledgement (`cleanup_confirmed=False`) can advance to confirmed. For the same attempt, retries preserve the time and reason of the first acknowledgement in each state, and confirmation is final.
+
+Externally queued runs reuse their ID on retry. When handling cancellation, save the count from the returned run (`run.metadata.get("retry_count", 0)`). Pass it as `expected_retry_count` when acknowledging cleanup and reuse the saved value on retransmission. After the first requeue, the Host rejects a missing or mismatched count without changing the run. Other runs can omit the field. Finalizers can add metadata. The Host preserves `cancel_ack` for all runs and `retry_count` for external queues.
+
+On upgrade, an old acknowledgement on a requeued run may lack an attempt number. Its history is retained. The first ACK tagged with the current count establishes the time and reason for the current attempt.
 
 `claim=False` consumes steering on pull. With `claim=True`, acknowledge accepted delivery IDs with `steering_ack`; unacknowledged leases can be redelivered. ACK and recovery controls retain authorization after the source Run ends. Host retry/resume creates a new Run with a fresh deadline and current grants; resume requires a committed checkpoint and does not rewind external effects.
 
@@ -299,3 +313,7 @@ The following components receive task input rather than an EventListener or Runn
 The ACP daemon uses the existing LangBot run-scoped MCP bridge. With Box available and `event_reply` authorized, bind a Box, generate the file there, export the selected absolute paths with `langbot_export_box_files`, and send the returned IDs with `langbot_reply_files`. The platform adapter owns media upload and delivery; the ACP agent does not need platform credentials.
 
 File IDs are valid only within the run that exported them. Replies still target the original inbound message even when Pipeline filters rewrite the working text.
+
+## Installation-owned Artifacts in a run
+
+`ctx.api.artifacts` exposes the [typed Artifact helpers](/en/plugin/dev/apis/common#typed-artifact-helpers). These are installation-owned Workspace assets, not replacements for run-local attachment or Box file handles. Calls are additionally bound to the live run and its frozen Workspace grants. The helper does not convert an account, Skill or another run's reference into access. Existing export/read/commit/reply `file_id` behavior remains unchanged.

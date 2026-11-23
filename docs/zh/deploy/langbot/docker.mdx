@@ -3,6 +3,10 @@ title: "Docker部署"
 description: "在 Windows、Linux 或 macOS 上使用 Docker Compose 部署 LangBot。"
 ---
 
+<Tip>
+更省事的方式：一行命令安装时选择 Docker（`curl -fsSL https://langbot.app/install.sh | bash -s -- --driver docker`），lbctl 会自动生成 Compose 配置、选择可用镜像源，并负责之后的升级、日志和自启。已经按本文部署的实例也可以[接入 lbctl](/zh/deploy/lbctl#已有的-docker-compose-部署接入-lbctl)。
+</Tip>
+
 ## 1. 准备环境
 
 - 安装 Git。

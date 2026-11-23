@@ -532,6 +532,8 @@
               {
                 "group": "Installation",
                 "pages": [
+                  "en/deploy/langbot/one-line",
+                  "en/deploy/lbctl",
                   "en/deploy/langbot/package",
                   "en/deploy/langbot/docker",
                   "en/deploy/langbot/kubernetes",
@@ -913,6 +915,7 @@
                 "pages": [
                   "en/develop/agent-context",
                   "en/develop/dev-config",
+                  "en/develop/artifacts",
                   "en/develop/plugin-runtime",
                   "en/develop/comp-arch",
                   "en/workshop/impl-platform-adapter"
@@ -1022,6 +1025,8 @@
               {
                 "group": "安装部署",
                 "pages": [
+                  "zh/deploy/langbot/one-line",
+                  "zh/deploy/lbctl",
                   "zh/deploy/langbot/package",
                   "zh/deploy/langbot/docker",
                   "zh/deploy/langbot/kubernetes",
@@ -1418,6 +1423,7 @@
                 "pages": [
                   "zh/develop/agent-context",
                   "zh/develop/dev-config",
+                  "zh/develop/artifacts",
                   "zh/develop/plugin-runtime",
                   "zh/develop/comp-arch",
                   "zh/workshop/impl-platform-adapter",
@@ -1540,6 +1546,8 @@
               {
                 "group": "インストール",
                 "pages": [
+                  "ja/deploy/langbot/one-line",
+                  "ja/deploy/lbctl",
                   "ja/deploy/langbot/package",
                   "ja/deploy/langbot/docker",
                   "ja/deploy/langbot/kubernetes",
@@ -1921,6 +1929,7 @@
                 "pages": [
                   "ja/develop/agent-context",
                   "ja/develop/dev-config",
+                  "ja/develop/artifacts",
                   "ja/develop/plugin-runtime",
                   "ja/develop/comp-arch",
                   "ja/workshop/impl-platform-adapter"

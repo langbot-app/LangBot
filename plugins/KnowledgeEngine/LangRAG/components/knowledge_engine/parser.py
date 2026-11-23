@@ -12,6 +12,7 @@ version once external parser adoption is widespread.
 
 from __future__ import annotations
 
+import codecs
 import io
 import re
 from components.offload import BoundedOffload
@@ -58,7 +59,7 @@ class FileParser:
             Union[str, None]: The extracted text content as a single string, or None if parsing fails.
         """
         if len(file_bytes) > 16 * 1024 * 1024:
-            raise ValueError("File exceeds the 16 MiB internal parser limit")
+            raise ValueError('File exceeds the 16 MiB internal parser limit')
         # Extract extension from filename
         if '.' in filename:
             file_extension = filename.rsplit('.', 1)[-1].lower()
@@ -79,7 +80,20 @@ class FileParser:
             return None
 
     def _decode_text(self, file_bytes: bytes) -> str:
-        """Decode bytes to text with encoding detection."""
+        """Prefer Unicode signatures and valid UTF-8 over encoding guesses."""
+        # UTF-32 LE shares its first two BOM bytes with UTF-16 LE.
+        if file_bytes.startswith((codecs.BOM_UTF32_LE, codecs.BOM_UTF32_BE)):
+            return file_bytes.decode('utf-32', errors='ignore')
+        if file_bytes.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+            return file_bytes.decode('utf-16', errors='ignore')
+
+        # Unmarked UTF-16/32 ASCII text can also be valid UTF-8 containing NULs.
+        if file_bytes.startswith(codecs.BOM_UTF8) or b'\x00' not in file_bytes:
+            try:
+                return file_bytes.decode('utf-8-sig')
+            except UnicodeDecodeError:
+                pass
+
         detected = chardet.detect(file_bytes)
         encoding = detected['encoding'] or 'utf-8'
         return file_bytes.decode(encoding, errors='ignore')

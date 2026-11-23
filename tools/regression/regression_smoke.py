@@ -2,10 +2,7 @@
 
 from collections import Counter
 from contextlib import closing
-import base64
 import json
-import hashlib
-import hmac
 import os
 from pathlib import Path
 import sqlite3
@@ -14,98 +11,20 @@ import urllib.error
 import urllib.request
 from uuid import uuid4
 
-from tools.entrypoints.regression_traffic import group_request, percentile, read_endpoint_snapshot, reconcile_runs
-from tools.entrypoints.regression_coverage import checked, check_response
+from tools.entrypoints.regression_traffic import percentile
+from tools.regression.observations import read_endpoint_snapshot
+from tools.regression.evidence import check_attachment, check_fields, check_response, checked
+from tools.regression.http_bot import group_request, signed_headers
 from tools.regression.regression_local_cases import ScenarioUnavailable
-
-
-class UnresolvedRun(RuntimeError):
-    """The request cannot yet be matched to one authoritative terminal run."""
-
-
-def completed_run(connection, workspace, conversation, after_id, timeout):
-    deadline = time.monotonic() + timeout
-    while True:
-        rows = connection.execute(
-            'SELECT run_id, status, status_reason, finished_at FROM agent_run '
-            'WHERE workspace_id=? AND conversation_id=? AND id>? ORDER BY id',
-            (workspace, conversation, after_id),
-        ).fetchall()
-        if len(rows) > 1:
-            raise UnresolvedRun('More than one AgentRun matches this request')
-        if rows and (rows[0]['finished_at'] or rows[0]['status'] in {'completed', 'failed', 'timeout', 'cancelled'}):
-            return dict(rows[0])
-        if time.monotonic() >= deadline:
-            raise UnresolvedRun('No unique terminal AgentRun before the observation deadline; not retried')
-        time.sleep(0.1)
-
-
-def check_run(connection, run, case):
-    if run['status'] != 'completed':
-        raise ValueError(f'AgentRun {run["run_id"]} ended as {run["status"]}: {run["status_reason"]}')
-    events = [
-        (kind, json.loads(data or '{}'))
-        for kind, data in connection.execute(
-            'SELECT type, data_json FROM agent_run_event WHERE run_id=? ORDER BY sequence', (run['run_id'],)
-        )
-    ]
-    if any(not isinstance(data, dict) for _kind, data in events):
-        raise ValueError('AgentRun event payload must be an object')
-    if not any(kind == 'run.completed' for kind, _data in events):
-        raise ValueError('Completed AgentRun is missing its persisted run.completed event')
-    checks = {'terminal_event': True}
-    if expected := case.get('box_exec'):
-        calls = [
-            data.get('result', {})
-            for kind, data in events
-            if kind == 'tool.call.completed' and data.get('tool_name') == 'exec'
-        ]
-        if len(calls) != expected['count'] or any(
-            not isinstance(item, dict)
-            or item.get('backend') != expected['backend']
-            or item.get('exit_code') != expected.get('exit_code', 0)
-            or not isinstance(item.get('stdout'), str)
-            or expected['stdout'] not in item['stdout']
-            or ('stderr' in expected and expected['stderr'] not in str(item.get('stderr', '')))
-            for item in calls
-        ):
-            raise ValueError('Box execution count/backend/exit code/output did not match the oracle')
-        checks['box_exec'] = {'calls': len(calls), 'backend': expected['backend'], 'output_matched': True}
-    return checks
-
-
-def check_attachment(data, expected):
-    replies = data.get('replies')
-    if not isinstance(replies, list) or any(
-        not isinstance(reply, dict)
-        or not isinstance(reply.get('message_chain'), list)
-        or any(not isinstance(part, dict) for part in reply['message_chain'])
-        for reply in replies
-    ):
-        raise ValueError('Malformed file delivery response')
-    attachments = [part for reply in replies for part in reply.get('message_chain', []) if part.get('type') == 'File']
-    if len(attachments) != 1 or attachments[0].get('name') != expected['name']:
-        raise ValueError('Expected exactly one file attachment with the configured name')
-    encoded = attachments[0].get('base64')
-    if not isinstance(encoded, str):
-        raise ValueError('Attachment must contain base64 bytes')
-    content = base64.b64decode(encoded, validate=True)
-    if content != expected['text'].encode('utf-8'):
-        raise ValueError('Exported attachment bytes differ from the expected fixture')
-    return {'name': expected['name'], 'bytes': len(content), 'content_matched': True}
-
-
-def check_fields(data, expected):
-    for path, value in expected.items():
-        actual = data
-        try:
-            for key in path.split('.'):
-                actual = actual[int(key)] if isinstance(actual, list) else actual[key]
-        except (KeyError, IndexError, TypeError, ValueError) as exc:
-            raise ValueError(f'Response field {path} is missing or malformed') from exc
-        if actual != value:
-            raise ValueError(f'Response field {path} differs from the expected value')
-    return expected
+from tools.regression.run_ledger import (
+    UnresolvedRun,
+    check_run,
+    completed_run,
+    connect_readonly,
+    high_water_mark,
+    reconcile_scenario_runs,
+    scenario_run_rows,
+)
 
 
 def check_mock_requests(path, offset, expected, *, timeout=3):
@@ -125,12 +44,6 @@ def check_mock_requests(path, offset, expected, *, timeout=3):
                 raise ValueError(f'Model request sequence differs: expected {expected}, got {actual}')
             return actual
         time.sleep(0.05)
-
-
-def signed_headers(body, secret, timestamp=None):
-    timestamp = str(int(time.time()) if timestamp is None else timestamp)
-    signature = hmac.new(secret.encode(), timestamp.encode() + b'.' + body, hashlib.sha256).hexdigest()
-    return {'Content-Type': 'application/json', 'X-LB-Timestamp': timestamp, 'X-LB-Signature': 'sha256=' + signature}
 
 
 def rejected_group(case, group, env=None, *, timeout=10):
@@ -206,32 +119,6 @@ def reset_group(case, group, env, *, timeout=10):
     return result
 
 
-def verify_cleanup(suite, deleted):
-    checks = []
-    for kind, model_type in dict.fromkeys((item['kind'], item.get('type')) for item in deleted):
-        args = [kind, 'list'] + (['--type', model_type] if model_type else [])
-        data = suite.call(args)
-        key = {
-            'provider': 'providers',
-            'model': 'models',
-            'pipeline': 'pipelines',
-            'bot': 'bots',
-            'knowledge-base': 'bases',
-        }[kind]
-        items = data.get(key) if isinstance(data, dict) else None
-        if not isinstance(items, list) or any(
-            not isinstance(item, dict) or not isinstance(item.get('uuid'), str) for item in items
-        ):
-            raise ValueError(f'Malformed {kind} list response during cleanup verification')
-        visible = {item['uuid'] for item in items}
-        expected_absent = {item['uuid'] for item in deleted if item['kind'] == kind and item.get('type') == model_type}
-        remaining = sorted(expected_absent & visible)
-        checks.append({'kind': kind, 'type': model_type, 'deleted_count': len(expected_absent), 'remaining': remaining})
-    suite.write('cleanup-checks.json', checks)
-    if any(row['remaining'] for row in checks):
-        raise ValueError('Deleted resources remain visible in CLI list readback')
-
-
 def run_cycle(suite, rows, health, cycle):
     # Imported here because Suite dispatches to this module after profile validation.
     from tools.entrypoints.regression_suite import resolve
@@ -265,7 +152,7 @@ def run_cycle(suite, rows, health, cycle):
 
     sample_health('before')
     # shortcut: local SQLite only; use a terminal-run API when lbctl exposes one.
-    with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=5)) as connection:
+    with closing(connect_readonly(path)) as connection:
         connection.row_factory = sqlite3.Row
         connection.execute('PRAGMA query_only=ON')
         for original in suite.profile['cases']:
@@ -310,7 +197,7 @@ def run_cycle(suite, rows, health, cycle):
                         rows.append(row)
                         continue
                     before = time.monotonic()
-                    after_id = connection.execute('SELECT COALESCE(MAX(id),0) FROM agent_run').fetchone()[0]
+                    after_id = high_water_mark(connection)
                     row['after_id'] = after_id
                     if runner and is_group:
                         row['conversation_id'] = 'group_' + group
@@ -504,44 +391,3 @@ def run_smoke(suite):
     }
     reconcile_scenario_runs(suite, result)
     return result
-
-
-def scenario_run_rows(rows):
-    executed = [row for row in rows if row.get('requires_runner') and 'after_id' in row]
-    for row in rows:
-        for run in row.get('scenario_runs', []):
-            executed.append(
-                {
-                    'after_id': row['after_id'],
-                    'conversation_id': run['conversation_id'],
-                    'run': {'run_id': run['run_id']},
-                    'expected_status': run['expected_status'],
-                }
-            )
-    return executed
-
-
-def reconcile_scenario_runs(suite, result, *, key='ledger'):
-    """Recheck the originally observed conversations without expanding run ownership."""
-    executed = scenario_run_rows(result.get('cases', []))
-    if not executed:
-        return
-    try:
-        result[key] = reconcile_runs(
-            suite.path(suite.profile['smoke']['ledger_db']),
-            suite.variables['workspace_uuid'],
-            min(row['after_id'] for row in executed),
-            {row['conversation_id'] for row in executed if 'conversation_id' in row},
-            {row['run']['run_id'] for row in executed if 'run' in row},
-            expected_statuses={
-                row['run']['run_id']: row.get('expected_status', 'completed') for row in executed if 'run' in row
-            },
-        )
-    except (OSError, sqlite3.Error) as exc:
-        error = f'Scenario {key} evidence unavailable: {exc}'
-        result['errors'].append(error)
-        result.setdefault('incomplete', []).append(error)
-        return
-    if not result[key]['matched']:
-        error = f'Scenario {key} found extra, missing or unexpected AgentRun states'
-        result['errors'].append(error)

@@ -126,6 +126,25 @@ def _complete_runtime_policy_defaults(cfg: dict) -> dict:
     return cfg
 
 
+def _complete_content_defaults(cfg: dict) -> dict:
+    """Preserve upgraded deployments' choices; fresh files use the template."""
+    for section in ('skills', 'storage', 'box'):
+        if not isinstance(cfg.setdefault(section, {}), dict):
+            raise ValueError(f'{section} must be a mapping')
+    cfg['skills'].setdefault('persistence', 'filesystem')
+    cfg['storage'].setdefault('use', 'local')
+    cfg['box'].setdefault(
+        'workspace_mode', 'shared' if cfg['box'].get('file_transfer_mode') == 'network' else 'private'
+    )
+    cfg['box'].setdefault('file_transfer_mode', 'legacy')
+    for section in ('skills', 'storage'):
+        migration = cfg[section].setdefault('migration', {})
+        if not isinstance(migration, dict):
+            raise ValueError(f'{section}.migration must be a mapping')
+        migration.setdefault('require_source', False)
+    return cfg
+
+
 def _apply_env_overrides_to_config(cfg: dict) -> dict:
     """Apply environment variable overrides to data/config.yaml
 
@@ -278,10 +297,20 @@ class LoadConfigStage(stage.BootingStage):
         # Deep-complete only typed execution-policy fields. This keeps native
         # env coercion reliable for existing data/config.yaml files.
         ap.instance_config.data = _complete_runtime_policy_defaults(ap.instance_config.data)
+        ap.instance_config.data = _complete_content_defaults(ap.instance_config.data)
 
         # Apply environment variable overrides to data/config.yaml
         ap.instance_config.data = _apply_env_overrides_to_config(ap.instance_config.data)
         ap.instance_config.data = _apply_certification_key_ring_env(ap.instance_config.data)
+
+        # The persistent provider must not create a missing legacy volume before
+        # the explicit upgrade check can report it.
+        for section in ('skills', 'storage'):
+            required = ap.instance_config.data[section]['migration']['require_source']
+            if not isinstance(required, bool):
+                raise ValueError(f'{section}.migration.require_source must be a boolean')
+        source = os.path.join('data', 'storage')
+        ap.legacy_storage_source_exists = os.path.lexists(source)
 
         blocking_config = ap.instance_config.data['system']['blocking_executor']
         ap.blocking_executor = bounded_executor.configure_bounded_default_executor(

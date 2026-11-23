@@ -1,0 +1,126 @@
+---
+title: "Artifact ファイル API"
+description: "HTTP または MCP で所有するファイルをアップロード、読み取り、保持、削除します。"
+---
+
+Artifact はファイルの不透明な参照とメタデータを提供します。アカウントまたは API キーは、認証されたワークスペース内で自身が所有するファイルにのみアクセスできます。同じワークスペースのメンバーでも、ID を知るだけではアクセスできません。
+
+通常のワークスペース HTTP 認証を使用します。読み取りには `resource.view`、作成、保持、解放、削除には `resource.manage` が必要です。
+
+| 操作 | HTTP |
+| --- | --- |
+| アップロード | `POST /api/v1/artifacts`、multipart `file`、任意の `ttl_seconds` |
+| メタデータ | `GET /api/v1/artifacts/{id}` |
+| ダウンロード | `GET /api/v1/artifacts/{id}/content`、任意の `max_bytes` |
+| 構造化読み取り | `GET /api/v1/artifacts/{id}/read`、任意の `mode`、`offset`、`max_chars`、`page_start`、`page_end` |
+| 永続保持 | `POST /api/v1/artifacts/{id}/retain` |
+| 保持の解放 | `POST /api/v1/artifacts/{id}/release` |
+| 削除 | `DELETE /api/v1/artifacts/{id}` |
+
+アップロードは `id` を含むメタデータを返します。ダウンロードは元のバイト列を添付ファイルとして返し、digest ETag を付けます。アップロードと読み取りの上限は 10 MiB です。`max_bytes` はファイル全体の上限で、バイト範囲ではありません。上限を超えると、切り詰めずに拒否します。
+
+アップロードしたファイルは既定で 24 時間後に期限切れになります。`ttl_seconds` は 1 秒から 7 日まで指定できます。retain は永続保持の印を追加しますが、アクセス権は変えません。release は印を削除し、24 時間の猶予期間に戻します。繰り返しても猶予期間は延長されません。保持中のファイルを削除するには先に解放してください。期限切れのファイルは読み取りも再保持もできません。クリーンアップ処理が期限切れの一時データを回収します。
+
+存在しない、削除済み、または権限のない ID は 404 を返します。所有ファイルの期限切れは `artifact_expired`（410）、保持中の削除は `artifact_in_use`（409）、読み取り上限超過は `artifact_too_large`（413）、整合性検証の失敗は `artifact_integrity_failed`（422）です。
+
+削除後のアクセスは拒否され、実データは保守処理で回収されます。有界ダウンロードには一時リースがあり、保守処理は読み取り完了か期限切れまで対象をスキップします。有効な実行リースを持つ run も、使用中の出力を保護します。
+
+Artifact の削除は、配信済みのプラットフォームファイルや、独立した規則で保持されるメッセージ履歴を削除しません。
+
+ネイティブモードを含む PDF の構造化読み取りでは、破損したファイルやパスワードで保護されたファイルに対し `artifact_pdf_unreadable`（422）を返します。権限があれば元のバイト列はダウンロードできます。
+
+## 固定バージョンの Skill リソース
+
+`POST /api/v1/artifacts/skill-resources` は、データベースに永続化された Skill パッケージ内の単一ファイルに対し、呼び出し元が所有する参照を作成します。JSON 本文には `skill_name`、明示的な `revision`、パッケージ内の相対 `path`、任意の `ttl_seconds` を指定します。`resource.view` と `resource.manage` の両方が必要です。ApplicationAPI 操作は `artifact.skill_resource.create`、同じ引数を持つ MCP ツールは `create_skill_resource_artifact` です。
+
+登録は ContentStore にある不変のバージョンパッケージを再利用し、ファイルやパッケージをアップロード・複製しません。参照は保存済みバージョンの識別子と正規化されたパスに結び付き、ファイルのダイジェスト、サイズ、MIME 型を持ちます。新バージョンを公開しても既存参照は変わりません。通常の Artifact メタデータ、ダウンロード、構造化読み取り API を使用でき、Box セッションは不要です。
+
+参照を使用できるのは作成したアカウントまたは API キーだけです。ID の共有や保持は別の主体に権限を与えません。ソース参照は通常のアップロード添付とは異なり、デバッグ要求の `artifact_ids` に含めても run への許可になるとは限りません。この Workspace 操作はプラグイン、デフォルトモデルツール、`lbctl` には公開されません。
+
+解放と Artifact の回収は参照だけを削除し、共有 Skill パッケージは削除しません。有効な参照は保持バージョンを保護し、一時的な読み取りリースは処理中の読み取りを保護します。Skill の現在のカタログ項目を削除しても保持バージョンは書き換わりません。この参照 API はファイルシステムのみの Skill ストレージには対応しません。データベース永続化を使用してください。既存のテキストリソース API は引き続き利用できます。
+
+同じ所有者・バージョン・パスで再登録しても同一参照を返し、有効期限は延長しません。期限切れまたは削除済みの参照は、回収後に再登録できます。
+
+
+許可された実行中の run では、`read_skill_resource` が有効化済み Skill の固定リビジョンと共通の有界 reader を使用します。テキストは既存の形式を維持し、切り詰め時には継続位置を返します。画像とネイティブ PDF は通常のテキスト中の base64 ではなく、構造化モデルコンテンツになります。登録時に上限付きのソースバイトを検証します。ソースの読み出し量は、run 内の各不変 Artifact につき一度だけ計上し、ファイルごとに 256 KiB、run ごとに 1 MiB に制限します。これとは別に、返却 JSON の UTF-8 バイトとメディアペイロードの累計を run ごとに 1 MiB に制限します。ソースを計上済みでも、継続読み取りのたびに認可を再確認します。従来のテキスト経路は変更しません。ネイティブ PDF には対応モデルが必要です。この実行中 run の認可がない場合、既存のテキスト読み取りのみが利用でき、バイナリへのアクセスは暗黙に許可されません。
+
+## MCP
+
+ネイティブPDF入力には信頼できるモデル能力情報が必要です。提供元がPDF対応を確認済みでも能力カタログにない別名の場合、管理者はモデルの既存の `abilities` に `pdf_input` を指定できます。宣言がなく能力が不明な場合、ネイティブPDFは明示的に拒否されますが、テキストモードは利用できます。
+
+組み込み `/mcp` サーバーは、同じ所有者と権限のチェックを適用する `create_artifact`、`get_artifact`、`read_artifact`、`retain_artifact`、`release_artifact`、`delete_artifact` を提供します。作成には `filename`、`content_base64`、任意の `mime_type` と `ttl_seconds` を渡します。読み取りには `artifact_id` と任意の `max_bytes` を渡し、base64 とメタデータを受け取ります。
+
+`read_artifact` は元のバイト列を転送します。プラグイン許可や型付きメソッドはアカウント所有ファイルへのアクセスを許可しません。インストール所有の Artifact 操作は後述します。アカウント管理は既定モデルツールや `lbctl` に追加されません。既存のアップロード API と run の `file_id` API は従来の契約を維持します。
+
+`read_artifact_content` は HTTP `/read` と同じパラメーターを受け付け、通常のテキストに base64 を入れず、MCP のテキスト、画像、埋め込み PDF を返します。Workspace 操作は `artifact.read_content` です。
+
+## Agent による必要時の読み取り
+
+Runner の初期入力には添付参照、名前、MIME 型、サイズのみが含まれます。画像やファイルのバイト列と取得元 URL は Host の実行内レジストリに保持され、最初のモデルメッセージには入りません。現在のメッセージと引用メッセージの添付は別々の参照を持ちます。必要な内容だけを取得し、Host は現在の run に固定された添付権限を確認します。他の run の参照はアクセスを許可しません。
+
+`read_input_attachment_content` は構造化された内容を返します。
+
+| モード | 動作 |
+| --- | --- |
+| `auto` | UTF-8 テキスト、構造化画像、または PDF 抽出テキストを返します。 |
+| `text` | 文字範囲を制限して読み取ります。PDF は対象ページを示し、画像やレイアウトを含みません。 |
+| `native` | 対応モデルへ画像や PDF を渡します。非対応モデルでは明示的に失敗します。 |
+| `pages` | ページ描画は現在未対応で、明示的なエラーになります。 |
+
+テキストは 0 始まりの `offset` と `max_chars`（既定 8192、最大 16384）を使用します。結果の `truncated` と `next_offset` を確認して続きを読み取ってください。PDF テキストは 1 始まりの `page_start` と任意の `page_end` を使用し、1 回最大 10 ページで、次のページ位置も返します。OCR、画像、ページレイアウトは対象外です。他のバイナリ形式は明示的に拒否されます。自分がアップロードしたファイルは認証済みのダウンロード API で取得できます。
+
+Agent デバッグ API は、自分がアップロードした異なる ID を最大 20 件まで `artifact_ids` に指定できます。Host が認証済み主体の所有権を確認し、その run に参照だけを渡します。イベントの `actor` で所有者を変更することはできません。独立した Workspace 管理アシスタントの添付入力はこの段階では未対応です。既存の生バイト API `read_input_attachment` は権限のある Runner コード向けに維持されます。
+
+## Runner の出力ファイル
+
+`ctx.export_box_files(paths)` は、選択したサンドボックスファイルを一時 Artifact として登録します。返される `BoxFile.id` は従来どおり、エクスポートした run が所有する UUID ハンドルです。メタデータには `artifact_id`、`mime_type`、`digest`、`lifecycle`、`expires_at` が追加されます。`artifact_id` を知っても、アカウントの Artifact API で読み取る権限は得られません。
+
+`ctx.read_run_file(file_id, mode="auto", offset=0, max_chars=8192, page_start=1, page_end=None)` は、上記モードで制限付きの構造化コンテンツを読み取ります。出力を公開するには、認証済みアカウントまたは名前付き API キーが、Agent または Pipeline の公開ポリシーを先に有効にします。
+
+```http
+PUT /api/v1/artifacts/producers/agent/{agent_id}/publication
+Content-Type: application/json
+
+{"enabled": true}
+```
+
+Pipeline には `pipeline`、イベントプロセッサーには `event_processor` を使います。サーバーが認証済み主体を受取人に設定し、リクエストから別の受取人を指定することはできません。`resource.view` と `resource.manage` の両方が必要です。ほかの Workspace メンバーはポリシーを引き継げません。新規・コピーした実行対象には既定でポリシーがありません。グローバルキーと旧互換キーは受取人にできないため、名前付き Workspace API キーを使用してください。
+
+Host は run 開始時にポリシーを固定します。`ctx.commit_run_files(file_ids)` はポリシーと受取人の現在の権限を再確認し、受取人の永続 pin と更新済みメタデータを返します。ポリシーの欠落、変更、無効化、権限の取り消しは commit を拒否します。エクスポート、読み取り、返信は自動 commit せず、既定のモデルツールにも commit は含まれません。commit の再試行で、受取人が後から行った release を取り消すことはありません。
+
+commit 後は、受取人が `artifact_id` を使って既存のメタデータ、ダウンロード、retain、release、delete API を利用できます。run 終了や Core 再起動後も利用でき、ほかのアカウント、キー、run に権限は付与されません。`file_id` は元の実行中 run 内だけで有効です。release は 24 時間の猶予を設定します。永続 pin や有効な使用リースがある間、delete は `artifact_in_use`（409）を返すため、解放後に再試行してください。
+
+管理には ID が必要です。Runner は commit が返す `artifact_id` を業務結果で受取人へ渡してください。Artifact の一覧 API はありません。
+
+同じ URL の `GET` で確認、`DELETE` で無効化します。MCP は `get_artifact_publication`、`set_artifact_publication`、`disable_artifact_publication` を提供します。無効化しても既に公開したファイルは元の受取人が管理します。
+
+実行の完了、失敗、キャンセル時に、Host は時間制限付きのクリーンアップで未公開の出力を期限切れにし、保守処理の回収対象にします。Core のクラッシュ、クリーンアップの失敗やタイムアウト時も、元の 24 時間の有効期限が適用されます。
+
+`ctx.reply_files` と Pipeline の添付返信は、既存のプラットフォーム配信経路で Artifact のバイト列を読み取ります。汎用の run ファイル用 HTTP ダウンロード API は追加しません。詳細は [Runner API](/ja/plugin/dev/apis/agent-run#box-と添付ファイル) を参照してください。
+
+## ナレッジベースへの Artifact 取り込み
+
+所有する既存 Artifact を再アップロードせずに索引化するには、`knowledge.file.store_artifact` に `kb_uuid`、`artifact_id`、任意の `parser_plugin_id` を渡します。または `POST /api/v1/knowledge/bases/{kb_uuid}/files/artifact` に後者二つを JSON で送信します。`resource.view` と `resource.manage` の両方が必要です。MCP の `add_knowledge_file_artifact` も同じ引数を使用します。応答は既存の索引タスクの `task_id` 契約を維持します。従来のアップロードと `file_id` による取り込みも引き続き利用できます。
+
+このアカウント/API キー用の入口は永続的なナレッジファイルの業務参照を作成します。Artifact ID を知るだけでは認可されません。この経路では Skill パッケージ由来と run 所有のソースを受け付けません。ナレッジファイルやベースの削除は自身の業務参照だけを解除し、他の消費者の参照や共有バイトを削除しません。有効な業務参照がある間は Artifact の削除を拒否します。
+
+KnowledgeEngine プラグインは引き続き `get_knowledge_file_stream` で `context.file_object.storage_path` を読み取ります。Artifact 取り込み時、この値は不透明な `artifact:<knowledge_file_uuid>` トークンであり、ファイルシステムパス、URL、公開ダウンロードキーではありません。Core はインストールされた呼び出し元がそのベースに割り当てられたエンジンであることを確認し、共通 Artifact サービスから読み取ります。トークンをローカルで開いたり、別のインストールへの認可として渡したりしないでください。
+
+
+## プラグイン所有の Artifact
+
+プラグインは `artifact.create`、`artifact.get`、`artifact.read`、`artifact.read_content`、`artifact.retain`、`artifact.release`、`artifact.delete` を明示的に要求できます。必要な操作 ID を個別に列挙してください。`artifact.*` にはアカウント専用の公開・Skill ソース操作も含まれるため拒否されます。型付き呼び出しは `self.plugin.workspace.artifact.<method>(...)`、または run に結び付いた `ctx.api.workspace` プロキシを使用します。
+
+これらの Artifact はインストール UUID に属し、プラグインの作者/名前、アカウント、run には属しません。各操作は現在の有効なインストールと許可を再確認します。許可の取消後や新 UUID による再インストール後は古い資産にアクセスできません。ID の把握や保持はアクセス権の共有になりません。この経路でアカウントのアップロード、Skill ソース、run ハンドルを取り込むことはできません。`artifact.skill_resource.create` と `artifact.publication.get/set/disable` はアカウント/API キー専用です。[Artifact API](/ja/develop/artifacts) を参照してください。
+
+JSON RPC の作成には `filename`、`content_base64`、任意の `mime_type`、`ttl_seconds` を指定します。デコード後の入力は 256 KiB 以下です。プラグインの生バイト読み取りも 256 KiB が上限で、`metadata` と `content_base64` を返します。有界テキスト/構造化メディアには `read_content` を優先してください。この転送上限は既存の認証付き HTTP アップロード/ダウンロード契約を変更しません。保持/解放はそのインストールの pin のみに作用し、有効な業務参照がある間は削除を拒否します。
+
+## 従来のアップロードと共有保持
+
+`/api/v1/files/images` と `/api/v1/files/documents` は既存の `file_key`、`file_id` 応答を維持します。永続ストレージへの新しいアップロードは `artifact_id` も返します。従来のエイリアスと Artifact 参照は同じコンテンツオブジェクトを共有し、バイトを複製しません。エイリアスは独立した永続参照を持ち、エイリアスの削除はその参照だけを解放します。他の保持者には影響しません。非永続の従来ストレージは元のフィールドだけを返します。既存の不透明キーを移行したり Artifact ID として再解釈したりしません。
+
+永続ストレージへの従来のアップロードは、`storage.max_object_read_bytes` と Artifact のサイズ制限の小さい方を超えると、書き込み前に HTTP 413 を返します。255 文字を超える通常のファイル名も受け付けます。Artifact の表示名だけを短縮し、拡張子と MIME タイプを保持します。返される従来のハンドルと保存バイトは変わりません。
+
+ナレッジファイルへの取り込みはアカウント/API キー所有の通常アップロードに限定されます。公開済み run 出力と Skill パッケージソースは、元の権限を拡張しないよう除外します。ナレッジベース削除中は永続的な削除フェンスで新規ファイルの受け入れを止めます。失敗または結果不明時は保持参照と再試行可能なフェンスを残し、使用中かもしれないバイトを回収しません。
+
+ナレッジファイル一覧には `artifact_id`（従来ファイルは `null`）が追加されます。この変更でダイジェスト、サイズ、MIME フィールドは追加しません。上流のベース削除が失敗、キャンセル、結果不明になった場合は、Core 再起動後も明示的な削除操作を再試行できます。削除完了まではフェンスが新規取り込みを拒否します。実行中または未完了で中断された取り込みは、フェンス設置前に削除を阻止します。

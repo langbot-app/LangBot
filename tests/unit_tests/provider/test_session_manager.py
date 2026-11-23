@@ -57,7 +57,7 @@ def bind_session_context(session, query):
         TEST_CONTEXT.placement_generation,
         query.bot_uuid,
         query.launcher_type.value,
-        query.launcher_id,
+        f'{query.launcher_type.value}_{query.launcher_id}',
     )
     return session
 
@@ -125,6 +125,25 @@ class TestSessionManagerInit:
 
 class TestSessionManagerGetSession:
     """Tests for get_session method."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('mode', [None, 'member', 'group'])
+    async def test_group_members(self, mock_app_with_config, mode):
+        from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
+
+        manager = get_session_module().SessionManager(mock_app_with_config)
+        query = scoped_query()
+        query.launcher_type = provider_session.LauncherTypes.GROUP
+        query.pipeline_config = {'ai': {'runner': {'group-context': mode}}} if mode else {}
+        sessions, ids = [], []
+        for sender in ('a', 'b', 'a'):
+            query.sender_id = sender
+            sessions.append(await manager.get_session(query))
+            ids.append(QueryEntryAdapter._build_conversation_context(query).session_id)
+        assert sessions[0] is sessions[2]
+        assert (sessions[0] is sessions[1]) == (mode == 'group')
+        assert ids[0] == ids[2]
+        assert (ids[0] == ids[1]) == (mode == 'group')
 
     @pytest.fixture
     def mock_app_with_config(self):

@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import pathlib
+import re
 import shutil
 import sys
 import tempfile
@@ -64,6 +65,11 @@ RUNTIME_MEMORY_RESERVE_MB_ENV = "LANGBOT_PLUGIN_RUNTIME_MEMORY_RESERVE_MB"
 _DEFAULT_RUNTIME_MEMORY_RESERVE_MB = 2048
 _DEPENDENCY_INSTALL_TIMEOUT_SECONDS = 600
 _DEPENDENCY_INSTALLER_SCHEMA_VERSION = 2
+_DEPENDENCY_INSTALL_LOG_NAME = "installer.log"
+_DEPENDENCY_INSTALL_LOG_TAIL_BYTES = 64 * 1024
+_DEPENDENCY_INSTALL_SUMMARY_LINES = 3
+_DEPENDENCY_INSTALL_SUMMARY_CHARS = 600
+_URL_USERINFO_PATTERN = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)[^/\s@]+@")
 _WINDOWS_WORKER_ENV_ALLOWLIST = frozenset(
     {
         "COMSPEC",
@@ -360,15 +366,25 @@ class PluginWorkerLauncher:
             staging,
             requirements,
         )
-        process = await asyncio.create_subprocess_exec(
-            str(self.nsjail_path),
-            *args,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-            env={},
-            cwd="/",
+        log_path = self._absolute_runtime_path(staging.tmp_path) / (
+            _DEPENDENCY_INSTALL_LOG_NAME
         )
-        await self._wait_for_dependency_installer(process)
+        with log_path.open("wb") as log_file:
+            process = await asyncio.create_subprocess_exec(
+                str(self.nsjail_path),
+                *args,
+                stdout=log_file,
+                stderr=asyncio.subprocess.STDOUT,
+                env={},
+                cwd="/",
+            )
+        # Shared (multi-tenant) Runtimes keep the tenant-visible failure
+        # generic; the redacted installer output goes to the operator log.
+        await self._wait_for_dependency_installer(
+            process,
+            log_path,
+            expose_summary=False,
+        )
 
     async def _install_dependency_environment_direct(
         self,
@@ -385,25 +401,36 @@ class PluginWorkerLauncher:
             requirements,
         )
         tmp_path = self._absolute_runtime_path(staging.tmp_path)
+        log_path = tmp_path / _DEPENDENCY_INSTALL_LOG_NAME
         # pip adds its own nested target directories; staging paths can exceed MAX_PATH on Windows.
         install_tmp = (
-            tempfile.TemporaryDirectory(prefix='lbp-pip-')
-            if self.platform == 'win32'
+            tempfile.TemporaryDirectory(prefix="lbp-pip-")
+            if self.platform == "win32"
             else contextlib.nullcontext(str(tmp_path))
         )
         with install_tmp as pip_tmp:
-            process = await asyncio.create_subprocess_exec(
-                *args,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-                env=self._direct_dependency_installer_environment(pathlib.Path(pip_tmp)),
-                cwd=pip_tmp,
+            with log_path.open("wb") as log_file:
+                process = await asyncio.create_subprocess_exec(
+                    *args,
+                    stdout=log_file,
+                    stderr=asyncio.subprocess.STDOUT,
+                    env=self._direct_dependency_installer_environment(pathlib.Path(pip_tmp)),
+                    cwd=str(pip_tmp),
+                )
+            # The OSS operator is the person reading the WebUI error, so surface
+            # the redacted pip error lines there instead of a bare exit code.
+            await self._wait_for_dependency_installer(
+                process,
+                log_path,
+                expose_summary=True,
             )
-            await self._wait_for_dependency_installer(process)
 
     @staticmethod
     async def _wait_for_dependency_installer(
         process: asyncio.subprocess.Process,
+        log_path: pathlib.Path | None = None,
+        *,
+        expose_summary: bool = False,
     ) -> None:
         try:
             await asyncio.wait_for(
@@ -425,13 +452,29 @@ class PluginWorkerLauncher:
                 await process.wait()
             raise
         if process.returncode != 0:
-            # Never reflect pip output: configured indexes and backend errors
-            # can contain credentials. The exit code is stable and sufficient
-            # for the desired-state failure; detailed logs belong in a
-            # separately redacted operator channel.
-            raise DependencyEnvironmentPreparationError(
+            message = (
                 f"Plugin dependency installer exited with code {process.returncode}"
             )
+            output = (
+                await bounded_executor.run_blocking_atomic(
+                    _read_dependency_installer_log_tail,
+                    log_path,
+                )
+                if log_path is not None
+                else ""
+            )
+            # Installer output can embed index credentials, so only a redacted
+            # form is ever logged or surfaced.
+            if output:
+                logger.error(
+                    "%s; installer output (redacted tail):\n%s",
+                    message,
+                    output,
+                )
+            summary = _summarize_dependency_installer_output(output)
+            if expose_summary and summary:
+                message = f"{message}: {summary}"
+            raise DependencyEnvironmentPreparationError(message)
 
     def build_dependency_prepare_direct_args(
         self,
@@ -1104,3 +1147,44 @@ def prepare_worker_cgroup_v2_parent(
 
     logger.info(f"Plugin worker sandboxes use cgroup v2 parent {workers}")
     return workers
+
+
+def _redact_installer_output(text: str) -> str:
+    """Remove URL userinfo (index tokens/passwords) from installer output."""
+
+    return _URL_USERINFO_PATTERN.sub(r"\1***@", text)
+
+
+def _read_dependency_installer_log_tail(log_path: pathlib.Path) -> str:
+    try:
+        with log_path.open("rb") as log_file:
+            log_file.seek(0, os.SEEK_END)
+            size = log_file.tell()
+            log_file.seek(max(size - _DEPENDENCY_INSTALL_LOG_TAIL_BYTES, 0))
+            data = log_file.read()
+    except OSError:
+        return ""
+    return _redact_installer_output(data.decode("utf-8", errors="replace")).strip()
+
+
+def _summarize_dependency_installer_output(output: str) -> str:
+    """Pick the lines that explain an installer failure.
+
+    pip reports the actionable cause on ``ERROR:`` lines; anything else (for
+    example ``No module named pip`` or a traceback) ends with the cause.
+    """
+
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    error_lines = [line for line in lines if line.startswith("ERROR:")]
+    selected = (error_lines or lines)[-_DEPENDENCY_INSTALL_SUMMARY_LINES:]
+    # Index/network failures end in a generic "No matching distribution"; the
+    # real cause (refused connection, TLS, proxy) is on pip's retry warning.
+    retry_lines = [line for line in lines if line.startswith("WARNING: Retrying")]
+    if error_lines and retry_lines:
+        selected = [retry_lines[-1], *selected]
+    summary = " | ".join(selected)
+    if len(summary) > _DEPENDENCY_INSTALL_SUMMARY_CHARS:
+        summary = summary[: _DEPENDENCY_INSTALL_SUMMARY_CHARS - 3] + "..."
+    return summary

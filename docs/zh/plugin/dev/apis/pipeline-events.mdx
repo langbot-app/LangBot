@@ -259,6 +259,10 @@ class PromptPreProcessing(BaseEventModel):
     """此对话现有消息记录，可修改，langbot_plugin.api.entities.builtin.provider.message.Message 或 langbot_plugin.api.entities.builtin.provider.message.MessageChunk 类型"""
 ```
 
+注入本轮检索证据时，可向 `prompt` 或 `default_prompt` 追加 `Message(role="system", content=...)`。Host 会把 `prompt` 中新增或修改的系统消息通过 Runner 的 `get_prompt()` API 传递，排在生效的 `default_prompt` 之后，保留最终事件处理顺序，并在每一轮重新构建。Runner 在调用模型前应用上下文预算。对话历史继续通过 Runner 的历史 API 获取。提示词预处理上下文的作用域为当前运行。
+
+事件处理后的 `_knowledge_base_uuids` 查询变量决定本次运行的自动检索范围。空列表会关闭自动检索，未设置时沿用配置中的选择。显式检索 API 继续校验运行时冻结的资源授权。记忆插件应先完成自身的查询级检索，再从自动检索范围中移除其知识库。
+
 ## EventListener 上下文
 
 事件处理函数通过 `event_context.event` 读取当前事件。`EventContext` 的完整属性和方法见[上下文 API](/zh/plugin/dev/apis/agent-run#eventlistener)。

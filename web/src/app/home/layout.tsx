@@ -1,6 +1,7 @@
 import HomeSidebar from '@/app/home/components/home-sidebar/HomeSidebar';
 import SurveyWidget from '@/app/home/components/survey/SurveyWidget';
 import InFlightMonitor from '@/app/home/components/inflight/InFlightMonitor';
+import GitHubStarPrompt from '@/app/home/components/star-prompt/GitHubStarPrompt';
 import WorkspaceAssistant from '@/app/home/components/WorkspaceAssistant';
 import React, {
   useState,
@@ -46,6 +47,7 @@ import {
   PluginInstallProgressDialog,
 } from '@/app/home/plugins/components/plugin-install-task';
 import { setDocumentTitle } from '@/hooks/useDocumentTitle';
+import { ContentLoading, PageLoading } from '@/components/RouteLoading';
 
 // Routes that belong to the "Extensions" section
 const EXTENSIONS_ROUTES = [
@@ -102,10 +104,21 @@ export default function HomeLayout({
   // selector and therefore returns the selected Workspace's wizard metadata.
   useEffect(() => {
     let cancelled = false;
-    bootstrapWorkspaceSession()
+    // Links in Workspace emails carry ?workspace=<uuid> to open that Workspace.
+    const linkParams = new URLSearchParams(location.search);
+    const linkedWorkspaceUuid = linkParams.get('workspace')?.trim() || '';
+    linkParams.delete('workspace');
+    const searchWithoutWorkspace = linkParams.toString()
+      ? `?${linkParams.toString()}`
+      : '';
+    bootstrapWorkspaceSession(
+      linkedWorkspaceUuid
+        ? { preferredWorkspaceUuid: linkedWorkspaceUuid }
+        : {},
+    )
       .then(async (result) => {
         if (result.status === 'selection-required') {
-          const returnTo = `${location.pathname}${location.search}`;
+          const returnTo = `${location.pathname}${searchWithoutWorkspace}`;
           navigate(
             `/workspaces/select?returnTo=${encodeURIComponent(returnTo)}`,
             { replace: true },
@@ -116,6 +129,12 @@ export default function HomeLayout({
           throw new Error('No Workspace is available for this Account');
         }
         await initializeSystemInfo({ throwOnError: true });
+        if (linkedWorkspaceUuid) {
+          navigate(`${location.pathname}${searchWithoutWorkspace}`, {
+            replace: true,
+          });
+          return false;
+        }
         return true;
       })
       .then((ready) => {
@@ -165,7 +184,9 @@ export default function HomeLayout({
     }
   }, [identityReady, navigate]);
 
-  if (!identityReady) return <div />;
+  // Same visual as the route-level Suspense fallback, so the hand-off from
+  // chunk loading to Workspace bootstrap is seamless.
+  if (!identityReady) return <PageLoading />;
 
   return (
     <SidebarDataProvider>
@@ -275,13 +296,16 @@ function HomeLayoutInner({ children }: { children: React.ReactNode }) {
           <div
             className={`mx-auto h-full w-full min-w-0 ${HOME_CONTENT_MAX_WIDTH}`}
           >
-            {mainContent}
+            {/* Keep the shell (sidebar/header) visible while a lazily loaded
+                page chunk is still downloading. */}
+            <Suspense fallback={<ContentLoading />}>{mainContent}</Suspense>
           </div>
         </main>
 
         <SurveyWidget />
         <WorkspaceAssistant />
         <InFlightMonitor />
+        <GitHubStarPrompt />
       </SidebarInset>
     </SidebarProvider>
   );

@@ -37,7 +37,7 @@ from langbot.pkg.entity.persistence.plugin import PluginSetting
 from langbot.pkg.plugin.handler import RuntimeConnectionHandler, _plugin_runtime_action
 
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.sdk_core, pytest.mark.contract('execution_routing')]
 
 NON_EXECUTION_ACTIONS = frozenset(
     {
@@ -253,6 +253,7 @@ async def _capture_sdk_payloads() -> dict[str, dict[str, typing.Any]]:
                 'state': True,
                 'reply_stream': True,
                 'input_attachments': True,
+                'box': True,
             }
         },
         state={},
@@ -343,6 +344,9 @@ async def _capture_sdk_payloads() -> dict[str, dict[str, typing.Any]]:
     await try_call(runner.history_page())
     await try_call(runner.history_search('query'))
     await try_call(runner.read_input_attachment('att-1'))
+    await try_call(runner.read_input_attachment_content('att-1'))
+    await try_call(runner.read_run_file('file-1'))
+    await try_call(runner.commit_run_files(['file-1']))
     await try_call(runner.event_get('evt-1'))
     await try_call(runner.event_page())
     await try_call(runner.steering_pull())
@@ -394,8 +398,8 @@ async def _capture_sdk_payloads() -> dict[str, dict[str, typing.Any]]:
 def test_action_audit_and_catalog_completeness(test_host):
     """Audit that all business actions map to ExecutionAPI and transport controls stay internal."""
     operations = test_host.api.operations()
-    assert len(operations) == 80
-    assert len(test_host.api.catalog()) == 80
+    assert len(operations) == 83
+    assert len(test_host.api.catalog()) == 83
 
     execution_action_names = {op.action for op in operations}
     handler_actions = set(test_host.handler.actions.keys())

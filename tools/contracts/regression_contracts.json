@@ -441,7 +441,7 @@
      "kind": "blackbox",
      "priority": "P1",
      "description": "Skill publication and UTF-8 files retain revision and content after stale writes",
-     "bindings": [{"profile": "api", "case": "fixed_api_skills", "checks": ["api_chain", "skill_created", "skill_file_published", "skill_updated", "skill_update_idempotent", "skill_stale_update_preserved", "skill_stale_file_preserved", "skill_deleted"]}, {"profile": "api", "case": "shuffled_api_skills", "checks": ["api_chain", "skill_created", "skill_file_published", "skill_updated", "skill_update_idempotent", "skill_stale_update_preserved", "skill_stale_file_preserved", "skill_deleted"]}]
+     "bindings": [{"profile": "api", "case": "fixed_api_skills", "checks": ["api_chain", "skill_created", "skill_file_published", "skill_file_readback", "skill_file_publication_readback", "skill_stale_file_after_write_status", "skill_stale_file_after_write_content_preserved", "skill_stale_file_after_write_revision_preserved", "skill_updated", "skill_update_idempotent", "skill_stale_update_preserved", "skill_stale_file_after_update_status", "skill_stale_file_after_update_content_preserved", "skill_stale_file_after_update_revision_preserved", "skill_deleted"]}, {"profile": "api", "case": "shuffled_api_skills", "checks": ["api_chain", "skill_created", "skill_file_published", "skill_file_readback", "skill_file_publication_readback", "skill_stale_file_after_write_status", "skill_stale_file_after_write_content_preserved", "skill_stale_file_after_write_revision_preserved", "skill_updated", "skill_update_idempotent", "skill_stale_update_preserved", "skill_stale_file_after_update_status", "skill_stale_file_after_update_content_preserved", "skill_stale_file_after_update_revision_preserved", "skill_deleted"]}]
     },
     {"id": "api.mcp_crud",
      "area": "api",
@@ -471,6 +471,11 @@
      "area": "state", "kind": "blackbox", "priority": "P1",
      "description": "Knowledge documents survive restarts; replacement preserves control content and deletion removes stale results",
      "bindings": [{"profile": "state", "case": "durable_state_lifecycle", "checks": ["created_retrievable", "after_runtime_retrievable", "after_core_retrievable", "updated_retrievable", "updated_obsolete_absent", "persisted_update_retrievable", "persisted_update_obsolete_absent", "documents_deleted", "deleted_retrieval_empty"]}]
+    },
+    {"id": "state.monitoring_history",
+     "area": "state", "kind": "blackbox", "priority": "P1",
+     "description": "Monitoring identifies the exact completed runs for the same conversation, including historical runs after Core and Runtime restarts",
+     "bindings": [{"profile": "state", "case": "durable_state_lifecycle", "checks": ["created_monitoring_readback", "after_runtime_monitoring_readback", "historical_after_runtime_monitoring_readback", "after_core_monitoring_readback", "historical_after_core_monitoring_readback", "updated_monitoring_readback", "persisted_update_monitoring_readback", "historical_updated_after_core_monitoring_readback"]}]
     },
     {"id": "isolation.same_pipeline", "area": "isolation", "kind": "graybox", "priority": "P1", "description": "Concurrent sessions in one Pipeline retain their own request identity and prior history", "bindings": [{"profile": "isolation", "case": "isolation.same_pipeline", "checks": ["conversation_isolation", "overlap_turn_1", "overlap_turn_2", "wire_identity_history_once"]}]},
     {"id": "isolation.cross_pipeline", "area": "isolation", "kind": "graybox", "priority": "P1", "description": "Concurrent Pipelines retain their own model routing, Bot identity, and conversation history", "bindings": [{"profile": "isolation", "case": "isolation.cross_pipeline", "checks": ["conversation_isolation", "overlap_turn_1", "overlap_turn_2", "wire_identity_history_once"]}]},

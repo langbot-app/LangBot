@@ -494,6 +494,44 @@ AgentUpdateArguments = TypedDict('AgentUpdateArguments', {
     'agent_uuid': str,
 })
 
+ArtifactCreateArguments = TypedDict('ArtifactCreateArguments', {
+    'content': NotRequired[Union[str, None]],
+    'content_base64': NotRequired[Union[str, None]],
+    'filename': str,
+    'mime_type': NotRequired[str],
+    'ttl_seconds': NotRequired[int],
+})
+
+ArtifactDeleteArguments = TypedDict('ArtifactDeleteArguments', {
+    'artifact_id': str,
+})
+
+ArtifactGetArguments = TypedDict('ArtifactGetArguments', {
+    'artifact_id': str,
+})
+
+ArtifactReadArguments = TypedDict('ArtifactReadArguments', {
+    'artifact_id': str,
+    'max_bytes': NotRequired[int],
+})
+
+ArtifactReadContentArguments = TypedDict('ArtifactReadContentArguments', {
+    'artifact_id': str,
+    'max_chars': NotRequired[int],
+    'mode': NotRequired[Literal['auto', 'text', 'native', 'pages']],
+    'offset': NotRequired[int],
+    'page_end': NotRequired[Union[int, None]],
+    'page_start': NotRequired[int],
+})
+
+ArtifactReleaseArguments = TypedDict('ArtifactReleaseArguments', {
+    'artifact_id': str,
+})
+
+ArtifactRetainArguments = TypedDict('ArtifactRetainArguments', {
+    'artifact_id': str,
+})
+
 BotCreateArgumentsBotData = TypedDict('BotCreateArgumentsBotData', {
     'adapter': str,
     'adapter_config': dict[str, JSONValue],
@@ -1350,6 +1388,45 @@ class AgentDomain:
         arguments: AgentUpdateArguments = {'agent_data': agent_data, 'agent_uuid': agent_uuid}
         return cast(OperationResult[None], await self._workspace.call('agent.update', **arguments))
 
+class ArtifactDomain:
+    def __init__(self, workspace: "WorkspaceOperationsProxy"):
+        self._workspace = workspace
+
+    async def create(self, *, content: Union[str, None] = None, content_base64: Union[str, None] = None, filename: str, mime_type: str = 'application/octet-stream', ttl_seconds: int = 86400) -> OperationResult[dict[str, JSONValue]]:
+        'artifact.create: Upload bounded bytes with a name, MIME type and lifetime. The opaque ID does not grant access.\nParameters (Python -> wire): content -> content, content_base64 -> content_base64, filename -> filename, mime_type -> mime_type, ttl_seconds -> ttl_seconds.'
+        arguments: ArtifactCreateArguments = {'content': content, 'content_base64': content_base64, 'filename': filename, 'mime_type': mime_type, 'ttl_seconds': ttl_seconds}
+        return cast(OperationResult[dict[str, JSONValue]], await self._workspace.call('artifact.create', **arguments))
+
+    async def delete(self, *, artifact_id: str) -> OperationResult[dict[str, JSONValue]]:
+        'artifact.delete: Refuse deletion while any persistent pin still protects the file.\nParameters (Python -> wire): artifact_id -> artifact_id.'
+        arguments: ArtifactDeleteArguments = {'artifact_id': artifact_id}
+        return cast(OperationResult[dict[str, JSONValue]], await self._workspace.call('artifact.delete', **arguments))
+
+    async def get(self, *, artifact_id: str) -> OperationResult[dict[str, JSONValue]]:
+        'artifact.get: Return name, MIME type, size, digest and lifetime for an owned asset.\nParameters (Python -> wire): artifact_id -> artifact_id.'
+        arguments: ArtifactGetArguments = {'artifact_id': artifact_id}
+        return cast(OperationResult[dict[str, JSONValue]], await self._workspace.call('artifact.get', **arguments))
+
+    async def read(self, *, artifact_id: str, max_bytes: int = 10485760) -> OperationResult[dict[str, JSONValue]]:
+        'artifact.read: Return exact bytes and metadata for authenticated download; this is not model content extraction.\nParameters (Python -> wire): artifact_id -> artifact_id, max_bytes -> max_bytes.'
+        arguments: ArtifactReadArguments = {'artifact_id': artifact_id, 'max_bytes': max_bytes}
+        return cast(OperationResult[dict[str, JSONValue]], await self._workspace.call('artifact.read', **arguments))
+
+    async def read_content(self, *, artifact_id: str, max_chars: int = 8192, mode: Literal['auto', 'text', 'native', 'pages'] = 'auto', offset: int = 0, page_end: Union[int, None] = None, page_start: int = 1) -> OperationResult[builtins.list[dict[str, JSONValue]]]:
+        'artifact.read_content: Returns text slices, images or native PDF input. PDF page rendering is unavailable.\nParameters (Python -> wire): artifact_id -> artifact_id, max_chars -> max_chars, mode -> mode, offset -> offset, page_end -> page_end, page_start -> page_start.'
+        arguments: ArtifactReadContentArguments = {'artifact_id': artifact_id, 'max_chars': max_chars, 'mode': mode, 'offset': offset, 'page_end': page_end, 'page_start': page_start}
+        return cast(OperationResult[builtins.list[dict[str, JSONValue]]], await self._workspace.call('artifact.read_content', **arguments))
+
+    async def release(self, *, artifact_id: str) -> OperationResult[dict[str, JSONValue]]:
+        'artifact.release: Remove the caller pin and restore the temporary expiry grace period.\nParameters (Python -> wire): artifact_id -> artifact_id.'
+        arguments: ArtifactReleaseArguments = {'artifact_id': artifact_id}
+        return cast(OperationResult[dict[str, JSONValue]], await self._workspace.call('artifact.release', **arguments))
+
+    async def retain(self, *, artifact_id: str) -> OperationResult[dict[str, JSONValue]]:
+        'artifact.retain: Add a persistent caller-owned pin without changing access permissions.\nParameters (Python -> wire): artifact_id -> artifact_id.'
+        arguments: ArtifactRetainArguments = {'artifact_id': artifact_id}
+        return cast(OperationResult[dict[str, JSONValue]], await self._workspace.call('artifact.retain', **arguments))
+
 class BotDomain:
     def __init__(self, workspace: "WorkspaceOperationsProxy"):
         self._workspace = workspace
@@ -1613,7 +1690,7 @@ class SkillDomain:
         return cast(OperationResult[dict[str, JSONValue]], await self._workspace.call('skill.create', **arguments))
 
     async def delete(self, *, skill_name: str) -> OperationResult[bool]:
-        'skill.delete: Permanently remove a skill and delete its associated script files. Prerequisites: Call skill.list to obtain skill_name. Side effect: Irreversible removal of skill.\nParameters (Python -> wire): skill_name -> skill_name.'
+        'skill.delete: Remove the current registration. Retained versions remain available to authorized pinned runs. Prerequisites: Call skill.list to obtain skill_name.\nParameters (Python -> wire): skill_name -> skill_name.'
         arguments: SkillDeleteArguments = {'skill_name': skill_name}
         return cast(OperationResult[bool], await self._workspace.call('skill.delete', **arguments))
 
@@ -1676,6 +1753,7 @@ class WorkspaceDomains:
         self._workspace = workspace
         self.adapter = AdapterDomain(workspace)
         self.agent = AgentDomain(workspace)
+        self.artifact = ArtifactDomain(workspace)
         self.bot = BotDomain(workspace)
         self.extension = ExtensionDomain(workspace)
         self.knowledge = KnowledgeDomain(workspace)

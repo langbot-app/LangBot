@@ -11,7 +11,7 @@ from langbot.pkg.platform.adapters.officialaccount.adapter import OfficialAccoun
 from langbot.pkg.platform.adapters.officialaccount.errors import NotSupportedError
 from langbot.pkg.platform.adapters.officialaccount.event_converter import OfficialAccountEventConverter
 from langbot.pkg.platform.adapters.officialaccount.message_converter import OfficialAccountMessageConverter
-from langbot.pkg.platform.adapters.officialaccount.platform_api import PLATFORM_API_MAP
+from langbot.pkg.platform.adapters.officialaccount.platform_api import MENU_API_MAP, PLATFORM_API_MAP
 from langbot_plugin.api.definition.abstract.platform.event_logger import AbstractEventLogger
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
@@ -126,7 +126,7 @@ def test_officialaccount_supported_apis_match_manifest(mode):
 def test_officialaccount_platform_api_map_matches_manifest():
     manifest_actions = {item['action'] for item in manifest()['spec']['platform_specific_apis']}
 
-    assert set(PLATFORM_API_MAP) == manifest_actions
+    assert set(PLATFORM_API_MAP) | set(MENU_API_MAP) == manifest_actions
 
 
 @pytest.mark.asyncio

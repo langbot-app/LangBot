@@ -19,6 +19,7 @@ from langbot_plugin.box.nsjail_backend import (
     NsjailBackend,
 )
 from langbot_plugin.box import nsjail_backend as nsjail_backend_module
+from langbot_plugin.box.errors import BoxError
 from langbot_plugin.box.models import (
     BoxExecutionStatus,
     BoxHostMountMode,
@@ -910,3 +911,84 @@ def test_clip_captured_bytes_exceeds_limit():
     result = NsjailBackend._clip_captured_bytes(data, 2_000_000, limit=1_000_000)
     assert "clipped" in result
     assert "1000000" in result
+
+
+@pytest.mark.parametrize(
+    "parent", ["../other", "/absolute", ".", "..", "a/b", "a\\b", True]
+)
+def test_cgroup_v1_parent_rejects_invalid_paths(backend, parent):
+    with pytest.raises(ValueError, match="single directory"):
+        backend.configure({"cgroup_v1_parent": parent})
+
+
+def test_cgroup_v1_limits_are_per_jail_instead_of_per_host_uid(backend):
+    backend.configure({"cgroup_v1_parent": "langbot-test"})
+    backend._cgroup_v1_available = True
+    spec = BoxSpec(session_id="v1", cmd="true", cpus=1.5, memory_mb=256, pids_limit=16)
+    args = backend._build_resource_limits(spec)
+    assert "--use_cgroupv2" not in args
+    for flag, value in {
+        "--cgroup_mem_parent": "langbot-test",
+        "--cgroup_pids_parent": "langbot-test",
+        "--cgroup_cpu_parent": "langbot-test",
+        "--cgroup_mem_max": str(256 * 1024 * 1024),
+        "--cgroup_mem_memsw_max": str(256 * 1024 * 1024),
+        "--cgroup_pids_max": "16",
+        "--cgroup_cpu_ms_per_sec": "1500",
+        "--rlimit_nproc": "hard",
+    }.items():
+        assert args[args.index(flag) + 1] == value
+
+
+@pytest.mark.anyio
+async def test_explicit_cgroup_v1_delegation_never_silently_falls_back(backend):
+    backend.configure({"cgroup_v1_parent": "missing"})
+    process = mock.AsyncMock()
+    process.returncode = 0
+    with (
+        mock.patch("shutil.which", return_value="/usr/bin/nsjail"),
+        mock.patch("asyncio.create_subprocess_exec", return_value=process),
+        mock.patch.object(backend, "_detect_cgroup_v2", return_value=False),
+        mock.patch.object(
+            backend, "_probe_cgroup_v1", side_effect=OSError("not delegated")
+        ),
+    ):
+        assert await backend.is_available() is False
+        assert backend._cgroup_v1_available is False
+        with pytest.raises(BoxError, match="delegation is unavailable"):
+            backend._build_resource_limits(BoxSpec(session_id="must-not-downgrade"))
+        with pytest.raises(BoxError, match="delegation is unavailable"):
+            await backend.initialize()
+
+
+@pytest.mark.anyio
+async def test_refresh_does_not_remove_working_cgroup_limits_while_probe_runs(backend):
+    backend.configure({"cgroup_v1_parent": "delegated"})
+    backend._cgroup_v1_available = True
+    entered, release = asyncio.Event(), asyncio.Event()
+    process = mock.AsyncMock()
+    process.returncode = 0
+
+    async def offload(function, *args, **kwargs):
+        if function == backend._detect_cgroup_v2:
+            return False
+        if function == backend._probe_cgroup_v1:
+            entered.set()
+            await release.wait()
+            return None
+        return function(*args, **kwargs)
+
+    with (
+        mock.patch("shutil.which", return_value="/usr/bin/nsjail"),
+        mock.patch("asyncio.create_subprocess_exec", return_value=process),
+        mock.patch("asyncio.to_thread", side_effect=offload),
+    ):
+        probe = asyncio.create_task(backend.is_available())
+        await entered.wait()
+        args = backend._build_resource_limits(
+            BoxSpec(session_id="during-refresh", pids_limit=16)
+        )
+        assert args[args.index("--cgroup_pids_max") + 1] == "16"
+        assert args[args.index("--rlimit_nproc") + 1] == "hard"
+        release.set()
+        assert await probe is True

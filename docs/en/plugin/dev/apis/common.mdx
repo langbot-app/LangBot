@@ -774,3 +774,22 @@ These methods use `self.plugin` and the current Workspace. Runner calls automati
 Unknown capacity fields are `None`. Zero remaining capacity still permits reuse; Runtime checks creation capacity atomically. The Runner computes reuse keys. When `required_reuse_key` is supplied, use it. Equal keys in different Workspaces never share a Box.
 
 Use the [Runner context](/en/plugin/dev/apis/agent-run#runner) to bind the Box before importing attachments or executing tools.
+
+## Typed Artifact helpers
+
+Use `self.plugin.artifacts` in a plugin or `ctx.api.artifacts` inside a Runner. These helpers use the same seven explicitly granted Workspace operations, not a new transport action or capability. Run calls also require the live run and its frozen `workspace_operations`; an installation grant alone cannot widen a run's access.
+
+```python
+asset = await self.plugin.artifacts.create("notes.txt", b"bounded content", mime_type="text/plain")
+body = await self.plugin.artifacts.read(asset.id, max_bytes=262144)
+assert body.content == b"bounded content"
+await self.plugin.artifacts.delete(asset.id)
+```
+
+`create(filename, content: bytes, mime_type=..., ttl_seconds=...)`, `get`, `retain` and `release` return `ArtifactMetadata`. `read` returns `ArtifactData(metadata, content: bytes)`; `read_content` returns the shared structured content list and accepts `mode`, `offset`, `max_chars`, `page_start` and `page_end`. `delete` returns a result dictionary. The SDK encodes/decodes the 256 KiB JSON RPC envelope; do not put its base64 payload into ordinary model text.
+
+An operation failure raises `ArtifactOperationError`, preserving the Host's `code` and `details`. Discover availability with the existing Workspace catalog (`workspace.list`, including `content_base64` in the create schema); there is no new feature flag. An older or unauthorized Host reports an operation error such as `not_found` or `permission_denied`; never fall back to an internal storage path.
+
+The existing Workspace action can traverse an independently deployed older Runtime, but use the coordinated Core/SDK/Runtime versions for Artifact cancellation propagation. A cancellation crossing an older hop is only best effort, not proof that the Host mutation stopped. This does not change legacy run `file_id`, upload or delivery contracts. Test the actual deployed combination before relying on the new helpers.
+
+Unlike the convenience helpers, generated `workspace.artifact` methods return the normal `ok/result/error` envelope and expose the `content_base64` wire field. Do not mix the two result shapes. A shared plugin helper picks up the active run invocation and rejects use after a captured invocation has ended.

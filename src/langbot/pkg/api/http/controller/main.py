@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import logging
 import os
+import re
 import typing
 
 import quart
@@ -38,6 +40,13 @@ importlib.import_module('langbot.pkg.operation_trace.routes')
 
 class BoundedJSONRequest(quart.Request):
     """Parse bounded HTTP JSON bodies outside the shared event loop."""
+
+    def __init__(self, method, scheme, path, *args, max_content_length=None, **kwargs):
+        if method == 'POST' and path == '/api/v1/artifacts':
+            # Allow bounded multipart overhead while the route enforces the file byte limit.
+            max_content_length = group.MAX_FILE_SIZE + 64 * 1024
+        super().__init__(method, scheme, path, *args, max_content_length=max_content_length, **kwargs)
+        self.max_content_length = max_content_length
 
     async def get_json(
         self,
@@ -89,6 +98,15 @@ class HTTPController:
         # Register custom error handler for file size limit
         @self.quart_app.errorhandler(RequestEntityTooLarge)
         async def handle_request_entity_too_large(e):
+            if quart.request.path == '/api/v1/artifacts':
+                from ....i18n import error_text
+
+                return quart.jsonify(
+                    {
+                        'code': 'artifact_too_large',
+                        'msg': error_text('artifact_too_large', 'Artifact exceeds the size limit.'),
+                    }
+                ), 413
             return quart.jsonify(
                 {
                     'code': 400,
@@ -141,16 +159,26 @@ class HTTPController:
 
         config = HyperConfig()
         config.access_log_format = '%(h)s %(r)s %(s)s %(b)s %(D)s'
-        config.accesslog = '-'
+        from langbot_plugin.utils.log import HTTPStatusFilter
+
+        config.accesslog = logging.getLogger('hypercorn.access')
+        config.accesslog.setLevel(logging.INFO)
+        config.accesslog.addFilter(HTTPStatusFilter())
         config.bind = [f'{host}:{port}']
-        config.errorlog = config.accesslog
+        config.errorlog = logging.getLogger('hypercorn.error')
         config.websocket_max_message_size = group.MAX_FILE_SIZE
 
         asgi_app = self.quart_app
         if self.mcp_mount is not None:
             asgi_app = self.mcp_mount.wrap(self.quart_app)
 
-        await hypercorn_serve(asgi_app, config, shutdown_trigger=shutdown_trigger)
+        from langbot_plugin.utils.log import log_scope
+
+        async def traced_app(scope, receive, send):
+            with log_scope():
+                return await asgi_app(scope, receive, send)
+
+        await hypercorn_serve(traced_app, config, shutdown_trigger=shutdown_trigger)
 
     async def register_routes(self) -> None:
         @self.quart_app.route('/healthz')
@@ -252,8 +280,24 @@ class HTTPController:
             elif path.endswith('.txt'):
                 mimetype = 'text/plain'
 
-            response = await quart.send_from_directory(frontend_path, path, mimetype=mimetype)
-            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            response.headers['Pragma'] = 'no-cache'
-            response.headers['Expires'] = '0'
+            compressible = mimetype in ('application/javascript', 'text/css')
+            use_gzip = (
+                compressible
+                and quart.request.accept_encodings.quality('gzip') > 0
+                and os.path.isfile(os.path.join(frontend_path, path + '.gz'))
+            )
+            response = await quart.send_from_directory(
+                frontend_path, path + '.gz' if use_gzip else path, mimetype=mimetype
+            )
+            if compressible:
+                response.vary.add('Accept-Encoding')
+            if use_gzip:
+                response.headers['Content-Encoding'] = 'gzip'
+            if path.startswith('assets/') and re.search(r'-[A-Za-z0-9_-]{8,}\.[^.]+$', path):
+                response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+                response.headers.pop('Expires', None)
+            else:
+                response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                response.headers['Pragma'] = 'no-cache'
+                response.headers['Expires'] = '0'
             return response

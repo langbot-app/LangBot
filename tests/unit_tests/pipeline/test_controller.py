@@ -218,6 +218,29 @@ async def test_busy_group_admin_can_stop_another_members_run(sample_query):
 
 
 @pytest.mark.asyncio
+async def test_busy_group_mention_stop_still_requests_cancellation():
+    from langbot_plugin.api.entities.builtin.platform.message import At, MessageChain, Plain
+
+    app = make_app()
+    app.pipeline_mgr.get_pipeline_by_uuid.return_value = make_pipeline()
+    app.agent_run_orchestrator.cancel_active_from_query.return_value = 'run-mention-stop'
+    query = make_query(41, 'pipeline-mention-stop')
+    query.launcher_type = SimpleNamespace(value='group')
+    query.launcher_id = 'group-1'
+    query.sender_id = 'user-1'
+    query.message_chain = MessageChain([At(target='bot-1'), Plain(text='!stop')])
+
+    claimed = await Controller(app)._try_claim_steering_before_session_slot(query)
+
+    assert claimed is False
+    app.agent_run_orchestrator.cancel_active_from_query.assert_awaited_once_with(
+        query,
+        allow_other_actors=False,
+    )
+    assert query.variables['_stop_command_run_id'] == 'run-mention-stop'
+
+
+@pytest.mark.asyncio
 async def test_busy_group_command_is_recognized_after_trigger_prefix_is_removed(sample_query):
     from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes, Session
     from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain

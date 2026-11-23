@@ -369,7 +369,7 @@ async def test_control_handler_set_runtime_config_updates_cloud_service_url(
             action_context=None,
         )
 
-    assert response["data"] == {"event_batch": True}
+    assert response["data"] == {"event_batch": True, "log_trace": True}
     assert runtime_settings.cloud_service_url == "https://space.example"
     assert handler.context.runtime_identity == TEST_RUNTIME_IDENTITY
     assert handler.context.worker_policy == TEST_WORKER_POLICY

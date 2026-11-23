@@ -151,3 +151,44 @@ async def test_candidate_extraction_redacts_sensitive_ignore_candidate(monkeypat
     serialized = json.dumps(candidates, ensure_ascii=False)
     assert "hunter2" not in serialized
     assert "abc123" not in serialized
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("recall_fails", [False, True])
+async def test_scoped_recall_runs_before_automatic_rag_suppression(monkeypatch, recall_fails):
+    class ScopedAPI(FakeAPI):
+        def __init__(self):
+            self.query_vars = {
+                "_knowledge_base_uuids": ["kb-1", "kb-docs"],
+                "user_message_text": "Alice has a meeting tomorrow",
+            }
+            self.calls = []
+
+        async def retrieve_knowledge(self, *, kb_id, query_text, top_k):
+            self.calls.append(("recall", kb_id))
+            if kb_id not in self.query_vars["_knowledge_base_uuids"]:
+                raise ValueError("KB removed from effective scope")
+            if recall_fails:
+                raise RuntimeError("backend unavailable")
+            return [{"content": [{"type": "text", "text": "Alice's meeting"}]}]
+
+        async def set_query_var(self, key, value):
+            self.calls.append(("set", key))
+            self.query_vars[key] = value
+
+    api = ScopedAPI()
+    monkeypatch.setattr(
+        "components.event_listener.memory_injector.QueryBasedAPIProxy",
+        lambda **_: api,
+    )
+    injector = MemoryInjector()
+    injector.plugin = FakePlugin({"embedding_model_uuid": "emb-1", "isolation": "session"})
+    event = events.PromptPreProcessing(session_name="group_1", default_prompt=[], prompt=[])
+    event_ctx = context.EventContext(query_id=1, event_name="PromptPreProcessing", event=event)
+
+    await injector._inject_profile(event_ctx)
+
+    assert api.calls[:2] == [("recall", "kb-1"), ("set", "_knowledge_base_uuids")]
+    assert api.query_vars["_knowledge_base_uuids"] == ["kb-docs"]
+    blocks = [message for message in event_ctx.event.prompt if "<memory-records>" in message.content]
+    assert len(blocks) == (0 if recall_fails else 1)

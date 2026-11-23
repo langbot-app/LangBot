@@ -9,8 +9,9 @@ import sys
 import urllib.request
 from uuid import uuid4
 
-from tools.entrypoints.regression_coverage import checked
-from tools.regression.regression_local_cases import api, endpoint, headers, record_run, require
+from tools.regression.evidence import checked
+from tools.regression.regression_local_cases import api, endpoint, headers, require
+from tools.regression.run_ledger import record_run
 
 GROUP = 'faults'
 RUNNER = 'plugin:langbot-team/LocalAgent/default'
@@ -90,6 +91,14 @@ def _sessions(suite):
     return {item['session_id']: item for item in result}
 
 
+def _scenario_box_id(suite, identity):
+    matches = [
+        session_id for session_id in _sessions(suite) if session_id == identity or session_id.startswith(identity + '-')
+    ]
+    require(len(matches) <= 1, 'Scenario Box identity matches multiple sessions')
+    return matches[0] if matches else None
+
+
 def _running_box(suite, session_id):
     def read():
         return session_id if _sessions(suite).get(session_id, {}).get('status') == 'running' else None
@@ -122,12 +131,31 @@ def _stream(suite, agent, scope, row, *, interrupt=None, box_session_id=None, fr
             frame = json.loads(text)
             require(isinstance(frame, dict), 'Agent debug frame must be an object')
             frames.append(frame)
-            if interrupt and frame.get('kind') == 'result':
+            if frame.get('kind') == 'result':
                 event = frame.get('data', {})
+                data = event.get('data', {})
+                result = data.get('result')
+                if (
+                    event.get('type') == 'tool.call.completed'
+                    and data.get('tool_name') == 'exec'
+                    and isinstance(result, dict)
+                ):
+                    actual = result.get('session_id')
+                    if actual is not None:
+                        require(isinstance(actual, str) and bool(actual), 'Exec returned an invalid Box session ID')
+                        if box_session_id is not None:
+                            require(
+                                actual == box_session_id or actual.startswith(box_session_id + '-'),
+                                'Exec returned a Box outside this scenario identity',
+                            )
+                        require(row.get('box_session_id') in (None, actual), 'Scenario execution changed its Box')
+                        row['box_session_id'] = actual
+            if interrupt and frame.get('kind') == 'result':
                 if event.get('type') == 'tool.call.started' and event.get('data', {}).get('parameters', {}).get(
                     'command', ''
                 ).startswith('sleep 8;'):
-                    row['box_session_id'] = checked(row, 'exec_active', lambda: _running_box(suite, box_session_id))
+                    require(row.get('box_session_id'), 'Long exec has no Box receipt from its setup command')
+                    checked(row, 'exec_active', lambda: _running_box(suite, row['box_session_id']))
                     row['box_before_interrupt'] = _sessions(suite).get(row['box_session_id'])
                     if interrupt == 'cancel':
                         if before_cancel is not None:
@@ -232,7 +260,7 @@ def run_case(suite, case, row, *, before_cancel=None):
     require(scenario in CASE_NAMES, 'Unknown local execution scenario')
     scope = 'qa-fault-' + uuid4().hex
     box_key = 'qa-fault-' + hashlib.sha256((str(suite.output.resolve()) + scenario).encode()).hexdigest()[:24]
-    # Core's RunnerBoxService maps the requested reuse key to this logical ID.
+    # Core owns the suffixes; this complete hash identifies only this scenario's reuse key.
     box_session_id = 'runner-' + hashlib.sha256(box_key.encode()).hexdigest()
     interrupt = scenario in {'execution.cancel_cleanup', 'execution.timeout_cleanup'}
     model = {
@@ -418,16 +446,21 @@ def run_case(suite, case, row, *, before_cancel=None):
                 ),
             )
         if config['runner_config'][RUNNER]['box-enabled']:
+            if 'box_session_id' not in row:
+                row['box_session_id'] = _poll(
+                    suite,
+                    lambda: _scenario_box_id(suite, box_session_id),
+                    'The scenario Box could not be uniquely identified',
+                )
             checked(
                 row,
                 'box_idle',
                 lambda: _poll(
                     suite,
-                    lambda: _sessions(suite).get(box_session_id, {}).get('status') == 'idle',
+                    lambda: _sessions(suite).get(row['box_session_id'], {}).get('status') == 'idle',
                     'The scenario Box did not return to idle',
                 ),
             )
-            row['box_session_id'] = box_session_id
         return {'result': 'FAULT_CASE_OK', 'scenario': scenario, 'run_id': run['run_id']}
     finally:
         _cleanup(suite, agent, scope, row, expected)

@@ -100,6 +100,7 @@ class PluginConnectionHandler(handler.Handler):
         file_storage_dir: str | None = None,
         max_file_bytes: int | None = None,
         certified_shared_stdio: bool = False,
+        log_plugin: str | None = None,
     ):
         async def disconnect_callback(hdl: handler.Handler):
             logger.debug("disconnect_callback")
@@ -141,7 +142,7 @@ class PluginConnectionHandler(handler.Handler):
 
         # Capture the plugin subprocess's stderr (Python `logging` output) into
         # a per-plugin ring buffer so LangBot can show logs on the detail page.
-        self.log_buffer = PluginLogBuffer()
+        self.log_buffer = PluginLogBuffer(plugin=log_plugin)
         if self.stdio_process is not None and self.stdio_process.stderr is not None:
             self.log_buffer.start_reader(self.stdio_process.stderr)
 
@@ -169,8 +170,15 @@ class PluginConnectionHandler(handler.Handler):
                 in {
                     PluginToRuntimeAction.CALL_TOOL,
                     PluginToRuntimeAction.REQUEST_INTERACTION,
+                    PluginToRuntimeAction.READ_INPUT_ATTACHMENT_CONTENT,
+                    PluginToRuntimeAction.EXPORT_BOX_FILES,
+                    PluginToRuntimeAction.READ_RUN_FILE,
+                    PluginToRuntimeAction.COMMIT_RUN_FILES,
                 }
                 and payload.get("run_id") is not None
+            ) or (
+                action == PluginToRuntimeAction.CALL_APPLICATION_OPERATION
+                and str(payload.get("operation_id", "")).startswith("artifact.")
             )
             if binding is None:
                 # Compatibility for non-Workspace APIs used with an older
@@ -267,6 +275,7 @@ class PluginConnectionHandler(handler.Handler):
                     registration_capability if prod_mode else None
                 ),
             )
+            self.supports_log_trace = data.get("log_trace") is True
             return handler.ActionResponse.success({})
 
         @self.action(PluginToRuntimeAction.REPLY_MESSAGE)
@@ -922,10 +931,36 @@ class PluginConnectionHandler(handler.Handler):
                 LONG_RUNNING_OPERATION_TIMEOUT,
             )
 
+        @self.action(PluginToRuntimeAction.READ_INPUT_ATTACHMENT_CONTENT)
+        async def read_input_attachment_content(
+            data: dict[str, Any],
+        ) -> handler.ActionResponse:
+            return await forward_agent_action(
+                PluginToRuntimeAction.READ_INPUT_ATTACHMENT_CONTENT,
+                data,
+                LONG_RUNNING_OPERATION_TIMEOUT,
+            )
+
         @self.action(PluginToRuntimeAction.EXPORT_BOX_FILES)
         async def export_box_files(data: dict[str, Any]) -> handler.ActionResponse:
             return await forward_agent_action(
                 PluginToRuntimeAction.EXPORT_BOX_FILES,
+                data,
+                LONG_RUNNING_OPERATION_TIMEOUT,
+            )
+
+        @self.action(PluginToRuntimeAction.READ_RUN_FILE)
+        async def read_run_file(data: dict[str, Any]) -> handler.ActionResponse:
+            return await forward_agent_action(
+                PluginToRuntimeAction.READ_RUN_FILE,
+                data,
+                LONG_RUNNING_OPERATION_TIMEOUT,
+            )
+
+        @self.action(PluginToRuntimeAction.COMMIT_RUN_FILES)
+        async def commit_run_files(data: dict[str, Any]) -> handler.ActionResponse:
+            return await forward_agent_action(
+                PluginToRuntimeAction.COMMIT_RUN_FILES,
                 data,
                 LONG_RUNNING_OPERATION_TIMEOUT,
             )
@@ -1409,6 +1444,10 @@ class PluginConnectionHandler(handler.Handler):
         For debug plugins, this will trigger reconnection.
         For production plugins, this is just a notification before shutdown.
         """
+        from langbot_plugin.runtime.io.connections.stdio import StdioConnection
+
+        if isinstance(self.conn, StdioConnection):
+            self.conn.expecting_eof = True
         resp = await self.call_action(
             RuntimeToPluginAction.SHUTDOWN,
             {},

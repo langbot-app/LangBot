@@ -16,6 +16,7 @@ from langbot_plugin.api.entities.builtin.platform.message import File, MessageCh
 from langbot_plugin.box.backend import DockerBackend
 from langbot_plugin.box.runtime import BoxRuntime
 from tests.unit_tests.box.test_box_service import _InProcessBoxRuntimeClient, make_app, make_query, _CONTEXT
+from tests.utils.artifact_store import seed_run, _artifact_store  # noqa: F401 -- fixture
 
 
 class _TestDockerBackend(DockerBackend):
@@ -36,7 +37,7 @@ class _Client(_InProcessBoxRuntimeClient):
 
 
 @pytest.mark.asyncio
-async def test_root_owned_output_exports_from_reused_box_without_cross_run_leaks(tmp_path, capfd):
+async def test_root_owned_output_exports_from_reused_box_without_cross_run_leaks(tmp_path, capfd, artifact_store):
     logger = logging.getLogger('test.box.outbox')
     backend = _TestDockerBackend(logger)
     if not await backend.is_available():
@@ -44,6 +45,7 @@ async def test_root_owned_output_exports_from_reused_box_without_cross_run_leaks
     if sys.platform == 'linux' and os.geteuid() == 0:
         pytest.skip('the Linux ownership regression requires non-root Core')
     app = make_app(logger, allowed_mount_roots=[str(tmp_path)], host_root=str(tmp_path / 'box'))
+    await artifact_store(app, _CONTEXT)
     app.instance_config.data['box']['backend'] = 'docker'
     app.instance_config.data['box']['local']['image'] = 'python:3.12-alpine'
     runtime = BoxRuntime(logger=logger, backends=[backend], max_sessions=1)
@@ -59,8 +61,10 @@ async def test_root_owned_output_exports_from_reused_box_without_cross_run_leaks
             acquired = await api.acquire(_CONTEXT, {'reuse_key': 'export-regression'})
             assert acquired['id'] == first_box['id']
             query = make_query(index)
+            object.__setattr__(query, '_execution_context', _CONTEXT)
             object.__setattr__(query, '_box_binding', None)
             await api.bind(_CONTEXT, query, f'export-run-{index}', acquired['id'])
+            await seed_run(app, _CONTEXT, f'export-run-{index}')
             payload = f'exact input for run {index}'.encode()
             query.message_chain = MessageChain([File(name='input.txt', base64=base64.b64encode(payload).decode())])
             imported = await api.import_attachments(query, None)
@@ -94,13 +98,13 @@ async def test_root_owned_output_exports_from_reused_box_without_cross_run_leaks
             item = exported['items'][0]
             assert item['size'] == len(payload)
             assert item['name'] == 'answer.txt'
-            message = exported_message(query, [item['id']])
+            message = await exported_message(app, query, [item['id']])
             assert base64.b64decode(message.root[0].base64) == payload
             if previous_file_id:
                 from langbot_plugin.box.errors import BoxValidationError
 
                 with pytest.raises(BoxValidationError, match='does not belong'):
-                    exported_message(query, [previous_file_id])
+                    await exported_message(app, query, [previous_file_id])
             previous_file_id = item['id']
             remaining = await box.execute_tool({'command': f'find {shlex.quote(outbox)} -type f'}, query)
             assert remaining['ok'], remaining

@@ -366,3 +366,36 @@ def test_bounded_executor_rejects_unsafe_scope_limits(
             max_workers=max_workers,
             max_inflight_per_scope=max_inflight_per_scope,
         )
+
+
+@pytest.mark.asyncio
+async def test_atomic_work_finishes_before_repeated_cancellation_propagates():
+    started = asyncio.Event()
+    release = threading.Event()
+    finished = threading.Event()
+    loop = asyncio.get_running_loop()
+
+    def atomic_work():
+        loop.call_soon_threadsafe(started.set)
+        release.wait(timeout=5)
+        finished.set()
+
+    task = asyncio.create_task(run_blocking_atomic(atomic_work))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        task.cancel()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert not task.done()
+        task.cancel()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert not task.done()
+    finally:
+        release.set()
+        if not started.is_set():
+            task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert await asyncio.to_thread(finished.wait, timeout=1)
+    assert finished.is_set()

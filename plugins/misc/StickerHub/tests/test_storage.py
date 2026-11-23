@@ -30,7 +30,7 @@ def meta_keys(host, scope="installation-a"):
 
 def test_add_and_get_roundtrip(make_plugin):
     async def scenario():
-        plugin, host = make_plugin()
+        plugin, _ = make_plugin()
         created = await plugin.add_sticker("cat", PNG)
         assert created["slug"] == "cat"
         assert created["mime"] == "image/png"
@@ -38,10 +38,12 @@ def test_add_and_get_roundtrip(make_plugin):
         assert created["filename"].endswith(".png")
         assert created["path"] == f"assets/stickers/{created['filename']}"
 
-        fetched = await plugin.get_sticker("cat")
+        fetched = await plugin.get_sticker_bytes("cat")
         assert fetched is not None
-        assert fetched["filename"] == created["filename"]
-        assert fetched["sha256"] == created["sha256"]
+        data, metadata = fetched
+        assert data == PNG
+        assert metadata["filename"] == created["filename"]
+        assert metadata["sha256"] == created["sha256"]
     run(scenario())
 
 
@@ -85,7 +87,7 @@ def test_get_missing_returns_none(make_plugin):
     async def scenario():
         plugin, _ = make_plugin()
         assert await plugin.get_sticker("missing") is None
-        assert await plugin.get_sticker("missing") is None
+        assert await plugin.get_sticker_bytes("missing") is None
     run(scenario())
 
 
@@ -107,7 +109,9 @@ def test_delete_keeps_blob_while_still_referenced(make_plugin):
         await plugin.add_sticker("dog", PNG)
         assert await plugin.delete_sticker("cat") is True
         assert len(blob_keys(host)) == 1
-        assert await plugin.get_sticker("dog") is not None
+        dog = await plugin.get_sticker_bytes("dog")
+        assert dog is not None
+        assert dog[0] == PNG
     run(scenario())
 
 
@@ -166,16 +170,21 @@ def test_max_stickers_evicts_oldest(make_plugin):
 def test_list_paginates(make_plugin):
     async def scenario():
         plugin, _ = make_plugin()
-        for index in range(5):
-            await plugin.add_sticker(f"sticker-{index}", PNG + bytes([index]))
-        first = await plugin.list_stickers(limit=2, offset=0)
-        second = await plugin.list_stickers(limit=2, offset=2)
-        assert first["total"] == 5
-        assert first["count"] == 2
-        assert second["count"] == 2
-        ids_first = {item["slug"] for item in first["items"]}
-        ids_second = {item["slug"] for item in second["items"]}
-        assert not (ids_first & ids_second)
+        clock = iter(range(100, 1000))
+        with patch.object(stickerlib.time, "time", side_effect=lambda: next(clock)):
+            for index in range(5):
+                await plugin.add_sticker(f"sticker-{index}", PNG + bytes([index]))
+
+        for offset, expected in (
+            (0, ["sticker-4", "sticker-3"]),
+            (2, ["sticker-2", "sticker-1"]),
+            (4, ["sticker-0"]),
+            (5, []),
+        ):
+            page = await plugin.list_stickers(limit=2, offset=offset)
+            assert page["total"] == 5
+            assert page["count"] == len(expected)
+            assert [item["slug"] for item in page["items"]] == expected
     run(scenario())
 
 

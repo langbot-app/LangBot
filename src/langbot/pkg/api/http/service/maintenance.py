@@ -21,7 +21,7 @@ from ..context import ExecutionContext
 from .tenant import TenantContext, require_workspace_uuid
 
 
-LOG_FILE_PATTERN = re.compile(r'^langbot-(\d{4}-\d{2}-\d{2})\.log(?:\.\d+)?$')
+LOG_FILE_PATTERN = re.compile(r'^langbot-(\d{4}-\d{2}-\d{2})\.log(?:\.wf)?(?:\.\d+)?$')
 DEFAULT_UPLOAD_FILE_RETENTION_DAYS = 7
 DEFAULT_LOG_RETENTION_DAYS = 3
 DEFAULT_MAX_FILES_PER_RUN = 1000
@@ -120,6 +120,9 @@ class MaintenanceService:
             from ....storage.inline_media_cleanup import cleanup_inline_media
 
             result['inline_media_records'] = await cleanup_inline_media(self.ap, context, media_retention_days)
+        artifact_service = getattr(self.ap, 'artifact_service', None)
+        if artifact_service is not None:
+            result['artifacts'] = await artifact_service.collect_expired(context)
         return result
 
     async def get_storage_analysis(self, context: TenantContext) -> dict[str, Any]:
@@ -332,6 +335,9 @@ class MaintenanceService:
         context: ExecutionContext,
         retention_days: int,
     ) -> int:
+        if getattr(self.ap.storage_mgr, 'persistent_content', False) is True:
+            # Persistent-content retention must not delete the old import source.
+            return 0
         provider = self.ap.storage_mgr.storage_provider
         provider_name = provider.__class__.__name__
         if provider_name == 'LocalStorageProvider':
@@ -627,6 +633,10 @@ class MaintenanceService:
         return count
 
     def _non_negative_int(self, value: Any, default: int, name: str) -> int:
+        if value is None:
+            # An empty YAML key means "use the default"; warning here would log
+            # once per Workspace on every maintenance pass.
+            return default
         try:
             parsed = int(value)
         except (TypeError, ValueError):
@@ -638,6 +648,10 @@ class MaintenanceService:
         return parsed
 
     def _positive_int(self, value: Any, default: int, name: str) -> int:
+        if value is None:
+            # An empty YAML key means "use the default"; warning here would log
+            # once per Workspace on every maintenance pass.
+            return default
         try:
             parsed = int(value)
         except (TypeError, ValueError):

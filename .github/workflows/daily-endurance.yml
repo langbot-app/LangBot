@@ -6,16 +6,30 @@ on:
     - cron: '23 19 * * *'
   workflow_dispatch:
     inputs:
+      validation_scope:
+        description: 'Full compatibility/regression matrix or just the existing Daily workloads'
+        type: choice
+        options: [full, workload_only]
+        default: full
+      require_live_dify:
+        description: 'Also require the credentialed Dify Cloud check for a manual run'
+        type: boolean
+        default: false
+      workload:
+        description: 'Mixed business load or the finite fault/lifecycle contract pass'
+        type: choice
+        options: [mixed, contracts]
+        default: mixed
       scenario_groups:
-        description: 'Optional local groups, space separated; empty runs only base cases'
+        description: 'Contracts mode only: local groups, space separated; empty runs base cases'
         type: string
         default: 'faults resources lifecycle plugins'
       extra_plugins:
-        description: 'Additional source plugin paths; clear with the plugins group to run only base plugins'
+        description: 'Contracts mode only: additional source plugin paths'
         type: string
         default: 'misc/EssentialCommands misc/FAQManager'
       restart_services:
-        description: 'Check owned Core and Runtime restarts once before resource sampling'
+        description: 'Contracts mode only: check owned Core and Runtime restarts once'
         type: boolean
         default: true
 
@@ -27,8 +41,70 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  core-matrix:
+    name: Full Core compatibility and regression
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/run-tests.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  sdk-matrix:
+    name: Full SDK compatibility
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/sdk-tests.yml
+
+  sdk-box:
+    name: Real SDK Docker Box acceptance
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/sdk-box-docker.yml
+
+  lint:
+    name: Core static checks
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/lint.yml
+
+  dependency-contracts:
+    name: Dependency contracts
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/optional-contracts.yml
+
+  migrations:
+    name: SQLite and PostgreSQL migrations
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/test-migrations.yml
+
+  frontend:
+    name: Full WebUI and browser regression
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/frontend-tests.yml
+
+  packaging:
+    name: Core packaging boundary and production image
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/core-packaging.yml
+
+  plugin-runner:
+    name: Official Runner compatibility
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/plugins-runner-tests.yml
+
+  plugin-knowledgeengine:
+    name: Official KnowledgeEngine compatibility
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/plugins-knowledgeengine-shared-tests.yml
+
+  plugin-misc:
+    name: Official misc plugin checks
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/plugins-misc-tests.yml
+
+  plugin-catalog:
+    name: Official plugin catalog contract
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/plugins-plugin-catalog.yml
+
   endurance:
-    name: Daily regression (30m)
+    name: Daily mixed load (manual contracts available)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -43,97 +119,64 @@ jobs:
           enable-cache: true
       - name: Install locked dependencies
         run: uv sync --dev --frozen
-      - name: Prepare CLI and sandbox image
+      - uses: ./.github/actions/build-lbctl
+        id: lbctl
+      - name: Prepare sandbox image
+        run: docker pull python:3.12-alpine
+      - name: Run daily mixed load or explicit manual contracts
+        id: execute
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p .endurance-bin
-          gh release download v0.3.0 --repo langbot-app/langbot-cli --dir .endurance-bin \
-            --pattern lbctl_linux_amd64 --pattern checksums.txt
-          cd .endurance-bin
-          sha256sum --check --ignore-missing checksums.txt
-          chmod +x lbctl_linux_amd64
-          docker pull python:3.12-alpine
-      - name: Run repeated scenarios and recovery checks
-        env:
+          LBCTL_BIN: ${{ steps.lbctl.outputs.binary }}
+          SPACE__DISABLE_TELEMETRY: 'true'
+          ANONYMIZED_TELEMETRY: 'False'
+          WORKLOAD: ${{ github.event_name == 'schedule' && 'mixed' || inputs.workload }}
           SCENARIO_GROUPS: ${{ github.event_name == 'schedule' && 'faults resources lifecycle plugins' || inputs.scenario_groups }}
           EXTRA_PLUGINS: ${{ github.event_name == 'schedule' && 'misc/EssentialCommands misc/FAQManager' || inputs.extra_plugins }}
           RESTART_SERVICES: ${{ github.event_name == 'schedule' || inputs.restart_services }}
         run: |
-          read -r -a groups <<< "$SCENARIO_GROUPS"
-          read -r -a extras <<< "$EXTRA_PLUGINS"
           args=()
-          if [[ "$RESTART_SERVICES" == true ]]; then args+=(--restart-services); fi
+          case "$WORKLOAD" in
+            mixed)
+              args+=(--suite endurance)
+              ;;
+            contracts)
+              read -r -a groups <<< "$SCENARIO_GROUPS"
+              read -r -a extras <<< "$EXTRA_PLUGINS"
+              args+=(--suite scenarios --scenario-groups "${groups[@]}" --extra-plugins "${extras[@]}")
+              if [[ "$RESTART_SERVICES" == true ]]; then args+=(--restart-services); fi
+              ;;
+            *) echo "Unknown workload: $WORKLOAD" >&2; exit 2 ;;
+          esac
+          mkdir -p .qa
+          printf '%s\n' "$WORKLOAD" > .qa/daily-workload.txt
           uv run --no-sync python -m tools.entrypoints.regression_ci \
-            --suite daily --scenario-groups "${groups[@]}" "${args[@]}" \
-            --lbctl .endurance-bin/lbctl_linux_amd64 --plugins plugins --extra-plugins "${extras[@]}" --output .qa/daily
+            "${args[@]}" --lbctl "$LBCTL_BIN" --plugins plugins --output .qa/daily
       - name: Publish observations
         if: always()
+        env:
+          RUN_OUTCOME: ${{ steps.execute.outcome }}
         run: |
-          python - <<'PY_SUMMARY'
-          import json, os
-          from pathlib import Path
-
-          root = Path('.qa/daily')
-          def read(path):
-              source = root / path
-              return json.loads(source.read_text()) if source.exists() else {}
-
-          gate = read('gate/gate.json')
-          suite = read('gate/suite/summary.json')
-          manifest = read('plugins/manifest.json')
-          coverage = read('gate/suite/coverage.json')
-          passed = gate.get('passed') is True and suite.get('passed') is True
-          outer_failed = any(gate.get(key) for key in ('infrastructure_error', 'timed_out', 'resource_errors', 'coverage_errors'))
-          outcome = 'PASS' if passed else 'INCOMPLETE' if suite.get('outcome') == 'INCOMPLETE' and not outer_failed else 'FAIL / incomplete'
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
-              out.write(f"Daily regression: {outcome}\n\nCore: `{os.environ['GITHUB_SHA']}`.\n\n")
-              out.write('One 1800-second scenario/resource budget, including 120 seconds reserved for drain/cleanup and 60 seconds for cooldown. The outer process guard is 1860 seconds; deployment and plugin installation precede the scenario clock.\n\n')
-              out.write('Real Core/Runtime/source plugins/Box; mock generation and embedding. Throughput/P95 are observations; business, health and resource failures still fail this non-required job.\n\n')
-              out.write(f"Enabled local groups: {gate.get('scenario_groups', 'not reported')}.\n\n")
-              restart = gate.get('restart_checks')
-              if restart:
-                  out.write(f"Owned-service restart checks: {restart.get('outcome', 'not reported')}; {restart.get('elapsed_seconds', 0):.2f}s, deducted from the shared budget. Resource baselines begin after restarts.\n\n")
-                  for error in restart.get('errors', []):
-                      out.write(f"Restart check error: {error}\n")
-              out.write(f"Plugin selection: `{manifest.get('selection', 'not reported')}`.\n\n")
-              for plugin in manifest.get('plugins', []):
-                  out.write(f"Plugin: `{plugin['id']}@{plugin['version']}`; installation readback: `{plugin.get('installed', 'not confirmed')}`.\n\n")
-              out.write(f"Required first pass complete: {suite.get('first_pass_complete', 'not reported')}; cycles: {len(suite.get('cycles', []))}; requests: {suite.get('requests', 'not reported')}.\n\n")
-              out.write(f"Final ledger reconciliation: {suite.get('ledger_closeout', {}).get('matched', 'not reported')}.\n\n")
-              data = suite.get('test_data', {})
-              out.write(f"Observed conversations: {data.get('observed_conversations', 'not reported')}; AgentRuns: {data.get('observed_agent_runs', 'not reported')}; group sessions: {data.get('group_sessions', 'not reported')}; owned API resources: {data.get('owned_api_resources', 'not reported')}.\n\n")
-              out.write('One Workspace; each pipeline reuses one Box per CI run. This does not test cross-group Box file isolation or tenant isolation.\n\n')
-              observations = suite.get('observations', {})
-              if 'successful_requests_per_second' in observations:
-                  out.write(f"Successful throughput: {observations['successful_requests_per_second']:.3f} RPS.\n\n")
-              if observations.get('step_p95_seconds'):
-                  out.write('| Case | Full-step P95 (s) |\n|---|---:|\n')
-                  for name, p95 in observations['step_p95_seconds'].items():
-                      out.write(f"| {name} | {p95} |\n")
-              for kind, values in coverage.get('kinds', {}).items():
-                  out.write(f"\n{kind} behavior evidence: {values['decided']} / {values['total']}; statuses: {values['status']}.\n")
-              if suite.get('resources', {}).get('targets'):
-                  out.write('\n| Resource | Metric | Retained growth | Allowance |\n|---|---|---:|---:|\n')
-                  for target, metrics in suite['resources']['targets'].items():
-                      for metric, values in metrics.items():
-                          out.write(f"| {target} | {metric} | {values.get('growth', 'unavailable')} | {values.get('allowance', 'unavailable')} |\n")
-              errors = list(suite.get('errors', [])) + list(gate.get('resource_errors', [])) + list(gate.get('coverage_errors', []))
-              if gate.get('timed_out'):
-                  errors.append('Suite exceeded its 1860-second outer process guard.')
-              if gate.get('infrastructure_error'):
-                  errors.append(gate['infrastructure_error'])
-              if not gate or not suite:
-                  errors.append('Missing verdict; inspect preparation and service logs.')
-              for error in errors:
-                  out.write(f"\n- {error}\n")
-          PY_SUMMARY
+          python -m tools.entrypoints.regression_report daily .qa/daily \
+            --sha "$GITHUB_SHA" --step-outcome "$RUN_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+      - name: Scan service logs
+        if: always()
+        continue-on-error: true
+        run: |
+          shopt -s nullglob
+          for file in .qa/daily/.private/data/logs/*.log.wf*; do cp "$file" .qa/daily/; done
+          core_logs=(.qa/daily/*.log.wf*)
+          if (( ${#core_logs[@]} == 0 )); then core_logs=(.qa/daily/core.log); fi
+          uv run --no-sync python -m tools.entrypoints.log_scan --input "${core_logs[@]}" .qa/daily/{runtime,box,services}.log \
+            --allowlist tools/log_scan_allowlist.yaml --output .qa/daily
+          cat .qa/daily/log-anomalies.md >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve verdicts and observations
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: daily-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
+            .qa/daily-workload.txt
+            .qa/daily/gate/mixed.json
             .qa/daily/gate/gate.json
             .qa/daily/gate/resources.jsonl
             .qa/daily/gate/suite.log
@@ -142,6 +185,11 @@ jobs:
             .qa/daily/gate/suite/health.json
             .qa/daily/gate/suite/cleanup-checks.json
             .qa/daily/gate/suite/resources.jsonl
+            .qa/daily/gate/suite/*/summary.json
+            .qa/daily/gate/suite/*/requests.jsonl
+            .qa/daily/gate/suite/*/resources.jsonl
+            .qa/daily/gate/suite/profile.json
+            .qa/daily/gate/suite/workload.json
             .qa/daily/gate/suite/cycles.json
             .qa/daily/gate/suite/execution.json
             .qa/daily/gate/suite/coverage.json
@@ -156,6 +204,9 @@ jobs:
             .qa/daily/restart-checks/cleanup-checks.json
             .qa/daily/restart-checks/owned.json
             .qa/daily/*.log
+            .qa/daily/*.log.wf*
+            .qa/daily/log-anomalies.*
+            .qa/daily/*-requests.jsonl
           if-no-files-found: warn
           retention-days: 30
 
@@ -167,91 +218,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - uses: astral-sh/setup-uv@v4
-        with:
-          enable-cache: true
-      - name: Install locked dependencies
-        run: uv sync --dev --frozen
-      - name: Prepare CLI and sandbox image
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p .api-bin
-          gh release download v0.3.0 --repo langbot-app/langbot-cli --dir .api-bin \
-            --pattern lbctl_linux_amd64 --pattern checksums.txt
-          cd .api-bin
-          sha256sum --check --ignore-missing checksums.txt
-          chmod +x lbctl_linux_amd64
-          docker pull python:3.12-alpine
-      - name: Run API contracts
-        run: |
-          uv run --no-sync python -m tools.entrypoints.regression_ci \
-            --suite api --api-seed "$GITHUB_RUN_ID" \
-            --lbctl .api-bin/lbctl_linux_amd64 --plugins plugins --output .qa/api
-      - name: Publish API result
-        if: always()
-        run: |
-          python - <<'PY_SUMMARY'
-          import json, os
-          from pathlib import Path
-
-          root = Path('.qa/api')
-          def read(path):
-              source = root / path
-              return json.loads(source.read_text()) if source.exists() else {}
-
-          gate = read('gate/gate.json')
-          suite = read('gate/suite/summary.json')
-          coverage = read('gate/suite/coverage.json')
-          manifest = read('plugins/manifest.json')
-          passed = gate.get('passed') is True and suite.get('passed') is True
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
-              out.write(f"Daily API contracts: {'PASS' if passed else 'FAIL / incomplete'}\n\n")
-              out.write(f"Core: `{os.environ['GITHUB_SHA']}`; shuffle seed: `{gate.get('api_seed', os.environ['GITHUB_RUN_ID'])}`.\n\n")
-              out.write('Fixed order followed by a seeded chain shuffle, with sequential operations inside each chain. The execution guard is 600 seconds; dependency and service preparation is separate. This job is not a required PR check.\n\n')
-              out.write(f"Cases: {suite.get('requests', 'not reported')}; statuses: {suite.get('status', 'not reported')}; suite execution: {suite.get('elapsed_seconds', 'not reported')}s.\n\n")
-              out.write(f"API behavior contracts: {coverage.get('areas', {}).get('api', 'not reported')}.\n\n")
-              out.write(f"Observed HTTP route templates (including preparation): {len(coverage['http_observations']['routes']) if 'http_observations' in coverage else 'not reported'}. A route hit does not establish all behavior behind it.\n\n")
-              for plugin in manifest.get('plugins', []):
-                  out.write(f"Plugin: `{plugin['id']}@{plugin['version']}`; installation readback: `{plugin.get('installed', 'not confirmed')}`.\n\n")
-              errors = list(suite.get('errors', [])) + list(gate.get('resource_errors', [])) + list(gate.get('coverage_errors', []))
-              if gate.get('timed_out'):
-                  errors.append('API suite exceeded its 600-second outer process guard.')
-              if gate.get('infrastructure_error'):
-                  errors.append(gate['infrastructure_error'])
-              if not gate or not suite:
-                  errors.append('Missing verdict; inspect preparation and service logs.')
-              for error in errors:
-                  out.write(f"- {error}\n")
-          PY_SUMMARY
-      - name: Preserve API verdicts and evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: daily-api-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            .qa/api/gate/gate.json
-            .qa/api/gate/resources.jsonl
-            .qa/api/gate/suite.log
-            .qa/api/gate/suite/summary.json
-            .qa/api/gate/suite/profile.json
-            .qa/api/gate/suite/cases.json
-            .qa/api/gate/suite/health.json
-            .qa/api/gate/suite/cleanup-checks.json
-            .qa/api/gate/suite/resource-case-*.json
-            .qa/api/gate/suite/coverage.json
-            .qa/api/gate/suite/coverage.md
-            .qa/api/plugins/manifest.json
-            .qa/api/plugins/*-build.log
-            .qa/api/*.log
-          if-no-files-found: warn
-          retention-days: 30
+      - uses: ./.github/actions/run-api-contracts
 
   dify-cloud:
     name: Daily Dify Cloud Agent regression
+    if: github.event_name == 'schedule' || inputs.require_live_dify
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -275,20 +246,20 @@ jobs:
           DIFY_LIVE_OUTPUT: ${{ github.workspace }}/.qa/dify-live/summary.json
         run: |
           if [[ -z "$DIFY_AGENT_API_KEY" ]]; then
-            if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
-              echo "DIFY_AGENT_API_KEY is required for the scheduled live Dify regression." >&2
-              exit 1
-            fi
-            echo "DIFY_AGENT_API_KEY is not configured; skipping manual live Dify regression."
-            exit 0
+            echo "DIFY_AGENT_API_KEY is required for the selected live Dify regression." >&2
+            exit 1
           fi
           uv run --no-sync python http-certification-tests/live_dify_agent.py
       - name: Publish Dify regression summary
         if: always()
         run: |
-          if [[ -f "$GITHUB_WORKSPACE/.qa/dify-live/summary.json" ]]; then
-            cat "$GITHUB_WORKSPACE/.qa/dify-live/summary.json" >> "$GITHUB_STEP_SUMMARY"
+          summary="$GITHUB_WORKSPACE/.qa/dify-live/summary.json"
+          if [[ ! -f "$summary" ]]; then
+            echo "No Dify verdict was produced." >&2
+            exit 1
           fi
+          cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          python -c 'import json, sys; sys.exit(json.load(open(sys.argv[1])).get("passed") is not True)' "$summary"
       - name: Preserve Dify regression evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -384,9 +355,13 @@ jobs:
       - name: Publish latest n8n summary
         if: always()
         run: |
-          if [[ -f "$GITHUB_WORKSPACE/.qa/n8n-live/summary.json" ]]; then
-            cat "$GITHUB_WORKSPACE/.qa/n8n-live/summary.json" >> "$GITHUB_STEP_SUMMARY"
+          summary="$GITHUB_WORKSPACE/.qa/n8n-live/summary.json"
+          if [[ ! -f "$summary" ]]; then
+            echo "No n8n verdict was produced." >&2
+            exit 1
           fi
+          cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          python -c 'import json, sys; sys.exit(json.load(open(sys.argv[1])).get("passed") is not True)' "$summary"
       - name: Preserve latest n8n evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -395,3 +370,71 @@ jobs:
           path: .qa/n8n-live
           if-no-files-found: warn
           retention-days: 30
+
+  persistence-runtime:
+    uses: ./.github/workflows/persistence-acceptance.yml
+    with:
+      uploaded_artifacts: ${{ github.event_name == 'schedule' || inputs.validation_scope == 'full' }}
+
+  verdict:
+    name: Daily regression verdict
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - core-matrix
+      - sdk-matrix
+      - sdk-box
+      - lint
+      - dependency-contracts
+      - migrations
+      - frontend
+      - packaging
+      - plugin-runner
+      - plugin-knowledgeengine
+      - plugin-misc
+      - plugin-catalog
+      - endurance
+      - api-contracts
+      - dify-cloud
+      - n8n-latest
+      - persistence-runtime
+    steps:
+      - name: Confirm selected jobs succeeded
+        env:
+          JOB_RESULTS: ${{ toJSON(needs) }}
+          FULL_MATRIX: ${{ github.event_name == 'schedule' || inputs.validation_scope == 'full' }}
+          LIVE_DIFY: ${{ github.event_name == 'schedule' || inputs.require_live_dify }}
+        run: |
+          python3 - <<'PY_VERDICT'
+          import json, os
+
+          jobs = json.loads(os.environ['JOB_RESULTS'])
+          full_matrix = os.environ['FULL_MATRIX'] == 'true'
+          live_dify = os.environ['LIVE_DIFY'] == 'true'
+          matrix = {'core-matrix', 'sdk-matrix', 'sdk-box', 'lint', 'dependency-contracts',
+                    'migrations', 'frontend', 'packaging', 'plugin-runner',
+                    'plugin-knowledgeengine', 'plugin-misc', 'plugin-catalog'}
+          required = {'endurance', 'api-contracts', 'persistence-runtime', 'n8n-latest'}
+          if full_matrix:
+              required |= matrix
+          if live_dify:
+              required.add('dify-cloud')
+          expected = required | matrix | {'dify-cloud'}
+          failures = []
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f"## Daily regression\n\nCandidate: `{os.environ['GITHUB_SHA']}`\n\n")
+              summary.write('| Suite | Selected | Result |\n| --- | --- | --- |\n')
+              for job in sorted(expected | jobs.keys()):
+                  result = jobs.get(job, {}).get('result', 'missing')
+                  selected = job in required
+                  summary.write(f"| {job} | {'yes' if selected else 'no'} | {result} |\n")
+                  if job not in expected or result != ('success' if selected else 'skipped'):
+                      failures.append(f'{job}: {result}')
+              if not full_matrix:
+                  summary.write('\nWorkload-only run: no matrix or migration acceptance.\n')
+              if not live_dify:
+                  summary.write('\nManual run did not select credentialed Dify acceptance.\n')
+          if failures:
+              raise SystemExit('Selected validation failed or is incomplete: ' + ', '.join(failures))
+          PY_VERDICT

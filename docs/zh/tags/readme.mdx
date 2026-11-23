@@ -8,6 +8,39 @@ LangBot 提供了一套供外部服务使用的 RESTful API 接口，便于集�
 Service API 目前处于 Beta 阶段，部分接口可能会频繁变动。
 </Warning>
 
+## 通用操作入口
+
+`GET /api/v1/operations` 返回 `{"operations": [...]}`，仅包含当前 API Key 或用户令牌可执行的操作，支持 `?domain=agent&q=list` 过滤。描述字段为 `id`、`label`、`summary`、`description`、`domain`、`risk`、`side_effect`、`streaming`、`permission`、`version`、`input_schema` 和 `output_schema`。`GET /api/v1/operations/<operation_id>` 返回单个描述；隐藏、不存在或无权访问时返回 404。`exposure: none` 的操作不出现在目录中，但已知 ID 仍可在 Application API 授权后调用。
+
+```bash
+curl "$LANGBOT_URL/api/v1/operations" -H "X-API-Key: $LANGBOT_API_KEY"
+curl "$LANGBOT_URL/api/v1/operations/agent.list" \
+  -H "X-API-Key: $LANGBOT_API_KEY" -H 'Content-Type: application/json' -d '{}'
+curl -N "$LANGBOT_URL/api/v1/operations/agent.debug.stream/stream" \
+  -H "X-API-Key: $LANGBOT_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"agent_uuid":"YOUR_AGENT_UUID","payload":{"text":"hello"}}'
+```
+
+`POST /api/v1/operations/<operation_id>` 的 JSON 对象就是操作输入，空 body 等价于 `{}`。成功返回 `{"code":0,"msg":"ok","data":<output>}`。错误使用相应 HTTP 状态码及 `{"code":<error_code>,"msg":<message>,"data":<details_or_null>}`：输入不合法为 400，缺少权限为 403，未知操作为 404。流式操作误用普通入口，或普通操作误用 `/stream`，均返回 400 `invalid_execution_mode`。
+
+`POST /api/v1/operations/<operation_id>/stream` 返回 `text/event-stream`，每条消息为 `data: <json>` 加空行：
+
+```text
+data: {"kind":"result","data":{}}
+
+event: done
+data: {}
+
+```
+
+失败则以 `event: error` 和 `data: {"code":"permission_denied","msg":"..."}` 结束，不再发送 `done`。流开始后的错误通过 SSE 事件传递，不修改 HTTP 状态码，客户端必须同时检查两者。
+
+Workspace 身份只来自认证后的请求上下文，输入顶层的 `workspace`、`workspace_uuid` 会被忽略。二进制和 multipart 上传继续使用专用路由。
+
+支持 `operation.binary_base64` 时，输出任意深度的二进制字段（包括 SSE 事件）均转换为带 padding 的标准 RFC 4648 base64 字符串（非 URL-safe）；`output_schema` 用 `"contentEncoding": "base64"` 标记这些字段，供客户端解码。
+
+API Key 可通过 `plugin.permissions.update` 或现有插件权限路由确认权限，但必须具备 `resource.manage` 以及每项 capability、Workspace 操作要求的全部权限，包括保留的授权，不能授予自己没有的权限。兼容模式仍须一次确认全部列出的权限 ID。操作日志记录确认者的 API Key。调用前可检查 `/api/v1/system/capabilities` 的 `operation.invoke`、`operation.stream`、`plugin.permissions.confirm_api_key` 标识。
+
 ## 获取 API Key
 
 点击 WebUI 侧栏的 `API Keys` 按钮，创建一个 API Key。

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import threading
 from types import SimpleNamespace
 from unittest import mock
 
@@ -84,6 +85,72 @@ def mock_e2b_module():
 
 
 # ── Path adaptation ────────────────────────────────────────────────────
+
+
+def test_concurrent_downloads_wait_for_workspace_blocking_capacity(backend, tmp_path):
+    from langbot_plugin.runtime.bounded_executor import (
+        BoundedThreadPoolExecutor,
+        blocking_work_scope,
+    )
+
+    class Files:
+        async def list(self, *args, **kwargs):
+            return [
+                SimpleNamespace(
+                    path="/remote/value.txt", type=SimpleNamespace(value="file"), size=5
+                )
+            ]
+
+        async def read(self, *args, **kwargs):
+            async def chunks():
+                yield b"value"
+
+            return chunks()
+
+    executor = BoundedThreadPoolExecutor(
+        max_workers=2, max_pending=16, max_inflight_per_scope=1
+    )
+    release = threading.Event()
+
+    async def run():
+        asyncio.get_running_loop().set_default_executor(executor)
+        with blocking_work_scope("workspace:test"):
+            occupied = executor.submit(lambda: release.wait(timeout=5))
+            tasks = [
+                asyncio.create_task(
+                    backend._sync_e2b_tree_to_host(
+                        SimpleNamespace(files=Files()),
+                        remote_root="/remote",
+                        host_root=str(tmp_path / str(index)),
+                    )
+                )
+                for index in range(16)
+            ]
+        try:
+            await asyncio.sleep(0.05)
+        finally:
+            release.set()
+            await asyncio.wrap_future(occupied)
+        results = await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True), 5
+        )
+        assert not any(isinstance(result, BaseException) for result in results), results
+        assert [
+            (tmp_path / str(index) / "value.txt").read_bytes() for index in range(16)
+        ] == [b"value"] * 16
+        snapshot = executor.snapshot()
+        assert snapshot["max_inflight_per_scope"] == 1
+        assert snapshot["scope_rejected_total"] > 0
+        assert snapshot["inflight"] == 0
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(run())
+    finally:
+        release.set()
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.run_until_complete(loop.shutdown_default_executor())
+        loop.close()
 
 
 def test_adapt_path_workspace():
@@ -231,7 +298,9 @@ async def test_is_session_alive_probes_remote_sandbox(backend, mock_e2b_module):
 
     assert await backend.is_session_alive(info) is True
     mock_e2b_module.connect.assert_awaited_once_with(
-        sandbox_id="sandbox-test-123", api_key="test-api-key"
+        sandbox_id="sandbox-test-123",
+        api_key="test-api-key",
+        headers={"E2b-Sandbox-Id": "sandbox-test-123", "E2b-Sandbox-Port": "49983"},
     )
 
     mock_e2b_module.connect.side_effect = RuntimeError("sandbox gone")
@@ -390,14 +459,15 @@ async def test_start_session_no_host_mount_when_empty(backend, mock_e2b_module):
 
 
 @pytest.mark.anyio
-async def test_exec_success(backend, mock_e2b_module):
+@pytest.mark.parametrize("sandbox_id", ["sandbox-123", "sandbox-456"])
+async def test_exec_success(backend, mock_e2b_module, sandbox_id):
     """exec runs command and returns result."""
     backend._api_key = "test-api-key"
 
     session = BoxSessionInfo(
         session_id="exec-sess",
         backend_name="e2b",
-        backend_session_id="sandbox-123",
+        backend_session_id=sandbox_id,
         image="base",
         network=BoxNetworkMode.OFF,
         created_at="2024-01-01T00:00:00+00:00",
@@ -417,7 +487,11 @@ async def test_exec_success(backend, mock_e2b_module):
     assert result.stdout == "output"
 
     # Verify connect and run were called
-    mock_e2b_module.connect.assert_called_once()
+    mock_e2b_module.connect.assert_awaited_once_with(
+        sandbox_id=sandbox_id,
+        api_key="test-api-key",
+        headers={"E2b-Sandbox-Id": sandbox_id, "E2b-Sandbox-Port": "49983"},
+    )
     mock_e2b_module.commands.run.assert_called_once()
 
     # Verify command includes path adaptation
@@ -1244,3 +1318,480 @@ async def test_cancelled_upload_cleans_staging_without_publication(backend, tmp_
     assert "rm -rf" in calls[-1]
     assert ".sealed" in calls[-1]
     assert not any("ln -s" in command or "mv " in command for command in calls)
+
+
+@pytest.mark.asyncio
+async def test_workspace_connections_ignore_deployment_env_and_hide_provider_key_errors(
+    logger, monkeypatch, caplog
+):
+    from langbot_plugin.box import e2b_backend as module
+    from langbot_plugin.box.models import E2BConnectionConfig
+    from langbot_plugin.box.runtime import BoxRuntime
+
+    monkeypatch.setenv("E2B_API_KEY", "deployment-key")
+    monkeypatch.setenv("E2B_API_URL", "http://deployment-api.test")
+    monkeypatch.setenv("E2B_SANDBOX_URL", "http://deployment-sandbox.test")
+    a = E2BConnectionConfig(
+        api_url="http://a-api.test",
+        sandbox_url="http://a-sandbox.test",
+        api_key="private-a",
+        template="base",
+    )
+    b = E2BConnectionConfig(
+        api_url="http://b-api.test",
+        sandbox_url="http://b-sandbox.test",
+        api_key="private-b",
+        template="base",
+    )
+    assert a.api_key not in repr(a)
+    sandboxes = [
+        SimpleNamespace(sandbox_id="sandbox-a"),
+        SimpleNamespace(sandbox_id="sandbox-b"),
+    ]
+    api = SimpleNamespace(
+        create=mock.AsyncMock(side_effect=sandboxes), kill=mock.AsyncMock()
+    )
+    monkeypatch.setattr(module, "_check_e2b_available", lambda: True)
+    monkeypatch.setattr(module, "_AsyncSandbox", api)
+    runtime = BoxRuntime(logger, backends=[], session_ttl_sec=0)
+    try:
+        await runtime.create_session(
+            BoxSpec(session_id="a", backend="e2b", e2b_config=a)
+        )
+        await runtime.create_session(
+            BoxSpec(session_id="b", backend="e2b", e2b_config=b)
+        )
+        calls = api.create.await_args_list
+        assert (
+            calls[0].kwargs["api_key"] == "private-a"
+            and calls[0].kwargs["api_url"] == a.api_url
+        )
+        assert calls[0].kwargs["sandbox_url"] == a.sandbox_url
+        assert (
+            calls[1].kwargs["api_key"] == "private-b"
+            and calls[1].kwargs["api_url"] == b.api_url
+        )
+        from langbot_plugin.box.errors import BoxSessionConflictError
+
+        with pytest.raises(BoxSessionConflictError):
+            await runtime.create_session(
+                BoxSpec(session_id="a", backend="e2b", e2b_config=b)
+            )
+        await runtime.delete_session("a")
+        assert api.kill.await_args.kwargs["api_key"] == "private-a"
+        assert api.kill.await_args.kwargs["api_url"] == a.api_url
+        api.create.side_effect = RuntimeError("upstream leaked private-a")
+        with pytest.raises(BoxError) as caught:
+            await runtime.create_session(
+                BoxSpec(session_id="failed", backend="e2b", e2b_config=a)
+            )
+        import traceback
+
+        assert "private-a" not in "".join(traceback.format_exception(caught.value))
+        assert "private-a" not in caplog.text
+    finally:
+        await runtime.shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [None, "create", "execute", "cleanup", "cancel"])
+async def test_template_check_uses_supplied_template_and_cleans_up(
+    logger, mock_e2b_module, failure
+):
+    import asyncio
+    from langbot_plugin.box.models import E2BConnectionConfig
+
+    config = E2BConnectionConfig(
+        api_url="http://api.test",
+        sandbox_url="http://proxy.test",
+        api_key="private-key",
+        template="user-template",
+    )
+    backend = E2BSandboxBackend(logger, connection_config=config)
+    await backend.initialize()
+
+    async def run(command, **kwargs):
+        if failure == "cancel":
+            raise asyncio.CancelledError()
+        if failure == "execute":
+            raise RuntimeError("private-key")
+        return SimpleNamespace(exit_code=0, stdout=command.removeprefix("printf "))
+
+    mock_e2b_module.commands.run.side_effect = run
+    if failure == "create":
+        mock_e2b_module.create.side_effect = RuntimeError("private-key")
+    if failure == "cleanup":
+        mock_e2b_module.kill.side_effect = RuntimeError("private-key")
+    if failure == "cancel":
+        with pytest.raises(asyncio.CancelledError):
+            await backend.inspect_template()
+    else:
+        result = await backend.inspect_template()
+        assert result["template_validated"] == (failure is None)
+        assert "private-key" not in json.dumps(result)
+    assert mock_e2b_module.create.await_args.kwargs["template"] == "user-template"
+    if failure == "create":
+        mock_e2b_module.kill.assert_not_called()
+    else:
+        mock_e2b_module.kill.assert_awaited_once()
+
+
+def test_workspace_template_overrides_task_image():
+    from langbot_plugin.box.models import E2BConnectionConfig
+
+    config = E2BConnectionConfig(
+        api_url="http://api.test",
+        sandbox_url="http://proxy.test",
+        api_key="private",
+        template="chosen-template",
+    )
+    assert (
+        BoxSpec(
+            session_id="configured-template",
+            backend="e2b",
+            e2b_config=config,
+            image="docker-image",
+        ).image
+        == "chosen-template"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case,available,validation,reason",
+    [
+        ("ready", True, "ready", None),
+        ("building", False, "not_ready", "template_not_ready"),
+        ("disabled", True, "unsupported", None),
+        ("not_found", False, "not_found", "template_not_found"),
+        ("forbidden", False, "failed", "permission_denied"),
+    ],
+)
+async def test_lightweight_template_check_never_creates(
+    logger, mock_e2b_module, case, available, validation, reason
+):
+    import httpx
+    from langbot_plugin.box.models import E2BConnectionConfig
+
+    config = E2BConnectionConfig(
+        api_url="https://api.test",
+        sandbox_url="https://proxy.test",
+        api_key="private-key",
+        template="chosen",
+    )
+    backend = E2BSandboxBackend(logger, connection_config=config)
+    await backend.initialize()
+    mock_e2b_module.list.return_value.next_items = mock.AsyncMock(return_value=[])
+    paths = []
+
+    def respond(request):
+        paths.append(request.url.path)
+        assert request.headers["X-API-Key"] == "private-key"
+        if case == "disabled":
+            return httpx.Response(404, json={"message": "route is disabled by profile"})
+        if case == "forbidden":
+            return httpx.Response(
+                403, json={"message": "private-key provider diagnostic"}
+            )
+        if request.url.path.startswith("/templates/aliases/"):
+            return httpx.Response(
+                200, json={"templateID": "resolved-id", "public": False}
+            )
+        if case == "not_found":
+            return httpx.Response(404, json={"message": "Template not found"})
+        return httpx.Response(
+            200,
+            json={"builds": [{"status": "ready" if case == "ready" else "building"}]},
+        )
+
+    real_client = httpx.AsyncClient
+    with mock.patch(
+        "langbot_plugin.box.e2b_backend.httpx.AsyncClient",
+        side_effect=lambda **kw: real_client(
+            transport=httpx.MockTransport(respond), **kw
+        ),
+    ):
+        result = await backend.inspect_template(validate=False)
+    assert result["available"] is available
+    assert result["template_validation"] == validation
+    assert result["reason"] == reason
+    assert result["template_validated"] is False
+    assert "private-key" not in json.dumps(result)
+    mock_e2b_module.create.assert_not_called()
+    mock_e2b_module.kill.assert_not_called()
+    assert paths[0] == "/templates/aliases/chosen"
+    if case != "forbidden":
+        assert paths[-1] == (
+            "/templates/chosen" if case == "disabled" else "/templates/resolved-id"
+        )
+
+
+@pytest.mark.parametrize(
+    "status,stage,expected",
+    [
+        (401, "template_query_failed", "authentication_failed"),
+        (403, "template_creation_failed", "permission_denied"),
+        (404, "template_query_failed", "template_not_found"),
+        (404, "connection_failed", "resource_not_found"),
+        (429, "template_creation_failed", "capacity_limited"),
+        (429, "template_query_failed", "rate_limited"),
+    ],
+)
+def test_e2b_failure_classification_uses_status_without_echoing_body(
+    status, stage, expected
+):
+    from e2b.exceptions import SandboxException
+
+    assert (
+        E2BSandboxBackend._failure_reason(
+            SandboxException(f"{status}: private-key"), stage
+        )
+        == expected
+    )
+
+
+@pytest.mark.anyio
+async def test_upload_cancellation_waits_for_remote_publication_and_cleanup(
+    backend, mock_e2b_module
+):
+    session = await backend.start_session(BoxSpec(session_id="file-cancel", cmd="true"))
+    publication_started = asyncio.Event()
+    allow_publication = asyncio.Event()
+    cleanup_started = asyncio.Event()
+    allow_cleanup = asyncio.Event()
+    events = []
+
+    async def run(command, **kwargs):
+        if command.startswith("python3 -c"):
+            publication_started.set()
+            await allow_publication.wait()
+            events.append("published")
+        elif command.startswith("rm -rf --"):
+            cleanup_started.set()
+            await allow_cleanup.wait()
+            events.append("cleaned")
+        return SimpleNamespace(exit_code=0, stdout="", stderr="")
+
+    mock_e2b_module.commands.run = mock.AsyncMock(side_effect=run)
+    mock_e2b_module.files = SimpleNamespace(write=mock.AsyncMock())
+    upload = asyncio.create_task(
+        backend.upload_file(session, "/workspace/input.bin", b"payload", 1024)
+    )
+    try:
+        await asyncio.wait_for(publication_started.wait(), timeout=1)
+        upload.cancel()
+        await asyncio.sleep(0)
+        assert not upload.done()
+        assert not cleanup_started.is_set()
+        upload.cancel()
+        await asyncio.sleep(0)
+        assert not upload.done()
+        allow_publication.set()
+        await asyncio.wait_for(cleanup_started.wait(), timeout=1)
+        upload.cancel()
+        await asyncio.sleep(0)
+        assert not upload.done()
+        allow_cleanup.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(upload, timeout=1)
+        assert events == ["published", "cleaned"]
+    finally:
+        allow_publication.set()
+        allow_cleanup.set()
+        await asyncio.gather(upload, return_exceptions=True)
+
+
+@pytest.mark.anyio
+async def test_upload_publishes_bytes_with_private_staging(
+    backend, mock_e2b_module, tmp_path, monkeypatch
+):
+    import os
+    from pathlib import Path
+    import shlex
+    import sys
+    from langbot_plugin.box import e2b_backend
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setattr(e2b_backend, "_adapt_path_for_e2b", lambda path: str(workspace))
+    session = await backend.start_session(BoxSpec(session_id="file-owner", cmd="true"))
+
+    async def write(path, content, **kwargs):
+        Path(path).write_bytes(content)
+
+    async def run(command, **kwargs):
+        args = shlex.split(command)
+        if args[:2] == ["python3", "-c"]:
+            # Emulate the sandbox account with this test process' existing UID.
+            prefix = (
+                "import os,pwd,types\n"
+                f"pwd.getpwnam=lambda name: types.SimpleNamespace(pw_name=name,pw_gid={os.getgid()},pw_uid={os.getuid()})\n"
+                "os.initgroups=lambda name,gid: None\n"
+            )
+            args = [sys.executable, "-c", prefix + "exec(" + repr(args[2]) + ")"]
+        process = await asyncio.create_subprocess_exec(
+            *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        return SimpleNamespace(
+            exit_code=process.returncode, stdout=stdout.decode(), stderr=stderr.decode()
+        )
+
+    mock_e2b_module.files = SimpleNamespace(write=write)
+    mock_e2b_module.commands.run = run
+    content = bytes(range(256)) * 5000
+    await backend.upload_file(session, "/workspace/input.bin", content, len(content))
+    assert (workspace / "input.bin").read_bytes() == content
+    outside = tmp_path / "outside"
+    outside.write_bytes(b"private")
+    (workspace / "linked.bin").symlink_to(outside)
+    with pytest.raises(BoxError):
+        await backend.upload_file(session, "/workspace/linked.bin", b"overwrite", 1024)
+    assert outside.read_bytes() == b"private"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("operation", ["upload", "download"])
+async def test_file_transfer_reconnect_uses_workspace_endpoints_and_routing(
+    logger, mock_e2b_module, operation
+):
+    from e2b.connection_config import ConnectionConfig
+    from langbot_plugin.box.models import E2BConnectionConfig
+
+    config = E2BConnectionConfig(
+        api_url="https://workspace-api.test",
+        sandbox_url="https://workspace-sandbox.test",
+        api_key="workspace-private-key",
+        template="workspace-template",
+    )
+    selected = E2BSandboxBackend(logger, connection_config=config)
+    await selected.initialize()
+    session = await selected.start_session(
+        BoxSpec(session_id="workspace-files", cmd="true")
+    )
+
+    class Stream:
+        async def __aiter__(self):
+            yield b"downloaded"
+
+        async def aclose(self):
+            pass
+
+    mock_e2b_module.files = SimpleNamespace(
+        write=mock.AsyncMock(), read=mock.AsyncMock(return_value=Stream())
+    )
+    if operation == "upload":
+        await selected.upload_file(session, "/workspace/input.bin", b"input", 1024)
+    else:
+        assert (
+            await selected.download_file(session, "/workspace/output.bin", 1024)
+            == b"downloaded"
+        )
+    options = mock_e2b_module.connect.await_args.kwargs
+    assert options == {
+        "sandbox_id": session.backend_session_id,
+        "request_timeout": 30,
+        "api_key": config.api_key,
+        "api_url": config.api_url,
+        "sandbox_url": config.sandbox_url,
+        "headers": {
+            "E2b-Sandbox-Id": session.backend_session_id,
+            "E2b-Sandbox-Port": str(ConnectionConfig.envd_port),
+        },
+    }
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("failure", ["connect", "write", "command", "read"])
+async def test_file_transfer_hides_custom_service_error_bodies(
+    logger, mock_e2b_module, failure, caplog
+):
+    import traceback
+    from langbot_plugin.box.models import E2BConnectionConfig
+
+    secret = "workspace-secret-key"
+    response_body = (
+        f"service response echoed api_key={secret}, credential=private-provider-body"
+    )
+    selected = E2BSandboxBackend(
+        logger,
+        connection_config=E2BConnectionConfig(
+            api_url="https://workspace-api.test",
+            sandbox_url="https://workspace-sandbox.test",
+            api_key=secret,
+            template="base",
+        ),
+    )
+    await selected.initialize()
+    session = await selected.start_session(
+        BoxSpec(session_id="private-files", cmd="true")
+    )
+    mock_e2b_module.files = SimpleNamespace(
+        write=mock.AsyncMock(), read=mock.AsyncMock()
+    )
+    if failure == "connect":
+        mock_e2b_module.connect.side_effect = RuntimeError(response_body)
+    elif failure == "write":
+        mock_e2b_module.files.write.side_effect = RuntimeError(response_body)
+    elif failure == "command":
+        mock_e2b_module.commands.run.return_value = SimpleNamespace(
+            exit_code=1, stdout="", stderr=response_body
+        )
+    else:
+        mock_e2b_module.files.read.side_effect = RuntimeError(response_body)
+    with pytest.raises(BoxError) as caught:
+        if failure == "read":
+            await selected.download_file(session, "/workspace/report.bin", 1024)
+        else:
+            await selected.upload_file(session, "/workspace/input.bin", b"input", 1024)
+    diagnostic = "".join(traceback.format_exception(caught.value)) + caplog.text
+    assert secret not in diagnostic
+    assert "private-provider-body" not in diagnostic
+
+
+@pytest.mark.anyio
+async def test_cancelled_file_transfer_logs_only_safe_custom_service_error(
+    logger, mock_e2b_module, caplog
+):
+    from langbot_plugin.box.models import E2BConnectionConfig
+
+    secret = "cancelled-workspace-secret"
+    selected = E2BSandboxBackend(
+        logger,
+        connection_config=E2BConnectionConfig(
+            api_url="https://workspace-api.test",
+            sandbox_url="https://workspace-sandbox.test",
+            api_key=secret,
+            template="base",
+        ),
+    )
+    await selected.initialize()
+    session = await selected.start_session(
+        BoxSpec(session_id="private-cancel", cmd="true")
+    )
+    started, finish = asyncio.Event(), asyncio.Event()
+
+    async def write(*args, **kwargs):
+        started.set()
+        await finish.wait()
+        raise RuntimeError(f"{secret}: private-provider-body")
+
+    mock_e2b_module.files = SimpleNamespace(write=write)
+    upload = asyncio.create_task(
+        selected.upload_file(session, "/workspace/input.bin", b"input", 1024)
+    )
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        upload.cancel()
+        await asyncio.sleep(0)
+        assert not upload.done()
+        finish.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(upload, timeout=1)
+    finally:
+        finish.set()
+        await asyncio.gather(upload, return_exceptions=True)
+    assert "Cancelled E2B file transfer failed during completion" in caplog.text
+    assert "RuntimeError" in caplog.text
+    assert secret not in caplog.text
+    assert "private-provider-body" not in caplog.text

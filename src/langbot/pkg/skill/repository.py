@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import weakref
 
@@ -18,14 +19,29 @@ from ..utils.bounded_executor import blocking_work_scope, run_blocking_atomic
 
 
 class SkillRepository:
-    """Async, Workspace-scoped adapter around the SDK SkillStore."""
+    """Workspace-scoped Skill publications with optional database persistence."""
 
     def __init__(self, ap) -> None:
         self.ap = ap
         config = getattr(getattr(ap, 'instance_config', None), 'data', {}) or {}
         self._local_config = (config.get('box') or {}).get('local') or {}
         self._skills_config = config.get('skills') or {}
-        self._store = SkillStore(self._skills_root())
+        persistence = str(self._skills_config.get('persistence') or 'filesystem').strip()
+        if persistence not in {'filesystem', 'database'}:
+            raise ValueError('skills.persistence must be filesystem or database')
+        self.database_backed = persistence == 'database'
+        if self.database_backed and not all(
+            callable(getattr(SkillStore, method, None))
+            for method in ('export_skill_publication', 'restore_skill_publication')
+        ):
+            raise ValueError('Database Skill persistence requires a compatible SDK; update Core and SDK together')
+        root = self._skills_root()
+        self._store = SkillStore(os.path.join(root, '.database-cache') if self.database_backed else root)
+        self._database = None
+        if self.database_backed:
+            from .database_repository import DatabaseSkillRepository
+
+            self._database = DatabaseSkillRepository(ap, self._store, self._validated_execution_context)
         self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
 
     def _workspace_lock(self, namespace: str) -> asyncio.Lock:
@@ -107,7 +123,14 @@ class SkillRepository:
         return self._store.scoped(self._namespace(context)).root
 
     async def _call(self, context: TenantContext, method_name: str, *args, **kwargs):
-        execution_context = await self._validated_execution_context(context)
+        network_resource = (
+            self._database is not None
+            and method_name in {'list_skill_resources', 'read_skill_resource'}
+            and getattr(getattr(self.ap, 'box_service', None), 'file_transfer_mode', None) == 'network'
+        )
+        execution_context = (
+            self._execution_context(context) if network_resource else await self._validated_execution_context(context)
+        )
         namespace = self._namespace(execution_context)
 
         def invoke():
@@ -116,6 +139,8 @@ class SkillRepository:
 
         async with self._workspace_lock(namespace):
             with blocking_work_scope(f'skill:{namespace}'):
+                if self._database is not None:
+                    return await self._database.call(execution_context, namespace, method_name, *args, **kwargs)
                 return await run_blocking_atomic(invoke)
 
     async def list_skills(self, context: TenantContext) -> list[dict]:
@@ -129,12 +154,37 @@ class SkillRepository:
         snapshot: bool = False,
         revision: str | None = None,
     ) -> dict | None:
+        if (
+            self.database_backed
+            and getattr(getattr(self.ap, 'box_service', None), 'file_transfer_mode', None) == 'network'
+        ):
+            return await self._call(context, 'get_skill', name, revision=revision)
         if revision is not None:
             return await self._call(context, 'get_skill_snapshot', name, revision)
         return await self._call(context, 'get_skill_snapshot' if snapshot else 'get_skill', name)
 
     async def create_skill(self, context: TenantContext, skill: dict) -> dict:
         return await self._call(context, 'create_skill', skill)
+
+    async def get_skill_package(
+        self, context: TenantContext, name: str, revision: str | None = None, *, metadata_only: bool = False
+    ) -> dict:
+        execution_context = await self._validated_execution_context(context)
+        if self._database is not None:
+            return await self._database.get_package(execution_context, name, revision, metadata_only=metadata_only)
+        if not callable(getattr(self._store, 'export_skill_publication', None)):
+            raise ValueError('Skill package downloads require a compatible SDK; update Core and SDK together')
+        # Filesystem metadata requires an archive export; retain its bytes for a cold miss.
+        publication = await self._call(execution_context, 'export_skill_publication', name, revision)
+        content = publication['file_bytes']
+        return {
+            'content': content,
+            'revision': publication['skill']['revision'],
+            'manifest': publication['manifest'],
+            'sha256': hashlib.sha256(content).hexdigest(),
+            'size': len(content),
+            'filename': f'{publication["skill"]["name"]}.zip',
+        }
 
     async def import_skill_directory(
         self,
@@ -153,6 +203,16 @@ class SkillRepository:
             source_root=self._workspace_root(namespace),
             base_revision=base_revision,
         )
+
+    async def import_skill_zip(
+        self,
+        context: TenantContext,
+        file_bytes: bytes,
+        data: dict,
+        *,
+        base_revision: str | None = None,
+    ) -> dict:
+        return await self._call(context, 'import_skill_zip', file_bytes, data, base_revision=base_revision)
 
     async def update_skill(
         self,
@@ -194,6 +254,28 @@ class SkillRepository:
 
     async def read_skill_file(self, context: TenantContext, name: str, path: str) -> dict:
         return await self._call(context, 'read_skill_file', name, path)
+
+    async def resolve_artifact_resource(self, context, name, path, *, expected_revision, max_bytes=1024 * 1024):
+        """Resolve immutable database-backed package bytes without copying storage."""
+        if self._database is None:
+            raise ValueError('Skill Artifact resources require database Skill persistence')
+        execution_context = await self._validated_execution_context(context)
+        namespace = self._namespace(execution_context)
+        async with self._workspace_lock(namespace):
+            with blocking_work_scope(f'skill:{namespace}'):
+                return await self._database.resolve_artifact_resource(
+                    execution_context, name, path, expected_revision=expected_revision, max_bytes=max_bytes
+                )
+
+    async def read_artifact_resource(self, context, source, *, max_bytes):
+        """Internal byte reader; the Artifact service must authorize and lease the source."""
+        if self._database is None:
+            raise ValueError('Skill Artifact resources require database Skill persistence')
+        execution_context = await self._validated_execution_context(context)
+        namespace = self._namespace(execution_context)
+        async with self._workspace_lock(namespace):
+            with blocking_work_scope(f'skill:{namespace}'):
+                return await self._database.read_artifact_resource(execution_context, source, max_bytes=max_bytes)
 
     async def list_skill_resources(
         self,

@@ -5,6 +5,10 @@ description: "收集 LangBot 本地部署和使用过程中的常见故障、症
 
 本文用于集中记录常见故障的排查路径。当前先覆盖 Docker 部署时容易遇到的问题，后续可以继续补充模型、机器人适配器、MCP、Skill 等章节。
 
+<Tip>
+用一行命令安装或已[接入 lbctl](/zh/deploy/lbctl) 的部署，先运行 `lbctl doctor` 自动检查环境（Docker、端口、磁盘、网络、沙箱等），再用 `lbctl logs` 查看日志（Docker 部署可加 `--service langbot_box` 或 `--service langbot_plugin_runtime`）。
+</Tip>
+
 以下命令默认在 `LangBot/docker` 目录执行。
 
 ## Docker 部署

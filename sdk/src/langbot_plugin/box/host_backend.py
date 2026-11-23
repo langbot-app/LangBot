@@ -10,6 +10,8 @@ import re
 import shlex
 import shutil
 import signal
+import subprocess
+import sys
 import tempfile
 import uuid
 
@@ -23,9 +25,24 @@ from .models import (
     BoxSpec,
 )
 from .security import validate_sandbox_security
+from .windows_job import WindowsJob
 
 _UTC = dt.timezone.utc
 _INHERITED_ENV_KEYS = ("PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM")
+_WINDOWS_ENV_KEYS = (
+    "SYSTEMROOT",
+    "WINDIR",
+    "COMSPEC",
+    "PATHEXT",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "LOCALAPPDATA",
+    "APPDATA",
+    "ProgramFiles",
+    "PSModulePath",
+)
+_WINDOWS = os.name == "nt"
 
 
 @dataclasses.dataclass(slots=True)
@@ -40,8 +57,11 @@ class _HostSession:
 class _HostManagedProcess:
     """Process facade whose terminate/kill operations cover its process group."""
 
-    def __init__(self, process: asyncio.subprocess.Process):
+    def __init__(
+        self, process: asyncio.subprocess.Process, job: WindowsJob | None = None
+    ):
         self._process = process
+        self._job = job
         self.stdin = process.stdin
         self.stdout = process.stdout
         self.stderr = process.stderr
@@ -51,13 +71,22 @@ class _HostManagedProcess:
         return self._process.returncode
 
     def terminate(self) -> None:
-        os.killpg(self._process.pid, signal.SIGTERM)
+        if self._job is not None:
+            self._job.terminate()
+        else:
+            os.killpg(self._process.pid, signal.SIGTERM)
 
     def kill(self) -> None:
-        os.killpg(self._process.pid, signal.SIGKILL)
+        if self._job is not None:
+            self._job.terminate()
+        else:
+            os.killpg(self._process.pid, signal.SIGKILL)
 
     async def wait(self) -> int:
-        return await self._process.wait()
+        result = await self._process.wait()
+        if self._job is not None:
+            self._job.close()
+        return result
 
 
 class HostProcessBackend(BaseSandboxBackend):
@@ -69,8 +98,49 @@ class HostProcessBackend(BaseSandboxBackend):
 
     def __init__(self, logger: logging.Logger):
         super().__init__(logger)
-        self._shell = shutil.which("sh")
+        self._shell, self._shell_kind = self._select_shell()
         self._sessions: dict[str, _HostSession] = {}
+
+    @staticmethod
+    def _select_shell() -> tuple[str | None, str]:
+        if not _WINDOWS:
+            return shutil.which("sh"), "sh"
+        for name in ("bash.exe", "sh.exe"):
+            executable = shutil.which(name)
+            if (
+                executable
+                and "/windows/system32/" not in executable.replace("\\", "/").lower()
+            ):
+                return executable, "git-bash"
+        for variable, suffix in (
+            ("ProgramFiles", "Git"),
+            ("LOCALAPPDATA", "Programs/Git"),
+        ):
+            root = os.environ.get(variable)
+            if root:
+                for name in ("bash.exe", "sh.exe"):
+                    executable = os.path.join(root, suffix, "bin", name)
+                    if os.path.isfile(executable):
+                        return executable, "git-bash"
+        return shutil.which("powershell.exe"), "powershell"
+
+    @staticmethod
+    def _process_options() -> dict:
+        if _WINDOWS:
+            return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+        return {"start_new_session": True}
+
+    @staticmethod
+    async def _attach_job(process: asyncio.subprocess.Process) -> WindowsJob | None:
+        if not _WINDOWS:
+            return None
+        try:
+            return WindowsJob(process.pid)
+        except BaseException:
+            if process.returncode is None:
+                process.kill()
+            await process.communicate()
+            raise
 
     async def initialize(self):
         self.logger.warning(
@@ -80,7 +150,7 @@ class HostProcessBackend(BaseSandboxBackend):
         )
 
     async def is_available(self) -> bool:
-        return os.name == "posix" and self._shell is not None
+        return (os.name == "posix" or _WINDOWS) and self._shell is not None
 
     async def get_readiness(
         self,
@@ -90,6 +160,7 @@ class HostProcessBackend(BaseSandboxBackend):
     ) -> dict:
         return {
             "available": await self.is_available(),
+            "shell": self._shell_kind if self._shell else None,
             "unsafe_direct_execution": True,
             "cgroup_v2": False,
             "namespace_isolation": False,
@@ -103,7 +174,7 @@ class HostProcessBackend(BaseSandboxBackend):
 
     async def start_session(self, spec: BoxSpec) -> BoxSessionInfo:
         if not await self.is_available():
-            raise BoxError("host backend requires a POSIX system with sh on PATH")
+            raise BoxError("host backend requires sh, Git Bash, or PowerShell")
         validate_sandbox_security(spec)
 
         root_path = tempfile.mkdtemp(prefix="langbot-box-host-")
@@ -157,6 +228,9 @@ class HostProcessBackend(BaseSandboxBackend):
             created_at=now,
             last_used_at=now,
         )
+
+    def _file_workspace_root(self, session: BoxSessionInfo) -> str:
+        return self._require_session(session).workspace_path
 
     async def exec(self, session: BoxSessionInfo, spec: BoxSpec) -> BoxExecutionResult:
         state = self._require_session(session)
@@ -232,9 +306,9 @@ class HostProcessBackend(BaseSandboxBackend):
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            start_new_session=True,
+            **self._process_options(),
         )
-        return _HostManagedProcess(process)
+        return _HostManagedProcess(process, await self._attach_job(process))
 
     async def stop_session(self, session: BoxSessionInfo):
         state = self._sessions.pop(session.backend_session_id, None)
@@ -252,6 +326,8 @@ class HostProcessBackend(BaseSandboxBackend):
 
     @staticmethod
     def _map_path(state: _HostSession, path: str) -> str:
+        if _WINDOWS:
+            path = path.replace("\\", "/")
         normalized = posixpath.normpath(path)
         claimed_mount = False
         for mount_path, host_path in state.mounts:
@@ -274,31 +350,82 @@ class HostProcessBackend(BaseSandboxBackend):
             raise BoxValidationError("host backend path escapes its mounted workspace")
         return path
 
-    @classmethod
-    def _rewrite_shell_paths(cls, state: _HostSession, command: str) -> str:
+    def _rewrite_shell_paths(self, state: _HostSession, command: str) -> str:
+        if _WINDOWS:
+            if self._shell_kind == "powershell" and re.search(
+                r"<<|\bcommand -v\b", command
+            ):
+                raise BoxValidationError(
+                    "POSIX shell scripts and native file tools require Git Bash on Windows; "
+                    "the active host shell is PowerShell"
+                )
+            mounts = tuple(
+                (mount, host.replace("\\", "/")) for mount, host in state.mounts
+            )
+            if any(not re.fullmatch(r"[\w ./:-]+", host) for _, host in mounts):
+                raise BoxValidationError(
+                    "host backend mount path contains shell-special characters"
+                )
+            state = dataclasses.replace(state, mounts=mounts)
+            return self._replace_mount_paths(state, command, shell=self._shell_kind)
         for _, host_path in state.mounts:
             if shlex.quote(host_path) != host_path:
                 raise BoxValidationError(
                     "host backend requires mount paths without shell-special characters"
                 )
-        return cls._replace_mount_paths(state, command)
+        return self._replace_mount_paths(state, command)
 
     @classmethod
     def _rewrite_argument_paths(cls, state: _HostSession, value: str) -> str:
         return cls._replace_mount_paths(state, value)
 
     @staticmethod
-    def _replace_mount_paths(state: _HostSession, value: str) -> str:
+    def _replace_mount_paths(
+        state: _HostSession, value: str, *, shell: str | None = None
+    ) -> str:
         if not state.mounts:
             return value
         alternatives = "|".join(re.escape(item[0]) for item in state.mounts)
         pattern = re.compile(rf"(?P<mount>{alternatives})(?=/|$|[^A-Za-z0-9_.-])")
         mapped = dict(state.mounts)
-        return pattern.sub(lambda match: mapped[match.group("mount")], value)
+
+        def replace(match):
+            host = mapped[match.group("mount")]
+            if shell is None:
+                return host
+            quote = None
+            escaped = False
+            for character in value[: match.start()]:
+                if escaped:
+                    escaped = False
+                elif (
+                    character == ("`" if shell == "powershell" else "\\")
+                    and quote != "'"
+                ):
+                    escaped = True
+                elif character in ("'", '"'):
+                    if quote is None:
+                        quote = character
+                    elif quote == character:
+                        quote = None
+            if shell == "powershell":
+                if quote == '"':
+                    return host.replace("`", "``").replace("$", "`$").replace('"', '`"')
+                if quote == "'":
+                    return host.replace("'", "''")
+                return host.replace(" ", "` ")
+            if quote == '"':
+                return re.sub(r'([\\$`"])', r"\\\1", host)
+            if quote == "'":
+                return host.replace("'", "'\"'\"'")
+            return shlex.quote(host)
+
+        return pattern.sub(replace, value)
 
     @staticmethod
     def _build_env(state: _HostSession, extra: dict[str, str]) -> dict[str, str]:
-        env = {key: os.environ[key] for key in _INHERITED_ENV_KEYS if key in os.environ}
+        keys = _INHERITED_ENV_KEYS + (_WINDOWS_ENV_KEYS if _WINDOWS else ())
+        env = {key: os.environ[key] for key in keys if key in os.environ}
         env.setdefault("PATH", os.defpath)
         env.update(
             {
@@ -308,6 +435,8 @@ class HostProcessBackend(BaseSandboxBackend):
             }
         )
         env.update(extra)
+        if _WINDOWS:
+            env["LANGBOT_BOX_WORKSPACE"] = state.workspace_path
         return env
 
     async def _run_shell(
@@ -319,16 +448,35 @@ class HostProcessBackend(BaseSandboxBackend):
         timeout_sec: int,
     ) -> _CommandResult:
         assert self._shell is not None
+        if self._shell_kind == "git-bash":
+            python = shlex.quote(sys.executable.replace("\\", "/"))
+            with tempfile.TemporaryDirectory(prefix="langbot-box-script-") as directory:
+                path = os.path.join(directory, "command.sh")
+                with open(path, "w", encoding="utf-8", newline="\n") as script:
+                    script.write(f'python3() {{ {python} "$@"; }};\n' + command + "\n")
+                return await self._run_shell_args(
+                    ["-l", path.replace("\\", "/")], cwd, env, timeout_sec
+                )
+        arguments = (
+            ["-NoProfile", "-NonInteractive", "-Command"]
+            if self._shell_kind == "powershell"
+            else ["-lc"]
+        )
+        return await self._run_shell_args([*arguments, command], cwd, env, timeout_sec)
+
+    async def _run_shell_args(self, arguments, cwd, env, timeout_sec) -> _CommandResult:
+        assert self._shell is not None
         process = await asyncio.create_subprocess_exec(
             self._shell,
-            "-lc",
-            command,
+            *arguments,
             cwd=cwd,
             env=env,
+            stdin=asyncio.subprocess.DEVNULL if _WINDOWS else None,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            start_new_session=True,
+            **self._process_options(),
         )
+        job = await self._attach_job(process)
         completion = asyncio.gather(
             process.wait(),
             self._read_stream(process.stdout),
@@ -341,11 +489,14 @@ class HostProcessBackend(BaseSandboxBackend):
             await asyncio.wait_for(asyncio.shield(completion), timeout=timeout_sec)
         except asyncio.TimeoutError:
             timed_out = True
-            await self._terminate_process_group(process)
+            await self._terminate_process_group(process, job=job)
         except asyncio.CancelledError:
-            await self._terminate_process_group(process)
+            await self._terminate_process_group(process, job=job)
             await completion
             raise
+        finally:
+            if job is not None:
+                job.close()
 
         _, (stdout_bytes, stdout_total), (stderr_bytes, stderr_total) = await completion
         return _CommandResult(
@@ -360,8 +511,13 @@ class HostProcessBackend(BaseSandboxBackend):
         process: asyncio.subprocess.Process,
         *,
         timeout_sec: float = 2.0,
+        job: WindowsJob | None = None,
     ) -> None:
         """Terminate the isolated group even if its shell has already exited."""
+        if job is not None:
+            job.terminate()
+            await process.wait()
+            return
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout_sec
         try:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import hashlib
+import inspect
 import json
 import logging
 import os
@@ -10,10 +11,15 @@ import posixpath
 import re
 import shlex
 import uuid
+from urllib.parse import quote
+
+import httpx
+
 
 from ..artifact import build_tree_manifest, load_tree_manifest
+from ..runtime.bounded_executor import run_blocking_with_backpressure
 from .backend import BaseSandboxBackend, _MAX_RAW_OUTPUT_BYTES
-from .errors import BoxError
+from .errors import BoxError, BoxValidationError
 from .models import (
     ARTIFACT_MOUNT_ROOT,
     BoxExecutionResult,
@@ -21,6 +27,7 @@ from .models import (
     BoxHostMountMode,
     BoxSessionInfo,
     BoxSpec,
+    E2BConnectionConfig,
 )
 from .security import validate_sandbox_security
 
@@ -119,6 +126,19 @@ def _rewrite_command_paths_for_e2b(command: str) -> str:
     return re.sub(r"(?<![\w.-])/workspace(?=$|/|[^\w.-])", E2B_WORKSPACE_DIR, command)
 
 
+def _drop_shield_exception_log(operation: "asyncio.Future") -> None:
+    """Detach asyncio 3.14's shielded-future exception logger from ``operation``.
+
+    ``asyncio.shield`` attaches ``_log_on_exception`` through a done-callback, so
+    it is only present after the loop has run the cancelled outer future's
+    callback. Removing an absent callback is a no-op, which keeps this safe on
+    earlier interpreters that never install it.
+    """
+    logger = getattr(asyncio.tasks, "_log_on_exception", None)
+    if logger is not None:
+        operation.remove_done_callback(logger)
+
+
 class E2BSandboxBackend(BaseSandboxBackend):
     """E2B/CubeSandbox sandbox backend.
 
@@ -131,8 +151,13 @@ class E2BSandboxBackend(BaseSandboxBackend):
     content_addressed_mounts = True
     name = "e2b"
 
-    def __init__(self, logger: logging.Logger):
+    def __init__(
+        self,
+        logger: logging.Logger,
+        connection_config: E2BConnectionConfig | None = None,
+    ):
         super().__init__(logger)
+        self.connection_config = connection_config
         self._api_key: str | None = None
         self._api_url: str | None = None
         self._template: str | None = None
@@ -147,8 +172,49 @@ class E2BSandboxBackend(BaseSandboxBackend):
         # Reset cache to force re-check if e2b package was installed later
         _reset_e2b_cache()
 
+    def _safe_error(self, error: Exception) -> str:
+        if self.connection_config is not None:
+            # Custom services can echo request credentials in error bodies.
+            status = getattr(error, "status_code", None)
+            return type(error).__name__ + (
+                f" (HTTP {status})" if isinstance(status, int) else ""
+            )
+        text = str(error)
+        return text.replace(self._api_key, "***") if self._api_key else text
+
+    def _connection_kwargs(self, sandbox_id: str | None = None) -> dict:
+        if self.connection_config is not None:
+            options = self.connection_config.model_dump(exclude={"template"})
+        else:
+            options = {}
+            if self._api_key:
+                options["api_key"] = self._api_key
+            if self._api_url:
+                options["domain"] = self._api_url
+        if sandbox_id is not None:
+            from e2b.connection_config import ConnectionConfig
+
+            # E2B 2.21.1 omits proxy routing headers on async reconnect.
+            options["headers"] = {
+                "E2b-Sandbox-Id": sandbox_id,
+                "E2b-Sandbox-Port": str(ConnectionConfig.envd_port),
+            }
+        return options
+
+    def unavailable_reason(self) -> str:
+        if not _check_e2b_available():
+            return "sdk_missing"
+        if not self._api_key:
+            return "missing_credentials"
+        return "connection_failed"
+
     async def initialize(self):
         """Load configuration from environment variables (priority) or config.yaml."""
+        if self.connection_config is not None:
+            self._api_key = self.connection_config.api_key
+            self._api_url = self.connection_config.api_url
+            self._template = self.connection_config.template
+            return
         # Environment variables take precedence
         self._api_key = os.getenv("E2B_API_KEY") or self._config_from_langbot.get(
             "api_key"
@@ -174,6 +240,157 @@ class E2BSandboxBackend(BaseSandboxBackend):
             return False
 
         return True
+
+    async def probe_available(self) -> bool:
+        if not await self.is_available():
+            return False
+        await _AsyncSandbox.list(limit=1, **self._connection_kwargs()).next_items()
+        return True
+
+    @staticmethod
+    def _failure_reason(exc: Exception, stage: str) -> str:
+        status = getattr(exc, "status_code", None)
+        if isinstance(exc, httpx.HTTPStatusError):
+            status = exc.response.status_code
+        if status is None:
+            match = re.match(r"^(401|403|404|429)(?::|\s)", str(exc))
+            if match:
+                status = int(match.group(1))
+        if status == 401 or type(exc).__name__ == "AuthenticationException":
+            return "authentication_failed"
+        if status == 403:
+            return "permission_denied"
+        if status == 404:
+            return (
+                "template_not_found"
+                if stage in ("template_query_failed", "template_creation_failed")
+                else "resource_not_found"
+            )
+        if status == 429 or type(exc).__name__ == "RateLimitException":
+            return (
+                "capacity_limited"
+                if stage == "template_creation_failed"
+                else "rate_limited"
+            )
+        if isinstance(exc, (asyncio.TimeoutError, httpx.TimeoutException)) or type(
+            exc
+        ).__name__ in ("TimeoutException", "DeadlineExceeded"):
+            return "probe_timeout"
+        if isinstance(exc, (httpx.NetworkError, ConnectionError)):
+            return "network_error"
+        return stage
+
+    async def _inspect_template_readonly(self, options: dict) -> dict:
+        """Use the official alias and template-with-builds read APIs only."""
+        from e2b.connection_config import ConnectionConfig
+
+        selected = self._template or "base"
+        base = ConnectionConfig(**options).api_url.rstrip("/")
+        headers = {"X-API-Key": self._api_key}
+        async with httpx.AsyncClient(timeout=8) as client:
+            alias = await client.get(
+                base + "/templates/aliases/" + quote(selected, safe=""), headers=headers
+            )
+            template_id = selected
+            if alias.status_code == 200:
+                template_id = alias.json()["templateID"]
+            elif alias.status_code in (400, 404, 405, 501):
+                pass
+            else:
+                alias.raise_for_status()
+            response = await client.get(
+                base + "/templates/" + quote(template_id, safe=""),
+                params={"limit": 1},
+                headers=headers,
+            )
+            if response.status_code in (404, 405, 501):
+                text = response.text[:2048].lower().replace("_", " ").replace("-", " ")
+                missing = (
+                    response.status_code == 404
+                    and "not found" in text
+                    and "template" in text
+                    and "disabled" not in text
+                )
+                if missing:
+                    return {
+                        "available": False,
+                        "reason": "template_not_found",
+                        "template_validation": "not_found",
+                    }
+                return {
+                    "available": True,
+                    "reason": None,
+                    "template_validation": "unsupported",
+                }
+            response.raise_for_status()
+            builds = response.json()["builds"]
+            ready = any(item.get("status") == "ready" for item in builds)
+            return {
+                "available": ready,
+                "reason": None if ready else "template_not_ready",
+                "template_validation": "ready" if ready else "not_ready",
+            }
+
+    async def inspect_template(self, *, validate: bool = True) -> dict:
+        result = {
+            "name": "e2b",
+            "available": False,
+            "reason": None,
+            "managed_processes": False,
+            "template_validated": False,
+            "template_validation": "failed",
+        }
+        if not await self.is_available():
+            result["reason"] = self.unavailable_reason()
+            return result
+        options = self._connection_kwargs()
+        stage = "template_creation_failed" if validate else "template_query_failed"
+        sandbox = None
+        try:
+            if not validate:
+                # Establish service connectivity/auth even when template management APIs are disabled.
+                stage = "connection_failed"
+                await _AsyncSandbox.list(limit=1, **options).next_items()
+                stage = "template_query_failed"
+                result.update(await self._inspect_template_readonly(options))
+                return result
+            sandbox = await _AsyncSandbox.create(
+                template=self._template or "base",
+                timeout=60,
+                request_timeout=15,
+                **options,
+            )
+            stage = "template_execution_failed"
+            marker = "langbot-template-" + uuid.uuid4().hex
+            output = await sandbox.commands.run(
+                "printf " + marker, timeout=5, request_timeout=8
+            )
+            if output.exit_code != 0 or output.stdout != marker:
+                result["reason"] = stage
+                return result
+            result.update(
+                available=True, template_validated=True, template_validation="ready"
+            )
+        except Exception as exc:
+            result["reason"] = self._failure_reason(exc, stage)
+        finally:
+            if sandbox is not None:
+                try:
+                    await asyncio.shield(
+                        _AsyncSandbox.kill(
+                            sandbox.sandbox_id, request_timeout=10, **options
+                        )
+                    )
+                except Exception as exc:
+                    result.update(
+                        available=False,
+                        template_validated=False,
+                        reason="template_cleanup_failed",
+                        cleanup_reason=self._failure_reason(
+                            exc, "template_cleanup_failed"
+                        ),
+                    )
+        return result
 
     async def start_session(self, spec: BoxSpec) -> BoxSessionInfo:
         """Create a new E2B sandbox session.
@@ -208,11 +425,7 @@ class E2BSandboxBackend(BaseSandboxBackend):
             create_kwargs["envs"] = spec.env
 
         # API key and domain (for CubeSandbox self-deployment)
-        if self._api_key:
-            create_kwargs["api_key"] = self._api_key
-        if self._api_url:
-            # E2B SDK uses 'domain' for self-hosted API URL
-            create_kwargs["domain"] = self._api_url
+        create_kwargs.update(self._connection_kwargs())
 
         # Build metadata for CubeSandbox host-mount
         metadata = {}
@@ -245,7 +458,9 @@ class E2BSandboxBackend(BaseSandboxBackend):
         try:
             sandbox = await _AsyncSandbox.create(**create_kwargs)
         except Exception as exc:
-            raise BoxError(f"Failed to create E2B sandbox: {exc}")
+            raise BoxError(
+                f"Failed to create E2B sandbox: {self._safe_error(exc)}"
+            ) from None
 
         return BoxSessionInfo(
             session_id=spec.session_id,
@@ -270,6 +485,182 @@ class E2BSandboxBackend(BaseSandboxBackend):
             last_used_at=now,
         )
 
+    async def _file_transfer(
+        self,
+        session: BoxSessionInfo,
+        path: str,
+        max_bytes: int,
+        content: bytes | None,
+        *,
+        directory_archive: bool = False,
+    ) -> bytes | None:
+        operation = asyncio.create_task(
+            self._file_transfer_once(
+                session, path, max_bytes, content, directory_archive=directory_archive
+            )
+        )
+        try:
+            return await asyncio.shield(operation)
+        except asyncio.CancelledError:
+            # Python 3.14 parks `_log_on_exception` on the inner task via a
+            # done-callback once the shield's outer future is cancelled, and that
+            # logger writes the raw `repr()` of the failure -- bypassing
+            # `_safe_error`, which can echo request credentials. It is attached on
+            # the next loop pass, so detach it from a callback rather than by
+            # awaiting here (an extra yield lets a fast transfer finish and would
+            # change what callers observe on the first cancel).
+            asyncio.get_running_loop().call_soon(_drop_shield_exception_log, operation)
+            # Keep the session lock until remote publication and cleanup finish.
+            while not operation.done():
+                try:
+                    await asyncio.shield(operation)
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    break
+            if not operation.cancelled() and operation.exception() is not None:
+                self.logger.warning(
+                    "Cancelled E2B file transfer failed during completion: %s",
+                    self._safe_error(operation.exception()),
+                )
+            raise
+        except Exception as exc:
+            message = self._safe_error(exc)
+            if isinstance(exc, BoxError):
+                raise type(exc)(message) from None
+            if isinstance(exc, ValueError):
+                raise ValueError(message) from None
+            raise BoxError(f"E2B file transfer failed: {message}") from None
+
+    async def _file_transfer_once(
+        self,
+        session: BoxSessionInfo,
+        path: str,
+        max_bytes: int,
+        content: bytes | None,
+        *,
+        directory_archive: bool = False,
+    ) -> bytes | None:
+        from . import file_io
+
+        if not _check_e2b_available():
+            raise BoxError("e2b package not installed")
+        relative = (
+            ""
+            if directory_archive and path == session.mount_path
+            else file_io.workspace_relative_path(session.mount_path, path)
+        )
+        if content is not None:
+            if session.host_path_mode == BoxHostMountMode.READ_ONLY:
+                raise BoxError("Cannot upload into a read-only workspace")
+            if len(content) > max_bytes:
+                raise ValueError("Workspace file exceeds the transfer size limit")
+        sandbox = await _AsyncSandbox.connect(
+            sandbox_id=session.backend_session_id,
+            request_timeout=30,
+            **self._connection_kwargs(session.backend_session_id),
+        )
+        staging = "/tmp/langbot-file-transfer-" + uuid.uuid4().hex
+        payload = staging + "/payload"
+        workspace = _adapt_path_for_e2b(session.mount_path)
+        # The script contains only code and metadata; bytes use the native file API.
+        script = inspect.getsource(file_io) + "\nimport hashlib\n"
+        try:
+            await self._run_e2b_checked(
+                sandbox,
+                "mkdir -m 0700 " + shlex.quote(staging),
+                subject="create file transfer staging",
+                user="root",
+            )
+            if content is not None:
+                await sandbox.files.write(
+                    payload, content, user="root", request_timeout=30
+                )
+                digest = hashlib.sha256(content).hexdigest()
+                script += (
+                    f"content = read_workspace_file({staging!r}, 'payload', {max_bytes!r})\n"
+                    f"if hashlib.sha256(content).hexdigest() != {digest!r}:\n"
+                    "    raise ValueError('Upload digest mismatch')\n"
+                    # Read private staging before dropping privileges for publication.
+                    "import pwd\n"
+                    "account = pwd.getpwnam('user')\n"
+                    "os.initgroups(account.pw_name, account.pw_gid)\n"
+                    "os.setgid(account.pw_gid)\n"
+                    "os.setuid(account.pw_uid)\n"
+                    f"write_workspace_file({workspace!r}, {relative!r}, content, {max_bytes!r})\n"
+                )
+                await self._run_e2b_checked(
+                    sandbox,
+                    "python3 -c " + shlex.quote(script),
+                    subject="publish workspace upload",
+                    user="root",
+                )
+                return None
+            reader = (
+                "archive_workspace_directory"
+                if directory_archive
+                else "read_workspace_file"
+            )
+            script += (
+                f"content = {reader}({workspace!r}, {relative!r}, {max_bytes!r})\n"
+                f"write_workspace_file({staging!r}, 'payload', content, {max_bytes!r})\n"
+            )
+            await self._run_e2b_checked(
+                sandbox,
+                "python3 -c " + shlex.quote(script),
+                subject="snapshot workspace download",
+                user="root",
+            )
+            stream = await sandbox.files.read(
+                payload, format="stream", user="root", request_timeout=30
+            )
+            body = bytearray()
+            try:
+                async for chunk in stream:
+                    if len(body) + len(chunk) > max_bytes:
+                        raise ValueError(
+                            "Workspace file exceeds the transfer size limit"
+                        )
+                    body.extend(chunk)
+            finally:
+                await stream.aclose()
+            return bytes(body)
+        finally:
+            cleanup = asyncio.create_task(
+                self._run_e2b_checked(
+                    sandbox,
+                    "rm -rf -- " + shlex.quote(staging),
+                    subject="clean file transfer staging",
+                    user="root",
+                )
+            )
+            try:
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                await asyncio.gather(cleanup, return_exceptions=True)
+                raise
+
+    async def upload_file(
+        self, session: BoxSessionInfo, path: str, content: bytes, max_bytes: int
+    ) -> None:
+        await self._file_transfer(session, path, max_bytes, content)
+
+    async def download_file(
+        self, session: BoxSessionInfo, path: str, max_bytes: int
+    ) -> bytes:
+        content = await self._file_transfer(session, path, max_bytes, None)
+        assert content is not None
+        return content
+
+    async def download_directory(
+        self, session: BoxSessionInfo, path: str, max_bytes: int
+    ) -> bytes:
+        content = await self._file_transfer(
+            session, path, max_bytes, None, directory_archive=True
+        )
+        assert content is not None
+        return content
+
     async def exec(self, session: BoxSessionInfo, spec: BoxSpec) -> BoxExecutionResult:
         """Execute a command in the E2B sandbox.
 
@@ -281,11 +672,7 @@ class E2BSandboxBackend(BaseSandboxBackend):
         start = dt.datetime.now(dt.timezone.utc)
 
         # Connect kwargs
-        connect_kwargs = {}
-        if self._api_key:
-            connect_kwargs["api_key"] = self._api_key
-        if self._api_url:
-            connect_kwargs["domain"] = self._api_url
+        connect_kwargs = self._connection_kwargs(session.backend_session_id)
 
         # Adapt workdir and logical /workspace command paths for E2B.
         workdir = _adapt_path_for_e2b(spec.workdir)
@@ -306,7 +693,9 @@ class E2BSandboxBackend(BaseSandboxBackend):
                 sandbox_id=session.backend_session_id, **connect_kwargs
             )
         except Exception as exc:
-            raise BoxError(f"Failed to connect to E2B sandbox: {exc}")
+            raise BoxError(
+                f"Failed to connect to E2B sandbox: {self._safe_error(exc)}"
+            ) from None
 
         await self._sync_mounts_to_e2b(sandbox, spec)
 
@@ -338,7 +727,9 @@ class E2BSandboxBackend(BaseSandboxBackend):
                     stderr=f"Command timed out after {spec.timeout_sec} seconds.",
                     duration_ms=duration_ms,
                 )
-            raise BoxError(f"E2B command execution failed: {exc}")
+            raise BoxError(
+                f"E2B command execution failed: {self._safe_error(exc)}"
+            ) from None
 
         await self._sync_mounts_from_e2b(sandbox, spec)
 
@@ -359,6 +750,39 @@ class E2BSandboxBackend(BaseSandboxBackend):
             stderr=stderr,
             duration_ms=duration_ms,
         )
+
+    async def check_workspace_quota(
+        self, session: BoxSessionInfo, limit: int, max_entries: int, phase: str
+    ) -> None:
+        from . import file_io
+
+        root = _adapt_path_for_e2b(session.mount_path)
+        script = (
+            inspect.getsource(file_io)
+            + f"\nos.makedirs({root!r}, exist_ok=True)\n"
+            + f"used, _, exceeded = workspace_usage({root!r}, {limit}, {max_entries})\n"
+            + f"print('entries' if exceeded else 'bytes' if used > {limit} else 'ok')\n"
+        )
+        try:
+            sandbox = await _AsyncSandbox.connect(
+                sandbox_id=session.backend_session_id,
+                request_timeout=30,
+                **self._connection_kwargs(session.backend_session_id),
+            )
+            result = await sandbox.commands.run(
+                "python3 -I -c " + shlex.quote(script), timeout=30, request_timeout=30
+            )
+            status = result.stdout.strip()
+            if result.exit_code != 0 or status not in {"ok", "bytes", "entries"}:
+                raise BoxError("Invalid quota scan response")
+        except Exception as exc:
+            raise BoxValidationError(
+                f"Cannot enforce E2B workspace quota {phase}: {self._safe_error(exc)}"
+            ) from None
+        if status == "entries":
+            raise BoxValidationError(f"E2B workspace entry limit exceeded {phase}")
+        if status == "bytes":
+            raise BoxValidationError(f"E2B workspace quota exceeded {phase}")
 
     async def _sync_mounts_to_e2b(self, sandbox, spec: BoxSpec) -> None:
         """Upload Workspace data and atomically materialize immutable mounts."""
@@ -412,7 +836,7 @@ class E2BSandboxBackend(BaseSandboxBackend):
         """
 
         if manifest_path is not None:
-            digest, manifest = await asyncio.to_thread(
+            digest, manifest = await run_blocking_with_backpressure(
                 load_tree_manifest,
                 manifest_path,
                 max_files=_MAX_E2B_SYNC_FILES,
@@ -420,7 +844,7 @@ class E2BSandboxBackend(BaseSandboxBackend):
                 subject="E2B immutable mount",
             )
         else:
-            digest, manifest = await asyncio.to_thread(
+            digest, manifest = await run_blocking_with_backpressure(
                 _build_e2b_host_manifest,
                 host_root,
             )
@@ -470,7 +894,9 @@ class E2BSandboxBackend(BaseSandboxBackend):
                     )
                     created_directories.add(remote_directory)
                 host_file = os.path.join(host_root, *relative.split("/"))
-                data = await asyncio.to_thread(_read_e2b_host_file_limited, host_file)
+                data = await run_blocking_with_backpressure(
+                    _read_e2b_host_file_limited, host_file
+                )
                 if (
                     len(data) != entry["size"]
                     or hashlib.sha256(data).hexdigest() != entry["sha256"]
@@ -525,7 +951,9 @@ class E2BSandboxBackend(BaseSandboxBackend):
         except BaseException as exc:
             if not isinstance(exc, Exception) or isinstance(exc, BoxError):
                 raise
-            raise BoxError(f"Failed to materialize immutable E2B mount: {exc}") from exc
+            raise BoxError(
+                f"Failed to materialize immutable E2B mount: {self._safe_error(exc)}"
+            ) from None
         finally:
             try:
                 await sandbox.commands.run(
@@ -648,8 +1076,8 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
             user=user,
         )
 
-    @staticmethod
     async def _run_e2b_checked(
+        self,
         sandbox,
         command: str,
         *,
@@ -657,12 +1085,12 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
         user: str | None = None,
     ) -> None:
         try:
-            kwargs = {"timeout": 30}
+            kwargs = {"timeout": 30, "request_timeout": 30}
             if user is not None:
                 kwargs["user"] = user
             result = await sandbox.commands.run(command, **kwargs)
         except Exception as exc:
-            raise BoxError(f"Failed to {subject}: {exc}") from exc
+            raise BoxError(f"Failed to {subject}: {self._safe_error(exc)}") from None
         if getattr(result, "exit_code", 1) != 0:
             stderr = str(getattr(result, "stderr", "") or "").strip()
             raise BoxError(f"Failed to {subject}: {stderr or 'remote command failed'}")
@@ -756,7 +1184,9 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
                     f"mkdir -p {shlex.quote(remote_dir)}", timeout=10
                 )
             except Exception as exc:
-                self.logger.debug(f"Failed to create E2B sync dir {remote_dir}: {exc}")
+                self.logger.debug(
+                    f"Failed to create E2B sync dir {remote_dir}: {self._safe_error(exc)}"
+                )
                 continue
 
             for filename in files:
@@ -768,7 +1198,7 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
                     return
                 host_file = os.path.join(root, filename)
                 try:
-                    data = await asyncio.to_thread(
+                    data = await run_blocking_with_backpressure(
                         _read_e2b_host_file_limited,
                         host_file,
                     )
@@ -787,7 +1217,7 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
                         await flush()
                 except Exception as exc:
                     self.logger.debug(
-                        f"Failed to sync host file to E2B {host_file}: {exc}"
+                        f"Failed to sync host file to E2B {host_file}: {self._safe_error(exc)}"
                     )
         await flush()
 
@@ -800,11 +1230,13 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
         excluded_relative_paths: set[str] | None = None,
     ) -> None:
         """Best-effort download of an E2B mount into the matching host path."""
-        await asyncio.to_thread(os.makedirs, host_root, exist_ok=True)
+        await run_blocking_with_backpressure(os.makedirs, host_root, exist_ok=True)
         try:
             entries = await sandbox.files.list(remote_root, depth=16)
         except Exception as exc:
-            self.logger.debug(f"Failed to list E2B mount for sync {remote_root}: {exc}")
+            self.logger.debug(
+                f"Failed to list E2B mount for sync {remote_root}: {self._safe_error(exc)}"
+            )
             return
 
         synced_files = 0
@@ -845,7 +1277,9 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
                 try:
                     if synced_bytes + len(data) > _MAX_E2B_SYNC_TOTAL_BYTES:
                         raise ValueError("E2B remote sync exceeds the total size limit")
-                    await asyncio.to_thread(_write_e2b_host_file, host_path, data)
+                    await run_blocking_with_backpressure(
+                        _write_e2b_host_file, host_path, data
+                    )
                     synced_files += 1
                     synced_bytes += len(data)
                 except Exception as exc:
@@ -879,7 +1313,9 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
             entry_type = getattr(getattr(entry, "type", None), "value", "")
             try:
                 if entry_type == "dir":
-                    await asyncio.to_thread(os.makedirs, host_path, exist_ok=True)
+                    await run_blocking_with_backpressure(
+                        os.makedirs, host_path, exist_ok=True
+                    )
                 elif entry_type == "file":
                     if synced_files >= _MAX_E2B_SYNC_FILES:
                         break
@@ -893,7 +1329,7 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
                         await flush_downloads()
             except Exception as exc:
                 self.logger.debug(
-                    f"Failed to sync E2B file to host {remote_path}: {exc}"
+                    f"Failed to sync E2B file to host {remote_path}: {self._safe_error(exc)}"
                 )
         if pending:
             await flush_downloads()
@@ -931,21 +1367,16 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
         try:
             await _AsyncSandbox.kill(
                 sandbox_id=session.backend_session_id,
-                api_key=self._api_key,
-                domain=self._api_url,
+                **self._connection_kwargs(),
             )
         except Exception as exc:
-            self.logger.warning(f"Failed to kill E2B sandbox: {exc}")
+            self.logger.warning(f"Failed to kill E2B sandbox: {self._safe_error(exc)}")
 
     async def is_session_alive(self, session: BoxSessionInfo) -> bool:
         """Probe the remote sandbox rather than trusting stale local metadata."""
         if not _check_e2b_available():
             return False
-        kwargs = {}
-        if self._api_key:
-            kwargs["api_key"] = self._api_key
-        if self._api_url:
-            kwargs["domain"] = self._api_url
+        kwargs = self._connection_kwargs(session.backend_session_id)
         try:
             await _AsyncSandbox.connect(sandbox_id=session.backend_session_id, **kwargs)
             return True
@@ -953,7 +1384,7 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
             self.logger.info(
                 "E2B sandbox liveness probe failed for %s: %s",
                 session.backend_session_id,
-                exc,
+                self._safe_error(exc),
             )
             return False
 

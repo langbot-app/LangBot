@@ -1,5 +1,6 @@
 from langbot.pkg.api.http import authz
 from langbot.pkg.api.http.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
+import pytest
 
 
 def _context(role: authz.WorkspaceRole) -> RequestContext:
@@ -57,6 +58,14 @@ def test_require_permission_reports_stable_permission():
         assert exc.error_code == 'permission_denied'
     else:
         raise AssertionError('PermissionDeniedError was not raised')
+
+
+def test_wire_permission_values_obey_the_same_role_boundary():
+    viewer = _context(authz.WorkspaceRole.VIEWER)
+    authz.require_permission(viewer, 'resource.view')
+    with pytest.raises(authz.PermissionDeniedError) as denied:
+        authz.require_permission(viewer, 'resource.manage')
+    assert denied.value.permission == 'resource.manage'
 
 
 def test_execution_context_preserves_workspace_and_generation():

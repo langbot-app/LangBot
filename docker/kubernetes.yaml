@@ -145,7 +145,7 @@ spec:
       - name: langbot-plugin-runtime
         image: rockchin/langbot:latest
         imagePullPolicy: Always
-        command: ["uv", "run", "-m", "langbot_plugin.cli.__init__", "rt"]
+        command: ["uv", "run", "--no-sync", "-m", "langbot_plugin.cli.__init__", "rt"]
         ports:
         - containerPort: 5400
           name: runtime
@@ -245,9 +245,9 @@ spec:
 # dashboard renders cleanly with sandbox features disabled.
 #
 # IMPORTANT — how the sandbox actually runs:
-#   The bundled image ships only the Docker CLI (no dockerd, no nsjail). The Box
-#   runtime therefore creates sandbox containers by talking to a Docker daemon
-#   over the mounted socket (`/var/run/docker.sock`). Because that daemon
+#   The bundled image ships nsjail and the Docker CLI, but no dockerd. The
+#   Docker backend creates sandbox containers through the mounted Docker daemon
+#   socket (`/var/run/docker.sock`). Because that daemon
 #   resolves bind-mount paths on the NODE filesystem, the Box workspace root
 #   must be the SAME absolute path inside the box container, inside every
 #   sandbox container it spawns, AND on the node. That is why this manifest uses
@@ -302,6 +302,10 @@ spec:
         env:
         - name: LANGBOT_BOX_DATA_DIR
           value: /app/data/box/runtime
+        # Network INIT does not accept Core filesystem roots. Keep Docker
+        # artifact projections on Box's node-visible mount as well.
+        - name: LANGBOT_BOX_CONFIG
+          value: '{"local":{"host_root":"/app/data/box","allowed_mount_roots":["/app/data/box"]}}'
         - name: TZ
           valueFrom:
             configMapKeyRef:
@@ -327,8 +331,8 @@ spec:
             configMapKeyRef:
               name: langbot-config
               key: LANGBOT_BLOCKING_EXECUTOR_MAX_INFLIGHT_PER_SCOPE
-        # The Box runtime does NOT read box.local.* / BOX__* from its own env;
-        # it receives its functional configuration from LangBot via INIT.
+        # Runtime roots come from LANGBOT_BOX_CONFIG; other settings arrive
+        # through Core's INIT RPC. BOX__* variables here are not interpreted.
         volumeMounts:
         # Box workspace root — identical path on node, box, and sandbox
         # containers (see the IMPORTANT note above).
@@ -505,6 +509,15 @@ spec:
           limits:
             memory: "4Gi"
             cpu: "2000m"
+        # Startup imports legacy content before opening HTTP. Allow 30 minutes;
+        # size this deadline for the deployment's retained data.
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: 5300
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 180
         # Liveness probe to restart container if it becomes unresponsive
         livenessProbe:
           httpGet:

@@ -3973,6 +3973,97 @@
     }
   },
   {
+    "id": "execution.read_input_attachment_content",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        },
+        "mode": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "text",
+            "native",
+            "pages"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "offset": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        },
+        "max_chars": {
+          "default": 8192,
+          "maximum": 16384,
+          "minimum": 1,
+          "title": "Max Chars",
+          "type": "integer"
+        },
+        "page_start": {
+          "default": 1,
+          "exclusiveMinimum": 0,
+          "title": "Page Start",
+          "type": "integer"
+        },
+        "page_end": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page End"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "title": "ExecutionReadInputContentInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "contents": {
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "type": "object"
+          },
+          "title": "Contents",
+          "type": "array"
+        }
+      },
+      "required": [
+        "contents"
+      ],
+      "title": "ExecutionInputContentOutput",
+      "type": "object"
+    }
+  },
+  {
     "id": "execution.export_box_files",
     "version": "1",
     "scope": "run",
@@ -3999,6 +4090,147 @@
         }
       },
       "title": "ExecutionExportBoxInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "ExecutionItemsOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.read_run_file",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "file_id": {
+          "minLength": 1,
+          "title": "File Id",
+          "type": "string"
+        },
+        "mode": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "text",
+            "native",
+            "pages"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "offset": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        },
+        "max_chars": {
+          "default": 8192,
+          "maximum": 16384,
+          "minimum": 1,
+          "title": "Max Chars",
+          "type": "integer"
+        },
+        "page_start": {
+          "default": 1,
+          "exclusiveMinimum": 0,
+          "title": "Page Start",
+          "type": "integer"
+        },
+        "page_end": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page End"
+        }
+      },
+      "required": [
+        "file_id"
+      ],
+      "title": "ExecutionReadRunFileInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "contents": {
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "type": "object"
+          },
+          "title": "Contents",
+          "type": "array"
+        }
+      },
+      "required": [
+        "contents"
+      ],
+      "title": "ExecutionRunFileContentOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.commit_run_files",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "file_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "File Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "file_ids"
+      ],
+      "title": "ExecutionCommitRunFilesInput",
       "type": "object"
     },
     "output_schema": {
@@ -4586,6 +4818,19 @@
           "default": true,
           "title": "Cleanup Confirmed",
           "type": "boolean"
+        },
+        "expected_retry_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Retry Count"
         }
       },
       "title": "ExecutionCancelAckInput",

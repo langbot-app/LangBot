@@ -14,26 +14,6 @@ CATALOG = Path(__file__).resolve().parents[1] / 'contracts' / 'regression_contra
 STATES = ('passed', 'failed', 'incomplete', 'skipped', 'not_run', 'missing_test')
 
 
-def checked(row, name, action):
-    """Record an evaluated assertion; transport failures leave it unverified."""
-    assertions = row.setdefault('assertions', {})
-    try:
-        result = action()
-    except ValueError:
-        assertions[name] = 'failed'
-        raise
-    assertions[name] = 'passed'
-    return result
-
-
-def check_response(data, expected, forbidden=()):
-    text = json.dumps(data, ensure_ascii=False)
-    if expected not in text:
-        raise ValueError('Response does not contain the expected business result')
-    if any(value in text for value in forbidden):
-        raise ValueError('Response contains forbidden content')
-
-
 def load_catalog(path=CATALOG):
     catalog = json.loads(Path(path).read_text())
     if catalog.get('version') != 1 or not catalog.get('scope'):
@@ -51,7 +31,50 @@ def load_catalog(path=CATALOG):
     return catalog
 
 
-def collect(directory):
+def api_checks_by_case(catalog):
+    cases = {}
+    for contract in catalog['contracts']:
+        for binding in contract['bindings']:
+            if binding['profile'] == 'api':
+                cases.setdefault(binding['case'], {})[contract['id']] = binding['checks']
+    return cases
+
+
+def verify_api_evidence(profile, rows, catalog):
+    expected = [case['name'] for case in profile['cases']]
+    required = api_checks_by_case(catalog)
+    fixed_only = profile.get('vars', {}).get('api_fixed_only')
+    required_cases = (
+        set(expected)
+        if fixed_only is None
+        else {name for name in required if not fixed_only or name.startswith('fixed_')}
+    )
+    errors = []
+    if set(expected) != required_cases:
+        errors.append('API profile does not include the required cases for its run mode')
+    if [row['case'] for row in rows] != expected:
+        errors.append('API execution did not match the planned case order and count')
+    counts_by_case = Counter(row['case'] for row in rows)
+    missing = {name for name in required_cases if name not in expected or counts_by_case[name] != 1}
+    for row in rows:
+        if row['status'] != 'passed':
+            continue
+        name = row['case']
+        bindings = required.get(name, {})
+        recorded_ids = row.get('contract_ids', bindings if fixed_only is None else ())
+        if not bindings or set(recorded_ids) != set(bindings):
+            errors.append(f'{name}: missing or mismatched API contract IDs')
+            missing.add(name)
+        for contract_id, checks in bindings.items():
+            unverified = [check for check in checks if row.get('assertions', {}).get(check) != 'passed']
+            if unverified:
+                errors.append(f'{contract_id} / {name}: assertions not verified: {", ".join(unverified)}')
+
+    # An unobserved planned round must show as incomplete in the contract summary.
+    return [{'profile': 'api', 'case': name, 'status': 'unknown'} for name in sorted(missing)], errors
+
+
+def collect(directory, catalog_path=CATALOG):
     directory = Path(directory)
     profile = json.loads((directory / 'profile.json').read_text())
     suite = profile.get('coverage_suite', 'unclassified')
@@ -89,6 +112,10 @@ def collect(directory):
     missing = {case['name'] for case in profile.get('cases', [])} - {row['case'] for row in rows}
     if missing:
         errors.append(f'{directory}: no evidence for planned cases: {sorted(missing)}')
+    if suite == 'api':
+        unobserved, invalid = verify_api_evidence(profile, rows, load_catalog(catalog_path))
+        rows.extend(unobserved)
+        errors.extend(invalid)
     return rows, errors
 
 
@@ -283,7 +310,7 @@ def write_report(directories, output, catalog_path=CATALOG, http_logs=()):
     rows, errors = [], []
     for directory in directories:
         try:
-            found, invalid = collect(directory)
+            found, invalid = collect(directory, catalog_path)
             rows.extend(found)
             errors.extend(invalid)
         except (ValueError, OSError, KeyError) as exc:

@@ -16,6 +16,7 @@ from typing import Any
 from langbot_plugin.runtime import bounded_executor
 
 from .backend import BaseSandboxBackend, _CommandResult
+from .errors import BoxError
 from .models import (
     BoxExecutionResult,
     BoxExecutionStatus,
@@ -66,6 +67,8 @@ _DEV_NODES: list[str] = [
     "/dev/tty",
 ]
 
+_CGROUP_V1_ROOT = pathlib.Path("/sys/fs/cgroup")
+
 _DEFAULT_BASE_DIR = "/tmp/langbot-box-nsjail"
 
 
@@ -90,8 +93,54 @@ class NsjailBackend(BaseSandboxBackend):
         self._nsjail_bin = nsjail_bin
         self._base_dir = pathlib.Path(base_dir)
         self._cgroup_v2_available: bool = False
+        self._cgroup_v1_available = False
+        self._cgroup_v1_parent = ""
+
+    def configure(self, config: dict) -> None:
+        parent = config.get("cgroup_v1_parent", "")
+        if not isinstance(parent, str) or (
+            parent
+            and (
+                parent in (".", "..")
+                or pathlib.PurePath(parent).name != parent
+                or "\\" in parent
+            )
+        ):
+            raise ValueError("nsjail.cgroup_v1_parent must be a single directory name")
+        self._cgroup_v1_parent = parent
+        self._cgroup_v1_available = False
+
+    def _probe_cgroup_v1(self) -> None:
+        """Verify delegated v1 controllers without moving any host process."""
+        limits = {
+            "memory": {
+                "memory.limit_in_bytes": 64 * 1024 * 1024,
+                "memory.memsw.limit_in_bytes": 64 * 1024 * 1024,
+            },
+            "pids": {"pids.max": 4},
+            "cpu": {"cpu.cfs_period_us": 100000, "cpu.cfs_quota_us": 10000},
+        }
+        for controller, values in limits.items():
+            parent = _CGROUP_V1_ROOT / controller / self._cgroup_v1_parent
+            if not (parent / "cgroup.procs").is_file():
+                raise OSError(f"Missing delegated cgroup v1 controller: {controller}")
+            probe = pathlib.Path(tempfile.mkdtemp(prefix="probe-", dir=parent))
+            try:
+                for filename, value in values.items():
+                    target = probe / filename
+                    if not target.is_file():
+                        raise OSError(f"Missing cgroup v1 limit: {filename}")
+                    target.write_text(str(value))
+                    if int(target.read_text().strip()) != value:
+                        raise OSError(f"cgroup v1 limit was not applied: {filename}")
+            finally:
+                probe.rmdir()
 
     # ── lifecycle ─────────────────────────────────────────────────────
+
+    async def initialize(self) -> None:
+        if self._cgroup_v1_parent and not await self.is_available():
+            raise BoxError("Configured nsjail cgroup delegation is unavailable")
 
     async def is_available(self) -> bool:
         if shutil.which(self._nsjail_bin) is None:
@@ -121,8 +170,24 @@ class NsjailBackend(BaseSandboxBackend):
             self.logger.info(f"nsjail probe failed: {exc}")
             return False
 
-        self._cgroup_v2_available = await asyncio.to_thread(self._detect_cgroup_v2)
-        if not self._cgroup_v2_available:
+        cgroup_v2_available = await asyncio.to_thread(self._detect_cgroup_v2)
+        cgroup_v1_available = False
+        if self._cgroup_v1_parent and not cgroup_v2_available:
+            try:
+                await asyncio.to_thread(self._probe_cgroup_v1)
+            except OSError as exc:
+                self.logger.warning("nsjail cgroup v1 delegation unavailable: %s", exc)
+                self._cgroup_v2_available, self._cgroup_v1_available = (
+                    cgroup_v2_available,
+                    False,
+                )
+                return False
+            cgroup_v1_available = True
+        self._cgroup_v2_available, self._cgroup_v1_available = (
+            cgroup_v2_available,
+            cgroup_v1_available,
+        )
+        if not self._cgroup_v2_available and not self._cgroup_v1_available:
             self.logger.warning(
                 "nsjail cgroup v2 limits unavailable (private cgroup namespace "
                 "or read-only /sys/fs/cgroup); falling back to rlimit-based "
@@ -139,6 +204,24 @@ class NsjailBackend(BaseSandboxBackend):
             exist_ok=True,
         )
         return True
+
+    def unavailable_reason(self) -> str:
+        if shutil.which(self._nsjail_bin) is None:
+            return "nsjail_missing"
+        if self._cgroup_v1_parent and not (
+            self._cgroup_v1_available or self._cgroup_v2_available
+        ):
+            return "cgroup_unavailable"
+        return "isolation_unavailable"
+
+    async def probe_available(self) -> bool:
+        if not await self.is_available():
+            return False
+        checks = await self._probe_isolation_readiness(str(self._base_dir))
+        return all(
+            checks.get(key) is True
+            for key in ("namespace_isolation", "mount_isolation", "network_isolation")
+        )
 
     async def get_readiness(
         self,
@@ -735,6 +818,10 @@ class NsjailBackend(BaseSandboxBackend):
 
     def _build_resource_limits(self, spec: BoxSpec) -> list[str]:
         args: list[str] = []
+        if self._cgroup_v1_parent and not (
+            self._cgroup_v1_available or self._cgroup_v2_available
+        ):
+            raise BoxError("Configured nsjail cgroup delegation is unavailable")
 
         if self._cgroup_v2_available:
             # cgroup v2 – precise limits. nsjail defaults to the legacy cgroup
@@ -752,6 +839,20 @@ class NsjailBackend(BaseSandboxBackend):
             args.extend(["--cgroup_pids_max", str(spec.pids_limit)])
             cpu_ms = int(spec.cpus * 1000)
             args.extend(["--cgroup_cpu_ms_per_sec", str(cpu_ms)])
+        elif self._cgroup_v1_available:
+            for controller, flag in (
+                ("memory", "mem"),
+                ("pids", "pids"),
+                ("cpu", "cpu"),
+            ):
+                args.extend([f"--cgroup_{flag}_parent", self._cgroup_v1_parent])
+            memory_bytes = spec.memory_mb * 1024 * 1024
+            args.extend(["--cgroup_mem_max", str(memory_bytes)])
+            args.extend(["--cgroup_mem_memsw_max", str(memory_bytes)])
+            args.extend(["--cgroup_pids_max", str(spec.pids_limit)])
+            args.extend(["--cgroup_cpu_ms_per_sec", str(int(spec.cpus * 1000))])
+            # The per-jail cgroup limits PIDs; RLIMIT_NPROC would count the entire host UID.
+            args.extend(["--rlimit_nproc", "hard"])
         else:
             # rlimit fallback – used whenever cgroup v2 delegation is not usable
             # (private cgroup namespace -> EBUSY, or read-only /sys/fs/cgroup).

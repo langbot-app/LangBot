@@ -395,6 +395,8 @@ async def test_resource_families_preserve_frozen_grants(host, monkeypatch, opera
         ('event_get', {'event_id': 'event-a'}),
         ('bind_box', {'box_id': 'box-a'}),
         ('export_box_files', {'paths': ['report.txt']}),
+        ('read_run_file', {'file_id': 'file-1'}),
+        ('commit_run_files', {'file_ids': ['file-1']}),
     ],
 )
 async def test_run_capability_families_cannot_fall_back_to_plugin_access(host, monkeypatch, operation, payload):
@@ -495,6 +497,9 @@ async def test_recovery_operations_preserve_run_authorization(host, monkeypatch,
         ('steering_ack', {'delivery_ids': ['']}),
         ('run_resume', {'from_sequence': -1}),
         ('run_cancel_ack', {'cleanup_confirmed': 'true'}),
+        ('run_cancel_ack', {'expected_retry_count': -1}),
+        ('run_cancel_ack', {'expected_retry_count': True}),
+        ('run_cancel_ack', {'expected_retry_count': '1'}),
     ],
 )
 async def test_recovery_operations_reject_invalid_inputs(host, action, payload):

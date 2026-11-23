@@ -132,18 +132,23 @@ class AgentRunLedgerAPIMixin:
         run_id: str | None = None,
         reason: str | None = None,
         cleanup_confirmed: bool = True,
+        *,
+        expected_retry_count: int | None = None,
     ) -> AgentRun:
         """Acknowledge that cancellation cleanup has completed."""
         self._require_context_api("run_cancel_ack")
         timeout = 15.0
+        data = {
+            "run_id": self.run_id,
+            "target_run_id": run_id or self.run_id,
+            "reason": reason,
+            "cleanup_confirmed": cleanup_confirmed,
+        }
+        if expected_retry_count is not None:
+            data["expected_retry_count"] = expected_retry_count
         resp = await self._api.plugin_runtime_handler.call_action(
             PluginToRuntimeAction.RUN_CANCEL_ACK,
-            {
-                "run_id": self.run_id,
-                "target_run_id": run_id or self.run_id,
-                "reason": reason,
-                "cleanup_confirmed": cleanup_confirmed,
-            },
+            data,
             timeout,
         )
         return AgentRun.model_validate(resp)

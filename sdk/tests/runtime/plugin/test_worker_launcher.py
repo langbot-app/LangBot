@@ -700,6 +700,7 @@ async def test_oss_dependency_installer_targets_environment_without_control_secr
 async def test_dependency_installer_reaps_nsjail_and_redacts_failures(
     tmp_path,
     monkeypatch,
+    caplog,
     returncode,
 ):
     staging_root = tmp_path / "staging"
@@ -735,6 +736,10 @@ async def test_dependency_installer_reaps_nsjail_and_redacts_failures(
     async def create_subprocess_exec(*args, **kwargs):
         captured["args"] = args
         captured["kwargs"] = kwargs
+        kwargs["stdout"].write(
+            b"ERROR: Could not find private-package==1.0.0 at "
+            b"https://user:index-secret@pypi.invalid/simple\n"
+        )
         return process
 
     monkeypatch.setattr(
@@ -753,6 +758,9 @@ async def test_dependency_installer_reaps_nsjail_and_redacts_failures(
                 ["private-package==1.0.0"],
             )
         assert "private-package==1.0.0" not in str(exc_info.value)
+        assert "index-secret" not in str(exc_info.value)
+        assert "index-secret" not in caplog.text
+        assert "https://***@pypi.invalid/simple" in caplog.text
     else:
         await launcher._install_dependency_environment(
             staging,
@@ -762,6 +770,94 @@ async def test_dependency_installer_reaps_nsjail_and_redacts_failures(
     assert process.waited is True
     assert captured["args"][0] == "/usr/bin/nsjail"
     assert captured["kwargs"]["env"] == {}
+
+
+@pytest.mark.parametrize(
+    ("output", "expected"),
+    [
+        (
+            b"Looking in indexes: https://user:index-secret@mirror.invalid/simple\n"
+            b"ERROR: Could not find a version that satisfies the requirement "
+            b"pydantic>=2.0.0 (from versions: none)\n"
+            b"ERROR: No matching distribution found for pydantic>=2.0.0\n",
+            "exited with code 1: ERROR: Could not find a version that satisfies "
+            "the requirement pydantic>=2.0.0 (from versions: none) | "
+            "ERROR: No matching distribution found for pydantic>=2.0.0",
+        ),
+        (
+            b"WARNING: Retrying (Retry(total=0)) after connection broken by "
+            b"'NewConnectionError(Connection refused)': /simple/pydantic/\n"
+            b"ERROR: No matching distribution found for pydantic>=2.0.0\n",
+            "exited with code 1: WARNING: Retrying (Retry(total=0)) after "
+            "connection broken by 'NewConnectionError(Connection refused)': "
+            "/simple/pydantic/ | "
+            "ERROR: No matching distribution found for pydantic>=2.0.0",
+        ),
+        (
+            b"C:\\LangBot\\python.exe: No module named pip\r\n",
+            "exited with code 1: C:\\LangBot\\python.exe: No module named pip",
+        ),
+        (b"", "exited with code 1"),
+    ],
+)
+async def test_direct_dependency_installer_reports_redacted_pip_errors(
+    tmp_path,
+    monkeypatch,
+    output,
+    expected,
+):
+    staging_root = tmp_path / "staging"
+    staging = DependencyEnvironmentStaging(
+        root_path=staging_root,
+        site_packages_path=staging_root / "site-packages",
+        scratch_path=staging_root / ".scratch",
+        jail_root_path=staging_root / ".scratch" / "root",
+        tmp_path=staging_root / ".scratch" / "tmp",
+    )
+    staging.site_packages_path.mkdir(parents=True)
+    staging.tmp_path.mkdir(parents=True)
+    launcher = PluginWorkerLauncher(
+        cgroup_v2_available=False,
+        platform="win32",
+    )
+    launcher.configure(_policy(require_hard_limits=False), "oss_dev")
+
+    class FailedProcess:
+        returncode = 1
+
+        async def wait(self):
+            return self.returncode
+
+    async def create_subprocess_exec(*_args, **kwargs):
+        assert kwargs["stderr"] == asyncio.subprocess.STDOUT
+        kwargs["stdout"].write(output)
+        return FailedProcess()
+
+    monkeypatch.setattr(
+        worker_launcher_module.asyncio,
+        "create_subprocess_exec",
+        create_subprocess_exec,
+    )
+
+    with pytest.raises(
+        worker_launcher_module.DependencyEnvironmentPreparationError,
+    ) as exc_info:
+        await launcher._install_dependency_environment_direct(
+            staging,
+            ["pydantic>=2.0.0"],
+        )
+
+    message = str(exc_info.value)
+    assert message.endswith(expected)
+    assert "index-secret" not in message
+
+
+def test_dependency_installer_summary_is_bounded():
+    summary = worker_launcher_module._summarize_dependency_installer_output(
+        "ERROR: " + "x" * 5000
+    )
+    assert len(summary) == 600
+    assert summary.endswith("...")
 
 
 async def test_dependency_installer_kills_timed_out_nsjail(

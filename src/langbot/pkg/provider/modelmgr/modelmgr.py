@@ -1278,6 +1278,29 @@ class ModelManager:
             model,
         )
 
+    def runtime_llm_models_for_workspace(self, workspace_uuid: str | None) -> dict[str, requester.RuntimeLLMModel]:
+        """Return cached runtime LLM models of one Workspace keyed by model UUID.
+
+        Uses the per-scope key index so the cost is O(scopes + Workspace models)
+        rather than O(all cached models across every Workspace). When several
+        placement generations are cached, the newest one wins.
+        """
+        result: dict[str, requester.RuntimeLLMModel] = {}
+        generations: dict[str, int] = {}
+        for scope, keys in self._llm_keys_by_scope.items():
+            if scope[1] != workspace_uuid:
+                continue
+            for key in keys:
+                runtime_model = self.llm_model_dict.get(key)
+                if runtime_model is None:
+                    continue
+                model_uuid = runtime_model.model_entity.uuid
+                if model_uuid in result and generations[model_uuid] >= key[2]:
+                    continue
+                result[model_uuid] = runtime_model
+                generations[model_uuid] = key[2]
+        return result
+
     async def get_model_by_uuid(self, context: TenantContext, model_uuid: str) -> requester.RuntimeLLMModel:
         execution_context = await self.resolve_execution_context(context)
         model = self.llm_model_dict.get(self._cache_key(execution_context, model_uuid))

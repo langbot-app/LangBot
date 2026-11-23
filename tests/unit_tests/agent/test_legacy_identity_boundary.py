@@ -83,7 +83,7 @@ async def test_entry_session_identity_falls_back_to_query_launcher(mock_query):
 
     context, _ = await build(event, 'ACPAgentRunner', 'sender')
 
-    assert context['conversation']['session_id'] == 'group_event-007'
+    assert context['conversation']['session_id'] == 'groupmember_9_event-007_sender-123'
 
 
 @pytest.mark.asyncio

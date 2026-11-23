@@ -6,7 +6,11 @@ import logging
 import os
 
 from langbot_plugin.utils.discover.engine import ComponentDiscoveryEngine
-from langbot_plugin.utils.log import configure_process_logging
+from langbot_plugin.utils.log import (
+    ServiceFormatter,
+    configure_process_logging,
+    install_loop_logging,
+)
 from langbot_plugin.cli.run.controller import PluginRuntimeController
 from langbot_plugin.cli.i18n import cli_print
 from langbot_plugin.cli.utils.page_components import (
@@ -55,6 +59,7 @@ async def arun_plugin_process(
     configure_bounded_default_executor_from_env(
         thread_name_prefix="langbot-plugin-worker-blocking",
     )
+    install_loop_logging()
     # Shared/production artifacts are immutable code and must never inject
     # process environment. OSS development keeps the historical .env behavior.
     runtime_profile = os.environ.get(PLUGIN_RUNTIME_PROFILE_ENV, "oss_dev")
@@ -84,6 +89,10 @@ async def arun_plugin_process(
     if plugin_manifest is None:
         cli_print("manifest_not_found")
         return
+
+    for handler in logging.root.handlers:
+        if isinstance(handler.formatter, ServiceFormatter):
+            handler.formatter.service = f"PLUGIN.{plugin_manifest.metadata.author}/{plugin_manifest.metadata.name}"
 
     ws_debug_url = ""
 
@@ -118,7 +127,7 @@ def run_plugin_process(
     pypi_trusted_host: str = "",
     tag: str = "",
 ) -> None:
-    configure_process_logging()
+    configure_process_logging(service=f"PLUGIN.{tag or 'unknown'}")
     apply_process_label(tag)
 
     try:

@@ -1,0 +1,25 @@
+{
+  "phases": [
+    {
+      "name": "arrival-soak",
+      "duration_seconds": 900,
+      "rps": 0.8,
+      "workers": 8,
+      "groups": 16,
+      "members_per_group": 3,
+      "cooldown_seconds": 60,
+      "arrival_mode": "open-loop",
+      "queue_capacity": 16
+    }
+  ],
+  "box_command_delay_seconds": 4,
+  "performance_mode": "gate",
+  "thresholds": {
+    "min_rps_ratio": 0.8,
+    "max_arrival_p95_seconds": {
+      "chat": 8,
+      "box": 20,
+      "rag_chat": 10
+    }
+  }
+}

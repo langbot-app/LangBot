@@ -1,0 +1,27 @@
+{
+  "seed": 3063,
+  "weights": {"text": 4, "png": 2, "jpeg": 2, "text_pdf": 2, "scanned_pdf": 1, "mixed": 2},
+  "group_slots": 4,
+  "member_slots": 5,
+  "long_sessions": 2,
+  "long_every": 3,
+  "staircase": [
+    {"waves": 4, "parallel": 1, "period_seconds": 20},
+    {"waves": 4, "parallel": 2, "period_seconds": 10},
+    {"waves": 4, "parallel": 4, "period_seconds": 5}
+  ],
+  "accelerated": {
+    "load_seconds": 14400,
+    "period_seconds": 5,
+    "ttl_seconds": 120,
+    "gc_interval_seconds": 20,
+    "drain_seconds": 360,
+    "max_resource_growth": {"rss": 100663296, "fds": 16, "threads": 12, "processes": 3}
+  },
+  "budgets": {
+    "offered_bytes": 1073741824,
+    "artifact_rows": 1500,
+    "content_bytes": 134217728,
+    "free_bytes": 1073741824
+  }
+}

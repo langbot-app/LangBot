@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 import sqlalchemy
@@ -23,6 +24,7 @@ from langbot.pkg.entity.persistence.user import User
 from langbot.pkg.entity.persistence.webhook import Webhook
 from langbot.pkg.entity.persistence.workspace import WorkspaceMembership
 from langbot.pkg.notification.email import EmailSendResult
+from langbot.pkg.telemetry import heartbeat, usage
 
 pytestmark = pytest.mark.asyncio
 
@@ -80,6 +82,7 @@ class _Pusher:
 
 @pytest.fixture
 async def env(tmp_path, monkeypatch):
+    usage._workspaces.clear()
     monkeypatch.setattr(alert_module, 'FIRED_GRACE_SECONDS', 0)
     engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "alerts.db"}')
     tables = [
@@ -141,7 +144,9 @@ async def env(tmp_path, monkeypatch):
     service._queue = asyncio.Queue()
     # Alerts are opt-in; most tests exercise an enabled Workspace.
     await service.update_settings(WS, {'enabled': True})
+    usage._workspaces.clear()
     yield SimpleNamespace(service=service, email=email, space=space, pusher=pusher, engine=engine)
+    usage._workspaces.clear()
     await engine.dispose()
 
 
@@ -369,18 +374,169 @@ async def test_alerts_are_off_until_a_workspace_opts_in(env):
     assert state['space']['supported'] is True
 
 
-async def test_cloud_workspaces_default_to_alerts_on(env):
+async def test_cloud_workspaces_are_opt_in_too(env):
     service = env.service
     async with env.engine.begin() as connection:
         await connection.execute(sqlalchemy.delete(alert_entity.AlertSetting))
     service._settings_cache.clear()
     service.ap.deployment = SimpleNamespace(mode='cloud')
 
-    assert (await service.summary(WS))['enabled'] is True
+    assert (await service.summary(WS))['enabled'] is False
+    service.observe_failure(WS, 'bot_offline', 'bot-1', 'Bot')
+    await _drain(service)
+    assert (await service.summary(WS))['firing'] == 0
+
+    # An admin can still turn them on explicitly.
+    await service.update_settings(WS, {'enabled': True})
     service.observe_failure(WS, 'bot_offline', 'bot-1', 'Bot')
     await _drain(service)
     assert (await service.summary(WS))['firing'] == 1
 
-    # An explicit choice still wins over the Cloud default.
-    await service.update_settings(WS, {'enabled': False})
-    assert (await service.summary(WS))['enabled'] is False
+
+def _usage_entries(metric):
+    batch = usage.take_batch(WS)
+    return [entry for entry in batch['c'] if entry[0] == metric] if batch else []
+
+
+async def test_usage_incident_open_touch_and_resolve(env):
+    service = env.service
+    service.observe_failure(WS, 'bot_offline', 'bot-1', 'Bot')
+    await _drain(service)
+    service._firing.clear()
+    service.observe_failure(WS, 'bot_offline', 'bot-1', 'Bot')
+    await _drain(service)
+    assert _usage_entries('alert.incident') == [['alert.incident', {'rule': 'bot_offline', 'event': 'opened'}, 1]]
+    incident = (await _incidents(env.engine))[0]
+    await service._resolve(WS, incident.fingerprint)
+    await service._resolve(WS, incident.fingerprint)
+    assert _usage_entries('alert.incident')[-1] == ['alert.incident', {'rule': 'bot_offline', 'event': 'resolved'}, 1]
+
+
+async def test_usage_integrity_error_does_not_count(env, monkeypatch):
+    service = env.service
+    execute = service._execute
+
+    async def conflict(workspace_uuid, statement):
+        if isinstance(statement, sqlalchemy.sql.dml.Insert):
+            raise sqlalchemy.exc.IntegrityError('insert', {}, Exception('duplicate'))
+        return await execute(workspace_uuid, statement)
+
+    monkeypatch.setattr(service, '_execute', conflict)
+    service.observe_failure(WS, 'bot_offline', 'bot-1', 'Bot')
+    await _drain(service)
+    assert _usage_entries('alert.incident') == []
+
+
+async def test_usage_concurrent_resolve_does_not_count_zero_rows(env, monkeypatch):
+    service = env.service
+    service.observe_failure(WS, 'bot_offline', 'bot-1', 'Bot')
+    await _drain(service)
+    incident = (await _incidents(env.engine))[0]
+    usage._workspaces.clear()
+    execute = service._execute
+
+    async def competing_update(workspace_uuid, statement):
+        if isinstance(statement, sqlalchemy.sql.dml.Update):
+            await execute(workspace_uuid, statement)
+        return await execute(workspace_uuid, statement)
+
+    monkeypatch.setattr(service, '_execute', competing_update)
+    await service._resolve(WS, incident.fingerprint)
+    assert _usage_entries('alert.incident') == []
+
+
+async def test_usage_quiet_resolve_counts_each_rule_rowcount(env):
+    service = env.service
+    for rule in ('pipeline_failures', 'model_failures'):
+        for subject in ('one', 'two', 'three'):
+            for _ in range(10):
+                service.observe_failure(WS, rule, subject, subject)
+    await _drain(service)
+    assert len(await _incidents(env.engine)) == 6
+    usage._workspaces.clear()
+    async with env.engine.begin() as connection:
+        await connection.execute(
+            sqlalchemy.update(alert_entity.AlertIncident).values(
+                last_seen_at=alert_module.utcnow() - datetime.timedelta(days=1)
+            )
+        )
+    await service._tick_workspace(WS)
+    await service._tick_workspace(WS)
+    assert _usage_entries('alert.incident') == [
+        ['alert.incident', {'rule': 'pipeline_failures', 'event': 'resolved'}, 3],
+        ['alert.incident', {'rule': 'model_failures', 'event': 'resolved'}, 3],
+    ]
+
+
+@pytest.mark.parametrize('channel', ['instance', 'space', 'off'])
+@pytest.mark.parametrize('outcome', ['ok', 'failed', 'rate_limited'])
+async def test_usage_delivery_rows_and_test_notifications(env, monkeypatch, channel, outcome):
+    service = env.service
+    await service.update_settings(WS, {'enabled': True, 'email_channel': channel, 'webhook_ids': [7]})
+    if outcome == 'failed':
+        monkeypatch.setattr(
+            env.email, 'send', AsyncMock(return_value=EmailSendResult(status='failed', provider='smtp', error='test'))
+        )
+        env.space.status = 500
+        monkeypatch.setattr(env.pusher, 'deliver_event', AsyncMock(return_value=[False]))
+    elif outcome == 'rate_limited':
+        monkeypatch.setattr(service, '_email_budget', AsyncMock(return_value=0))
+        env.space.status = 429
+    for notice in ('test', 'fired', 'reminder', 'resolved'):
+        usage._workspaces.clear()
+        deliveries = await service.send_test(WS) if notice == 'test' else await service.dispatch(WS, notice, [])
+        expected = {}
+        for delivery in deliveries:
+            status = 'ok' if delivery['status'] == 'sent' else delivery['status']
+            key = (delivery['channel'], status)
+            expected[key] = expected.get(key, 0) + 1
+        assert expected[('webhook', 'failed' if outcome == 'failed' else 'ok')] == 1
+        if channel != 'off':
+            assert expected[('email' if channel == 'instance' else 'space', outcome)] > 0
+        actual = {(entry[1]['via'], entry[1]['outcome']): entry[2] for entry in _usage_entries('alert.delivery')}
+        assert actual == expected
+        assert all(entry[1]['notice'] == notice for entry in _usage_entries('alert.delivery'))
+
+
+async def test_usage_settings_saved_values_and_opt_out(env):
+    service = env.service
+    service.ap.instance_config.data['alerts']['enabled'] = False
+    await service.update_settings(WS, {'enabled': True, 'email_channel': 'space'})
+    assert _usage_entries('alert.settings.update') == [
+        ['alert.settings.update', {'enabled': 'yes', 'channel': 'space'}, 1]
+    ]
+    with pytest.raises(ValueError):
+        await service.update_settings(WS, {'email_channel': 'invalid'})
+    assert _usage_entries('alert.settings.update')[0][2] == 1
+    usage._workspaces.clear()
+    service.ap.instance_config.data['space'] = {'disable_telemetry': True}
+    await service.update_settings(WS, {'enabled': True})
+    service.ap.instance_config.data['alerts']['enabled'] = True
+    service.observe_failure(WS, 'bot_offline', 'bot-1', 'Bot')
+    await _drain(service)
+    await service.tick()
+    incident = (await _incidents(env.engine))[0]
+    await service._resolve(WS, incident.fingerprint)
+    await service.send_test(WS)
+    assert usage.take_batch(WS) is None
+
+
+async def test_usage_database_events_reach_workspace_heartbeat(env):
+    service = env.service
+    service.ap.alert_service = service
+    await service.update_settings(WS, {'enabled': True, 'email_channel': 'instance'})
+    service.observe_failure(WS, 'bot_offline', 'bot-1', 'Bot')
+    await _drain(service)
+    await service.tick()
+    payload = await heartbeat.build_heartbeat_payload(service.ap, workspace_uuid=WS)
+    batch = payload['features']['usage']
+    assert batch['v'] == 1
+    assert batch['c'] == [
+        ['alert.settings.update', {'enabled': 'yes', 'channel': 'instance'}, 1],
+        ['alert.incident', {'rule': 'bot_offline', 'event': 'opened'}, 1],
+        ['alert.delivery', {'notice': 'fired', 'via': 'email', 'outcome': 'ok'}, 2],
+        ['alert.state', {'enabled': 'yes', 'channel': 'instance'}, 1],
+    ]
+    assert usage.take_batch('another-workspace') is None
+    usage.ack(WS, batch)
+    assert usage.take_batch(WS) is None

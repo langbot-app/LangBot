@@ -81,6 +81,10 @@ class ProcessorTests(unittest.IsolatedAsyncioTestCase):
         ends = [r.data["tool_call_id"] for r in results if r.type == "tool.call.completed"]
         self.assertEqual(starts, ends)
         self.assertEqual(len(set(starts)), 3)
+        self.assertEqual(
+            api.call_tool.await_args_list[-1].args[1],
+            {"text": "Alice，欢迎加入！请友善交流，一起分享与学习。"},
+        )
 
     async def test_lookup_failure_is_logged_but_welcome_still_sends(self):
         results, api = await self.execute("01-member-joined.json", fail_lookup=True)
@@ -90,9 +94,13 @@ class ProcessorTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_departure_configuration_changes_actions(self):
         _, silent = await self.execute("02-member-left.json")
-        _, announce = await self.execute("02-member-left.json", config={"announce_departures": True})
+        _, announce = await self.execute(
+            "02-member-left.json", config={"announce_departures": True, "language": "en_US"}
+        )
         silent.call_tool.assert_not_called()
-        announce.call_tool.assert_awaited_once()
+        announce.call_tool.assert_awaited_once_with(
+            "event_reply", {"text": "Alice has left the group."}
+        )
 
     async def test_image_does_not_corrupt_command_text(self):
         _, api = await self.execute("11-echo-with-image.json")

@@ -20,6 +20,7 @@ from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
 class LegacyRunnerIdentity(pydantic.BaseModel):
     """Host-captured native Query identity; never populated from event data/params."""
 
+    session_id: str | None = None
     workspace_id: str | None = None
     bot_id: str | None = None
     pipeline_id: str | None = None
@@ -83,6 +84,16 @@ class AgentEventEnvelope(pydantic.BaseModel):
 
     legacy_identity: LegacyRunnerIdentity | None = None
     """Host-only provenance, separate from untrusted event payload and adapter params."""
+
+    @property
+    def ledger_conversation_id(self) -> str | None:
+        from ...persistence.session_summary_contract import parse_group_member_id
+
+        if self.legacy_identity and self.conversation_id == self.legacy_identity.session_id and self.conversation_id:
+            member = parse_group_member_id(self.conversation_id)
+            if member:
+                return f'group_{member[0]}'
+        return self.conversation_id
 
 
 # Binding scope types

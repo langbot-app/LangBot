@@ -1203,3 +1203,195 @@ async def test_cancelled_availability_probe_terminates_and_reaps_cli(backend):
     assert command.await_count == 1
     assert proc.terminated is True
     assert proc._hang is False
+
+
+class _InheritedPipeProcess:
+    """Killing the CLI does not close pipes retained by its sudo child."""
+
+    def __init__(self):
+        self.returncode = None
+        self.wait_started = asyncio.Event()
+        self.closed = asyncio.Event()
+        self.killed = False
+        self.terminated = False
+        self.stdout = self.stderr = self
+        self._transport = SimpleNamespace(close=self.closed.set)
+
+    async def read(self, _size):
+        await self.closed.wait()
+        return b""
+
+    async def wait(self):
+        self.wait_started.set()
+        await self.closed.wait()
+        self.returncode = -9
+        return self.returncode
+
+    def kill(self):
+        self.killed = True
+
+    def terminate(self):
+        self.terminated = True
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("cancelled", [False, True])
+async def test_aborted_exec_stops_box_before_waiting_for_inherited_pipes(
+    backend, session, cancelled
+):
+    proc = _InheritedPipeProcess()
+
+    async def stop(stopped):
+        assert stopped is session
+        assert proc.killed or proc.terminated
+        proc.closed.set()
+
+    backend.stop_session = mock.AsyncMock(side_effect=stop)
+    spec = BoxSpec(session_id=session.session_id, cmd="sleep 100", timeout_sec=1)
+    with mock.patch("asyncio.create_subprocess_exec", return_value=proc):
+        task = asyncio.create_task(backend.exec(session, spec))
+        await proc.wait_started.wait()
+        if cancelled:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(task, timeout=1)
+        else:
+            result = await asyncio.wait_for(task, timeout=3)
+            assert result.status == BoxExecutionStatus.TIMED_OUT
+            assert result.duration_ms < 2500
+    backend.stop_session.assert_awaited_once_with(session)
+    assert proc.closed.is_set()
+
+
+@pytest.mark.anyio
+async def test_timeout_cleanup_failure_keeps_timeout_and_bounds_pipe_drain(
+    backend, session, monkeypatch
+):
+    proc = _InheritedPipeProcess()
+    backend.stop_session = mock.AsyncMock(side_effect=BoxError("remove failed"))
+    monkeypatch.setattr("langbot_plugin.box.backend._CLI_CLEANUP_TIMEOUT_SEC", 0.02)
+    with mock.patch("asyncio.create_subprocess_exec", return_value=proc):
+        result = await asyncio.wait_for(
+            backend._run_command(
+                ["docker", "exec", session.backend_session_id],
+                timeout_sec=0.02,
+                check=False,
+                timeout_session=session,
+            ),
+            timeout=0.5,
+        )
+    assert result.timed_out
+    assert "timed out" in result.stderr
+    assert "remove failed" in result.stderr
+    assert proc.closed.is_set()
+
+
+@pytest.mark.anyio
+async def test_download_permission_fallback_preserves_large_binary(backend, session):
+    from langbot_plugin.box.backend import BaseSandboxBackend
+
+    content = bytes(range(256)) * 5000
+    process = _FakeProcess(stdout=content)
+    with (
+        mock.patch.object(
+            BaseSandboxBackend, "download_file", side_effect=PermissionError
+        ),
+        mock.patch(
+            "asyncio.create_subprocess_exec", mock.AsyncMock(return_value=process)
+        ) as spawn,
+    ):
+        downloaded = await backend.download_file(
+            session, "/workspace/report.bin", len(content)
+        )
+    assert downloaded == content
+    args = spawn.await_args.args
+    assert args[:4] == (backend.command, "exec", "-i", session.backend_session_id)
+    assert "--user" not in args
+    assert "read_workspace_file('/workspace', 'report.bin'" in args[-1]
+    process.stdin.close.assert_called_once()
+
+
+@pytest.mark.anyio
+async def test_upload_permission_fallback_uses_stdin_and_checks_content(
+    backend, session
+):
+    from langbot_plugin.box.backend import BaseSandboxBackend
+
+    content = b"\x00binary\xff" * 10000
+    process = _FakeProcess()
+    process.stdin.drain = mock.AsyncMock()
+    with (
+        mock.patch.object(
+            BaseSandboxBackend, "upload_file", side_effect=PermissionError
+        ),
+        mock.patch(
+            "asyncio.create_subprocess_exec", mock.AsyncMock(return_value=process)
+        ) as spawn,
+    ):
+        await backend.upload_file(
+            session, "/workspace/input.bin", content, len(content)
+        )
+    process.stdin.write.assert_called_once_with(content)
+    script = spawn.await_args.args[-1]
+    assert "sys.stdin.buffer.read(" in script
+    assert "hashlib.sha256(data).hexdigest()" in script
+    assert script.index("if len(data)") < script.rindex("write_workspace_file(")
+
+
+@pytest.mark.anyio
+async def test_file_permission_fallback_rejects_oversized_cli_output(backend, session):
+    from langbot_plugin.box.backend import BaseSandboxBackend
+
+    with (
+        mock.patch.object(
+            BaseSandboxBackend, "download_file", side_effect=PermissionError
+        ),
+        mock.patch(
+            "asyncio.create_subprocess_exec",
+            mock.AsyncMock(return_value=_FakeProcess(stdout=b"too big")),
+        ),
+        pytest.raises(BoxError, match="payload size"),
+    ):
+        await backend.download_file(session, "/workspace/report.bin", 3)
+
+
+@pytest.mark.anyio
+async def test_permission_fallback_waits_for_helper_after_repeated_cancel(
+    backend, session
+):
+    from langbot_plugin.box.backend import BaseSandboxBackend
+
+    started, finish = asyncio.Event(), asyncio.Event()
+    process = _FakeProcess(stdout=b"data")
+
+    async def wait():
+        started.set()
+        await finish.wait()
+        return 0
+
+    process.wait = wait
+    with (
+        mock.patch.object(
+            BaseSandboxBackend, "download_file", side_effect=PermissionError
+        ),
+        mock.patch(
+            "asyncio.create_subprocess_exec", mock.AsyncMock(return_value=process)
+        ),
+    ):
+        download = asyncio.create_task(
+            backend.download_file(session, "/workspace/report.bin", 100)
+        )
+        try:
+            await asyncio.wait_for(started.wait(), timeout=1)
+            download.cancel()
+            await asyncio.sleep(0)
+            assert not download.done()
+            download.cancel()
+            await asyncio.sleep(0)
+            assert not download.done()
+            finish.set()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(download, timeout=1)
+        finally:
+            finish.set()
+            await asyncio.gather(download, return_exceptions=True)

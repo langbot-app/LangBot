@@ -3,6 +3,8 @@
 import os
 import textwrap
 
+from .selected_files import windows_export_script
+
 
 def outbox_script(
     outbox_root: str,
@@ -22,7 +24,10 @@ def outbox_script(
         'max_files': max_files,
         'max_total_bytes': max_total_bytes,
     }
-    return f'settings = {settings!r}\n' + textwrap.dedent("""\
+    return (
+        windows_export_script('outbox', settings)
+        + f'settings = {settings!r}\n'
+        + textwrap.dedent("""\
         import base64, errno, json, os, stat, sys
         directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         file_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
@@ -82,6 +87,10 @@ def outbox_script(
                             reject('file_bytes', settings['max_file_bytes'], metadata.st_size, relative)
                         if metadata.st_size > remaining:
                             reject('collection_bytes', settings['max_total_bytes'], budget['bytes'] + metadata.st_size, relative)
+                        if settings['operation'] == 'list':
+                            out.append({'name': relative})
+                            budget['bytes'] += metadata.st_size
+                            continue
                         with os.fdopen(child_fd, 'rb', closefd=False) as source:
                             data = source.read(settings['max_file_bytes'] + 1)
                         if len(data) > settings['max_file_bytes']:
@@ -130,7 +139,7 @@ def outbox_script(
                 try:
                     query_fd = os.open(component(settings['query']), directory_flags, dir_fd=outbox_fd)
                     try:
-                        if settings['operation'] == 'read':
+                        if settings['operation'] in ('read', 'list'):
                             read_directory(query_fd)
                         elif settings['operation'] == 'clear':
                             budget['entries'] = 4096
@@ -147,3 +156,4 @@ def outbox_script(
             pass
         print(json.dumps(out))
         """)
+    )

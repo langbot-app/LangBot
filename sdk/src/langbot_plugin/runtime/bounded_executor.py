@@ -71,7 +71,15 @@ async def run_blocking_atomic(
     try:
         return await asyncio.shield(task)
     except asyncio.CancelledError:
-        await asyncio.gather(task, return_exceptions=True)
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                continue
+            except BaseException:
+                break
+        if not task.cancelled():
+            task.exception()
         raise
 
 

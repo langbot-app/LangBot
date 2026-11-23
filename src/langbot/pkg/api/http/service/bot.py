@@ -865,7 +865,72 @@ class BotService:
                     runtime_bot.bot_entity.description = update_data['description']
             return
 
+        await self._apply_bot_configuration(context, bot_uuid)
+
+    async def bind_event_route(
+        self,
+        context: TenantContext,
+        bot_uuid: str,
+        expected_binding: dict,
+        target_type: typing.Literal['agent', 'pipeline'],
+        target_uuid: str,
+        dry_run: bool = False,
+    ) -> dict:
+        """Change one existing route, conditional on the binding inspected by the client."""
+        binding_id = expected_binding.get('id')
+        if not isinstance(binding_id, str) or not binding_id or not target_uuid.strip():
+            raise ValueError('A binding ID and target UUID are required')
+        if target_type not in {'agent', 'pipeline'}:
+            raise ValueError('Unsupported event binding target type')
+        model = persistence_bot.Bot
+        # Compare the database representation in SQL. PostgreSQL JSON has no
+        # equality operator, and re-encoding the value can change its whitespace.
+        snapshot = sqlalchemy.cast(model.event_bindings, sqlalchemy.Text)
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(sqlalchemy.select(snapshot).where(model.uuid == bot_uuid), model, context)
+        )
+        original = result.scalar_one_or_none()
+        if original is None:
+            raise WorkspaceNotFoundError('Bot not found')
+        routes = json.loads(original)
+        if isinstance(routes, str):
+            routes = json.loads(routes)
+        if not isinstance(routes, list):
+            raise ValueError('Invalid event bindings')
+        matches = [route for route in routes if isinstance(route, dict) and route.get('id') == binding_id]
+        conflict = ApplicationAPIError('binding_conflict', t('The bot route changed. Read the current binding.'), 409)
+        if len(matches) != 1 or matches[0] != expected_binding:
+            raise ApplicationAPIException(conflict)
+        before = matches[0]
+        changed = dict(before, target_type=target_type, target_uuid=target_uuid.strip())
+        if not await self._normalize_event_bindings(context, [changed]):
+            raise ValueError('Invalid event binding')
+        different = changed != before
+        if different and not dry_run:
+            routes[routes.index(before)] = changed
+            written = await self.ap.persistence_mgr.execute_async(
+                scope_statement(
+                    sqlalchemy.update(model)
+                    .where(model.uuid == bot_uuid, snapshot == original)
+                    .values(event_bindings=routes),
+                    model,
+                    context,
+                )
+            )
+            if written.rowcount != 1:
+                raise ApplicationAPIException(conflict)
+            await self._apply_bot_configuration(context, bot_uuid)
+        return {
+            'bot_uuid': bot_uuid,
+            'before': before,
+            'binding': changed,
+            'changed': different,
+            'dry_run': dry_run,
+        }
+
+    async def _apply_bot_configuration(self, context: TenantContext, bot_uuid: str) -> None:
         # Persisted configuration is distinct from applying it to the running adapter.
+        workspace_uuid = require_workspace_uuid(context)
         bot = await self.get_bot(context, bot_uuid, include_secret=True)
         try:
             await self.ap.platform_mgr.remove_bot(context, bot_uuid)
@@ -1227,6 +1292,49 @@ class BotService:
         # Send message via adapter
         await runtime_bot.adapter.send_message(target_type, str(target_id), message_chain)
 
+    async def call_platform_api(
+        self,
+        context: TenantContext,
+        bot_uuid: str,
+        action: str,
+        params: dict | None = None,
+    ) -> dict:
+        """Call a platform-specific action the bot's adapter declares, such as managing a WeChat menu."""
+        bot = await self.get_bot(context, bot_uuid, include_secret=False)
+        if bot is None:
+            raise WorkspaceNotFoundError('Bot not found')
+        component = self._get_adapter_component(bot['adapter'])
+        declared = {
+            item.get('action')
+            for item in ((component.spec.get('platform_specific_apis') or []) if component else [])
+            if isinstance(item, dict)
+        }
+        if action not in declared:
+            raise ApplicationAPIException(
+                ApplicationAPIError('platform_api_not_supported', f'The adapter does not declare action {action}', 400)
+            )
+        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
+        if runtime_bot is None or not bot.get('enable', True):
+            raise ApplicationAPIException(
+                ApplicationAPIError('bot_not_running', 'Enable the bot before calling platform actions', 409)
+            )
+        try:
+            return await runtime_bot.adapter.call_platform_api(action, dict(params or {}))
+        except ValueError as exc:
+            raise ApplicationAPIException(ApplicationAPIError('invalid_input', str(exc), 400)) from None
+        except Exception as exc:
+            errcode = getattr(exc, 'errcode', None)
+            if errcode is None:
+                raise
+            raise ApplicationAPIException(
+                ApplicationAPIError(
+                    'platform_api_error',
+                    str(exc),
+                    502,
+                    {'errcode': errcode, 'errmsg': getattr(exc, 'errmsg', '')},
+                )
+            ) from None
+
     # ============ Bot Admins ============
 
     async def get_bot_admins(self, context: TenantContext, bot_uuid: str) -> list[dict]:
@@ -1236,7 +1344,10 @@ class BotService:
             raise WorkspaceNotFoundError('Bot not found')
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
-                sqlalchemy.select(persistence_bot.BotAdmin).where(persistence_bot.BotAdmin.bot_uuid == bot_uuid),
+                sqlalchemy.select(persistence_bot.BotAdmin).where(
+                    persistence_bot.BotAdmin.bot_uuid == bot_uuid,
+                    persistence_bot.BotAdmin.launcher_type == 'person',
+                ),
                 persistence_bot.BotAdmin,
                 context,
             )
@@ -1245,6 +1356,12 @@ class BotService:
 
     async def add_bot_admin(self, context: TenantContext, bot_uuid: str, launcher_type: str, launcher_id: str) -> int:
         from ....entity.persistence import bot as persistence_bot
+
+        if launcher_type != 'person':
+            raise ValueError('Bot admins must be person launchers')
+        launcher_id = launcher_id.strip()
+        if not launcher_id:
+            raise ValueError('launcher_id is required')
 
         workspace_uuid = require_workspace_uuid(context)
         if await self.get_bot(context, bot_uuid, include_secret=False) is None:

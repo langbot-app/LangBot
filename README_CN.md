@@ -16,7 +16,7 @@
 [![QQ Group](https://img.shields.io/badge/%E7%A4%BE%E5%8C%BAQQ%E7%BE%A4-1030838208-blue)](https://qm.qq.com/q/IrlV8QFacU)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/langbot-app/LangBot)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/langbot-app/LangBot)](https://github.com/langbot-app/LangBot/releases/latest)
-<img src="https://img.shields.io/badge/python-3.10 ~ 3.13 -blue.svg" alt="python">
+<img src="https://img.shields.io/badge/python-3.11%20~%203.14-blue.svg" alt="python">
 [![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
 [![star](https://gitcode.com/RockChinQ/LangBot/star/badge.svg)](https://gitcode.com/RockChinQ/LangBot)
 
@@ -37,7 +37,7 @@
 LangBot 是一个**开源的生产级平台**，用于构建 AI 驱动的即时通信机器人。它将大语言模型（LLM）连接到各种聊天平台，帮助你创建能够对话、执行任务、并集成到现有工作流程中的智能 Agent。
 
 <p align="center">
-<img src="res/dashboard-overview.png" alt="LangBot Web 管理面板仪表盘 — 实时监控消息量、模型调用、成功率与活跃会话" width="720"/>
+<img src="res/dashboard-overview-zh.png" alt="LangBot Web 管理面板仪表盘 — 实时监控消息量、模型调用、成功率与活跃会话" width="720"/>
 </p>
 
 ### 核心能力
@@ -63,8 +63,6 @@ LangBot 是一个**开源的生产级平台**，用于构建 AI 驱动的即时�
 
 ## 快速开始
 
-官方插件源码索引：[plugins/README.md](plugins/README.md) · [机器可读目录](plugins/catalog.json) · [插件独立上架流程](plugins/RELEASING.md)。插件保持独立安装，不随 Core 发版打包。
-
 ### ☁️ LangBot Cloud（推荐）
 
 [![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
@@ -73,13 +71,21 @@ LangBot 是一个**开源的生产级平台**，用于构建 AI 驱动的即时�
 
 免部署，开箱即用。
 
-### 一键启动
+### 一行命令安装（自部署推荐）
+
+macOS / Linux:
 
 ```bash
-uvx langbot
+curl -fsSL https://langbot.app/install.sh | bash
 ```
 
-> 需要安装 [uv](https://docs.astral.sh/uv/getting-started/installation/)。访问 http://localhost:5300 即可使用。
+Windows (PowerShell):
+
+```powershell
+irm https://langbot.app/install.ps1 | iex
+```
+
+> 自动安装 [lbctl](https://github.com/langbot-app/langbot-cli)（LangBot 命令行工具）并拉起 LangBot：默认原生部署，自动准备 Python，也可选 Docker；无需管理员权限。完成后访问 http://localhost:5300，之后用 `lbctl upgrade` 一键升级。
 
 ### Docker Compose
 

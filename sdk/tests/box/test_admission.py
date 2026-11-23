@@ -591,3 +591,13 @@ def test_grant_requires_timezone_and_rejects_boolean_limits():
     payload["plan"] = "pro"
     with pytest.raises(ValueError, match="Extra inputs"):
         SandboxAdmissionGrant.model_validate(payload)
+
+
+async def test_workspace_backend_selection_cannot_override_managed_policy(tmp_path):
+    runtime, _ = _runtime(tmp_path)
+    items = {item["name"]: item for item in await runtime.get_backends(refresh=True)}
+    assert items["docker"]["reason"] == items["e2b"]["reason"] == "policy_restricted"
+    with pytest.raises(BoxAdmissionError, match="restricted"):
+        runtime._normalize_admitted_spec(
+            BoxSpec(session_id="global", backend="docker"), _context()
+        )

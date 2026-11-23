@@ -112,6 +112,19 @@ run ends; use `messages` there.
 
 - Agent runs can take minutes; when `timeout` expires the run fails but the task
   keeps running in Multica and its reply stays visible there.
+- Transient Multica errors are retried. Reads (agent list, reply checks) are retried
+  on network errors, timeouts, 429 and 5xx, and a failed reply check never ends the
+  run: polling continues until `timeout`. Creating a session or sending a message is
+  resent only when the request provably never reached Multica (connection refused or
+  503), so an agent task is never submitted twice.
+- A reply that was not delivered is not lost. The runner records each submitted task
+  in the conversation state, so if a run ends early (LangBot or the Plugin Runtime
+  restarts, a network outage outlasts `timeout`), the next message in that
+  conversation first delivers the late reply, marked `↩️`, then handles the new
+  message. If the earlier task is still running, its reply follows once the new
+  message's turn is done. Late replies older than 24 hours are dropped; `/multica new`
+  discards a pending one. In `messages` mode a late reply uses one of the
+  `progress-max-messages` slots, keeping the per-message reply cap.
 - If the stored Multica session was deleted or archived, a new one is created and
   the message is resent once.
 - An agent run that fails in Multica is reported as a failed LangBot run with the
