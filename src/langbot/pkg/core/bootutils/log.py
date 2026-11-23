@@ -6,18 +6,10 @@ import sys
 import threading
 import time
 
-import colorlog
+from langbot_plugin.utils.log import ServiceFormatter, install_exception_logging, install_loop_logging
 
 from ...utils import constants
 
-
-log_colors_config = {
-    'DEBUG': 'green',  # cyan white
-    'INFO': 'white',
-    'WARNING': 'yellow',
-    'ERROR': 'red',
-    'CRITICAL': 'cyan',
-}
 
 # Log rotation configuration to prevent unbounded log file growth
 LOG_FILE_MAX_BYTES = 10 * 1024 * 1024  # 10MB per file
@@ -160,7 +152,8 @@ class DailyGroupedRotatingFileHandler(logging.handlers.RotatingFileHandler):
     ``api/http/service/maintenance.py`` (``LOG_FILE_PATTERN``).
     """
 
-    def __init__(self, log_dir: str, max_bytes: int, backup_count: int, encoding: str = 'utf-8'):
+    def __init__(self, log_dir: str, max_bytes: int, backup_count: int, encoding: str = 'utf-8', suffix: str = ''):
+        self.suffix = suffix
         self.log_dir = log_dir
         self._current_date = self._today()
         super().__init__(
@@ -175,7 +168,7 @@ class DailyGroupedRotatingFileHandler(logging.handlers.RotatingFileHandler):
         return time.strftime('%Y-%m-%d', time.localtime())
 
     def _build_path(self, date_str: str) -> str:
-        return os.path.join(self.log_dir, 'langbot-%s.log' % date_str)
+        return os.path.join(self.log_dir, f'langbot-{date_str}.log{self.suffix}')
 
     def shouldRollover(self, record):
         # Roll over when the day changes, regardless of file size.
@@ -201,9 +194,10 @@ class DailyGroupedRotatingFileHandler(logging.handlers.RotatingFileHandler):
 
 
 async def init_logging(extra_handlers: list[logging.Handler] = None) -> logging.Logger:
-    # Remove all existing loggers
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
+        if getattr(handler, '_langbot_owned', False):
+            handler.close()
 
     level = logging.INFO
 
@@ -218,42 +212,21 @@ async def init_logging(extra_handlers: list[logging.Handler] = None) -> logging.
 
     qcg_logger.setLevel(level)
 
-    color_formatter = colorlog.ColoredFormatter(
-        fmt='%(log_color)s[%(asctime)s.%(msecs)03d] %(filename)s (%(lineno)d) - [%(levelname)s] : %(message)s',
-        datefmt='%m-%d %H:%M:%S',
-        log_colors=log_colors_config,
-    )
-
+    qcg_logger.propagate = True
+    logging.root.setLevel(logging.WARNING)
     stream_handler = NonBlockingConsoleHandler(sys.stdout)
-
-    # Rotate by size within a day and switch files when the date changes,
-    # so long-running processes still produce a log file for the current day.
-    rotating_file_handler = DailyGroupedRotatingFileHandler(
-        LOG_DIR,
-        max_bytes=LOG_FILE_MAX_BYTES,
-        backup_count=LOG_FILE_BACKUP_COUNT,
-        encoding='utf-8',
-    )
-
-    log_handlers: list[logging.Handler] = [
-        stream_handler,
-        rotating_file_handler,
-    ]
-    log_handlers += extra_handlers if extra_handlers is not None else []
-
-    for handler in log_handlers:
-        handler.setLevel(level)
-        handler.setFormatter(color_formatter)
-        qcg_logger.addHandler(handler)
-
-    qcg_logger.debug('Logging initialized, log level: %s' % level)
-    logging.basicConfig(
-        level=logging.CRITICAL,  # Set log output format
-        format='[DEPR][%(asctime)s.%(msecs)03d] %(pathname)s (%(lineno)d) - [%(levelname)s] :\n%(message)s',
-        # Log output format
-        # -8 is a placeholder, left-align the output, and output length is 8
-        datefmt='%Y-%m-%d %H:%M:%S',  # Time output format
-        handlers=[logging.NullHandler()],
-    )
-
+    stream_handler.setFormatter(ServiceFormatter('CORE', sys.stdout))
+    handlers = [stream_handler]
+    for suffix in ('', '.wf'):
+        handler = DailyGroupedRotatingFileHandler(LOG_DIR, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT, suffix=suffix)
+        handler.setLevel(logging.WARNING if suffix else level)
+        handlers.append(handler)
+    handlers.extend(extra_handlers or [])
+    for handler in handlers:
+        if handler is not stream_handler:
+            handler.setFormatter(ServiceFormatter('CORE'))
+        handler._langbot_owned = True
+        logging.root.addHandler(handler)
+    install_exception_logging()
+    install_loop_logging()
     return qcg_logger

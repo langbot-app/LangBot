@@ -65,6 +65,7 @@ def parse(text, service):
 
 def records(lines, service):
     previous = None
+    last_timestamp = None
     in_trace = False
     for raw in lines:
         text = raw.rstrip('\r\n')
@@ -81,11 +82,16 @@ def records(lines, service):
             if in_trace and re.fullmatch(r'[\w.]+(?::.*)?', text):
                 previous.continuation.append(text)
                 previous.exc_type = text.partition(':')[0]
+                previous.sample += '\n' + text
                 in_trace = False
                 continue
         if previous is not None:
             yield previous
         previous = parse(text, service)
         in_trace = text == TRACE
+        if in_trace:
+            previous.ts = last_timestamp
+        elif previous.ts:
+            last_timestamp = previous.ts
     if previous is not None:
         yield previous

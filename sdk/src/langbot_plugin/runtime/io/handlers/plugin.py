@@ -100,6 +100,7 @@ class PluginConnectionHandler(handler.Handler):
         file_storage_dir: str | None = None,
         max_file_bytes: int | None = None,
         certified_shared_stdio: bool = False,
+        log_plugin: str | None = None,
     ):
         async def disconnect_callback(hdl: handler.Handler):
             logger.debug("disconnect_callback")
@@ -141,7 +142,7 @@ class PluginConnectionHandler(handler.Handler):
 
         # Capture the plugin subprocess's stderr (Python `logging` output) into
         # a per-plugin ring buffer so LangBot can show logs on the detail page.
-        self.log_buffer = PluginLogBuffer()
+        self.log_buffer = PluginLogBuffer(plugin=log_plugin)
         if self.stdio_process is not None and self.stdio_process.stderr is not None:
             self.log_buffer.start_reader(self.stdio_process.stderr)
 
@@ -274,6 +275,7 @@ class PluginConnectionHandler(handler.Handler):
                     registration_capability if prod_mode else None
                 ),
             )
+            self.supports_log_trace = data.get("log_trace") is True
             return handler.ActionResponse.success({})
 
         @self.action(PluginToRuntimeAction.REPLY_MESSAGE)
@@ -1442,6 +1444,10 @@ class PluginConnectionHandler(handler.Handler):
         For debug plugins, this will trigger reconnection.
         For production plugins, this is just a notification before shutdown.
         """
+        from langbot_plugin.runtime.io.connections.stdio import StdioConnection
+
+        if isinstance(self.conn, StdioConnection):
+            self.conn.expecting_eof = True
         resp = await self.call_action(
             RuntimeToPluginAction.SHUTDOWN,
             {},

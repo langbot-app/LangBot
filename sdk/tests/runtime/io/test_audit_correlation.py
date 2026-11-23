@@ -1,4 +1,5 @@
 import asyncio
+import json
 from unittest.mock import AsyncMock
 
 import pytest
@@ -15,6 +16,24 @@ from langbot_plugin.entities.io.req import ActionRequest
 from langbot_plugin.entities.io.resp import ActionResponse
 from langbot_plugin.runtime.io.handler import Handler
 from tests.helpers.protocol import ProtocolConnection
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("supported", [False, True])
+async def test_trace_only_sent_to_advertising_peer(supported):
+    from langbot_plugin.utils.log import log_scope
+
+    connection = ProtocolConnection()
+    handler = Handler(connection)
+    handler.supports_log_trace = supported
+    with log_scope("Y-0123456789abcdef"):
+        await handler._send_message(ActionRequest.make_request(1, "ping", {}))
+    wire = json.loads(connection.sent[0])
+    assert wire["data"] == {}
+    if supported:
+        assert wire["log_trace_id"] == "Y-0123456789abcdef"
+    else:
+        assert "log_trace_id" not in wire
 
 
 @pytest.mark.asyncio

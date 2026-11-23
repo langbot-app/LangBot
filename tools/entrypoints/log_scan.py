@@ -170,7 +170,7 @@ def main():
         json.loads((path / 'log-anomalies.json' if path.is_dir() else path).read_text())['warn_counts']
         for path in args.baseline
     ]
-    report = scan(files, yaml.safe_load(args.allowlist.read_text()), baselines)
+    report = scan(files, yaml.safe_load(args.allowlist.read_text()) or [], baselines)
     args.output.mkdir(exist_ok=True, parents=True)
     (args.output / 'log-anomalies.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
     (args.output / 'log-anomalies.md').write_text(markdown(report))

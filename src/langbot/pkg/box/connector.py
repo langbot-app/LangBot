@@ -420,7 +420,8 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             self.client.set_handler(handler)
             self._handler_task = asyncio.create_task(handler.run())
             try:
-                await handler.call_action(CommonAction.PING, {})
+                pong = await handler.call_action(CommonAction.PING, {})
+                handler.supports_log_trace = isinstance(pong, dict) and pong.get('log_trace') is True
                 if self._filtered_box_config:
                     await self.client.init(self._filtered_box_config)
                     self.ap.logger.debug('Sent box configuration to Box runtime via INIT.')

@@ -61,6 +61,8 @@ def test_mixed_log(tmp_path):
     assert set(anomalies) == {'error', 'traceback', 'empty_exception_message', 'http_5xx', 'warn', 'unparsed_ratio'}
     assert anomalies['http_5xx']['count'] == 2
     assert 'ValueError' in anomalies['traceback']['fingerprint']
+    assert anomalies['traceback']['first_ts'] == '2026-11-23 13:50:27.954099+08:00'
+    assert anomalies['traceback']['sample'].endswith('ValueError: bad input')
     assert report['services']['core'] == {'lines': 10, 'unparsed': 1}
     assert 'hidden' not in json.dumps(report)
 
@@ -78,3 +80,18 @@ def test_baseline_of_allowlisted_warnings(tmp_path):
     assert (group['kind'], group['count'], group['baseline_median']) == ('warn_growth', 31, 10)
     path.write_text((OLD + 'retry 2\n') * 30)
     assert not scan(files, rules, baselines)['anomalies']
+
+
+def test_empty_allowlist(tmp_path, monkeypatch):
+    from tools.entrypoints import log_scan
+
+    logs = tmp_path / 'runtime.log'
+    logs.write_text(OLD + 'warning')
+    rules = tmp_path / 'allow.yaml'
+    rules.touch()
+    monkeypatch.setattr(
+        'sys.argv', ['log_scan', '--input', str(logs), '--allowlist', str(rules), '--output', str(tmp_path)]
+    )
+    log_scan.main()
+    report = json.loads((tmp_path / 'log-anomalies.json').read_text())
+    assert report['anomalies'][0]['kind'] == 'warn'
