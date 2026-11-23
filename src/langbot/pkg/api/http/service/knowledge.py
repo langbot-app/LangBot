@@ -9,6 +9,7 @@ from ....api.http.authz import WorkspaceRequiredError
 from ....api.http.context import ExecutionContext, RequestContext
 from ....core import app
 from ....entity.persistence import rag as persistence_rag
+from ....rag.errors import KnowledgeIngestionInProgressError
 from ....workspace.errors import WorkspaceNotFoundError
 from .secrets import redact_secrets, restore_secret_placeholders
 from .tenant import TenantContext, require_workspace_uuid
@@ -451,10 +452,17 @@ class KnowledgeService:
                     .where(persistence_rag.File.kb_id == kb_uuid)
                 )
             ).all()
-            if any(file.status in {'pending', 'processing', 'interrupted'} for file in files):
-                raise RuntimeError(
-                    'Knowledge base has active or interrupted ingestion; retain its files and reconcile '
-                    'plugin/upstream state before deleting the knowledge base.'
+            # Pending/processing tasks may still create upstream state after the
+            # collection is dropped, so wait for them. Interrupted files are
+            # different: their task is gone, only the remote outcome is unknown.
+            # Deleting the whole knowledge base drops the engine collection and
+            # every document in it, which settles that unknown outcome; late
+            # Host vector writes are refused once ``deleting`` is set. Refusing
+            # here left knowledge bases with interrupted files undeletable.
+            if any(file.status in {'pending', 'processing'} for file in files):
+                raise KnowledgeIngestionInProgressError(
+                    'Knowledge base has active ingestion (pending or processing files); wait for it to '
+                    'finish before deleting the knowledge base.'
                 )
             await uow.execute(
                 sqlalchemy.update(persistence_rag.KnowledgeBase)
