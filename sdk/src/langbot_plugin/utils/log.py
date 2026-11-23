@@ -100,7 +100,8 @@ class ServiceFormatter(logging.Formatter):
         line = (
             f"[{now}] {level:<5} [{module}] {record.funcName} ({record.filename}:{record.lineno}) "
             f"[{record.process}][{record.threadName}/{task.get_name() if task else '-'}]"
-            f"[ws={workspace_id.get()}][{getattr(record, 'log_trace_id', None) or trace_id.get()}] {msg}{stack}"
+            f"[ws={getattr(record, 'log_workspace_id', None) or workspace_id.get()}]"
+            f"[{getattr(record, 'log_trace_id', None) or trace_id.get()}] {msg}{stack}"
         )
         line = _ANSI.sub("", line)
         if self.color:

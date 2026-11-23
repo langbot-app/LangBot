@@ -1351,6 +1351,8 @@ class Handler(abc.ABC):
                 ),
                 self.action_invocation_scope(action_name, action_context),
             ):
+                if not action_name.startswith("__"):
+                    logger.debug("[Action] %s", action_name)
                 with blocking_work_scope(
                     getattr(action_context, "workspace_uuid", None)
                 ):
@@ -1433,8 +1435,6 @@ class Handler(abc.ABC):
                 self._action_task_contexts.pop(current_task, None)
                 self._action_cancel_callbacks.pop(current_task, None)
                 self._pending_action_cancellations.pop(current_task, None)
-            if action_name and not action_name.startswith("__"):
-                logger.debug("[Action] %s", action_name)
 
     def set_current_action_cancel_callback(self, callback: Callable[[], None]) -> None:
         """Run a synchronous fence before peer cancellation reaches action code."""

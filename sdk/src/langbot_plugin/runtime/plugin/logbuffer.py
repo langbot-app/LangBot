@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # We only need the level here; the rest is kept verbatim as the message text.
 _LEVEL_RE = re.compile(
     r"^\[[^\]]+\] (?:.*?- \[(?P<old>[A-Z]+)\] : |(?P<new>[A-Z]+) +\[[^\]]+\] "
-    r"\S+ \(.+?:\d+\) \[\d+\]\[[^\]]*\]\[ws=[^\]]+\]\[(?P<trace>Y-[0-9a-f]{16}|-)\] )"
+    r"\S+ \(.+?:\d+\) \[\d+\]\[[^\]]*\]\[ws=(?P<workspace>[^\]]+)\]\[(?P<trace>Y-[0-9a-f]{16}|-)\] )"
 )
 
 # Known logging level names, used to validate the parsed token.
@@ -79,13 +79,19 @@ class PluginLogBuffer:
         )
         if self.plugin and _level_no(level) >= logging.WARNING:
             now = time.monotonic()
-            extra = {"log_module": "PLUGIN." + self.plugin}
+            extra = {
+                "log_module": "PLUGIN." + self.plugin,
+                "log_workspace_id": "-",
+                "log_trace_id": "-",
+            }
             if now - self._window >= 10:
                 if self._suppressed:
                     logger.warning("suppressed %d lines", self._suppressed, extra=extra)
                 self._window, self._forwarded, self._suppressed = now, 0, 0
             if self._forwarded < 50:
-                extra["log_trace_id"] = match.group("trace") if match else None
+                if match and match.group("trace"):
+                    extra["log_trace_id"] = match.group("trace")
+                    extra["log_workspace_id"] = match.group("workspace")
                 logger.log(
                     _level_no(level),
                     "%s",
