@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: slack
+  label:
+    en_US: Slack
+    zh_Hans: Slack
+    zh_Hant: Slack
+    ja_JP: Slack
+    th_TH: Slack
+    vi_VN: Slack
+    es_ES: Slack
+  description:
+    en_US: Slack Adapter
+    zh_Hans: Slack 适配器，支持 Webhook 和无需公网地址的长连接，请查看文档了解使用方式
+    zh_Hant: Slack 適配器，支援 Webhook 或無需公開網址的 Socket Mode。
+    ja_JP: Slack アダプター。Webhook または公開 URL が不要な Socket Mode を利用できます。
+    th_TH: อะแดปเตอร์ Slack ต้องการที่อยู่สาธารณะเพื่อรับการแจ้งเตือนข้อความจาก Slack โปรดดูเอกสารประกอบสำหรับวิธีการใช้งาน
+    vi_VN: Bộ điều hợp Slack, cần địa chỉ công cộng để nhận thông báo tin nhắn từ Slack, vui lòng xem tài liệu để biết cách sử dụng
+    es_ES: Adaptador de Slack, requiere una dirección pública para recibir notificaciones de mensajes de Slack, consulte la documentación para obtener instrucciones de uso
+  icon: slack.png
+spec:
+  legacy: true
+  categories:
+    - popular
+    - global
+  help_links:
+    zh: https://langbot.app/docs/zh/usage/platforms/slack
+    en: https://langbot.app/docs/en/usage/platforms/slack
+    ja: https://langbot.app/docs/ja/usage/platforms/slack
+  config:
+    - name: quick_setup
+      label: {en_US: Quick Slack setup, zh_Hans: Slack 快速配置, zh_Hant: Slack 快速設定, ja_JP: Slack クイック設定}
+      description: {en_US: Create and configure an app using App Configuration Tokens., zh_Hans: 填入配置令牌，自动创建应用并配置权限，授权后填入凭据。, zh_Hant: 填入設定權杖，自動建立應用程式並設定權限，授權後填入憑證。, ja_JP: 設定トークンでアプリを作成し、承認後に認証情報を入力します。}
+      type: qr-code-login
+      login_platform: slack
+      required: false
+    - name: socket_mode
+      label: {en_US: Socket Mode, zh_Hans: 长连接模式, zh_Hant: 長連線模式, ja_JP: Socket Mode}
+      type: boolean
+      default: false
+      required: false
+    - name: app_token
+      label: {en_US: App-Level Token, zh_Hans: App-Level Token, zh_Hant: App-Level Token, ja_JP: App-Level Token}
+      description: {en_US: Generate an xapp- token with connections:write in Basic Information., zh_Hans: 在 Basic Information 中生成带 connections:write 权限的 xapp- 令牌。, zh_Hant: 在 Basic Information 產生具有 connections:write 權限的 xapp- 權杖。, ja_JP: Basic Information で connections:write 権限の xapp- トークンを生成してください。}
+      type: string
+      required: false
+      default: ''
+      show_if: {field: socket_mode, operator: eq, value: true}
+    - name: webhook_url
+      show_if: {field: socket_mode, operator: eq, value: false}
+      label:
+        en_US: Webhook Callback URL
+        zh_Hans: Webhook 回调地址
+        zh_Hant: Webhook 回調地址
+        ja_JP: Webhook コールバック URL
+        th_TH: URL การเรียกกลับ Webhook
+        vi_VN: URL gọi lại Webhook
+        es_ES: URL de devolución de llamada Webhook
+      description:
+        en_US: Copy this URL and paste it into your Slack app's event subscription configuration
+        zh_Hans: 复制此地址并粘贴到 Slack 应用的事件订阅配置中
+        zh_Hant: 複製此地址並貼到 Slack 應用的事件訂閱設定中
+        ja_JP: この URL をコピーして Slack アプリのイベントサブスクリプション設定に貼り付けてください
+        th_TH: คัดลอก URL นี้แล้ววางในการตั้งค่าการสมัครรับเหตุการณ์ของแอป Slack ของคุณ
+        vi_VN: Sao chép URL này và dán vào cấu hình đăng ký sự kiện của ứng dụng Slack của bạn
+        es_ES: Copie esta URL y péguela en la configuración de suscripción de eventos de su aplicación Slack
+      type: webhook-url
+      required: false
+      default: ""
+    - name: bot_token
+      label:
+        en_US: Bot Token
+        zh_Hans: 机器人令牌
+        zh_Hant: 機器人令牌
+        ja_JP: ボットトークン
+        th_TH: โทเค็นบอท
+        vi_VN: Mã thông báo Bot
+        es_ES: Token del bot
+      type: string
+      required: true
+      default: ""
+    - name: signing_secret
+      show_if: {field: socket_mode, operator: eq, value: false}
+      label:
+        en_US: signing_secret
+        zh_Hans: 密钥
+        zh_Hant: 密鑰
+        ja_JP: 署名シークレット
+        th_TH: คีย์ลายเซ็น
+        vi_VN: Khóa ký
+        es_ES: Secreto de firma
+      type: string
+      required: false
+      default: ""
+execution:
+  python:
+    path: ./slack.py
+    attr: SlackAdapter

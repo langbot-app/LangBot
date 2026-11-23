@@ -1,0 +1,9 @@
+node_modules/
+coverage/
+.tap/
+__pycache__/
+*.pyc
+skills/.env.local
+reports/
+skills/*/reports/
+.browser/

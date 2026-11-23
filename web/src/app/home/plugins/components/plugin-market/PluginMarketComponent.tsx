@@ -1,0 +1,997 @@
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  Suspense,
+} from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Search,
+  Puzzle,
+  Server,
+  Sparkles,
+  Wrench,
+  AudioWaveform,
+  Hash,
+  Book,
+  FileText,
+  AppWindow,
+  Bot,
+  X,
+  LayoutGrid,
+} from 'lucide-react';
+import PluginMarketCardComponent from './plugin-market-card/PluginMarketCardComponent';
+import { PluginMarketCardVO } from './plugin-market-card/PluginMarketCardVO';
+import { resolveInstalledState } from './marketplace-installed';
+import { useMarketplaceInstalledIndex } from './useMarketplaceInstalledIndex';
+import { RecommendationLists } from './RecommendationLists';
+import { MarketChipRow, MarketTypeTiles } from './MarketTypeTiles';
+import type { RecommendationList } from './RecommendationLists';
+import {
+  getCloudServiceClient,
+  getCloudServiceClientSync,
+} from '@/app/infra/http';
+import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
+import { PluginV4, PluginV4Status } from '@/app/infra/entities/plugin';
+import { extractI18nObject } from '@/i18n/I18nProvider';
+import { toast } from 'sonner';
+import { ApiRespMarketplacePlugins } from '@/app/infra/entities/api';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { Button } from '@/components/ui/button';
+import { PluginTag } from '@/app/infra/http/CloudServiceClient';
+
+interface SortOption {
+  value: string;
+  label: string;
+  sortBy: string;
+  sortOrder: string;
+}
+
+// Persist the market filter conditions (type / component / tags / sort) across
+// visits via localStorage.
+const MARKET_FILTERS_KEY = 'langbot_market_filters';
+const MARKET_TYPE_VALUES = ['plugin', 'mcp', 'skill'];
+const MARKET_COMPONENT_VALUES = [
+  'Tool',
+  'Command',
+  'EventListener',
+  'KnowledgeEngine',
+  'Parser',
+  'Page',
+  'Runner',
+];
+
+function getComponentFilterFromQuery(
+  searchParams: Pick<URLSearchParams, 'get'>,
+): string | null {
+  const component = searchParams.get('component');
+  return component && MARKET_COMPONENT_VALUES.includes(component)
+    ? component
+    : null;
+}
+
+interface MarketFilters {
+  typeFilter?: string;
+  componentFilter?: string;
+  selectedTags?: string[];
+  sortOption?: string;
+}
+function loadMarketFilters(): MarketFilters {
+  try {
+    return JSON.parse(localStorage.getItem(MARKET_FILTERS_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+// 内部组件，用于处理搜索参数
+function MarketPageContent({
+  installPlugin,
+  headerActions,
+  installDisabled,
+  installDisabledTooltip,
+}: {
+  installPlugin: (plugin: PluginV4) => void;
+  headerActions?: React.ReactNode;
+  installDisabled?: boolean;
+  installDisabledTooltip?: string;
+}) {
+  const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [componentFilter, setComponentFilter] = useState<string>(
+    () =>
+      getComponentFilterFromQuery(searchParams) ??
+      loadMarketFilters().componentFilter ??
+      'all',
+  );
+  const [runnerUsage, setRunnerUsage] = useState(() => {
+    const value = searchParams.get('runner_usage');
+    return value === 'agent' || value === 'event' ? value : 'all';
+  });
+  const activeRunnerUsage =
+    componentFilter === 'Runner' && runnerUsage !== 'all'
+      ? (runnerUsage as 'agent' | 'event')
+      : undefined;
+  const [typeFilter, setTypeFilter] = useState<string>(() => {
+    if (getComponentFilterFromQuery(searchParams)) {
+      return 'plugin';
+    }
+    const type = searchParams.get('type');
+    if (type && MARKET_TYPE_VALUES.includes(type)) {
+      return type;
+    }
+    const saved = loadMarketFilters().typeFilter;
+    return saved && MARKET_TYPE_VALUES.includes(saved) ? saved : 'all';
+  });
+  const [selectedTags, setSelectedTags] = useState<string[]>(
+    () => loadMarketFilters().selectedTags ?? [],
+  );
+  const [availableTags, setAvailableTags] = useState<PluginTag[]>([]);
+  const [tagNames, setTagNames] = useState<Record<string, string>>({});
+  const [recommendationLists, setRecommendationLists] = useState<
+    RecommendationList[]
+  >([]);
+  // Installed extensions from the sidebar; used to mark market cards.
+  const installedIndex = useMarketplaceInstalledIndex();
+  const [plugins, setPlugins] = useState<PluginMarketCardVO[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  // Per-format extension counts shown next to the type filter options.
+  const [typeCounts, setTypeCounts] = useState<Record<string, number>>({});
+  const [sortOption, setSortOption] = useState<string>(
+    () => loadMarketFilters().sortOption ?? 'hot_score_desc',
+  );
+
+  // Persist filter conditions so they survive navigation / reload.
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        MARKET_FILTERS_KEY,
+        JSON.stringify({
+          typeFilter,
+          componentFilter,
+          selectedTags,
+          sortOption,
+        }),
+      );
+    } catch {
+      // ignore storage errors
+    }
+  }, [typeFilter, componentFilter, selectedTags, sortOption]);
+
+  const pageSize = 24; // 每页24个
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const isComposingRef = useRef(false);
+
+  // 排序选项
+  const sortOptions: SortOption[] = [
+    {
+      value: 'hot_score_desc',
+      label: t('market.sort.hottest'),
+      sortBy: 'hot_score',
+      sortOrder: 'DESC',
+    },
+    {
+      value: 'created_at_desc',
+      label: t('market.sort.recentlyAdded'),
+      sortBy: 'created_at',
+      sortOrder: 'DESC',
+    },
+    {
+      value: 'updated_at_desc',
+      label: t('market.sort.recentlyUpdated'),
+      sortBy: 'updated_at',
+      sortOrder: 'DESC',
+    },
+    {
+      value: 'install_count_desc',
+      label: t('market.sort.mostDownloads'),
+      sortBy: 'install_count',
+      sortOrder: 'DESC',
+    },
+    {
+      value: 'install_count_asc',
+      label: t('market.sort.leastDownloads'),
+      sortBy: 'install_count',
+      sortOrder: 'ASC',
+    },
+  ];
+
+  const componentOptions = [
+    { value: 'all', label: t('market.allComponents'), icon: null },
+    { value: 'Tool', label: t('market.componentName.Tool'), icon: Wrench },
+    { value: 'Command', label: t('market.componentName.Command'), icon: Hash },
+    {
+      value: 'EventListener',
+      label: t('market.componentName.EventListener'),
+      icon: AudioWaveform,
+    },
+    {
+      value: 'KnowledgeEngine',
+      label: t('market.componentName.KnowledgeEngine'),
+      icon: Book,
+    },
+    {
+      value: 'Parser',
+      label: t('market.componentName.Parser'),
+      icon: FileText,
+    },
+    {
+      value: 'Page',
+      label: t('market.componentName.Page'),
+      icon: AppWindow,
+    },
+    {
+      value: 'Runner',
+      label: t('market.componentName.Runner'),
+      icon: Bot,
+    },
+  ];
+
+  // 获取当前排序参数
+  const getCurrentSort = useCallback(() => {
+    const option = sortOptions.find((opt) => opt.value === sortOption);
+    return option
+      ? { sortBy: option.sortBy, sortOrder: option.sortOrder }
+      : { sortBy: 'hot_score', sortOrder: 'DESC' };
+  }, [sortOption]);
+
+  // 将API响应转换为VO对象
+  const transformToVO = useCallback(
+    (plugin: PluginV4): PluginMarketCardVO => {
+      const cloudClient = getCloudServiceClientSync();
+      const iconURL = cloudClient.resolveMarketplaceIconURL(
+        plugin.type,
+        plugin.author,
+        plugin.name,
+        plugin.icon,
+      );
+
+      return new PluginMarketCardVO({
+        pluginId: plugin.author + ' / ' + plugin.name,
+        author: plugin.author,
+        pluginName: plugin.name,
+        label: extractI18nObject(plugin.label),
+        description:
+          extractI18nObject(plugin.description) || t('market.noDescription'),
+        installCount: plugin.install_count || 0,
+        likeCount: plugin.like_count || 0,
+        iconURL,
+        githubURL: plugin.repository,
+        version: plugin.latest_version,
+        certificationStatus: plugin.certification_status,
+        components: plugin.components || {},
+        tags: plugin.tags || [],
+        type: plugin.type,
+      });
+    },
+    [t],
+  );
+
+  // 获取插件列表
+  // Latest page-1 request wins; quick type switches must not let an older
+  // response overwrite the list the user switched to.
+  const fetchSeq = useRef(0);
+  const fetchPlugins = useCallback(
+    async (
+      page: number,
+      isSearch: boolean = false,
+      reset: boolean = false,
+      queryOverride?: string,
+    ) => {
+      const seq = page === 1 ? ++fetchSeq.current : fetchSeq.current;
+      if (page === 1) {
+        setIsLoading(true);
+      } else {
+        setIsLoadingMore(true);
+      }
+
+      try {
+        const { sortBy, sortOrder } = getCurrentSort();
+        const query = (queryOverride ?? searchQuery).trim();
+
+        const response =
+          await getCloudServiceClientSync().searchMarketplaceExtensions({
+            query: isSearch ? query : '',
+            page,
+            page_size: pageSize,
+            sort_by: sortBy,
+            sort_order: sortOrder,
+            type_filter: typeFilter === 'all' ? undefined : typeFilter,
+            component_filter:
+              componentFilter === 'all' ? undefined : componentFilter,
+            runner_usage: activeRunnerUsage,
+            tags_filter: selectedTags.length > 0 ? selectedTags : undefined,
+          });
+
+        if (seq !== fetchSeq.current) return;
+        const data: ApiRespMarketplacePlugins = response;
+        const newPlugins = data.plugins.map(transformToVO);
+        const total = data.total;
+
+        if (reset || page === 1) {
+          setPlugins(newPlugins);
+        } else {
+          setPlugins((prev) => [...prev, ...newPlugins]);
+        }
+
+        setTotal(total);
+        setHasMore(
+          newPlugins.length > 0 &&
+            (reset || page === 1
+              ? newPlugins.length
+              : plugins.length + newPlugins.length) < total,
+        );
+      } catch (error) {
+        if (seq !== fetchSeq.current) return;
+        console.error('Failed to fetch plugins:', error);
+        toast.error(t('market.loadFailed'));
+      } finally {
+        if (seq === fetchSeq.current) {
+          setIsLoading(false);
+          setIsLoadingMore(false);
+        }
+      }
+    },
+    [
+      searchQuery,
+      componentFilter,
+      activeRunnerUsage,
+      selectedTags,
+      pageSize,
+      transformToVO,
+      plugins.length,
+      getCurrentSort,
+      typeFilter,
+    ],
+  );
+
+  // 初始加载
+  useEffect(() => {
+    // Resolve the cloud service base URL (from system info) before any
+    // marketplace fetch — otherwise the sync client may still hold the default
+    // URL and hit space.langbot.app instead of the configured instance.
+    (async () => {
+      await getCloudServiceClient();
+      fetchPlugins(1, false, true);
+      fetchAvailableTags();
+      fetchRecommendationLists();
+      fetchTypeCounts();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 获取推荐列表（精选，混合插件/MCP/Skill）
+  const fetchRecommendationLists = async () => {
+    try {
+      const client = await getCloudServiceClient();
+      const { lists } = await client.getRecommendationLists();
+      setRecommendationLists(lists || []);
+    } catch (error) {
+      console.error('Failed to fetch recommendation lists:', error);
+    }
+  };
+
+  // 获取可用标签
+  const fetchAvailableTags = async () => {
+    try {
+      const response = await getCloudServiceClientSync().getAllTags();
+      const tags = response.tags || [];
+      setAvailableTags(tags);
+
+      // Build tag names map for all components to use
+      const nameMap: Record<string, string> = {};
+      tags.forEach((tag: PluginTag) => {
+        const displayName = {
+          en_US: tag.display_name.en_US || tag.tag,
+          zh_Hans: tag.display_name.zh_Hans || tag.tag,
+          zh_Hant: tag.display_name.zh_Hant,
+          ja_JP: tag.display_name.ja_JP,
+        };
+        nameMap[tag.tag] = extractI18nObject(displayName);
+      });
+      setTagNames(nameMap);
+    } catch (error) {
+      console.error('Failed to fetch tags:', error);
+    }
+  };
+
+  // 获取各扩展格式的数量（用于筛选器标签上的计数）
+  const fetchTypeCounts = async () => {
+    const types = ['plugin', 'mcp', 'skill'];
+    try {
+      const results = await Promise.all(
+        types.map((type) =>
+          getCloudServiceClientSync()
+            .searchMarketplaceExtensions({
+              page: 1,
+              page_size: 1,
+              type_filter: type,
+            })
+            .then((res) => res.total)
+            .catch(() => 0),
+        ),
+      );
+      const counts: Record<string, number> = {};
+      types.forEach((type, i) => {
+        counts[type] = results[i];
+      });
+      counts.all = results.reduce((sum, n) => sum + n, 0);
+      setTypeCounts(counts);
+    } catch (error) {
+      console.error('Failed to fetch extension type counts:', error);
+    }
+  };
+
+  // 搜索功能
+  const handleSearch = useCallback(
+    (query: string) => {
+      setSearchQuery(query);
+      setCurrentPage(1);
+      setPlugins([]);
+      fetchPlugins(1, !!query.trim(), true, query);
+    },
+    [fetchPlugins],
+  );
+
+  // 防抖搜索
+  const handleSearchInputChange = useCallback(
+    (value: string) => {
+      setSearchQuery(value);
+
+      // 清除之前的定时器
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+
+      if (isComposingRef.current) {
+        return;
+      }
+
+      // 设置新的定时器
+      searchTimeoutRef.current = setTimeout(() => {
+        handleSearch(value);
+      }, 500);
+    },
+    [handleSearch],
+  );
+
+  // 排序选项变化处理
+  const handleSortChange = useCallback((value: string) => {
+    setSortOption(value);
+    setCurrentPage(1);
+  }, []);
+
+  // Handle type filter change
+  const handleTypeFilterChange = useCallback(
+    (value: string) => {
+      setTypeFilter(value);
+      if (value !== 'plugin') {
+        setComponentFilter('all');
+      }
+      setCurrentPage(1);
+      setSelectedTags([]);
+
+      // Update URL query param to keep it in sync
+      const params = new URLSearchParams(searchParams);
+      if (value === 'all') {
+        params.delete('type');
+      } else {
+        params.set('type', value);
+      }
+      if (value !== 'plugin') {
+        params.delete('component');
+      }
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  const handleComponentFilterChange = useCallback(
+    (value: string) => {
+      setComponentFilter(value);
+      setCurrentPage(1);
+
+      const params = new URLSearchParams(searchParams);
+      if (value !== 'Runner') {
+        setRunnerUsage('all');
+        params.delete('runner_usage');
+      }
+      if (value === 'all') {
+        params.delete('component');
+      } else {
+        setTypeFilter('plugin');
+        params.set('type', 'plugin');
+        params.set('component', value);
+      }
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  // 当排序选项或组件筛选或类型筛选变化时重新加载数据
+  useEffect(() => {
+    fetchPlugins(1, !!searchQuery.trim(), true);
+  }, [sortOption, componentFilter, typeFilter, activeRunnerUsage]);
+
+  // Tags 筛选变化时重新搜索
+  useEffect(() => {
+    if (!isLoading) {
+      setCurrentPage(1);
+      fetchPlugins(1, searchQuery.trim() !== '', true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTags]);
+
+  // 处理 tags 变化
+  const handleTagsChange = useCallback((tags: string[]) => {
+    setSelectedTags(tags);
+  }, []);
+
+  // 处理安装插件
+  const handleInstallPlugin = useCallback(
+    async (cardVO: PluginMarketCardVO) => {
+      try {
+        if (cardVO.type === 'mcp' || cardVO.type === 'skill') {
+          // For MCP and Skill, directly pass the data - backend will fetch from Space
+          const pluginV4: PluginV4 = {
+            id: 0,
+            plugin_id: `${cardVO.author}/${cardVO.pluginName}`,
+            mcp_id:
+              cardVO.type === 'mcp'
+                ? `${cardVO.author}/${cardVO.pluginName}`
+                : undefined,
+            skill_id:
+              cardVO.type === 'skill'
+                ? `${cardVO.author}/${cardVO.pluginName}`
+                : undefined,
+            author: cardVO.author,
+            name: cardVO.pluginName,
+            label: { en_US: cardVO.label, zh_Hans: cardVO.label },
+            description: {
+              en_US: cardVO.description,
+              zh_Hans: cardVO.description,
+            },
+            icon: cardVO.iconURL,
+            repository: cardVO.githubURL,
+            tags: cardVO.tags || [],
+            install_count: cardVO.installCount,
+            latest_version: cardVO.version,
+            components: cardVO.components || {},
+            status: PluginV4Status.Live,
+            type: cardVO.type,
+            created_at: '',
+            updated_at: '',
+          };
+          installPlugin(pluginV4);
+          return;
+        }
+
+        // For plugin type, fetch full details via API
+        const response = await getCloudServiceClientSync().getPluginDetail(
+          cardVO.author,
+          cardVO.pluginName,
+        );
+        if (!response?.plugin) {
+          console.error('Failed to install plugin: plugin not found', {
+            author: cardVO.author,
+            pluginName: cardVO.pluginName,
+          });
+          toast.error(t('market.installFailed'));
+          return;
+        }
+        const pluginV4: PluginV4 = response.plugin;
+
+        // Call the install function passed from parent
+        installPlugin(pluginV4);
+      } catch (error) {
+        console.error('Failed to install plugin:', error);
+        toast.error(t('market.installFailed'));
+      }
+    },
+    [installPlugin, t],
+  );
+
+  // 清理定时器
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Annotate cards with installed state derived from the sidebar index. This is
+  // computed (rather than baked into `plugins`) so a finished install updates
+  // the badges as soon as the sidebar refreshes.
+  const visiblePlugins = useMemo(
+    () =>
+      plugins.map((plugin) => {
+        const state = resolveInstalledState(installedIndex, plugin);
+        if (
+          state.installed === plugin.installed &&
+          state.hasUpdate === plugin.hasUpdate
+        ) {
+          return plugin;
+        }
+        return new PluginMarketCardVO({
+          ...plugin,
+          installed: state.installed,
+          hasUpdate: state.hasUpdate,
+        });
+      }),
+    [plugins, installedIndex],
+  );
+
+  // 加载更多
+  const loadMore = useCallback(() => {
+    if (!isLoadingMore && hasMore) {
+      const nextPage = currentPage + 1;
+      setCurrentPage(nextPage);
+      fetchPlugins(nextPage, !!searchQuery.trim());
+    }
+  }, [currentPage, isLoadingMore, hasMore, fetchPlugins, searchQuery]);
+
+  // Check if content fills the viewport and load more if needed
+  const checkAndLoadMore = useCallback(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer || isLoading || isLoadingMore || !hasMore) return;
+
+    const { scrollHeight, clientHeight } = scrollContainer;
+    // If content doesn't fill the viewport (no scrollbar), load more
+    if (scrollHeight <= clientHeight) {
+      loadMore();
+    }
+  }, [loadMore, isLoading, isLoadingMore, hasMore]);
+
+  // Listen to scroll events on the scroll container
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+      // Load more when scrolled to within 100px of the bottom
+      if (scrollTop + clientHeight >= scrollHeight - 100) {
+        loadMore();
+      }
+    };
+
+    scrollContainer.addEventListener('scroll', handleScroll);
+    return () => scrollContainer.removeEventListener('scroll', handleScroll);
+  }, [loadMore]);
+
+  // Check if we need to load more after content changes or initial load
+  useEffect(() => {
+    // Small delay to ensure DOM has updated
+    const timer = setTimeout(() => {
+      checkAndLoadMore();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [plugins, checkAndLoadMore]);
+
+  // Also check on window resize
+  useEffect(() => {
+    const handleResize = () => {
+      checkAndLoadMore();
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [checkAndLoadMore]);
+
+  // 安装插件
+  // const handleInstallPlugin = (plugin: PluginV4) => {
+  // };
+
+  const handleRunnerUsageChange = (value: string) => {
+    setRunnerUsage(value);
+    setCurrentPage(1);
+    const params = new URLSearchParams(searchParams);
+    if (value === 'all') params.delete('runner_usage');
+    else params.set('runner_usage', value);
+    setSearchParams(params, { replace: true });
+  };
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Fixed header section with search, sort, and status */}
+      <div className="flex-none px-3 sm:px-4 py-2 sm:py-4 space-y-4 sm:space-y-6 container mx-auto">
+        {/* 搜索、排序和筛选入口 */}
+        <div className="flex w-full items-center gap-2 sm:gap-3">
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+            <Input
+              placeholder={
+                total > 0
+                  ? t('market.searchPlaceholderCount', { count: total })
+                  : t('market.searchPlaceholder')
+              }
+              value={searchQuery}
+              onChange={(e) => handleSearchInputChange(e.target.value)}
+              onCompositionStart={() => {
+                isComposingRef.current = true;
+              }}
+              onCompositionEnd={(e) => {
+                isComposingRef.current = false;
+                handleSearchInputChange((e.target as HTMLInputElement).value);
+              }}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  if (searchTimeoutRef.current) {
+                    clearTimeout(searchTimeoutRef.current);
+                  }
+                  handleSearch(searchQuery);
+                }
+              }}
+              className="min-w-0 pl-10 pr-4 text-sm sm:text-base"
+            />
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <Select value={sortOption} onValueChange={handleSortChange}>
+              <SelectTrigger className="w-28 shrink-0 text-xs sm:w-40 sm:text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {sortOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {headerActions}
+          </div>
+        </div>
+
+        {/* Extension types as peer tiles (LANG-439) */}
+        <MarketTypeTiles
+          options={[
+            {
+              value: 'all',
+              label: t('market.typeTiles.all'),
+              description: t('market.typeTiles.allDesc'),
+              icon: LayoutGrid,
+              tone: 'bg-background text-foreground ring-1 ring-inset ring-border',
+              activeTone:
+                'bg-blue-50 ring-blue-200 hover:bg-blue-50 dark:bg-blue-950/40 dark:ring-blue-900',
+              activeIcon: 'bg-blue-500 text-white',
+            },
+            {
+              value: 'plugin',
+              label: t('market.typePlugin'),
+              description: t('market.typeTiles.pluginDesc'),
+              icon: Puzzle,
+              tone: 'bg-violet-50 text-violet-600 dark:bg-violet-950/50 dark:text-violet-300',
+              activeTone:
+                'bg-violet-50 ring-violet-200 hover:bg-violet-50 dark:bg-violet-950/40 dark:ring-violet-900',
+              activeIcon: 'bg-violet-500 text-white',
+            },
+            {
+              value: 'mcp',
+              label: t('market.typeMCP'),
+              description: t('market.typeTiles.mcpDesc'),
+              icon: Server,
+              tone: 'bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-300',
+              activeTone:
+                'bg-sky-50 ring-sky-200 hover:bg-sky-50 dark:bg-sky-950/40 dark:ring-sky-900',
+              activeIcon: 'bg-sky-500 text-white',
+            },
+            {
+              value: 'skill',
+              label: t('market.typeSkill'),
+              description: t('market.typeTiles.skillDesc'),
+              icon: Sparkles,
+              tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-300',
+              activeTone:
+                'bg-emerald-50 ring-emerald-200 hover:bg-emerald-50 dark:bg-emerald-950/40 dark:ring-emerald-900',
+              activeIcon: 'bg-emerald-500 text-white',
+            },
+          ].map((o) => ({ ...o, count: typeCounts[o.value] }))}
+          value={componentFilter !== 'all' ? 'plugin' : typeFilter}
+          onChange={(value) => {
+            if (componentFilter !== 'all') handleComponentFilterChange('all');
+            handleTypeFilterChange(value);
+          }}
+        />
+
+        {typeFilter === 'plugin' && (
+          <div className="space-y-2">
+            <MarketChipRow
+              options={componentOptions}
+              value={componentFilter}
+              onChange={handleComponentFilterChange}
+            />
+            {componentFilter === 'Runner' && (
+              <MarketChipRow
+                size="sm"
+                options={[
+                  { value: 'all', label: t('market.runnerUsageAll') },
+                  { value: 'agent', label: t('market.runnerUsageAgent') },
+                  { value: 'event', label: t('market.runnerUsageEvent') },
+                ]}
+                value={runnerUsage}
+                onChange={handleRunnerUsageChange}
+              />
+            )}
+          </div>
+        )}
+
+        {/* 用真实标签做快速筛选 —— 始终单行横向滚动，避免标签变多时换行错位 */}
+        <div className="relative w-full">
+          <div className="scrollbar-hide flex items-center gap-1.5 overflow-x-auto pb-1 pr-6">
+            <Button
+              type="button"
+              variant={selectedTags.length === 0 ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 shrink-0 px-2.5 text-xs"
+              onClick={() => handleTagsChange([])}
+            >
+              {t('market.allExtensions')}
+            </Button>
+            {availableTags.map((tag) => {
+              const selected = selectedTags.includes(tag.tag);
+              return (
+                <Button
+                  key={tag.tag}
+                  type="button"
+                  variant={selected ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-7 shrink-0 px-2.5 text-xs"
+                  onClick={() => {
+                    const newTags = selected
+                      ? selectedTags.filter((t) => t !== tag.tag)
+                      : [...selectedTags, tag.tag];
+                    handleTagsChange(newTags);
+                  }}
+                >
+                  {tagNames[tag.tag] || tag.tag}
+                  {selected && <X className="h-3 w-3" />}
+                </Button>
+              );
+            })}
+          </div>
+          {/* 右侧渐隐，提示还有更多标签可横向滚动查看 */}
+          <div className="pointer-events-none absolute right-0 top-0 bottom-1 w-8 bg-gradient-to-l from-background to-transparent" />
+        </div>
+      </div>
+
+      {/* Scrollable extension list section */}
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto px-3 sm:px-4 pb-6 container mx-auto"
+      >
+        {/* 推荐列表（仅在无搜索/筛选时展示，混合插件/MCP/Skill） */}
+        {!searchQuery &&
+          typeFilter === 'all' &&
+          componentFilter === 'all' &&
+          selectedTags.length === 0 && (
+            <RecommendationLists
+              lists={recommendationLists}
+              tagNames={tagNames}
+              onInstall={handleInstallPlugin}
+              installDisabled={installDisabled}
+              installDisabledTooltip={installDisabledTooltip}
+              installedIndex={installedIndex}
+            />
+          )}
+
+        {isLoading && plugins.length === 0 ? (
+          <div className="flex items-center justify-center py-12">
+            <LoadingSpinner text={t('market.loading')} />
+          </div>
+        ) : plugins.length === 0 ? (
+          <div className="text-center text-muted-foreground py-12">
+            {searchQuery ? t('market.noResults') : t('market.noPlugins')}
+            {' · '}
+            <a
+              href="https://github.com/langbot-app/LangBot/issues/new?template=plugin-request.yml"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              {t('market.requestPlugin')}
+            </a>
+          </div>
+        ) : (
+          <>
+            <div
+              aria-busy={isLoading}
+              className={cn(
+                'grid gap-6 mt-6 [grid-template-columns:repeat(auto-fill,minmax(min(100%,24rem),1fr))] transition-opacity duration-150',
+                isLoading && 'pointer-events-none opacity-50',
+              )}
+            >
+              {visiblePlugins.map((plugin) => (
+                <PluginMarketCardComponent
+                  key={plugin.pluginId}
+                  cardVO={plugin}
+                  onInstall={handleInstallPlugin}
+                  tagNames={tagNames}
+                  installDisabled={installDisabled}
+                  installDisabledTooltip={installDisabledTooltip}
+                />
+              ))}
+            </div>
+
+            {/* Loading more indicator */}
+            {isLoadingMore && (
+              <div className="flex items-center justify-center py-6">
+                <LoadingSpinner size="sm" text={t('market.loadingMore')} />
+              </div>
+            )}
+
+            {/* No more data hint */}
+            {!hasMore && plugins.length > 0 && (
+              <div className="text-center text-muted-foreground py-6">
+                {searchQuery
+                  ? t('market.allLoadedCount', { count: total })
+                  : t('market.allLoaded')}
+                {' · '}
+                <a
+                  href="https://github.com/langbot-app/LangBot/issues/new?template=plugin-request.yml"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  {t('market.requestPlugin')}
+                </a>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// 主组件，包装在 Suspense 中
+export default function MarketPage({
+  installPlugin,
+  headerActions,
+  installDisabled,
+  installDisabledTooltip,
+}: {
+  installPlugin: (plugin: PluginV4) => void;
+  headerActions?: React.ReactNode;
+  installDisabled?: boolean;
+  installDisabledTooltip?: string;
+}) {
+  return (
+    <Suspense
+      fallback={
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex items-center justify-center py-12">
+            <LoadingSpinner text="加载中..." />
+          </div>
+        </div>
+      }
+    >
+      <MarketPageContent
+        installPlugin={installPlugin}
+        headerActions={headerActions}
+        installDisabled={installDisabled}
+        installDisabledTooltip={installDisabledTooltip}
+      />
+    </Suspense>
+  );
+}

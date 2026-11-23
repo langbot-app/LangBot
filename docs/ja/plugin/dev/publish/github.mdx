@@ -1,0 +1,40 @@
+---
+title: "GitHub経由でプラグインを配布"
+---
+
+プラグインをGitHubにアップロードし、リポジトリのReleaseを作成して`.lbpkg`ファイルをアップロードすることで、他のユーザーがLangBotでインストールできるようになります。
+
+## プラグインのビルド
+
+プラグインディレクトリで次のコマンドを実行します:
+
+```bash
+lbp build
+```
+
+これにより、`dist`ディレクトリに`.lbpkg`ファイルが生成されます。
+
+## Releaseの作成
+
+プラグインをGitHubにアップロードし、プラグインリポジトリのReleaseページに移動し、Releaseを作成をクリックして、先ほどビルドした`.lbpkg`ファイルをアップロードします。
+
+<img width="600" src="/images/zh/plugin/dev/dist/github_release.png" />
+
+## Releaseの自動作成（GitHub Actions）
+
+`lbp init` で作成されたプラグインには、GitHub Actions ワークフロー（`.github/workflows/release.yml`）が組み込まれているため、手動でビルドしてアップロードする必要はありません。
+
+プラグインリポジトリを GitHub にプッシュした後、`manifest.yaml` の `version` フィールドを変更して `main` または `master` ブランチにプッシュするたびに、ワークフローが自動的に以下を実行します:
+
+1. `lbp` CLI をインストールし、`lbp build` を実行してプラグインをパッケージ化；
+2. `v<version>` をタグとして GitHub Release を作成し、生成された `.lbpkg` ファイルをアップロード。
+
+該当バージョンの Release が既に存在する場合、ワークフローはスキップして重複公開を回避します。リポジトリの Actions ページから手動でトリガーすることもできます（`workflow_dispatch`）。
+
+<Info title="">
+このワークフローはリポジトリのデフォルトの `GITHUB_TOKEN` に依存し、`contents: write` 権限が必要です（テンプレートで宣言済み）。リポジトリの Actions が有効になっていること、`manifest.yaml` の `metadata.author`、`metadata.name`、`metadata.version` フィールドが正しく入力されていることを確認してください。Release 名と成果物のファイル名はこれらのフィールドから構成されます（`<author>-<name>-<version>.lbpkg`）。
+</Info>
+
+## プラグインのインストール
+
+LangBotのプラグイン管理ページで、右上隅をクリックしてGitHubインストール方法を選択します。

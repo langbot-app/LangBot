@@ -1,0 +1,540 @@
+from __future__ import annotations
+
+from collections import OrderedDict
+
+from langbot.pkg.utils import httpclient
+import aiohttp
+import typing
+import datetime
+import time
+import sqlalchemy
+
+from ....core import app
+from ....entity.persistence import user
+from ....entity.dto.space_model import SpaceModel
+from ....entity.dto.space_model import SpaceModelSelection
+from ....entity.persistence import model as persistence_model
+from ....cloud.model_catalog import LANGBOT_MODELS_PROVIDER_REQUESTER
+
+
+_CREDITS_CACHE_TTL_SECONDS = 60
+
+
+class SpaceAPIError(Exception):
+    """A LangBot Space API call failed; ``status`` is the HTTP status."""
+
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+_CREDITS_CACHE_MAX_ENTRIES = 4096
+
+
+class SpaceService:
+    """Service for interacting with LangBot Space API"""
+
+    ap: app.Application
+    _credits_cache: typing.Dict[str, typing.Tuple[int, float]]  # {user_email: (credits, timestamp)}
+
+    def __init__(self, ap: app.Application) -> None:
+        self.ap = ap
+        self._credits_cache = OrderedDict()
+
+    def _ordered_credits_cache(
+        self,
+    ) -> OrderedDict[str, tuple[int, float]]:
+        if not isinstance(self._credits_cache, OrderedDict):
+            # Preserve compatibility with tests and callers that seed the cache.
+            self._credits_cache = OrderedDict(self._credits_cache)
+        return self._credits_cache
+
+    def _prune_credits_cache(self, now: float) -> None:
+        cache = self._ordered_credits_cache()
+        while cache:
+            email = next(iter(cache))
+            _, cached_at = cache[email]
+            if now - cached_at < _CREDITS_CACHE_TTL_SECONDS:
+                break
+            cache.pop(email, None)
+
+    def _get_space_config(self) -> typing.Dict[str, str]:
+        """Get Space configuration from config file"""
+        space_config = self.ap.instance_config.data.get('space', {})
+        return {
+            'url': space_config.get('url', 'https://space.langbot.app'),
+            'oauth_authorize_url': space_config.get('oauth_authorize_url', 'https://space.langbot.app/auth/authorize'),
+        }
+
+    async def _get_user_by_email(self, user_email: str) -> user.User | None:
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(user.User).where(user.User.user == user_email)
+        )
+        result_list = result.all()
+        return result_list[0] if result_list else None
+
+    async def get_valid_access_token(self, user_email: str) -> str | None:
+        """Return a current Space bearer, refreshing and persisting it when needed."""
+        return await self._ensure_valid_token(user_email)
+
+    async def _ensure_valid_token(self, user_email: str) -> str | None:
+        """Ensure access token is valid, refresh if expired. Returns valid access_token or None."""
+        user_obj = await self._get_user_by_email(user_email)
+        if not user_obj or user_obj.account_type != 'space':
+            return None
+
+        if not user_obj.space_access_token:
+            return None
+
+        # Check if token is expired (with 60s buffer)
+        if user_obj.space_access_token_expires_at:
+            if datetime.datetime.now() >= user_obj.space_access_token_expires_at - datetime.timedelta(seconds=60):
+                # Token expired, try to refresh
+                if user_obj.space_refresh_token:
+                    try:
+                        new_token = await self._refresh_and_save_token(user_obj)
+                        return new_token
+                    except Exception:
+                        return None
+                return None
+
+        return user_obj.space_access_token
+
+    async def _refresh_and_save_token(self, user_obj: user.User) -> str:
+        """Refresh token and save to database"""
+        token_data = await self.refresh_token(user_obj.space_refresh_token)
+        access_token = token_data.get('access_token')
+        expires_in = token_data.get('expires_in', 0)
+
+        if not access_token:
+            raise ValueError('Failed to refresh token')
+
+        expires_at = datetime.datetime.now() + datetime.timedelta(seconds=expires_in) if expires_in > 0 else None
+
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.update(user.User)
+            .where(user.User.user == user_obj.user)
+            .values(
+                space_access_token=access_token,
+                space_access_token_expires_at=expires_at,
+            )
+        )
+
+        return access_token
+
+    # === Raw API calls (no token validation) ===
+
+    def get_oauth_authorize_url(self, redirect_uri: str, state: str = '') -> str:
+        """Get the Space OAuth authorization URL for redirect"""
+        from urllib.parse import urlencode
+
+        space_config = self._get_space_config()
+        authorize_url = space_config['oauth_authorize_url']
+        params = {'redirect_uri': redirect_uri, 'code_contract': 'redirect-v1'}
+        if state:
+            params['state'] = state
+        return f'{authorize_url}?{urlencode(params)}'
+
+    async def exchange_oauth_code(
+        self,
+        code: str,
+        workspace_uuids: list[str] | None = None,
+        workspace_created_ats: dict[str, int] | None = None,
+        *,
+        redirect_uri: str = '',
+    ) -> typing.Dict:
+        """Exchange OAuth authorization code for tokens"""
+        from langbot.pkg.utils import constants
+
+        space_config = self._get_space_config()
+        space_url = space_config['url']
+
+        session = httpclient.get_session()
+        async with session.post(
+            f'{space_url}/api/v1/accounts/oauth/token',
+            json={
+                'code': code,
+                'redirect_uri': redirect_uri,
+                'instance_id': constants.instance_id,
+                # Sending an explicit empty list tells new Space servers not to
+                # synthesize a legacy instance-derived Workspace binding.
+                'workspace_uuids': workspace_uuids if workspace_uuids is not None else [],
+                'workspace_created_ats': workspace_created_ats or {},
+            },
+        ) as response:
+            if response.status != 200:
+                error = await httpclient.read_text_limited(response)
+                raise ValueError(f'Failed to exchange OAuth code: {error}')
+            data = await httpclient.read_json_limited(response)
+            if data.get('code') != 0:
+                raise ValueError(f'Failed to exchange OAuth code: {data.get("msg")}')
+            return data.get('data', {})
+
+    async def refresh_token(self, refresh_token: str) -> typing.Dict:
+        """Refresh Space access token"""
+        space_config = self._get_space_config()
+        space_url = space_config['url']
+
+        session = httpclient.get_session()
+        async with session.post(
+            f'{space_url}/api/v1/accounts/token/refresh', json={'refresh_token': refresh_token}
+        ) as response:
+            if response.status != 200:
+                error = await httpclient.read_text_limited(response)
+                raise ValueError(f'Failed to refresh token: {error}')
+            data = await httpclient.read_json_limited(response)
+            if data.get('code') != 0:
+                raise ValueError(f'Failed to refresh token: {data.get("msg")}')
+            return data.get('data', {})
+
+    async def get_user_info_raw(self, access_token: str) -> typing.Dict:
+        """Get user info from Space using access token (no validation)"""
+        space_config = self._get_space_config()
+        space_url = space_config['url']
+
+        session = httpclient.get_session()
+        async with session.get(
+            f'{space_url}/api/v1/accounts/me', headers={'Authorization': f'Bearer {access_token}'}
+        ) as response:
+            if response.status != 200:
+                error = await httpclient.read_text_limited(response)
+                raise ValueError(f'Failed to get user info: {error}')
+            data = await httpclient.read_json_limited(response)
+            if data.get('code') != 0:
+                raise ValueError(f'Failed to get user info: {data.get("msg")}')
+            return data.get('data', {})
+
+    async def send_alert_email(self, access_token: str, payload: dict) -> tuple[int, dict]:
+        """Ask LangBot Space to email an alert to the token's own verified address.
+
+        Space chooses the recipient and renders the message from the structured
+        payload; Core cannot supply an address or free-form body. Returns the HTTP
+        status and the decoded response data (empty on non-JSON bodies).
+        """
+        space_url = self._get_space_config()['url'].rstrip('/')
+        session = httpclient.get_session()
+        async with session.post(
+            f'{space_url}/api/v1/notifications/alert-email',
+            json=payload,
+            headers={'Authorization': f'Bearer {access_token}'},
+            timeout=aiohttp.ClientTimeout(total=15),
+        ) as response:
+            try:
+                body = await httpclient.read_json_limited(response)
+            except Exception:
+                body = {}
+        if not isinstance(body, dict):
+            body = {}
+        data = body.get('data') if isinstance(body.get('data'), dict) else {}
+        return response.status, {**data, 'msg': str(body.get('msg') or '')[:200]}
+
+    async def get_dedicated_membership(self, access_token: str) -> typing.Dict:
+        """Ask Space which role the token's account holds on this dedicated instance.
+
+        Space answers with an empty role for instance IDs that are not dedicated
+        Cloud instances, so this is harmless anywhere else.
+        """
+        from langbot.pkg.utils import constants
+
+        space_url = self._get_space_config()['url']
+        session = httpclient.get_session()
+        async with session.get(
+            f'{space_url}/api/v1/cloud/dedicated/membership',
+            params={'instance_id': constants.instance_id},
+            headers={'Authorization': f'Bearer {access_token}'},
+        ) as response:
+            if response.status != 200:
+                error = await httpclient.read_text_limited(response)
+                raise ValueError(f'Failed to get dedicated membership: {error}')
+            data = await httpclient.read_json_limited(response)
+            if data.get('code') != 0:
+                raise ValueError(f'Failed to get dedicated membership: {data.get("msg")}')
+            return data.get('data', {}) or {}
+
+    # === API calls with token validation ===
+
+    async def get_user_info(self, user_email: str) -> typing.Dict | None:
+        """Get user info from Space (with token validation)"""
+        access_token = await self._ensure_valid_token(user_email)
+        if not access_token:
+            return None
+        return await self.get_user_info_raw(access_token)
+
+    async def get_creator_profile(self, access_token: str) -> typing.Tuple[bool, dict | None]:
+        """Fetch the authenticated user's Creator Profile from Space.
+
+        Returns (is_token_valid, creator_dict_or_none).
+        """
+        if not access_token:
+            return False, None
+        space_url = self._get_space_config()['url'].rstrip('/')
+        session = httpclient.get_session()
+        try:
+            async with session.get(
+                f'{space_url}/api/v1/creator/profile',
+                headers={'Authorization': f'Bearer {access_token}'},
+            ) as response:
+                if response.status == 401:
+                    return False, None
+                if response.status != 200:
+                    return True, None
+                payload = await httpclient.read_json_limited(response)
+                if payload.get('code') != 0:
+                    return True, None
+                data = payload.get('data') or {}
+                return True, data.get('creator')
+        except Exception:
+            self.ap.logger.exception('Failed to fetch creator profile from Space')
+            return True, None
+
+    async def get_credits(self, user_email: str, force_refresh: bool = False) -> int | None:
+        """Get Space credits for user with caching (60s TTL)"""
+        now = time.time()
+        cached_fallback = self._credits_cache.get(user_email)
+        self._prune_credits_cache(now)
+
+        if not force_refresh and user_email in self._credits_cache:
+            credits, ts = self._credits_cache[user_email]
+            if now - ts < _CREDITS_CACHE_TTL_SECONDS:
+                return credits
+
+        try:
+            info = await self.get_user_info(user_email)
+            if info is None:
+                return None
+            credits = info.get('credits')
+            if credits is not None:
+                cache = self._ordered_credits_cache()
+                cache.pop(user_email, None)
+                if len(cache) >= _CREDITS_CACHE_MAX_ENTRIES:
+                    cache.popitem(last=False)
+                cache[user_email] = (credits, time.time())
+            return credits
+        except Exception:
+            return cached_fallback[0] if cached_fallback is not None else None
+
+    async def get_models(self) -> typing.List[SpaceModel]:
+        """Get models from Space"""
+
+        space_config = self._get_space_config()
+        space_url = space_config['url']
+
+        session = httpclient.get_session()
+        async with session.get(f'{space_url}/api/v1/models', params={'page_size': 100}) as response:
+            if response.status != 200:
+                error = await httpclient.read_text_limited(response)
+                raise ValueError(f'Failed to get models: {error}')
+            data = await httpclient.read_json_limited(response)
+            if data.get('code') != 0:
+                raise ValueError(f'Failed to get models: {data.get("msg")}')
+            models_data = data.get('data', {}).get('models', [])
+            return [SpaceModel.model_validate(model_dict) for model_dict in models_data]
+
+    async def get_model_selection(self, category: str | None = None) -> typing.List[SpaceModelSelection]:
+        """Return Space models in the availability-ranked selection order."""
+        space_url = self._get_space_config()['url']
+        session = httpclient.get_session()
+        params = {'category': category} if category else None
+        async with session.get(
+            f'{space_url}/api/v1/models/selection',
+            params=params,
+        ) as response:
+            if response.status != 200:
+                error = await httpclient.read_text_limited(response)
+                raise ValueError(f'Failed to get model selection: {error}')
+            payload = await httpclient.read_json_limited(response)
+            if payload.get('code') != 0:
+                raise ValueError(f'Failed to get model selection: {payload.get("msg")}')
+
+            data = payload.get('data', [])
+            if isinstance(data, dict):
+                data = data.get('models', data.get('items', []))
+            if not isinstance(data, list):
+                raise ValueError('Failed to get model selection: invalid response')
+
+            models = []
+            for selection in data:
+                if isinstance(selection, dict) and isinstance(selection.get('model'), dict):
+                    model = dict(selection['model'])
+                    availability = selection.get('availability')
+                    if not isinstance(availability, dict):
+                        # Accept the short-lived pre-release response shape.
+                        availability = {
+                            key: selection[key]
+                            for key in ('up', 'last_probed_at', 'latency_ms', 'http_code')
+                            if key in selection
+                        }
+                    model['availability'] = availability
+                    models.append(model)
+                else:
+                    models.append(selection)
+            return [SpaceModelSelection.model_validate(model) for model in models]
+
+    # === Plugin publishing ===
+
+    async def publish_plugin(
+        self,
+        access_token: str,
+        package_bytes: bytes,
+        *,
+        filename: str = 'plugin.lbpkg',
+        changelog: str = '',
+    ) -> typing.Dict:
+        """Publish a built ``.lbpkg`` to the LangBot Space marketplace.
+
+        Mirrors the CLI's ``POST /api/v1/marketplace/plugins/publish`` contract
+        (multipart ``file`` + ``changelog``). The caller supplies a valid Space
+        access token resolved from the Workspace owner.
+        """
+
+        if not access_token:
+            raise ValueError('A LangBot Space account is required to publish plugins')
+
+        space_url = self._get_space_config()['url'].rstrip('/')
+
+        form = aiohttp.FormData()
+        form.add_field('changelog', changelog or '')
+        form.add_field(
+            'file',
+            package_bytes,
+            filename=filename,
+            content_type='application/octet-stream',
+        )
+
+        session = httpclient.get_session()
+        async with session.post(
+            f'{space_url}/api/v1/marketplace/plugins/publish',
+            data=form,
+            headers={'Authorization': f'Bearer {access_token}'},
+        ) as response:
+            if response.status != 200:
+                try:
+                    payload = await httpclient.read_json_limited(response)
+                    msg = payload.get('msg') or payload.get('message') or ''
+                except Exception:
+                    msg = ''
+                if not msg:
+                    msg = await httpclient.read_text_limited(response)
+                raise ValueError(msg or 'Failed to publish plugin')
+            data = await httpclient.read_json_limited(response)
+            if data.get('code') != 0:
+                raise ValueError(data.get('msg') or 'Failed to publish plugin')
+            return data.get('data', {})
+
+    async def space_api(
+        self,
+        method: str,
+        path: str,
+        *,
+        access_token: str | None = None,
+        params: dict | None = None,
+        json_body: typing.Any = None,
+        form: aiohttp.FormData | None = None,
+    ) -> typing.Any:
+        """Call a LangBot Space JSON API and return its ``data`` (LANG-439).
+
+        Raises ``SpaceAPIError`` with Space's message and HTTP status so the
+        caller can surface it to the WebUI unchanged.
+        """
+        space_url = self._get_space_config()['url'].rstrip('/')
+        headers = {'Authorization': f'Bearer {access_token}'} if access_token else {}
+        session = httpclient.get_session()
+        kwargs: dict[str, typing.Any] = {'headers': headers}
+        if params:
+            kwargs['params'] = {k: v for k, v in params.items() if v not in (None, '')}
+        if json_body is not None:
+            kwargs['json'] = json_body
+        if form is not None:
+            kwargs['data'] = form
+        async with session.request(method, f'{space_url}{path}', **kwargs) as response:
+            try:
+                payload = await httpclient.read_json_limited(response)
+            except Exception:
+                payload = {}
+            if response.status != 200 or not isinstance(payload, dict) or payload.get('code') != 0:
+                msg = ''
+                if isinstance(payload, dict):
+                    msg = payload.get('msg') or payload.get('message') or ''
+                raise SpaceAPIError(response.status, msg or f'LangBot Space returned HTTP {response.status}')
+            return payload.get('data')
+
+    async def submit_content(
+        self,
+        access_token: str,
+        item_type: str,
+        metadata: dict,
+        *,
+        file_bytes: bytes | None = None,
+        filename: str = 'artifact.zip',
+    ) -> dict:
+        """Submit a skill / remote MCP / prompt for Space review (LANG-439)."""
+        import json as _json
+
+        form = aiohttp.FormData()
+        form.add_field('item_type', item_type)
+        form.add_field('metadata', _json.dumps(metadata, ensure_ascii=False))
+        if file_bytes is not None:
+            form.add_field('file', file_bytes, filename=filename, content_type='application/zip')
+        return await self.space_api(
+            'POST', '/api/v1/marketplace/content-submissions', access_token=access_token, form=form
+        )
+
+    async def get_recommended_chat_model(self, context: typing.Any) -> dict:
+        """Resolve Space's first ranked chat model to a local Workspace model."""
+        selection = await self.get_model_selection('chat')
+        if not selection:
+            raise ValueError('No recommended chat model is available')
+        return await self._resolve_recommended_model(context, selection[0])
+
+    async def get_recommended_assistant_model(self, context: typing.Any) -> dict:
+        """Resolve the dedicated, health-filtered assistant recommendation without fallback."""
+        space_url = self._get_space_config()['url']
+        session = httpclient.get_session()
+        async with session.get(f'{space_url}/api/v1/models/assistant/recommendation') as response:
+            if response.status != 200:
+                raise ValueError('No recommended assistant model is available')
+            payload = await httpclient.read_json_limited(response)
+            if payload.get('code') != 0:
+                raise ValueError('No recommended assistant model is available')
+            recommended = SpaceModel.model_validate(payload['data']['model'])
+        return await self._resolve_recommended_model(context, recommended)
+
+    async def _resolve_recommended_model(self, context: typing.Any, recommended: SpaceModel) -> dict:
+        """Map a public catalog model to this Workspace, refreshing the catalog once."""
+
+        async def find_local_model():
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(persistence_model.LLMModel)
+                .join(
+                    persistence_model.ModelProvider,
+                    sqlalchemy.and_(
+                        persistence_model.ModelProvider.workspace_uuid == persistence_model.LLMModel.workspace_uuid,
+                        persistence_model.ModelProvider.uuid == persistence_model.LLMModel.provider_uuid,
+                    ),
+                )
+                .where(
+                    persistence_model.LLMModel.workspace_uuid == context.workspace_uuid,
+                    persistence_model.ModelProvider.requester == LANGBOT_MODELS_PROVIDER_REQUESTER,
+                    sqlalchemy.or_(
+                        persistence_model.LLMModel.uuid == recommended.uuid,
+                        persistence_model.LLMModel.name == recommended.model_id,
+                    ),
+                )
+            )
+            return result.first()
+
+        local_model = await find_local_model()
+        if local_model is None:
+            # OSS synchronizes the public catalog locally. Refresh once in case
+            # the recommendation was published after this process started.
+            from ..context import ExecutionContext
+
+            try:
+                await self.ap.model_mgr.sync_new_models_from_space(ExecutionContext.from_request(context))
+            except Exception:
+                pass
+            local_model = await find_local_model()
+
+        if local_model is None:
+            raise ValueError('Recommended chat model is not available in this Workspace')
+        return {'uuid': local_model.uuid, 'name': local_model.name}

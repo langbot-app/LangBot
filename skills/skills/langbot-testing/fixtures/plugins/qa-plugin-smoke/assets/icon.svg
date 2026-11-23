@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="QA plugin smoke icon">
+  <rect width="64" height="64" rx="12" fill="#111827"/>
+  <path d="M18 37h9l5 7 5-7h9V18H18z" fill="#38bdf8"/>
+  <circle cx="26" cy="28" r="3" fill="#111827"/>
+  <circle cx="38" cy="28" r="3" fill="#111827"/>
+</svg>

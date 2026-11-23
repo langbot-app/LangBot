@@ -1,0 +1,457 @@
+import { hasModelReasoningAbility } from '../../reasoning/model-reasoning';
+import { useState, useEffect } from 'react';
+import { Trash2, Eye, Wrench, Check, BrainCircuit } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { useTranslation } from 'react-i18next';
+import {
+  LLMModel,
+  EmbeddingModel,
+  LangBotModelAvailabilityItem,
+  ReasoningConfig,
+} from '@/app/infra/entities/api';
+import {
+  DEFAULT_REASONING_CONFIG,
+  ExtraArg,
+  ModelType,
+  TestResult,
+} from '../types';
+import ExtraArgsEditor from './ExtraArgsEditor';
+import ModelStar from './ModelStar';
+import { userInfo } from '@/app/infra/http';
+import LangBotModelMetadata from '../../model-availability/LangBotModelMetadata';
+
+interface ModelItemProps {
+  model: LLMModel | EmbeddingModel;
+  canManage: boolean;
+  modelType: ModelType;
+  isLangBotModels: boolean;
+  metadata?: LangBotModelAvailabilityItem;
+  availabilityLoaded: boolean;
+  editModelPopoverOpen: string | null;
+  deleteConfirmOpen: string | null;
+  onOpenEditModel: (modelId: string) => void;
+  onCloseEditModel: () => void;
+  onOpenDeleteConfirm: (modelId: string) => void;
+  onCloseDeleteConfirm: () => void;
+  onDeleteModel: () => void;
+  onUpdateModel: (
+    name: string,
+    abilities: string[],
+    extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
+    contextLength?: number | null,
+  ) => Promise<void>;
+  onTestModel: (
+    name: string,
+    abilities: string[],
+    extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
+  ) => Promise<void>;
+  isSubmitting: boolean;
+  isTesting: boolean;
+  testResult: TestResult | null;
+  onResetTestResult: () => void;
+}
+
+function convertExtraArgsToArray(extraArgs?: object): ExtraArg[] {
+  if (!extraArgs) return [];
+  return Object.entries(extraArgs).map(([key, value]) => {
+    let type: ExtraArg['type'] = 'string';
+    let stringValue: string;
+    if (typeof value === 'number') {
+      type = 'number';
+      stringValue = String(value);
+    } else if (typeof value === 'boolean') {
+      type = 'boolean';
+      stringValue = String(value);
+    } else if (
+      value !== null &&
+      typeof value === 'object' &&
+      !Array.isArray(value)
+    ) {
+      type = 'object';
+      stringValue = JSON.stringify(value, null, 2);
+    } else {
+      stringValue = String(value);
+    }
+    return { key, type, value: stringValue };
+  });
+}
+
+export default function ModelItem({
+  model,
+  canManage,
+  modelType,
+  isLangBotModels,
+  metadata,
+  availabilityLoaded,
+  editModelPopoverOpen,
+  deleteConfirmOpen,
+  onOpenEditModel,
+  onCloseEditModel,
+  onOpenDeleteConfirm,
+  onCloseDeleteConfirm,
+  onDeleteModel,
+  onUpdateModel,
+  onTestModel,
+  isSubmitting,
+  isTesting,
+  testResult,
+  onResetTestResult,
+}: ModelItemProps) {
+  const { t } = useTranslation();
+
+  const [editName, setEditName] = useState(model.name);
+  const [editAbilities, setEditAbilities] = useState<string[]>(
+    modelType === 'llm' ? (model as LLMModel).abilities || [] : [],
+  );
+  const [editContextLength, setEditContextLength] = useState(
+    modelType === 'llm' && (model as LLMModel).context_length
+      ? String((model as LLMModel).context_length)
+      : '',
+  );
+  const [editExtraArgs, setEditExtraArgs] = useState<ExtraArg[]>(
+    convertExtraArgsToArray(model.extra_args),
+  );
+  const isEditOpen = editModelPopoverOpen === model.uuid;
+  const isDeleteOpen = deleteConfirmOpen === model.uuid;
+
+  // Reset form when popover opens
+  useEffect(() => {
+    if (isEditOpen) {
+      setEditName(model.name);
+      setEditAbilities(
+        modelType === 'llm' ? (model as LLMModel).abilities || [] : [],
+      );
+      setEditContextLength(
+        modelType === 'llm' && (model as LLMModel).context_length
+          ? String((model as LLMModel).context_length)
+          : '',
+      );
+      setEditExtraArgs(convertExtraArgsToArray(model.extra_args));
+      onResetTestResult();
+    }
+  }, [isEditOpen]);
+
+  const handleSave = async () => {
+    const parsedContextLength =
+      modelType === 'llm' && editContextLength.trim()
+        ? Number(editContextLength.trim())
+        : null;
+    await onUpdateModel(
+      editName,
+      editAbilities,
+      editExtraArgs,
+      modelType === 'llm'
+        ? (model as LLMModel).reasoning_config || DEFAULT_REASONING_CONFIG
+        : DEFAULT_REASONING_CONFIG,
+      parsedContextLength,
+    );
+  };
+
+  const handleTest = async () => {
+    await onTestModel(
+      editName,
+      editAbilities,
+      editExtraArgs,
+      DEFAULT_REASONING_CONFIG,
+    );
+  };
+
+  const toggleAbility = (ability: string, checked: boolean) => {
+    if (checked) {
+      setEditAbilities([...editAbilities, ability]);
+    } else {
+      setEditAbilities(editAbilities.filter((a) => a !== ability));
+    }
+  };
+
+  const supportsReasoning =
+    modelType === 'llm' &&
+    hasModelReasoningAbility(model as LLMModel, isLangBotModels);
+  const canSaveModel = !isLangBotModels;
+
+  // Check if popover should be disabled (space models when not logged in)
+  const isPopoverDisabled =
+    !canManage || (isLangBotModels && userInfo?.account_type !== 'space');
+
+  return (
+    <Popover
+      open={isEditOpen && !isPopoverDisabled}
+      onOpenChange={(open) => {
+        if (isPopoverDisabled) return;
+        if (open) {
+          onOpenEditModel(model.uuid);
+        } else {
+          onCloseEditModel();
+        }
+      }}
+    >
+      <PopoverTrigger asChild>
+        <div
+          className={`flex items-center gap-3 py-2 px-3 rounded-md border bg-background ${
+            isPopoverDisabled
+              ? 'cursor-not-allowed opacity-60'
+              : 'hover:bg-accent cursor-pointer'
+          }`}
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-2 flex-wrap">
+            <span className="break-all text-sm font-medium">{model.name}</span>
+            <Badge variant="secondary" className="text-xs">
+              {modelType === 'llm'
+                ? t('models.chat')
+                : modelType === 'embedding'
+                  ? t('models.embedding')
+                  : modelType === 'rerank'
+                    ? t('models.rerank')
+                    : modelType === 'asr'
+                      ? t('models.asr')
+                      : t('models.tts')}
+            </Badge>
+            {modelType === 'llm' &&
+              (model as LLMModel).abilities?.includes('vision') && (
+                <Badge variant="outline" className="text-xs gap-1">
+                  <Eye className="h-3 w-3" />
+                </Badge>
+              )}
+            {modelType === 'llm' &&
+              (model as LLMModel).abilities?.includes('func_call') && (
+                <Badge variant="outline" className="text-xs gap-1">
+                  <Wrench className="h-3 w-3" />
+                </Badge>
+              )}
+            {supportsReasoning && (
+              <Badge
+                variant="outline"
+                className="text-xs gap-1"
+                aria-label={t('models.reasoningAbility')}
+              >
+                <BrainCircuit className="h-3 w-3" />
+              </Badge>
+            )}
+          </div>
+          {isLangBotModels && (
+            <LangBotModelMetadata
+              metadata={metadata}
+              loaded={availabilityLoaded}
+            />
+          )}
+          {modelType === 'llm' && (
+            <ModelStar
+              uuid={model.uuid}
+              disabled={!canManage || isPopoverDisabled}
+            />
+          )}
+          {canManage && !isLangBotModels && (
+            <Popover
+              open={isDeleteOpen}
+              onOpenChange={(open) =>
+                open ? onOpenDeleteConfirm(model.uuid) : onCloseDeleteConfirm()
+              }
+            >
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 flex-shrink-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-64"
+                align="end"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="space-y-3">
+                  <p className="text-sm">{t('models.deleteConfirmation')}</p>
+                  <div className="flex gap-2 justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onCloseDeleteConfirm()}
+                    >
+                      {t('common.cancel')}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => {
+                        onDeleteModel();
+                        onCloseDeleteConfirm();
+                      }}
+                    >
+                      {t('common.delete')}
+                    </Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+        </div>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-80 max-h-[70vh] overflow-y-auto overscroll-none focus:outline-none focus-visible:outline-none focus-visible:ring-0"
+        align="start"
+        collisionPadding={16}
+        style={{
+          maxHeight: 'min(70vh, var(--radix-popover-content-available-height))',
+        }}
+        onWheel={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+      >
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <Label>{t('models.modelName')}</Label>
+            <Input
+              placeholder={t('models.modelName')}
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              disabled={isLangBotModels}
+            />
+          </div>
+
+          {modelType === 'llm' && (
+            <div className="space-y-2">
+              <Label>{t('models.abilities')}</Label>
+              <div className="flex flex-wrap gap-4">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id={`edit-vision-${model.uuid}`}
+                    checked={editAbilities.includes('vision')}
+                    disabled={isLangBotModels}
+                    onCheckedChange={(checked) =>
+                      toggleAbility('vision', checked as boolean)
+                    }
+                  />
+                  <Label
+                    htmlFor={`edit-vision-${model.uuid}`}
+                    className="text-sm"
+                  >
+                    <Eye className="h-3 w-3 inline mr-1" />
+                    {t('models.visionAbility')}
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id={`edit-func-call-${model.uuid}`}
+                    checked={editAbilities.includes('func_call')}
+                    disabled={isLangBotModels}
+                    onCheckedChange={(checked) =>
+                      toggleAbility('func_call', checked as boolean)
+                    }
+                  />
+                  <Label
+                    htmlFor={`edit-func-call-${model.uuid}`}
+                    className="text-sm"
+                  >
+                    <Wrench className="h-3 w-3 inline mr-1" />
+                    {t('models.functionCallAbility')}
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id={`edit-reasoning-${model.uuid}`}
+                    checked={
+                      isLangBotModels
+                        ? supportsReasoning
+                        : editAbilities.includes('reasoning')
+                    }
+                    disabled={isLangBotModels}
+                    onCheckedChange={(checked) =>
+                      toggleAbility('reasoning', checked as boolean)
+                    }
+                  />
+                  <Label
+                    htmlFor={`edit-reasoning-${model.uuid}`}
+                    className="text-sm"
+                  >
+                    <BrainCircuit className="h-3 w-3 inline mr-1" />
+                    {t('models.reasoningAbility')}
+                  </Label>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {modelType === 'llm' && (
+            <div className="space-y-2">
+              <Label htmlFor={`edit-context-length-${model.uuid}`}>
+                {t('models.contextLength')}
+              </Label>
+              <Input
+                id={`edit-context-length-${model.uuid}`}
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                placeholder={t('models.contextLengthPlaceholder')}
+                value={editContextLength}
+                disabled={isLangBotModels}
+                onChange={(e) => setEditContextLength(e.target.value)}
+              />
+            </div>
+          )}
+
+          <ExtraArgsEditor
+            args={editExtraArgs}
+            onChange={setEditExtraArgs}
+            disabled={isLangBotModels}
+            modelType={modelType}
+          />
+
+          <div className="flex gap-2">
+            {canSaveModel && (
+              <Button
+                className="flex-1"
+                size="sm"
+                onClick={handleSave}
+                disabled={isSubmitting || isTesting}
+              >
+                {isSubmitting ? t('common.saving') : t('common.save')}
+              </Button>
+            )}
+            <Button
+              className={canSaveModel ? 'flex-1' : 'w-full'}
+              size="sm"
+              variant="outline"
+              onClick={handleTest}
+              disabled={isSubmitting || isTesting}
+            >
+              {isTesting ? (
+                t('common.loading')
+              ) : testResult?.success ? (
+                <>
+                  <Check className="h-4 w-4 mr-1 text-green-500" />
+                  {(testResult.duration / 1000).toFixed(1)}s
+                </>
+              ) : (
+                t('common.test')
+              )}
+            </Button>
+          </div>
+          {testResult?.success === false && (
+            <p
+              role="alert"
+              className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive [overflow-wrap:anywhere]"
+            >
+              {testResult.message}
+            </p>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}

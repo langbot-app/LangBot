@@ -1,0 +1,106 @@
+---
+title: "Webhooks"
+---
+
+Webhooks 允许您将机器人收到的消息事件发送到外部服务进行处理。
+
+## 配置 Webhook
+
+1. 在 LangBot WebUI 中，点击侧边栏的 "API 集成" 按钮
+2. 切换到 "Webhooks" 标签页
+3. 点击 "+" 按钮创建新的 Webhook
+4. 填写以下信息：
+   - **名称**：Webhook 的名称
+   - **URL**：接收事件的目标 URL
+   - **描述**：可选说明
+   - **状态**：启用或禁用
+
+## 事件格式
+
+### 个人消息 (bot.person_message)
+
+```json
+{
+  "uuid": "event-unique-id",
+  "event_type": "bot.person_message",
+  "data": {
+    "bot_uuid": "bot-uuid",
+    "adapter_name": "AdapterName",
+    "sender": {
+      "id": "user-id",
+      "name": "User Name"
+    },
+    "message": [
+      {
+        "type": "Plain",
+        "text": "消息内容"
+      }
+    ],
+    "timestamp": 1234567890
+  }
+}
+```
+
+### 群组消息 (bot.group_message)
+
+```json
+{
+  "uuid": "event-unique-id",
+  "event_type": "bot.group_message",
+  "data": {
+    "bot_uuid": "bot-uuid",
+    "adapter_name": "AdapterName",
+    "group": {
+      "id": "group-id",
+      "name": "Group Name"
+    },
+    "sender": {
+      "id": "user-id",
+      "name": "User Name"
+    },
+    "message": [
+      {
+        "type": "Plain",
+        "text": "消息内容"
+      }
+    ],
+    "timestamp": 1234567890
+  }
+}
+```
+
+## 响应格式
+
+Webhook 服务应返回 JSON 响应：
+
+```json
+{
+  "status": "ok",
+  "skip_pipeline": false
+}
+```
+
+### 参数说明
+
+- **status**: 处理状态（建议返回 "ok"）
+- **skip_pipeline**: 是否跳过 LangBot 流水线处理
+  - `true`: 消息不会继续在流水线中处理
+  - `false`: 消息正常进入流水线处理
+
+<Tip>
+`skip_pipeline` 允许您完全接管消息处理。设置为 `true` 时，消息只由 Webhook 服务处理，不触发 LangBot 的 AI 对话功能。
+</Tip>
+
+## 集成示例
+
+### Dify 工作流
+
+使用 [dify-plugin-langbot-trigger](https://github.com/langbot-app/dify-plugin-langbot-trigger) 插件接收 LangBot webhook 事件，在 Dify 中创建工作流处理消息。
+
+## 注意事项
+
+- Webhook URL 必须可访问
+- 请求超时时间为 15 秒
+- 请求失败不影响消息正常处理
+- 支持配置多个 Webhook 并行执行
+- 任一 Webhook 返回 `skip_pipeline: true` 时跳过流水线处理

@@ -1,0 +1,32 @@
+.emptyRouteHint {
+  --route-glow-soft: 6%;
+  --route-glow-strong: 30%;
+  animation: route-hint-glow 3.6s ease-in-out infinite;
+}
+
+:global(.dark) .emptyRouteHint {
+  --route-glow-soft: 4%;
+  --route-glow-strong: 22%;
+}
+
+.emptyRouteHint:hover,
+.emptyRouteHint:focus-visible,
+.emptyRouteHint[data-state='open'] {
+  animation: none;
+}
+
+@keyframes route-hint-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 6px 1px color-mix(in srgb, var(--color-amber-400) var(--route-glow-soft), transparent);
+  }
+  50% {
+    box-shadow: 0 0 14px 4px color-mix(in srgb, var(--color-amber-400) var(--route-glow-strong), transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .emptyRouteHint {
+    animation: none;
+  }
+}

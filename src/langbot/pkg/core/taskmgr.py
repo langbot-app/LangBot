@@ -1,0 +1,454 @@
+from __future__ import annotations
+
+from ..i18n import t
+
+import asyncio
+import json
+import typing
+import datetime
+import time
+
+from . import entities as core_entities
+from .errors import TaskCapacityError
+from .task_boundary import create_detached_task
+
+if typing.TYPE_CHECKING:
+    from . import app
+
+
+class TaskContext:
+    """Task tracking context"""
+
+    current_action: str
+    """Current action being executed"""
+
+    log: str
+    """Log"""
+
+    metadata: dict
+    """Structured metadata for progress reporting"""
+
+    def __init__(self, max_log_chars: int = 200000):
+        self.current_action = 'default'
+        self.log = ''
+        self.metadata = {}
+        self.max_log_chars = max(int(max_log_chars), 1)
+
+    def _log(self, msg: str):
+        self.log += msg + '\n'
+        if len(self.log) > self.max_log_chars:
+            marker = '[older task output truncated]\n'
+            keep = max(self.max_log_chars - len(marker), 0)
+            self.log = marker + (self.log[-keep:] if keep else '')
+
+    def set_current_action(self, action: str):
+        self.current_action = action
+
+    def trace(
+        self,
+        msg: str,
+        action: str = None,
+    ):
+        if action is not None:
+            self.set_current_action(action)
+
+        self._log(f'{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} | {self.current_action} | {msg}')
+
+    def to_dict(self) -> dict:
+        return {'current_action': self.current_action, 'log': self.log, 'metadata': self.metadata}
+
+    @staticmethod
+    def new() -> TaskContext:
+        return TaskContext()
+
+    @staticmethod
+    def placeholder() -> TaskContext:
+        global placeholder_context
+
+        if placeholder_context is None:
+            placeholder_context = TaskContext()
+
+        return placeholder_context
+
+
+placeholder_context: TaskContext | None = None
+
+
+class TaskWrapper:
+    """Task wrapper"""
+
+    _id_index: int = 0
+    """Task ID index"""
+
+    id: int
+    """Task ID"""
+
+    task_type: str = 'system'  # Task type: system or user
+    """Task type"""
+
+    kind: str = 'system_task'  # Task type determined by the initiator, usually the same task type
+    """Task type"""
+
+    name: str = ''
+    """Task unique name"""
+
+    label: str = ''
+    """Task display name"""
+
+    task_context: TaskContext
+    """Task context"""
+
+    task: asyncio.Task
+    """Task"""
+
+    task_stack: list = None
+    """Task stack"""
+
+    ap: app.Application
+    """Application instance"""
+
+    scopes: list[core_entities.LifecycleControlScope]
+    """Task scope"""
+
+    instance_uuid: str | None
+    """Owning LangBot instance for a tenant user task."""
+
+    workspace_uuid: str | None
+    """Owning Workspace for a tenant user task."""
+
+    placement_generation: int | None
+    """Workspace execution fence captured when the task was created."""
+
+    def __init__(
+        self,
+        ap: app.Application,
+        coro: typing.Coroutine,
+        task_type: str = 'system',
+        kind: str = 'system_task',
+        name: str = '',
+        label: str = '',
+        context: TaskContext = None,
+        scopes: list[core_entities.LifecycleControlScope] = [core_entities.LifecycleControlScope.APPLICATION],
+        instance_uuid: str | None = None,
+        workspace_uuid: str | None = None,
+        placement_generation: int | None = None,
+    ):
+        self.id = TaskWrapper._id_index
+        TaskWrapper._id_index += 1
+        self.ap = ap
+        self.task_context = context or TaskContext()
+        self.task = create_detached_task(
+            coro,
+            loop=self.ap.event_loop,
+            name=name or None,
+            after_commit_manager=getattr(self.ap, 'persistence_mgr', None),
+            workspace_uuid=workspace_uuid,
+        )
+        self.task_type = task_type
+        self.kind = kind
+        self.name = name
+        self.label = label if label != '' else name
+        self.task.set_name(name)
+        self.scopes = scopes
+        self.instance_uuid = instance_uuid
+        self.workspace_uuid = workspace_uuid
+        self.placement_generation = placement_generation
+        self.created_at = time.time()
+
+    def assume_exception(self):
+        try:
+            exception = self.task.exception()
+            if self.task_stack is None:
+                self.task_stack = self.task.get_stack()
+            return exception
+        except Exception:
+            return None
+
+    def assume_result(self):
+        try:
+            return self.task.result()
+        except Exception:
+            return None
+
+    def to_dict(self) -> dict:
+        exception_traceback = None
+        if self.assume_exception() is not None:
+            exception_traceback = 'Traceback (most recent call last):\n'
+
+            for frame in self.task_stack:
+                exception_traceback += (
+                    f'  File "{frame.f_code.co_filename}", line {frame.f_lineno}, in {frame.f_code.co_name}\n'
+                )
+
+            exception_traceback += f'    {self.assume_exception().__str__()}\n'
+
+        return {
+            'id': self.id,
+            'task_type': self.task_type,
+            'kind': self.kind,
+            'name': self.name,
+            'label': self.label,
+            'workspace_uuid': self.workspace_uuid,
+            'placement_generation': self.placement_generation,
+            'scopes': [scope.value for scope in self.scopes],
+            'created_at': self.created_at,
+            'task_context': self.task_context.to_dict(),
+            'runtime': {
+                'done': self.task.done(),
+                'state': self.task._state,
+                'exception': self.assume_exception().__str__() if self.assume_exception() is not None else None,
+                'exception_traceback': exception_traceback,
+                'result': self.assume_result() if self.assume_result() is not None else None,
+            },
+        }
+
+    def to_public_dict(self) -> dict:
+        """Return the stable task projection exposed to API-key callers."""
+        if self.task.cancelled():
+            status = 'cancelled'
+            error = {'type': 'task_cancelled', 'message': t('Task was cancelled')}
+            result = None
+        elif not self.task.done():
+            status = 'running'
+            error = None
+            result = None
+        else:
+            exception = self.assume_exception()
+            if exception is not None:
+                status = 'failed'
+                error = {'type': 'task_failed', 'message': t('Task execution failed')}
+                from ..api.application.contracts import ApplicationAPIException
+                from ..api.authz import PermissionDeniedError
+
+                if isinstance(exception, ApplicationAPIException):
+                    error['code'] = exception.error.code
+                elif isinstance(exception, PermissionDeniedError):
+                    error['code'] = exception.error_code
+                result = None
+            else:
+                status = 'succeeded'
+                error = None
+                result = self.assume_result()
+                try:
+                    json.dumps(result)
+                except (TypeError, ValueError):
+                    result = None
+
+        projection = {
+            'id': self.id,
+            'task_type': self.task_type,
+            'kind': self.kind,
+            'status': status,
+            'error': error,
+            'result': result,
+            'created_at': self.created_at,
+        }
+        if self.task_context.metadata.get('pending_permission_confirmation'):
+            projection['pending_permission_confirmation'] = True
+        return projection
+
+    def cancel(self):
+        self.task.cancel()
+
+
+class AsyncTaskManager:
+    """Save all asynchronous tasks in the app
+    Include system-level and user-level (plugin installation, update, etc. initiated by users directly)"""
+
+    ap: app.Application
+
+    tasks: list[TaskWrapper]
+    """All tasks"""
+
+    def __init__(self, ap: app.Application):
+        self.ap = ap
+        self.tasks = []
+
+    def _task_log_limit(self) -> int:
+        value = self.ap.instance_config.data.get('system', {}).get('task_retention', {}).get('max_log_chars', 200000)
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            value = 200000
+        return max(value, 1)
+
+    def _user_task_limit(self, name: str, default: int) -> int:
+        value = self.ap.instance_config.data.get('system', {}).get('task_retention', {}).get(name, default)
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            value = default
+        return max(value, 1)
+
+    def _admit_user_task(self, coro: typing.Coroutine, workspace_uuid: str | None) -> None:
+        active_user_tasks = [
+            wrapper for wrapper in self.tasks if wrapper.task_type == 'user' and not wrapper.task.done()
+        ]
+        global_limit = self._user_task_limit('max_active_user_tasks', 256)
+        if len(active_user_tasks) >= global_limit:
+            coro.close()
+            raise TaskCapacityError('The instance has too many active user operations')
+
+        if workspace_uuid is None:
+            return
+        workspace_limit = self._user_task_limit('max_active_user_tasks_per_workspace', 8)
+        active_workspace_tasks = sum(1 for wrapper in active_user_tasks if wrapper.workspace_uuid == workspace_uuid)
+        if active_workspace_tasks >= workspace_limit:
+            coro.close()
+            raise TaskCapacityError('The Workspace has too many active user operations')
+
+    def create_task(
+        self,
+        coro: typing.Coroutine,
+        task_type: str = 'system',
+        kind: str = 'system-task',
+        name: str = '',
+        label: str = '',
+        context: TaskContext = None,
+        scopes: list[core_entities.LifecycleControlScope] = [core_entities.LifecycleControlScope.APPLICATION],
+        instance_uuid: str | None = None,
+        workspace_uuid: str | None = None,
+        placement_generation: int | None = None,
+    ) -> TaskWrapper:
+        if context is None:
+            context = TaskContext(max_log_chars=self._task_log_limit())
+        else:
+            context.max_log_chars = self._task_log_limit()
+            if len(context.log) > context.max_log_chars:
+                context.log = context.log[-context.max_log_chars :]
+
+        wrapper = TaskWrapper(
+            self.ap,
+            coro,
+            task_type,
+            kind,
+            name,
+            label,
+            context,
+            scopes,
+            instance_uuid,
+            workspace_uuid,
+            placement_generation,
+        )
+        self.tasks.append(wrapper)
+        wrapper.task.add_done_callback(lambda _: self._prune_completed_tasks())
+        self._prune_completed_tasks()
+        return wrapper
+
+    def create_user_task(
+        self,
+        coro: typing.Coroutine,
+        kind: str = 'user-task',
+        name: str = '',
+        label: str = '',
+        context: TaskContext = None,
+        scopes: list[core_entities.LifecycleControlScope] = [core_entities.LifecycleControlScope.APPLICATION],
+        instance_uuid: str | None = None,
+        workspace_uuid: str | None = None,
+        placement_generation: int | None = None,
+    ) -> TaskWrapper:
+        self._admit_user_task(coro, workspace_uuid)
+        return self.create_task(
+            coro,
+            'user',
+            kind,
+            name,
+            label,
+            context,
+            scopes,
+            instance_uuid,
+            workspace_uuid,
+            placement_generation,
+        )
+
+    async def wait_all(self):
+        await asyncio.gather(*[t.task for t in self.tasks], return_exceptions=True)
+
+    def get_all_tasks(self) -> list[TaskWrapper]:
+        return self.tasks
+
+    def get_tasks_dict(
+        self,
+        type: str = None,
+        kind: str = None,
+        *,
+        instance_uuid: str | None = None,
+        workspace_uuid: str | None = None,
+        placement_generation: int | None = None,
+        public: bool = False,
+    ) -> dict:
+        tasks = [
+            t.to_public_dict() if public else t.to_dict()
+            for t in self.tasks
+            if (type is None or t.task_type == type)
+            and (kind is None or t.kind == kind)
+            and (instance_uuid is None or t.instance_uuid == instance_uuid)
+            and (workspace_uuid is None or t.workspace_uuid == workspace_uuid)
+            and (placement_generation is None or t.placement_generation == placement_generation)
+        ]
+        if public:
+            return {'tasks': tasks}
+        return {'tasks': tasks, 'id_index': TaskWrapper._id_index}
+
+    def get_stats(self) -> dict:
+        completed = sum(1 for t in self.tasks if t.task.done())
+        return {
+            'total': len(self.tasks),
+            'running': len(self.tasks) - completed,
+            'completed': completed,
+            'id_index': TaskWrapper._id_index,
+        }
+
+    def get_task_by_id(
+        self,
+        id: int,
+        *,
+        instance_uuid: str | None = None,
+        workspace_uuid: str | None = None,
+        placement_generation: int | None = None,
+    ) -> TaskWrapper | None:
+        for t in self.tasks:
+            if (
+                t.id == id
+                and (instance_uuid is None or t.instance_uuid == instance_uuid)
+                and (workspace_uuid is None or t.workspace_uuid == workspace_uuid)
+                and (placement_generation is None or t.placement_generation == placement_generation)
+            ):
+                return t
+        return None
+
+    def cancel_by_scope(self, scope: core_entities.LifecycleControlScope):
+        for wrapper in self.tasks:
+            if not wrapper.task.done() and scope in wrapper.scopes:
+                wrapper.task.cancel()
+
+    def cancel_task(self, task_id: int):
+        for wrapper in self.tasks:
+            if wrapper.id == task_id:
+                if not wrapper.task.done():
+                    wrapper.task.cancel()
+                return
+
+    def _prune_completed_tasks(self):
+        completed_limit = (
+            self.ap.instance_config.data.get('system', {})
+            .get('task_retention', {})
+            .get(
+                'completed_limit',
+                200,
+            )
+        )
+        try:
+            completed_limit = int(completed_limit)
+        except (TypeError, ValueError):
+            completed_limit = 200
+        if completed_limit < 1:
+            completed_limit = 1
+
+        completed_tasks = [wrapper for wrapper in self.tasks if wrapper.task.done()]
+        overflow = len(completed_tasks) - completed_limit
+        if overflow <= 0:
+            return
+
+        remove_ids = {wrapper.id for wrapper in completed_tasks[:overflow]}
+        self.tasks = [wrapper for wrapper in self.tasks if wrapper.id not in remove_ids]

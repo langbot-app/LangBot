@@ -1,0 +1,130 @@
+name: Core Smoke
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [master, develop]
+  workflow_dispatch:
+    inputs:
+      lbctl_ref:
+        description: 'Ref in langbot-app/langbot-cli (use a commit SHA for a reproducible run)'
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  p0:
+    uses: ./.github/workflows/p0-acceptance.yml
+
+  tools:
+    name: Regression tools
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install PyYAML==6.0.3
+      - name: Check regression tools
+        run: timeout 60s python -m unittest discover -s tools/tests -p 'test_*.py' -v
+
+  smoke:
+    name: Core runtime smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SPACE__DISABLE_TELEMETRY: 'true'
+      ANONYMIZED_TELEMETRY: 'False'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Install locked dependencies
+        run: uv sync --dev --frozen
+      - name: Check shared-provider concurrent turns
+        env:
+          LANGBOT_LEGACY_PLUGIN_ROOT: ${{ github.workspace }}/plugins
+          LITELLM_LOCAL_MODEL_COST_MAP: 'True'
+        run: |
+          uv run --no-sync pytest --required-suite shared_provider_concurrency \
+            tests/e2e/test_local_runner_fake_provider.py \
+            -q --tb=short -rs --junitxml=shared-provider-concurrency-results.xml
+      - name: Upload shared-provider concurrency results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-provider-concurrency-results
+          path: shared-provider-concurrency-results.xml
+          if-no-files-found: warn
+      - uses: ./.github/actions/build-lbctl
+        id: lbctl
+        with:
+          ref: ${{ inputs.lbctl_ref || 'main' }}
+      - name: Prepare sandbox image
+        run: docker pull python:3.12-alpine
+      - name: Prepare real services and run smoke with plugin scenarios
+        id: execute
+        env:
+          LBCTL_BIN: ${{ steps.lbctl.outputs.binary }}
+        run: |
+          uv run --no-sync python -m tools.entrypoints.regression_ci \
+            --suite scenarios --scenario-groups plugins \
+            --extra-plugins misc/EssentialCommands misc/FAQManager \
+            --lbctl "$LBCTL_BIN" --plugins plugins --output .qa/core-smoke
+      - name: Publish gate result
+        if: always()
+        env:
+          RUN_OUTCOME: ${{ steps.execute.outcome }}
+        run: |
+          python -m tools.entrypoints.regression_report core-smoke .qa/core-smoke \
+            --sha "$GITHUB_SHA" --step-outcome "$RUN_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve verdicts and resource samples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-smoke-${{ github.run_id }}
+          path: |
+            .qa/core-smoke/gate/gate.json
+            .qa/core-smoke/gate/resources.jsonl
+            .qa/core-smoke/gate/suite.log
+            .qa/core-smoke/gate/suite/cases.json
+            .qa/core-smoke/gate/suite/summary.json
+            .qa/core-smoke/gate/suite/health.json
+            .qa/core-smoke/gate/suite/cleanup-checks.json
+            .qa/core-smoke/gate/suite/coverage.json
+            .qa/core-smoke/gate/suite/coverage.md
+            .qa/core-smoke/gate/suite/cycles.json
+            .qa/core-smoke/gate/suite/execution.json
+            .qa/core-smoke/plugins/manifest.json
+            .qa/core-smoke/plugins/*-build.log
+            .qa/core-smoke/*.log
+          if-no-files-found: warn
+          retention-days: 7
+
+  verdict:
+    name: Core smoke (60s)
+    needs: [p0, smoke]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require P0 acceptance and runtime smoke
+        env:
+          P0_RESULT: ${{ needs.p0.result }}
+          SMOKE_RESULT: ${{ needs.smoke.result }}
+        run: test "$P0_RESULT" = success && test "$SMOKE_RESULT" = success

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Page
+metadata:
+  name: {{ page_name }}
+  label:
+    en_US: {{ page_label }}
+    zh_Hans: {{ page_label }}
+    th_TH: {{ page_label }}
+    vi_VN: {{ page_label }}
+    es_ES: {{ page_label }}
+spec:
+  path: {{ page_name }}.html

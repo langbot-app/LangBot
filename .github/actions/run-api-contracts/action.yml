@@ -1,0 +1,68 @@
+name: Run API contracts
+description: Run the shared Core HTTP contracts against disposable services
+inputs:
+  fixed-only:
+    description: Run the fixed PR pass without the seeded Daily pass
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - uses: astral-sh/setup-uv@v4
+      with:
+        enable-cache: true
+    - name: Install locked dependencies
+      shell: bash
+      run: uv sync --dev --frozen
+    - uses: ./.github/actions/build-lbctl
+      id: lbctl
+    - name: Prepare sandbox image
+      shell: bash
+      run: docker pull python:3.12-alpine
+    - name: Run API contracts
+      id: execute
+      shell: bash
+      env:
+        API_FIXED_ONLY: ${{ inputs.fixed-only }}
+        LBCTL_BIN: ${{ steps.lbctl.outputs.binary }}
+      run: |
+        args=(--api-seed "$GITHUB_RUN_ID")
+        if [[ "$API_FIXED_ONLY" == 'true' ]]; then
+          args=(--api-fixed-only)
+        fi
+        uv run --no-sync python -m tools.entrypoints.regression_ci \
+          --suite api "${args[@]}" \
+          --lbctl "$LBCTL_BIN" --plugins plugins --output .qa/api
+    - name: Publish API result
+      if: always()
+      shell: bash
+      env:
+        API_MODE: ${{ inputs.fixed-only == 'true' && 'api-fixed' || 'api-daily' }}
+        RUN_OUTCOME: ${{ steps.execute.outcome }}
+      run: |
+        python -m tools.entrypoints.regression_report "$API_MODE" .qa/api \
+          --sha "$GITHUB_SHA" --step-outcome "$RUN_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+    - name: Preserve API verdicts and evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.fixed-only == 'true' && 'pr-api' || 'daily-api' }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: |
+          .qa/api/gate/gate.json
+          .qa/api/gate/resources.jsonl
+          .qa/api/gate/suite.log
+          .qa/api/gate/suite/summary.json
+          .qa/api/gate/suite/profile.json
+          .qa/api/gate/suite/cases.json
+          .qa/api/gate/suite/health.json
+          .qa/api/gate/suite/cleanup-checks.json
+          .qa/api/gate/suite/resource-case-*.json
+          .qa/api/gate/suite/coverage.json
+          .qa/api/gate/suite/coverage.md
+          .qa/api/plugins/manifest.json
+          .qa/api/plugins/*-build.log
+          .qa/api/*.log
+        if-no-files-found: warn
+        retention-days: 30

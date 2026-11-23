@@ -1,0 +1,34 @@
+name: Sync landing docs from LangBot
+
+on:
+  push:
+    branches: [master]
+    paths: ['docs/**', '.github/workflows/sync-landing-submodule.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-landing-docs-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'langbot-app/LangBot' && github.ref == 'refs/heads/master' && vars.DOCS_PUBLISH_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: master
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test synchronization contracts
+        working-directory: docs
+        run: python3 -m unittest discover -s tests -p test_sync_landing_submodule.py -v
+      - name: Update landing submodule and production fork
+        working-directory: docs
+        env:
+          GH_TOKEN: ${{ secrets.LANGBOT_WIKI_PUSH_TOKEN || secrets.RELEASE_UPLOAD_GITHUB_TOKEN }}
+        run: python3 scripts/sync-landing-submodule.py

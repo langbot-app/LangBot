@@ -1,0 +1,333 @@
+import axios, {
+  AxiosInstance,
+  AxiosRequestConfig,
+  AxiosResponse,
+  AxiosError,
+} from 'axios';
+import i18n from 'i18next';
+import {
+  clearActiveWorkspaceUuid,
+  getActiveWorkspaceUuid,
+} from './workspaceContext';
+import { setCurrentWorkspaceSnapshot } from './currentWorkspaceStore';
+import { clearWorkspaceBootstrapSnapshot } from './workspaceBootstrapStore';
+
+type JSONValue = string | number | boolean | JSONObject | JSONArray | null;
+interface JSONObject {
+  [key: string]: JSONValue;
+}
+type JSONArray = Array<JSONValue>;
+
+export interface ResponseData<T = unknown> {
+  code: number;
+  message: string;
+  data: T;
+  timestamp: number;
+}
+
+export interface RequestConfig extends AxiosRequestConfig {
+  isSSR?: boolean; // 服务端渲染标识
+  retry?: number; // 重试次数
+  /** Account-scoped endpoints must not receive a stale Workspace selector. */
+  skipWorkspace?: boolean;
+  /**
+   * Workspace to stamp instead of the current global one. Callers that captured
+   * a Workspace in a render closure use this so the header cannot disagree with
+   * the data they were built from when a switch is in flight.
+   */
+  workspaceUuid?: string | null;
+  /** Set after one retry of a transient authentication failure. */
+  authRetried?: boolean;
+}
+
+/**
+ * 基础 HTTP 客户端类
+ * 提供通用的 HTTP 请求方法和拦截器配置
+ */
+export abstract class BaseHttpClient {
+  protected instance: AxiosInstance;
+  protected disableToken: boolean = false;
+  protected baseURL: string;
+
+  constructor(baseURL: string, disableToken?: boolean) {
+    this.baseURL = baseURL;
+    this.disableToken = disableToken || false;
+
+    this.instance = axios.create({
+      baseURL: baseURL,
+      timeout: 30000,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    this.initInterceptors();
+  }
+
+  // 外部获取baseURL的方法
+  public getBaseUrl(): string {
+    return this.baseURL;
+  }
+
+  // 更新 baseURL
+  public updateBaseURL(newBaseURL: string): void {
+    this.baseURL = newBaseURL;
+    this.instance.defaults.baseURL = newBaseURL;
+  }
+
+  // 同步获取Session
+  protected getSessionSync(): string | null {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('token');
+    }
+    return null;
+  }
+
+  // 拦截器配置
+  protected initInterceptors(): void {
+    // 请求拦截
+    this.instance.interceptors.request.use(
+      async (config) => {
+        // Account-only endpoints have no selected Workspace. Workspace routes
+        // resolve their persisted language and override this presentation hint.
+        // This is a LangBot backend hint, not part of the public Space API.
+        if (!this.disableToken) {
+          config.headers['X-LangBot-Language'] = i18n.language || 'en-US';
+        }
+        // 客户端添加认证头
+        if (typeof window !== 'undefined' && !this.disableToken) {
+          const session = this.getSessionSync();
+          if (session) {
+            config.headers.Authorization = `Bearer ${session}`;
+          }
+
+          const requestConfig = config as RequestConfig;
+          const workspaceUuid = getActiveWorkspaceUuid();
+          if (requestConfig.skipWorkspace) {
+            delete config.headers['X-Workspace-Id'];
+            delete config.headers['x-workspace-id'];
+          } else if (requestConfig.workspaceUuid) {
+            config.headers['X-Workspace-Id'] = requestConfig.workspaceUuid;
+          } else if (workspaceUuid) {
+            config.headers['X-Workspace-Id'] = workspaceUuid;
+          }
+
+          delete requestConfig.skipWorkspace;
+        }
+
+        return config;
+      },
+      (error) => Promise.reject(error),
+    );
+
+    // 响应拦截
+    this.instance.interceptors.response.use(
+      (response: AxiosResponse<ResponseData>) => {
+        return response;
+      },
+      async (error: AxiosError<ResponseData>) => {
+        // 统一错误处理
+        if (error.response) {
+          const { status, data } = error.response;
+          const errMsg = (data as { msg?: string })?.msg || error.message;
+          const errCode = (data as { code?: unknown })?.code;
+
+          // The server could not verify the session right now (saturated
+          // resolver/executor, database blip). The session is fine: retry
+          // once instead of treating it like an expired login.
+          const retryConfig = error.config as RequestConfig | undefined;
+          if (
+            status === 503 &&
+            errCode === 'authentication_unavailable' &&
+            retryConfig &&
+            !retryConfig.authRetried
+          ) {
+            retryConfig.authRetried = true;
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            return this.instance.request(retryConfig);
+          }
+
+          switch (status) {
+            case 401:
+              if (typeof window !== 'undefined') {
+                // Only an existing authenticated session should be torn down and
+                // redirected. A 401 from a sign-in attempt (bad credentials or a
+                // pending second factor) must not reload the page, otherwise the
+                // TOTP challenge step would be lost.
+                const hadSession = Boolean(localStorage.getItem('token'));
+                const isTokenCheck =
+                  error.request?.responseURL?.includes('/check-token') ?? false;
+                // One stray 401 must not end a live session: confirm with
+                // check-token first and keep the session unless the server
+                // positively says the token is no longer valid.
+                if (
+                  hadSession &&
+                  !isTokenCheck &&
+                  (await this.sessionStillValid()) !== false
+                ) {
+                  break;
+                }
+                localStorage.removeItem('token');
+                localStorage.removeItem('userEmail');
+                clearActiveWorkspaceUuid();
+                setCurrentWorkspaceSnapshot(null);
+                clearWorkspaceBootstrapSnapshot();
+                if (hadSession && !isTokenCheck) {
+                  window.location.href = '/login';
+                }
+              }
+              break;
+            case 403:
+              console.error('Permission denied:', errMsg);
+              break;
+            case 500:
+              console.error('Server error:', errMsg);
+              break;
+          }
+
+          return Promise.reject({
+            code: data?.code || status,
+            msg: errMsg,
+            data: data?.data || null,
+            request_id:
+              (data as { request_id?: string })?.request_id ||
+              error.response.headers['x-request-id'],
+          });
+        }
+
+        return Promise.reject({
+          code: -1,
+          msg: error.message || 'Network Error',
+          data: null,
+        });
+      },
+    );
+  }
+
+  /**
+   * Ask the server whether the stored token is still valid, bypassing the
+   * interceptors. true = valid, false = rejected (401), null = unknown.
+   */
+  protected async sessionStillValid(): Promise<boolean | null> {
+    const token =
+      typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) return false;
+    try {
+      const response = await axios.get(
+        `${this.baseURL}/api/v1/user/check-token`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 10000,
+          validateStatus: () => true,
+        },
+      );
+      if (response.status >= 200 && response.status < 300) return true;
+      if (response.status === 401) return false;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  // 转换下划线为驼峰
+  protected convertKeysToCamel(obj: JSONValue): JSONValue {
+    if (Array.isArray(obj)) {
+      return obj.map((v) => this.convertKeysToCamel(v));
+    } else if (obj !== null && typeof obj === 'object') {
+      return Object.keys(obj).reduce((acc, key) => {
+        const camelKey = key.replace(/_([a-z])/g, (_, letter) =>
+          letter.toUpperCase(),
+        );
+        acc[camelKey] = this.convertKeysToCamel((obj as JSONObject)[key]);
+        return acc;
+      }, {} as JSONObject);
+    }
+    return obj;
+  }
+
+  // 错误处理
+  protected handleError(error: object): never {
+    if (axios.isCancel(error)) {
+      throw { code: -2, msg: 'Request canceled', data: null };
+    }
+    throw error;
+  }
+
+  // 核心请求方法
+  public async request<T = unknown>(config: RequestConfig): Promise<T> {
+    try {
+      const response = await this.instance.request<ResponseData<T>>(config);
+      return response.data.data;
+    } catch (error) {
+      return this.handleError(error as object);
+    }
+  }
+
+  // 快捷方法
+  public get<T = unknown>(
+    url: string,
+    params?: object,
+    config?: RequestConfig,
+  ): Promise<T> {
+    return this.request<T>({ method: 'get', url, params, ...config });
+  }
+
+  public post<T = unknown>(
+    url: string,
+    data?: object,
+    config?: RequestConfig,
+  ): Promise<T> {
+    return this.request<T>({ method: 'post', url, data, ...config });
+  }
+
+  public put<T = unknown>(
+    url: string,
+    data?: object,
+    config?: RequestConfig,
+  ): Promise<T> {
+    return this.request<T>({ method: 'put', url, data, ...config });
+  }
+
+  public patch<T = unknown>(
+    url: string,
+    data?: object,
+    config?: RequestConfig,
+  ): Promise<T> {
+    return this.request<T>({ method: 'patch', url, data, ...config });
+  }
+
+  public delete<T = unknown>(url: string, config?: RequestConfig): Promise<T> {
+    return this.request<T>({ method: 'delete', url, ...config });
+  }
+
+  public postFile<T = unknown>(
+    url: string,
+    formData: FormData,
+    config?: RequestConfig,
+  ): Promise<T> {
+    return this.request<T>({
+      method: 'post',
+      url,
+      data: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      ...config,
+    });
+  }
+
+  public async downloadFile(
+    url: string,
+    config?: RequestConfig,
+  ): Promise<AxiosResponse<Blob>> {
+    try {
+      const response = await this.instance.get<Blob>(url, {
+        responseType: 'blob',
+        ...config,
+      });
+      return response;
+    } catch (error) {
+      return this.handleError(error as object);
+    }
+  }
+}

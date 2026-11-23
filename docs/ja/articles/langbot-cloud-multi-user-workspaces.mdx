@@ -1,0 +1,68 @@
+---
+title: "新しい LangBot Cloud が公開—オープンソース版もマルチユーザー Workspace に対応"
+description: "LangBot は LLM とメッセージングアプリを接続するオープンソース AI Bot プラットフォームです。新しい Cloud とオープンソース版はマルチユーザー Workspace、招待、ロール権限に対応しました。"
+---
+
+この記事は LangBot Blog から同期されています。 [Blog の原文を読む](https://langbot.app/ja/blog/langbot-cloud-multi-user-workspaces).
+
+公開日：2026-08-25 · 著者：LangBot Team
+
+![LangBot マルチユーザー Workspace ダッシュボード](/images/articles/source/images/cloud-multi-user/oss-dashboard.png)
+
+新しい [LangBot Cloud](https://cloud.langbot.app) を公開しました。今回まず整理したのは、複数人で LangBot を使うときに、誰がどのリソースへアクセスできるかという実務的な問題です。
+
+同じマルチユーザーの基盤は、オープンソース版でも利用できます。Cloud とセルフホスト版では運用方法が異なりますが、メンバー、招待、権限の基本的な考え方は共通になりました。
+
+## LangBot とは
+
+LangBot は、複数のメッセージングアプリで AI Bot を構築・運用するためのオープンソースプラットフォームです。1つのダッシュボードで Bot、メッセージ Pipeline、ナレッジベース、モデル、拡張機能を管理し、LINE、Slack、Discord、Telegram、QQ、WeChat、WeCom、Lark、DingTalk、KOOK に接続できます。Satori と Matrix にも対応し、Matrix ブリッジを使えば WhatsApp、Signal、Messenger、Mattermost、Google Chat、IRC、XMPP、Zulip などにも展開できます。
+
+モデルは特定の事業者に限定されません。OpenAI、Anthropic Claude、DeepSeek、Google Gemini、xAI Grok、Moonshot Kimi、Zhipu GLM に接続でき、Ollama と LM Studio ではローカルモデルも利用できます。SiliconFlow、Alibaba Cloud Model Studio（百錬）、Volcengine Ark、ModelScope、GiteeAI などのゲートウェイに加え、Dify と MCP を使った既存の Agent ワークフローにも対応します。
+
+チームは複数のチャットサービス上の AI アシスタントを1か所で管理し、用途に応じてクラウドモデル、ローカルモデル、既存の Agent ワークフローを使い分けられます。
+
+![新しい LangBot Cloud のログイン画面](/images/articles/source/images/cloud-multi-user/cloud-login.png)
+
+## Cloud：自分の Workspace から始める
+
+LangBot Cloud は LangBot Account でログインします。初回利用時には個人用 Workspace が用意され、招待を受けてチームの Workspace に参加できます。複数の Workspace に所属している場合は、画面上で作業先を切り替えられます。
+
+Bot、Pipeline、モデル、ナレッジベース、拡張機能は、現在選択している Workspace に属します。Workspace を切り替えても、別のチームの設定やデータが混ざることはありません。
+
+ホスティング、更新、実行環境は引き続き Cloud 側が管理します。サーバーを保守せず、チームですぐに Bot の設定を始めたい場合に向いています。
+
+## 管理者アカウントを共有せず、メンバーを招待
+
+Owner、またはメンバー管理権限を持つロールは、一度だけ使える招待を発行できます。招待された人は自分のアカウントで参加し、割り当てられたロールで Workspace を利用します。
+
+![Workspace 名を匿名化した LangBot Cloud の招待画面](/images/articles/source/images/cloud-multi-user/cloud-invitation.png)
+
+1つの管理者パスワードを共有するより、長期運用に適した形です。利用者ごとに独立した本人性があり、担当に合わせて権限を分けられます。
+
+現在は5つの固定ロールを用意しています。
+
+- **Owner**：Workspace の所有者。最上位の権限とメンバー管理を担当します。
+- **Admin**：メンバーと大部分の Workspace 設定を管理します。
+- **Developer**：Bot、Pipeline、モデル、拡張機能を設定します。
+- **Operator**：日常的な運用操作を担当します。
+- **Viewer**：読み取り専用で確認します。
+
+## オープンソース版：1インスタンス、1 Workspace、複数ユーザー
+
+セルフホスト版がマルチ Workspace の SaaS になるわけではありません。1つの LangBot インスタンスは引き続き1つの Workspace に対応しますが、その Workspace に複数のユーザーを追加できます。
+
+初期設定で作成したアカウントが Owner になります。その後、ほかのメンバーを招待できます。SMTP を設定している場合は招待メールを送信でき、メール設定がない場合は一度だけ表示される招待リンクを信頼できる手段で共有できます。
+
+参加後に使うのは、これまでと同じ LangBot のダッシュボードです。異なる点は、ログインした全員を管理者として扱うのではなく、Workspace とロールの両方に基づいてアクセスを確認することです。
+
+## どちらを選ぶべきか
+
+|  | LangBot Cloud | オープンソース・セルフホスト版 |
+|---|---|---|
+| 導入と保守 | LangBot がホスト・保守 | サーバーとデータを自分で管理 |
+| Workspace | 複数を所有・参加可能 | 1インスタンスにつき1つ |
+| メンバーと招待 | 対応 | 対応 |
+| 固定ロール権限 | 対応 | 対応 |
+| 向いている用途 | チームですぐに使い始める | プライベート環境とインフラを自分で管理する |
+
+ホスト版を使う場合は [cloud.langbot.app](https://cloud.langbot.app) へ。実行環境とデータを自分のサーバーに置く場合は、[GitHub](https://github.com/langbot-app/LangBot) からオープンソース版を導入できます。

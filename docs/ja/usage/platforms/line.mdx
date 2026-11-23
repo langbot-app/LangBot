@@ -1,0 +1,163 @@
+---
+title: "LINE"
+description: "LangBot で LINE AI ボットを構築。大規模言語モデルを LINE のチャットや公式アカウントに接続。"
+icon: "/images/platforms/line.svg"
+---
+
+この記事では、LangBot を LINE プラットフォームと接続して LINE ボット機能を実装する方法について説明します。
+
+## LINE ボットの作成
+
+### LINE 開発者アカウントの登録
+
+1. [LINE Developers ウェブサイト](https://developers.line.biz/)にアクセスし、LINE アカウントでログインします
+2. ログイン後、開発者コンソールに入ります
+
+### Provider と Channel の作成
+
+> [Developer Console](https://developers.line.biz/console)
+
+1. 開発者コンソールで、新しい Provider を作成します（ない場合）
+![alt text](/images/zh/deploy/bots/line/line01.png)
+2. Provider の下で、「Create」をクリックします
+![alt text](/images/zh/deploy/bots/line/line02.png)
+3. 名前を入力して Create をクリックします
+![alt text](/images/zh/deploy/bots/line/line03.png)
+
+4. リダイレクト後、Message API の作成を選択します
+![alt text](/images/zh/deploy/bots/line/line04.png)
+* Message API の作成をクリックして続行します
+![alt text](/images/zh/deploy/bots/line/line05.png)
+* リダイレクト後、基本情報を入力します
+![alt text](/images/zh/deploy/bots/line/line06.png)
+   - Channel Name
+   - Channel Description
+   - Category
+   - Subcategory
+   - Email Address
+5. すべての情報を入力したら、「Continue」をクリックして作成します
+![alt text](/images/zh/deploy/bots/line/line07.png)
+6. 入力した情報を確認し、問題がなければ Submit をクリックします
+![alt text](/images/zh/deploy/bots/line/line08.png)
+7. 正常に作成されました。使用に進みます
+![alt text](/images/zh/deploy/bots/line/line09.png)
+
+### 設定情報の取得
+
+作成後、次の重要な情報を取得します。記録してください：
+
+1. Channel Secret
+> [使用をクリックした後のページ](https://manager.line.biz/account)
+* Settings を選択
+![alt text](/images/zh/deploy/bots/line/line09.png)
+* Message API をクリック
+![alt text](/images/zh/deploy/bots/line/line11.png)
+* Message API を有効にします
+![alt text](/images/zh/deploy/bots/line/line12.png)
+* 作成したばかりの Provider を選択し、Agree をクリックします
+![alt text](/images/zh/deploy/bots/line/line13.png)
+* プライバシー規約については、単に OK をクリックします
+![alt text](/images/zh/deploy/bots/line/line14.png)
+* OK をクリックして作成を完了します
+![alt text](/images/zh/deploy/bots/line/line15.png)
+* コピーします
+![alt text](/images/zh/deploy/bots/line/line16.png)
+
+2. Channel Access Token（「Issue」ボタンをクリックして生成する必要があります）
+* console をクリックするか、直接 [Console](https://developers.line.biz/console/) にアクセスします
+![alt text](/images/zh/deploy/bots/line/line17.png)
+* 作成した Provider を選択し、Message API をクリックします
+![alt text](/images/zh/deploy/bots/line/line18.png)
+* Message API をクリックします
+![alt text](/images/zh/deploy/bots/line/line19.png)
+* 一番下までスクロールし、Issue をクリックします
+![alt text](/images/zh/deploy/bots/line/line20.png)
+* アイコンをクリックしてコピーします
+![alt text](/images/zh/deploy/bots/line/line21.png)
+
+## LangBot に接続
+
+次に、LangBot 設定ページを開きます：
+
+1. 「Bots」をクリックし、次に「Add」をクリックします
+![alt text](/images/zh/deploy/bots/line/line26.png)
+2. 「Platform/Adapter Selection」で「LINE」を選択します
+![alt text](/images/zh/deploy/bots/line/line27.png)
+
+3. 設定情報を入力します：
+   - Channel Secret：以前に取得した Channel secret
+   - Channel Access Token：以前に取得した Channel access token
+   ![alt text](/images/zh/deploy/bots/line/line28.png)
+
+4. 「Save」をクリックして設定を完了します
+   ![alt text](/images/zh/deploy/bots/line/line29.png)
+
+## Webhook の設定
+
+<Info>
+まず、[HTTP リバースプロキシの設定](/en/workshop/production/proxy-and-ssl)を参照して LangBot コールバックアドレスを設定することをお勧めします。
+
+</Info>
+
+
+<Tip>
+**パブリックサーバーとドメインの設定が不要です。** [LangBot Cloud](https://space.langbot.app/cloud) にはドメインと HTTPS が含まれており、すぐに使用できます。
+</Tip>
+
+* LangBot 設定ページから Webhook コールバック URL を取得します
+![alt text](/images/zh/deploy/bots/line/line30.png)
+
+* console をクリックするか、直接 [Console](https://developers.line.biz/console/) にアクセスします
+![alt text](/images/zh/deploy/bots/line/line17.png)
+* 作成した Provider を選択し、Message API をクリックします
+![alt text](/images/zh/deploy/bots/line/line18.png)
+* Message API をクリックします
+![alt text](/images/zh/deploy/bots/line/line19.png)
+* Edit をクリックして接続を入力します
+![alt text](/images/zh/deploy/bots/line/line22.png)
+* 接続を入力します（HTTPS 接続である必要があります。つまり、SSL 証明書が必要です）、Update をクリックします
+![alt text](/images/zh/deploy/bots/line/line23.png)
+
+* Use Webhook を選択します
+![alt text](/images/zh/deploy/bots/line/line24.png)
+
+5. 「Verify」ボタンをクリックして、接続が成功したかどうかをテストします
+![alt text](/images/zh/deploy/bots/line/line25.png)
+
+
+## 機能設定
+
+LINE 開発者コンソールで、ボットの機能をさらに設定できます：
+
+1. 「Messaging API」タブで、「LINE Official Account Features」セクションを見つけます
+2. 必要に応じて次の機能を有効または無効にします：
+   - 自動返信メッセージ
+   - 友達追加時のウェルカムメッセージ
+   - グループおよび複数人チャット
+   - ボットがグループに参加したときの挨拶
+
+## 使用方法
+
+設定後、ユーザーは次の方法で LINE ボットとやり取りできます：
+
+1. LINE 開発者コンソールで提供される QR コードをスキャンして、ボットを友達として追加します
+2. チャットでメッセージを送信すると、ボットは LangBot を通じて処理して返信します
+
+## よくある問題
+
+### Webhook 検証失敗
+
+- サーバーが HTTPS 経由でアクセスできることを確認してください
+- Webhook URL が正しいかどうかを確認してください
+- LangBot サービスが正常に実行されていることを確認してください
+
+### メッセージを受信できない
+
+- Channel Access Token が有効かどうかを確認してください
+- 「Use Webhook」オプションが有効になっていることを確認してください
+- LangBot ログでエラーメッセージを確認してください
+
+### 権限の問題
+
+- LINE 開発者コンソールでボットに必要な権限を有効にしていることを確認してください
+- 一部の高度な機能には、LINE Premium アカウントが必要な場合があります

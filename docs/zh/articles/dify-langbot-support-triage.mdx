@@ -1,0 +1,197 @@
+---
+title: "让客服问题走对分支：Dify + LangBot 钉钉、企业微信机器人实战"
+description: "用 GPT-6 Astra 和 Dify Question Classifier 区分账户、产品与人工复核请求，再接入 LangBot。三条分支逐一测试，说明回复规则与真实交接的边界。"
+---
+
+本文同步自 LangBot Blog。 [阅读 Blog 原文](https://langbot.app/zh/blog/dify-langbot-support-triage).
+
+发布于 2026-09-16 · 作者：LangBot Team
+
+把所有客服问题塞给同一段提示词，刚开始挺省事。后来你会发现，登录失败、功能咨询、退款投诉混在一起，机器人经常用同一种口气回复，还容易在不该承诺的地方说得太满。
+
+这次我们把流程拆成三条：账户问题给排查步骤，产品问题给使用说明，需要授权的事情提示人工复核。Dify 的 Question Classifier 决定走哪条路，GPT-6 Astra 生成对应回复，LangBot 把同一个应用接到钉钉、企业微信或 QQ。
+
+![实际部署的三分支客服 Chatflow。](/images/articles/source/images/dify-langbot/039-triage-three-branch-overview.png)
+
+*实际部署的三分支客服 Chatflow。*
+
+
+## 先把 Dify 和 LangBot 跑起来
+
+先安装 Docker Compose 和 Git，再分别按 [Dify Docker Compose 部署文档](https://docs.dify.ai/en/self-host/deploy/quick-start/docker-compose) 与 [LangBot Docker 部署文档](https://langbot.app/docs/en/deploy/langbot/docker/) 启动两个服务。Dify 的基础步骤是克隆仓库、进入 `docker` 目录、将 `.env.example` 复制为 `.env`，再启动 Compose；LangBot 的文档提供完整的镜像和插件运行时配置。
+
+本文截图来自 **Dify 1.17.1、LangBot v4.10.11** 的本机环境。我们把浏览器端口分别映射为 `8088` 和 `5368`；这是演示环境的自定义映射，官方默认部署通常分别使用 `80` 和 `5300`。如果沿用官方默认值，就打开 `http://localhost` 和 `http://localhost:5300`，不用为了对齐截图而改端口。各自创建管理员账户，并把界面语言设为 **English**。
+
+![本地 Dify 的首次初始化页面。](/images/articles/source/images/dify-langbot/00-dify-install.png)
+
+*本地 Dify 的首次初始化页面。*
+
+![本地 LangBot 的首次初始化页面。](/images/articles/source/images/dify-langbot/00-langbot-install.png)
+
+*本地 LangBot 的首次初始化页面。*
+
+接入时最重要的是 **LangBot 容器能访问 Dify**。本次两个服务加入同一个 Docker 网络，因此 Runner 的 Base URL 使用 `http://nginx/v1`，其中 `nginx` 是 Dify 的服务名。你可以在两个 Compose 配置中为 Dify 的 `nginx` 和 LangBot 服务加入同一个外部网络；如果分别部署在不同主机，则填写 LangBot 能访问的 Dify HTTPS 地址并加上 `/v1`。下文表格里的 `http://nginx/v1` 都指本次共享网络环境，不能直接套到所有部署。容器内的 `localhost` 指向容器自己。
+
+## 在 Dify 中配置 GPT-6 Astra
+
+进入 **Integrations → Model Provider**，安装官方 **OpenAI-API-compatible** 插件，再点 **Add Model**。本次使用的插件版本是 0.0.66。
+
+| 字段 | 本次设置 |
+| --- | --- |
+| Model Name / model name for API endpoint | `gpt-6-astra` |
+| Model Type / Completion mode | LLM / Chat |
+| Model display name | GPT-6 Astra |
+| API Base URL | 你自己的 OpenAI 兼容服务地址，通常以 `/v1` 结尾 |
+| API Key | 你的模型服务密钥 |
+| API Type | Chat Completions API |
+| Model context size / Upper bound for max tokens | 本教程设为 32768 / 4096 |
+
+最后一行是这次演示的工作上限，不是对 Astra 完整规格的声明。保存时让 Dify 做连接验证，成功后再建应用。截图中的网关只是本次测试环境，实际使用时换成你自己的服务。模型参数和可用接口以所选服务为准。模型名称以你选用的服务实际提供的标识为准，本文保留本次实测的 `gpt-6-astra`。
+
+![添加自定义模型。API Key 在截图前保持为空，实际运行时已配置。](/images/articles/source/images/dify-langbot/014-dify-astra-model-settings.png)
+
+*添加自定义模型。API Key 在截图前保持为空，实际运行时已配置。*
+
+
+## 先定义三类问题，再画流程
+
+演示产品是一个虚构的帮助台产品 Northstar Desk。本文用到的规则直接写在三个分支中，不依赖另一篇教程或预先存在的知识库。
+
+| 分支 | 适合的问题 | 回复任务 |
+| --- | --- | --- |
+| Account | 登录、邀请链接、工作区访问 | 说明邀请有效 48 小时，指导所有者重新发送邀请 |
+| Product | 导出工单、试用限制、基础设置 | 回答已给定的产品规则和操作路径 |
+| Human | 退款、收费、企业报价、投诉、混合不清的问题 | 说明需要人工决定，收集简短说明并给出联系支持团队的建议 |
+
+第三条分支的作用是生成交接提示。本例没有连接工单系统，也不会真的通知客服，所以回复不能写“已转交”“退款已批准”。以后接入工单 API 时，再把真实执行结果接到这条分支。
+
+## 在 Dify 创建分流 Chatflow
+
+新建 **Chatflow**，名称为 `Astra Support Router`。从 User Input 连到 **Question Classifier**，模型选择 GPT-6 Astra，Query Variable 指向 `sys.query`。
+
+添加三类，说明尽量写清楚范围：
+
+```text
+Account: login, invitation, password or workspace access
+Product: usage, ticket export, setup and trial limits
+Human: billing, refunds, enterprise pricing, angry complaints
+or unclear mixed questions
+```
+
+![分类节点里的类别说明会直接影响路由结果。](/images/articles/source/images/dify-langbot/040-triage-classifier-settings.png)
+
+*分类节点里的类别说明会直接影响路由结果。*
+
+在 Advanced Setting 中补充一句：缺少关键信息、需要授权或者混合问题不明确时，选择 Human。分类器的三条出口分别连接一个 LLM 节点，再各自接 Answer。
+
+三个 LLM 都选 GPT-6 Astra，用户消息引用 `sys.query`，但系统规则分别写：
+
+- **Account Reply**：邀请链接有效 48 小时；请工作区所有者到 `Settings > Members` 重新发送。不要索要密码。其他账户问题先问一个澄清问题。
+- **Product Reply**：所有者从 `Settings > Data > Export` 导出 CSV，链接保留 7 天；试用 14 天、5 名成员、2 个收件箱。规则没覆盖的内容直接说明。
+- **Human Reply**：理解诉求，解释需要人工决定，请对方提供简短问题描述和非敏感参考信息，联系其支持团队。不要编造客服地址、承诺处理时效或声称已经执行。
+
+共用规则只有几条：跟随用户语言、简短、不要重复冗长开场。把业务规则分在对应节点里，以后修改退款交接话术时，就不用担心顺便改坏登录帮助。
+
+## 每个分支都要实际跑一次
+
+我们在 Preview 中做了三组测试：
+
+| 输入 | 实际路径 | 结果 |
+| --- | --- | --- |
+| My invitation link expired... | Account Output | 建议让所有者重新发邀请，说明 48 小时有效期 |
+| How do I export tickets as a CSV? | Product Output | 返回导出路径和 7 天有效期 |
+| 我对收费很不满意，要求退款，马上处理。 | Human Output | 说明需人工审核，不声称退款已经执行 |
+
+![账户问题走 Account 分支。](/images/articles/source/images/dify-langbot/041-triage-account-path-result.png)
+
+*账户问题走 Account 分支。*
+
+![产品问题走 Product 分支。](/images/articles/source/images/dify-langbot/043-triage-product-path-result.png)
+
+*产品问题走 Product 分支。*
+
+![退款诉求走 Human 分支，输出人工复核建议。](/images/articles/source/images/dify-langbot/050-triage-human-review-chinese.png)
+
+*退款诉求走 Human 分支，输出人工复核建议。*
+
+注意看预览里的 **Workflow Process succeeded** 和具体的 Output 名称。只读最后一段回答，容易错过“答得似乎没错，但实际上走错了分支”的问题。
+
+## 用 LangBot 接住消息入口
+
+在 Dify 点 **Publish**，发布当前版本。然后进入 **Access Point → Backend Service API → API Key**，创建这个应用自己的密钥。
+
+打开 LangBot，点 **Create Pipelines**，命名为 `Astra Support Router`。进入 **Configuration → AI**：
+
+| 字段 | 值 |
+| --- | --- |
+| Runner | Dify Service API |
+| Base URL | `http://nginx/v1` |
+| App Type | Chat |
+| API Key | 刚创建的 Dify 应用密钥 |
+
+这里粘贴的是 **Dify 应用密钥**，不是前面配置 Astra 的模型密钥。一个负责调用应用，一个负责调用模型，别混用。保存后打开 **Debug Chat**，先验证整条调用链，再接平台。
+
+![LangBot 的 Dify Runner 配置；截图时尚未填入应用密钥。](/images/articles/source/images/dify-langbot/053-langbot-triage-dify-settings.png)
+
+*LangBot 的 Dify Runner 配置；截图时尚未填入应用密钥。*
+
+
+## 在 LangBot 中验证分流仍然有效
+
+我们先在 LangBot 问邀请链接失效，得到 `Settings > Members` 的建议；再用中文提出退款诉求，得到人工复核提示。Dify 的分类逻辑不用在 LangBot 里再写一遍。
+
+![LangBot 中的账户问题回复。](/images/articles/source/images/dify-langbot/055-langbot-triage-account-english.png)
+
+*LangBot 中的账户问题回复。*
+
+![同一应用处理中文退款诉求，保持人工审核边界。](/images/articles/source/images/dify-langbot/076-langbot-triage-human-chinese.png)
+
+*同一应用处理中文退款诉求，保持人工审核边界。*
+
+上线前可以再加一小组混合问题：“无法登录，而且我要退款”“不知道该找谁”。如果这些问题总被分进 Product，先调整类别描述和分类指令，再考虑换模型。
+
+这个方案最适合把重复支持工作先分清楚。接下来要做真实交接，就在 Human 分支调用已有工单或通知服务，并把成功、失败结果分别呈现给用户。不要把“生成一句交接话术”当成已经完成交接。
+
+## 接到钉钉、企业微信、QQ，以及其他消息平台
+
+在 LangBot 点 **Create Bots**，选择适配器，填写平台提供的凭据。创建后把机器人绑定到刚才的流水线；检查 Trigger 中的私聊、群聊和提及规则，再按平台要求发布或邀请机器人。
+
+本次实测覆盖 **LangBot → Dify → GPT-6 Astra → LangBot 回复**。以下是实际界面核对过的接入方式，平台账户与群聊没有在本次演示中授权连接。
+
+| 入口 | 配置方式 |
+| --- | --- |
+| 飞书 / Lark | 选 Lark；可扫码创建应用，也可手填 App ID、App Secret、与平台一致的 Bot Name。中国平台域名选 Feishu，默认使用长连接；开发者后台配置消息权限、事件并发布应用。 |
+| 钉钉 | 选 DingTalk；扫码或填写 Client ID、Client Secret。Robot Code 需从开发者后台复制；按文档配置 Stream 接收消息、机器人名称和需要的卡片模板。 |
+| 企业微信智能机器人 | 选 WeComBot；长连接用 BotId、Secret，填写机器人名称。Webhook 模式另配 Corpid、Token、EncodingAESKey。两套模式不要混填。 |
+| 企业微信内部应用 / 微信客服 | 分别选 WeCom 或 WeComCustomerService，按各自后台填写企业与应用凭据、Token、EncodingAESKey，完成 HTTPS 回调和可信 IP 配置。内部应用不能直接当群机器人使用。 |
+| 微信个人会话 | 选 OpenClaw WeChat，通过界面的二维码授权登录，按适配器说明接入。 |
+| 微信公众号 | 选 Official Account，填写 App ID、App Secret、Token、EncodingAESKey，配置公网回调与 IP 白名单。根据接口限制选择回复模式；耗时较长时可能需要用户再发一条消息取回结果。 |
+| QQ：OneBot v11 | 运行兼容 OneBot v11 的协议端，配置反向 WebSocket 到 LangBot 的监听端口，两侧 Access Token 保持一致；演示环境的 Compose 把主机 2288 映射到容器 2280。 |
+| QQ 官方机器人 | 选 QQ Official API；可扫码绑定或填写 App ID、Secret。当前界面说明 Token 可留空；接收模式、沙箱范围、发布审核以 QQ 官方及适配器文档为准。 |
+
+![钉钉适配器的凭据、Robot Code 与卡片配置。](/images/articles/source/images/dify-langbot/063-platform-dingtalk-fields.png)
+
+*钉钉适配器的凭据、Robot Code 与卡片配置。*
+
+![QQ 的 OneBot v11 方案需要反向 WebSocket 监听地址和端口。](/images/articles/source/images/dify-langbot/066-platform-onebot-v11-fields.png)
+
+*QQ 的 OneBot v11 方案需要反向 WebSocket 监听地址和端口。*
+
+LangBot 的适配器列表还包括 Discord、Slack、Telegram、LINE、Mattermost、Matrix、KOOK、Satori、HTTP Bot、Page Bot 和 WeChatPad。每种适配器需要的权限、回调和协议不同，不是填一个通用 Token 就全部接通。完整入口见 [LangBot 平台文档](https://langbot.app/docs/zh/usage/platforms/readme)。
+
+如果只是想先模拟 QQ 消息，可以使用 matcha 之类的 OneBot 测试端；本文展示的对话来自 LangBot 自带 Debug Chat，没有把模拟对话当作真实群消息。
+
+## 几个容易卡住的地方
+
+
+遇到问题先按链路定位：Dify 预览能否回复、应用是否已 Publish、LangBot 的 Base URL 是否包含 `/v1`、应用类型是否正确，最后才看平台事件是否到达。如果改过 Dify 服务密码，Redis 与 Celery、Sandbox 与代码执行客户端的配置必须成对修改。
+
+本机部署还遇到过代理软件返回虚拟 DNS 地址，导致 Dify 的 SSRF 代理拒绝插件下载。修好 DNS 后恢复，没必要关掉证书校验或内网访问保护。一次外部 API 的临时失败也不能当作模型或平台已经接通的证明，重试后仍应检查运行记录。
+
+项目入口：[LangBot](https://github.com/langbot-app/LangBot) 和 [Dify](https://github.com/langgenius/dify)。截图和测试日期为 2026 年 9 月 16 日，后续版本的菜单名称可能会变化。
+
+
+## 继续阅读
+
+- [把群公告交给 Dify：用 GPT-6 Astra 和 LangBot 搭建 QQ、飞书写作助手](https://langbot.app/zh/blog/dify-langbot-writing-assistant)
+- [在飞书里查询 GitHub 更新：Dify Workflow + GPT-6 Astra + LangBot 实战](https://langbot.app/zh/blog/dify-langbot-github-release-briefing)

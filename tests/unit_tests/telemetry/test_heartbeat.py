@@ -1,0 +1,270 @@
+"""Unit tests for telemetry heartbeat payload (pkg/telemetry/heartbeat.py)."""
+
+from __future__ import annotations
+
+import json
+import asyncio
+import time
+from datetime import datetime, timezone
+from types import SimpleNamespace
+
+import pytest
+from unittest.mock import AsyncMock, Mock
+from importlib import import_module
+
+from langbot.pkg.alerts.service import AlertService
+from langbot.pkg.telemetry import usage
+
+
+@pytest.fixture(autouse=True)
+def reset_usage():
+    usage._workspaces.clear()
+    yield
+    usage._workspaces.clear()
+
+
+def get_heartbeat_module():
+    return import_module('langbot.pkg.telemetry.heartbeat')
+
+
+def test_workspace_created_timestamp_treats_naive_database_values_as_utc():
+    heartbeat = get_heartbeat_module()
+    created_at = datetime(2026, 8, 4, 0, 0, 0)
+    assert heartbeat._workspace_created_timestamp(created_at) == 1785801600
+
+
+def make_app():
+    ap = Mock()
+    ap.instance_config = Mock()
+    ap.instance_config.data = {
+        'database': {'use': 'postgresql'},
+        'vdb': {'use': 'chroma'},
+        'box': {'enabled': True, 'backend': 'nsjail'},
+    }
+
+    # persistence counts
+    result = Mock()
+    result.scalar.return_value = 3
+    ap.persistence_mgr = Mock()
+    ap.persistence_mgr.execute_async = AsyncMock(return_value=result)
+
+    # box service
+    ap.box_service = Mock()
+    ap.box_service.enabled = True
+    ap.box_service.available = False
+    ap.box_service.shares_filesystem_with_box = False
+
+    # platform manager with one enabled bot
+    bot = Mock()
+    bot.enable = True
+    bot.adapter = Mock()
+    bot.adapter.__class__.__name__ = 'TelegramAdapter'
+    ap.platform_mgr = Mock()
+    ap.platform_mgr.bots = [bot]
+
+    # plugin connector
+    ap.plugin_connector = Mock()
+    ap.plugin_connector.list_plugins = AsyncMock(return_value=[{}, {}])
+
+    # skills
+    ap.skill_mgr = Mock()
+    ap.skill_mgr.skills = {'a': {}, 'b': {}, 'c': {}}
+    ap.skill_mgr.total_cached_skill_count.return_value = 3
+
+    return ap
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('instance_enabled,workspace_enabled', [(True, True), (False, True), (True, False)])
+@pytest.mark.parametrize('channel', ['auto', 'instance', 'space', 'off'])
+async def test_alert_state_each_heartbeat(instance_enabled, workspace_enabled, channel):
+    ap = make_app()
+    ap.instance_config.data['alerts'] = {'enabled': instance_enabled}
+    ap.alert_service = AlertService(ap)
+    settings = ap.alert_service._normalize_settings(None)
+    settings.update(enabled=workspace_enabled, email_channel=channel)
+    ap.alert_service._settings_cache['workspace-a'] = (settings, time.monotonic())
+    for _ in range(2):
+        payload = await get_heartbeat_module().build_heartbeat_payload(ap, workspace_uuid='workspace-a')
+        batch = payload['features']['usage']
+        assert batch['c'] == [
+            [
+                'alert.state',
+                {'enabled': 'yes' if instance_enabled and workspace_enabled else 'no', 'channel': channel},
+                1,
+            ]
+        ]
+        usage.ack('workspace-a', batch)
+
+
+@pytest.mark.asyncio
+async def test_alert_state_default_off_workspace():
+    ap = make_app()
+    ap.persistence_mgr.tenant_uow = None
+    ap.persistence_mgr.execute_async.return_value.first.return_value = None
+    ap.alert_service = AlertService(ap)
+    payload = await get_heartbeat_module().build_heartbeat_payload(ap, workspace_uuid='workspace-a')
+    assert payload['features']['usage']['c'] == [['alert.state', {'enabled': 'no', 'channel': 'auto'}, 1]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('mode', ['missing', 'failure', 'timeout', 'disabled'])
+async def test_alert_state_cannot_break_heartbeat(monkeypatch, mode):
+    ap = make_app()
+    ap.alert_service = None
+    if mode != 'missing':
+        ap.alert_service = SimpleNamespace(_settings=AsyncMock(side_effect=RuntimeError('unavailable')))
+    if mode == 'disabled':
+        ap.instance_config.data['space'] = {'disable_telemetry': True}
+    if mode == 'timeout':
+
+        async def stalled_settings(workspace_uuid):
+            await asyncio.Event().wait()
+
+        ap.alert_service._settings = AsyncMock(side_effect=stalled_settings)
+        real_wait_for = asyncio.wait_for
+
+        async def short_timeout(awaitable, timeout):
+            assert timeout == 1.0
+            return await real_wait_for(awaitable, timeout=0.01)
+
+        monkeypatch.setattr(get_heartbeat_module().asyncio, 'wait_for', short_timeout)
+    payload = await get_heartbeat_module().build_heartbeat_payload(ap, workspace_uuid='workspace-a')
+    assert 'usage' not in payload['features']
+    if mode == 'disabled':
+        ap.alert_service._settings.assert_not_awaited()
+
+
+class TestBuildHeartbeatPayload:
+    @pytest.mark.asyncio
+    async def test_payload_shape(self, monkeypatch):
+        heartbeat = get_heartbeat_module()
+        monkeypatch.setattr(heartbeat.constants, 'instance_id', 'instance-test')
+        ap = make_app()
+        payload = await heartbeat.build_heartbeat_payload(ap, workspace_uuid='workspace-a')
+
+        assert payload['event_type'] == 'instance_heartbeat'
+        assert payload['query_id'] == ''
+        assert payload['workspace_uuid'] == 'workspace-a'
+        assert payload['instance_id']
+        assert payload['workspace_create_ts'] == 0
+        assert 'instance_create_ts' in payload
+        assert 'timestamp' in payload
+        f = payload['features']
+        assert f['database'] == 'postgresql'
+        assert f['vdb'] == 'chroma'
+        assert f['box'] == {
+            'enabled': True,
+            'available': False,
+            'backend': 'nsjail',
+            'shares_fs': False,
+        }
+        assert f['adapters'] == ['TelegramAdapter']
+        assert f['bot_count'] == 1
+        assert f['plugin_count'] == 2
+        assert f['skill_count'] == 3
+        assert f['pipeline_count'] == 3
+        assert f['mcp_server_count'] == 3
+        assert f['knowledge_base_count'] == 3
+
+    @pytest.mark.asyncio
+    async def test_payload_is_json_serializable(self):
+        heartbeat = get_heartbeat_module()
+        payload = await heartbeat.build_heartbeat_payload(make_app(), workspace_uuid='workspace-a')
+        json.dumps(payload)
+
+    @pytest.mark.asyncio
+    async def test_count_failure_yields_minus_one(self):
+        heartbeat = get_heartbeat_module()
+        ap = make_app()
+        ap.persistence_mgr.execute_async = AsyncMock(side_effect=RuntimeError('db down'))
+        payload = await heartbeat.build_heartbeat_payload(ap, workspace_uuid='workspace-a')
+        assert payload['features']['pipeline_count'] == -1
+
+    @pytest.mark.asyncio
+    async def test_cloud_counts_loaded_registries_without_tenant_sql(self, monkeypatch):
+        heartbeat = get_heartbeat_module()
+        monkeypatch.setattr(heartbeat.constants, 'instance_id', 'instance-test')
+        ap = make_app()
+        ap.persistence_mgr.mode = SimpleNamespace(value='cloud_runtime')
+        ap.persistence_mgr.execute_async = AsyncMock(
+            side_effect=AssertionError('Cloud heartbeat must not issue per-tenant COUNTs')
+        )
+        ap.pipeline_mgr = SimpleNamespace(
+            _pipelines_by_key={
+                ('instance-a', 'workspace-a', 'pipeline-a'): object(),
+                ('instance-a', 'workspace-a', 'pipeline-b'): object(),
+            },
+        )
+        adapter_a = type('WorkspaceAAdapter', (), {})()
+        adapter_b = type('WorkspaceBAdapter', (), {})()
+        ap.platform_mgr._bots_by_key = {
+            ('instance-a', 'workspace-a', 'bot-a'): SimpleNamespace(enable=True, adapter=adapter_a),
+        }
+        ap.tool_mgr = SimpleNamespace(
+            mcp_tool_loader=SimpleNamespace(
+                _sessions={
+                    ('instance-a', 'workspace-a', 1, 'mcp-a'): object(),
+                    ('instance-a', 'workspace-a', 1, 'mcp-b'): object(),
+                    ('instance-a', 'workspace-a', 1, 'mcp-c'): object(),
+                },
+            ),
+        )
+        ap.rag_mgr = SimpleNamespace(
+            knowledge_bases={('workspace-a', 'kb-a'): object()},
+        )
+        ap.plugin_connector._workspace_installations = {
+            'workspace-a': {'plugin-a', 'plugin-b'},
+        }
+        ap.skill_mgr._skills_by_scope = {
+            ('instance-a', 'workspace-a', 1): {'skill-a': {}, 'skill-b': {}},
+            ('instance-a', 'workspace-b', 1): {'skill-c': {}},
+        }
+        ap.workspace_service.list_active_execution_bindings = AsyncMock(
+            return_value=[
+                SimpleNamespace(workspace_uuid='workspace-a', placement_generation=7),
+                SimpleNamespace(
+                    workspace_uuid='workspace-b',
+                    placement_generation=9,
+                    workspace_created_at=datetime(2026, 8, 4, tzinfo=timezone.utc),
+                ),
+            ],
+        )
+        ap.platform_mgr._bots_by_key[('instance-a', 'workspace-b', 'bot-b')] = SimpleNamespace(
+            enable=True, adapter=adapter_b
+        )
+
+        payloads = await heartbeat.build_heartbeat_payloads(ap)
+
+        assert [payload['workspace_uuid'] for payload in payloads] == ['workspace-a', 'workspace-b']
+        assert all(payload['instance_id'] for payload in payloads)
+        assert payloads[0]['workspace_create_ts'] == 0
+        assert payloads[1]['workspace_create_ts'] == 1785801600
+        by_workspace = {payload['workspace_uuid']: payload['features'] for payload in payloads}
+        assert by_workspace['workspace-a']['pipeline_count'] == 2
+        assert by_workspace['workspace-a']['mcp_server_count'] == 3
+        assert by_workspace['workspace-a']['knowledge_base_count'] == 1
+        assert by_workspace['workspace-a']['bot_count'] == 1
+        assert by_workspace['workspace-a']['plugin_count'] == 2
+        assert by_workspace['workspace-a']['extension_count'] == 5
+        assert by_workspace['workspace-a']['skill_count'] == 2
+        assert by_workspace['workspace-a']['execution_generation'] == 7
+        assert by_workspace['workspace-a']['adapters'] == ['WorkspaceAAdapter']
+        assert by_workspace['workspace-b']['bot_count'] == 1
+        assert by_workspace['workspace-b']['pipeline_count'] == 0
+        assert by_workspace['workspace-b']['skill_count'] == 1
+        assert by_workspace['workspace-b']['execution_generation'] == 9
+        assert by_workspace['workspace-b']['adapters'] == ['WorkspaceBAdapter']
+        assert 'workspace_resources' not in by_workspace['workspace-a']
+        ap.plugin_connector.list_plugins.assert_not_awaited()
+        ap.persistence_mgr.execute_async.assert_not_awaited()
+        ap.workspace_service.list_active_execution_bindings.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_no_user_content_fields(self):
+        """The heartbeat must never carry message content / credentials keys."""
+        heartbeat = get_heartbeat_module()
+        payload = await heartbeat.build_heartbeat_payload(make_app(), workspace_uuid='workspace-a')
+        flat = json.dumps(payload).lower()
+        for forbidden in ('api_key', 'password', 'token', 'message_content'):
+            assert forbidden not in flat

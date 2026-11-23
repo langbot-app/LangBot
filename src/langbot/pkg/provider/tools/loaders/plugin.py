@@ -1,0 +1,91 @@
+from __future__ import annotations
+
+import typing
+import traceback
+
+from langbot_plugin.api.entities.events import pipeline_query
+
+from .. import loader
+import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
+
+
+# @loader.loader_class('plugin-tool-loader')
+class PluginToolLoader(loader.ToolLoader):
+    """插件工具加载器。
+
+    本加载器中不存储工具信息，仅负责从插件系统中获取工具信息。
+    """
+
+    async def get_tools(self, bound_plugins: list[str] | None = None) -> list[resource_tool.LLMTool]:
+        # 从插件系统获取工具（内容函数）
+        all_functions: list[resource_tool.LLMTool] = []
+
+        for tool in await self.ap.plugin_connector.list_tools(bound_plugins):
+            tool_obj = resource_tool.LLMTool(
+                name=tool.metadata.name,
+                human_desc=tool.metadata.description.en_US,
+                description=tool.spec['llm_prompt'],
+                parameters=tool.spec['parameters'],
+                func=lambda parameters: {},
+            )
+            all_functions.append(tool_obj)
+
+        return all_functions
+
+    async def get_tool_catalog(self, bound_plugins: list[str] | None = None) -> list[dict[str, typing.Any]]:
+        catalog: list[dict[str, typing.Any]] = []
+
+        for tool in await self.ap.plugin_connector.list_tools(bound_plugins):
+            catalog.append(
+                {
+                    'name': tool.metadata.name,
+                    'description': tool.spec['llm_prompt'],
+                    'human_desc': tool.metadata.description.en_US,
+                    'parameters': tool.spec['parameters'],
+                    'source': 'plugin',
+                    'source_name': tool.owner,
+                    'source_id': tool.owner,
+                }
+            )
+
+        return catalog
+
+    async def get_tool(
+        self,
+        name: str,
+        source_id: str | None = None,
+    ) -> resource_tool.LLMTool | None:
+        tools = await self.get_tools([source_id] if source_id else None)
+        return next((tool for tool in tools if tool.name == name), None)
+
+    async def has_tool(self, name: str, source_id: str | None = None) -> bool:
+        """检查工具是否存在"""
+        for tool in await self.ap.plugin_connector.list_tools([source_id] if source_id else None):
+            if tool.metadata.name == name:
+                return True
+        return False
+
+    async def invoke_tool(
+        self,
+        name: str,
+        parameters: dict,
+        query: pipeline_query.Query,
+        source_id: str | None = None,
+    ) -> typing.Any:
+        try:
+            return await self.ap.plugin_connector.call_tool(
+                name,
+                parameters,
+                session=query.session,
+                query_id=query.query_id,
+                bound_plugins=[source_id] if source_id else None,
+                query_uuid=query.query_uuid,
+            )
+        except Exception as e:
+            self.ap.logger.error(f'执行函数 {name} 时发生错误: {e}')
+            traceback.print_exc()
+            return f'error occurred when executing function {name}: {e}'
+
+    async def shutdown(self):
+        """关闭工具"""
+        pass

@@ -1,0 +1,2023 @@
+'use client';
+
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
+import { cn } from '@/lib/utils';
+import styles from './EventBindingsEditor.module.css';
+import { appendMessageRoutingTemplate } from './message-routing-template';
+import type { TFunction } from 'i18next';
+import { UseFormReturn } from 'react-hook-form';
+import {
+  Activity,
+  AlertCircle,
+  ArrowRight,
+  Ban,
+  Bot,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  ChevronsUpDown,
+  GripVertical,
+  Info,
+  ListChecks,
+  MessageSquare,
+  Plus,
+  Play,
+  RefreshCw,
+  Shield,
+  Settings2,
+  Trash2,
+  UserCheck,
+  UserMinus,
+  UserPlus,
+  Workflow,
+  FileCode2,
+  XCircle,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragStartEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  EventBinding,
+  Agent,
+  BotRouteDryRunResult,
+  BotEventRouteStatus,
+} from '@/app/infra/entities/api';
+import { backendClient } from '@/app/infra/http';
+import AgentCreateContent from '@/app/home/agents/components/AgentCreateContent';
+import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
+import { toast } from 'sonner';
+import {
+  eventGroupLabel,
+  eventNamespaces,
+  eventPatternCovers,
+  groupEventPatterns,
+} from '@/app/home/components/event-patterns/event-pattern-groups';
+import EventSelectOptionContent from '@/app/home/components/event-patterns/EventSelectOptionContent';
+
+export const PIPELINE_DISCARD = '__discard__';
+
+// ── types ─────────────────────────────────────────────────────────────────────
+
+interface EventBindingsEditorProps {
+  form: UseFormReturn<any>;
+  botId?: string;
+  supportedEvents: string[];
+  agentOptions: Agent[];
+  onAgentCreated: (agent: Agent) => void;
+}
+
+type FilterField =
+  | 'chat_type'
+  | 'chat_id'
+  | 'message_text'
+  | 'message_element_types'
+  | 'is_at_bot';
+type FilterOperator =
+  'eq' | 'neq' | 'contains' | 'not_contains' | 'starts_with' | 'regex';
+
+interface FilterRow {
+  field: FilterField;
+  operator: FilterOperator;
+  value: string | boolean;
+}
+
+const OPERATORS_BY_FIELD: Record<FilterField, FilterOperator[]> = {
+  is_at_bot: ['eq', 'neq'],
+  chat_type: ['eq', 'neq'],
+  chat_id: ['eq', 'neq', 'contains', 'not_contains', 'regex'],
+  message_text: [
+    'contains',
+    'not_contains',
+    'eq',
+    'neq',
+    'starts_with',
+    'regex',
+  ],
+  message_element_types: ['contains', 'not_contains'],
+};
+
+const ELEMENTS = [
+  'Image',
+  'Voice',
+  'File',
+  'Forward',
+  'Face',
+  'At',
+  'AtAll',
+  'Quote',
+];
+
+// Adapters that don't declare `supported_events` (e.g. legacy adapters)
+// only emit message.received, so that's the sole fallback option.
+const DEFAULT_EVENTS = ['message.received'];
+
+const BEHAVIOR_PRESETS = [
+  {
+    eventType: 'message.received',
+    labelKey: 'bots.behaviorReplyMessages',
+    descriptionKey: 'bots.behaviorReplyMessagesDescription',
+    icon: MessageSquare,
+  },
+  {
+    eventType: 'group.member_joined',
+    labelKey: 'bots.behaviorWelcomeMembers',
+    descriptionKey: 'bots.behaviorWelcomeMembersDescription',
+    icon: UserPlus,
+  },
+  {
+    eventType: 'group.member_left',
+    labelKey: 'bots.behaviorHandleDepartures',
+    descriptionKey: 'bots.behaviorHandleDeparturesDescription',
+    icon: UserMinus,
+  },
+  {
+    eventType: 'friend.request_received',
+    labelKey: 'bots.behaviorReviewFriendRequests',
+    descriptionKey: 'bots.behaviorReviewFriendRequestsDescription',
+    icon: UserCheck,
+  },
+  {
+    eventType: 'group.member_banned',
+    labelKey: 'bots.behaviorHandleModeration',
+    descriptionKey: 'bots.behaviorHandleModerationDescription',
+    icon: Shield,
+  },
+];
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+function isMessageEventPattern(p: string) {
+  return p === 'message.received';
+}
+
+interface RouteConflict {
+  winnerIndex: number;
+  shadowedIndex: number;
+}
+
+function bindingFilters(binding: EventBinding) {
+  return binding.filters ?? [];
+}
+
+function filtersEqual(a: EventBinding, b: EventBinding) {
+  return (
+    JSON.stringify(bindingFilters(a)) === JSON.stringify(bindingFilters(b))
+  );
+}
+
+function routePrecedes(
+  a: EventBinding,
+  aIndex: number,
+  b: EventBinding,
+  bIndex: number,
+) {
+  const aPriority = Number.isFinite(a.priority) ? a.priority : 0;
+  const bPriority = Number.isFinite(b.priority) ? b.priority : 0;
+  return aPriority === bPriority ? aIndex < bIndex : aPriority > bPriority;
+}
+
+function findRouteConflicts(bindings: EventBinding[]): RouteConflict[] {
+  const enabled = bindings
+    .map((binding, index) => ({ binding, index }))
+    .filter(({ binding }) => binding.enabled ?? true);
+  const conflicts: RouteConflict[] = [];
+
+  for (let left = 0; left < enabled.length; left += 1) {
+    for (let right = left + 1; right < enabled.length; right += 1) {
+      const a = enabled[left];
+      const b = enabled[right];
+      const [winner, shadowed] = routePrecedes(
+        a.binding,
+        a.index,
+        b.binding,
+        b.index,
+      )
+        ? [a, b]
+        : [b, a];
+
+      if (
+        !eventPatternCovers(
+          winner.binding.event_pattern,
+          shadowed.binding.event_pattern,
+        )
+      ) {
+        continue;
+      }
+
+      if (
+        bindingFilters(winner.binding).length === 0 ||
+        filtersEqual(winner.binding, shadowed.binding)
+      ) {
+        conflicts.push({
+          winnerIndex: winner.index,
+          shadowedIndex: shadowed.index,
+        });
+      }
+    }
+  }
+
+  return conflicts;
+}
+
+function findCatchAllRouteIndex(bindings: EventBinding[]) {
+  const candidates = bindings
+    .map((binding, index) => ({ binding, index }))
+    .filter(
+      ({ binding }) =>
+        (binding.enabled ?? true) &&
+        binding.event_pattern === '*' &&
+        bindingFilters(binding).length === 0,
+    );
+  candidates.sort((a, b) =>
+    routePrecedes(a.binding, a.index, b.binding, b.index) ? -1 : 1,
+  );
+  return candidates[0]?.index ?? -1;
+}
+
+function agentSupportsEventPattern(agent: Agent, pattern: string) {
+  const patterns = agent.supported_event_patterns ??
+    agent.capability?.supported_event_patterns ?? ['*'];
+  return patterns.some((p) => eventPatternCovers(p, pattern));
+}
+
+// Localized label for an event pattern. Concrete events look up
+// `bots.eventNames.<event_with_underscores>`, falling back to the raw
+// string when no translation exists (e.g. custom/unknown events).
+function eventLabel(event: string, t: TFunction) {
+  if (event === '*') return t('bots.eventWildcard');
+  if (event.endsWith('.*'))
+    return t('bots.eventNamespaceWildcard', {
+      namespace: event.replace('.*', ''),
+    });
+  const key = `bots.eventNames.${event.replace(/\./g, '_')}`;
+  const label = t(key);
+  return label === key ? event : label;
+}
+
+function eventDescription(event: string, t: TFunction) {
+  if (event === '*') return t('bots.eventDescriptions.all');
+  if (event.endsWith('.*')) {
+    const group = event.slice(0, -2);
+    const key = `bots.eventDescriptions.namespace_${group}`;
+    const description = t(key);
+    return description === key
+      ? t('bots.eventDescriptions.namespace', { group })
+      : description;
+  }
+  const key = `bots.eventDescriptions.${event.replace(/\./g, '_')}`;
+  const description = t(key);
+  return description === key ? t('bots.eventDescriptions.custom') : description;
+}
+
+function targetLabel(agent: Agent) {
+  return `${agent.emoji ? `${agent.emoji} ` : ''}${agent.name}`;
+}
+
+function targetTypeLabel(
+  type: EventBinding['target_type'] | undefined,
+  t: TFunction,
+) {
+  if (type === 'pipeline') return t('bots.targetPipeline');
+  if (type === 'discard') return t('bots.targetDiscard');
+  return t('bots.targetAgent');
+}
+
+function routeStatusLabel(
+  status: BotEventRouteStatus['last_status'] | undefined,
+  t: TFunction,
+) {
+  if (!status) return t('bots.routeStatusIdle');
+  const key = `bots.routeStatus.${status}`;
+  const label = t(key);
+  return label === key ? String(status) : label;
+}
+
+function routeStatusBadgeClass(
+  status: BotEventRouteStatus['last_status'] | undefined,
+) {
+  if (status === 'delivered') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300';
+  }
+  if (status === 'matched' || status === 'discarded') {
+    return 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/40 dark:bg-sky-950/30 dark:text-sky-300';
+  }
+  if (status === 'failed' || status === 'not_matched') {
+    return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300';
+  }
+  return 'border-border bg-muted/40 text-muted-foreground';
+}
+
+function localizedFailureReason(
+  failureCode: string | null | undefined,
+  fallback: string | null | undefined,
+  t: TFunction,
+) {
+  if (!failureCode) return fallback || '';
+  const key = `bots.routeFailure.${failureCode}`;
+  const label = t(key);
+  return label === key ? fallback || failureCode : label;
+}
+
+function routeStatusDetail(
+  status: BotEventRouteStatus | undefined,
+  t: TFunction,
+) {
+  if (!status) return '';
+  if (status.failure_code) {
+    return localizedFailureReason(status.failure_code, status.reason, t);
+  }
+  if (status.last_status) {
+    const key = `bots.routeStatusDetail.${status.last_status}`;
+    const label = t(key);
+    if (label !== key) return label;
+  }
+  return status.reason || formatRouteStatusTime(status.timestamp);
+}
+
+function diagnosticDetailLabel(
+  detail: Record<string, unknown>,
+  fallbackIndex: number,
+  t: TFunction,
+) {
+  const order =
+    typeof detail.binding_index === 'number'
+      ? detail.binding_index
+      : typeof detail.order === 'number'
+        ? detail.order
+        : fallbackIndex;
+  const route = t('bots.dryRunRuleIndex', { index: order + 1 });
+  if (detail.selected) {
+    return t('bots.dryRunDiagnosticSelected', { route });
+  }
+  const failureCode =
+    typeof detail.failure_code === 'string' ? detail.failure_code : null;
+  const reason = localizedFailureReason(
+    failureCode,
+    typeof detail.reason === 'string' ? detail.reason : null,
+    t,
+  );
+  if (detail.matched) {
+    return t('bots.dryRunDiagnosticMatched', { route, reason });
+  }
+  return t('bots.dryRunDiagnosticSkipped', { route, reason });
+}
+
+function formatRouteStatusTime(timestamp: number | null | undefined) {
+  if (!timestamp) return '';
+  return new Date(timestamp * 1000).toLocaleString();
+}
+
+function samplePayloadForEvent(eventType: string): Record<string, unknown> {
+  if (eventType === 'message.received') {
+    return {
+      message_text: 'Hello',
+      chat_type: 'person',
+      chat_id: 'test-user',
+      user_id: 'test-user',
+    };
+  }
+  if (eventType === 'group.member_joined') {
+    return {
+      group_id: 'test-group',
+      group_name: 'Test Group',
+      user_id: 'test-user',
+      user_name: 'Test User',
+    };
+  }
+  if (eventType === 'group.member_left') {
+    return {
+      group_id: 'test-group',
+      group_name: 'Test Group',
+      user_id: 'test-user',
+      user_name: 'Test User',
+      is_kicked: false,
+    };
+  }
+  if (eventType === 'platform.specific') {
+    return { action: 'test', data: {} };
+  }
+  return {};
+}
+
+// ── target combobox (type + target merged, with search + groups) ───────────────
+
+// Encoded value: "discard", "agent:<uuid>", "pipeline:<uuid>"
+function encodeTarget(type: EventBinding['target_type'], uuid: string): string {
+  return type === 'discard' ? 'discard' : `${type}:${uuid}`;
+}
+function decodeTarget(val: string): {
+  type: EventBinding['target_type'];
+  uuid: string;
+} {
+  if (val === 'discard') return { type: 'discard', uuid: '' };
+  const sep = val.indexOf(':');
+  return {
+    type: val.slice(0, sep) as EventBinding['target_type'],
+    uuid: val.slice(sep + 1),
+  };
+}
+
+function TargetCombobox({
+  binding,
+  agentOptions,
+  onUpdate,
+  onAgentCreated,
+}: {
+  binding: EventBinding;
+  agentOptions: Agent[];
+  onUpdate: (patch: Partial<EventBinding>) => void;
+  onAgentCreated: (agent: Agent) => void;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const { refreshPipelines } = useSidebarData();
+  const pipelineAllowed = isMessageEventPattern(binding.event_pattern);
+  const targetType = binding.target_type || 'agent';
+  const selectedTarget =
+    targetType !== 'discard'
+      ? agentOptions.find((agent) => agent.uuid === binding.target_uuid)
+      : undefined;
+
+  const current =
+    targetType === 'discard'
+      ? encodeTarget('discard', '')
+      : binding.target_uuid
+        ? encodeTarget(targetType, binding.target_uuid)
+        : '';
+
+  const agents = agentOptions.filter(
+    (a) =>
+      a.kind === 'agent' && agentSupportsEventPattern(a, binding.event_pattern),
+  );
+  const pipelines = pipelineAllowed
+    ? agentOptions.filter((a) => a.kind === 'pipeline')
+    : [];
+
+  function currentLabel() {
+    if (targetType === 'discard')
+      return (
+        <span className="flex items-center gap-1.5 text-destructive">
+          <Ban className="size-3.5" />
+          {t('bots.targetDiscard')}
+        </span>
+      );
+    const agent = agentOptions.find((a) => a.uuid === binding.target_uuid);
+    if (agent)
+      return (
+        <span className="flex items-center gap-1.5">
+          {agent.kind === 'event_processor' ? (
+            <FileCode2 className="size-3.5" />
+          ) : agent.kind === 'pipeline' ? (
+            <Workflow className="size-3.5" />
+          ) : (
+            <Bot className="size-3.5" />
+          )}
+          {targetLabel(agent)}
+        </span>
+      );
+    return (
+      <span className="text-muted-foreground">{t('bots.selectTarget')}</span>
+    );
+  }
+
+  function select(val: string) {
+    const { type, uuid } = decodeTarget(val);
+    onUpdate({ target_type: type, target_uuid: uuid });
+    setOpen(false);
+  }
+
+  return (
+    <div className="relative w-[200px] shrink-0">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className={cn(
+              'h-8 w-full justify-between text-sm font-normal px-3',
+              selectedTarget && 'pr-10',
+            )}
+          >
+            <span className="truncate">{currentLabel()}</span>
+            <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[240px] p-0" align="start">
+          <Command>
+            <CommandInput
+              placeholder={t('bots.searchTarget')}
+              className="h-8"
+            />
+            <CommandList>
+              <CommandEmpty>{t('bots.noTargetFound')}</CommandEmpty>
+              {agents.length > 0 && (
+                <CommandGroup heading={t('bots.targetAgent')}>
+                  {agents.map((a) => (
+                    <CommandItem
+                      key={a.uuid}
+                      value={`agent:${a.uuid}:${a.name}`}
+                      onSelect={() =>
+                        select(encodeTarget('agent', a.uuid || ''))
+                      }
+                    >
+                      <Bot className="mr-2 size-3.5 shrink-0" />
+                      <span className="truncate">{targetLabel(a)}</span>
+                      {current === encodeTarget('agent', a.uuid || '') && (
+                        <Check className="ml-auto size-3.5 shrink-0" />
+                      )}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+              {pipelines.length > 0 && (
+                <CommandGroup heading={t('bots.targetPipeline')}>
+                  {pipelines.map((a) => (
+                    <CommandItem
+                      key={a.uuid}
+                      value={`pipeline:${a.uuid}:${a.name}`}
+                      onSelect={() =>
+                        select(encodeTarget('pipeline', a.uuid || ''))
+                      }
+                    >
+                      <Workflow className="mr-2 size-3.5 shrink-0" />
+                      <span className="truncate">{targetLabel(a)}</span>
+                      {current === encodeTarget('pipeline', a.uuid || '') && (
+                        <Check className="ml-auto size-3.5 shrink-0" />
+                      )}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+            </CommandList>
+          </Command>
+          <div className="border-t p-1">
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full justify-start"
+              onClick={() => {
+                setOpen(false);
+                setCreating(true);
+              }}
+            >
+              <Plus className="mr-2 size-4" />
+              {t('botSetup.create')}
+            </Button>
+          </div>
+        </PopoverContent>
+      </Popover>
+      <Dialog open={creating} onOpenChange={setCreating}>
+        <DialogContent
+          className="flex max-h-[90dvh] w-[calc(100%-2rem)] flex-col overflow-y-auto sm:max-w-6xl"
+          onSubmit={(event) => event.stopPropagation()}
+        >
+          <DialogHeader>
+            <DialogTitle>{t('botSetup.create')}</DialogTitle>
+            <DialogDescription>
+              {t('botSetup.createDescription')}
+            </DialogDescription>
+          </DialogHeader>
+          <AgentCreateContent
+            embedded
+            allowedKinds={pipelineAllowed ? ['pipeline', 'agent'] : ['agent']}
+            onCreated={async (id) => {
+              void refreshPipelines();
+              try {
+                const { agent } = await backendClient.getAgent(id);
+                onAgentCreated(agent);
+                const compatible =
+                  agent.kind === 'pipeline'
+                    ? pipelineAllowed
+                    : agentSupportsEventPattern(agent, binding.event_pattern);
+                if (compatible) {
+                  onUpdate({ target_type: agent.kind, target_uuid: id });
+                } else {
+                  toast.warning(t('botSetup.incompatible'));
+                }
+                setCreating(false);
+              } catch {
+                toast.error(t('agents.createError'));
+              }
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+      {selectedTarget && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              asChild
+              variant="ghost"
+              size="icon"
+              className="absolute right-1 top-1 size-6"
+            >
+              <Link
+                to={`/home/agents?id=${encodeURIComponent(selectedTarget.uuid || '')}&tab=config`}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={t('bots.pluginSubscriptions.configure')}
+              >
+                <Settings2 className="size-3.5" />
+              </Link>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {t('bots.pluginSubscriptions.configure')}
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
+
+// ── filter conditions panel ───────────────────────────────────────────────────
+
+function FilterConditionsPanel({
+  filters,
+  onChange,
+}: {
+  filters: FilterRow[];
+  onChange: (f: FilterRow[]) => void;
+}) {
+  const { t } = useTranslation();
+
+  function add() {
+    onChange([
+      ...filters,
+      { field: 'chat_type', operator: 'eq', value: 'person' },
+    ]);
+  }
+
+  function update(i: number, patch: Partial<FilterRow>) {
+    const next = [...filters];
+    next[i] = { ...next[i], ...patch };
+    if ('field' in patch) {
+      next[i].operator = OPERATORS_BY_FIELD[patch.field as FilterField][0];
+      next[i].value = patch.field === 'is_at_bot' ? true : '';
+    }
+    onChange(next);
+  }
+
+  function remove(i: number) {
+    const next = [...filters];
+    next.splice(i, 1);
+    onChange(next);
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {filters.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          {t('bots.conditionsEmpty')}
+        </p>
+      )}
+      {filters.map((f, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <Select
+            value={f.field}
+            onValueChange={(v) => update(i, { field: v as FilterField })}
+          >
+            <SelectTrigger className="h-8 w-[130px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="is_at_bot">
+                {t('bots.filterIsAtBot')}
+              </SelectItem>
+              <SelectItem value="chat_type">
+                {t('bots.filterChatType')}
+              </SelectItem>
+              <SelectItem value="chat_id">{t('bots.filterChatId')}</SelectItem>
+              <SelectItem value="message_text">
+                {t('bots.filterMessageText')}
+              </SelectItem>
+              <SelectItem value="message_element_types">
+                {t('bots.filterMessageElement')}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={f.operator}
+            onValueChange={(v) => update(i, { operator: v as FilterOperator })}
+          >
+            <SelectTrigger className="h-8 w-[110px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(OPERATORS_BY_FIELD[f.field] ?? ['eq']).map((op) => (
+                <SelectItem key={op} value={op}>
+                  {t(`bots.operator_${op}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {f.field === 'is_at_bot' ? (
+            <Select
+              value={String(f.value)}
+              onValueChange={(v) => update(i, { value: v === 'true' })}
+            >
+              <SelectTrigger className="h-8 w-[90px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="true">{t('bots.mentionYes')}</SelectItem>
+                <SelectItem value="false">{t('bots.mentionNo')}</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : f.field === 'chat_type' ? (
+            <Select
+              value={String(f.value)}
+              onValueChange={(v) => update(i, { value: v })}
+            >
+              <SelectTrigger className="h-8 w-[90px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="person">
+                  {t('bots.sessionTypePerson')}
+                </SelectItem>
+                <SelectItem value="group">
+                  {t('bots.sessionTypeGroup')}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          ) : f.field === 'message_element_types' ? (
+            <Select
+              value={String(f.value)}
+              onValueChange={(v) => update(i, { value: v })}
+            >
+              <SelectTrigger className="h-8 w-[100px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ELEMENTS.map((el) => (
+                  <SelectItem key={el} value={el}>
+                    {t(`bots.element${el}`)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              className="h-8 w-[160px] text-xs"
+              placeholder={
+                f.field === 'chat_id'
+                  ? t('bots.ruleValueLauncherIdPlaceholder')
+                  : t('bots.ruleValueMessagePlaceholder')
+              }
+              value={String(f.value)}
+              onChange={(e) => update(i, { value: e.target.value })}
+            />
+          )}
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0"
+            onClick={() => remove(i)}
+          >
+            <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+          </Button>
+        </div>
+      ))}
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7 px-1 text-xs text-muted-foreground"
+        onClick={add}
+      >
+        <Plus className="h-3 w-3 mr-1" />
+        {t('bots.addFilter')}
+      </Button>
+    </div>
+  );
+}
+
+// ── adapter capability summary ────────────────────────────────────────────────
+
+function AdapterCapabilitySummary({
+  supportedEvents,
+  eventOptions,
+}: {
+  supportedEvents: string[];
+  eventOptions: string[];
+}) {
+  const { t } = useTranslation();
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const concreteEvents =
+    supportedEvents.length > 0 ? supportedEvents : DEFAULT_EVENTS;
+  const concreteEventGroups = groupEventPatterns(concreteEvents);
+  const optionGroups = groupEventPatterns(eventOptions);
+
+  return (
+    <div className="rounded-lg border bg-muted/20 p-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-background text-primary shadow-xs">
+              <Activity className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium">
+                {t('bots.adapterEventsTitle')}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t('bots.adapterEventsDescription', {
+                  count: concreteEvents.length,
+                })}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {concreteEventGroups.slice(0, 4).map((group) => (
+              <Badge
+                key={group.namespace}
+                variant="secondary"
+                className="max-w-full rounded-md px-2 py-0.5 font-normal"
+              >
+                <span className="truncate">
+                  {eventGroupLabel(group.namespace, t)} ·{' '}
+                  {group.patterns.length}
+                </span>
+              </Badge>
+            ))}
+            {concreteEventGroups.length > 4 && (
+              <Badge variant="outline" className="rounded-md px-2 py-0.5">
+                {t('bots.adapterEventsMore', {
+                  count: concreteEventGroups.length - 4,
+                })}
+              </Badge>
+            )}
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-8 shrink-0 px-2 text-xs"
+          onClick={() => setAdvancedOpen((v) => !v)}
+        >
+          {advancedOpen ? (
+            <ChevronDown className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5" />
+          )}
+          {t('bots.advancedEventValues')}
+        </Button>
+      </div>
+      {advancedOpen && (
+        <div className="mt-3 space-y-4 border-t pt-3">
+          {optionGroups.map((group) => (
+            <div key={group.namespace} className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">
+                {eventGroupLabel(group.namespace, t)}
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {group.patterns.map((event) => (
+                  <div
+                    key={event}
+                    className="min-w-0 rounded-md bg-background p-2"
+                  >
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <span className="truncate text-xs font-medium">
+                        {eventLabel(event, t)}
+                      </span>
+                      {event.endsWith('.*') && (
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 text-[10px]"
+                        >
+                          {t('bots.eventGroup')}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                      {eventDescription(event, t)}
+                    </p>
+                    <code className="mt-1 block truncate text-[11px] text-muted-foreground">
+                      {event}
+                    </code>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── route dry-run dialog ─────────────────────────────────────────────────────
+
+function RouteDryRunDialog({
+  botId,
+  bindings,
+  eventOptions,
+  agentOptions,
+}: {
+  botId?: string;
+  bindings: EventBinding[];
+  eventOptions: string[];
+  agentOptions: Agent[];
+}) {
+  const { t } = useTranslation();
+  const firstEvent = eventOptions[0] ?? DEFAULT_EVENTS[0];
+  const [open, setOpen] = useState(false);
+  const [eventType, setEventType] = useState(firstEvent);
+  const [payloadText, setPayloadText] = useState(() =>
+    JSON.stringify(samplePayloadForEvent(firstEvent), null, 2),
+  );
+  const [advancedPayloadOpen, setAdvancedPayloadOpen] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
+  const [payloadError, setPayloadError] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [result, setResult] = useState<BotRouteDryRunResult | null>(null);
+
+  useEffect(() => {
+    if (!eventOptions.includes(eventType)) {
+      setEventType(firstEvent);
+    }
+  }, [eventOptions, eventType, firstEvent]);
+
+  useEffect(() => {
+    setPayloadText(JSON.stringify(samplePayloadForEvent(eventType), null, 2));
+    setPayloadError(null);
+    setResult(null);
+  }, [eventType]);
+
+  function resolveTargetName(resultTarget?: BotRouteDryRunResult['target']) {
+    if (!resultTarget) return '';
+    if (resultTarget.target_name) return resultTarget.target_name;
+    if (resultTarget.target_type === 'discard') return t('bots.targetDiscard');
+    const agent = agentOptions.find((a) => a.uuid === resultTarget.target_uuid);
+    return agent ? targetLabel(agent) : (resultTarget.target_uuid ?? '');
+  }
+
+  function parsePayload(): Record<string, unknown> | null {
+    setPayloadError(null);
+    let payload: Record<string, unknown> = {};
+    if (payloadText.trim()) {
+      try {
+        const parsed = JSON.parse(payloadText);
+        if (
+          parsed === null ||
+          typeof parsed !== 'object' ||
+          Array.isArray(parsed)
+        ) {
+          setPayloadError(t('bots.dryRunPayloadObjectError'));
+          return null;
+        }
+        payload = parsed as Record<string, unknown>;
+      } catch {
+        setPayloadError(t('bots.dryRunPayloadJsonError'));
+        return null;
+      }
+    }
+    return payload;
+  }
+
+  async function runDryRun() {
+    setRunError(null);
+    setResult(null);
+
+    const payload = parsePayload();
+    if (payload === null) return;
+
+    if (!botId) {
+      setRunError(t('bots.dryRunNeedsSavedBot'));
+      return;
+    }
+
+    setIsRunning(true);
+    try {
+      const dryRunResult = await backendClient.dryRunBotEventRoute(botId, {
+        event_type: eventType,
+        payload,
+        event_bindings: bindings,
+      });
+      setResult({
+        ...dryRunResult,
+        diagnostic_steps: dryRunResult.diagnostic_steps ?? [],
+      });
+    } catch (error) {
+      const err = error as { msg?: string };
+      setRunError(err.msg || t('bots.dryRunFailed'));
+    } finally {
+      setIsRunning(false);
+    }
+  }
+
+  const targetName = result ? resolveTargetName(result.target) : '';
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setOpen(true)}
+      >
+        <Play className="h-4 w-4 mr-1" />
+        {t('bots.testRoute')}
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t('bots.dryRunTitle')}</DialogTitle>
+            <DialogDescription>{t('bots.dryRunDescription')}</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <label className="text-sm font-medium">
+                    {t('bots.dryRunEventType')}
+                  </label>
+                  <Select value={eventType} onValueChange={setEventType}>
+                    <SelectTrigger
+                      className="h-auto min-h-9 w-full"
+                      aria-label={t('bots.dryRunEventType')}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]">
+                      {groupEventPatterns(eventOptions).map((group) => (
+                        <SelectGroup key={group.namespace}>
+                          <SelectLabel>
+                            {eventGroupLabel(group.namespace, t)}
+                          </SelectLabel>
+                          {group.patterns.map((event) => (
+                            <SelectItem
+                              key={event}
+                              value={event}
+                              description={eventDescription(event, t)}
+                              className="py-2"
+                            >
+                              <EventSelectOptionContent
+                                event={event}
+                                label={eventLabel(event, t)}
+                              />
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 shrink-0 self-start px-2 text-xs text-muted-foreground sm:self-auto"
+                  onClick={() => setAdvancedPayloadOpen((value) => !value)}
+                >
+                  {advancedPayloadOpen ? (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  )}
+                  {advancedPayloadOpen
+                    ? t('bots.dryRunHidePayload')
+                    : t('bots.dryRunEditPayload')}
+                </Button>
+              </div>
+              {advancedPayloadOpen && (
+                <div className="space-y-1.5 rounded-md border bg-muted/20 p-3">
+                  <label className="text-xs font-medium">
+                    {t('bots.dryRunPayload')}
+                  </label>
+                  <Textarea
+                    value={payloadText}
+                    onChange={(e) => setPayloadText(e.target.value)}
+                    className="min-h-[110px] font-mono text-xs"
+                    spellCheck={false}
+                    placeholder='{"message_text": "hello"}'
+                  />
+                  {payloadError ? (
+                    <p className="text-xs text-destructive">{payloadError}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {t('bots.dryRunPayloadHint')}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {runError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{runError}</AlertDescription>
+              </Alert>
+            )}
+
+            {result && (
+              <div className="rounded-lg border p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  {result.matched ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span className="text-sm font-medium">
+                    {result.matched
+                      ? t('bots.dryRunMatched')
+                      : t('bots.dryRunNotMatched')}
+                  </span>
+                  {result.failure_code && (
+                    <Badge variant="outline" className="font-mono text-[10px]">
+                      {result.failure_code}
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-md bg-muted/40 p-2">
+                    <p className="text-xs text-muted-foreground">
+                      {t('bots.dryRunTarget')}
+                    </p>
+                    <p className="mt-1 truncate text-sm font-medium">
+                      {result.target
+                        ? `${targetTypeLabel(result.target.target_type, t)}${
+                            targetName ? ` · ${targetName}` : ''
+                          }`
+                        : t('bots.dryRunNoTarget')}
+                    </p>
+                  </div>
+                  <div className="rounded-md bg-muted/40 p-2">
+                    <p className="text-xs text-muted-foreground">
+                      {t('bots.dryRunMatchedRule')}
+                    </p>
+                    <p className="mt-1 truncate text-sm font-medium">
+                      {result.matched_binding_index !== undefined &&
+                      result.matched_binding_index !== null
+                        ? t('bots.dryRunRuleIndex', {
+                            index: result.matched_binding_index + 1,
+                          })
+                        : result.matched_binding_id || t('bots.dryRunNoRule')}
+                    </p>
+                  </div>
+                </div>
+
+                {(result.diagnostic_details?.length ||
+                  result.diagnostic_steps.length > 0) && (
+                  <div className="mt-3">
+                    <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                      <ListChecks className="h-3.5 w-3.5" />
+                      {t('bots.dryRunDiagnostics')}
+                    </div>
+                    <ol className="space-y-1 pl-5 text-xs text-muted-foreground">
+                      {result.diagnostic_details?.length
+                        ? result.diagnostic_details.map((detail, index) => (
+                            <li
+                              key={`${index}:${String(detail.binding_id ?? '')}`}
+                              className="list-decimal"
+                            >
+                              {diagnosticDetailLabel(detail, index, t)}
+                            </li>
+                          ))
+                        : result.diagnostic_steps.map((step, index) => (
+                            <li
+                              key={`${index}:${step}`}
+                              className="list-decimal"
+                            >
+                              {step}
+                            </li>
+                          ))}
+                    </ol>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+            >
+              {t('common.close')}
+            </Button>
+            <Button type="button" onClick={runDryRun} disabled={isRunning}>
+              <Play className="h-4 w-4 mr-1" />
+              {isRunning ? t('bots.dryRunRunning') : t('bots.dryRunAction')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ── single binding card ───────────────────────────────────────────────────────
+
+interface BindingCardProps {
+  binding: EventBinding;
+  globalIndex: number;
+
+  eventOptions: string[];
+  agentOptions: Agent[];
+  onAgentCreated: (agent: Agent) => void;
+  expandedIds: Set<string>;
+  onToggleExpand: (id: string) => void;
+  onUpdate: (globalIndex: number, patch: Partial<EventBinding>) => void;
+  onRemove: (globalIndex: number) => void;
+  dragHandleProps?: Record<string, unknown>;
+  isOverlay?: boolean;
+}
+
+function BindingCardContent({
+  binding,
+  globalIndex,
+  eventOptions,
+  agentOptions,
+  onAgentCreated,
+  expandedIds,
+  onToggleExpand,
+  onUpdate,
+  onRemove,
+  dragHandleProps,
+  isOverlay = false,
+}: BindingCardProps) {
+  const { t } = useTranslation();
+  const isEnabled = binding.enabled ?? true;
+  const id = String(binding.id ?? globalIndex);
+  const isExpanded = expandedIds.has(id);
+  const filterCount = (binding.filters as FilterRow[] | undefined)?.length ?? 0;
+  const pipelineAllowed = isMessageEventPattern(binding.event_pattern);
+
+  return (
+    <div
+      className={`rounded-lg border ${isEnabled ? 'bg-card' : 'bg-muted/30 border-dashed'} ${
+        isOverlay ? 'pointer-events-none shadow-lg ring-1 ring-primary/20' : ''
+      }`}
+      data-drag-overlay={isOverlay ? 'true' : undefined}
+    >
+      {/* main row */}
+      <div className="flex flex-wrap items-center gap-2 p-2.5">
+        {isEnabled && (
+          <button
+            type="button"
+            className="cursor-grab active:cursor-grabbing shrink-0 text-muted-foreground hover:text-foreground touch-none"
+            aria-label={t('bots.dragEventRoute', {
+              index: globalIndex + 1,
+            })}
+            {...dragHandleProps}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        )}
+        {!isEnabled && <span className="h-4 w-4 shrink-0" aria-hidden="true" />}
+
+        <Badge
+          variant="secondary"
+          className="h-5 min-w-5 shrink-0 justify-center px-1 text-[10px]"
+          title={t('bots.dryRunRuleIndex', { index: globalIndex + 1 })}
+        >
+          {globalIndex + 1}
+        </Badge>
+
+        <Select
+          value={binding.event_pattern}
+          onValueChange={(eventPattern) => {
+            const patch: Partial<EventBinding> = {
+              event_pattern: eventPattern,
+            };
+            if (
+              binding.target_type === 'pipeline' &&
+              !isMessageEventPattern(eventPattern)
+            ) {
+              patch.target_type = 'agent';
+              patch.target_uuid = '';
+            }
+            onUpdate(globalIndex, patch);
+          }}
+        >
+          <SelectTrigger className="h-auto min-h-9 min-w-[220px] flex-1">
+            <SelectValue placeholder={t('bots.eventPatternPlaceholder')} />
+          </SelectTrigger>
+          <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]">
+            {groupEventPatterns(eventOptions).map((group) => (
+              <SelectGroup key={group.namespace}>
+                <SelectLabel>{eventGroupLabel(group.namespace, t)}</SelectLabel>
+                {group.patterns.map((event) => (
+                  <SelectItem
+                    key={event}
+                    value={event}
+                    description={eventDescription(event, t)}
+                    className="py-2"
+                  >
+                    <EventSelectOptionContent
+                      event={event}
+                      label={eventLabel(event, t)}
+                    />
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* conditions toggle */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-8 px-2 text-xs text-muted-foreground shrink-0"
+          onClick={() => onToggleExpand(id)}
+        >
+          {isExpanded ? (
+            <ChevronDown className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5" />
+          )}
+          {t('bots.conditions')}
+          {filterCount > 0 && (
+            <Badge variant="secondary" className="h-4 px-1 text-[10px] ml-0.5">
+              {filterCount}
+            </Badge>
+          )}
+        </Button>
+
+        <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+
+        <TargetCombobox
+          binding={binding}
+          agentOptions={agentOptions}
+          onAgentCreated={onAgentCreated}
+          onUpdate={(patch) => onUpdate(globalIndex, patch)}
+        />
+
+        {!pipelineAllowed && binding.target_type === 'pipeline' && (
+          <span className="text-xs text-destructive shrink-0">
+            {t('bots.unsupportedPipelineEvent')}
+          </span>
+        )}
+
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <Switch
+            checked={isEnabled}
+            onCheckedChange={(enabled) => onUpdate(globalIndex, { enabled })}
+            aria-label={`${t('bots.enable')} · ${t('bots.dryRunRuleIndex', { index: globalIndex + 1 })}`}
+          />
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => onRemove(globalIndex)}
+          >
+            <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+          </Button>
+        </div>
+      </div>
+
+      {/* conditions panel */}
+      {isExpanded && (
+        <div className="border-t px-3 py-2.5">
+          <FilterConditionsPanel
+            filters={(binding.filters as unknown as FilterRow[]) || []}
+            onChange={(filters) =>
+              onUpdate(globalIndex, {
+                filters: filters as unknown as Record<string, unknown>[],
+              })
+            }
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── sortable wrapper ──────────────────────────────────────────────────────────
+
+interface SortableBindingCardProps extends BindingCardProps {
+  sortableId: string;
+}
+
+function SortableBindingCard({
+  sortableId,
+  ...props
+}: SortableBindingCardProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: sortableId });
+  return (
+    <div
+      ref={setNodeRef}
+      data-testid={`event-route-${sortableId}`}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.3 : undefined,
+        position: 'relative',
+        zIndex: isDragging ? 1 : undefined,
+      }}
+    >
+      <BindingCardContent
+        {...props}
+        dragHandleProps={{ ...attributes, ...listeners }}
+      />
+    </div>
+  );
+}
+
+// ── main editor ───────────────────────────────────────────────────────────────
+
+export default function EventBindingsEditor({
+  form,
+  botId,
+  supportedEvents,
+  agentOptions,
+  onAgentCreated,
+}: EventBindingsEditorProps) {
+  const { t } = useTranslation();
+  const watchedBindings: EventBinding[] | undefined =
+    form.watch('event_bindings');
+  const bindings = useMemo(() => watchedBindings ?? [], [watchedBindings]);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [recordsOpen, setRecordsOpen] = useState(false);
+  const [routeStatuses, setRouteStatuses] = useState<BotEventRouteStatus[]>([]);
+  const [routeStatusLoading, setRouteStatusLoading] = useState(false);
+  const [routeStatusError, setRouteStatusError] = useState<string | null>(null);
+
+  // stable ids for dnd
+  const nextId = useRef(0);
+  const idsRef = useRef<string[]>([]);
+  const enabledBindings = bindings.filter((b) => b.enabled ?? true);
+  useMemo(() => {
+    while (idsRef.current.length < enabledBindings.length)
+      idsRef.current.push(`b-${nextId.current++}`);
+    if (idsRef.current.length > enabledBindings.length)
+      idsRef.current = idsRef.current.slice(0, enabledBindings.length);
+  }, [enabledBindings.length]);
+
+  const eventOptions = useMemo(() => {
+    const concrete =
+      supportedEvents.length > 0 ? supportedEvents : DEFAULT_EVENTS;
+    return [...eventNamespaces(concrete), ...concrete].filter(
+      (e, i, a) => a.indexOf(e) === i,
+    );
+  }, [supportedEvents]);
+  const dryRunEventOptions = useMemo(
+    () => (supportedEvents.length > 0 ? supportedEvents : DEFAULT_EVENTS),
+    [supportedEvents],
+  );
+
+  const routeConflicts = useMemo(
+    () => findRouteConflicts(bindings),
+    [bindings],
+  );
+  const catchAllRouteIndex = useMemo(
+    () => findCatchAllRouteIndex(bindings),
+    [bindings],
+  );
+  const behaviorPresets = useMemo(
+    () =>
+      BEHAVIOR_PRESETS.filter((preset) =>
+        dryRunEventOptions.includes(preset.eventType),
+      ),
+    [dryRunEventOptions],
+  );
+  const otherEventGroups = useMemo(() => {
+    const commonEventTypes = new Set(
+      behaviorPresets.map((preset) => preset.eventType),
+    );
+    return groupEventPatterns(
+      eventOptions.filter((event) => !commonEventTypes.has(event)),
+    );
+  }, [behaviorPresets, eventOptions]);
+
+  const refreshRouteStatuses = useCallback(async () => {
+    if (!botId) {
+      setRouteStatuses([]);
+      setRouteStatusError(null);
+      return;
+    }
+    setRouteStatusLoading(true);
+    setRouteStatusError(null);
+    try {
+      const response = await backendClient.getBotEventRouteStatuses(botId);
+      setRouteStatuses(
+        [
+          ...response.routes,
+          ...response.unmatched_events,
+          ...response.stale_routes,
+        ]
+          .filter((record) => record.last_status)
+          .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0)),
+      );
+    } catch (error) {
+      console.error('Failed to refresh Bot event route status', error);
+      setRouteStatusError(t('bots.routeStatusRefreshFailed'));
+    } finally {
+      setRouteStatusLoading(false);
+    }
+  }, [botId, t]);
+
+  useEffect(() => {
+    if (recordsOpen) void refreshRouteStatuses();
+  }, [recordsOpen, refreshRouteStatuses]);
+
+  function updateBindings(next: EventBinding[]) {
+    const ordered = [
+      ...next.filter((binding) => binding.enabled ?? true),
+      ...next.filter((binding) => !(binding.enabled ?? true)),
+    ];
+    form.setValue('event_bindings', ordered, { shouldDirty: true });
+  }
+
+  function addBinding(eventPattern = 'message.received') {
+    if (eventPattern === 'message.received') {
+      const target =
+        agentOptions.find((agent) => agent.kind === 'pipeline') ??
+        agentOptions.find((agent) => agent.kind === 'agent');
+      updateBindings(
+        appendMessageRoutingTemplate(bindings, {
+          target_type: target?.kind === 'pipeline' ? 'pipeline' : 'agent',
+          target_uuid: target?.uuid ?? '',
+        }),
+      );
+      return;
+    }
+    updateBindings([
+      ...bindings,
+      {
+        event_pattern: eventPattern,
+        target_type: 'agent',
+        target_uuid: '',
+        priority: 0,
+        enabled: true,
+        description: '',
+        filters: [],
+      },
+    ]);
+  }
+
+  function updateBinding(index: number, patch: Partial<EventBinding>) {
+    const next = [...bindings];
+    next[index] = { ...next[index], ...patch };
+    updateBindings(next);
+  }
+
+  function removeBinding(index: number) {
+    const next = [...bindings];
+    next.splice(index, 1);
+    updateBindings(next);
+  }
+
+  function toggleExpand(id: string) {
+    setExpandedIds((prev) => {
+      const s = new Set(prev);
+      if (s.has(id)) {
+        s.delete(id);
+      } else {
+        s.add(id);
+      }
+      return s;
+    });
+  }
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  function handleDragStart(e: DragStartEvent) {
+    setActiveId(String(e.active.id));
+  }
+
+  function handleDragEnd(e: DragEndEvent) {
+    setActiveId(null);
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    // reorder only within enabled bindings; disabled ones stay at end
+    const enabledIdxs = bindings.reduce<number[]>((acc, b, i) => {
+      if (b.enabled ?? true) acc.push(i);
+      return acc;
+    }, []);
+    const activeEnabledIdx = idsRef.current.indexOf(String(active.id));
+    const overEnabledIdx = idsRef.current.indexOf(String(over.id));
+    if (activeEnabledIdx === -1 || overEnabledIdx === -1) return;
+    const newOrder = arrayMove(enabledIdxs, activeEnabledIdx, overEnabledIdx);
+    idsRef.current = arrayMove(
+      idsRef.current,
+      activeEnabledIdx,
+      overEnabledIdx,
+    );
+    const disabledBindings = bindings.filter((b) => !(b.enabled ?? true));
+    updateBindings([...newOrder.map((i) => bindings[i]), ...disabledBindings]);
+  }
+
+  const disabledBindings = bindings.reduce<{ b: EventBinding; i: number }[]>(
+    (acc, b, i) => {
+      if (!(b.enabled ?? true)) acc.push({ b, i });
+      return acc;
+    },
+    [],
+  );
+
+  const activeEnabledIdx = activeId ? idsRef.current.indexOf(activeId) : -1;
+  const activeBinding =
+    activeEnabledIdx >= 0 ? enabledBindings[activeEnabledIdx] : null;
+  const activeGlobalIdx = activeBinding ? bindings.indexOf(activeBinding) : -1;
+
+  return (
+    <div className="space-y-3">
+      <AdapterCapabilitySummary
+        supportedEvents={supportedEvents}
+        eventOptions={eventOptions}
+      />
+
+      {routeConflicts.length > 0 && (
+        <Alert className="border-amber-200 bg-amber-50/60 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            <p className="font-medium">{t('bots.routeConflictTitle')}</p>
+            <ul className="mt-1 space-y-1 text-xs">
+              {routeConflicts.slice(0, 3).map((conflict) => (
+                <li key={`${conflict.winnerIndex}:${conflict.shadowedIndex}`}>
+                  {t('bots.routeConflictShadowed', {
+                    winner: t('bots.dryRunRuleIndex', {
+                      index: conflict.winnerIndex + 1,
+                    }),
+                    shadowed: t('bots.dryRunRuleIndex', {
+                      index: conflict.shadowedIndex + 1,
+                    }),
+                  })}
+                </li>
+              ))}
+            </ul>
+            {routeConflicts.length > 3 && (
+              <p className="mt-1 text-xs">
+                {t('bots.routeConflictMore', {
+                  count: routeConflicts.length - 3,
+                })}
+              </p>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {catchAllRouteIndex >= 0 && (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            {t('bots.routeFallbackCatchAll', {
+              route: t('bots.dryRunRuleIndex', {
+                index: catchAllRouteIndex + 1,
+              }),
+            })}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* enabled section */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveId(null)}
+      >
+        <SortableContext
+          items={idsRef.current}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="space-y-2">
+            {bindings.length === 0 && (
+              <div className="rounded-lg border border-dashed p-5 text-center text-sm text-muted-foreground">
+                {t('bots.noEventBindings')}
+              </div>
+            )}
+            {enabledBindings.map((binding, sortIdx) => {
+              const globalIdx = bindings.indexOf(binding);
+              return (
+                <SortableBindingCard
+                  key={idsRef.current[sortIdx]}
+                  sortableId={idsRef.current[sortIdx]}
+                  binding={binding}
+                  globalIndex={globalIdx}
+                  eventOptions={eventOptions}
+                  agentOptions={agentOptions}
+                  onAgentCreated={onAgentCreated}
+                  expandedIds={expandedIds}
+                  onToggleExpand={toggleExpand}
+                  onUpdate={updateBinding}
+                  onRemove={removeBinding}
+                />
+              );
+            })}
+            {disabledBindings.map(({ b, i }) => (
+              <BindingCardContent
+                key={b.id ?? `disabled-${i}`}
+                binding={b}
+                globalIndex={i}
+                eventOptions={eventOptions}
+                agentOptions={agentOptions}
+                onAgentCreated={onAgentCreated}
+                expandedIds={expandedIds}
+                onToggleExpand={toggleExpand}
+                onUpdate={updateBinding}
+                onRemove={removeBinding}
+              />
+            ))}
+          </div>
+        </SortableContext>
+        <DragOverlay adjustScale={false} dropAnimation={null}>
+          {activeBinding && activeGlobalIdx >= 0 ? (
+            <BindingCardContent
+              binding={activeBinding}
+              globalIndex={activeGlobalIdx}
+              eventOptions={eventOptions}
+              agentOptions={agentOptions}
+              onAgentCreated={onAgentCreated}
+              expandedIds={expandedIds}
+              onToggleExpand={toggleExpand}
+              onUpdate={updateBinding}
+              onRemove={removeBinding}
+              isOverlay
+            />
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+
+      <div className="flex flex-wrap gap-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={
+                bindings.length === 0 ? styles.emptyRouteHint : undefined
+              }
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              {t('bots.addBehavior')}
+              <ChevronDown className="ml-1 h-3.5 w-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-[300px] max-w-[90vw]">
+            <DropdownMenuLabel className="px-2 pb-1 pt-1.5 text-xs font-normal text-muted-foreground">
+              {t('bots.commonScenarios')}
+            </DropdownMenuLabel>
+            {behaviorPresets.map((preset) => {
+              const Icon = preset.icon;
+              return (
+                <DropdownMenuItem
+                  key={preset.eventType}
+                  className="items-start gap-2 py-2"
+                  onClick={() => addBinding(preset.eventType)}
+                >
+                  <Icon className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span>{t(preset.labelKey)}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t(preset.descriptionKey)}
+                    </span>
+                  </span>
+                </DropdownMenuItem>
+              );
+            })}
+            {otherEventGroups.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className="items-start gap-2 py-2">
+                    <Workflow className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span className="flex min-w-0 flex-col gap-0.5 pr-2">
+                      <span>{t('bots.behaviorCustom')}</span>
+                      <span className="text-xs font-normal text-muted-foreground">
+                        {t('bots.behaviorCustomDescription')}
+                      </span>
+                    </span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="max-h-[min(70vh,32rem)] w-[320px] max-w-[90vw] overflow-y-auto">
+                    {otherEventGroups.map((group, groupIndex) => (
+                      <Fragment key={group.namespace}>
+                        {groupIndex > 0 && <DropdownMenuSeparator />}
+                        <DropdownMenuLabel className="px-2 py-1 text-xs font-normal text-muted-foreground">
+                          {eventGroupLabel(group.namespace, t)}
+                        </DropdownMenuLabel>
+                        {group.patterns.map((event) => (
+                          <DropdownMenuItem
+                            key={event}
+                            className="items-start py-2"
+                            onClick={() => addBinding(event)}
+                          >
+                            <span className="flex min-w-0 flex-col gap-0.5">
+                              <span>{eventLabel(event, t)}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {eventDescription(event, t)}
+                              </span>
+                            </span>
+                          </DropdownMenuItem>
+                        ))}
+                      </Fragment>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <RouteDryRunDialog
+          botId={botId}
+          bindings={bindings}
+          eventOptions={dryRunEventOptions}
+          agentOptions={agentOptions}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={!botId}
+          onClick={() => setRecordsOpen(true)}
+        >
+          <ListChecks className="mr-1 size-4" />
+          {t('bots.matchRecords')}
+        </Button>
+        <Dialog open={recordsOpen} onOpenChange={setRecordsOpen}>
+          <DialogContent className="sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>{t('bots.matchRecords')}</DialogTitle>
+              <DialogDescription>
+                {t('bots.matchRecordsDescription')}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={refreshRouteStatuses}
+                disabled={routeStatusLoading}
+              >
+                <RefreshCw
+                  className={`mr-2 size-4 ${routeStatusLoading ? 'animate-spin' : ''}`}
+                />
+                {t('monitoring.refreshData')}
+              </Button>
+            </div>
+            {routeStatusError && (
+              <p role="alert" className="text-sm text-destructive">
+                {routeStatusError}
+              </p>
+            )}
+            <div className="max-h-[60vh] space-y-3 overflow-y-auto">
+              {routeStatuses.map((record, index) => (
+                <div
+                  key={`${record.binding_id}:${record.seq_id}:${index}`}
+                  className="space-y-2 rounded-lg border p-3"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="flex-1 text-sm font-medium">
+                      {eventLabel(
+                        record.event_type || record.event_pattern || '*',
+                        t,
+                      )}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={routeStatusBadgeClass(record.last_status)}
+                    >
+                      {routeStatusLabel(record.last_status, t)}
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {formatRouteStatusTime(record.timestamp)}
+                  </div>
+                  {record.target_type && (
+                    <div className="break-words text-sm">
+                      {record.target_type}
+                      {record.target_uuid
+                        ? ` · ${agentOptions.find((agent) => agent.uuid === record.target_uuid)?.name || record.target_uuid}`
+                        : ''}
+                    </div>
+                  )}
+                  <p className="text-sm text-muted-foreground">
+                    {routeStatusDetail(record, t)}
+                  </p>
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer">
+                      {t('monitoring.unified.metadata')}
+                    </summary>
+                    <pre className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                      {JSON.stringify(record, null, 2)}
+                    </pre>
+                  </details>
+                </div>
+              ))}
+              {!routeStatuses.length && (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  {t(
+                    routeStatusLoading
+                      ? 'common.loading'
+                      : 'monitoring.unified.noRecords',
+                  )}
+                </p>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </div>
+  );
+}

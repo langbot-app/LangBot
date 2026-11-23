@@ -1,0 +1,433 @@
+"""Integration tests for LangBot Box.
+
+These tests verify the end-to-end behavior of the Box sandbox execution
+system.  Tests decorated with ``requires_container`` need a real container
+runtime (Podman or Docker) and are skipped otherwise.
+
+CI runs these tests in the Box Integration Tests job. Run them locally with::
+
+    pytest tests/integration_tests/ -v
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import shutil
+import socket
+import subprocess
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
+
+from langbot.pkg.box.service import BoxService
+from langbot.pkg.box.runner import RunnerBoxService
+from langbot.pkg.api.http.context import ExecutionContext
+from langbot_plugin.box.backend import BaseSandboxBackend
+from langbot_plugin.box.client import ActionRPCBoxClient
+from langbot_plugin.box.errors import BoxBackendUnavailableError
+from langbot_plugin.box.models import BoxExecutionStatus, BoxNetworkMode, BoxSpec
+from langbot_plugin.box.runtime import BoxRuntime
+from langbot_plugin.box.server import BoxGenerationFence, BoxServerHandler
+from langbot_plugin.entities.io.context import ActionContext
+
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+
+_logger = logging.getLogger('test.box.integration')
+
+# Default image for integration tests — small and fast to pull.
+_TEST_IMAGE = 'alpine:latest'
+_ACTION_CONTEXT = ActionContext(
+    instance_uuid='box-integration-instance',
+    workspace_uuid='box-integration-workspace',
+    placement_generation=1,
+)
+
+
+# ── Skip helpers ──────────────────────────────────────────────────────
+
+
+def _has_container_runtime() -> bool:
+    for cmd in ('podman', 'docker'):
+        if shutil.which(cmd) is None:
+            continue
+        try:
+            result = subprocess.run(
+                [cmd, 'info'],
+                capture_output=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _can_open_test_socket() -> bool:
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    except OSError:
+        return False
+    sock.close()
+    return True
+
+
+requires_container = pytest.mark.skipif(
+    not _has_container_runtime(),
+    reason='no container runtime (podman/docker) available',
+)
+
+requires_socket = pytest.mark.skipif(
+    not _can_open_test_socket(),
+    reason='local test environment does not permit opening TCP sockets',
+)
+
+
+# ── Helpers ──────────────────────────────────────────────────────────
+
+
+class _QueueConnection:
+    """In-process Connection backed by asyncio Queues — no real IO."""
+
+    def __init__(self, rx: asyncio.Queue[str], tx: asyncio.Queue[str]):
+        self._rx = rx
+        self._tx = tx
+
+    async def send(self, message: str) -> None:
+        await self._tx.put(message)
+
+    async def receive(self) -> str:
+        return await self._rx.get()
+
+    async def close(self) -> None:
+        pass
+
+
+class _TenantBoxClient(ActionRPCBoxClient):
+    async def _call(
+        self,
+        action,
+        data,
+        timeout=15.0,
+        action_context=None,
+    ):
+        return await super()._call(
+            action,
+            data,
+            timeout=timeout,
+            action_context=action_context or _ACTION_CONTEXT,
+        )
+
+
+async def _make_rpc_pair(runtime: BoxRuntime):
+    """Create an in-process (ActionRPCBoxClient, server_task, client_task) connected via queues."""
+    from langbot_plugin.runtime.io.handler import Handler
+
+    c2s: asyncio.Queue[str] = asyncio.Queue()
+    s2c: asyncio.Queue[str] = asyncio.Queue()
+    client_conn = _QueueConnection(rx=s2c, tx=c2s)
+    server_conn = _QueueConnection(rx=c2s, tx=s2c)
+
+    server_handler = BoxServerHandler(
+        server_conn,
+        runtime,
+        host_control_authenticated=True,
+        trusted_instance_uuid=_ACTION_CONTEXT.instance_uuid,
+        generation_fence=BoxGenerationFence(),
+    )
+    server_task = asyncio.create_task(server_handler.run())
+
+    client_handler = Handler.__new__(Handler)
+    Handler.__init__(client_handler, client_conn)
+    client_task = asyncio.create_task(client_handler.run())
+
+    client = _TenantBoxClient(logger=_logger)
+    client.set_handler(client_handler)
+
+    return client, server_task, client_task
+
+
+# ── Fixtures ──────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+async def box_client():
+    """Yield an ActionRPCBoxClient backed by a real BoxRuntime via in-process RPC."""
+    runtime = BoxRuntime(logger=_logger)
+    await runtime.initialize()
+    client, server_task, client_task = await _make_rpc_pair(runtime)
+    yield client
+    server_task.cancel()
+    client_task.cancel()
+    await runtime.shutdown()
+
+
+# ── 1. Simple command execution ───────────────────────────────────────
+
+
+@requires_container
+@requires_socket
+@pytest.mark.asyncio
+async def test_exec_simple_command(box_client: ActionRPCBoxClient):
+    """Box starts a simple command and returns stdout."""
+    spec = BoxSpec(
+        cmd='echo hello-box',
+        session_id='int-simple',
+        workdir='/tmp',
+        image=_TEST_IMAGE,
+    )
+    result = await box_client.execute(spec)
+
+    assert result.status == BoxExecutionStatus.COMPLETED
+    assert result.exit_code == 0
+    assert 'hello-box' in result.stdout
+
+
+# ── 2. Session file persistence ───────────────────────────────────────
+
+
+@requires_container
+@requires_socket
+@pytest.mark.asyncio
+async def test_session_persists_files(box_client: ActionRPCBoxClient):
+    """Write a file in one exec, read it back in a second exec on the same session."""
+    sid = 'int-persist'
+
+    write_result = await box_client.execute(
+        BoxSpec(
+            cmd='echo "hello from file" > /tmp/testfile.txt',
+            session_id=sid,
+            workdir='/tmp',
+            image=_TEST_IMAGE,
+        )
+    )
+    assert write_result.exit_code == 0
+
+    read_result = await box_client.execute(
+        BoxSpec(
+            cmd='cat /tmp/testfile.txt',
+            session_id=sid,
+            workdir='/tmp',
+            image=_TEST_IMAGE,
+        )
+    )
+    assert read_result.exit_code == 0
+    assert 'hello from file' in read_result.stdout
+
+
+# ── 3. Timeout handling ───────────────────────────────────────────────
+
+
+@requires_container
+@requires_socket
+@pytest.mark.asyncio
+async def test_timeout_kills_command(box_client: ActionRPCBoxClient):
+    """A long-running command is killed after timeout_sec."""
+    session_id = 'int-timeout'
+    spec = BoxSpec(
+        cmd='sleep 120',
+        session_id=session_id,
+        workdir='/tmp',
+        timeout_sec=3,
+        image=_TEST_IMAGE,
+    )
+    result = await box_client.execute(spec)
+
+    assert result.status == BoxExecutionStatus.TIMED_OUT
+    assert result.exit_code is None
+
+    sessions = await box_client.get_sessions()
+    assert all(session['session_id'] != session_id for session in sessions)
+
+
+# ── 4. Network isolation ─────────────────────────────────────────────
+
+
+@requires_container
+@requires_socket
+@pytest.mark.asyncio
+async def test_offline_cannot_reach_network(box_client: ActionRPCBoxClient):
+    """Only OFF blocks the same reachable private peer and installed HTTP client."""
+    server = await box_client.execute(
+        BoxSpec(
+            cmd=r"""cat > /tmp/response.sh <<'HTTP'
+#!/bin/sh
+while IFS= read -r line; do
+    [ -z "$(printf '%s' "$line" | busybox tr -d '\r')" ] && break
+done
+printf 'HTTP/1.0 200 OK\r\nContent-Length: 19\r\n\r\nbox-network-control'
+HTTP
+chmod +x /tmp/response.sh
+(while true; do busybox nc -l -p 8080 -e /bin/sh /tmp/response.sh; done >/tmp/http.log 2>&1 < /dev/null &)
+sleep 1 && hostname -i""",
+            session_id='int-network-peer',
+            workdir='/tmp',
+            network=BoxNetworkMode.ON,
+            image=_TEST_IMAGE,
+        )
+    )
+    assert server.status == BoxExecutionStatus.COMPLETED
+    assert server.exit_code == 0, server.stderr
+    import ipaddress
+
+    peer = str(ipaddress.IPv4Address(server.stdout.strip().split()[0]))
+    assert not ipaddress.ip_address(peer).is_loopback
+    command = f'wget -q -O - --timeout=3 http://{peer}:8080/'
+    online = await box_client.execute(
+        BoxSpec(
+            cmd=command,
+            session_id='int-online',
+            workdir='/tmp',
+            network=BoxNetworkMode.ON,
+            image=_TEST_IMAGE,
+        )
+    )
+    assert online.status == BoxExecutionStatus.COMPLETED
+    assert online.exit_code == 0, online.stderr
+    assert online.stdout == 'box-network-control'
+
+    offline = await box_client.execute(
+        BoxSpec(
+            cmd=command,
+            session_id='int-offline',
+            workdir='/tmp',
+            network=BoxNetworkMode.OFF,
+            image=_TEST_IMAGE,
+        )
+    )
+    assert offline.status == BoxExecutionStatus.COMPLETED
+    assert offline.exit_code != 0
+    assert offline.stdout == ''
+    still_online = await box_client.execute(
+        BoxSpec(
+            cmd=command,
+            session_id='int-online',
+            workdir='/tmp',
+            network=BoxNetworkMode.ON,
+            image=_TEST_IMAGE,
+        )
+    )
+    assert still_online.exit_code == 0
+    assert still_online.stdout == 'box-network-control'
+
+
+# ── 5. Backend unavailable ───────────────────────────────────────────
+
+
+class _UnavailableBackend(BaseSandboxBackend):
+    """A backend that always reports itself as unavailable."""
+
+    name = 'unavailable'
+
+    def __init__(self):
+        super().__init__(logging.getLogger('test'))
+
+    async def is_available(self) -> bool:
+        return False
+
+    async def start_session(self, spec):
+        raise NotImplementedError
+
+    async def exec(self, session, spec):
+        raise NotImplementedError
+
+    async def stop_session(self, session):
+        pass
+
+
+@requires_socket
+@pytest.mark.asyncio
+async def test_backend_unavailable_returns_error():
+    """When no backend is available the full RPC path returns BoxBackendUnavailableError."""
+    runtime = BoxRuntime(logger=_logger, backends=[_UnavailableBackend()])
+    await runtime.initialize()
+    client, server_task, client_task = await _make_rpc_pair(runtime)
+    try:
+        spec = BoxSpec(
+            cmd='echo hello',
+            session_id='int-no-backend',
+            workdir='/tmp',
+        )
+        with pytest.raises(BoxBackendUnavailableError):
+            await client.execute(spec)
+    finally:
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()
+
+
+# ── 6. Full service-to-runtime path ──────────────────────────────────
+
+
+@requires_container
+@requires_socket
+@pytest.mark.asyncio
+async def test_full_service_to_remote_runtime(tmp_path):
+    """BoxService -> ActionRPCBoxClient -> RPC -> BoxRuntime -> real backend."""
+    runtime = BoxRuntime(logger=_logger)
+    await runtime.initialize()
+    client, server_task, client_task = await _make_rpc_pair(runtime)
+    try:
+        host_dir = tmp_path / 'workspace'
+        host_dir.mkdir()
+
+        mock_ap = SimpleNamespace(
+            logger=_logger,
+            workspace_service=SimpleNamespace(
+                instance_uuid=_ACTION_CONTEXT.instance_uuid,
+                get_execution_binding=AsyncMock(
+                    return_value=SimpleNamespace(
+                        instance_uuid=_ACTION_CONTEXT.instance_uuid,
+                        workspace_uuid=_ACTION_CONTEXT.workspace_uuid,
+                        placement_generation=_ACTION_CONTEXT.placement_generation,
+                    )
+                ),
+            ),
+            instance_config=SimpleNamespace(
+                data={
+                    'box': {
+                        'backend': 'local',
+                        'runtime': {'endpoint': ''},
+                        'local': {
+                            'profile': 'default',
+                            'allowed_mount_roots': [str(tmp_path)],
+                            'default_workspace': str(host_dir),
+                        },
+                        'e2b': {'api_key': '', 'api_url': '', 'template': ''},
+                    }
+                }
+            ),
+        )
+
+        service = BoxService(mock_ap, client=client)
+        await service.initialize()
+
+        query = pipeline_query.Query.model_construct(
+            query_id=42,
+            instance_uuid=_ACTION_CONTEXT.instance_uuid,
+            workspace_uuid=_ACTION_CONTEXT.workspace_uuid,
+            placement_generation=_ACTION_CONTEXT.placement_generation,
+        )
+        context = ExecutionContext(
+            instance_uuid=_ACTION_CONTEXT.instance_uuid,
+            workspace_uuid=_ACTION_CONTEXT.workspace_uuid,
+            placement_generation=_ACTION_CONTEXT.placement_generation,
+        )
+        runner_box = RunnerBoxService(service)
+        box = await runner_box.acquire(context, {'reuse_key': 'integration-test'}, query)
+        await runner_box.bind(context, query, 'run-42', box['id'])
+        result = await service.execute_tool(
+            {'command': 'echo service-path'},
+            query,
+        )
+
+        assert result['ok'] is True
+        assert result['status'] == 'completed'
+        assert 'service-path' in result['stdout']
+        assert result['session_id'] == box['id']
+    finally:
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()

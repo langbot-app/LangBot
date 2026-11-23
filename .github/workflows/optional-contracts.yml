@@ -1,0 +1,167 @@
+name: Dependency Contracts
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      lbctl_ref:
+        description: 'Ref in langbot-app/langbot-cli (use a commit SHA for a reproducible run)'
+        default: main
+        type: string
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: optional-contracts-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: Select optional contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      compiled_cli: ${{ steps.select.outputs.compiled_cli }}
+      plugin_identity: ${{ steps.select.outputs.plugin_identity }}
+      seekdb: ${{ steps.select.outputs.seekdb }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/classify-test-changes
+        id: select
+
+  compiled-cli:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.compiled_cli == 'true'
+    name: Compiled CLI HTTP Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Core
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/build-lbctl
+        id: lbctl
+        with:
+          ref: ${{ inputs.lbctl_ref || 'main' }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install Core dependencies
+        run: uv sync --dev --frozen
+
+      - name: Run required compiled CLI contract
+        env:
+          LANGBOT_CLI_BIN: ${{ steps.lbctl.outputs.binary }}
+        run: |
+          uv run --no-sync pytest --required-suite compiled_cli \
+            -q --tb=short -rs --junitxml=compiled-cli-results.xml
+
+      - name: Upload compiled CLI contract result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-cli-contract-result
+          path: compiled-cli-results.xml
+          if-no-files-found: ignore
+
+  plugin-identity:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.plugin_identity == 'true'
+    name: Official Plugin Identity Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Core
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install Core dependencies
+        run: uv sync --dev --frozen
+
+      - name: Run required identity consumer contracts
+        env:
+          LANGBOT_LEGACY_PLUGIN_ROOT: ${{ github.workspace }}/plugins
+        run: |
+          uv run --no-sync pytest --required-suite plugin_identity \
+            -q --tb=short -rs --junitxml=plugin-identity-results.xml
+
+      - name: Upload plugin identity results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-identity-contract-results
+          path: plugin-identity-results.xml
+          if-no-files-found: ignore
+
+  seekdb:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.seekdb == 'true'
+    name: Embedded SeekDB Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Core
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install locked SeekDB extra
+        run: uv sync --dev --extra seekdb --frozen
+
+      - name: Run required embedded SeekDB contracts
+        env:
+          SEEKDB_TEST_TMP: ${{ runner.temp }}/langbot-seekdb-contract
+        run: |
+          uv run --no-sync python - <<'PY'
+          from importlib.metadata import version
+          import pyseekdb
+          import pylibseekdb
+
+          print(f"pyseekdb={version('pyseekdb')}, pylibseekdb={version('pylibseekdb')}")
+          PY
+          uv run --no-sync pytest --required-suite seekdb \
+            -q --tb=short -rs --durations=5 \
+            --basetemp="$SEEKDB_TEST_TMP" --junitxml=seekdb-contract-results.xml
+
+      - name: Upload SeekDB results and startup logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seekdb-contract-results
+          path: |
+            seekdb-contract-results.xml
+            ${{ runner.temp }}/langbot-seekdb-contract/**/log/*.log
+          if-no-files-found: ignore

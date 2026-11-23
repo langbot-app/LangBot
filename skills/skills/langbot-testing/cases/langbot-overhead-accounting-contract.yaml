@@ -1,0 +1,37 @@
+id: langbot-overhead-accounting-contract
+title: "LangBot overhead accounting metrics contract"
+mode: probe
+area: performance
+type: performance
+priority: p1
+risk: medium
+ci_eligible: true
+tags:
+  - performance
+  - metrics
+  - contract
+  - synthetic
+skills:
+  - langbot-testing
+automation: skills/langbot-testing/probes/langbot-overhead-accounting-contract.mjs
+metrics_thresholds_json: '{"sample_count":{"min":50},"langbot_overhead_p95_ms":{"max":25},"accounting_gap_max_ms":{"max":0.001}}'
+load_profile_json: '{"kind":"synthetic-overhead-accounting","samples":80,"external_latency_segments":["provider","external_tool","network"]}'
+steps:
+  - "Run `rtk bin/lbs test run langbot-overhead-accounting-contract --dry-run` first; remove `--dry-run` after checking the evidence directory."
+  - "Automation generates deterministic message-path latency samples and separates LangBot overhead from provider/tool/network latency."
+  - "Review metrics.json, thresholds.json, resource-log.json, and automation-result.json under LBS_EVIDENCE_DIR."
+checks:
+  - "automation-result.json status is pass."
+  - "metrics_summary includes sample_count, langbot_overhead_p95_ms, e2e_latency_p95_ms, external_latency_p95_ms, and accounting_gap_max_ms."
+  - "thresholds_summary shows sample_count, langbot_overhead_p95_ms, and accounting_gap_max_ms all pass."
+evidence_required:
+  - metrics
+  - resource_log
+  - filesystem
+diagnostics:
+  - "This is a synthetic contract probe for the QA harness; it is not live product performance."
+  - "Use it to verify that reports can carry overhead accounting metrics before running live backend or browser performance probes."
+success_patterns:
+  - "Overhead accounting contract passed"
+failure_patterns:
+  - "breached one or more thresholds"

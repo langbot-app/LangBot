@@ -1,0 +1,48 @@
+---
+title: "Mattermost"
+description: "Connect a Mattermost bot to LangBot and bring agents and workflows to your Mattermost server in minutes."
+icon: "/images/platforms/mattermost.svg"
+---
+
+<Note>
+The screenshots below use the Chinese interface. Follow the corresponding menu items and fields described in the text.
+</Note>
+
+## Create a bot account
+
+Log in to your Mattermost instance (self-hosted or hosted by Mattermost). Click the `Mattermost icon` in the upper-left corner and select `Integrations` from the menu.
+
+![Open Integrations from the Mattermost menu](/images/zh/deploy/bots/mattermost/Mattermost_main_page.png)
+
+On the Integrations page, select `Bot Accounts` in the left menu, then click `Add Bot Account` in the upper-right corner.
+
+![Open Bot Accounts and add a bot account](/images/zh/deploy/bots/mattermost/Mattermost_bot_account.png)
+
+Choose a username for the bot.
+
+![Enter the bot username](/images/zh/deploy/bots/mattermost/Mattermost_bot_add_new.png)
+
+Set the role to `Member` (administrator-related features are not currently supported). Select `post:all` if you need direct messages, or select only `post:channels` if you only need public channels. Then click `Create Bot Account` in the lower-right corner.
+
+![Select the bot role and posting permissions](/images/zh/deploy/bots/mattermost/Mattermost_bot_deploy.png)
+
+Click the button to copy the token. It is shown only once, so save it securely. Then click `Done` in the lower-right corner.
+
+![Copy the bot token before completing account creation](/images/zh/deploy/bots/mattermost/Mattermost_bot_token.png)
+
+## Configure the bot in LangBot
+
+Open LangBot Cloud or your self-hosted LangBot instance and follow the red arrows in the screenshot below:
+
+- Hover over the `Bots` tab on the left and click the `+` icon that appears.
+- Enter a name in the `Bot Name` field.
+- Open the platform adapter dropdown and select `Mattermost`.
+- Enter the address of your Mattermost instance and the token for the bot account you just created.
+- (Optional) Disable streaming output if your pipeline or AI provider does not support it.
+- Click `Submit` in the upper-right corner to open the bot editing page.
+
+![Add a Mattermost bot and enter the instance address and token in LangBot](/images/zh/deploy/bots/mattermost/Mattermost_langbot_add_new.png)
+
+Bind an existing pipeline, configure routing if needed, and click `Save` in the upper-right corner.
+
+![Bind a pipeline and save the Mattermost bot configuration](/images/zh/deploy/bots/mattermost/Mattermost_langbot_deploy.png)

@@ -1,0 +1,21 @@
+name: 需求建议
+title: "[Feature]: "
+labels: []
+description: "【供中文用户】新功能或现有功能优化请使用这个模板；不符合类别的issue将被直接关闭"
+body:
+  - type: dropdown
+    attributes:
+      label: 这是一个？
+      description: 新功能建议还是现有功能优化
+      options:
+        - 新功能
+        - 现有功能优化
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 详细描述
+      description: 详细描述，越详细越好
+    validations:
+      required: true
+      

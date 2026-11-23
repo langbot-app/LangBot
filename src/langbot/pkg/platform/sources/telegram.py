@@ -1,0 +1,985 @@
+from __future__ import annotations
+
+
+import telegram
+import telegram.ext
+from telegram import ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CallbackQueryHandler, filters
+import telegramify_markdown
+import typing
+import traceback
+import json
+import base64
+import asyncio
+import os
+import time
+import uuid
+import pydantic
+
+from langbot.pkg.utils import httpclient
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
+import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
+
+
+_MAX_TELEGRAM_MEDIA_BYTES = 10 * 1024 * 1024
+
+
+def _decode_telegram_base64_limited(value: str) -> bytes:
+    if ';base64,' in value:
+        value = value.split(';base64,', 1)[1]
+    max_encoded_bytes = 4 * ((_MAX_TELEGRAM_MEDIA_BYTES + 2) // 3)
+    if len(value) > max_encoded_bytes:
+        raise ValueError('Telegram media exceeds the size limit')
+    decoded = base64.b64decode(value)
+    if len(decoded) > _MAX_TELEGRAM_MEDIA_BYTES:
+        raise ValueError('Telegram media exceeds the size limit')
+    return decoded
+
+
+def _read_telegram_file_limited(path: str) -> bytes:
+    if os.path.getsize(path) > _MAX_TELEGRAM_MEDIA_BYTES:
+        raise ValueError('Telegram media exceeds the size limit')
+    with open(path, 'rb') as file:
+        body = file.read(_MAX_TELEGRAM_MEDIA_BYTES + 1)
+    if len(body) > _MAX_TELEGRAM_MEDIA_BYTES:
+        raise ValueError('Telegram media exceeds the size limit')
+    return body
+
+
+def _telegram_select_field_options(form_data: dict) -> tuple[str, list[str]]:
+    """Return the active select field and its option values."""
+    field_name = str(form_data.get('_current_input_field') or '').strip()
+    if not field_name:
+        return '', []
+    field = next(
+        (
+            item
+            for item in form_data.get('input_defs') or []
+            if str(item.get('output_variable_name') or '').strip() == field_name
+        ),
+        None,
+    )
+    if not field or str(field.get('type') or '').strip().lower() != 'select':
+        return '', []
+
+    source = field.get('option_source') or {}
+    source_value = source.get('value') if isinstance(source, dict) else None
+    if isinstance(source_value, list):
+        return field_name, [str(item) for item in source_value]
+    if isinstance(source_value, str):
+        return field_name, [part.strip() for part in source_value.splitlines() if part.strip()]
+
+    options = field.get('options')
+    if not isinstance(options, list):
+        return field_name, []
+    values = []
+    for item in options:
+        if isinstance(item, dict):
+            values.append(str(item.get('label') or item.get('value') or ''))
+        else:
+            values.append(str(item))
+    return field_name, [value for value in values if value]
+
+
+def _telegram_form_action_from_callback(data: dict) -> dict | None:
+    """Translate compact Telegram callback data into a runner form action."""
+    if 'x' not in data:
+        return {
+            'action_id': str(data.get('action_id') or data.get('a') or ''),
+            'inputs': {},
+        }
+    try:
+        option_index = int(data['x'])
+    except (TypeError, ValueError):
+        return None
+    if option_index < 0:
+        return None
+    return {
+        'action_id': '',
+        'inputs': {'select': {'index': option_index}},
+        '_input_progress': True,
+    }
+
+
+class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
+    @staticmethod
+    async def yiri2target(message_chain: platform_message.MessageChain, bot: telegram.Bot) -> list[dict]:
+        components = []
+
+        for component in message_chain:
+            if isinstance(component, platform_message.Plain):
+                components.append({'type': 'text', 'text': component.text})
+            elif isinstance(component, platform_message.Image):
+                photo_bytes, _mime_type = await component.get_bytes()
+
+                components.append({'type': 'photo', 'photo': photo_bytes})
+            elif isinstance(component, platform_message.Voice):
+                from ...utils import audio as audio_utils
+
+                voice_bytes, src_fmt = await audio_utils.extract_voice_bytes(component)
+                if audio_utils.is_ffmpeg_available():
+                    try:
+                        voice_bytes = await audio_utils.transcode_audio(voice_bytes, 'ogg', src_fmt)
+                    except Exception:
+                        pass
+                duration = component.length
+                if duration is not None:
+                    duration = int(round(duration))
+                elif voice_bytes:
+                    try:
+                        duration = int(round(audio_utils.estimate_audio_duration(voice_bytes, 'ogg')))
+                    except Exception:
+                        duration = None
+                components.append({'type': 'voice', 'voice': voice_bytes, 'duration': duration})
+            elif isinstance(component, platform_message.File):
+                file_bytes = None
+
+                if component.base64:
+                    file_bytes = await asyncio.to_thread(
+                        _decode_telegram_base64_limited,
+                        component.base64,
+                    )
+                elif component.url:
+                    session = httpclient.get_session()
+                    async with session.get(component.url) as response:
+                        file_bytes = await httpclient.read_limited(
+                            response,
+                            max_bytes=_MAX_TELEGRAM_MEDIA_BYTES,
+                        )
+                elif component.path:
+                    file_bytes = await asyncio.to_thread(
+                        _read_telegram_file_limited,
+                        str(component.path),
+                    )
+
+                file_name = getattr(component, 'name', None) or 'file'
+                components.append({'type': 'document', 'document': file_bytes, 'filename': file_name})
+            elif isinstance(component, platform_message.Forward):
+                for node in component.node_list:
+                    components.extend(await TelegramMessageConverter.yiri2target(node.message_chain, bot))
+
+        return components
+
+    @staticmethod
+    async def target2yiri(message: telegram.Message, bot: telegram.Bot, bot_account_id: str):
+        message_components = []
+
+        def parse_message_text(
+            text: str, entities: dict[telegram.MessageEntity, str]
+        ) -> list[platform_message.MessageComponent]:
+            msg_components = []
+            mention = f'@{bot_account_id}'.lower()
+            bot_mentions = [
+                entity
+                for entity, value in entities.items()
+                if (entity.type == telegram.MessageEntity.MENTION and value.lower() == mention)
+                or (entity.type == telegram.MessageEntity.BOT_COMMAND and value.lower().endswith(mention))
+            ]
+
+            if bot_mentions:
+                # Telegram entity offsets use UTF-16 code units, not Python character indexes.
+                encoded = text.encode('utf-16-le')
+                for entity in sorted(bot_mentions, key=lambda entity: entity.offset, reverse=True):
+                    end = (entity.offset + entity.length) * 2
+                    start = end - len(mention.encode('utf-16-le'))
+                    encoded = encoded[:start] + encoded[end:]
+                msg_components.append(platform_message.At(target=bot_account_id))
+                text = encoded.decode('utf-16-le')
+            msg_components.append(platform_message.Plain(text=text))
+
+            return msg_components
+
+        if message.text:
+            message_text = message.text
+            message_components.extend(parse_message_text(message_text, message.parse_entities()))
+
+        if message.photo:
+            if message.caption:
+                message_components.extend(parse_message_text(message.caption, message.parse_caption_entities()))
+
+            file = await message.photo[-1].get_file()
+
+            file_bytes = None
+            file_format = ''
+
+            async with httpclient.get_session(trust_env=True).get(file.file_path) as response:
+                file_bytes = await httpclient.read_limited(
+                    response,
+                    max_bytes=_MAX_TELEGRAM_MEDIA_BYTES,
+                )
+                file_format = 'image/jpeg'
+
+            # NOTE: Telegram's file.file_path is a full URL of the form
+            # https://api.telegram.org/file/bot<TOKEN>/<path> which embeds the
+            # bot token. Unlike the public CDN URLs used by other adapters, it
+            # cannot be exposed safely, so only base64 is stored here.
+            encoded = await asyncio.to_thread(base64.b64encode, file_bytes)
+            message_components.append(
+                platform_message.Image(
+                    base64=f'data:{file_format};base64,{encoded.decode("utf-8")}',
+                )
+            )
+
+        if message.voice:
+            if message.caption:
+                message_components.extend(parse_message_text(message.caption, message.parse_caption_entities()))
+
+            file = await message.voice.get_file()
+
+            file_bytes = None
+            file_format = message.voice.mime_type or 'audio/ogg'
+
+            async with httpclient.get_session(trust_env=True).get(file.file_path) as response:
+                file_bytes = await httpclient.read_limited(
+                    response,
+                    max_bytes=_MAX_TELEGRAM_MEDIA_BYTES,
+                )
+
+            encoded = await asyncio.to_thread(base64.b64encode, file_bytes)
+            message_components.append(
+                platform_message.Voice(
+                    base64=f'data:{file_format};base64,{encoded.decode("utf-8")}',
+                    length=message.voice.duration,
+                )
+            )
+
+        if message.document:
+            if message.caption:
+                message_components.extend(parse_message_text(message.caption, message.parse_caption_entities()))
+
+            file = await message.document.get_file()
+            file_name = message.document.file_name or 'document'
+            file_size = message.document.file_size or 0
+            file_format = message.document.mime_type or 'application/octet-stream'
+            if file_size > _MAX_TELEGRAM_MEDIA_BYTES:
+                raise ValueError('Telegram media exceeds the size limit')
+
+            file_bytes = None
+            async with httpclient.get_session(trust_env=True).get(file.file_path) as response:
+                file_bytes = await httpclient.read_limited(
+                    response,
+                    max_bytes=_MAX_TELEGRAM_MEDIA_BYTES,
+                )
+
+            encoded = await asyncio.to_thread(base64.b64encode, file_bytes)
+            message_components.append(
+                platform_message.File(
+                    name=file_name,
+                    size=file_size,
+                    base64=f'data:{file_format};base64,{encoded.decode("utf-8")}',
+                )
+            )
+
+        return platform_message.MessageChain(message_components)
+
+
+class TelegramEventConverter(abstract_platform_adapter.AbstractEventConverter):
+    @staticmethod
+    async def yiri2target(event: platform_events.MessageEvent, bot: telegram.Bot):
+        return event.source_platform_object
+
+    @staticmethod
+    async def target2yiri(event: Update, bot: telegram.Bot, bot_account_id: str):
+        lb_message = await TelegramMessageConverter.target2yiri(event.message, bot, bot_account_id)
+
+        if event.effective_chat.type == 'private':
+            return platform_events.FriendMessage(
+                sender=platform_entities.Friend(
+                    id=event.effective_chat.id,
+                    nickname=event.effective_chat.first_name,
+                    remark=str(event.effective_chat.id),
+                ),
+                message_chain=lb_message,
+                time=event.message.date.timestamp(),
+                source_platform_object=event,
+            )
+        elif event.effective_chat.type in ('group', 'supergroup'):
+            return platform_events.GroupMessage(
+                sender=platform_entities.GroupMember(
+                    id=event.effective_chat.id,
+                    member_name=event.effective_chat.title,
+                    permission=platform_entities.Permission.Member,
+                    group=platform_entities.Group(
+                        id=event.effective_chat.id,
+                        name=event.effective_chat.title,
+                        permission=platform_entities.Permission.Member,
+                    ),
+                    special_title='',
+                ),
+                message_chain=lb_message,
+                time=event.message.date.timestamp(),
+                source_platform_object=event,
+            )
+
+
+class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
+    bot: telegram.Bot = pydantic.Field(exclude=True)
+    application: telegram.ext.Application = pydantic.Field(exclude=True)
+    ap: typing.Any = pydantic.Field(exclude=True, default=None)
+
+    message_converter: TelegramMessageConverter = TelegramMessageConverter()
+    event_converter: TelegramEventConverter = TelegramEventConverter()
+
+    config: dict
+
+    msg_stream_id: dict  # 流式消息id字典，key为流式消息id，value为首次消息源id，用于在流式消息时判断编辑那条消息
+
+    seq: int  # 消息中识别消息顺序，直接以seq作为标识
+
+    listeners: typing.Dict[
+        typing.Type[platform_events.Event],
+        typing.Callable[[platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None],
+    ] = {}
+
+    _FORM_ACTION_CACHE_TTL = 30 * 60
+    _MAX_FORM_ACTION_TITLES = 4096
+    _MAX_STREAM_STATES = 1000
+    # callback_data -> (display title, pipeline UUID, expiration time, form group id)
+    _form_action_titles: typing.Dict[str, tuple[str, str, float, str]] = {}
+
+    def _prune_form_action_titles(self, now: float | None = None) -> None:
+        now = time.monotonic() if now is None else now
+        expired = [key for key, (_, _, expires_at, _) in self._form_action_titles.items() if expires_at <= now]
+        for key in expired:
+            self._form_action_titles.pop(key, None)
+
+    def _cache_form_action_titles(
+        self,
+        mappings: dict[str, str],
+        pipeline_uuid: str = '',
+        now: float | None = None,
+    ) -> None:
+        now = time.monotonic() if now is None else now
+        self._prune_form_action_titles(now)
+        group_id = uuid.uuid4().hex
+        expires_at = now + self._FORM_ACTION_CACHE_TTL
+        self._form_action_titles.update(
+            {callback_data: (title, pipeline_uuid, expires_at, group_id) for callback_data, title in mappings.items()}
+        )
+        while len(self._form_action_titles) > self._MAX_FORM_ACTION_TITLES:
+            self._form_action_titles.pop(next(iter(self._form_action_titles)), None)
+
+    def _take_form_action_context(self, callback_data: str, now: float | None = None) -> tuple[str, str] | None:
+        """Consume a callback and invalidate every button from the same form."""
+        self._prune_form_action_titles(now)
+        entry = self._form_action_titles.get(callback_data)
+        if entry is None:
+            return None
+        title, pipeline_uuid, _, group_id = entry
+        group_keys = [
+            key for key, (_, _, _, cached_group_id) in self._form_action_titles.items() if cached_group_id == group_id
+        ]
+        for key in group_keys:
+            self._form_action_titles.pop(key, None)
+        return title, pipeline_uuid
+
+    def _take_form_action_title(self, callback_data: str, now: float | None = None) -> str | None:
+        context = self._take_form_action_context(callback_data, now)
+        return context[0] if context else None
+
+    def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
+        async def telegram_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            if update.message.from_user.is_bot:
+                return
+
+            try:
+                lb_event = await self.event_converter.target2yiri(update, self.bot, self.bot_account_id)
+                await self.listeners[type(lb_event)](lb_event, self)
+                await self.is_stream_output_supported()
+            except Exception:
+                await self.logger.error(f'Error in telegram callback: {traceback.format_exc()}')
+
+        application = ApplicationBuilder().token(config['token']).build()
+        bot = application.bot
+        application.add_handler(
+            MessageHandler(
+                filters.TEXT | (filters.COMMAND) | filters.PHOTO | filters.VOICE | filters.Document.ALL,
+                telegram_callback,
+            )
+        )
+
+        async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            query = update.callback_query
+            await query.answer()
+            try:
+                data = json.loads(query.data)
+                if data.get('form_action') or data.get('f'):
+                    import langbot_plugin.api.entities.builtin.provider.session as provider_session
+
+                    # workflow_run_id is not in the callback payload (too large
+                    # for Telegram's 64-byte limit). Only w_suffix is sent;
+                    # the runner resolves the full run id from _PENDING_FORMS.
+                    w_suffix = data.get('w', '')
+                    session_key = data.get('session_key') or data.get('s', '')
+                    callback_action = _telegram_form_action_from_callback(data)
+                    action_context = self._take_form_action_context(query.data) if callback_action is not None else None
+                    if callback_action is None or action_context is None:
+                        await self.logger.warning(f'Invalid or stale Telegram form callback: {query.data!r}')
+                        return
+                    action_title, pipeline_uuid = action_context
+                    # Show selected action feedback by editing the original message
+                    try:
+                        original_text = query.message.text or ''
+                        selected_text = f'{original_text}\n\n✅ {action_title}'
+                        await query.edit_message_text(text=selected_text, reply_markup=None)
+                    except Exception:
+                        # If edit fails (e.g. message too long), just pass
+                        pass
+
+                    if session_key.startswith('group_') or session_key.startswith('g:'):
+                        launcher_type = provider_session.LauncherTypes.GROUP
+                        launcher_id = (
+                            session_key.split(':', 1)[1]
+                            if session_key.startswith('g:')
+                            else session_key[len('group_') :]
+                        )
+                    else:
+                        launcher_type = provider_session.LauncherTypes.PERSON
+                        launcher_id = (
+                            session_key.split(':', 1)[1]
+                            if session_key.startswith('p:')
+                            else session_key[len('person_') :]
+                        )
+
+                    user_id = str(query.from_user.id)
+
+                    # Find bot_uuid and pipeline_uuid
+                    bot_uuid = ''
+                    for b in self.ap.platform_mgr.bots:
+                        if b.adapter is self:
+                            bot_uuid = b.bot_entity.uuid
+                            pipeline_uuid = pipeline_uuid or b.bot_entity.use_pipeline_uuid
+                            break
+
+                    form_action_data = {
+                        # workflow_run_id is intentionally omitted; the runner
+                        # resolves it from w_suffix via _PENDING_FORMS.
+                        'w_suffix': w_suffix,
+                        'user': f'{launcher_type.value}_{launcher_id}',
+                        **callback_action,
+                    }
+
+                    event_label = 'Form Select' if callback_action.get('_input_progress') else 'Form Action'
+                    message_chain = platform_message.MessageChain(
+                        [platform_message.Plain(text=f'[{event_label}: {action_title}]')]
+                    )
+
+                    if launcher_type == provider_session.LauncherTypes.GROUP:
+                        synthetic_event = platform_events.GroupMessage(
+                            sender=platform_entities.GroupMember(
+                                id=user_id,
+                                member_name='',
+                                permission=platform_entities.Permission.Member,
+                                group=platform_entities.Group(
+                                    id=launcher_id,
+                                    name='',
+                                    permission=platform_entities.Permission.Member,
+                                ),
+                            ),
+                            message_chain=message_chain,
+                            source_platform_object=update,
+                        )
+                    else:
+                        synthetic_event = platform_events.FriendMessage(
+                            sender=platform_entities.Friend(
+                                id=user_id,
+                                nickname='',
+                                remark='',
+                            ),
+                            message_chain=message_chain,
+                            source_platform_object=update,
+                        )
+
+                    await self.ap.query_pool.add_query(
+                        bot_uuid=bot_uuid,
+                        launcher_type=launcher_type,
+                        launcher_id=launcher_id,
+                        sender_id=user_id,
+                        message_event=synthetic_event,
+                        message_chain=message_chain,
+                        adapter=self,
+                        pipeline_uuid=pipeline_uuid,
+                        variables={
+                            '_dify_form_action': form_action_data,
+                            '_routed_by_rule': True,
+                        },
+                    )
+            except Exception:
+                await self.logger.error(f'Error in telegram callback query: {traceback.format_exc()}')
+
+        application.add_handler(CallbackQueryHandler(callback_query_handler))
+        super().__init__(
+            config=config,
+            logger=logger,
+            msg_stream_id={},
+            seq=1,
+            bot=bot,
+            application=application,
+            bot_account_id='',
+            listeners={},
+        )
+        self._form_action_titles = {}
+
+    def _cap_stream_states(self) -> None:
+        while len(self.msg_stream_id) > self._MAX_STREAM_STATES:
+            self.msg_stream_id.pop(next(iter(self.msg_stream_id)), None)
+
+    async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
+        components = await TelegramMessageConverter.yiri2target(message, self.bot)
+
+        chat_id_str, _, thread_id_str = str(target_id).partition('#')
+        chat_id: int | str = int(chat_id_str) if chat_id_str.lstrip('-').isdigit() else chat_id_str
+        message_thread_id = int(thread_id_str) if thread_id_str and thread_id_str.isdigit() else None
+
+        for component in components:
+            component_type = component.get('type')
+            args = {'chat_id': chat_id}
+            if message_thread_id is not None:
+                args['message_thread_id'] = message_thread_id
+
+            if component_type == 'text':
+                text = component.get('text', '')
+                if self.config['markdown_card'] is True:
+                    text = telegramify_markdown.markdownify(content=text)
+                    args['parse_mode'] = 'MarkdownV2'
+                args['text'] = text
+                await self.bot.send_message(**args)
+            elif component_type == 'photo':
+                photo = component.get('photo')
+                if photo is None:
+                    continue
+                args['photo'] = telegram.InputFile(photo)
+                await self.bot.send_photo(**args)
+            elif component_type == 'document':
+                doc = component.get('document')
+                if doc is None:
+                    continue
+                filename = component.get('filename', 'file')
+                args['document'] = telegram.InputFile(doc, filename=filename)
+                await self.bot.send_document(**args)
+            elif component_type == 'voice':
+                voice = component.get('voice')
+                if voice is None:
+                    continue
+                args['voice'] = telegram.InputFile(voice, filename='voice.ogg')
+                if component.get('duration'):
+                    args['duration'] = component['duration']
+                await self.bot.send_voice(**args)
+
+    async def reply_message(
+        self,
+        message_source: platform_events.MessageEvent,
+        message: platform_message.MessageChain,
+        quote_origin: bool = False,
+    ):
+        assert isinstance(message_source.source_platform_object, Update)
+        components = await TelegramMessageConverter.yiri2target(message, self.bot)
+
+        update = message_source.source_platform_object
+        chat_id = update.effective_chat.id
+        effective_message = getattr(update, 'effective_message', None) or getattr(update, 'message', None)
+        message_thread_id = getattr(effective_message, 'message_thread_id', None) if effective_message else None
+        reply_to_message_id = effective_message.id if (quote_origin and effective_message) else None
+
+        sent_messages = []
+        for component in components:
+            component_type = component.get('type')
+            args = {'chat_id': chat_id}
+
+            if message_thread_id:
+                args['message_thread_id'] = message_thread_id
+
+            if reply_to_message_id:
+                args['reply_to_message_id'] = reply_to_message_id
+
+            if component_type == 'text':
+                content = component.get('text', '')
+                if self.config.get('markdown_card', False):
+                    content = telegramify_markdown.markdownify(content=content)
+                    args['parse_mode'] = 'MarkdownV2'
+                args['text'] = content
+                sent_messages.append(await self.bot.send_message(**args))
+            elif component_type == 'photo':
+                photo = component.get('photo')
+                if photo is None:
+                    continue
+                args['photo'] = telegram.InputFile(photo)
+                sent_messages.append(await self.bot.send_photo(**args))
+            elif component_type == 'document':
+                doc = component.get('document')
+                if doc is None:
+                    continue
+                filename = component.get('filename', 'file')
+                args['document'] = telegram.InputFile(doc, filename=filename)
+                sent_messages.append(await self.bot.send_document(**args))
+            elif component_type == 'voice':
+                voice = component.get('voice')
+                if voice is None:
+                    continue
+                args['voice'] = telegram.InputFile(voice, filename='voice.ogg')
+                if component.get('duration'):
+                    args['duration'] = component['duration']
+                sent_messages.append(await self.bot.send_voice(**args))
+
+        return sent_messages
+
+    def _process_markdown(self, text: str) -> str:
+        if self.config.get('markdown_card', False):
+            return telegramify_markdown.markdownify(content=text)
+        return text
+
+    def _build_message_args(self, chat_id: int, text: str, message_thread_id: int = None, **extra_args) -> dict:
+        args = {'chat_id': chat_id, 'text': self._process_markdown(text), **extra_args}
+        if message_thread_id:
+            args['message_thread_id'] = message_thread_id
+        if self.config.get('markdown_card', False):
+            args['parse_mode'] = 'MarkdownV2'
+        return args
+
+    async def _delete_group_stream_message(self, chat_mode: str, chat_id: int, stream_id: int | None):
+        if chat_mode == 'private' or stream_id is None:
+            return
+        try:
+            await self.bot.delete_message(chat_id=chat_id, message_id=stream_id)
+        except telegram.error.TelegramError:
+            pass
+
+    @staticmethod
+    def _is_form_placeholder_chunk(text: str) -> bool:
+        """Return True for invisible placeholder chunks used to carry forms."""
+
+        if not text:
+            return True
+
+        cleaned = text.replace('\u200b', '').replace('\u200c', '').replace('\u200d', '').replace('\ufeff', '').strip()
+        return cleaned == ''
+
+    async def create_message_card(self, message_id, event):
+        assert isinstance(event.source_platform_object, Update)
+        update = event.source_platform_object
+        chat_id = update.effective_chat.id
+        effective_message = update.effective_message
+        message_thread_id = getattr(effective_message, 'message_thread_id', None) if effective_message else None
+
+        args = self._build_message_args(chat_id, 'Thinking...', message_thread_id)
+        send_msg = await self.bot.send_message(**args)
+        self.msg_stream_id[message_id] = ('message', send_msg.message_id, False)
+        self._cap_stream_states()
+
+        return True
+
+    async def reply_message_chunk(
+        self,
+        message_source: platform_events.MessageEvent,
+        bot_message,
+        message: platform_message.MessageChain,
+        quote_origin: bool = False,
+        is_final: bool = False,
+    ):
+        message_id = bot_message.resp_message_id
+        msg_seq = bot_message.msg_sequence
+        assert isinstance(message_source.source_platform_object, Update)
+        update = message_source.source_platform_object
+        chat_id = update.effective_chat.id
+        effective_message = update.effective_message
+        message_thread_id = getattr(effective_message, 'message_thread_id', None) if effective_message else None
+
+        if message_id not in self.msg_stream_id:
+            return
+
+        # Media cannot be edited into a text stream. Deliver terminal attachments
+        # through the regular reply path, including attachment-only completions.
+        if is_final and not getattr(bot_message, 'tool_calls', None):
+            attachments = platform_message.MessageChain(
+                [
+                    part
+                    for part in message
+                    if isinstance(part, (platform_message.Image, platform_message.File, platform_message.Voice))
+                ]
+            )
+            if attachments:
+                await self.reply_message(message_source, attachments, quote_origin=quote_origin)
+
+        stream_state = self.msg_stream_id[message_id]
+        chat_mode, stream_id = stream_state[:2]
+        has_visible_content = len(stream_state) > 2 and stream_state[2]
+        components = await TelegramMessageConverter.yiri2target(message, self.bot)
+
+        if not components or components[0]['type'] != 'text':
+            if is_final and getattr(bot_message, 'tool_calls', None) is None:
+                if not has_visible_content:
+                    await self._delete_group_stream_message(chat_mode, chat_id, stream_id)
+                self.msg_stream_id.pop(message_id, None)
+            return
+
+        content = components[0]['text']
+        form_data = getattr(bot_message, '_form_data', None)
+
+        if form_data and is_final:
+            if not has_visible_content:
+                await self._send_form_action_buttons(message_source, form_data, edit_message_id=stream_id)
+            else:
+                await self._send_form_action_buttons(message_source, form_data)
+            self.msg_stream_id.pop(message_id, None)
+            return
+
+        if self._is_form_placeholder_chunk(content):
+            if is_final and bot_message.tool_calls is None and not has_visible_content:
+                await self._delete_group_stream_message(chat_mode, chat_id, stream_id)
+                self.msg_stream_id.pop(message_id, None)
+            return
+
+        if chat_mode == 'private':
+            # Streaming via draft (ephemeral preview in the chat input area)
+            if (msg_seq - 1) % 8 == 0 or is_final:
+                args = self._build_message_args(chat_id, content, message_thread_id, draft_id=stream_id)
+                try:
+                    await self.bot.send_message_draft(**args)
+                except telegram.error.BadRequest as exc:
+                    if 'Message_too_long' in str(exc):
+                        args['text'] = content[:4000] + '\n\n… (truncated)'
+                        try:
+                            await self.bot.send_message_draft(**args)
+                        except telegram.error.RetryAfter:
+                            pass
+                    else:
+                        pass  # Ignore other draft errors (cosmetic)
+                self.msg_stream_id[message_id] = (chat_mode, stream_id, True)
+            if is_final and bot_message.tool_calls is None:
+                # Finalise: send the real message, discard the draft
+                args = self._build_message_args(chat_id, content, message_thread_id)
+                if quote_origin and effective_message:
+                    args['reply_to_message_id'] = effective_message.id
+                try:
+                    await self.bot.send_message(**args)
+                except telegram.error.BadRequest as exc:
+                    if 'Message_too_long' in str(exc):
+                        args['text'] = content[:4000] + '\n\n… (truncated)'
+                        await self.bot.send_message(**args)
+                    else:
+                        raise
+                self.msg_stream_id.pop(message_id)
+        else:
+            # Streaming via edit_message_text (persistent message)
+            if stream_id is None:
+                args = self._build_message_args(chat_id, content, message_thread_id)
+                try:
+                    send_msg = await self.bot.send_message(**args)
+                except telegram.error.BadRequest as exc:
+                    if 'Message_too_long' in str(exc):
+                        args['text'] = self._process_markdown(content[:4000] + '\n\n鈥?(truncated)')
+                        send_msg = await self.bot.send_message(**args)
+                    else:
+                        raise
+                self.msg_stream_id[message_id] = (chat_mode, send_msg.message_id, True)
+                if is_final and bot_message.tool_calls is None:
+                    self.msg_stream_id.pop(message_id, None)
+                return
+
+            if not has_visible_content or (msg_seq - 1) % 8 == 0 or is_final:
+                args = {
+                    'message_id': stream_id,
+                    'chat_id': chat_id,
+                    'text': self._process_markdown(content),
+                }
+                if self.config.get('markdown_card', False):
+                    args['parse_mode'] = 'MarkdownV2'
+                try:
+                    await self.bot.edit_message_text(**args)
+                except telegram.error.BadRequest as exc:
+                    if 'Message_too_long' in str(exc):
+                        args['text'] = self._process_markdown(content[:4000] + '\n\n… (truncated)')
+                        await self.bot.edit_message_text(**args)
+                    elif 'Message is not modified' in str(exc):
+                        # The message already shows this exact content (e.g. the
+                        # final chunk repeats the last edit); nothing to deliver.
+                        pass
+                    else:
+                        raise
+                self.msg_stream_id[message_id] = (chat_mode, stream_id, True)
+
+            if is_final and bot_message.tool_calls is None:
+                self.msg_stream_id.pop(message_id)
+
+    async def _send_form_action_buttons(
+        self,
+        message_source: platform_events.MessageEvent,
+        form_data: dict,
+        edit_message_id: int | None = None,
+    ):
+        """Send inline keyboard buttons for Dify form fields or actions."""
+        actions = form_data.get('actions', [])
+        node_title = form_data.get('node_title', '')
+        form_content = form_data.get('form_content', '')
+        workflow_run_id = form_data.get('workflow_run_id', '')
+        # Telegram callback_data is capped at 64 bytes, so we identify the
+        # paused workflow by the last 8 chars of workflow_run_id (unique
+        # within a session with overwhelming probability).
+        w_suffix = workflow_run_id[-8:] if workflow_run_id else ''
+
+        if isinstance(message_source, platform_events.GroupMessage):
+            session_key = f'g:{message_source.group.id}'
+        else:
+            session_key = f'p:{message_source.sender.id}'
+
+        current_field = str(form_data.get('_current_input_field') or '').strip()
+        is_field_step = bool(current_field) and not form_data.get('_action_select_only')
+        select_field, select_options = _telegram_select_field_options(form_data)
+        is_select_field = bool(select_field and select_options)
+        if is_select_field:
+            choices = [(option, {'x': idx}) for idx, option in enumerate(select_options)]
+        elif is_field_step:
+            choices = []
+        else:
+            choices = [(action.get('title', action.get('id', '')), {'a': action.get('id', '')}) for action in actions]
+
+        keyboard = []
+        pending_title_mappings: dict[str, str] = {}
+        oversized = False
+        buttons_per_row = 2 if is_select_field else 1
+        current_row = []
+        for title, choice_data in choices:
+            callback_payload = {'f': 1, **choice_data, 's': session_key}
+            if w_suffix:
+                callback_payload['w'] = w_suffix
+            callback_data = json.dumps(callback_payload, separators=(',', ':'))
+            if len(callback_data.encode('utf-8')) > 64:
+                oversized = True
+                break
+            pending_title_mappings[callback_data] = str(title)
+            current_row.append(InlineKeyboardButton(str(title), callback_data=callback_data))
+            if len(current_row) == buttons_per_row:
+                keyboard.append(current_row)
+                current_row = []
+        if current_row and not oversized:
+            keyboard.append(current_row)
+
+        update = message_source.source_platform_object
+        chat_id = update.effective_chat.id
+        effective_message = update.effective_message
+        message_thread_id = getattr(effective_message, 'message_thread_id', None) if effective_message else None
+
+        heading = f'[{node_title}]'
+        text_lines = [heading]
+        if form_content:
+            text_lines.append(form_content)
+
+        if oversized:
+            # callback_data exceeds Telegram's 64-byte limit — fall back to
+            # a plain-text numbered list so the user can reply by number.
+            for idx, (title, _) in enumerate(choices, start=1):
+                text_lines.append(f'  {idx}. {title}')
+            args = {
+                'chat_id': chat_id,
+                'text': '\n\n'.join(text_lines),
+            }
+        elif keyboard:
+            self._cache_form_action_titles(
+                pending_title_mappings,
+                str(form_data.get('pipeline_uuid') or ''),
+            )
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            args = {
+                'chat_id': chat_id,
+                'text': '\n\n'.join(text_lines),
+                'reply_markup': reply_markup,
+            }
+        elif is_field_step:
+            args = {
+                'chat_id': chat_id,
+                'text': '\n\n'.join(text_lines),
+                # Telegram privacy-mode bots receive replies to ForceReply
+                # prompts even when they cannot read ordinary group messages.
+                'reply_markup': ForceReply(
+                    selective=False,
+                    input_field_placeholder=current_field,
+                ),
+            }
+        else:
+            args = {
+                'chat_id': chat_id,
+                'text': '\n\n'.join(text_lines),
+            }
+
+        if message_thread_id:
+            args['message_thread_id'] = message_thread_id
+
+        if edit_message_id is not None:
+            edit_args = {
+                'chat_id': chat_id,
+                'message_id': edit_message_id,
+                'text': args['text'],
+            }
+            edit_args['reply_markup'] = args.get('reply_markup')
+            try:
+                await self.bot.edit_message_text(**edit_args)
+                return
+            except telegram.error.TelegramError:
+                await self._delete_group_stream_message('group', chat_id, edit_message_id)
+
+        await self.bot.send_message(**args)
+
+    def get_launcher_id(self, event: platform_events.MessageEvent) -> str | None:
+        if not isinstance(event.source_platform_object, Update):
+            return None
+
+        message = event.source_platform_object.message
+        if not message:
+            return None
+
+        # specifically handle telegram forum topic and private thread(not supported by official client yet but supported by bot api)
+        if message.message_thread_id:
+            # check if it is a group
+            if isinstance(event, platform_events.GroupMessage):
+                return f'{event.group.id}#{message.message_thread_id}'
+            elif isinstance(event, platform_events.FriendMessage):
+                return f'{event.sender.id}#{message.message_thread_id}'
+
+        return None
+
+    async def is_stream_output_supported(self) -> bool:
+        is_stream = False
+        if self.config.get('enable-stream-reply', None):
+            is_stream = True
+        return is_stream
+
+    async def is_muted(self, group_id: int) -> bool:
+        return False
+
+    def register_listener(
+        self,
+        event_type: typing.Type[platform_events.Event],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
+    ):
+        self.listeners[event_type] = callback
+
+    def unregister_listener(
+        self,
+        event_type: typing.Type[platform_events.Event],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
+    ):
+        self.listeners.pop(event_type)
+
+    async def run_async(self):
+        await self.application.initialize()
+        self.bot_account_id = (await self.bot.get_me()).username
+        await self.application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+        await self.application.start()
+        await self.logger.info('Telegram adapter running')
+
+    async def kill(self) -> bool:
+        if self.application.running:
+            await self.application.stop()
+            if self.application.updater:
+                await self.application.updater.stop()
+            await self.logger.info('Telegram adapter stopped')
+        self.msg_stream_id.clear()
+        self._form_action_titles.clear()
+        return True

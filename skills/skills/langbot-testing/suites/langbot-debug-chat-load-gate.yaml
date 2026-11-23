@@ -1,0 +1,15 @@
+id: langbot-debug-chat-load-gate
+title: "LangBot Debug Chat load gate"
+description: "Manual/non-required message-path load checks for Pipeline Debug Chat: controlled fake-provider baseline, slow-provider and fault-recovery profiles, plus optional real Space-provider smoke. Cross-pipeline isolation is split into langbot-debug-chat-isolation-gate because current releases may fail it due to product bug #2286."
+type: performance
+priority: p1
+tags:
+  - performance
+  - debug-chat
+  - websocket
+  - load
+cases:
+  - langbot-fake-provider-debug-chat-load
+  - langbot-fake-provider-debug-chat-slow-load
+  - langbot-fake-provider-debug-chat-fault-recovery
+  - langbot-space-debug-chat-concurrency-smoke

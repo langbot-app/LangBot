@@ -1,0 +1,16 @@
+id: langbot-performance-reliability-gate
+title: "LangBot performance and reliability starter gate"
+description: "Starter gate for LangBot performance accounting, live backend control-plane latency, and non-destructive fault taxonomy checks."
+type: reliability
+priority: p1
+tags:
+  - performance
+  - reliability
+  - metrics
+  - chaos
+cases:
+  - langbot-overhead-accounting-contract
+  - langbot-fault-taxonomy-contract
+  - langbot-live-backend-latency
+  - langbot-live-control-plane-api
+  - langbot-live-backend-log-health

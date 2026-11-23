@@ -1,0 +1,67 @@
+---
+title: "KOOK"
+description: "LangBot で KOOK AI ボットを構築。大規模言語モデルを KOOK（開黒啦）チャンネルに接続。"
+icon: "/images/platforms/kook.png"
+---
+
+## ボットの作成
+
+[KOOK Developer Center](https://developer.kookapp.cn/)にアクセスし、ログインしてコンソールにアクセスします。
+
+![KOOK Developer Console](/images/zh/deploy/bots/kook/01-dashboard.png)
+
+「アプリケーションを作成」をクリックし、アプリケーション情報を入力します。
+
+![Create Application](/images/zh/deploy/bots/kook/02-create-app.png)
+
+アプリケーションが作成されたら、アプリケーション詳細ページに入ります。
+
+![Application Created](/images/zh/deploy/bots/kook/03-app-created.png)
+
+アプリケーション概要ページでアプリケーションの基本情報を表示できます。
+
+![Application Overview](/images/zh/deploy/bots/kook/04-app-overview.png)
+
+## Bot Token の取得
+
+アプリケーションページで、「Bot」タブをクリックし、Bot Token をコピーして安全に保存します。後で必要になります。
+
+![Get Bot Token](/images/zh/deploy/bots/kook/05-bot-token.png)
+
+## ボット権限の設定
+
+**重要：**「Bot」設定で、「メッセージフィルタリング」オプションを見つけてクリックして設定します。
+
+![Message Filter Settings](/images/zh/deploy/bots/kook/07-message-filters.png)
+
+チャンネルメッセージやプライベートメッセージイベントを含む、すべてのメッセージ関連イベント権限を有効にします。そうしないと、ボットはメッセージを受信できません。
+
+![Enable Permissions](/images/zh/deploy/bots/kook/08-permissions-enabled.png)
+
+## ボットの招待
+
+ボット設定ページで、招待リンクを生成してボットをサーバーに招待できます。
+
+![Generate Invitation Link](/images/zh/deploy/bots/kook/06-invite-link.png)
+
+## LangBot に接続
+
+LangBot Webui ページを開き、「Bots」ページで新しいボットを作成するためにクリックします。
+
+![LangBot Bot Management](/images/zh/deploy/bots/kook/09-langbot-bots.png)
+
+KOOK プラットフォームを選択し、ボット名と Bot Token を入力します。
+
+![Configure KOOK Bot](/images/zh/deploy/bots/kook/10-bot-config.png)
+
+保存後、ボットがリストに表示されます。
+
+![Bot Created](/images/zh/deploy/bots/kook/11-bot-created.png)
+
+有効化ボタンをクリックしてボットを起動します。正常に設定されている場合、ボットのステータスは実行中として表示されます。
+
+![Bot Enabled](/images/zh/deploy/bots/kook/12-bot-enabled.png)
+
+## ボットの使用
+
+KOOK サーバーで、ボットは正常にメッセージを受信して返信できるようになりました。ボットはチャンネルメッセージとプライベートメッセージの両方をサポートしています。

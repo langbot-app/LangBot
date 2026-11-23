@@ -1,0 +1,42 @@
+id: langbot-live-backend-latency
+title: "LangBot live backend basic latency probe"
+mode: probe
+area: performance
+type: performance
+priority: p1
+risk: medium
+ci_eligible: false
+tags:
+  - performance
+  - live-backend
+  - latency
+  - metrics
+skills:
+  - langbot-testing
+env:
+  - LANGBOT_BACKEND_URL
+automation: skills/langbot-testing/probes/langbot-live-backend-latency.mjs
+metrics_thresholds_json: '{"backend_p95_ms":{"max":1000},"error_rate":{"max":0}}'
+load_profile_json: '{"requests":12,"concurrency":2,"endpoints":["/healthz"]}'
+steps:
+  - "Confirm the selected LangBot backend is the intended test target."
+  - "Run `rtk bin/lbs test run langbot-live-backend-latency --dry-run` first; remove `--dry-run` after checking LANGBOT_BACKEND_URL and evidence directory."
+  - "Automation sends a small request batch to LANGBOT_BACKEND_URL/healthz and records latency, status counts, and network errors."
+checks:
+  - "automation-result.json status is pass when the backend responds and p95/error-rate thresholds pass."
+  - "automation-result.json status is env_issue when the backend is not reachable."
+  - "metrics.json and network.log are written under LBS_EVIDENCE_DIR."
+evidence_required:
+  - metrics
+  - network
+  - api_diagnostic
+  - filesystem
+diagnostics:
+  - "This probe measures backend health endpoint reachability latency only; it does not cover model/provider, browser, Debug Chat, RAG, or plugin runtime latency."
+success_patterns:
+  - "Live backend latency probe passed"
+failure_patterns:
+  - "Backend did not respond"
+  - "breached latency or error-rate thresholds"
+troubleshooting:
+  - socks-proxy-without-socksio

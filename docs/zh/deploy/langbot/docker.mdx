@@ -1,0 +1,81 @@
+---
+title: "Docker部署"
+description: "在 Windows、Linux 或 macOS 上使用 Docker Compose 部署 LangBot。"
+---
+
+<Tip>
+更省事的方式：一行命令安装时选择 Docker（`curl -fsSL https://langbot.app/install.sh | bash -s -- --driver docker`），lbctl 会自动生成 Compose 配置、选择可用镜像源，并负责之后的升级、日志和自启。已经按本文部署的实例也可以[接入 lbctl](/zh/deploy/lbctl#已有的-docker-compose-部署接入-lbctl)。
+</Tip>
+
+## 1. 准备环境
+
+- 安装 Git。
+- **Windows / macOS**：安装并启动 Docker Desktop。
+- **Linux**：安装 Docker 和 Docker Compose。
+
+## 2. 下载项目
+
+请选择有写入权限的普通目录。Linux 用户请避开 `/root`、`/etc` 等系统目录，建议放在 `/opt` 下，以免沙箱功能被安全规则拦截。
+
+在准备存放项目的目录打开终端（Windows 可用 PowerShell），逐行执行：
+
+```bash
+git clone https://github.com/langbot-app/LangBot
+cd LangBot/docker
+```
+
+### 中国大陆用户：启动前更换镜像源（可选）
+
+如果 Docker Hub 下载较慢，先编辑 `LangBot/docker/docker-compose.yaml`，将文件中的所有 `rockchin/langbot:latest` 替换为：
+
+```text
+docker.langbot.app/langbot-public/rockchin/langbot:latest
+```
+
+保存后再启动，无需更改其他配置。
+
+## 3. 启动 LangBot
+
+<Note>
+  如果部署在服务器上，请通过防火墙限制管理页面和运行时端口的访问，仅允许可信来源连接。
+</Note>
+
+在刚才的终端中执行：
+
+```bash
+docker compose --profile all up -d
+```
+
+首次启动需要下载镜像。Windows / macOS 用户请保持 Docker Desktop 运行。
+
+<Note>
+官方 Docker 镜像已默认预装 `ffmpeg` 与 `pilk` 音频工具链（最小化安装），开箱即用支持微信原生语音条（SILK）转码与语音处理，无需额外在宿主机安装音频环境。
+</Note>
+
+## 4. 打开管理页面
+
+- **本机部署**：打开 `http://localhost:5300`。
+- **服务器部署**：打开 `http://你的服务器IP:5300`，确保防火墙允许你的设备访问该端口。
+
+按照页面提示完成初始化，再添加[模型](/zh/usage/models/readme)和[机器人](/zh/usage/platforms/readme)。
+
+## Beta 版本（可选）
+
+如需试用 Beta 而非上述稳定版，请将 [dev/4.11.x 的 Compose 文件](https://raw.githubusercontent.com/langbot-app/LangBot/dev/4.11.x/docker/docker-compose.yaml)下载为 `compose.yaml`，保存到单独的可写目录。手动将**所有** `rockchin/langbot` 镜像改为 `rockchin/langbot:beta`：包括 Core（`langbot`）、插件运行时（`langbot_plugin_runtime`）和 Box（`langbot_box`，若存在）。每次发布 Beta 都会更新 `beta` 标签。在该目录执行以下命令启动或更新：
+
+```bash
+docker compose --profile all pull
+docker compose --profile all up -d
+```
+
+## 可选向量数据库版本（可选）
+
+为减小下载体积，默认镜像只内置 Chroma、Qdrant 与 pgvector 支持。如需使用 SeekDB（含「seekdb-内置」嵌入模型）、Milvus 或 Valkey Search，请在 `docker-compose.yaml` 中只把 `langbot` 服务的镜像改为带对应后缀的标签，插件运行时和 Box 保持不变：
+
+| 向量数据库 | 稳定版 | 指定版本 | Beta |
+| --- | --- | --- | --- |
+| SeekDB | `rockchin/langbot:latest-seekdb` | `rockchin/langbot:vX.Y.Z-seekdb` | `rockchin/langbot:beta-seekdb` |
+| Milvus | `rockchin/langbot:latest-milvus` | `rockchin/langbot:vX.Y.Z-milvus` | `rockchin/langbot:beta-milvus` |
+| Valkey Search | `rockchin/langbot:latest-valkey` | `rockchin/langbot:vX.Y.Z-valkey` | `rockchin/langbot:beta-valkey` |
+
+中国大陆镜像源同样提供这些标签，如 `docker.langbot.app/langbot-public/rockchin/langbot:latest-seekdb`。每次发版都会同时发布默认镜像和以上各版本。修改后按上面的方式重新执行 `pull` 和 `up -d`。

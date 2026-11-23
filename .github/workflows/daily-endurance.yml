@@ -1,0 +1,427 @@
+name: Daily Endurance
+
+on:
+  schedule:
+    # 03:23 Asia/Shanghai; GitHub schedules use UTC and may start late.
+    - cron: '23 19 * * *'
+  workflow_dispatch:
+    inputs:
+      validation_scope:
+        description: 'Full compatibility/regression matrix or just the existing Daily workloads'
+        type: choice
+        options: [full, workload_only]
+        default: full
+      require_live_dify:
+        description: 'Also require the credentialed Dify Cloud check for a manual run'
+        type: boolean
+        default: false
+      workload:
+        description: 'Mixed business load or the finite fault/lifecycle contract pass'
+        type: choice
+        options: [mixed, contracts]
+        default: mixed
+      scenario_groups:
+        description: 'Contracts mode only: local groups, space separated; empty runs base cases'
+        type: string
+        default: 'faults resources lifecycle plugins'
+      extra_plugins:
+        description: 'Contracts mode only: additional source plugin paths'
+        type: string
+        default: 'misc/EssentialCommands misc/FAQManager'
+      restart_services:
+        description: 'Contracts mode only: check owned Core and Runtime restarts once'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-endurance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  core-matrix:
+    name: Full Core compatibility and regression
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/run-tests.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  sdk-matrix:
+    name: Full SDK compatibility
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/sdk-tests.yml
+
+  sdk-box:
+    name: Real SDK Docker Box acceptance
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/sdk-box-docker.yml
+
+  lint:
+    name: Core static checks
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/lint.yml
+
+  dependency-contracts:
+    name: Dependency contracts
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/optional-contracts.yml
+
+  migrations:
+    name: SQLite and PostgreSQL migrations
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/test-migrations.yml
+
+  frontend:
+    name: Full WebUI and browser regression
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/frontend-tests.yml
+
+  packaging:
+    name: Core packaging boundary and production image
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/core-packaging.yml
+
+  plugin-runner:
+    name: Official Runner compatibility
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/plugins-runner-tests.yml
+
+  plugin-knowledgeengine:
+    name: Official KnowledgeEngine compatibility
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/plugins-knowledgeengine-shared-tests.yml
+
+  plugin-misc:
+    name: Official misc plugin checks
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/plugins-misc-tests.yml
+
+  plugin-catalog:
+    name: Official plugin catalog contract
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/plugins-plugin-catalog.yml
+
+  endurance:
+    name: Daily mixed load (manual contracts available)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Install locked dependencies
+        run: uv sync --dev --frozen
+      - uses: ./.github/actions/build-lbctl
+        id: lbctl
+      - name: Prepare sandbox image
+        run: docker pull python:3.12-alpine
+      - name: Run daily mixed load or explicit manual contracts
+        id: execute
+        env:
+          LBCTL_BIN: ${{ steps.lbctl.outputs.binary }}
+          SPACE__DISABLE_TELEMETRY: 'true'
+          ANONYMIZED_TELEMETRY: 'False'
+          WORKLOAD: ${{ github.event_name == 'schedule' && 'mixed' || inputs.workload }}
+          SCENARIO_GROUPS: ${{ github.event_name == 'schedule' && 'faults resources lifecycle plugins' || inputs.scenario_groups }}
+          EXTRA_PLUGINS: ${{ github.event_name == 'schedule' && 'misc/EssentialCommands misc/FAQManager' || inputs.extra_plugins }}
+          RESTART_SERVICES: ${{ github.event_name == 'schedule' || inputs.restart_services }}
+        run: |
+          args=()
+          case "$WORKLOAD" in
+            mixed)
+              args+=(--suite endurance)
+              ;;
+            contracts)
+              read -r -a groups <<< "$SCENARIO_GROUPS"
+              read -r -a extras <<< "$EXTRA_PLUGINS"
+              args+=(--suite scenarios --scenario-groups "${groups[@]}" --extra-plugins "${extras[@]}")
+              if [[ "$RESTART_SERVICES" == true ]]; then args+=(--restart-services); fi
+              ;;
+            *) echo "Unknown workload: $WORKLOAD" >&2; exit 2 ;;
+          esac
+          mkdir -p .qa
+          printf '%s\n' "$WORKLOAD" > .qa/daily-workload.txt
+          uv run --no-sync python -m tools.entrypoints.regression_ci \
+            "${args[@]}" --lbctl "$LBCTL_BIN" --plugins plugins --output .qa/daily
+      - name: Publish observations
+        if: always()
+        env:
+          RUN_OUTCOME: ${{ steps.execute.outcome }}
+        run: |
+          python -m tools.entrypoints.regression_report daily .qa/daily \
+            --sha "$GITHUB_SHA" --step-outcome "$RUN_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve verdicts and observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .qa/daily-workload.txt
+            .qa/daily/gate/mixed.json
+            .qa/daily/gate/gate.json
+            .qa/daily/gate/resources.jsonl
+            .qa/daily/gate/suite.log
+            .qa/daily/gate/suite/summary.json
+            .qa/daily/gate/suite/cases.json
+            .qa/daily/gate/suite/health.json
+            .qa/daily/gate/suite/cleanup-checks.json
+            .qa/daily/gate/suite/resources.jsonl
+            .qa/daily/gate/suite/*/summary.json
+            .qa/daily/gate/suite/*/requests.jsonl
+            .qa/daily/gate/suite/*/resources.jsonl
+            .qa/daily/gate/suite/profile.json
+            .qa/daily/gate/suite/workload.json
+            .qa/daily/gate/suite/cycles.json
+            .qa/daily/gate/suite/execution.json
+            .qa/daily/gate/suite/coverage.json
+            .qa/daily/gate/suite/coverage.md
+            .qa/daily/plugins/manifest.json
+            .qa/daily/plugins/*-build.log
+            .qa/daily/restart-checks/profile.json
+            .qa/daily/restart-checks/cases.json
+            .qa/daily/restart-checks/summary.json
+            .qa/daily/restart-checks/coverage.json
+            .qa/daily/restart-checks/coverage.md
+            .qa/daily/restart-checks/cleanup-checks.json
+            .qa/daily/restart-checks/owned.json
+            .qa/daily/*.log
+            .qa/daily/*-requests.jsonl
+          if-no-files-found: warn
+          retention-days: 30
+
+  api-contracts:
+    name: Daily API contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/run-api-contracts
+
+  dify-cloud:
+    name: Daily Dify Cloud Agent regression
+    if: github.event_name == 'schedule' || inputs.require_live_dify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: plugins/Runner
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Install locked Runner dependencies
+        run: uv sync --dev --frozen
+      - name: Run live Dify Agent regression
+        env:
+          DIFY_AGENT_API_KEY: ${{ secrets.DIFY_AGENT_API_KEY }}
+          DIFY_LIVE_OUTPUT: ${{ github.workspace }}/.qa/dify-live/summary.json
+        run: |
+          if [[ -z "$DIFY_AGENT_API_KEY" ]]; then
+            echo "DIFY_AGENT_API_KEY is required for the selected live Dify regression." >&2
+            exit 1
+          fi
+          uv run --no-sync python http-certification-tests/live_dify_agent.py
+      - name: Publish Dify regression summary
+        if: always()
+        run: |
+          summary="$GITHUB_WORKSPACE/.qa/dify-live/summary.json"
+          if [[ ! -f "$summary" ]]; then
+            echo "No Dify verdict was produced." >&2
+            exit 1
+          fi
+          cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          python -c 'import json, sys; sys.exit(json.load(open(sys.argv[1])).get("passed") is not True)' "$summary"
+      - name: Preserve Dify regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-dify-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .qa/dify-live/summary.json
+          if-no-files-found: warn
+          retention-days: 30
+  n8n-latest:
+    name: Daily latest n8n Agent Runner regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: plugins/Runner
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Start latest n8n container
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.qa/n8n-live"
+          docker pull docker.n8n.io/n8nio/n8n:latest
+          docker image inspect docker.n8n.io/n8nio/n8n:latest --format '{{json .RepoDigests}}' > "$GITHUB_WORKSPACE/.qa/n8n-live/image-digests.json"
+          docker run -d --user node --name langbot-n8n-latest -p 5678:5678 \
+            -e N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false \
+            -e N8N_SECURE_COOKIE=false \
+            -e N8N_DIAGNOSTICS_ENABLED=false \
+            -e N8N_PERSONALIZATION_ENABLED=false \
+            -e N8N_VERSION_NOTIFICATIONS_ENABLED=false \
+            --entrypoint /bin/sh \
+            docker.n8n.io/n8nio/n8n:latest -c 'tail -f /dev/null'
+      - name: Import and publish n8n regression workflows
+        run: |
+          for fixture in n8n_latest_runner_smoke n8n_latest_runner_error; do
+            docker cp "http-certification-tests/fixtures/$fixture.json" "langbot-n8n-latest:/tmp/$fixture.json"
+            docker exec -u node langbot-n8n-latest n8n import:workflow --input="/tmp/$fixture.json"
+          done
+          docker exec -u node langbot-n8n-latest n8n export:workflow --all --output=/tmp/n8n_export.json
+          docker exec -u node langbot-n8n-latest sh -c 'cat /tmp/n8n_export.json' > /tmp/n8n_export.json
+          while read -r workflow_id; do
+            echo "Imported workflow id: $workflow_id"
+            docker exec -u node langbot-n8n-latest n8n publish:workflow --id="$workflow_id"
+          done < <(python3 -c 'import json; print("\n".join(w["id"] for w in json.load(open("/tmp/n8n_export.json"))))')
+          docker exec -d -u node langbot-n8n-latest n8n start
+          for attempt in {1..60}; do
+            if curl -fsS http://127.0.0.1:5678/healthz >/dev/null; then
+              break
+            fi
+            if [[ "$attempt" == 60 ]]; then
+              echo 'latest n8n did not become ready' >&2
+              exit 1
+            fi
+            sleep 2
+          done
+          docker exec -u node langbot-n8n-latest n8n --version > "$GITHUB_WORKSPACE/.qa/n8n-live/version.txt"
+      - name: Verify production Webhook
+        run: |
+          for attempt in {1..30}; do
+            if curl -fsS -X POST http://127.0.0.1:5678/webhook/langbot-n8n-smoke \
+              -H 'Content-Type: application/json' \
+              -d '{"chatInput":"direct-smoke","message":"direct-smoke","user_id":"direct-user","conversation_id":"direct-conversation","session_id":"direct-session"}' \
+              | tee "$GITHUB_WORKSPACE/.qa/n8n-live/direct-response.json" \
+              | grep -F 'LANGBOT_N8N_DAILY_OK'; then
+              break
+            fi
+            if [[ "$attempt" == 30 ]]; then
+              echo 'latest n8n production Webhook did not become ready' >&2
+              exit 1
+            fi
+            sleep 2
+          done
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Install Runner dependencies
+        run: uv sync --dev --frozen
+      - name: Run n8n parser and Runner regressions
+        run: uv run --no-sync python -m pytest tests/test_native_parity_n8n.py -q
+      - name: Run LangBot n8n DefaultRunner regression
+        env:
+          N8N_LIVE_OUTPUT: ${{ github.workspace }}/.qa/n8n-live/summary.json
+        run: uv run --no-sync python http-certification-tests/live_n8n_agent.py
+      - name: Collect latest n8n evidence
+        if: always()
+        run: docker logs langbot-n8n-latest > "$GITHUB_WORKSPACE/.qa/n8n-live/container.log" 2>&1 || true
+      - name: Remove latest n8n container
+        if: always()
+        run: docker rm -f langbot-n8n-latest >/dev/null 2>&1 || true
+      - name: Publish latest n8n summary
+        if: always()
+        run: |
+          summary="$GITHUB_WORKSPACE/.qa/n8n-live/summary.json"
+          if [[ ! -f "$summary" ]]; then
+            echo "No n8n verdict was produced." >&2
+            exit 1
+          fi
+          cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          python -c 'import json, sys; sys.exit(json.load(open(sys.argv[1])).get("passed") is not True)' "$summary"
+      - name: Preserve latest n8n evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-n8n-latest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .qa/n8n-live
+          if-no-files-found: warn
+          retention-days: 30
+
+  persistence-runtime:
+    uses: ./.github/workflows/persistence-acceptance.yml
+    with:
+      uploaded_artifacts: ${{ github.event_name == 'schedule' || inputs.validation_scope == 'full' }}
+
+  verdict:
+    name: Daily regression verdict
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - core-matrix
+      - sdk-matrix
+      - sdk-box
+      - lint
+      - dependency-contracts
+      - migrations
+      - frontend
+      - packaging
+      - plugin-runner
+      - plugin-knowledgeengine
+      - plugin-misc
+      - plugin-catalog
+      - endurance
+      - api-contracts
+      - dify-cloud
+      - n8n-latest
+      - persistence-runtime
+    steps:
+      - name: Confirm selected jobs succeeded
+        env:
+          JOB_RESULTS: ${{ toJSON(needs) }}
+          FULL_MATRIX: ${{ github.event_name == 'schedule' || inputs.validation_scope == 'full' }}
+          LIVE_DIFY: ${{ github.event_name == 'schedule' || inputs.require_live_dify }}
+        run: |
+          python3 - <<'PY_VERDICT'
+          import json, os
+
+          jobs = json.loads(os.environ['JOB_RESULTS'])
+          full_matrix = os.environ['FULL_MATRIX'] == 'true'
+          live_dify = os.environ['LIVE_DIFY'] == 'true'
+          matrix = {'core-matrix', 'sdk-matrix', 'sdk-box', 'lint', 'dependency-contracts',
+                    'migrations', 'frontend', 'packaging', 'plugin-runner',
+                    'plugin-knowledgeengine', 'plugin-misc', 'plugin-catalog'}
+          required = {'endurance', 'api-contracts', 'persistence-runtime', 'n8n-latest'}
+          if full_matrix:
+              required |= matrix
+          if live_dify:
+              required.add('dify-cloud')
+          expected = required | matrix | {'dify-cloud'}
+          failures = []
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f"## Daily regression\n\nCandidate: `{os.environ['GITHUB_SHA']}`\n\n")
+              summary.write('| Suite | Selected | Result |\n| --- | --- | --- |\n')
+              for job in sorted(expected | jobs.keys()):
+                  result = jobs.get(job, {}).get('result', 'missing')
+                  selected = job in required
+                  summary.write(f"| {job} | {'yes' if selected else 'no'} | {result} |\n")
+                  if job not in expected or result != ('success' if selected else 'skipped'):
+                      failures.append(f'{job}: {result}')
+              if not full_matrix:
+                  summary.write('\nWorkload-only run: no matrix or migration acceptance.\n')
+              if not live_dify:
+                  summary.write('\nManual run did not select credentialed Dify acceptance.\n')
+          if failures:
+              raise SystemExit('Selected validation failed or is incomplete: ' + ', '.join(failures))
+          PY_VERDICT

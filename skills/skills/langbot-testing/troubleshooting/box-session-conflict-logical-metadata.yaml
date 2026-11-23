@@ -1,0 +1,23 @@
+id: box-session-conflict-logical-metadata
+title: "BoxSessionConflictError after a successful first exec"
+date: 2026-05-18
+symptoms:
+  - "The first sandbox exec succeeds, but the next exec in the same Debug Chat fails."
+  - "The model repeatedly retries commands and eventually reports a session conflict."
+  - "Skill registration or activation cannot continue after the first command."
+patterns:
+  - "BoxSessionConflictError"
+  - "already exists with image=host"
+  - "already exists with mount_path=/home/user/workspace"
+likely_causes:
+  - "Backend session metadata stored provider-specific values instead of LangBot logical spec values."
+  - "E2B stored adapted /home/user/workspace as mount_path, while later specs still use /workspace."
+  - "nsjail stored image=host, while later specs still use the configured logical sandbox image."
+fix_steps:
+  - "Store logical spec.mount_path in BoxSessionInfo for E2B session metadata."
+  - "Store spec.image in nsjail BoxSessionInfo even though nsjail executes against host-mounted system paths."
+  - "Keep provider-specific path rewriting inside the backend command execution layer."
+  - "Restart LangBot to clear stale in-memory sessions after applying the fix."
+verification: "Run two or more exec calls in the same Debug Chat session. The second call should reuse the session instead of raising BoxSessionConflictError."
+related_cases:
+  - sandbox-skill-authoring-e2e

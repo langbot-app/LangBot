@@ -1,0 +1,155 @@
+---
+title: "Skills"
+description: "Use Skills in LangBot to load specialized know-how on demand, extending your AI Agent without bloating its context."
+---
+
+A Skill is an **on-demand instruction bundle**: when the user's request matches, the Agent calls the `activate` tool to pull the skill's instructions into context, then follows them. Skills that aren't activated don't consume context.
+
+Use Skills to give the Agent a **specialized workflow, template, or script** — "analyze a Python project", "fill a PDF form", "code review" — instead of stuffing every prompt into the System Prompt.
+
+## How Skills Compare to Plugins and MCP
+
+| What you want to do | Use this |
+|---------------------|----------|
+| A workflow triggered on demand (optional scripts and templates) | Skill |
+| Connect an existing MCP tool service | MCP Server |
+| Long-lived capability with config page, events, knowledge base | Plugin |
+
+See [Runtimes and Extensions](../sandbox/runtime-relationships) for the full picture.
+
+## Installing Skills
+
+<Note>
+Core provides Skill management, activation and read-only resource access without Box. Running scripts, editing sandbox drafts and `register_skill` require an available Box. See [Sandbox Configuration](../sandbox/config).
+</Note>
+
+### From LangBot Space (Preferred)
+
+[LangBot Space](https://space.langbot.app) is the official LangBot marketplace, with a curated list of ready-to-use skills. In the WebUI Skills page, browse and install them with one click — no need to write a `SKILL.md` or prepare any resource files.
+
+This covers most cases. For custom workflows, use the option below.
+
+### Create Your Own
+
+**WebUI** — create, upload a zip, or import from GitHub on the Skills page.
+
+**Sandbox + `register_skill`**:
+1. Prepare the directory and `SKILL.md` under the sandbox `/workspace`
+2. Have the Agent call `register_skill(path="/workspace/my-skill")`
+
+Both options publish to the Skill repository managed by Core.
+
+### Database persistence and upgrades
+
+New installations default to database persistence and network transfer, with optional object storage. Existing configuration choices are preserved; older files missing these keys retain local storage and `legacy`. After selecting the configuration below, Core imports accessible legacy Skills and local assets before serving requests. Registrations, immutable version packages and persistent attachments use that storage layer. Source installs automatically use the same checkout's SDK through `uv sync`. Separately deployed Runtimes still need matching sources or a compatible published SDK; see [Runtime Development](../../develop/plugin-runtime). Multiple Core processes should share an external PostgreSQL database, logical instance identity and authentication configuration. Update `data/config.yaml` and restart Core:
+
+```yaml
+skills:
+    persistence: database
+    root: './data/skills'  # Fresh install; keep the old root on upgrade
+storage:
+    use: persistent
+    content:
+        backend: database
+```
+
+With matching Core and Box Runtime builds, explicitly set `box.file_transfer_mode: network`: Core transfers the run-pinned package, and Box verifies, caches and mounts it read-only. Core and Box need no shared Skill or workspace directories. In database/network mode, activation and execution no longer create `skills.root/.database-cache`. Agent resource listings validate the database's authoritative immutable manifest without fetching package bytes. Content reads may reuse a verified in-memory package, while still checking database access and version records and fully validating its bytes; no persistent local cache is created. Listing, activation and cached reads are not source-storage health checks: they can succeed while the source blob is unavailable or corrupt; cold reads, restarts and eviction require fetching and validating the source again. Runtime execution still validates every byte. `register_skill` retrieves a complete draft over the network, validates it and publishes once without reading the old package. Historical versions remain, and publication does not change an active run's version. Run completion removes its input, output and snapshots; drafts remain until the Box session ends. Expiring or deleting a Box session also deletes its workspace, so export files that must be kept. Explicit existing `legacy` configurations retain shared mounts and cache behavior. Separately deployed Runtimes also need a matching SDK; older Runtimes cannot accept network workspace configuration.
+
+For object storage, configure `type: s3`, `endpoint_url`, `bucket`, `region`, `access_key_id` and `secret_access_key` under `storage.content.backends.<name>`, then set `storage.content.backend` to that name. Keep historical names and endpoint/bucket/region locations available. Changing the write backend does not move old content; removing or retargeting an old configuration prevents fetching its historical content again. Restart Core after credential changes.
+
+Database version packages are limited to 64 MiB. In network mode, `register_skill` drafts use an uncompressed ZIP limited to 20 MiB, 512 entries, 16 MiB per file and directory depth 16. Lower Box file-transfer limits still apply; rejected drafts remain intact. Concurrent updates reject conflicting overwrites, and activated runs retain their pinned version.
+
+Runtime archives drafts in memory without workspace snapshots. Reclaiming Docker private directories owned by another UID requires Docker 25+, Python 3 in the image and no image `VOLUME` declarations. If UID/GID mappings or isolation policy prevent safe cleanup, the Box remains unavailable for reuse and reports the error until retry or operator maintenance.
+
+
+### Migrating an existing deployment
+
+Legacy local-asset import currently requires Linux/POSIX filesystem access. Existing Windows deployments can retain their original mode or import on Linux before connecting to the database. Network execution requires a POSIX Box Runtime; Windows Core can connect to a remote Runtime.
+
+Stop every old Core writer before upgrading, and start one migration instance first. Keep `skills.root` pointing to the **original Skill root**. On that instance set `skills.migration.require_source: true` and `storage.migration.require_source: true`, retaining the old Skill volume and `data/storage`. Enable each check only for an actual legacy source. New replicas do not require old volumes by default; an empty directory alone cannot establish that historical content is complete.
+
+Import preserves current registrations, retained versions including deleted registrations, revision digests, media URLs and private attachment keys. Each content batch and its database progress commit together. Restart resumes interrupted work; changed sources, conflicting names, corrupt packages or a required missing volume stop startup. The database lease prevents concurrent new importers; it cannot freeze old releases, so stop them during maintenance. Services start only after validation. Completed imports are recorded in the database and no longer require old volumes. An incompatible Runtime stops network-mode startup; set `box.enabled: false` when execution is unnecessary.
+
+Core does not need the Box volume in network mode. Existing Compose/Kubernetes manifests retain it for legacy compatibility; after validating migration, remove Core's dedicated Box mount and corresponding same-node affinity. New deployments should use separate Core data and Box volumes. With a Docker daemon, Box still needs a volume at the same absolute path as that daemon; manifests set Runtime-owned roots through `LANGBOT_BOX_CONFIG`. Do not replace an existing Box volume or instance identity during the upgrade.
+
+Automatic asset import handles local files with verifiable instance ownership. Unscoped legacy media can be claimed only by an OSS singleton Workspace, never guessed across Workspaces. Explicit legacy S3 storage remains supported; changing `storage.use` does not automatically copy legacy S3 objects.
+
+Retain the old directories and a database restore point from the maintenance window. New-mode writes do not update those directories. Rolling back requires restoring that database point and old configuration together, or exporting and restoring all new versions and assets first. Merely selecting `filesystem` / `local` hides new writes. This change separates Box-related files; configuration, plugin private data and other Core subsystems retain their own persistence requirements.
+
+
+## Enabling in a Pipeline
+
+Once a skill is installed, the pipeline extension config decides which skills the Agent can see:
+
+- Enable "all skills", or
+- Bind only specific skills
+
+Binding only affects the `<available_skills>` list (what the Agent can choose from). The full instructions are always injected only after `activate` is called.
+
+## Writing a SKILL.md
+
+A skill is a directory plus a `SKILL.md`. The frontmatter holds metadata; the body is what the Agent receives after activation:
+
+```markdown
+---
+name: code-reviewer
+display_name: Code Review Assistant
+description: Reviews code and gives improvement suggestions; triggered when the user mentions review, code review, or code improvement
+---
+
+## Steps
+
+1. Use `read` to browse the relevant files
+2. Check readability, potential bugs, and security issues
+3. Provide improvement suggestions, sorted by priority
+```
+
+LangBot currently reads these three fields:
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `name` | When creating/registering | Unique ID, 1–64 chars |
+| `description` | Strongly recommended | The Agent uses this to decide when to activate — the more specific, the better |
+| `display_name` | No | Shown in the UI |
+
+`description` is the Agent's only signal for picking a skill. Make it concrete about **what it does, when it applies, and what trigger words to watch for**.
+
+For the full spec see [agentskills.io](https://agentskills.io/home). Other fields (`license`, `metadata`, ...) can stay in the file for future compatibility but are not currently read.
+
+**Skills with resources** place `scripts/`, `templates/`, etc. next to `SKILL.md`. Use the pinned version path returned by activation when executing them.
+
+### Tools the Agent Sees
+
+| Tool | Purpose |
+|------|---------|
+| `activate` | Called automatically by the Agent when it sees a match — pulls SKILL.md into context |
+| `register_skill` | Registers a directory prepared in the sandbox as a new skill |
+
+## Update a local package with lbctl
+
+Read the Skill revision before editing its local package. Publish the complete directory with the reviewed revision.
+
+```bash
+lbctl skill get demo -o json
+lbctl skill push demo --dir ./demo --base-revision <revision> --dry-run
+lbctl skill push demo --dir ./demo --base-revision <revision>
+```
+
+The preview validates `SKILL.md`, reports added, modified and deleted files, and shows whether the caller can publish. The package name must match `demo`. Publishing atomically replaces the full package, including binary resources and executable modes. Files absent from the local directory are removed from the new version. Publishing requires `resource.manage` and `resource.view`, and the CLI reads the resulting revision back. A stale revision returns a conflict. Download the latest package, merge the changes and retry with the reviewed revision. Existing runs retain their pinned versions.
+
+## Share to LangBot Space
+
+Use **Share to Space** on a skill's detail page to submit the current Skill package to the marketplace. The dialog lists the files to be submitted, and files containing credentials such as API keys or tokens are refused. The skill is published under your LangBot Space creator profile after a review of its scripts and outbound requests. Sharing the same name again publishes a new version.
+
+## Common Issues
+
+| Symptom | What to check |
+|---------|---------------|
+| Skill list is empty | Workspace, Skill bindings, `skills.persistence` and `skills.root` |
+| Agent doesn't activate a skill | Whether `description` is specific, whether the pipeline has the skill bound, whether the model supports function calling |
+| Files missing after activation | Files must live inside the Skill package; use the version path returned by activation |
+| `register_skill` errors | The path must be under `/workspace`, and the directory or subdirectories within two levels must contain `SKILL.md` |
+
+<Note>
+Automatic activation requires a Runner with Skill and tool-call support; script execution requires Box. External runners (Dify, n8n, Langflow, Coze, etc.) should use their platform's supported mechanism.
+</Note>

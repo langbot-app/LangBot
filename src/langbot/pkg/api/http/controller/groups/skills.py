@@ -1,0 +1,345 @@
+from __future__ import annotations
+
+import quart
+
+from ...authz import Permission
+from ...context import RequestContext
+from .....operation_trace import service as settings_service
+from .....skill.repository import SkillRevisionConflictError, SkillRevisionNotFoundError
+from .....workspace.errors import WorkspaceNotFoundError
+from .....i18n import t
+from .. import group
+
+
+@group.group_class('skills', '/api/v1/skills')
+class SkillsRouterGroup(group.RouterGroup):
+    """Skills management API endpoints."""
+
+    async def initialize(self) -> None:
+        @self.route(
+            '/<skill_name>/package/preview',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        @self.route(
+            '/<skill_name>/package',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def publish_package(skill_name: str, request_context: RequestContext) -> quart.Response:
+            upload = (await quart.request.files).get('file')
+            form = await quart.request.form
+            base_revision = str(form.get('base_revision', '')).strip()
+            if upload is None or not base_revision:
+                return self.http_status(400, -1, t('file and base_revision are required'))
+            # Bound bytes before decompression; the shared SDK bounds the tree.
+            content = upload.read(10 * 1024 * 1024 + 1)
+            if len(content) > 10 * 1024 * 1024:
+                return self.http_status(413, -1, t('Skill package exceeds the 10MB upload limit'))
+            method = (
+                self.ap.skill_service.preview_skill_package
+                if quart.request.path.endswith('/preview')
+                else self.ap.skill_service.publish_skill_package
+            )
+            try:
+                result = await method(request_context, skill_name, content, base_revision)
+                return self.success(data=result)
+            except SkillRevisionConflictError as exc:
+                return self.http_status(409, -1, str(exc))
+            except WorkspaceNotFoundError as exc:
+                return self.http_status(404, -1, str(exc))
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+
+        @self.route(
+            '',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def list_skills(request_context: RequestContext) -> quart.Response:
+            try:
+                skills = await self.ap.skill_service.list_skills(request_context)
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            return self.success(data={'skills': skills})
+
+        @self.route(
+            '',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def create_skill(request_context: RequestContext) -> quart.Response:
+            data = await quart.request.json
+            if 'name' not in data or not data['name']:
+                return self.http_status(400, -1, 'Missing required field: name')
+
+            try:
+                skill = await self.ap.skill_service.create_skill(request_context, data)
+                return self.success(data={'skill': skill})
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+
+        @self.route(
+            '/<skill_name>',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def get_skill(skill_name: str, request_context: RequestContext) -> quart.Response:
+            try:
+                skill = await self.ap.skill_service.get_skill(request_context, skill_name)
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            if not skill:
+                return self.http_status(404, -1, 'Skill not found')
+            return self.success(data={'skill': skill})
+
+        @self.route(
+            '/<skill_name>/package',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def get_skill_package(skill_name: str, request_context: RequestContext) -> quart.Response:
+            try:
+                package = await self.ap.skill_service.get_skill_package(
+                    request_context,
+                    skill_name,
+                    quart.request.args.get('revision'),
+                )
+            except SkillRevisionNotFoundError as exc:
+                return self.http_status(404, -1, str(exc))
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            return quart.Response(
+                package['content'],
+                mimetype='application/zip',
+                headers={
+                    'Content-Disposition': f'attachment; filename="{package["filename"]}"',
+                    'ETag': f'"{package["sha256"]}"',
+                    'X-LangBot-Skill-Revision': package['revision'],
+                    'Cache-Control': 'private, no-store',
+                },
+            )
+
+        @self.route(
+            '/<skill_name>',
+            methods=['PUT', 'DELETE'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def update_delete_skill(skill_name: str, request_context: RequestContext) -> quart.Response:
+            # The skill name is the resource identity for both verbs; without it
+            # the card could only say "a skill was updated".
+            quart.g.operation_log_resource_id = skill_name
+            if quart.request.method == 'PUT':
+                data = await quart.request.json
+                try:
+                    previous = await self.ap.skill_service.get_skill(request_context, skill_name)
+                except ValueError:
+                    previous = None
+                try:
+                    skill = await self.ap.skill_service.update_skill(request_context, skill_name, data)
+                except SkillRevisionConflictError as exc:
+                    return self.http_status(409, -1, str(exc))
+                except ValueError as exc:
+                    return self.http_status(400, -1, str(exc))
+
+                changes = settings_service.changed_fields(
+                    previous if isinstance(previous, dict) else {},
+                    data if isinstance(data, dict) else {},
+                    ignore=('files', 'package_root', 'created_at', 'updated_at'),
+                )
+                rule = settings_service.ACTION_RULES_BY_ACTION.get('skill_view')
+                quart.g.operation_log_changes = changes
+                if rule is not None and changes:
+                    quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
+                return self.success(data={'skill': skill})
+
+            try:
+                await self.ap.skill_service.delete_skill(request_context, skill_name)
+                return self.success()
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+
+        @self.route(
+            '/<skill_name>/files',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def list_skill_files(skill_name: str, request_context: RequestContext) -> quart.Response:
+            """List files in skill package directory."""
+            path = quart.request.args.get('path', '.').strip()
+            include_hidden = quart.request.args.get('include_hidden', 'false').lower() == 'true'
+
+            try:
+                result = await self.ap.skill_service.list_skill_files(
+                    request_context,
+                    skill_name,
+                    path=path,
+                    include_hidden=include_hidden,
+                )
+                return self.success(data=result)
+            except SkillRevisionConflictError as exc:
+                return self.http_status(409, -1, str(exc))
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+
+        @self.route(
+            '/<skill_name>/files/<path:path>',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def read_skill_file(skill_name: str, path: str, request_context: RequestContext) -> quart.Response:
+            try:
+                result = await self.ap.skill_service.read_skill_file(request_context, skill_name, path)
+                return self.success(data=result)
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+
+        @self.route(
+            '/<skill_name>/files/<path:path>',
+            methods=['PUT'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def write_skill_file(skill_name: str, path: str, request_context: RequestContext) -> quart.Response:
+            data = await quart.request.json
+            content = data.get('content', '')
+            base_revision = str(data.get('base_revision', '') or '').strip() or None
+            if content is None:
+                return self.http_status(400, -1, 'Missing required field: content')
+
+            try:
+                result = await self.ap.skill_service.write_skill_file(
+                    request_context,
+                    skill_name,
+                    path,
+                    content,
+                    base_revision=base_revision,
+                )
+                return self.success(data=result)
+            except SkillRevisionConflictError as exc:
+                return self.http_status(409, -1, str(exc))
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+
+        @self.route(
+            '/<skill_name>/preview',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def preview_skill(skill_name: str, request_context: RequestContext) -> quart.Response:
+            skill = await self.ap.skill_service.get_skill(request_context, skill_name)
+            if not skill:
+                return self.http_status(404, -1, 'Skill not found')
+            return self.success(data={'instructions': skill.get('instructions', '')})
+
+        @self.route(
+            '/install/github',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def install_skill_from_github(request_context: RequestContext) -> quart.Response:
+            data = await quart.request.json
+            required_fields = ['asset_url', 'owner', 'repo']
+            for field in required_fields:
+                if field not in data or not data[field]:
+                    return self.http_status(400, -1, f'Missing required field: {field}')
+            asset_url = str(data['asset_url']).strip().lower().split('?', 1)[0].split('#', 1)[0]
+            if not asset_url.endswith('skill.md') and not data.get('release_tag'):
+                return self.http_status(400, -1, 'Missing required field: release_tag')
+
+            # Name the installed skill in the trace (owner/repo from the body).
+            quart.g.operation_log_resource_id = f'{data.get("owner", "")}/{data.get("repo", "")}'
+
+            try:
+                skill = await self.ap.skill_service.install_from_github(request_context, data)
+                return self.success(data={'skills': skill})
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            except Exception:
+                raise
+
+        @self.route(
+            '/install/github/preview',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def preview_skill_from_github(request_context: RequestContext) -> quart.Response:
+            data = await quart.request.json
+            required_fields = ['asset_url', 'owner', 'repo']
+            for field in required_fields:
+                if field not in data or not data[field]:
+                    return self.http_status(400, -1, f'Missing required field: {field}')
+            asset_url = str(data['asset_url']).strip().lower().split('?', 1)[0].split('#', 1)[0]
+            if not asset_url.endswith('skill.md') and not data.get('release_tag'):
+                return self.http_status(400, -1, 'Missing required field: release_tag')
+
+            try:
+                preview = await self.ap.skill_service.preview_install_from_github(request_context, data)
+                return self.success(data={'skills': preview})
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            except Exception:
+                raise
+
+        @self.route(
+            '/install/upload',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def install_skill_from_upload(request_context: RequestContext) -> quart.Response:
+            file = (await quart.request.files).get('file')
+            if file is None:
+                return self.http_status(400, -1, 'file is required')
+            form = await quart.request.form
+            # A zip upload is multipart with no JSON body, so the filename is
+            # the only identity available for the trace.
+            quart.g.operation_log_resource_id = file.filename or 'skill'
+
+            try:
+                skill = await self.ap.skill_service.install_from_zip_upload(
+                    request_context,
+                    file_bytes=file.read(),
+                    filename=file.filename or '',
+                    source_paths=form.getlist('source_paths'),
+                )
+                return self.success(data={'skills': skill})
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            except Exception:
+                raise
+
+        @self.route(
+            '/install/upload/preview',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def preview_skill_from_upload(request_context: RequestContext) -> quart.Response:
+            file = (await quart.request.files).get('file')
+            if file is None:
+                return self.http_status(400, -1, 'file is required')
+
+            try:
+                preview = await self.ap.skill_service.preview_install_from_zip_upload(
+                    request_context,
+                    file_bytes=file.read(),
+                    filename=file.filename or '',
+                )
+                return self.success(data={'skills': preview})
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            except Exception:
+                raise

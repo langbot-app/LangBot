@@ -1,0 +1,24 @@
+name: 提交新插件
+title: "[Plugin]: 请求登记新插件"
+labels: ["独立插件"]
+description: "【供中文用户】本模板供且仅供提交新插件使用"
+body:
+  - type: input
+    attributes:
+      label: 插件名称
+      description: 填写插件的名称
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 插件代码库地址
+      description: 仅支持 Github
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 插件简介
+      description: 插件的简介
+    validations:
+      required: true
+      

@@ -1,0 +1,2923 @@
+import type {
+  AlertDelivery,
+  AlertIncident,
+  AlertSettings,
+  AlertSettingsResponse,
+  AlertSummary,
+} from '@/app/infra/entities/alerts';
+import type {
+  ContentSubmissionResult,
+  LibraryPrompt,
+  MCPSharePreview,
+  MyContentSubmission,
+  SpaceOwnedItem,
+  PromptKind,
+  PromptMessage,
+  ShareFinding,
+  ShareMetadata,
+  SpaceShareContext,
+} from '@/app/infra/entities/space-share';
+import type {
+  WorkspaceSandboxSettings,
+  E2BConfigInput,
+} from '@/app/infra/entities/workspace';
+import { BaseHttpClient, type RequestConfig } from './BaseHttpClient';
+import { notifyAfterModelConfigurationChange } from './modelConfigEvents';
+import type {
+  PipelineMigrationPreview,
+  PipelineMigrationRequest,
+} from '@/app/infra/entities/api/pipeline-migration';
+import type { DebugExecutionEvent } from '@/app/infra/entities/api/agent-debug';
+import type {
+  InflightFrame,
+  ExecutionDetail,
+  ExecutionListResult,
+  ExecutionModeFilter,
+  ExecutionSource,
+  ExecutionSourceFilter,
+} from '../entities/api/monitoring-executions';
+import type {
+  CodexAuthStatus,
+  CodexDeviceAuthorization,
+  CodexDevicePoll,
+} from '@/app/infra/entities/codex';
+import {
+  ApiRespProviderRequesters,
+  ApiRespProviderRequester,
+  ApiRespProviderLLMModels,
+  ApiRespProviderLLMModel,
+  LLMModel,
+  ApiRespPipelines,
+  ApiRespAgents,
+  ApiRespAgent,
+  Agent,
+  CreateAgentRequest,
+  Pipeline,
+  ApiRespPlatformAdapters,
+  ApiRespPlatformAdapter,
+  ApiRespPlatformBots,
+  ApiRespPlatformBot,
+  Bot,
+  ApiRespPlugins,
+  ApiRespPlugin,
+  ApiRespPluginConfig,
+  ApiRespExtensions,
+  AsyncTaskCreatedResp,
+  ApiRespSystemInfo,
+  ApiRespAsyncTasks,
+  ApiRespUserToken,
+  GetPipelineResponseData,
+  GetPipelineMetadataResponseData,
+  GetAgentMetadataResponseData,
+  AgentPlatformTool,
+  WorkspaceOperationItem,
+  DomainMeta,
+  AsyncTask,
+  ApiRespWebChatMessages,
+  ApiRespKnowledgeBases,
+  ApiRespKnowledgeBase,
+  KnowledgeBase,
+  ApiRespKnowledgeBaseFiles,
+  ApiRespKnowledgeBaseRetrieve,
+  ApiRespProviderEmbeddingModels,
+  ApiRespProviderEmbeddingModel,
+  EmbeddingModel,
+  ApiRespProviderRerankModels,
+  ApiRespProviderRerankModel,
+  RerankModel,
+  ApiRespProviderASRModels,
+  ApiRespProviderASRModel,
+  ASRModel,
+  ApiRespProviderTTSModels,
+  ApiRespProviderTTSModel,
+  TTSModel,
+  ApiRespPluginSystemStatus,
+  ApiRespBoxStatus,
+  BoxSessionInfo,
+  ApiRespMCPServers,
+  ApiRespMCPServer,
+  ApiRespMCPResources,
+  ApiRespMCPResourceContents,
+  MCPServer,
+  ApiRespModelProviders,
+  ApiRespModelProvider,
+  ApiRespScannedProviderModels,
+  ModelProvider,
+  ApiRespKnowledgeEngines,
+  ApiRespParsers,
+  RagMigrationStatusResp,
+  ApiRespTools,
+  ApiRespToolDetail,
+  Skill,
+  ApiRespSkills,
+  ApiRespSkill,
+  BotRouteDryRunRequest,
+  BotRouteDryRunResult,
+  BotEventRouteStatusResponse,
+  ApiRespLangBotModelAvailability,
+} from '@/app/infra/entities/api';
+import { Plugin } from '@/app/infra/entities/plugin';
+import type {
+  PluginLogEntry,
+  PluginSpaceUploadConfig,
+  PluginSpaceUploadPayload,
+  PluginSpaceUploadResult,
+  PluginGithubSyncPayload,
+  PluginGithubSyncResult,
+} from '@/app/infra/entities/plugin';
+import type { I18nObject } from '@/app/infra/entities/common';
+import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogsRequest';
+import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
+import type {
+  CurrentWorkspace,
+  MessageQuota,
+  Workspace,
+  WorkspaceInvitation,
+  WorkspaceInvitationDelivery,
+  WorkspaceMembership,
+  WorkspaceBootstrapResponse,
+  WorkspaceRole,
+  WorkspaceSpaceBilling,
+} from '@/app/infra/entities/workspace';
+import type {
+  OperationGovernance,
+  OperationLevel,
+  OperationLogFilters,
+  OperationLogPage,
+  OperationLogQuery,
+} from '@/app/infra/entities/operation-log';
+
+/**
+ * 后端服务客户端
+ * 负责与后端 API 的所有交互
+ */
+export class BackendClient extends BaseHttpClient {
+  public getWorkspaceSandbox(
+    refresh = false,
+  ): Promise<WorkspaceSandboxSettings> {
+    return this.get(
+      `/api/v1/workspaces/current/sandbox${refresh ? '?refresh=true' : ''}`,
+    );
+  }
+
+  public setWorkspaceSandbox(
+    backend: string,
+    e2b?: E2BConfigInput,
+    limits?: import('@/app/infra/entities/workspace').WorkspaceLimits,
+  ): Promise<WorkspaceSandboxSettings> {
+    return this.put('/api/v1/workspaces/current/sandbox', {
+      backend,
+      ...(e2b ? { e2b } : {}),
+      ...(limits ? { limits } : {}),
+    });
+  }
+
+  public checkWorkspaceSandbox(
+    e2b?: E2BConfigInput,
+  ): Promise<WorkspaceSandboxSettings> {
+    return this.post(
+      '/api/v1/workspaces/current/sandbox/check',
+      e2b ? { e2b } : {},
+    );
+  }
+
+  public testWorkspaceSandbox(
+    e2b: E2BConfigInput,
+  ): Promise<WorkspaceSandboxSettings> {
+    return this.post('/api/v1/workspaces/current/sandbox/test', { e2b });
+  }
+
+  public getWorkspaceLanguage(): Promise<{
+    language: string;
+    supported_languages: string[];
+  }> {
+    return this.get('/api/v1/workspaces/current/language');
+  }
+
+  public setWorkspaceLanguage(language: string): Promise<{ language: string }> {
+    return this.put('/api/v1/workspaces/current/language', { language });
+  }
+
+  constructor(baseURL: string) {
+    super(baseURL, false);
+  }
+
+  // ============ Provider API ============
+  public getProviderRequesters(
+    model_type?: string,
+  ): Promise<ApiRespProviderRequesters> {
+    return this.get('/api/v1/provider/requesters', { type: model_type });
+  }
+
+  public getProviderRequester(name: string): Promise<ApiRespProviderRequester> {
+    return this.get(`/api/v1/provider/requesters/${name}`);
+  }
+
+  public getProviderRequesterIconURL(name: string): string {
+    if (this.instance.defaults.baseURL === '/') {
+      const url = window.location.href;
+      const baseURL = url.split('/').slice(0, 3).join('/');
+      return `${baseURL}/api/v1/provider/requesters/${name}/icon`;
+    }
+    return (
+      this.instance.defaults.baseURL +
+      `/api/v1/provider/requesters/${name}/icon`
+    );
+  }
+
+  // ============ Model Providers ============
+  public getModelProviders(): Promise<ApiRespModelProviders> {
+    return this.get('/api/v1/provider/providers');
+  }
+
+  public getModelProvider(uuid: string): Promise<ApiRespModelProvider> {
+    return this.get(`/api/v1/provider/providers/${uuid}`);
+  }
+
+  public createModelProvider(
+    provider: Omit<ModelProvider, 'uuid'>,
+  ): Promise<{ uuid: string }> {
+    return notifyAfterModelConfigurationChange(
+      this.post<{ uuid: string }>('/api/v1/provider/providers', provider),
+    );
+  }
+
+  public updateModelProvider(
+    uuid: string,
+    provider: Partial<ModelProvider>,
+  ): Promise<object> {
+    return notifyAfterModelConfigurationChange(
+      this.put<object>(`/api/v1/provider/providers/${uuid}`, provider),
+    );
+  }
+
+  public deleteModelProvider(uuid: string, cascade = false): Promise<object> {
+    return notifyAfterModelConfigurationChange(
+      this.delete<object>(
+        `/api/v1/provider/providers/${uuid}${cascade ? '?cascade=true' : ''}`,
+      ),
+    );
+  }
+
+  public getCodexAuthStatus(
+    uuid: string,
+    signal?: AbortSignal,
+  ): Promise<CodexAuthStatus> {
+    return this.get(
+      `/api/v1/provider/providers/${uuid}/codex/status`,
+      undefined,
+      { signal },
+    );
+  }
+
+  public startCodexDeviceLogin(
+    uuid: string,
+  ): Promise<CodexDeviceAuthorization> {
+    return this.post(`/api/v1/provider/providers/${uuid}/codex/device`, {});
+  }
+
+  public pollCodexDeviceLogin(
+    uuid: string,
+    authorizationId: string,
+    signal?: AbortSignal,
+  ): Promise<CodexDevicePoll> {
+    return this.post(
+      `/api/v1/provider/providers/${uuid}/codex/device/poll`,
+      { authorization_id: authorizationId },
+      { signal },
+    );
+  }
+
+  public cancelCodexDeviceLogin(
+    uuid: string,
+    authorizationId: string,
+  ): Promise<object> {
+    return this.delete(
+      `/api/v1/provider/providers/${uuid}/codex/device/${encodeURIComponent(authorizationId)}`,
+    );
+  }
+
+  public disconnectCodex(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/providers/${uuid}/codex/auth`);
+  }
+
+  public scanProviderModels(
+    uuid: string,
+    modelType?: 'llm' | 'embedding' | 'rerank' | 'asr' | 'tts',
+  ): Promise<ApiRespScannedProviderModels> {
+    const params = modelType ? { type: modelType } : {};
+    return this.get(`/api/v1/provider/providers/${uuid}/scan-models`, params);
+  }
+
+  // ============ Provider Model LLM ============
+  public getProviderLLMModels(
+    providerUuid?: string,
+  ): Promise<ApiRespProviderLLMModels> {
+    const params = providerUuid ? { provider_uuid: providerUuid } : {};
+    return this.get('/api/v1/provider/models/llm', params);
+  }
+
+  public getProviderLLMModel(uuid: string): Promise<ApiRespProviderLLMModel> {
+    return this.get(`/api/v1/provider/models/llm/${uuid}`);
+  }
+
+  public createProviderLLMModel(
+    model: Omit<LLMModel, 'uuid'>,
+  ): Promise<{ uuid: string }> {
+    return notifyAfterModelConfigurationChange(
+      this.post<{ uuid: string }>('/api/v1/provider/models/llm', model),
+    );
+  }
+
+  public deleteProviderLLMModel(uuid: string): Promise<object> {
+    return notifyAfterModelConfigurationChange(
+      this.delete<object>(`/api/v1/provider/models/llm/${uuid}`),
+    );
+  }
+
+  public updateProviderLLMModel(
+    uuid: string,
+    model: LLMModel,
+  ): Promise<object> {
+    return notifyAfterModelConfigurationChange(
+      this.put<object>(`/api/v1/provider/models/llm/${uuid}`, model),
+    );
+  }
+
+  public testLLMModel(uuid: string, model: LLMModel): Promise<object> {
+    return this.post(`/api/v1/provider/models/llm/${uuid}/test`, model);
+  }
+
+  // ============ Provider Model Embedding ============
+  public getProviderEmbeddingModels(
+    providerUuid?: string,
+  ): Promise<ApiRespProviderEmbeddingModels> {
+    const params = providerUuid ? { provider_uuid: providerUuid } : {};
+    return this.get('/api/v1/provider/models/embedding', params);
+  }
+
+  public getProviderEmbeddingModel(
+    uuid: string,
+  ): Promise<ApiRespProviderEmbeddingModel> {
+    return this.get(`/api/v1/provider/models/embedding/${uuid}`);
+  }
+
+  public createProviderEmbeddingModel(model: EmbeddingModel): Promise<object> {
+    return this.post('/api/v1/provider/models/embedding', model);
+  }
+
+  public deleteProviderEmbeddingModel(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/models/embedding/${uuid}`);
+  }
+
+  public updateProviderEmbeddingModel(
+    uuid: string,
+    model: EmbeddingModel,
+  ): Promise<object> {
+    return this.put(`/api/v1/provider/models/embedding/${uuid}`, model);
+  }
+
+  public testEmbeddingModel(
+    uuid: string,
+    model: EmbeddingModel,
+  ): Promise<object> {
+    return this.post(`/api/v1/provider/models/embedding/${uuid}/test`, model);
+  }
+
+  // ============ Provider Model Rerank ============
+  public getProviderRerankModels(
+    providerUuid?: string,
+  ): Promise<ApiRespProviderRerankModels> {
+    const params = providerUuid ? { provider_uuid: providerUuid } : {};
+    return this.get('/api/v1/provider/models/rerank', params);
+  }
+
+  public getProviderRerankModel(
+    uuid: string,
+  ): Promise<ApiRespProviderRerankModel> {
+    return this.get(`/api/v1/provider/models/rerank/${uuid}`);
+  }
+
+  public createProviderRerankModel(model: RerankModel): Promise<object> {
+    return this.post('/api/v1/provider/models/rerank', model);
+  }
+
+  public deleteProviderRerankModel(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/models/rerank/${uuid}`);
+  }
+
+  public updateProviderRerankModel(
+    uuid: string,
+    model: RerankModel,
+  ): Promise<object> {
+    return this.put(`/api/v1/provider/models/rerank/${uuid}`, model);
+  }
+
+  public testRerankModel(uuid: string, model: RerankModel): Promise<object> {
+    return this.post(`/api/v1/provider/models/rerank/${uuid}/test`, model);
+  }
+
+  // ============ Provider Model ASR ============
+  public getProviderASRModels(
+    providerUuid?: string,
+  ): Promise<ApiRespProviderASRModels> {
+    const params = providerUuid ? { provider_uuid: providerUuid } : {};
+    return this.get('/api/v1/provider/models/asr', params);
+  }
+
+  public getProviderASRModel(uuid: string): Promise<ApiRespProviderASRModel> {
+    return this.get(`/api/v1/provider/models/asr/${uuid}`);
+  }
+
+  public createProviderASRModel(model: ASRModel): Promise<object> {
+    return this.post('/api/v1/provider/models/asr', model);
+  }
+
+  public deleteProviderASRModel(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/models/asr/${uuid}`);
+  }
+
+  public updateProviderASRModel(
+    uuid: string,
+    model: ASRModel,
+  ): Promise<object> {
+    return this.put(`/api/v1/provider/models/asr/${uuid}`, model);
+  }
+
+  public testASRModel(uuid: string, model: ASRModel): Promise<object> {
+    return this.post(`/api/v1/provider/models/asr/${uuid}/test`, model);
+  }
+
+  // ============ Provider Model TTS ============
+  public getProviderTTSModels(
+    providerUuid?: string,
+  ): Promise<ApiRespProviderTTSModels> {
+    const params = providerUuid ? { provider_uuid: providerUuid } : {};
+    return this.get('/api/v1/provider/models/tts', params);
+  }
+
+  public getProviderTTSModel(uuid: string): Promise<ApiRespProviderTTSModel> {
+    return this.get(`/api/v1/provider/models/tts/${uuid}`);
+  }
+
+  public createProviderTTSModel(model: TTSModel): Promise<object> {
+    return this.post('/api/v1/provider/models/tts', model);
+  }
+
+  public deleteProviderTTSModel(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/models/tts/${uuid}`);
+  }
+
+  public updateProviderTTSModel(
+    uuid: string,
+    model: TTSModel,
+  ): Promise<object> {
+    return this.put(`/api/v1/provider/models/tts/${uuid}`, model);
+  }
+
+  public testTTSModel(uuid: string, model: TTSModel): Promise<object> {
+    return this.post(`/api/v1/provider/models/tts/${uuid}/test`, model);
+  }
+
+  // ============ Pipeline API ============
+  public getAgents(
+    sortBy?: string,
+    sortOrder?: string,
+  ): Promise<ApiRespAgents> {
+    const params = new URLSearchParams();
+    if (sortBy) params.append('sort_by', sortBy);
+    if (sortOrder) params.append('sort_order', sortOrder);
+    const queryString = params.toString();
+    return this.get(`/api/v1/agents${queryString ? `?${queryString}` : ''}`);
+  }
+
+  public getAgent(uuid: string): Promise<ApiRespAgent> {
+    return this.get(`/api/v1/agents/${uuid}`);
+  }
+
+  public getAgentMetadata(): Promise<GetAgentMetadataResponseData> {
+    return this.get('/api/v1/agents/_/metadata');
+  }
+
+  public getProcessorRuns(
+    uuid: string,
+    beforeId?: number,
+  ): Promise<import('../entities/api').ProcessorRunPage> {
+    return this.get(
+      `/api/v1/agents/${encodeURIComponent(uuid)}/runs${beforeId === undefined ? '' : `?before_id=${beforeId}`}`,
+    );
+  }
+
+  public getProcessorRunEvents(
+    uuid: string,
+    runId: string,
+    afterSequence?: number,
+  ): Promise<import('../entities/api').ProcessorRunEventPage> {
+    return this.get(
+      `/api/v1/agents/${encodeURIComponent(uuid)}/runs/${encodeURIComponent(runId)}/events${afterSequence === undefined ? '' : `?after_sequence=${afterSequence}`}`,
+    );
+  }
+
+  public createAgent(
+    agent: CreateAgentRequest,
+  ): Promise<{ uuid: string; kind: string }> {
+    return this.post('/api/v1/agents', agent);
+  }
+
+  public getStarredModel(): Promise<{ uuid: string | null }> {
+    return this.get('/api/v1/provider/models/llm/_/starred');
+  }
+
+  public setStarredModel(uuid: string | null): Promise<object> {
+    return this.put('/api/v1/provider/models/llm/_/starred', { uuid });
+  }
+
+  public getDefaultModel(): Promise<{ uuid: string | null }> {
+    return this.get('/api/v1/provider/models/llm/_/default');
+  }
+
+  public updateAgent(uuid: string, agent: Partial<Agent>): Promise<object> {
+    return this.put(`/api/v1/agents/${uuid}`, agent);
+  }
+
+  public deleteAgent(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/agents/${uuid}`);
+  }
+
+  public debugAgent(
+    uuid: string,
+    payload: {
+      event_type: string;
+      text?: string;
+      data?: Record<string, unknown>;
+      conversation_id?: string;
+      actor?: Record<string, unknown>;
+      subject?: Record<string, unknown>;
+      mock?: Record<string, unknown>;
+    },
+  ): Promise<{
+    event_id: string;
+    event_type: string;
+    conversation_id: string;
+    final_text: string;
+    outputs: Array<{
+      kind: string;
+      role: string;
+      text: string;
+    }>;
+  }> {
+    return this.post(`/api/v1/agents/${uuid}/debug`, payload);
+  }
+
+  public async streamDebugAgent(
+    uuid: string,
+    payload: Parameters<BackendClient['debugAgent']>[1],
+    onResult: (event: DebugExecutionEvent) => void,
+    signal: AbortSignal,
+  ): ReturnType<BackendClient['debugAgent']> {
+    let offset = 0;
+    let result: Awaited<ReturnType<BackendClient['debugAgent']>> | undefined;
+    let failure: { code: string; msg: string } | undefined;
+    const consume = (text: string) => {
+      let end: number;
+      while ((end = text.indexOf('\n', offset)) !== -1) {
+        const line = text.slice(offset, end).trim();
+        offset = end + 1;
+        if (!line) continue;
+        const frame = JSON.parse(line);
+        if (frame.kind === 'result') onResult(frame.data);
+        else if (frame.kind === 'completed') result = frame.data;
+        else if (frame.kind === 'error') failure = frame;
+      }
+    };
+    const response = await this.instance.post<string>(
+      `/api/v1/agents/${uuid}/debug/stream`,
+      payload,
+      {
+        adapter: 'xhr',
+        responseType: 'text',
+        timeout: 0,
+        signal,
+        headers: { Accept: 'application/x-ndjson' },
+        transformResponse: [(data) => data],
+        onDownloadProgress: (progress) => {
+          const xhr = progress.event?.target as XMLHttpRequest | undefined;
+          if (xhr?.status === 200) consume(xhr.responseText);
+        },
+      },
+    );
+    consume(response.data);
+    if (failure) throw failure;
+    if (!result)
+      throw {
+        code: 'runner_protocol_error',
+        msg: 'Debug stream ended before completion',
+      };
+    return result;
+  }
+
+  public async streamAssistant<T>(
+    uuid: string,
+    payload: {
+      revision: number;
+      text?: string;
+      approved?: boolean;
+      model_uuid?: string;
+    },
+    onEvent: (event: { kind: string; data: unknown }) => void,
+    signal: AbortSignal,
+  ): Promise<T> {
+    let offset = 0;
+    let result: T | undefined;
+    let failure: { code: string; msg: string } | undefined;
+    const consume = (text: string) => {
+      let end: number;
+      while ((end = text.indexOf('\n', offset)) !== -1) {
+        const line = text.slice(offset, end).trim();
+        offset = end + 1;
+        if (!line) continue;
+        const frame = JSON.parse(line);
+        if (frame.kind === 'completed') result = frame.data;
+        else if (frame.kind === 'error') failure = frame;
+        else onEvent(frame);
+      }
+    };
+    const response = await this.instance.post<string>(
+      `/api/v1/assistant/conversations/${encodeURIComponent(uuid)}/turn/stream`,
+      payload,
+      {
+        adapter: 'xhr',
+        responseType: 'text',
+        timeout: 0,
+        signal,
+        headers: { Accept: 'application/x-ndjson' },
+        transformResponse: [(data) => data],
+        onDownloadProgress: (progress) => {
+          const xhr = progress.event?.target as XMLHttpRequest | undefined;
+          if (xhr?.status === 200) consume(xhr.responseText);
+        },
+      },
+    );
+    consume(response.data);
+    if (failure) throw failure;
+    if (!result)
+      throw {
+        code: 'assistant_protocol_error',
+        msg: 'Assistant stream ended before completion',
+      };
+    return result;
+  }
+
+  public getGeneralPipelineMetadata(): Promise<GetPipelineMetadataResponseData> {
+    // as designed, this method will be deprecated, and only for developer to check the prefered config schema
+    return this.get('/api/v1/pipelines/_/metadata');
+  }
+
+  public getPipelines(
+    sortBy?: string,
+    sortOrder?: string,
+  ): Promise<ApiRespPipelines> {
+    const params = new URLSearchParams();
+    if (sortBy) params.append('sort_by', sortBy);
+    if (sortOrder) params.append('sort_order', sortOrder);
+    const queryString = params.toString();
+    return this.get(`/api/v1/pipelines${queryString ? `?${queryString}` : ''}`);
+  }
+
+  public getPipeline(uuid: string): Promise<GetPipelineResponseData> {
+    return this.get(`/api/v1/pipelines/${uuid}`);
+  }
+
+  public getPipelineMigrationPreview(
+    config?: RequestConfig,
+  ): Promise<PipelineMigrationPreview> {
+    return this.get('/api/v1/pipelines/_/migration/preview', undefined, config);
+  }
+
+  public executePipelineMigration(
+    body: PipelineMigrationRequest,
+    config?: RequestConfig,
+  ): Promise<AsyncTaskCreatedResp & { pipeline_uuids?: string[] }> {
+    return this.post('/api/v1/pipelines/_/migration/execute', body, config);
+  }
+
+  public createPipeline(pipeline: Pipeline): Promise<{
+    uuid: string;
+  }> {
+    return this.post('/api/v1/pipelines', pipeline);
+  }
+
+  public updatePipeline(
+    uuid: string,
+    pipeline: Partial<Pipeline>,
+  ): Promise<object> {
+    return this.put(`/api/v1/pipelines/${uuid}`, pipeline);
+  }
+
+  public deletePipeline(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/pipelines/${uuid}`);
+  }
+
+  public copyPipeline(uuid: string): Promise<{ uuid: string }> {
+    return this.post(`/api/v1/pipelines/${uuid}/copy`);
+  }
+
+  public getPipelineExtensions(uuid: string): Promise<{
+    available_platform_tools?: AgentPlatformTool[];
+    allowed_platform_tools?: string[];
+    enable_all_plugins: boolean;
+    enable_all_mcp_servers: boolean;
+    enable_all_skills: boolean;
+    mcp_resource_agent_read_enabled: boolean;
+    bound_plugins: Array<{ author: string; name: string }>;
+    available_plugins: Plugin[];
+    bound_mcp_servers: string[];
+    available_mcp_servers: MCPServer[];
+    bound_mcp_resources: Array<{
+      server_uuid?: string;
+      server_name?: string;
+      uri: string;
+      mode?: string;
+      enabled?: boolean;
+      max_bytes?: number;
+      max_tokens?: number;
+    }>;
+    bound_skills: string[];
+    available_skills: Skill[];
+    workspace_operations?: string[];
+    available_workspace_operations?: WorkspaceOperationItem[];
+    domains?: DomainMeta[];
+  }> {
+    return this.get(`/api/v1/pipelines/${uuid}/extensions`);
+  }
+
+  public updatePipelineExtensions(
+    uuid: string,
+    bound_plugins: Array<{ author: string; name: string }>,
+    bound_mcp_servers: string[],
+    enable_all_plugins: boolean = true,
+    enable_all_mcp_servers: boolean = true,
+    bound_skills: string[] = [],
+    enable_all_skills: boolean = true,
+    bound_mcp_resources?: Array<{
+      server_uuid?: string;
+      server_name?: string;
+      uri: string;
+      mode?: string;
+      enabled?: boolean;
+      max_bytes?: number;
+      max_tokens?: number;
+    }>,
+    mcp_resource_agent_read_enabled?: boolean,
+    workspace_operations?: string[],
+    allowed_platform_tools?: string[],
+  ): Promise<object> {
+    const payload: Record<string, unknown> = {
+      bound_plugins,
+      bound_mcp_servers,
+      enable_all_plugins,
+      enable_all_mcp_servers,
+      bound_skills,
+      enable_all_skills,
+    };
+    if (bound_mcp_resources !== undefined) {
+      payload.bound_mcp_resources = bound_mcp_resources;
+    }
+    if (mcp_resource_agent_read_enabled !== undefined) {
+      payload.mcp_resource_agent_read_enabled = mcp_resource_agent_read_enabled;
+    }
+    if (workspace_operations !== undefined) {
+      payload.workspace_operations = workspace_operations;
+    }
+    if (allowed_platform_tools !== undefined) {
+      payload.allowed_platform_tools = allowed_platform_tools;
+    }
+    return this.put(`/api/v1/pipelines/${uuid}/extensions`, payload);
+  }
+
+  // ============ WebSocket Chat API ============
+  public getWebSocketHistoryMessages(
+    pipelineId: string,
+    sessionType: string,
+  ): Promise<ApiRespWebChatMessages> {
+    return this.get(
+      `/api/v1/pipelines/${pipelineId}/ws/messages/${sessionType}`,
+    );
+  }
+
+  public async uploadWebSocketImage(
+    pipelineId: string,
+    imageFile: File,
+  ): Promise<{ file_key: string }> {
+    const formData = new FormData();
+    formData.append('file', imageFile);
+
+    return this.postFile(`/api/v1/files/images`, formData);
+  }
+
+  public resetWebSocketSession(
+    pipelineId: string,
+    sessionType: string,
+  ): Promise<{ message: string }> {
+    return this.post(`/api/v1/pipelines/${pipelineId}/ws/reset/${sessionType}`);
+  }
+
+  public getWebSocketConnections(pipelineId: string): Promise<{
+    stats: {
+      total_connections: number;
+      pipelines: number;
+      connections_by_pipeline: Record<string, number>;
+      connections_by_session_type: Record<string, number>;
+    };
+    connections: Array<{
+      connection_id: string;
+      session_type: string;
+      created_at: string;
+      last_active: string;
+      is_active: boolean;
+    }>;
+  }> {
+    return this.get(`/api/v1/pipelines/${pipelineId}/ws/connections`);
+  }
+
+  public broadcastWebSocketMessage(
+    pipelineId: string,
+    message: string,
+  ): Promise<{ message: string }> {
+    return this.post(`/api/v1/pipelines/${pipelineId}/ws/broadcast`, {
+      message,
+    });
+  }
+
+  // ============ Platform API ============
+  public getAdapters(): Promise<ApiRespPlatformAdapters> {
+    return this.get('/api/v1/platform/adapters');
+  }
+
+  public getAdapter(name: string): Promise<ApiRespPlatformAdapter> {
+    return this.get(`/api/v1/platform/adapters/${name}`);
+  }
+
+  public getAdapterIconURL(name: string): string {
+    if (this.instance.defaults.baseURL === '/') {
+      // 获取用户访问的URL
+      const url = window.location.href;
+      const baseURL = url.split('/').slice(0, 3).join('/');
+      return `${baseURL}/api/v1/platform/adapters/${name}/icon`;
+    }
+    return (
+      this.instance.defaults.baseURL + `/api/v1/platform/adapters/${name}/icon`
+    );
+  }
+
+  // ============ Platform Bots ============
+  public getBots(): Promise<ApiRespPlatformBots> {
+    return this.get('/api/v1/platform/bots');
+  }
+
+  public getBot(uuid: string): Promise<ApiRespPlatformBot> {
+    return this.get(`/api/v1/platform/bots/${uuid}`);
+  }
+
+  public createBot(bot: Bot): Promise<{ uuid: string }> {
+    return this.post('/api/v1/platform/bots', bot);
+  }
+
+  public updateBot(uuid: string, bot: Partial<Bot>): Promise<object> {
+    return this.put(`/api/v1/platform/bots/${uuid}`, bot);
+  }
+
+  public dryRunBotEventRoute(
+    botId: string,
+    request: BotRouteDryRunRequest,
+  ): Promise<BotRouteDryRunResult> {
+    return this.post(
+      `/api/v1/platform/bots/${botId}/event-routes/dry-run`,
+      request,
+    );
+  }
+
+  public getBotEventRouteStatuses(
+    botId: string,
+  ): Promise<BotEventRouteStatusResponse> {
+    return this.get(`/api/v1/platform/bots/${botId}/event-routes/status`);
+  }
+
+  public deleteBot(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/platform/bots/${uuid}`);
+  }
+
+  public getBotAdmins(botId: string): Promise<{
+    admins: Array<{ id: number; launcher_type: string; launcher_id: string }>;
+  }> {
+    return this.get(`/api/v1/platform/bots/${botId}/admins`);
+  }
+
+  public addBotAdmin(
+    botId: string,
+    launcher_type: string,
+    launcher_id: string,
+  ): Promise<{ id: number }> {
+    return this.post(`/api/v1/platform/bots/${botId}/admins`, {
+      launcher_type,
+      launcher_id,
+    });
+  }
+
+  public deleteBotAdmin(botId: string, adminId: number): Promise<object> {
+    return this.delete(`/api/v1/platform/bots/${botId}/admins/${adminId}`);
+  }
+
+  public getBotLogs(
+    botId: string,
+    request: GetBotLogsRequest,
+  ): Promise<GetBotLogsResponse> {
+    return this.post(`/api/v1/platform/bots/${botId}/logs`, request);
+  }
+
+  public testHttpBotInbound(
+    botId: string,
+    message: string,
+  ): Promise<{ session_id: string; accepted_message_id: string }> {
+    return this.post(`/api/v1/platform/bots/${botId}/test-inbound`, {
+      message,
+    });
+  }
+
+  public getBotSessions(
+    botId: string,
+    options: {
+      limit: number;
+      offset: number;
+      startTime?: string;
+      endTime?: string;
+      userQuery?: string;
+      launcherId?: string;
+    },
+  ): Promise<{
+    sessions: Array<{
+      session_id: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      message_count: number;
+      start_time: string;
+      last_activity: string;
+      is_active: boolean;
+      platform: string | null;
+      user_id: string | null;
+      user_name: string | null;
+    }>;
+    total: number;
+  }> {
+    const queryParams = new URLSearchParams();
+    queryParams.append('botId', botId);
+    queryParams.append('limit', options.limit.toString());
+    queryParams.append('offset', options.offset.toString());
+    if (options.startTime) {
+      queryParams.append('startTime', options.startTime);
+    }
+    if (options.endTime) {
+      queryParams.append('endTime', options.endTime);
+    }
+    if (options.userQuery) {
+      queryParams.append('userQuery', options.userQuery);
+    }
+    if (options.launcherId) {
+      queryParams.append('launcherId', options.launcherId);
+    }
+    return this.get(`/api/v1/monitoring/sessions?${queryParams.toString()}`);
+  }
+
+  public resetSessionContext(
+    botId: string,
+    sessionId: string,
+  ): Promise<{ reset: boolean }> {
+    return this.post('/api/v1/monitoring/sessions/reset-context', {
+      bot_id: botId,
+      session_id: sessionId,
+    });
+  }
+
+  public getSessionAnalysis<T>(
+    sessionId: string,
+    botId: string,
+    options: { startTime?: string; endTime?: string } = {},
+  ): Promise<T> {
+    const queryParams = new URLSearchParams({ botId });
+    if (options.startTime) queryParams.set('startTime', options.startTime);
+    if (options.endTime) queryParams.set('endTime', options.endTime);
+    return this.get(
+      `/api/v1/monitoring/sessions/${encodeURIComponent(sessionId)}/analysis?${queryParams.toString()}`,
+    );
+  }
+
+  public getSessionMessages(
+    sessionId: string,
+    limit: number = 200,
+    offset: number = 0,
+    botId?: string,
+  ): Promise<{
+    messages: Array<{
+      id: string;
+      timestamp: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      message_content: string;
+      session_id: string;
+      status: string;
+      level: string;
+      platform: string | null;
+      user_id: string | null;
+      user_name: string | null;
+      runner_name: string | null;
+      variables: string | null;
+      role: string | null;
+    }>;
+    total: number;
+  }> {
+    const queryParams = new URLSearchParams();
+    queryParams.append('sessionId', sessionId);
+    if (botId) queryParams.append('botId', botId);
+    queryParams.append('limit', limit.toString());
+    queryParams.append('offset', offset.toString());
+    return this.get(`/api/v1/monitoring/messages?${queryParams.toString()}`);
+  }
+
+  // ============ File management API ============
+  public uploadDocumentFile(file: File): Promise<{ file_id: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return this.request<{ file_id: string }>({
+      method: 'post',
+      url: '/api/v1/files/documents',
+      data: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  }
+
+  // ============ Knowledge Base API ============
+  public getKnowledgeBases(): Promise<ApiRespKnowledgeBases> {
+    return this.get('/api/v1/knowledge/bases');
+  }
+
+  public getKnowledgeBase(uuid: string): Promise<ApiRespKnowledgeBase> {
+    return this.get(`/api/v1/knowledge/bases/${uuid}`);
+  }
+
+  public createKnowledgeBase(base: KnowledgeBase): Promise<{ uuid: string }> {
+    return this.post('/api/v1/knowledge/bases', base);
+  }
+
+  public updateKnowledgeBase(
+    uuid: string,
+    base: KnowledgeBase,
+  ): Promise<{ uuid: string }> {
+    return this.put(`/api/v1/knowledge/bases/${uuid}`, base);
+  }
+
+  public uploadKnowledgeBaseFile(
+    uuid: string,
+    file_id: string,
+    parserPluginId?: string,
+  ): Promise<object> {
+    return this.post(`/api/v1/knowledge/bases/${uuid}/files`, {
+      file_id,
+      parser_plugin_id: parserPluginId,
+    });
+  }
+
+  public getKnowledgeBaseFiles(
+    uuid: string,
+  ): Promise<ApiRespKnowledgeBaseFiles> {
+    return this.get(`/api/v1/knowledge/bases/${uuid}/files`);
+  }
+
+  public deleteKnowledgeBaseFile(
+    uuid: string,
+    file_id: string,
+  ): Promise<object> {
+    return this.delete(`/api/v1/knowledge/bases/${uuid}/files/${file_id}`);
+  }
+
+  public deleteKnowledgeBase(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/knowledge/bases/${uuid}`);
+  }
+
+  public retrieveKnowledgeBase(
+    uuid: string,
+    query: string,
+    retrievalSettings?: Record<string, unknown>,
+  ): Promise<ApiRespKnowledgeBaseRetrieve> {
+    return this.post(`/api/v1/knowledge/bases/${uuid}/retrieve`, {
+      query,
+      retrieval_settings: retrievalSettings ?? {},
+    });
+  }
+
+  // ============ Knowledge Engines API ============
+  public getKnowledgeEngines(): Promise<ApiRespKnowledgeEngines> {
+    return this.get('/api/v1/knowledge/engines');
+  }
+
+  // ============ Parsers API ============
+  public listParsers(mimeType?: string): Promise<ApiRespParsers> {
+    const params = mimeType ? `?mime_type=${encodeURIComponent(mimeType)}` : '';
+    return this.get(`/api/v1/knowledge/parsers${params}`);
+  }
+
+  // ============ Extensions API ============
+  public getExtensions(): Promise<ApiRespExtensions> {
+    return this.get('/api/v1/extensions');
+  }
+
+  // ============ Plugins API ============
+  public getPlugins(): Promise<ApiRespPlugins> {
+    return this.get('/api/v1/plugins');
+  }
+
+  public getPlugin(author: string, name: string): Promise<ApiRespPlugin> {
+    return this.get(`/api/v1/plugins/${author}/${name}`);
+  }
+
+  public getPluginConfig(
+    author: string,
+    name: string,
+  ): Promise<ApiRespPluginConfig> {
+    return this.get(`/api/v1/plugins/${author}/${name}/config`);
+  }
+
+  public updatePluginConfig(
+    author: string,
+    name: string,
+    config: object,
+  ): Promise<object> {
+    return this.put(`/api/v1/plugins/${author}/${name}/config`, config);
+  }
+
+  public uploadPluginConfigFile(file: File): Promise<{ file_key: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return this.request<{ file_key: string }>({
+      method: 'post',
+      url: '/api/v1/plugins/config-files',
+      data: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  }
+
+  public deletePluginConfigFile(
+    fileKey: string,
+  ): Promise<{ deleted: boolean }> {
+    return this.delete(`/api/v1/plugins/config-files/${fileKey}`);
+  }
+
+  public getPluginReadme(
+    author: string,
+    name: string,
+    language: string = 'en',
+  ): Promise<{ readme: string }> {
+    return this.get(
+      `/api/v1/plugins/${author}/${name}/readme?language=${language}`,
+    );
+  }
+
+  public getPluginLogs(
+    author: string,
+    name: string,
+    limit: number = 200,
+    level?: string,
+  ): Promise<{ logs: PluginLogEntry[] }> {
+    const params = new URLSearchParams();
+    params.set('limit', String(limit));
+    if (level) {
+      params.set('level', level);
+    }
+    return this.get(
+      `/api/v1/plugins/${author}/${name}/logs?${params.toString()}`,
+    );
+  }
+
+  public getMcpServerLogs(
+    serverName: string,
+    limit: number = 200,
+    level?: string,
+  ): Promise<{ logs: PluginLogEntry[] }> {
+    const params = new URLSearchParams();
+    params.set('limit', String(limit));
+    if (level) {
+      params.set('level', level);
+    }
+    return this.get(
+      `/api/v1/mcp/servers/${encodeURIComponent(serverName)}/logs?${params.toString()}`,
+    );
+  }
+
+  public getPluginAssetURL(
+    author: string,
+    name: string,
+    filepath: string,
+  ): string {
+    if (this.instance.defaults.baseURL === '/') {
+      return `${window.location.origin}/api/v1/plugins/${author}/${name}/assets/${filepath}`;
+    }
+    return (
+      this.instance.defaults.baseURL +
+      `/api/v1/plugins/${author}/${name}/assets/${filepath}`
+    );
+  }
+
+  private async getAuthenticatedObjectURL(
+    path: string,
+    rewritePluginPageSdk = false,
+    workspaceUuid?: string | null,
+  ): Promise<string> {
+    const response = await this.instance.get<Blob>(path, {
+      responseType: 'blob',
+      workspaceUuid,
+    } as RequestConfig);
+    let blob = response.data;
+    if (rewritePluginPageSdk && blob.type.startsWith('text/html')) {
+      const apiBase =
+        this.instance.defaults.baseURL === '/'
+          ? window.location.origin
+          : this.instance.defaults.baseURL?.replace(/\/$/, '');
+      const pageSdkUrl = `${apiBase}/api/v1/plugins/_sdk/page-sdk.js`;
+      const html = await blob.text();
+      blob = new Blob(
+        [
+          html.replace(
+            /(<script\b[^>]*\bsrc\s*=\s*)(["'])\/api\/v1\/plugins\/_sdk\/page-sdk\.js\2/gi,
+            `$1$2${pageSdkUrl}$2`,
+          ),
+        ],
+        { type: blob.type },
+      );
+    }
+    return URL.createObjectURL(blob);
+  }
+
+  public getAuthenticatedPluginAssetURL(
+    author: string,
+    name: string,
+    filepath: string,
+    workspaceUuid?: string | null,
+  ): Promise<string> {
+    return this.getAuthenticatedObjectURL(
+      `/api/v1/plugins/${author}/${name}/authenticated-assets/${filepath}`,
+      true,
+      workspaceUuid,
+    );
+  }
+
+  public getAuthenticatedPluginIconURL(
+    author: string,
+    name: string,
+  ): Promise<string> {
+    return this.getAuthenticatedObjectURL(
+      `/api/v1/plugins/${author}/${name}/authenticated-icon`,
+    );
+  }
+
+  public async pluginPageApi(
+    author: string,
+    name: string,
+    pageId: string,
+    endpoint: string,
+    method: string = 'POST',
+    body?: unknown,
+  ): Promise<unknown> {
+    const resp = await this.instance.request({
+      url: `/api/v1/plugins/${author}/${name}/page-api`,
+      method: 'POST',
+      data: {
+        page_id: pageId,
+        endpoint,
+        method,
+        body,
+      },
+    });
+    return resp.data?.data;
+  }
+
+  public getPluginIconURL(author: string, name: string): string {
+    if (this.instance.defaults.baseURL === '/') {
+      const url = window.location.href;
+      const baseURL = url.split('/').slice(0, 3).join('/');
+      return `${baseURL}/api/v1/plugins/${author}/${name}/icon`;
+    }
+    return (
+      this.instance.defaults.baseURL + `/api/v1/plugins/${author}/${name}/icon`
+    );
+  }
+
+  public installPluginFromGithub(
+    assetId: number,
+    releaseId: number,
+    owner: string,
+    repo: string,
+    releaseTag: string,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.post('/api/v1/plugins/install/github', {
+      asset_id: assetId,
+      release_id: releaseId,
+      owner,
+      repo,
+      release_tag: releaseTag,
+    });
+  }
+
+  public getGithubReleases(repoUrl: string): Promise<{
+    releases: Array<{
+      id: number;
+      tag_name: string;
+      name: string;
+      published_at: string;
+      prerelease: boolean;
+      draft: boolean;
+      source_type?: 'release' | 'tag' | 'branch';
+      archive_url?: string;
+    }>;
+    owner: string;
+    repo: string;
+    source_subdir?: string;
+  }> {
+    return this.post('/api/v1/plugins/github/releases', { repo_url: repoUrl });
+  }
+
+  public getGithubReleaseAssets(
+    owner: string,
+    repo: string,
+    releaseId: number,
+    releaseTag?: string,
+    sourceType?: 'release' | 'tag' | 'branch',
+    archiveUrl?: string,
+  ): Promise<{
+    assets: Array<{
+      id: number;
+      name: string;
+      size: number;
+      download_url: string;
+      content_type: string;
+    }>;
+  }> {
+    return this.post('/api/v1/plugins/github/release-assets', {
+      owner,
+      repo,
+      release_id: releaseId,
+      release_tag: releaseTag,
+      source_type: sourceType,
+      archive_url: archiveUrl,
+    });
+  }
+
+  public installPluginFromLocal(file: File): Promise<AsyncTaskCreatedResp> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.postFile('/api/v1/plugins/install/local', formData);
+  }
+
+  public previewPluginInstallFromLocal(file: File): Promise<{
+    filename: string;
+    size: number;
+    manifest: Record<string, unknown>;
+    metadata: {
+      author?: string;
+      name?: string;
+      version?: string;
+      label?: I18nObject;
+      description?: I18nObject;
+      repository?: string;
+    };
+    component_types: string[];
+    component_counts: Record<string, number>;
+    requirements: string[];
+    file_count: number;
+  }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.postFile('/api/v1/plugins/install/local/preview', formData);
+  }
+
+  // ============ Skill Install API ============
+  public installSkillFromGithub(
+    assetUrl: string,
+    owner: string,
+    repo: string,
+    releaseTag: string,
+    sourcePaths?: string[],
+    sourceSubdir?: string,
+  ): Promise<ApiRespSkills> {
+    return this.post('/api/v1/skills/install/github', {
+      asset_url: assetUrl,
+      owner,
+      repo,
+      release_tag: releaseTag,
+      source_paths: sourcePaths,
+      source_subdir: sourceSubdir,
+    });
+  }
+
+  public previewSkillInstallFromGithub(
+    assetUrl: string,
+    owner: string,
+    repo: string,
+    releaseTag: string,
+    sourceSubdir?: string,
+  ): Promise<{ skills: Skill[] }> {
+    return this.post('/api/v1/skills/install/github/preview', {
+      asset_url: assetUrl,
+      owner,
+      repo,
+      release_tag: releaseTag,
+      source_subdir: sourceSubdir,
+    });
+  }
+
+  public previewSkillInstallFromUpload(
+    file: File,
+  ): Promise<{ skills: Skill[] }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.postFile('/api/v1/skills/install/upload/preview', formData);
+  }
+
+  public installSkillFromUpload(
+    file: File,
+    sourcePaths?: string[],
+  ): Promise<ApiRespSkills> {
+    const formData = new FormData();
+    formData.append('file', file);
+    for (const sourcePath of sourcePaths || []) {
+      formData.append('source_paths', sourcePath);
+    }
+    return this.postFile('/api/v1/skills/install/upload', formData);
+  }
+
+  public installPluginFromMarketplace(
+    author: string,
+    name: string,
+    version: string,
+    autoConfirmPermissions = false,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.post('/api/v1/plugins/install/marketplace', {
+      plugin_author: author,
+      plugin_name: name,
+      plugin_version: version,
+      ...(autoConfirmPermissions ? { auto_confirm_permissions: true } : {}),
+    });
+  }
+
+  public removePlugin(
+    author: string,
+    name: string,
+    deleteData: boolean = false,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.delete(
+      `/api/v1/plugins/${author}/${name}?delete_data=${deleteData}`,
+    );
+  }
+
+  public upgradePlugin(
+    author: string,
+    name: string,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.post(`/api/v1/plugins/${author}/${name}/upgrade`);
+  }
+
+  // ============ MCP API ============
+  public getMCPServers(): Promise<ApiRespMCPServers> {
+    return this.get('/api/v1/mcp/servers');
+  }
+
+  // ========== Tools ==========
+
+  public getTools(pipelineId?: string): Promise<ApiRespTools> {
+    return this.get(
+      '/api/v1/tools',
+      pipelineId ? { pipeline_uuid: pipelineId } : undefined,
+    );
+  }
+
+  public getToolDetail(
+    toolName: string,
+    pipelineId?: string,
+  ): Promise<ApiRespToolDetail> {
+    return this.get(
+      `/api/v1/tools/${encodeURIComponent(toolName)}`,
+      pipelineId ? { pipeline_uuid: pipelineId } : undefined,
+    );
+  }
+
+  public getMCPServer(serverName: string): Promise<ApiRespMCPServer> {
+    return this.get(`/api/v1/mcp/servers/${encodeURIComponent(serverName)}`);
+  }
+
+  public createMCPServer(server: MCPServer): Promise<AsyncTaskCreatedResp> {
+    return this.post('/api/v1/mcp/servers', server);
+  }
+
+  public updateMCPServer(
+    serverName: string,
+    server: Partial<MCPServer>,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.put(
+      `/api/v1/mcp/servers/${encodeURIComponent(serverName)}`,
+      server,
+    );
+  }
+
+  public deleteMCPServer(serverName: string): Promise<AsyncTaskCreatedResp> {
+    return this.delete(`/api/v1/mcp/servers/${encodeURIComponent(serverName)}`);
+  }
+
+  public toggleMCPServer(
+    serverName: string,
+    target_enabled: boolean,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.put(`/api/v1/mcp/servers/${encodeURIComponent(serverName)}`, {
+      enable: target_enabled,
+    });
+  }
+
+  public testMCPServer(
+    serverName: string,
+    serverData: object,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.post(
+      `/api/v1/mcp/servers/${encodeURIComponent(serverName)}/test`,
+      serverData,
+    );
+  }
+
+  public installMCPServerFromGithub(
+    source: string,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.post('/api/v1/mcp/install/github', { source });
+  }
+
+  public installMCPServerFromSSE(
+    source: object,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.post('/api/v1/mcp/servers', { source });
+  }
+
+  public getMCPServerResources(
+    serverName: string,
+  ): Promise<ApiRespMCPResources> {
+    return this.get(
+      `/api/v1/mcp/servers/${encodeURIComponent(serverName)}/resources`,
+    );
+  }
+
+  public readMCPServerResource(
+    serverName: string,
+    uri: string,
+    maxBytes?: number,
+  ): Promise<ApiRespMCPResourceContents> {
+    return this.post(
+      `/api/v1/mcp/servers/${encodeURIComponent(serverName)}/resources/read`,
+      {
+        uri,
+        max_bytes: maxBytes,
+      },
+    );
+  }
+
+  // ============ System API ============
+  public getSystemInfo(): Promise<ApiRespSystemInfo> {
+    return this.get('/api/v1/system/info');
+  }
+
+  public updateWizardStatus(status: 'skipped' | 'completed'): Promise<void> {
+    return this.post('/api/v1/system/wizard/completed', { status });
+  }
+
+  public saveWizardProgress(progress: {
+    step: number;
+    selected_scenario?: string | null;
+    selected_adapter: string | null;
+    created_bot_uuid: string | null;
+    created_pipeline_uuid?: string | null;
+    bot_saved: boolean;
+    message_received?: boolean;
+    selected_runner: string | null;
+  }): Promise<void> {
+    return this.put('/api/v1/system/wizard/progress', progress);
+  }
+
+  public getWizardRecommendedModel(): Promise<{
+    uuid: string;
+    name: string;
+  }> {
+    return this.get('/api/v1/system/wizard/recommended-model');
+  }
+
+  public getLangBotModelAvailability(): Promise<ApiRespLangBotModelAvailability> {
+    return this.get('/api/v1/system/model-availability');
+  }
+
+  public getAsyncTasks(params?: {
+    type?: string;
+    kind?: string;
+  }): Promise<ApiRespAsyncTasks> {
+    const query = new URLSearchParams();
+    if (params?.type) query.set('type', params.type);
+    if (params?.kind) query.set('kind', params.kind);
+    const qs = query.toString();
+    return this.get(`/api/v1/system/tasks${qs ? `?${qs}` : ''}`);
+  }
+
+  public getAsyncTask(id: number, config?: RequestConfig): Promise<AsyncTask> {
+    return this.get(`/api/v1/system/tasks/${id}`, undefined, config);
+  }
+
+  public getPluginSystemStatus(): Promise<ApiRespPluginSystemStatus> {
+    return this.get('/api/v1/system/status/plugin-system');
+  }
+
+  // ============ RAG Migration API ============
+  public getRagMigrationStatus(): Promise<RagMigrationStatusResp> {
+    return this.get('/api/v1/knowledge/migration/status');
+  }
+
+  public executeRagMigration(
+    installPlugin: boolean = true,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.post('/api/v1/knowledge/migration/execute', {
+      install_plugin: installPlugin,
+    });
+  }
+
+  public dismissRagMigration(): Promise<object> {
+    return this.post('/api/v1/knowledge/migration/dismiss');
+  }
+
+  public getPluginDebugInfo(): Promise<{
+    debug_url: string;
+    plugin_debug_key: string;
+    expires_at: string;
+  }> {
+    return this.get('/api/v1/plugins/debug-info');
+  }
+
+  public getPluginSpaceUploadConfig(
+    author: string,
+    name: string,
+  ): Promise<PluginSpaceUploadConfig> {
+    return this.get(
+      `/api/v1/plugins/${encodeURIComponent(author)}/${encodeURIComponent(name)}/space-upload/config`,
+    );
+  }
+
+  public uploadPluginToSpace(
+    author: string,
+    name: string,
+    payload: PluginSpaceUploadPayload,
+  ): Promise<PluginSpaceUploadResult> {
+    return this.post(
+      `/api/v1/plugins/${encodeURIComponent(author)}/${encodeURIComponent(name)}/space-upload`,
+      payload,
+    );
+  }
+
+  public syncPluginToGithub(
+    author: string,
+    name: string,
+    payload: PluginGithubSyncPayload,
+  ): Promise<{ git: PluginGithubSyncResult }> {
+    return this.post(
+      `/api/v1/plugins/${encodeURIComponent(author)}/${encodeURIComponent(name)}/space-upload/git-sync`,
+      payload,
+    );
+  }
+
+  // ============ LangBot Space sharing / prompt library (LANG-439) ============
+  public getSpaceShareContext(): Promise<SpaceShareContext> {
+    return this.get('/api/v1/space-share/context');
+  }
+
+  public listLibraryPrompts(params: {
+    kind?: PromptKind;
+    q?: string;
+    sort?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<{ prompts: LibraryPrompt[]; total: number }> {
+    return this.get('/api/v1/space-share/prompts/library', params);
+  }
+
+  public trackLibraryPromptUse(
+    author: string,
+    name: string,
+    kind?: PromptKind,
+  ): Promise<object> {
+    return this.post(
+      `/api/v1/space-share/prompts/library/${encodeURIComponent(author)}/${encodeURIComponent(name)}/use`,
+      { kind },
+    );
+  }
+
+  public listFavoritePrompts(kind?: PromptKind): Promise<{
+    available: boolean;
+    prompts: LibraryPrompt[];
+    prompt_ids: string[];
+  }> {
+    return this.get('/api/v1/space-share/prompts/favorites', { kind });
+  }
+
+  public setPromptFavorite(
+    author: string,
+    name: string,
+    favorite: boolean,
+  ): Promise<{ favorited: boolean; favorite_count: number }> {
+    const url = `/api/v1/space-share/prompts/favorites/${encodeURIComponent(author)}/${encodeURIComponent(name)}`;
+    return favorite ? this.put(url) : this.delete(url);
+  }
+
+  public previewPromptShare(payload: {
+    kind: PromptKind;
+    messages: PromptMessage[];
+  }): Promise<{ payload: object; findings: ShareFinding[] }> {
+    return this.post('/api/v1/space-share/prompts/preview', payload);
+  }
+
+  public sharePrompt(
+    payload: ShareMetadata & {
+      kind: PromptKind;
+      language: string;
+      messages: PromptMessage[];
+      variables: { name: string; description?: string }[];
+      acknowledge_warnings?: boolean;
+    },
+  ): Promise<ContentSubmissionResult> {
+    return this.post('/api/v1/space-share/prompts', payload);
+  }
+
+  public previewSkillShare(skillName: string): Promise<{
+    files: { path: string; size: number }[];
+    findings: ShareFinding[];
+    size: number;
+  }> {
+    return this.get(
+      `/api/v1/space-share/skills/${encodeURIComponent(skillName)}/preview`,
+    );
+  }
+
+  public shareSkill(
+    skillName: string,
+    payload: ShareMetadata,
+  ): Promise<ContentSubmissionResult> {
+    return this.post(
+      `/api/v1/space-share/skills/${encodeURIComponent(skillName)}`,
+      payload,
+    );
+  }
+
+  public previewMCPShare(
+    serverName: string,
+    overrides?: object,
+  ): Promise<MCPSharePreview> {
+    return this.post(
+      `/api/v1/space-share/mcp/${encodeURIComponent(serverName)}/preview`,
+      { overrides },
+    );
+  }
+
+  public shareMCP(
+    serverName: string,
+    payload: ShareMetadata & { overrides?: object },
+  ): Promise<ContentSubmissionResult> {
+    return this.post(
+      `/api/v1/space-share/mcp/${encodeURIComponent(serverName)}`,
+      payload,
+    );
+  }
+
+  public listMySpaceItems(
+    type: SpaceOwnedItem['item_type'],
+  ): Promise<{ available: boolean; items: SpaceOwnedItem[] }> {
+    return this.get('/api/v1/space-share/items', { type });
+  }
+
+  public listMyContentSubmissions(): Promise<{
+    available: boolean;
+    submissions: MyContentSubmission[];
+  }> {
+    return this.get('/api/v1/space-share/submissions');
+  }
+
+  public getBoxRuntimeStatus(): Promise<ApiRespBoxStatus> {
+    return this.get('/api/v1/box/runtime-status');
+  }
+
+  public getBoxStatus(): Promise<ApiRespBoxStatus> {
+    return this.get('/api/v1/box/status');
+  }
+
+  public getBoxSessions(): Promise<BoxSessionInfo[]> {
+    return this.get('/api/v1/box/sessions');
+  }
+
+  // ============ User API ============
+  public checkIfInited(): Promise<{ initialized: boolean }> {
+    return this.get('/api/v1/user/init', undefined, { skipWorkspace: true });
+  }
+
+  public initUser(user: string, password: string): Promise<object> {
+    return this.post(
+      '/api/v1/user/init',
+      { user, password },
+      { skipWorkspace: true },
+    );
+  }
+
+  public authUser(
+    user: string,
+    password: string,
+    totpCode?: string,
+  ): Promise<ApiRespUserToken> {
+    return this.post(
+      '/api/v1/user/auth',
+      { user, password, totp_code: totpCode },
+      { skipWorkspace: true },
+    );
+  }
+
+  // ============ TOTP second factor (login) ============
+  public requestTotpChallenge(
+    user: string,
+  ): Promise<{ challenge_token: string }> {
+    return this.post(
+      '/api/v1/user/totp/challenge',
+      { user },
+      { skipWorkspace: true },
+    );
+  }
+
+  public verifyTotpLogin(
+    user: string,
+    code: string,
+    challengeToken: string,
+  ): Promise<{ token: string; user: string }> {
+    // The challenge token proves the password step already ran for this
+    // Account; without it the backend refuses to mint a session.
+    return this.post(
+      '/api/v1/user/totp/verify',
+      { user, code, challenge_token: challengeToken },
+      { skipWorkspace: true },
+    );
+  }
+
+  // ============ TOTP second factor (account settings) ============
+  public getTotpStatus(): Promise<{
+    enabled: boolean;
+    pending: boolean;
+    confirmed_at?: string | null;
+    last_used_at?: string | null;
+    recovery_codes_remaining: number;
+  }> {
+    return this.get('/api/v1/user/totp/status', undefined, {
+      skipWorkspace: true,
+    });
+  }
+
+  public beginTotpEnroll(rotate = false): Promise<{
+    uuid: string;
+    // A server-rendered PNG data URL. The shared secret is never returned so it
+    // cannot be read out of the browser.
+    qr_code_data_url: string;
+    algorithm: string;
+    digits: number;
+    period: number;
+  }> {
+    // rotate=true is the explicit "refresh" action; the default reuses any
+    // pending enrolment so duplicate calls cannot invalidate the shown QR.
+    return this.post(
+      '/api/v1/user/totp/enroll',
+      { rotate },
+      { skipWorkspace: true },
+    );
+  }
+
+  public confirmTotpEnroll(
+    code: string,
+  ): Promise<{ recovery_codes: string[] }> {
+    return this.post(
+      '/api/v1/user/totp/enroll/confirm',
+      { code },
+      { skipWorkspace: true },
+    );
+  }
+
+  public regenerateTotpRecoveryCodes(
+    code: string,
+  ): Promise<{ recovery_codes: string[] }> {
+    return this.post(
+      '/api/v1/user/totp/recovery-codes',
+      { code },
+      { skipWorkspace: true },
+    );
+  }
+
+  public disableTotp(code: string): Promise<void> {
+    return this.post(
+      '/api/v1/user/totp/disable',
+      { code },
+      {
+        skipWorkspace: true,
+      },
+    );
+  }
+
+  // ============ TOTP oversight (Workspace owner/admin only) ============
+  public getTotpAccounts(): Promise<{
+    accounts: Array<{
+      account_uuid: string;
+      user: string;
+      status?: string;
+      enabled: boolean;
+      last_used_at?: string | null;
+      recovery_codes_remaining: number;
+    }>;
+  }> {
+    return this.get('/api/v1/user/totp/accounts');
+  }
+
+  public revokeTotpForAccount(accountUuid: string): Promise<void> {
+    return this.delete(
+      `/api/v1/user/totp/accounts/${encodeURIComponent(accountUuid)}`,
+    );
+  }
+
+  /**
+   * Force a re-binding of another Account's second factor (owner/admin only).
+   * Returns a server-rendered QR code; the shared secret is never returned.
+   */
+  public adminBeginTotpEnroll(accountUuid: string): Promise<{
+    uuid: string;
+    qr_code_data_url: string;
+    algorithm: string;
+    digits: number;
+    period: number;
+  }> {
+    return this.post(
+      `/api/v1/user/totp/accounts/${encodeURIComponent(accountUuid)}/enroll`,
+      {},
+    );
+  }
+
+  /** Activate a forced re-binding; recovery codes are returned exactly once. */
+  public adminConfirmTotpEnroll(
+    accountUuid: string,
+    code: string,
+  ): Promise<{ recovery_codes: string[] }> {
+    return this.post(
+      `/api/v1/user/totp/accounts/${encodeURIComponent(accountUuid)}/enroll/confirm`,
+      { code },
+    );
+  }
+
+  public checkUserToken(): Promise<ApiRespUserToken> {
+    return this.get('/api/v1/user/check-token', undefined, {
+      skipWorkspace: true,
+    });
+  }
+
+  public resetPassword(
+    user: string,
+    newPassword: string,
+    options: {
+      // 'recovery_key' is the instance-wide key; 'totp' and 'recovery_code'
+      // consume an Account-scoped second factor instead.
+      method?: 'recovery_key' | 'totp' | 'recovery_code';
+      recoveryKey?: string;
+      totpCode?: string;
+    } = {},
+  ): Promise<{ user: string }> {
+    // Only send the second-factor fields that apply to the selected method, so
+    // the default recovery-key flow keeps its historical wire shape (no empty
+    // `method`/`totp_code` keys) and stays byte-compatible with existing callers.
+    const body: Record<string, unknown> = {
+      user,
+      new_password: newPassword,
+    };
+    if (options.method && options.method !== 'recovery_key') {
+      body.method = options.method;
+    }
+    if (options.recoveryKey) {
+      body.recovery_key = options.recoveryKey;
+    }
+    if (options.totpCode) {
+      body.totp_code = options.totpCode;
+    }
+    return this.post('/api/v1/user/reset-password', body, {
+      skipWorkspace: true,
+    });
+  }
+
+  public changePassword(
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<{ user: string }> {
+    return this.post(
+      '/api/v1/user/change-password',
+      {
+        current_password: currentPassword,
+        new_password: newPassword,
+      },
+      { skipWorkspace: true },
+    );
+  }
+
+  public getUserInfo(): Promise<{
+    account_uuid: string;
+    user: string;
+    account_type: 'local' | 'space';
+    has_password: boolean;
+  }> {
+    return this.get('/api/v1/user/info', undefined, { skipWorkspace: true });
+  }
+
+  public getWorkspaceSpaceBilling(): Promise<WorkspaceSpaceBilling> {
+    return this.get('/api/v1/user/space-credits');
+  }
+
+  public getAccountInfo(): Promise<{
+    initialized: boolean;
+    authenticated_invitation_acceptance_enabled?: boolean;
+    invitation_registration_enabled?: boolean;
+    password_login_enabled?: boolean;
+    space_login_enabled?: boolean;
+    passkey_login_enabled?: boolean;
+    passkey_supported?: boolean;
+  }> {
+    return this.get('/api/v1/user/account-info', undefined, {
+      skipWorkspace: true,
+    });
+  }
+
+  // ============ Passkey (WebAuthn) API ============
+  public getPasskeyAuthOptions(
+    email?: string,
+  ): Promise<{ options: any; challenge_token: string }> {
+    // No origin is sent: the WebAuthn RP ID and expected origin are resolved
+    // server-side from api.webui_url / api.webhook_prefix. Sending a client
+    // origin would only invite a future handler to trust it again.
+    return this.post(
+      '/api/v1/user/passkey/auth/options',
+      { email },
+      { skipWorkspace: true },
+    );
+  }
+
+  public verifyPasskeyAuth(
+    challenge_token: string,
+    credential: any,
+  ): Promise<{ token: string; user: string }> {
+    return this.post(
+      '/api/v1/user/passkey/auth/verify',
+      { challenge_token, credential },
+      { skipWorkspace: true },
+    );
+  }
+
+  public getPasskeyRegisterOptions(): Promise<{
+    options: any;
+    challenge_token: string;
+  }> {
+    // See getPasskeyAuthOptions: the origin is server-configured, not supplied.
+    return this.post(
+      '/api/v1/user/passkey/register/options',
+      {},
+      { skipWorkspace: true },
+    );
+  }
+
+  public verifyPasskeyRegister(
+    challenge_token: string,
+    credential: any,
+    name?: string,
+  ): Promise<{ uuid: string; name: string; created_at?: string }> {
+    return this.post(
+      '/api/v1/user/passkey/register/verify',
+      { challenge_token, credential, name },
+      { skipWorkspace: true },
+    );
+  }
+
+  public getPasskeys(): Promise<
+    Array<{
+      uuid: string;
+      name: string;
+      aaguid?: string;
+      transports?: string;
+      backed_up?: boolean;
+      created_at?: string;
+      last_used_at?: string;
+    }>
+  > {
+    return this.get('/api/v1/user/passkeys', undefined, {
+      skipWorkspace: true,
+    });
+  }
+
+  public renamePasskey(
+    uuid: string,
+    name: string,
+  ): Promise<{ uuid: string; name: string }> {
+    return this.patch(
+      `/api/v1/user/passkey/${encodeURIComponent(uuid)}`,
+      { name },
+      { skipWorkspace: true },
+    );
+  }
+
+  public deletePasskey(uuid: string): Promise<void> {
+    return this.delete(`/api/v1/user/passkey/${encodeURIComponent(uuid)}`, {
+      skipWorkspace: true,
+    });
+  }
+
+  // ============ Workspace API ============
+  public getWorkspaceBootstrap(): Promise<WorkspaceBootstrapResponse> {
+    return this.get('/api/v1/workspaces/bootstrap', undefined, {
+      skipWorkspace: true,
+    });
+  }
+
+  public getWorkspaces(): Promise<{ workspaces: Workspace[] }> {
+    return this.get('/api/v1/workspaces', undefined, { skipWorkspace: true });
+  }
+
+  public getCurrentWorkspace(): Promise<CurrentWorkspace> {
+    return this.get('/api/v1/workspaces/current');
+  }
+
+  public getMessageQuota(): Promise<MessageQuota> {
+    return this.get('/api/v1/workspaces/current/message-quota');
+  }
+
+  public getWorkspace(
+    workspaceUuid: string,
+  ): Promise<{ workspace: Workspace }> {
+    return this.get(`/api/v1/workspaces/${workspaceUuid}`);
+  }
+
+  public getWorkspaceMembers(
+    workspaceUuid: string,
+  ): Promise<{ members: WorkspaceMembership[] }> {
+    return this.get(`/api/v1/workspaces/${workspaceUuid}/members`);
+  }
+
+  public createWorkspaceInvitation(
+    workspaceUuid: string,
+    email: string,
+    role: Exclude<WorkspaceRole, 'owner'>,
+  ): Promise<{
+    invitation: WorkspaceInvitation;
+    token: string;
+    link: string;
+    delivery: WorkspaceInvitationDelivery;
+  }> {
+    return this.post(`/api/v1/workspaces/${workspaceUuid}/invitations`, {
+      email,
+      role,
+    });
+  }
+
+  public getWorkspaceInvitations(
+    workspaceUuid: string,
+  ): Promise<{ invitations: WorkspaceInvitation[] }> {
+    return this.get(`/api/v1/workspaces/${workspaceUuid}/invitations`);
+  }
+
+  public revokeWorkspaceInvitation(
+    workspaceUuid: string,
+    invitationUuid: string,
+  ): Promise<object> {
+    return this.delete(
+      `/api/v1/workspaces/${workspaceUuid}/invitations/${invitationUuid}`,
+    );
+  }
+
+  public inspectWorkspaceInvitation(
+    token: string,
+  ): Promise<{ invitation: WorkspaceInvitation; workspace: Workspace }> {
+    return this.post(
+      '/api/v1/invitations/inspect',
+      { token },
+      { skipWorkspace: true },
+    );
+  }
+
+  public acceptWorkspaceInvitation(
+    token: string,
+    registration?: { email: string; password: string },
+  ): Promise<{ token: string; workspace_uuid: string }> {
+    return this.post(
+      '/api/v1/invitations/accept',
+      {
+        token,
+        registration,
+      },
+      { skipWorkspace: true },
+    );
+  }
+
+  public updateWorkspaceMemberRole(
+    workspaceUuid: string,
+    accountUuid: string,
+    role: WorkspaceRole,
+  ): Promise<{ member: WorkspaceMembership }> {
+    return this.patch(
+      `/api/v1/workspaces/${workspaceUuid}/members/${accountUuid}`,
+      { role },
+    );
+  }
+
+  public removeWorkspaceMember(
+    workspaceUuid: string,
+    accountUuid: string,
+  ): Promise<object> {
+    return this.delete(
+      `/api/v1/workspaces/${workspaceUuid}/members/${accountUuid}`,
+    );
+  }
+
+  // ============ Workspace governance / operation traceability ============
+
+  public getAlertSettings(): Promise<AlertSettingsResponse> {
+    return this.get('/api/v1/alerts/settings');
+  }
+
+  public updateAlertSettings(
+    settings: AlertSettings,
+  ): Promise<{ settings: AlertSettings }> {
+    return this.put('/api/v1/alerts/settings', settings);
+  }
+
+  public getAlertSummary(): Promise<AlertSummary> {
+    return this.get('/api/v1/alerts/summary');
+  }
+
+  public getAlertIncidents(
+    state?: 'firing' | 'resolved',
+  ): Promise<{ incidents: AlertIncident[] }> {
+    return this.get('/api/v1/alerts/incidents', state ? { state } : undefined);
+  }
+
+  public getAlertDeliveries(): Promise<{ deliveries: AlertDelivery[] }> {
+    return this.get('/api/v1/alerts/deliveries');
+  }
+
+  public sendTestAlert(): Promise<{ deliveries: AlertDelivery[] }> {
+    return this.post('/api/v1/alerts/test', {});
+  }
+
+  public getOperationGovernance(): Promise<OperationGovernance> {
+    return this.get('/api/v1/settings/governance');
+  }
+
+  public updateOperationGovernance(request: {
+    level: OperationLevel;
+    retention_days?: number;
+    max_rows?: number;
+    dedupe_window_seconds?: number;
+  }): Promise<OperationGovernance> {
+    return this.put('/api/v1/settings/governance', request);
+  }
+
+  public getOperationLogs(
+    query: OperationLogQuery = {},
+  ): Promise<OperationLogPage> {
+    return this.get('/api/v1/settings/operation-logs', query);
+  }
+
+  public getOperationLogFilters(): Promise<OperationLogFilters> {
+    return this.get('/api/v1/settings/operation-logs/filters');
+  }
+
+  /**
+   * Build the export URL so the browser can download the CSV attachment
+   * directly; axios would try to parse the response body as JSON.
+   */
+  public buildOperationLogExportURL(query: OperationLogQuery = {}): string {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined || value === null || value === '') continue;
+      params.set(key, String(value));
+    }
+    const suffix = params.toString();
+    // A base of "/" means "same origin". Appending the path directly produced
+    // a protocol-relative "//api/..." URL, which a browser reads as the host
+    // "api" — the export request then never reached the backend. Resolve the
+    // base to the current origin first, mirroring the other URL builders here.
+    const apiBase =
+      this.instance.defaults.baseURL === '/' || !this.instance.defaults.baseURL
+        ? window.location.origin
+        : this.instance.defaults.baseURL.replace(/\/$/, '');
+    return `${apiBase}/api/v1/settings/operation-logs/export${
+      suffix ? `?${suffix}` : ''
+    }`;
+  }
+
+  public setPassword(
+    newPassword: string,
+    currentPassword?: string,
+  ): Promise<{ user: string }> {
+    return this.post(
+      '/api/v1/user/set-password',
+      {
+        new_password: newPassword,
+        current_password: currentPassword,
+      },
+      { skipWorkspace: true },
+    );
+  }
+
+  public async bindSpaceAccount(
+    code: string,
+    state: string,
+    redirectUri: string,
+  ): Promise<{
+    token: string;
+    user: string;
+    account_type: 'local' | 'space';
+  }> {
+    const response = await this.instance.post(
+      '/api/v1/user/bind-space',
+      { code, state, redirect_uri: redirectUri },
+      { skipWorkspace: true } as RequestConfig,
+    );
+    if (response.data.code !== 0) {
+      throw {
+        code: response.data.code,
+        msg: response.data.msg || 'Unknown error',
+      };
+    }
+    return response.data.data;
+  }
+
+  // ============ Space OAuth API (Redirect Flow) ============
+  public getSpaceAuthorizeUrl(redirectUri: string): Promise<{
+    authorize_url: string;
+  }> {
+    return this.get(
+      '/api/v1/user/space/authorize-url',
+      { redirect_uri: redirectUri },
+      { skipWorkspace: true },
+    );
+  }
+
+  public getSpaceBindAuthorizeUrl(redirectUri: string): Promise<{
+    authorize_url: string;
+  }> {
+    return this.get(
+      '/api/v1/user/space/bind-authorize-url',
+      { redirect_uri: redirectUri },
+      { skipWorkspace: true },
+    );
+  }
+
+  public async exchangeSpaceOAuthCode(
+    code: string,
+    state: string,
+    redirectUri: string,
+    workspaceUuid?: string,
+    launchAssertion?: string,
+  ): Promise<{
+    token: string;
+    user?: string;
+    workspace_uuid?: string;
+    principal_type?: 'account' | 'support_admin';
+    actor_account_uuid?: string;
+  }> {
+    const response = await this.instance.post(
+      '/api/v1/user/space/callback',
+      {
+        code,
+        state,
+        redirect_uri: redirectUri,
+        workspace_uuid: workspaceUuid,
+        launch_assertion: launchAssertion,
+      },
+      { skipWorkspace: true } as RequestConfig,
+    );
+    if (response.data.code !== 0) {
+      throw {
+        code: response.data.code,
+        msg: response.data.msg || 'Unknown error',
+      };
+    }
+    return response.data.data;
+  }
+
+  // ============ Monitoring API ============
+  public getMonitoringData(params: {
+    mode?: ExecutionModeFilter;
+    status?: string[];
+    botId?: string[];
+    pipelineId?: string[];
+    startTime?: string;
+    endTime?: string;
+    limit?: number;
+  }): Promise<{
+    traffic?: {
+      bucket: 'hour' | 'day';
+      points: Array<{ timestamp: string; messages: number; llm_calls: number }>;
+      truncated: boolean;
+    };
+    overview: {
+      total_messages: number;
+      llm_calls: number;
+      embedding_calls: number;
+      model_calls: number;
+      success_rate: number;
+      active_sessions: number;
+    };
+    messages: Array<{
+      id: string;
+      timestamp: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      message_content: string;
+      session_id: string;
+      status: string;
+      level: string;
+      platform?: string;
+      user_id?: string;
+      user_name?: string;
+      runner_name?: string;
+      variables?: string;
+      role?: string;
+    }>;
+    llmCalls: Array<{
+      id: string;
+      timestamp: string;
+      model_name: string;
+      input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+      duration: number;
+      cost?: number;
+      status: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      session_id?: string;
+      error_message?: string;
+      message_id?: string;
+    }>;
+    toolCalls: Array<{
+      id: string;
+      timestamp: string;
+      tool_name: string;
+      tool_source: string;
+      duration: number;
+      status: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      session_id?: string;
+      message_id?: string;
+      arguments?: string;
+      result?: string;
+      error_message?: string;
+    }>;
+    embeddingCalls: Array<{
+      id: string;
+      timestamp: string;
+      model_name: string;
+      prompt_tokens: number;
+      total_tokens: number;
+      duration: number;
+      input_count: number;
+      status: string;
+      error_message?: string;
+      knowledge_base_id?: string;
+      query_text?: string;
+      session_id?: string;
+      message_id?: string;
+      call_type?: string;
+    }>;
+    sessions: Array<{
+      session_id: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      message_count: number;
+      last_activity: string;
+      start_time: string;
+      platform?: string;
+      user_id?: string;
+      user_name?: string;
+    }>;
+    errors: Array<{
+      id: string;
+      timestamp: string;
+      error_type: string;
+      error_message: string;
+      bot_id: string;
+      bot_name: string;
+      pipeline_id: string;
+      pipeline_name: string;
+      session_id?: string;
+      stack_trace?: string;
+      message_id?: string;
+    }>;
+    totalCount: {
+      messages: number;
+      llmCalls: number;
+      toolCalls?: number;
+      embeddingCalls: number;
+      sessions: number;
+      errors: number;
+    };
+  }> {
+    const queryParams = new URLSearchParams();
+    if (params.mode) queryParams.append('mode', params.mode);
+    params.status?.forEach((status) => queryParams.append('status', status));
+    if (params.botId) {
+      params.botId.forEach((id) => queryParams.append('botId', id));
+    }
+    if (params.pipelineId) {
+      params.pipelineId.forEach((id) => queryParams.append('pipelineId', id));
+    }
+    if (params.startTime) {
+      queryParams.append('startTime', params.startTime);
+    }
+    if (params.endTime) {
+      queryParams.append('endTime', params.endTime);
+    }
+    if (params.limit) {
+      queryParams.append('limit', params.limit.toString());
+    }
+
+    return this.get(`/api/v1/monitoring/data?${queryParams.toString()}`);
+  }
+
+  public async streamInflight(
+    onFrame: (frame: InflightFrame) => void,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const response = await this.instance.get<ReadableStream<Uint8Array>>(
+      '/api/v1/monitoring/in-flight/stream',
+      {
+        adapter: 'fetch',
+        responseType: 'stream',
+        timeout: 0,
+        signal,
+        headers: { Accept: 'text/event-stream' },
+      },
+    );
+    const reader = response.data.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      while (!signal.aborted) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let end: number;
+        while ((end = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          if (frame.startsWith('data: '))
+            onFrame(JSON.parse(frame.slice(6)) as InflightFrame);
+        }
+        if (buffer.length > 2_000_000)
+          throw new Error('Monitoring frame exceeds limit');
+      }
+    } finally {
+      await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
+    }
+  }
+
+  public getExecutions(params: {
+    botId?: string[];
+    pipelineId?: string[];
+    agentId?: string[];
+    status?: string[];
+    source?: ExecutionSourceFilter;
+    mode?: ExecutionModeFilter;
+    startTime?: string;
+    endTime?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<ExecutionListResult> {
+    const queryParams = new URLSearchParams();
+    if (params.botId) {
+      params.botId.forEach((id) => queryParams.append('botId', id));
+    }
+    if (params.pipelineId) {
+      params.pipelineId.forEach((id) => queryParams.append('pipelineId', id));
+    }
+    if (params.agentId) {
+      params.agentId.forEach((id) => queryParams.append('agentId', id));
+    }
+    if (params.status) {
+      params.status.forEach((status) => queryParams.append('status', status));
+    }
+    if (params.source) {
+      queryParams.append('source', params.source);
+    }
+    if (params.mode) {
+      queryParams.append('mode', params.mode);
+    }
+    if (params.startTime) {
+      queryParams.append('startTime', params.startTime);
+    }
+    if (params.endTime) {
+      queryParams.append('endTime', params.endTime);
+    }
+    if (params.limit) {
+      queryParams.append('limit', params.limit.toString());
+    }
+    if (params.offset) {
+      queryParams.append('offset', params.offset.toString());
+    }
+
+    return this.get(`/api/v1/monitoring/executions?${queryParams.toString()}`);
+  }
+
+  /** Count-only read of the current Workspace's executions (no aggregates). */
+  public async getExecutionTotal(params: {
+    source: ExecutionSourceFilter;
+    mode?: ExecutionModeFilter;
+  }): Promise<number> {
+    const queryParams = new URLSearchParams({
+      source: params.source,
+      mode: params.mode ?? 'all',
+      limit: '1',
+      summary: 'false',
+    });
+    const result = await this.get<{ total: number }>(
+      `/api/v1/monitoring/executions?${queryParams.toString()}`,
+    );
+    return Number(result?.total) || 0;
+  }
+
+  public getExecutionDetail(
+    source: ExecutionSource | 'auto',
+    executionId: string,
+    options: { section?: string; offset?: number; limit?: number } = {},
+  ): Promise<ExecutionDetail> {
+    const params = new URLSearchParams(
+      Object.entries(options).map(([key, value]) => [key, String(value)]),
+    );
+    return this.get(
+      `/api/v1/monitoring/executions/${encodeURIComponent(source)}/${encodeURIComponent(executionId)}?${params}`,
+    );
+  }
+
+  public getMonitoringOverview(params: {
+    botId?: string[];
+    pipelineId?: string[];
+    startTime?: string;
+    endTime?: string;
+  }): Promise<{
+    total_messages: number;
+    llm_calls: number;
+    success_rate: number;
+    active_sessions: number;
+  }> {
+    const queryParams = new URLSearchParams();
+    if (params.botId) {
+      params.botId.forEach((id) => queryParams.append('botId', id));
+    }
+    if (params.pipelineId) {
+      params.pipelineId.forEach((id) => queryParams.append('pipelineId', id));
+    }
+    if (params.startTime) {
+      queryParams.append('startTime', params.startTime);
+    }
+    if (params.endTime) {
+      queryParams.append('endTime', params.endTime);
+    }
+
+    return this.get(`/api/v1/monitoring/overview?${queryParams.toString()}`);
+  }
+
+  public getTokenStatistics(params: {
+    mode?: ExecutionModeFilter;
+    status?: string[];
+    botId?: string[];
+    pipelineId?: string[];
+    startTime?: string;
+    endTime?: string;
+    bucket?: 'hour' | 'day';
+  }): Promise<{
+    summary: {
+      total_calls: number;
+      success_calls: number;
+      error_calls: number;
+      total_input_tokens: number;
+      total_output_tokens: number;
+      total_tokens: number;
+      total_cost: number;
+      avg_tokens_per_call: number;
+      avg_duration_ms: number;
+      avg_tokens_per_second: number;
+      zero_token_success_calls: number;
+    };
+    by_model: Array<{
+      model_name: string;
+      calls: number;
+      error_calls: number;
+      input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+      cost: number;
+      avg_tokens_per_call: number;
+      avg_duration_ms: number;
+    }>;
+    timeseries: Array<{
+      bucket: string;
+      input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+      calls: number;
+    }>;
+    bucket: string;
+  }> {
+    const queryParams = new URLSearchParams();
+    if (params.mode) queryParams.append('mode', params.mode);
+    params.status?.forEach((status) => queryParams.append('status', status));
+    if (params.botId) {
+      params.botId.forEach((id) => queryParams.append('botId', id));
+    }
+    if (params.pipelineId) {
+      params.pipelineId.forEach((id) => queryParams.append('pipelineId', id));
+    }
+    if (params.startTime) {
+      queryParams.append('startTime', params.startTime);
+    }
+    if (params.endTime) {
+      queryParams.append('endTime', params.endTime);
+    }
+    if (params.bucket) {
+      queryParams.append('bucket', params.bucket);
+    }
+
+    return this.get(
+      `/api/v1/monitoring/token-statistics?${queryParams.toString()}`,
+    );
+  }
+
+  // ============ Survey API ============
+  public getSurveyPending(): Promise<{
+    survey: {
+      survey_id: string;
+      version: number;
+      title: Record<string, string>;
+      description: Record<string, string>;
+      questions: SurveyQuestion[];
+    } | null;
+  }> {
+    return this.get('/api/v1/survey/pending');
+  }
+
+  public submitSurveyResponse(
+    surveyId: string,
+    answers: Record<string, unknown>,
+    completed: boolean = true,
+  ): Promise<object> {
+    return this.post('/api/v1/survey/respond', {
+      survey_id: surveyId,
+      answers,
+      completed,
+    });
+  }
+
+  public dismissSurvey(surveyId: string): Promise<object> {
+    return this.post('/api/v1/survey/dismiss', { survey_id: surveyId });
+  }
+
+  public submitFeedback(data: {
+    content: string;
+    attachments?: Array<{
+      name: string;
+      mime_type: string;
+      data_url: string;
+    }>;
+  }): Promise<object> {
+    return this.post('/api/v1/survey/feedback', data);
+  }
+
+  // ============ Skills API ============
+
+  public getSkills(): Promise<ApiRespSkills> {
+    return this.get('/api/v1/skills');
+  }
+
+  public getSkill(name: string): Promise<ApiRespSkill> {
+    return this.get(`/api/v1/skills/${name}`);
+  }
+
+  public createSkill(
+    skill: Omit<Skill, 'name'> & { name: string },
+  ): Promise<ApiRespSkill> {
+    return this.post('/api/v1/skills', skill);
+  }
+
+  public updateSkill(
+    name: string,
+    skill: Partial<Skill> & { base_revision: string },
+  ): Promise<ApiRespSkill> {
+    return this.put(`/api/v1/skills/${name}`, skill);
+  }
+
+  public deleteSkill(name: string): Promise<object> {
+    return this.delete(`/api/v1/skills/${name}`);
+  }
+
+  public previewSkill(name: string): Promise<{ instructions: string }> {
+    return this.get(`/api/v1/skills/${name}/preview`);
+  }
+
+  public getSkillIndex(pipelineUuid?: string): Promise<{ index: string }> {
+    const params = pipelineUuid ? { pipeline_uuid: pipelineUuid } : {};
+    return this.get('/api/v1/skills/index', params);
+  }
+
+  public listSkillFiles(
+    skillName: string,
+    path: string = '.',
+    includeHidden: boolean = false,
+  ): Promise<{
+    skill: { name: string };
+    base_path: string;
+    entries: Array<{
+      path: string;
+      name: string;
+      is_dir: boolean;
+      size: number | null;
+    }>;
+    truncated: boolean;
+  }> {
+    return this.get(`/api/v1/skills/${skillName}/files`, {
+      path,
+      include_hidden: includeHidden,
+    });
+  }
+
+  public readSkillFile(
+    skillName: string,
+    filePath: string,
+  ): Promise<{
+    skill: { name: string };
+    path: string;
+    content: string;
+  }> {
+    return this.get(`/api/v1/skills/${skillName}/files/${filePath}`);
+  }
+
+  public writeSkillFile(
+    skillName: string,
+    filePath: string,
+    content: string,
+    baseRevision: string,
+  ): Promise<{
+    skill: { name: string };
+    path: string;
+    bytes_written: number;
+  }> {
+    return this.put(`/api/v1/skills/${skillName}/files/${filePath}`, {
+      content,
+      base_revision: baseRevision,
+    });
+  }
+}
+
+export interface SurveyQuestion {
+  id: string;
+  type: 'single_select' | 'multi_select' | 'text';
+  title: Record<string, string>;
+  subtitle?: Record<string, string>;
+  required: boolean;
+  options?: SurveyOption[];
+  placeholder?: Record<string, string>;
+  max_length?: number;
+}
+
+export interface SurveyOption {
+  id: string;
+  label: Record<string, string>;
+  has_input?: boolean;
+}

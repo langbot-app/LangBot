@@ -1,0 +1,38 @@
+{
+  "id": "qa-agent-runner-behaviors",
+  "behaviors": [
+    {
+      "name": "ok",
+      "results": [
+        {"type": "message.completed", "data": {"message": {"role": "assistant", "content": "QA_RUNNER_OK"}}},
+        {"type": "run.completed", "data": {"finish_reason": "stop"}}
+      ]
+    },
+    {
+      "name": "stream_ok",
+      "results": [
+        {"type": "message.delta", "data": {"chunk": {"role": "assistant", "content": "QA_"}}},
+        {"type": "message.delta", "data": {"chunk": {"role": "assistant", "content": "RUNNER_STREAM_OK"}}},
+        {"type": "run.completed", "data": {"finish_reason": "stop"}}
+      ]
+    },
+    {
+      "name": "empty_output",
+      "results": [
+        {"type": "run.completed", "data": {"finish_reason": "stop"}}
+      ]
+    },
+    {
+      "name": "malformed_result",
+      "results": [
+        {"type": "message.completed", "data": {}}
+      ]
+    },
+    {
+      "name": "controlled_failure",
+      "results": [
+        {"type": "run.failed", "data": {"error": "QA runner controlled failure", "code": "qa.failure", "retryable": false}}
+      ]
+    }
+  ]
+}

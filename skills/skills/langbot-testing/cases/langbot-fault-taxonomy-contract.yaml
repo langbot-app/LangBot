@@ -1,0 +1,35 @@
+id: langbot-fault-taxonomy-contract
+title: "LangBot fault taxonomy and cleanup contract"
+mode: probe
+area: reliability
+type: chaos
+priority: p1
+risk: medium
+ci_eligible: true
+tags:
+  - reliability
+  - chaos
+  - contract
+  - synthetic
+skills:
+  - langbot-testing
+automation: skills/langbot-testing/probes/langbot-fault-taxonomy-contract.mjs
+fault_model_json: '{"kind":"taxonomy-contract","destructive":false,"scenarios":["provider-timeout","plugin-runtime-disconnect","mcp-stdio-server-exit","operator-missing-login","transient-marketplace-timeout"]}'
+steps:
+  - "Run `rtk bin/lbs test run langbot-fault-taxonomy-contract --dry-run` first; remove `--dry-run` after checking the evidence directory."
+  - "Automation validates that representative fault scenarios declare target, injected fault, expected status, recovery check, and cleanup."
+  - "Review metrics.json, fault-model.json, and automation-result.json under LBS_EVIDENCE_DIR."
+checks:
+  - "automation-result.json status is pass."
+  - "Every scenario has an expected status in pass, fail, blocked, env_issue, or flaky."
+  - "Every scenario declares a cleanup action and recovery check."
+evidence_required:
+  - metrics
+  - filesystem
+diagnostics:
+  - "This is a non-destructive taxonomy contract probe; it does not inject real runtime faults."
+  - "Use it as a gate before adding live chaos cases that kill runtimes, route traffic through a proxy, or disrupt a backend dependency."
+success_patterns:
+  - "Fault taxonomy contract declares status"
+failure_patterns:
+  - "missing required scenario fields"

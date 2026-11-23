@@ -1,0 +1,515 @@
+"""Tests for RuntimeConnectionHandler helper functions.
+
+Tests handler helper methods that don't require full handler setup.
+"""
+
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, Mock
+import pytest
+
+from tests.utils.plugin_installations import install_legacy_plugin
+
+from langbot_plugin.entities.io.actions.enums import CommonAction, LangBotToRuntimeAction, PluginToRuntimeAction
+from langbot_plugin.entities.io.context import (
+    ActionContext,
+    InstallationBinding,
+    PluginExecutionMode,
+    PluginInstallationDesiredState,
+)
+
+pytestmark = pytest.mark.usefixtures('installed_legacy_plugin')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'action', [PluginToRuntimeAction.RETRIEVE_KNOWLEDGE, PluginToRuntimeAction.RETRIEVE_KNOWLEDGE_BASE]
+)
+async def test_knowledge_retrieval_counts_on_the_authorized_run(monkeypatch, action):
+    from langbot.pkg.telemetry import trace
+    from tests.unit_tests.telemetry.test_trace import make_counters
+
+    _, counters = make_counters()
+    state = trace.TraceState('event')
+    counters.register_trace(state, 'run')
+    query = SimpleNamespace(
+        session=SimpleNamespace(launcher_type=SimpleNamespace(value='group'), launcher_id='group'),
+        bot_uuid='bot',
+        sender_id='sender',
+    )
+    app = SimpleNamespace(
+        telemetry=SimpleNamespace(execution=counters),
+        logger=Mock(),
+        rag_mgr=SimpleNamespace(
+            get_knowledge_base_by_uuid=AsyncMock(return_value=SimpleNamespace(retrieve=AsyncMock(return_value=[])))
+        ),
+    )
+    monkeypatch.setattr('langbot.pkg.plugin.handler._validate_run_authorization', AsyncMock(return_value=({}, None)))
+    monkeypatch.setattr('langbot.pkg.plugin.handler._resolve_action_query', Mock(return_value=query))
+    from langbot.pkg.agent.runner.session_registry import get_session_registry
+    from tests.unit_tests.plugin.test_handler_actions import make_agent_resources
+
+    # The execution facade only admits runs owned by the calling installation.
+    registry = get_session_registry()
+    await registry.register(
+        workspace_id='workspace-a',
+        run_id='run',
+        runner_id='plugin:test-author/test-plugin/default',
+        query_id=None,
+        plugin_identity='test-author/test-plugin',
+        resources=make_agent_resources(),
+    )
+    runtime_handler = make_handler(app)
+    try:
+        response = await runtime_handler.actions[action.value](
+            {'run_id': 'run', 'kb_id': 'kb', 'query_text': 'private query'}
+        )
+    finally:
+        await registry.unregister('run')
+    assert response.code == 0, response.message
+    assert state.features == {'kb': {'retrievals': 1}}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('group_context', 'expected'),
+    [
+        # Member isolation is the default when the Chat has no setting.
+        (None, 'groupmember_7_guild-a_user-a'),
+        ('member', 'groupmember_7_guild-a_user-a'),
+        ('group', 'group_guild-a'),
+    ],
+)
+async def test_plugin_reset_clears_runner_history_in_the_authorized_scope(monkeypatch, group_context, expected):
+    reset = AsyncMock()
+    monkeypatch.setattr('langbot.pkg.agent.runner.context_reset.reset_runner_context', reset)
+    transactions = []
+
+    @asynccontextmanager
+    async def tenant_uow(workspace):
+        transactions.append(workspace)
+        yield
+
+    query = SimpleNamespace(
+        bot_uuid='bot-a',
+        launcher_type=SimpleNamespace(value='group'),
+        launcher_id='guild-a',
+        sender_id='user-a',
+        variables={},
+        session=SimpleNamespace(using_conversation=SimpleNamespace(uuid=None)),
+        pipeline_config={'ai': {'runner': {'group-context': group_context}}} if group_context else None,
+    )
+    app = SimpleNamespace(
+        query_pool=SimpleNamespace(cached_queries={'query-a': query}),
+        persistence_mgr=SimpleNamespace(tenant_uow=tenant_uow),
+        logger=SimpleNamespace(debug=Mock(), warning=Mock()),
+    )
+    h = make_handler(app)
+    response = await h.actions[PluginToRuntimeAction.CREATE_NEW_CONVERSATION.value]({'query_id': 'query-a'})
+    assert response.code == 0
+    reset.assert_awaited_once_with(app.persistence_mgr, 'workspace-a', 'bot-a', expected)
+    assert transactions == ['workspace-a']
+    assert query.session.using_conversation is None
+
+
+def make_handler(app):
+    """Create a RuntimeConnectionHandler with mocked external connection."""
+    from langbot.pkg.plugin.handler import RuntimeConnectionHandler
+
+    workspace_context = ActionContext(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=1,
+    )
+    app.workspace_service = SimpleNamespace(
+        get_execution_binding=AsyncMock(
+            return_value=SimpleNamespace(
+                instance_uuid=workspace_context.instance_uuid,
+                workspace_uuid=workspace_context.workspace_uuid,
+                placement_generation=workspace_context.placement_generation,
+            )
+        )
+    )
+    runtime_handler = RuntimeConnectionHandler(
+        Mock(),
+        AsyncMock(return_value=True),
+        app,
+    )
+    installation_binding = InstallationBinding(
+        **workspace_context.model_dump(exclude_none=True),
+        installation_uuid='00000000-0000-4000-8000-000000000001',
+        runtime_revision=1,
+        artifact_digest='a' * 64,
+    )
+    runtime_handler.register_installation_binding(
+        installation_binding,
+        plugin_author='test-author',
+        plugin_name='test-plugin',
+    )
+    runtime_handler._current_action_context.set(installation_binding)
+    install_legacy_plugin(app, installation_binding, 'test-author', 'test-plugin')
+    query_pool = getattr(app, 'query_pool', None)
+    if query_pool is not None and hasattr(query_pool, 'cached_queries'):
+
+        def scoped_query(query):
+            if query is not None:
+                query.instance_uuid = workspace_context.instance_uuid
+                query.workspace_uuid = workspace_context.workspace_uuid
+                query.placement_generation = workspace_context.placement_generation
+            return query
+
+        query_pool.get_query = AsyncMock(
+            side_effect=lambda workspace_uuid, query_uuid: scoped_query(query_pool.cached_queries.get(query_uuid))
+        )
+        query_pool.get_query_by_legacy_id = AsyncMock(
+            side_effect=lambda workspace_uuid, query_id: scoped_query(query_pool.cached_queries.get(query_id))
+        )
+    return runtime_handler
+
+
+@pytest.mark.asyncio
+async def test_reconcile_plugin_installations_allows_cloud_cold_start_to_finish():
+    app = SimpleNamespace()
+    runtime_handler = make_handler(app)
+    runtime_handler.call_action = AsyncMock(return_value={})
+    binding = next(iter(runtime_handler._installation_bindings.values()))[0]
+    desired = PluginInstallationDesiredState(binding=binding, enabled=True)
+
+    await runtime_handler.reconcile_plugin_installations((desired,))
+
+    assert runtime_handler.call_action.await_args.args[0] == LangBotToRuntimeAction.RECONCILE_PLUGIN_INSTALLATIONS
+    assert runtime_handler.call_action.await_args.kwargs['timeout'] == 300
+
+
+@pytest.mark.asyncio
+async def test_reconcile_plugin_installations_accepts_configured_cold_start_timeout():
+    runtime_handler = make_handler(SimpleNamespace())
+    runtime_handler.call_action = AsyncMock(return_value={})
+    binding = next(iter(runtime_handler._installation_bindings.values()))[0]
+    desired = PluginInstallationDesiredState(binding=binding, enabled=True)
+
+    await runtime_handler.reconcile_plugin_installations((desired,), timeout=900)
+
+    assert runtime_handler.call_action.await_args.kwargs['timeout'] == 900
+
+
+@pytest.mark.asyncio
+async def test_apply_plugin_installation_serializes_certified_shared_execution_mode():
+    runtime_handler = make_handler(SimpleNamespace())
+    runtime_handler.send_file = AsyncMock(return_value='artifact-file')
+    runtime_handler.call_action = AsyncMock(return_value={'state': 'starting'})
+    binding = next(iter(runtime_handler._installation_bindings.values()))[0]
+
+    await runtime_handler.apply_plugin_installation(
+        binding,
+        artifact_package=b'package',
+        enabled=True,
+        execution_mode=PluginExecutionMode.SHARED_CERTIFIED,
+    )
+
+    assert runtime_handler.call_action.await_args.args[0] == LangBotToRuntimeAction.APPLY_PLUGIN_INSTALLATION
+    assert runtime_handler.call_action.await_args.args[1]['execution_mode'] == 'shared-runtime-v1'
+
+
+class TestHandlerQueryVariables:
+    """Tests for handler query variable logic."""
+
+    @pytest.fixture
+    def mock_app(self):
+        """Create mock app with query pool."""
+        app = SimpleNamespace()
+
+        app.query_pool = SimpleNamespace()
+        app.query_pool.cached_queries = {}
+
+        app.logger = SimpleNamespace()
+        app.logger.debug = MagicMock()
+        app.logger.warning = MagicMock()
+
+        return app
+
+    @pytest.mark.asyncio
+    async def test_set_query_var_query_not_found(self, mock_app):
+        """Test set_query_var returns error when query not found."""
+        runtime_handler = make_handler(mock_app)
+
+        response = await runtime_handler.actions[PluginToRuntimeAction.SET_QUERY_VAR.value](
+            {
+                'query_id': 'nonexistent-query',
+                'key': 'test_var',
+                'value': 'test_value',
+            }
+        )
+
+        assert response.code != 0
+        assert 'nonexistent-query' in response.message
+
+    @pytest.mark.asyncio
+    async def test_set_query_var_success(self, mock_app):
+        """Test set_query_var sets variable on existing query."""
+        runtime_handler = make_handler(mock_app)
+        mock_query = SimpleNamespace()
+        mock_query.variables = {}
+
+        mock_app.query_pool.cached_queries['test-query'] = mock_query
+
+        response = await runtime_handler.actions[PluginToRuntimeAction.SET_QUERY_VAR.value](
+            {
+                'query_id': 'test-query',
+                'key': 'test_var',
+                'value': 'test_value',
+            }
+        )
+
+        assert response.code == 0
+        assert mock_query.variables['test_var'] == 'test_value'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        'key',
+        [
+            '_host_box_scope',
+            '_host_configured_knowledge_base_uuids',
+            '_host_tool_source_refs',
+            '_pipeline_bound_plugins',
+            '_pipeline_bound_mcp_servers',
+            '_pipeline_bound_skills',
+            '_pipeline_mcp_resource_attachments',
+            '_pipeline_mcp_resource_agent_read_enabled',
+            '_activated_skills',
+            '_fallback_model_uuids',
+            '_monitoring_message_id',
+            '_sandbox_outbound_collected',
+            '_authorized_models',
+            '_permission_tools',
+            '_routed_by_rule',
+        ],
+    )
+    async def test_set_query_var_rejects_host_reserved_keys(self, mock_app, key):
+        runtime_handler = make_handler(mock_app)
+        original_variables = {key: 'host-owned'}
+        mock_query = SimpleNamespace(variables=original_variables.copy())
+        mock_app.query_pool.cached_queries['test-query'] = mock_query
+
+        response = await runtime_handler.actions[PluginToRuntimeAction.SET_QUERY_VAR.value](
+            {
+                'query_id': 'test-query',
+                'key': key,
+                'value': 'plugin-overwrite',
+            }
+        )
+
+        assert response.code != 0
+        assert response.message == f'Query variable {key!r} is reserved for LangBot Host'
+        assert mock_query.variables == original_variables
+        mock_app.logger.warning.assert_called_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        'key',
+        [
+            'business_context',
+            '_ltm_context',
+            '_knowledge_base_uuids',
+            '_skill_authoring_post_response_candidate',
+        ],
+    )
+    async def test_set_query_var_keeps_plugin_business_variables_writable(self, mock_app, key):
+        runtime_handler = make_handler(mock_app)
+        mock_query = SimpleNamespace(variables={})
+        mock_app.query_pool.cached_queries['test-query'] = mock_query
+
+        response = await runtime_handler.actions[PluginToRuntimeAction.SET_QUERY_VAR.value](
+            {
+                'query_id': 'test-query',
+                'key': key,
+                'value': {'plugin': 'value'},
+            }
+        )
+
+        assert response.code == 0
+        assert mock_query.variables[key] == {'plugin': 'value'}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('key', ['', None, 7])
+    async def test_set_query_var_rejects_invalid_key_shapes(self, mock_app, key):
+        runtime_handler = make_handler(mock_app)
+        mock_query = SimpleNamespace(variables={})
+        mock_app.query_pool.cached_queries['test-query'] = mock_query
+
+        response = await runtime_handler.actions[PluginToRuntimeAction.SET_QUERY_VAR.value](
+            {
+                'query_id': 'test-query',
+                'key': key,
+                'value': 'value',
+            }
+        )
+
+        assert response.code != 0
+        assert response.message == 'Query variable key must be a non-empty string'
+        assert mock_query.variables == {}
+
+    @pytest.mark.asyncio
+    async def test_get_query_var_success(self, mock_app):
+        """Test get_query_var retrieves variable from query."""
+        runtime_handler = make_handler(mock_app)
+        mock_query = SimpleNamespace()
+        mock_query.variables = {'existing_var': 'existing_value'}
+
+        mock_app.query_pool.cached_queries['test-query'] = mock_query
+
+        response = await runtime_handler.actions[PluginToRuntimeAction.GET_QUERY_VAR.value](
+            {
+                'query_id': 'test-query',
+                'key': 'existing_var',
+            }
+        )
+
+        assert response.code == 0
+        assert response.data == {'value': 'existing_value'}
+
+    @pytest.mark.asyncio
+    async def test_get_query_vars_multiple(self, mock_app):
+        """Test get_query_vars returns the query's variable mapping."""
+        runtime_handler = make_handler(mock_app)
+        mock_query = SimpleNamespace()
+        mock_query.variables = {'var1': 'val1', 'var2': 'val2', 'var3': 'val3'}
+
+        mock_app.query_pool.cached_queries['test-query'] = mock_query
+
+        response = await runtime_handler.actions[PluginToRuntimeAction.GET_QUERY_VARS.value](
+            {
+                'query_id': 'test-query',
+            }
+        )
+
+        assert response.code == 0
+        assert response.data == {'vars': mock_query.variables}
+
+
+class TestHandlerRagErrorResponse:
+    """Tests for _make_rag_error_response helper."""
+
+    def test_make_rag_error_response_basic(self):
+        """Test basic error response creation."""
+        from langbot.pkg.plugin.handler import _make_rag_error_response
+
+        error = Exception('test error')
+        response = _make_rag_error_response(error, 'TestError')
+
+        # ActionResponse is a pydantic model, check message field
+        assert 'TestError' in response.message
+        assert 'test error' in response.message
+        assert 'Exception' in response.message
+
+    def test_make_rag_error_response_with_context(self):
+        """Test error response with extra context."""
+        from langbot.pkg.plugin.handler import _make_rag_error_response
+
+        error = ValueError('invalid input')
+        response = _make_rag_error_response(error, 'ValidationError', field='name', value='test')
+
+        assert 'ValidationError' in response.message
+        assert 'field=name' in response.message
+        assert 'value=test' in response.message
+        assert 'ValueError' in response.message
+
+    def test_make_rag_error_response_exception_type(self):
+        """Test error response includes exception type."""
+        from langbot.pkg.plugin.handler import _make_rag_error_response
+
+        error = RuntimeError('connection failed')
+        response = _make_rag_error_response(error, 'ConnectionError')
+
+        assert 'RuntimeError' in response.message
+        assert 'ConnectionError' in response.message
+        assert 'connection failed' in response.message
+
+    def test_make_rag_error_response_empty_context(self):
+        """Test error response with no extra context."""
+        from langbot.pkg.plugin.handler import _make_rag_error_response
+
+        error = KeyError('missing_key')
+        response = _make_rag_error_response(error, 'LookupError')
+
+        # No context parts means no brackets
+        assert '[' in response.message  # Still has error type bracket
+        assert 'KeyError' in response.message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('action', [CommonAction.STREAM_ACK, CommonAction.CANCEL_ACTION])
+async def test_stream_control_actions_bypass_capability_authorization(action):
+    """Stream acks and cancellations ride on the plugin's own authorized action."""
+    app = SimpleNamespace(logger=Mock())
+    runtime_handler = make_handler(app)
+    response = await runtime_handler.actions[action.value]({'seq_id': 404, 'index': 0})
+    assert response.code == 0, response.message
+
+
+class TestHandlerPluginDiagnostic:
+    @pytest.mark.asyncio
+    async def test_notify_plugin_diagnostic_falls_back_to_raw_protocol_action(self):
+        """Diagnostic forwarding works before the SDK enum exists."""
+        app = SimpleNamespace()
+        app.logger = SimpleNamespace(debug=MagicMock())
+        runtime_handler = make_handler(app)
+        runtime_handler.call_action = AsyncMock(return_value={})
+
+        payload = {'code': 'response_delivery_failed'}
+        await runtime_handler.notify_plugin_diagnostic(payload)
+
+        action = runtime_handler.call_action.await_args.args[0]
+        assert action.value == 'plugin_diagnostic'
+        assert runtime_handler.call_action.await_args.args[1] is payload
+        assert runtime_handler.call_action.await_args.kwargs['timeout'] == 5
+
+    def test_langbot_to_runtime_action_uses_enum_when_available(self):
+        """The compatibility helper should prefer SDK enums once available."""
+        from langbot.pkg.plugin import handler as plugin_handler
+
+        sentinel = object()
+        original = plugin_handler.LangBotToRuntimeAction
+        plugin_handler.LangBotToRuntimeAction = SimpleNamespace(PLUGIN_DIAGNOSTIC=sentinel)
+        try:
+            assert plugin_handler._langbot_to_runtime_action('PLUGIN_DIAGNOSTIC', 'plugin_diagnostic') is sentinel
+        finally:
+            plugin_handler.LangBotToRuntimeAction = original
+
+
+class TestHandlerKnowledgeRetrieval:
+    @pytest.mark.asyncio
+    async def test_retrieve_knowledge_allows_runtime_to_finish_inner_timeout(self):
+        app = SimpleNamespace()
+        runtime_handler = make_handler(app)
+        runtime_handler.call_action = AsyncMock(return_value={'results': []})
+
+        result = await runtime_handler.retrieve_knowledge(
+            'langbot-team',
+            'LangRAG',
+            '',
+            {'query': 'sentinel'},
+        )
+
+        assert result == {'results': []}
+        assert runtime_handler.call_action.await_args.kwargs['timeout'] == 180
+
+
+class TestConstantsSemanticVersion:
+    """Tests for version constant access."""
+
+    def test_semantic_version_exists(self):
+        """Test semantic_version is defined."""
+        from langbot.pkg.utils import constants
+
+        assert hasattr(constants, 'semantic_version')
+        assert constants.semantic_version.startswith('v')
+
+    def test_edition_exists(self):
+        """Test edition constant is defined."""
+        from langbot.pkg.utils import constants
+
+        assert hasattr(constants, 'edition')
+        assert constants.edition == 'community'

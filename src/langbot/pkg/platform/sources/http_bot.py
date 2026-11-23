@@ -1,0 +1,685 @@
+"""HTTP Bot adapter — standalone server-to-server platform adapter.
+
+Lets any external backend drive a LangBot pipeline over plain HTTP:
+
+* **Inbound**  — the backend POSTs a signed message to the unified webhook
+  route ``POST /bots/<bot_uuid>``; this adapter verifies the signature, builds
+  a platform event carrying the caller-defined ``session_id`` as the launcher
+  id, and fires it into the normal pipeline (so message aggregation, N->1,
+  works for free).
+* **Outbound** — every ``reply_message`` / ``reply_message_chunk`` the pipeline
+  emits is delivered as a signed POST to the configured ``callback_url``. A
+  single turn may emit many replies (1->M); each is one callback, ordered per
+  session via a small worker queue.
+
+Design notes:
+
+* The callback URL is taken **only** from adapter config (never from the
+  inbound message) to keep the SSRF surface closed.
+* Replies for one ``session_id`` are delivered in ``sequence`` order; the
+  caller knows a turn is complete when ``is_final: true`` arrives.
+* No new HTTP route is registered — the existing unified webhook dispatcher
+  (``pkg/api/http/controller/groups/webhooks.py``) calls
+  ``handle_unified_webhook`` on this adapter.
+
+See dev-docs/platforms/http-bot.md for the full integration guide.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import itertools
+import json
+import time
+import typing
+import uuid
+from datetime import datetime
+
+import aiohttp
+import pydantic
+import quart
+
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
+import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
+
+from . import http_bot_signing as signing
+from ...utils import httpclient
+
+
+# Error envelope codes (HTTP status -> body code), documented in the design doc.
+_ERR = {
+    'bad_request': (400, 40001),
+    'bad_signature': (401, 40101),
+    'duplicate': (409, 40901),
+    'too_large': (413, 41301),
+    'overloaded': (503, 50301),
+    'internal': (500, 50001),
+}
+
+# Max accepted inbound body size (bytes).
+_MAX_BODY = 1 * 1024 * 1024
+
+# Idempotency dedup window (seconds) and cap.
+_IDEMPOTENCY_TTL = 600
+_IDEMPOTENCY_MAX = 4096
+_IDEMPOTENCY_PRUNE_SCAN_MAX = 64
+_OUTBOUND_QUEUE_MAX = 100
+_OUTBOUND_IDLE_SECONDS = 60
+_OUTBOUND_STATE_MAX = 4096
+_OUTBOUND_PRUNE_SCAN_MAX = 64
+_INBOUND_TASK_MAX = 100
+
+
+class _OutboundStateCapacityError(RuntimeError):
+    """Raised when a new outbound session cannot be admitted safely."""
+
+
+class _SessionOutbound:
+    """Per-session outbound state: ordered delivery queue + sequence counter."""
+
+    def __init__(self) -> None:
+        self.queue: asyncio.Queue = asyncio.Queue(maxsize=_OUTBOUND_QUEUE_MAX)
+        self.worker: asyncio.Task | None = None
+        self.sequence: int = 0
+        self.last_was_final: bool = True  # so the first reply of a turn starts at seq 1
+        self.last_active: float = time.monotonic()
+
+
+class _SyncCollector:
+    """Collects reply parts and signals receipt of a final message.
+
+    Streamed chunks carry the accumulated content of one reply so far, so a
+    chunk replaces the earlier snapshot of the same reply instead of being
+    appended; every distinct reply is kept once, in delivery order.
+    """
+
+    def __init__(self) -> None:
+        self.replies: list[list] = []
+        # stream key -> index in ``replies`` while that streamed reply is open
+        self.open_streams: dict[str, int] = {}
+        self.done: asyncio.Event = asyncio.Event()
+
+    @property
+    def parts(self) -> list:
+        return [part for reply in self.replies for part in reply]
+
+    def add(self, parts: list, *, stream_key: str | None, closes_stream: bool) -> None:
+        if stream_key is None:
+            self.replies.append(list(parts))
+            return
+        index = self.open_streams.get(stream_key)
+        if index is None:
+            index = len(self.replies)
+            self.replies.append([])
+            self.open_streams[stream_key] = index
+        self.replies[index] = list(parts)
+        if closes_stream:
+            self.open_streams.pop(stream_key, None)
+
+
+class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
+    """Standalone HTTP adapter (inbound webhook + outbound callbacks)."""
+
+    ap: typing.Any = pydantic.Field(default=None, exclude=True)
+    bot_uuid: str = pydantic.Field(default='', exclude=True)
+
+    listeners: dict[
+        typing.Type[platform_events.Event],
+        typing.Callable[[platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None],
+    ] = pydantic.Field(default_factory=dict, exclude=True)
+
+    # session_id -> outbound state
+    outbound_states: dict[str, _SessionOutbound] = pydantic.Field(default_factory=dict, exclude=True)
+    # idempotency key -> accepted-at epoch
+    idempotency_cache: dict[str, float] = pydantic.Field(default_factory=dict, exclude=True)
+    # session_id -> sync collector (set while a /sync request is awaiting a turn)
+    sync_waiters: dict[str, '_SyncCollector'] = pydantic.Field(default_factory=dict, exclude=True)
+    inbound_tasks: set[asyncio.Task] = pydantic.Field(default_factory=set, exclude=True)
+
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
+
+    def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
+        super().__init__(config=config, logger=logger, **kwargs)
+        self.bot_account_id = 'http_bot'
+        self.outbound_states = {}
+        self.idempotency_cache = {}
+        self.sync_waiters = {}
+        self.inbound_tasks = set()
+
+    # -- framework hooks ------------------------------------------------------
+
+    def set_bot_uuid(self, bot_uuid: str) -> None:
+        """Called by the bot manager so the adapter knows its own bot uuid."""
+        object.__setattr__(self, 'bot_uuid', bot_uuid)
+
+    def get_launcher_id(self, event: platform_events.MessageEvent) -> str:
+        """Map an inbound event to a LangBot launcher id.
+
+        We return the caller-defined ``session_id`` (stashed on the sender /
+        group id at inbound time) so that each external session maps 1:1 to an
+        isolated LangBot session.
+        """
+        if isinstance(event, platform_events.GroupMessage):
+            return str(event.sender.group.id)
+        return str(event.sender.id)
+
+    def register_listener(
+        self,
+        event_type: typing.Type[platform_events.Event],
+        func: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], typing.Awaitable[None]
+        ],
+    ):
+        self.listeners[event_type] = func
+
+    def unregister_listener(
+        self,
+        event_type: typing.Type[platform_events.Event],
+        func: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], typing.Awaitable[None]
+        ],
+    ):
+        self.listeners.pop(event_type, None)
+
+    async def is_muted(self, group_id: int) -> bool:
+        return False
+
+    def get_supported_apis(self) -> list[str]:
+        return ['send_message', 'reply_message']
+
+    async def is_stream_output_supported(self) -> bool:
+        return True
+
+    async def run_async(self):
+        # Purely webhook-driven; nothing to poll. Stay alive.
+        while True:
+            await asyncio.sleep(3600)
+
+    async def kill(self):
+        tasks = list(self.inbound_tasks)
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        for state in self.outbound_states.values():
+            if state.worker and not state.worker.done():
+                state.worker.cancel()
+                tasks.append(state.worker)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self.outbound_states.clear()
+        self.sync_waiters.clear()
+        self.inbound_tasks.clear()
+        return True
+
+    # -- inbound --------------------------------------------------------------
+
+    def _err(self, kind: str, detail: str = ''):
+        status, code = _ERR[kind]
+        return quart.jsonify({'code': code, 'msg': detail or kind, 'data': None}), status
+
+    def _reserve_idempotency_key(self, key: str) -> str:
+        """Reserve a key without allowing unbounded state or full-map scans."""
+        now = time.monotonic()
+        accepted_at = self.idempotency_cache.get(key)
+        if accepted_at is not None:
+            if now - accepted_at <= _IDEMPOTENCY_TTL:
+                return 'duplicate'
+            self.idempotency_cache.pop(key, None)
+
+        if len(self.idempotency_cache) >= _IDEMPOTENCY_MAX:
+            self._prune_idempotency(now)
+        if len(self.idempotency_cache) >= _IDEMPOTENCY_MAX:
+            return 'overloaded'
+
+        self.idempotency_cache[key] = now
+        return 'accepted'
+
+    def _prune_idempotency(self, now: float | None = None) -> None:
+        """Remove at most a fixed number of oldest expired keys."""
+        current_time = time.monotonic() if now is None else now
+        oldest = itertools.islice(
+            self.idempotency_cache.items(),
+            _IDEMPOTENCY_PRUNE_SCAN_MAX,
+        )
+        for key, accepted_at in list(oldest):
+            if current_time - accepted_at <= _IDEMPOTENCY_TTL:
+                break
+            self.idempotency_cache.pop(key, None)
+
+    def _start_inbound_task(self, coro: typing.Coroutine) -> asyncio.Task | None:
+        self.inbound_tasks = {task for task in self.inbound_tasks if not task.done()}
+        if len(self.inbound_tasks) >= _INBOUND_TASK_MAX:
+            coro.close()
+            return None
+        task = asyncio.create_task(coro)
+        self.inbound_tasks.add(task)
+
+        def task_done(done_task: asyncio.Task) -> None:
+            self.inbound_tasks.discard(done_task)
+            if not done_task.cancelled():
+                # Retrieve failures so fire-and-forget callbacks never emit
+                # "Task exception was never retrieved" or retain tracebacks.
+                done_task.exception()
+
+        task.add_done_callback(task_done)
+        return task
+
+    async def handle_unified_webhook(self, bot_uuid: str, path: str, request):
+        """Handle an inbound POST from the unified webhook dispatcher.
+
+        Sub-path routing:
+            (no path)  -> push a message
+            "reset"    -> reset a session's conversation (body: {session_id, session_type?})
+            "sync"     -> push a message and wait for the final reply (collapses 1->M)
+        """
+        object.__setattr__(self, 'bot_uuid', bot_uuid)
+
+        if path == 'reset':
+            return await self._handle_reset(request)
+        if path == 'sync':
+            return await self._handle_inbound(request, sync=True)
+        if path in ('', None):
+            return await self._handle_inbound(request, sync=False)
+        return self._err('bad_request', f'unknown sub-path: {path}')
+
+    async def _read_and_verify(self, request) -> tuple[dict | None, typing.Any]:
+        """Read body, enforce size + signature. Returns (data, error_response)."""
+        body = await request.get_data()
+        if body and len(body) > _MAX_BODY:
+            return None, self._err('too_large', 'message too large')
+
+        if self.config.get('signature_required', True):
+            ok, reason = signing.verify(
+                secret=self.config.get('inbound_secret', ''),
+                body=body,
+                timestamp=request.headers.get(signing.HEADER_TIMESTAMP),
+                signature=request.headers.get(signing.HEADER_SIGNATURE),
+            )
+            if not ok:
+                await self.logger.warning(f'http_bot inbound signature rejected: {reason}')
+                return None, self._err('bad_signature', f'invalid signature: {reason}')
+
+        try:
+            data = await asyncio.to_thread(json.loads, body)
+        except (json.JSONDecodeError, ValueError):
+            return None, self._err('bad_request', 'body is not valid JSON')
+        if not isinstance(data, dict):
+            return None, self._err('bad_request', 'body must be a JSON object')
+        return data, None
+
+    def _build_event(self, data: dict) -> tuple[platform_events.MessageEvent, str, str, str]:
+        """Build a platform event from inbound data.
+
+        Returns (event, session_id, session_type, message_id).
+        """
+        session_id = str(data['session_id'])
+        session_type = data.get('session_type') or self.config.get('default_session_type', 'person')
+        sender_meta = data.get('sender') or {}
+        sender_name = str(sender_meta.get('name', 'User'))
+
+        message_id = 'in_' + uuid.uuid4().hex
+        chain = platform_message.MessageChain.model_validate(data['message'])
+        # Carry the inbound message id + timestamp as the Source component.
+        chain.insert(0, platform_message.Source(id=message_id, time=datetime.now()))
+
+        if session_type == 'group':
+            group = platform_entities.Group(
+                id=session_id,
+                name=str(sender_meta.get('group_name', session_id)),
+                permission=platform_entities.Permission.Member,
+            )
+            sender = platform_entities.GroupMember(
+                id=str(sender_meta.get('id', session_id)),
+                member_name=sender_name,
+                group=group,
+                permission=platform_entities.Permission.Member,
+            )
+            event = platform_events.GroupMessage(sender=sender, message_chain=chain, time=datetime.now().timestamp())
+        else:
+            sender = platform_entities.Friend(id=session_id, nickname=sender_name, remark=sender_name)
+            event = platform_events.FriendMessage(sender=sender, message_chain=chain, time=datetime.now().timestamp())
+        return event, session_id, session_type, message_id
+
+    async def _handle_inbound(self, request, sync: bool):
+        data, err = await self._read_and_verify(request)
+        if err is not None:
+            return err
+
+        if 'session_id' not in data or 'message' not in data:
+            return self._err('bad_request', 'session_id and message are required')
+
+        # Idempotency.
+        idem = request.headers.get(signing.HEADER_IDEMPOTENCY)
+        if idem:
+            idempotency_result = self._reserve_idempotency_key(idem)
+            if idempotency_result == 'duplicate':
+                return self._err('duplicate', 'idempotency key already accepted')
+            if idempotency_result == 'overloaded':
+                return self._err('overloaded', 'idempotency capacity reached; retry later')
+
+        try:
+            event, session_id, session_type, message_id = self._build_event(data)
+        except Exception as e:  # noqa: BLE001
+            return self._err('bad_request', f'failed to parse message: {e}')
+
+        listener = self.listeners.get(type(event))
+        if listener is None:
+            return self._err('internal', 'no listener registered for event type')
+
+        if sync:
+            return await self._run_sync(event, listener, session_id, message_id)
+
+        # Fire-and-collect: kick the pipeline, return 202 immediately.
+        if self._start_inbound_task(listener(event, self)) is None:
+            return self._err('overloaded', 'too many inbound messages are already being processed')
+        return quart.jsonify(
+            {
+                'code': 0,
+                'msg': 'accepted',
+                'data': {
+                    'session_id': session_id,
+                    'accepted_message_id': message_id,
+                    'aggregating': True,
+                },
+            }
+        ), 202
+
+    async def _handle_reset(self, request):
+        data, err = await self._read_and_verify(request)
+        if err is not None:
+            return err
+        if 'session_id' not in data:
+            return self._err('bad_request', 'session_id is required')
+
+        session_id = str(data['session_id'])
+        session_type = data.get('session_type') or self.config.get('default_session_type', 'person')
+        launcher_type = 'group' if session_type == 'group' else 'person'
+
+        removed = await self._reset_session(launcher_type, session_id)
+        return quart.jsonify({'code': 0, 'msg': 'reset', 'data': {'session_id': session_id, 'removed': removed}}), 200
+
+    async def _reset_session(self, launcher_type: str, launcher_id: str) -> bool:
+        """Reset scoped Runner state and history through the shared context service."""
+        execution_context = getattr(self.logger, 'execution_context', None)
+        if (
+            execution_context is None
+            or not execution_context.instance_uuid
+            or not execution_context.workspace_uuid
+            or execution_context.placement_generation <= 0
+            or not self.bot_uuid
+        ):
+            raise RuntimeError('http_bot reset requires a trusted execution scope')
+        try:
+            await self.ap.monitoring_service.reset_session_context(
+                execution_context, self.bot_uuid, f'{launcher_type}_{launcher_id}'
+            )
+        except LookupError:
+            return False
+        return True
+
+    # -- outbound -------------------------------------------------------------
+
+    @staticmethod
+    def _extract_session_id(message_source: platform_events.MessageEvent) -> str:
+        if isinstance(message_source, platform_events.GroupMessage):
+            return str(message_source.sender.group.id)
+        return str(message_source.sender.id)
+
+    @staticmethod
+    def _extract_reply_to(message_source: platform_events.MessageEvent) -> str:
+        for comp in message_source.message_chain:
+            if isinstance(comp, platform_message.Source):
+                return str(comp.id)
+        return ''
+
+    def _next_sequence(self, session_id: str, is_final: bool) -> int:
+        state = self._outbound_state(session_id)
+        state.last_active = time.monotonic()
+        if state.last_was_final:
+            state.sequence = 1
+        else:
+            state.sequence += 1
+        state.last_was_final = is_final
+        return state.sequence
+
+    def _outbound_state(self, session_id: str) -> _SessionOutbound:
+        state = self.outbound_states.get(session_id)
+        if state is not None:
+            # Dicts retain insertion order. Moving active sessions to the end
+            # keeps bounded admission-time pruning focused on old entries.
+            self.outbound_states.pop(session_id)
+            self.outbound_states[session_id] = state
+            return state
+
+        if len(self.outbound_states) >= _OUTBOUND_STATE_MAX:
+            self._prune_outbound_states()
+        if len(self.outbound_states) >= _OUTBOUND_STATE_MAX:
+            raise _OutboundStateCapacityError(f'http_bot outbound session capacity reached ({_OUTBOUND_STATE_MAX})')
+
+        state = _SessionOutbound()
+        self.outbound_states[session_id] = state
+        return state
+
+    def _prune_outbound_states(self) -> None:
+        now = time.monotonic()
+        oldest = itertools.islice(
+            self.outbound_states.items(),
+            _OUTBOUND_PRUNE_SCAN_MAX,
+        )
+        for session_id, state in list(oldest):
+            if (
+                (state.worker is not None and not state.worker.done())
+                or not state.queue.empty()
+                or now - state.last_active < _OUTBOUND_IDLE_SECONDS
+            ):
+                continue
+            if self.outbound_states.get(session_id) is state:
+                self.outbound_states.pop(session_id, None)
+
+    async def _enqueue_callback(self, session_id: str, payload: dict) -> None:
+        state = self._outbound_state(session_id)
+        state.last_active = time.monotonic()
+        if state.worker is None or state.worker.done():
+            state.worker = asyncio.create_task(self._outbound_worker(session_id, state))
+        try:
+            state.queue.put_nowait(payload)
+        except asyncio.QueueFull:
+            # Drop oldest to bound memory, then enqueue (best-effort, at-least-once).
+            try:
+                state.queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+            await self.logger.warning(f'http_bot outbound queue full for session {session_id}; dropped oldest')
+            state.queue.put_nowait(payload)
+
+    async def _outbound_worker(self, session_id: str, state: _SessionOutbound) -> None:
+        while True:
+            try:
+                payload = await asyncio.wait_for(
+                    state.queue.get(),
+                    timeout=_OUTBOUND_IDLE_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                if self.outbound_states.get(session_id) is state and state.queue.empty():
+                    self.outbound_states.pop(session_id, None)
+                    return
+                continue
+            try:
+                await self._deliver_callback(payload)
+            except Exception as e:  # noqa: BLE001
+                await self.logger.error(f'http_bot callback delivery failed for {session_id}: {e}')
+            finally:
+                state.queue.task_done()
+                state.last_active = time.monotonic()
+
+    async def _deliver_callback(self, payload: dict) -> None:
+        callback_url = self.config.get('callback_url', '')
+        if not callback_url:
+            await self.logger.warning('http_bot has no callback_url configured; dropping reply')
+            return
+
+        body = json.dumps(payload, ensure_ascii=False).encode()
+        secret = self.config.get('outbound_secret') or self.config.get('inbound_secret', '')
+        ts, sig = signing.sign(secret, body)
+        headers = {
+            'Content-Type': 'application/json',
+            signing.HEADER_TIMESTAMP: ts,
+            signing.HEADER_SIGNATURE: sig,
+        }
+        timeout = aiohttp.ClientTimeout(total=int(self.config.get('callback_timeout', 15)))
+        max_retries = int(self.config.get('callback_max_retries', 3))
+
+        session = httpclient.get_session()
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                async with session.post(callback_url, data=body, headers=headers, timeout=timeout) as resp:
+                    if resp.status < 400:
+                        return
+                    if resp.status < 500 or attempt > max_retries:
+                        await self.logger.warning(f'http_bot callback {callback_url} -> {resp.status}, giving up')
+                        return
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                if attempt > max_retries:
+                    await self.logger.warning(f'http_bot callback {callback_url} failed after {attempt} tries: {e}')
+                    return
+            await asyncio.sleep(min(2 ** (attempt - 1), 30))
+
+    async def _emit_reply(
+        self,
+        message_source: platform_events.MessageEvent,
+        message: platform_message.MessageChain,
+        is_final: bool,
+        stream: bool,
+        stream_key: str | None = None,
+        closes_stream: bool = False,
+    ) -> dict:
+        session_id = self._extract_session_id(message_source)
+        reply_to = self._extract_reply_to(message_source)
+        sequence = self._next_sequence(session_id, is_final)
+        parts = [c.model_dump() if hasattr(c, 'model_dump') else c.__dict__ for c in message]
+        payload = {
+            'session_id': session_id,
+            'reply_to': reply_to,
+            'sequence': sequence,
+            'is_final': is_final,
+            'stream': stream,
+            'message': parts,
+            'timestamp': datetime.now().isoformat(),
+        }
+
+        # If a /sync request is awaiting this session, collect instead of POSTing.
+        collector = self.sync_waiters.get(session_id)
+        if collector is not None:
+            collector.add(parts, stream_key=stream_key if stream else None, closes_stream=closes_stream)
+            if is_final:
+                collector.done.set()
+            return payload
+
+        await self._enqueue_callback(session_id, payload)
+        return payload
+
+    async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain) -> dict:
+        """Proactively push a message to a session (target_id == session_id)."""
+        sequence = self._next_sequence(str(target_id), is_final=True)
+        payload = {
+            'session_id': str(target_id),
+            'reply_to': '',
+            'sequence': sequence,
+            'is_final': True,
+            'stream': False,
+            'message': [c.model_dump() if hasattr(c, 'model_dump') else c.__dict__ for c in message],
+            'timestamp': datetime.now().isoformat(),
+        }
+        collector = self.sync_waiters.get(str(target_id))
+        if collector is not None:
+            collector.add(payload['message'], stream_key=None, closes_stream=False)
+            collector.done.set()
+            return payload
+
+        await self._enqueue_callback(str(target_id), payload)
+        return payload
+
+    async def reply_message(
+        self,
+        message_source: platform_events.MessageEvent,
+        message: platform_message.MessageChain,
+        quote_origin: bool = False,
+    ) -> dict:
+        return await self._emit_reply(message_source, message, is_final=True, stream=False)
+
+    async def reply_message_chunk(
+        self,
+        message_source: platform_events.MessageEvent,
+        bot_message,
+        message: platform_message.MessageChain,
+        quote_origin: bool = False,
+        is_final: bool = False,
+    ) -> dict:
+        message_is_final = is_final and getattr(bot_message, 'tool_calls', None) is None
+        # Chunks of one reply share ``resp_message_id`` and each carries the
+        # reply's accumulated content, so /sync keeps only the latest snapshot.
+        return await self._emit_reply(
+            message_source,
+            message,
+            is_final=message_is_final,
+            stream=True,
+            stream_key=str(getattr(bot_message, 'resp_message_id', None) or ''),
+            closes_stream=is_final,
+        )
+
+    # -- sync convenience mode ------------------------------------------------
+
+    async def _run_sync(self, event, listener, session_id: str, message_id: str):
+        """Push a message and wait for the final reply, collapsing 1->M parts.
+
+        Lossy by design (drops streaming/ordering nuance); documented as such.
+        Concurrency-safe: routing is via the per-session ``_sync_waiters``
+        registry that ``_emit_reply`` consults, not by patching methods.
+        A final message can precede Agent output-file delivery, so collection
+        also waits for the inbound listener to finish. Legacy queued pipelines
+        may finish their listener before sending any reply.
+        """
+        if session_id in self.sync_waiters:
+            return self._err('duplicate', 'a sync request is already in flight for this session')
+
+        collector = _SyncCollector()
+        self.sync_waiters[session_id] = collector
+        listener_task = self._start_inbound_task(listener(event, self))
+        if listener_task is None:
+            self.sync_waiters.pop(session_id, None)
+            return self._err('overloaded', 'too many inbound messages are already being processed')
+
+        async def wait_for_turn():
+            await collector.done.wait()
+            await asyncio.shield(listener_task)
+
+        try:
+            timeout = int(self.config.get('callback_timeout', 15)) * 4
+            try:
+                await asyncio.wait_for(wait_for_turn(), timeout=timeout)
+            except asyncio.TimeoutError:
+                await self.logger.warning(f'http_bot sync wait timed out for session {session_id}')
+            except Exception:
+                await self.logger.warning(f'http_bot sync listener failed for session {session_id}')
+        finally:
+            self.sync_waiters.pop(session_id, None)
+            state = self.outbound_states.get(session_id)
+            if state is not None and state.worker is None and state.queue.empty():
+                self.outbound_states.pop(session_id, None)
+
+        return quart.jsonify(
+            {
+                'code': 0,
+                'msg': 'ok',
+                'data': {
+                    'session_id': session_id,
+                    'reply_to': message_id,
+                    'message': collector.parts,
+                },
+            }
+        ), 200

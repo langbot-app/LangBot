@@ -1,0 +1,52 @@
+---
+title: "Runtimes and Extensions"
+description: "Understand LangBot runtimes and extensions: how the Box Runtime, sandbox backends and MCP servers fit together."
+---
+
+LangBot ships four extension mechanisms in parallel — **plugins, MCP, Skills, and the sandbox** — and they are easy to confuse. This page sorts out what each one does and when to use it.
+
+## One-line Summary
+
+- **Box execution environment**: lets the Agent run commands and read/write files; isolation depends on the selected backend
+- **Skills**: on-demand instruction packages that hand the Agent a specialized workflow when needed
+- **MCP Server**: connects to external tool services
+- **Plugin**: a long-running extension process that can ship its own config page, event listeners, and knowledge components
+
+## Comparison
+
+| Capability | Provided by | How the Agent sees it | When to use |
+|------------|-------------|-----------------------|-------------|
+| Box execution environment | Box Runtime | The six tools `exec/read/write/edit/glob/grep` are attached directly | Agent needs to run code or read/write files |
+| Skills | Box Runtime skill store | After the Agent calls `activate`, instructions are injected via Tool Result | Hand the Agent a workflow, template, or script, triggered on demand |
+| MCP Server | LangBot MCP Loader (stdio mode is hosted by Box) | Tools land directly in the Agent's tool list | Connect an existing MCP service |
+| Plugin | Plugin Runtime | Capabilities are exposed through the plugin system | Long-lived capability with a config page, event listeners, or knowledge components |
+
+## Pipeline Binding
+
+Skills, MCP Servers, and plugins are all **pipeline extensions**. After installing or creating them in the WebUI, the pipeline extension config still decides where they're enabled:
+
+- Enable all extensions, or
+- Bind only specific extensions
+
+Skill binding decides **which skills the Agent can see** (it controls the `<available_skills>` list). The actual skill content is only injected after the Agent calls `activate`.
+
+## Backends and Isolation Boundaries
+
+The Box API, Agent tools, session scopes, lifecycle, Skills, and stdio MCP hosting work the same across backends, but their security properties differ. Docker, nsjail, and E2B provide their respective sandbox boundaries. Host uses processes on the Box Runtime host directly and is only for trusted local development. Selecting Host does not change the WebUI and does not give separate sessions host-level isolation.
+
+## Troubleshooting Map
+
+| Symptom | Check first |
+|---------|-------------|
+| Agent has no `exec/read/write` tools | `box.enabled`, backend availability, and whether the pipeline uses the built-in Agent |
+| Skill list is empty | Box Runtime status, `box.local.skills_root`, pipeline binding |
+| stdio MCP fails to start | Box Runtime status, MCP command and environment variables, startup timeout |
+| Sandbox fails to start in Docker deployment | Whether `langbot_box` mounts `docker.sock`, and whether Box root paths match |
+| File read/write fails | `box.local.host_root`, `box.local.allowed_mount_roots` |
+| Backend selection has no effect | Confirm `BOX__BACKEND` is set on the `langbot` service, not on `langbot_box` |
+| Host backend is unavailable | Confirm the system is POSIX and `sh` is on `PATH`; use WSL on Windows |
+| External Host Box connection is rejected | Set the same `LANGBOT_BOX_CONTROL_TOKEN` on LangBot and Box Runtime |
+
+<Note>
+Sandbox built-in tools and Skills currently target the built-in Agent. External runners (Dify, n8n, Langflow, Coze, etc.) should use their own tools and execution model.
+</Note>

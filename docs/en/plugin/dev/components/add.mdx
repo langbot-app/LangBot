@@ -1,0 +1,81 @@
+---
+title: "Adding Components"
+---
+
+Plugins consist of one or more components that provide different functionalities to LangBot. Currently supported component types include:
+
+- Plugin processor (Runner): handles platform events in plugin code after an instance is created and bound. See the [tutorial](/en/plugin/dev/components/runner).
+- Agent runner (Runner): provides execution logic selected in an Agent configuration; it is distinct from a standalone plugin processor.
+- Event Listeners (EventListener): Listen to events during pipeline execution and modify context or pipelines.
+- Commands (Command): Triggered by user command messages starting with `!` (or other configured prefixes).
+- Tools (Tool): Called by LLMs during execution of LangBot's built-in Local Agent.
+- Knowledge Engines (KnowledgeEngine): Provide knowledge base indexing and retrieval capabilities for LangBot, managing document ingestion, retrieval, and deletion.
+- Parsers (Parser): Parse binary files such as PDF, Word, etc. into structured text before document ingestion, for use by Knowledge Engines.
+- Pages (Page): Register custom visual pages in the LangBot WebUI sidebar, providing admin panels, data displays, and interactive interfaces.
+
+## Adding Components
+
+Execute the command in the plugin directory:
+
+```bash
+lbp comp <component_type>
+```
+
+For example, to add an event listener:
+
+```bash
+lbp comp EventListener
+```
+
+Follow the prompts to enter the component configuration (if any).
+
+```bash
+➜  HelloPlugin > lbp comp EventListener
+Generating component EventListener...
+Component EventListener generated successfully.
+组件 EventListener 生成成功。
+➜  HelloPlugin >
+```
+
+<Info title="">
+The CLI will generate a `components` directory in the plugin directory and create corresponding component directories within it.
+```
+.
+├── assets
+│   └── icon.svg
+├── components
+│   ├── __init__.py
+│   └── event_listener
+│       ├── __init__.py
+│       ├── default.py
+│       └── default.yaml
+├── main.py
+├── manifest.yaml
+├── README.md
+└── requirements.txt
+```
+
+At the same time, component discovery configuration will be added to the plugin's `manifest.yaml`:
+
+```yaml
+...
+components:
+    EventListener:
+      fromDirs:
+      - path: components/event_listener/
+...
+```
+To remove components, you can delete the corresponding information manually.
+</Info>
+
+## Component Types
+
+For detailed usage of each component, please refer to:
+
+- [Runner](./runner)
+- [EventListener](./event-listener)
+- [Command](./command)
+- [Tool](./tool)
+- [KnowledgeEngine](./knowledge-engine)
+- [Parser](./parser)
+- [Page](./page)

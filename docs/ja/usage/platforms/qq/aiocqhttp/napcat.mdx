@@ -1,0 +1,36 @@
+---
+title: "NapCat"
+description: "NapCat（aiocqhttp）経由で QQ を LangBot に接続。QQ のグループ・個人メッセージで AI チャットボットを運用。"
+---
+
+OneBot 11 プロトコルを通じて接続します。アダプターとして ``OneBot v11`` を選択する必要があります。
+
+## NapCat インストールチュートリアル
+
+[NapCat 公式ドキュメントに従ってインストール](https://napcat.napneko.icu/guide/start-install)してください
+
+## NapCat 設定チュートリアル
+
+webui 操作のみを例として使用します。他の設定方法については、NapCat ドキュメントを確認してください。
+
+ログイン後、コンソールまたは Bash でログを確認し、`[NapCat] [WebUi] WebUi Publish Panel Url: http://x.x.x.x:6099/webui?token=xxxxx ` を見つけます
+![napcat_webui_01](/images/zh/deploy/bots/qq/onebot/napcat/napcat_webui_01.png)
+
+Url をブラウザにコピーするか、Windows 11 では Ctrl を押しながら Url をクリックします。QR コードをスキャンしてログインすると、ネットワーク設定ページに入ります。
+
+ネットワーク設定を追加をクリックし、WebSocket Client を選択し、有効をクリックして、Url フィールドに `ws://127.0.0.1:2280/ws` を入力して保存します。
+![napcat_webui_02](/images/zh/deploy/bots/qq/onebot/napcat/napcat_webui_02.png)
+
+## NapCat 統合
+
+次に、LangBot 設定ページを開きます
+
+Bots をクリックし、次に Add をクリックします
+
+`Platform/Adapter Selection` で `OneBot v11` を選択します
+
+![napcat_webui_03](/images/zh/deploy/bots/qq/onebot/napcat/napcat_webui_03.png)
+
+<Info>
+注意：複数の docker コンテナに関連するネットワーク接続の問題がある場合は、[ネットワーク設定の詳細](/en/workshop/network-details)を参照してください
+</Info>

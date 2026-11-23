@@ -1,0 +1,222 @@
+---
+title: "组件：解析器"
+---
+
+解析器（Parser）组件允许插件为 LangBot 提供文档解析能力。在用户上传文档到知识库时，LangBot 会在 RAG 引擎摄取（`ingest`）之前调用解析器，将 PDF、Word、Markdown 等二进制文件提取为结构化文本。
+
+Parser 与 KnowledgeEngine 的关系：
+- **Parser** 负责将文件转换为文本（file → text）
+- **KnowledgeEngine** 负责将文本索引和检索（text → chunks → vectors）
+
+如果 RAG 引擎自身已具备文档解析能力（声明了 `DOC_PARSING` 能力），用户可以选择使用 RAG 引擎内置的解析能力，也可以选择使用外部 Parser 插件。
+
+## 添加解析器组件
+
+单个插件中能添加任意数量的解析器，请在插件目录执行命令 `lbp comp Parser`，并根据提示输入解析器的配置。
+
+```bash
+➜  MyParserPlugin > lbp comp Parser
+Generating component Parser...
+Parser name: pdf_parser
+Parser description: A PDF document parser
+Component Parser generated successfully.
+组件 Parser 生成成功。
+```
+
+现在即会在 `components/parser/` 目录下生成 `pdf_parser.yaml` 和 `pdf_parser.py` 文件，`.yaml` 定义了解析器的基础信息和支持的 MIME 类型，`.py` 是该解析器的处理程序：
+
+```bash
+➜  MyParserPlugin > tree
+...
+├── components
+│   ├── __init__.py
+│   └── parser
+│       ├── __init__.py
+│       ├── pdf_parser.py
+│       └── pdf_parser.yaml
+...
+```
+
+## 清单文件：解析器
+
+```yaml
+apiVersion: v1  # 请勿修改
+kind: Parser  # 请勿修改
+metadata:
+  name: pdf_parser  # 解析器名称，用于标识该解析器
+  label:
+    en_US: PDF Parser  # 解析器显示名称，用于显示在 LangBot 的 UI 上，支持多语言
+    zh_Hans: PDF 解析器
+  description:
+    en_US: 'A PDF document parser'
+    zh_Hans: 'PDF 文档解析器'
+spec:
+  supported_mime_types:  # 声明支持的文件 MIME 类型
+    - application/pdf
+execution:
+  python:
+    path: pdf_parser.py  # 解析器处理程序，请勿修改
+    attr: PdfParser  # 解析器处理程序的类名，与 pdf_parser.py 中的类名一致
+```
+
+### supported_mime_types
+
+`supported_mime_types` 声明该解析器支持解析的文件类型。常见 MIME 类型：
+
+| MIME 类型 | 说明 |
+|----------|------|
+| `application/pdf` | PDF 文档 |
+| `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | Word 文档（.docx） |
+| `text/markdown` | Markdown 文件 |
+| `text/plain` | 纯文本文件 |
+| `text/html` | HTML 文件 |
+
+## 插件处理
+
+默认会生成如下代码（`components/parser/<解析器名称>.py`），您需要实现 `parse` 方法。
+
+```python
+from langbot_plugin.api.definition.components.parser.parser import Parser
+from langbot_plugin.api.entities.builtin.rag.models import (
+    ParseContext,
+    ParseResult,
+    TextSection,
+)
+
+
+class PdfParser(Parser):
+    """解析器组件，用于从文件中提取文本。"""
+
+    async def parse(self, context: ParseContext) -> ParseResult:
+        """解析文件并提取结构化文本。
+
+        Args:
+            context: 包含 file_content（bytes）、mime_type、filename 和 metadata。
+
+        Returns:
+            ParseResult，包含提取的文本和可选的结构化分节。
+        """
+        # TODO: 实现解析逻辑
+        text = context.file_content.decode("utf-8", errors="replace")
+
+        return ParseResult(
+            text=text,
+            sections=[
+                TextSection(
+                    content=text,
+                    heading=context.filename,
+                    level=0,
+                ),
+            ],
+            metadata={
+                "filename": context.filename,
+                "mime_type": context.mime_type,
+            },
+        )
+```
+
+### 解析方法
+
+`parse` 方法在文档上传到知识库时被调用（在 RAG 引擎摄取之前）：
+
+```python
+async def parse(self, context: ParseContext) -> ParseResult:
+```
+
+**ParseContext** 包含以下信息：
+
+```python
+class ParseContext(pydantic.BaseModel):
+    file_content: bytes          # 原始文件字节（由 LangBot 从存储中读取）
+    mime_type: str               # 检测到的文件 MIME 类型
+    filename: str                # 原始文件名
+    metadata: dict[str, Any]     # FileObject 中的额外元数据
+```
+
+**ParseResult** 应返回解析结果：
+
+```python
+class ParseResult(pydantic.BaseModel):
+    text: str                            # 提取的完整纯文本
+    sections: list[TextSection] = []     # 结构化分节（可选）
+    metadata: dict[str, Any] = {}        # 解析元数据（如 page_count、language 等）
+```
+
+**TextSection** 表示文档中的一个段落/分节：
+
+```python
+class TextSection(pydantic.BaseModel):
+    content: str                   # 分节文本内容
+    heading: str | None = None     # 分节标题
+    level: int = 0                 # 嵌套层级
+    page: int | None = None        # 来源页码（适用于 PDF 等）
+    metadata: dict[str, Any] = {}  # 额外分节元数据
+```
+
+## 与 KnowledgeEngine 的协作
+
+当用户上传文档时，LangBot 会根据以下逻辑决定解析流程：
+
+- 若用户选择了外部 Parser 插件，LangBot 会先调用 Parser 的 `parse` 方法，然后将解析结果通过 `IngestionContext.parsed_content` 传递给 RAG 引擎的 `ingest` 方法。
+- 若 RAG 引擎声明了 `DOC_PARSING` 能力且用户未选择外部解析器，则由 RAG 引擎自行处理文档解析。
+
+KnowledgeEngine 可通过检查 `IngestionContext.parsed_content` 来判断是否存在预解析内容：
+
+```python
+async def ingest(self, context: IngestionContext) -> IngestionResult:
+    if context.parsed_content:
+        # 使用外部 Parser 的解析结果
+        text = context.parsed_content.text
+        sections = context.parsed_content.sections
+    else:
+        # 自行解析文档
+        file_bytes = await self.plugin.get_knowledge_file_stream(context.file_object.storage_path)
+        text = file_bytes.decode('utf-8')
+    ...
+```
+
+## 跨插件调用解析器
+
+在调用其他插件提供的解析器之前，可以先通过 `self.plugin.list_parsers` 枚举当前可用的解析器：
+
+```python
+parsers = await self.plugin.list_parsers(mime_type="application/pdf")
+# 返回的每项包含 plugin_id、plugin_author、plugin_name、name、description、supported_mime_types
+```
+
+若返回空列表，说明宿主当前没有已连接且支持该 MIME 类型的 Parser 插件。
+
+拿到 `plugin_author` 和 `plugin_name` 后，即可通过 `self.plugin.invoke_parser` 调用对应解析器：
+
+```python
+parser = parsers[0]
+result = await self.plugin.invoke_parser(
+    plugin_author=parser["plugin_author"],
+    plugin_name=parser["plugin_name"],
+    storage_path=context.file_object.storage_path,
+    mime_type=context.file_object.metadata.mime_type,
+    filename=context.file_object.metadata.filename,
+    metadata={},
+)
+# result 为 dict，包含 text、sections、metadata
+```
+
+## 一个安装，多份用法
+
+一个 Parser 会被**多个知识库**选用（同一安装下不同知识库会上传不同 MIME 类型的文件），而平台的存储键不含知识库维度：
+
+- 解析缓存与临时文件必须按**知识库 ID** 隔离，键里要带上知识库 ID，不要缓存到实例上。
+- `ParseContext` 与解析中间结果只在单次解析内有效，不要保存到实例字段或模块级变量。
+- 解析失败只影响当前知识库的这次上传，不要让其他知识库的解析不可用。
+- 如果按安装缓存了模型、解析器或临时目录，请在 `on_installation_revoked(binding)` 中释放，并确保临时文件可被清理。
+
+以上约束的完整说明见[认证插件与共享运行](/zh/plugin/certified-plugins)。
+
+## 测试解析器
+
+创建完成后，在插件目录执行命令 `lbp run`，启动调试。然后在 LangBot 中：
+
+1. 进入"知识库"页面
+2. 选择一个知识库并进入文档管理
+3. 上传文件时，在解析器选择器中选择您的插件提供的解析器
+4. 上传文件后检查文档是否正确摄取

@@ -1,0 +1,82 @@
+---
+title: "添加组件"
+---
+
+插件由一种或多种组件构成，为 LangBot 提供不同的功能。目前支持的组件类型有：
+
+- 插件处理器（运行器）：处理机器人收到的消息、成员入群等事件。详见[开发教程](/zh/plugin/dev/components/runner)。
+- Agent 使用的运行器：为 Agent 提供模型调用、外部 Agent 服务连接等运行方式。
+- 事件监听器（EventListener）：监听流水线执行期间的事件，对上下文或流水线进行修改。
+- 命令（Command）：由用户通过`!`（或其他已设置的前缀）开头的命令消息触发。
+- 工具（Tool）：供 LangBot 内置的 Local Agent 在执行期间由 LLM 调用。
+- RAG 引擎（KnowledgeEngine）：为 LangBot 提供知识库的索引和检索能力，管理文档摄取、检索和删除。
+- 解析器（Parser）：在文档摄取前将 PDF、Word 等二进制文件解析为结构化文本，供 RAG 引擎使用。
+- 页面（Page）：在 LangBot WebUI 侧边栏中注册自定义可视化页面，提供管理面板、数据展示等交互式界面。
+
+## 添加组件
+
+在插件目录下执行命令：
+
+```bash
+lbp comp <component_type>
+```
+
+例如，添加一个事件监听器：
+
+```bash
+lbp comp EventListener
+```
+
+请根据提示输入组件的配置（若有）。
+
+```bash
+➜  HelloPlugin > lbp comp EventListener
+Generating component EventListener...
+Component EventListener generated successfully.
+组件 EventListener 生成成功。
+➜  HelloPlugin >
+```
+
+<Info title="">
+CLI 将在插件目录下生成一个 `components` 目录，并在其中创建组件对应目录
+```
+.
+├── assets
+│   └── icon.svg
+├── components
+│   ├── __init__.py
+│   └── event_listener
+│       ├── __init__.py
+│       ├── default.py
+│       └── default.yaml
+├── main.py
+├── manifest.yaml
+├── README.md
+└── requirements.txt
+```
+
+同时，会在插件的`manifest.yaml`中添加组件发现配置：
+
+```yaml
+...
+components:
+    EventListener:
+      fromDirs:
+      - path: components/event_listener/
+...
+```
+如需删除组件，可自行删除对应信息。
+</Info>
+
+
+## 组件类型
+
+各个组件的详细使用方式请参考：
+
+- [运行器](./runner)
+- [EventListener](./event-listener)
+- [Command](./command)
+- [Tool](./tool)
+- [KnowledgeEngine](./knowledge-engine)
+- [Parser](./parser)
+- [Page](./page)

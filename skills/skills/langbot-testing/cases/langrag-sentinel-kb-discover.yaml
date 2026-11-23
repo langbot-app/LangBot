@@ -1,0 +1,38 @@
+id: langrag-sentinel-kb-discover
+title: "Existing LangRAG sentinel knowledge base is discoverable"
+mode: probe
+area: knowledge
+type: regression
+priority: p1
+risk: medium
+ci_eligible: false
+tags:
+  - langrag
+  - knowledge
+  - rag
+  - fixture
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_REPO
+  - LANGBOT_E2E_LOGIN_USER
+automation: scripts/e2e/ensure-langrag-sentinel-kb.mjs
+automation_expected_text: "azalea-cobalt-7421"
+steps:
+  - "Run `rtk bin/lbs test run langrag-sentinel-kb-discover --dry-run` first; remove `--dry-run` only after readiness points at a local test LangBot instance."
+  - "Automation authenticates the local test user, lists knowledge bases, retrieves against each one, and looks for azalea-cobalt-7421."
+checks:
+  - "automation-result.json status is pass when an existing KB retrieves the sentinel."
+  - "When run with `node:scripts/e2e/ensure-langrag-sentinel-kb.mjs --write-env`, LANGBOT_LOCAL_AGENT_RAG_KB_UUID is written to skills/.env.local."
+evidence_required:
+  - api_diagnostic
+diagnostics:
+  - "This case does not create a knowledge base. It only discovers a KB already prepared by langrag-kb-retrieve or by an equivalent local setup."
+success_patterns:
+  - "Found LangRAG sentinel knowledge base"
+failure_patterns:
+  - "No existing knowledge base retrieved expected sentinel"
+troubleshooting:
+  - marketplace-network-flaky

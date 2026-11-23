@@ -1,0 +1,1164 @@
+import {
+  IDynamicFormItemSchema,
+  SYSTEM_FIELD_PREFIX,
+  DynamicFormItemType,
+} from '@/app/infra/entities/form/dynamic';
+import { useForm, useWatch, type UseFormReturn } from 'react-hook-form';
+import type { ControllerRenderProps } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { isJsonValue, isPromptValue } from './StructuredFieldValue';
+import { z } from 'zod';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
+import {
+  normalizeDynamicFormFieldValue,
+  normalizeDynamicFormValuesForSave,
+} from '@/app/home/components/dynamic-form/DynamicFormSaveValues';
+import QrCodeLoginDialog, {
+  QrLoginPlatform,
+} from '@/app/home/components/qrcode-login/QrCodeLoginDialog';
+import SlackSetupDialog from '@/app/home/components/qrcode-login/SlackSetupDialog';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { extractI18nObject } from '@/i18n/I18nProvider';
+import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import {
+  Copy,
+  Check,
+  Globe,
+  Info,
+  QrCode,
+  Download,
+  ExternalLink,
+} from 'lucide-react';
+import { copyToClipboard } from '@/app/utils/clipboard';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { backendClient, systemInfo } from '@/app/infra/http';
+import { getAdapterDocUrl } from '@/app/infra/entities/adapter-docs';
+import { parseDynamicFormItemType } from './DynamicFormItemConfig';
+import {
+  resolveDisabledState,
+  resolveShowIfValue,
+} from './DynamicFormConditions';
+
+type DynamicFormValueSpec = Pick<
+  IDynamicFormItemSchema,
+  'default' | 'name' | 'required' | 'type'
+>;
+
+function getValueSpecs(item: IDynamicFormItemSchema): DynamicFormValueSpec[] {
+  if (item.type === DynamicFormItemType.RICH_TOOLS_SELECTOR) {
+    return [
+      item,
+      {
+        name: 'enable-all-tools',
+        type: DynamicFormItemType.BOOLEAN,
+        required: false,
+        default: true,
+      },
+    ];
+  }
+
+  if (item.type === DynamicFormItemType.RESOURCES_SELECTOR) {
+    return [
+      item,
+      {
+        name: 'mcp-resources',
+        type: DynamicFormItemType.UNKNOWN,
+        required: false,
+        default: [],
+      },
+      {
+        name: 'mcp-resource-agent-read-enabled',
+        type: DynamicFormItemType.BOOLEAN,
+        required: false,
+        default: true,
+      },
+    ];
+  }
+
+  return [item];
+}
+
+function getValueSchema(spec: DynamicFormValueSpec) {
+  if (spec.name === 'mcp-resources') {
+    return z.array(z.any());
+  }
+
+  switch (normalizeItemType(spec.type)) {
+    case DynamicFormItemType.INT:
+      return z.number();
+    case DynamicFormItemType.FLOAT:
+      return z.number();
+    case DynamicFormItemType.BOOLEAN:
+      return z.boolean();
+    case DynamicFormItemType.STRING:
+    case DynamicFormItemType.SECRET:
+      return z.string();
+    case DynamicFormItemType.STRING_ARRAY:
+      return z.array(z.string());
+    case DynamicFormItemType.SELECT:
+      return z.string();
+    case DynamicFormItemType.LLM_MODEL_SELECTOR:
+      return z.string();
+    case DynamicFormItemType.EMBEDDING_MODEL_SELECTOR:
+      return z.string();
+    case DynamicFormItemType.RERANK_MODEL_SELECTOR:
+    case DynamicFormItemType.ASR_MODEL_SELECTOR:
+    case DynamicFormItemType.TTS_MODEL_SELECTOR:
+      return z.string();
+    case DynamicFormItemType.KNOWLEDGE_BASE_SELECTOR:
+      return z.string();
+    case DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR:
+    case DynamicFormItemType.RESOURCES_SELECTOR:
+    case DynamicFormItemType.RICH_TOOLS_SELECTOR:
+    case DynamicFormItemType.TOOLS_SELECTOR:
+      return z.array(z.string());
+    case DynamicFormItemType.BOT_SELECTOR:
+      return z.string();
+    case DynamicFormItemType.MODEL_FALLBACK_SELECTOR:
+      return z.object({
+        primary: z.string(),
+        fallbacks: z.array(z.string()),
+        reasoning: z.record(z.string()),
+      });
+    case DynamicFormItemType.JSON:
+      return z.custom(isJsonValue);
+    case DynamicFormItemType.PROMPT_EDITOR:
+      return z.custom(isPromptValue);
+    default:
+      return z.string();
+  }
+}
+
+/**
+ * Display-only component for embed code fields with copy animation.
+ */
+function EmbedCodeField({
+  label,
+  description,
+  snippet,
+}: {
+  label: string;
+  description?: string;
+  snippet: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    copyToClipboard(snippet).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="min-w-0 max-w-full space-y-2">
+      <label className="text-sm font-medium leading-none">{label}</label>
+      {description && (
+        <p className="break-words text-sm text-muted-foreground">
+          {description}
+        </p>
+      )}
+      <div className="flex min-w-0 max-w-full items-center gap-2">
+        <pre className="min-w-0 max-w-full flex-1 overflow-x-auto rounded-md bg-muted p-3 text-sm font-mono select-all">
+          <code>{snippet}</code>
+        </pre>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="shrink-0"
+          onClick={handleCopy}
+        >
+          {copied ? (
+            <Check className="h-4 w-4 text-green-600" />
+          ) : (
+            <Copy className="size-4" />
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Display-only component for webhook URL fields.
+ * Rendered outside of react-hook-form binding since the value is
+ * read-only and comes from systemContext, not user input.
+ */
+function WebhookUrlField({
+  label,
+  description,
+  url,
+  extraUrl,
+}: {
+  label: string;
+  description?: string;
+  url: string;
+  extraUrl?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [extraCopied, setExtraCopied] = useState(false);
+  const { t } = useTranslation();
+
+  const handleCopy = (text: string, setter: (v: boolean) => void) => {
+    copyToClipboard(text).catch(() => {});
+    setter(true);
+    setTimeout(() => setter(false), 2000);
+  };
+
+  return (
+    <FormItem className="min-w-0">
+      <FormLabel className="break-words">{label}</FormLabel>
+      <div className="flex min-w-0 items-center gap-2">
+        <Input
+          value={url}
+          readOnly
+          className="min-w-0 flex-1 bg-muted"
+          onClick={(e) => (e.target as HTMLInputElement).select()}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => handleCopy(url, setCopied)}
+        >
+          {copied ? (
+            <Check className="h-4 w-4 text-green-600" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
+        </Button>
+      </div>
+      {extraUrl && (
+        <div className="mt-2 flex min-w-0 items-center gap-2">
+          <Input
+            value={extraUrl}
+            readOnly
+            className="min-w-0 flex-1 bg-muted"
+            onClick={(e) => (e.target as HTMLInputElement).select()}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => handleCopy(extraUrl, setExtraCopied)}
+          >
+            {extraCopied ? (
+              <Check className="h-4 w-4 text-green-600" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+      )}
+      {description && (
+        <p className="text-sm break-words text-muted-foreground">
+          {description}
+        </p>
+      )}
+      {systemInfo.edition === 'community' && (
+        <div className="mt-1 flex max-w-full min-w-0 items-start gap-2.5 rounded-md border border-border/60 bg-muted/40 px-3 py-2.5">
+          <Globe className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+          <p className="text-sm leading-relaxed break-words text-muted-foreground">
+            {t('bots.webhookSaasHint')}{' '}
+            <a
+              href="https://space.langbot.app/cloud?utm_source=local_webui&utm_medium=webhook_alert&utm_campaign=saas_conversion"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline-offset-4 hover:underline font-medium"
+            >
+              {t('bots.webhookSaasLink')}
+            </a>
+          </p>
+        </div>
+      )}
+    </FormItem>
+  );
+}
+
+function DownloadLinkField({
+  label,
+  description,
+  url,
+  filename,
+  helpUrl,
+  helpLabel,
+}: {
+  label: string;
+  description?: string;
+  url: string;
+  filename?: string;
+  helpUrl?: string | null;
+  helpLabel: string;
+}) {
+  const { t } = useTranslation();
+  const [downloading, setDownloading] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const download = async () => {
+    if (downloading) return;
+    setDownloading(true);
+    setFailed(false);
+    try {
+      let blob: Blob;
+      if (/^https?:\/\//i.test(url)) {
+        // External templates must not receive backend credentials.
+        const response = await fetch(url);
+        if (!response.ok)
+          throw new Error(`Download failed: ${response.status}`);
+        blob = await response.blob();
+      } else {
+        const response = await backendClient.downloadFile(url);
+        blob = response.data;
+      }
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download =
+        filename || url.split('/').pop()?.split('?')[0] || 'download';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch {
+      setFailed(true);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <FormItem className="min-w-0">
+      <FormLabel className="break-words">{label}</FormLabel>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={download}
+          disabled={downloading}
+          aria-busy={downloading}
+        >
+          <Download className="h-4 w-4" />
+          {label}
+        </Button>
+        {helpUrl && (
+          <Button asChild variant="ghost" size="sm">
+            <a href={helpUrl} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4" />
+              {helpLabel}
+            </a>
+          </Button>
+        )}
+      </div>
+      {failed && (
+        <p role="alert" className="text-sm text-destructive">
+          {t('common.operationFailed')}
+        </p>
+      )}
+      {description && (
+        <p className="max-w-2xl text-sm break-words text-muted-foreground">
+          {description}
+        </p>
+      )}
+    </FormItem>
+  );
+}
+
+/**
+ * Display-only component for `__system.*` fields (e.g. the deployment's
+ * outbound IPs that the operator must add to a platform's trusted-IP list).
+ * Renders one read-only row per value, each with a copy button. Rendered
+ * outside of react-hook-form binding since the values come from
+ * systemContext, not user input.
+ */
+function SystemInfoField({
+  label,
+  description,
+  values,
+}: {
+  label: string;
+  description?: string;
+  values: string[];
+}) {
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+
+  const handleCopy = (text: string, index: number) => {
+    copyToClipboard(text).catch(() => {});
+    setCopiedIndex(index);
+    setTimeout(() => setCopiedIndex(null), 2000);
+  };
+
+  return (
+    <FormItem className="min-w-0">
+      <FormLabel className="break-words">{label}</FormLabel>
+      <div className="space-y-2">
+        {values.map((value, index) => (
+          <div key={index} className="flex min-w-0 items-center gap-2">
+            <Input
+              value={value}
+              readOnly
+              className="min-w-0 flex-1 bg-muted"
+              onClick={(e) => (e.target as HTMLInputElement).select()}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => handleCopy(value, index)}
+            >
+              {copiedIndex === index ? (
+                <Check className="h-4 w-4 text-green-600" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        ))}
+      </div>
+      {description && (
+        <p className="text-sm break-words text-muted-foreground">
+          {description}
+        </p>
+      )}
+    </FormItem>
+  );
+}
+
+// Hover-only Radix tooltips never open on touch devices (no pointer hover),
+// so the ``disabled_tooltip`` explaining why a field is locked was invisible on
+// mobile. This wrapper makes the info icon also toggle the tooltip on tap while
+// keeping hover behavior on desktop.
+function DisabledTooltipIcon({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <TooltipProvider delayDuration={100}>
+      <Tooltip open={open} onOpenChange={setOpen}>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label={text}
+            className="inline-flex shrink-0"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setOpen((v) => !v);
+            }}
+          >
+            <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help shrink-0" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs">{text}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+/**
+ * Normalize plugin manifest type names to frontend-compatible types
+ */
+function normalizeItemType(type: string): DynamicFormItemType {
+  return parseDynamicFormItemType(type);
+}
+
+export default function DynamicFormComponent({
+  itemConfigList,
+  onSubmit,
+  initialValues,
+  onFileUploaded,
+  isEditing,
+  externalDependentValues,
+  systemContext,
+  onValidate,
+  renderItem,
+  hiddenItemNames,
+}: {
+  itemConfigList: IDynamicFormItemSchema[];
+  onSubmit?: (val: object) => unknown;
+  initialValues?: Record<string, any>;
+  onFileUploaded?: (fileKey: string) => void;
+  isEditing?: boolean;
+  externalDependentValues?: Record<string, unknown>;
+  /** Extra variables accessible via the `__system.*` namespace in show_if conditions.
+   *  e.g. `{ is_wizard: true }` makes `show_if: { field: "__system.is_wizard", ... }` work. */
+  systemContext?: Record<string, unknown>;
+  /** Callback to expose validation function to parent component.
+   *  Parent can call this function to trigger validation and get validity state. */
+  onValidate?: (validateFn: () => Promise<boolean>) => void;
+  /** Override a field control while retaining the DynamicForm label,
+   *  description, validation, and value emission behavior. Return undefined
+   *  to use the standard control for that item. */
+  renderItem?: (args: {
+    config: IDynamicFormItemSchema;
+    field: ControllerRenderProps<any, any>;
+    formValues: Record<string, unknown>;
+    setFormValue: (name: string, value: unknown) => void;
+  }) => ReactNode | undefined;
+  /** Fields retained in form state but omitted from the rendered form. */
+  hiddenItemNames?: readonly string[];
+}) {
+  const isInitialMount = useRef(true);
+  const previousInitialValues = useRef(initialValues);
+  const { t } = useTranslation();
+
+  // Filter out display-only fields (webhook-url/embed-code/qr-code-login types
+  // and `__system.*`-named fields) that should not participate in form state,
+  // validation, or value emission.
+  const editableItems = useMemo(
+    () =>
+      itemConfigList.filter(
+        (item) =>
+          item.type !== 'webhook-url' &&
+          item.type !== 'embed-code' &&
+          item.type !== 'qr-code-login' &&
+          item.type !== 'download-link' &&
+          !item.name.startsWith(SYSTEM_FIELD_PREFIX),
+      ),
+    [itemConfigList],
+  );
+
+  const editableValueSpecs = useMemo(
+    () => editableItems.flatMap(getValueSpecs),
+    [editableItems],
+  );
+
+  // 根据 itemConfigList 动态生成 zod schema
+  const formSchema = useMemo(
+    () =>
+      z.object(
+        editableValueSpecs.reduce(
+          (acc, item) => {
+            let fieldSchema = getValueSchema(item);
+
+            if (
+              item.required &&
+              (fieldSchema instanceof z.ZodString ||
+                fieldSchema instanceof z.ZodArray)
+            ) {
+              fieldSchema = fieldSchema.min(1, {
+                message: t('common.fieldRequired'),
+              });
+            }
+
+            return {
+              ...acc,
+              [item.name]: fieldSchema,
+            };
+          },
+          {} as Record<string, z.ZodTypeAny>,
+        ),
+      ),
+    [editableValueSpecs, t],
+  );
+
+  type FormValues = z.infer<typeof formSchema>;
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: editableValueSpecs.reduce((acc, item) => {
+      // 优先使用 initialValues，如果没有则使用默认值
+      const rawValue = initialValues?.[item.name] ?? item.default;
+      return {
+        ...acc,
+        [item.name]: normalizeDynamicFormFieldValue(item, rawValue),
+      };
+    }, {} as FormValues),
+  });
+
+  // Expose validation function to parent component
+  const validate = useCallback(async (): Promise<boolean> => {
+    // Trigger validation for all fields
+    const result = await form.trigger();
+    return result;
+  }, [form]);
+
+  useEffect(() => {
+    onValidate?.(validate);
+  }, [onValidate, validate]);
+
+  // 当 initialValues 变化时更新表单值
+  // 但要避免因为内部表单更新触发的 onSubmit 导致的 initialValues 变化而重新设置表单
+  useEffect(() => {
+    // 首次挂载时，使用 initialValues 初始化表单
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      previousInitialValues.current = initialValues;
+      return;
+    }
+
+    // 检查 initialValues 是否真的发生了实质性变化
+    // 使用 JSON.stringify 进行深度比较
+    const hasRealChange =
+      JSON.stringify(previousInitialValues.current) !==
+      JSON.stringify(initialValues);
+
+    if (initialValues && hasRealChange) {
+      // 合并默认值和初始值
+      const mergedValues = editableValueSpecs.reduce(
+        (acc, item) => {
+          const rawValue = initialValues[item.name] ?? item.default;
+          acc[item.name] = normalizeDynamicFormFieldValue(
+            item,
+            rawValue,
+          ) as object;
+          return acc;
+        },
+        {} as Record<string, object>,
+      );
+
+      Object.entries(mergedValues).forEach(([key, value]) => {
+        form.setValue(key as keyof FormValues, value);
+      });
+
+      previousInitialValues.current = initialValues;
+    }
+  }, [initialValues, form, editableValueSpecs]);
+
+  // Stable ref for onSubmit to avoid re-triggering the effect when the
+  // parent passes a new closure on every render.
+  const onSubmitRef = useRef(onSubmit);
+  onSubmitRef.current = onSubmit;
+
+  // Keep parent drafts synchronous with field changes.
+  useEffect(() => {
+    // Emit initial form values immediately so the parent always has a valid snapshot,
+    // even if the user saves without modifying any field.
+    // form.watch(callback) only fires on subsequent changes, not on mount.
+    const formValues = form.getValues();
+    const initialFinalValues = normalizeDynamicFormValuesForSave(
+      editableValueSpecs,
+      formValues as Record<string, unknown>,
+    );
+    onSubmitRef.current?.(initialFinalValues);
+
+    // Update previousInitialValues to the emitted snapshot so that if the
+    // parent writes these values back as new initialValues, the deep
+    // comparison in the initialValues-sync useEffect won't detect a change
+    // and won't trigger an infinite update loop.
+    previousInitialValues.current = initialFinalValues as Record<
+      string,
+      object
+    >;
+
+    const subscription = form.watch(() => {
+      const formValues = form.getValues();
+      const finalValues = normalizeDynamicFormValuesForSave(
+        editableValueSpecs,
+        formValues as Record<string, unknown>,
+      );
+      previousInitialValues.current = finalValues as Record<string, object>;
+      onSubmitRef.current?.(finalValues);
+    });
+    return () => subscription.unsubscribe();
+  }, [form, editableValueSpecs]);
+
+  return (
+    <DynamicFormFields
+      form={form}
+      itemConfigList={itemConfigList}
+      onFileUploaded={onFileUploaded}
+      isEditing={isEditing}
+      externalDependentValues={externalDependentValues}
+      systemContext={systemContext}
+      renderItem={renderItem}
+      hiddenItemNames={hiddenItemNames}
+    />
+  );
+}
+
+type DynamicFormProps = Parameters<typeof DynamicFormComponent>[0];
+
+type DynamicFormFieldsProps = Omit<
+  DynamicFormProps,
+  'initialValues' | 'onSubmit' | 'onValidate'
+> & {
+  form: UseFormReturn<Record<string, any>>;
+};
+
+// The stable provider also isolates useWatch/useController from an outer form's
+// context updates. The field list itself must subscribe inside this provider.
+const DynamicFormFields = memo(function DynamicFormFields(
+  props: DynamicFormFieldsProps,
+) {
+  return (
+    <Form {...props.form}>
+      <DynamicFormFieldList {...props} />
+    </Form>
+  );
+});
+
+function DynamicFormFieldList({
+  form,
+  itemConfigList,
+  onFileUploaded,
+  isEditing,
+  externalDependentValues,
+  systemContext,
+  renderItem,
+  hiddenItemNames,
+}: DynamicFormFieldsProps) {
+  type FormValues = Record<string, any>;
+  const { t, i18n } = useTranslation();
+  const dependencies = useMemo(
+    () => [
+      ...new Set(
+        itemConfigList
+          .flatMap((item) => [
+            item.show_if?.field,
+            item.disable_if?.field,
+            ...(item.disabled_tooltip_overrides ?? []).map(
+              (rule) => rule.when.field,
+            ),
+            ...(item.type === DynamicFormItemType.RICH_TOOLS_SELECTOR ||
+            item.type === DynamicFormItemType.RESOURCES_SELECTOR
+              ? getValueSpecs(item).map((spec) => spec.name)
+              : []),
+          ])
+          .filter(
+            (name): name is string =>
+              !!name && !name.startsWith(SYSTEM_FIELD_PREFIX),
+          ),
+      ),
+    ],
+    [itemConfigList],
+  );
+  const watchedValues = useWatch({
+    control: form.control,
+    // Custom controls can read arbitrary fields; regular controls only need
+    // their declared conditions and composite-field dependencies here.
+    compute: (values: Record<string, any>) =>
+      renderItem
+        ? values
+        : Object.fromEntries(dependencies.map((name) => [name, values[name]])),
+  });
+  const setFormValue = useCallback(
+    (name: string, value: unknown) => {
+      form.setValue(name, value, { shouldDirty: true, shouldValidate: true });
+    },
+    [form],
+  );
+
+  // State for QR code login dialog
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [qrDialogPlatform, setQrDialogPlatform] = useState<
+    QrLoginPlatform | 'slack'
+  >('feishu');
+
+  return (
+    <div className="min-w-0 max-w-full space-y-4 overflow-x-hidden">
+      {/* QR code login dialog */}
+      {qrDialogPlatform === 'slack' ? (
+        <SlackSetupDialog
+          open={qrDialogOpen}
+          onOpenChange={setQrDialogOpen}
+          botId={systemContext?.bot_uuid as string | undefined}
+          webhookUrl={(systemContext?.webhook_url as string) || ''}
+          socketMode={!!form.getValues('socket_mode')}
+          onSuccess={(credentials) => {
+            for (const [key, value] of Object.entries(credentials))
+              setFormValue(key, value);
+          }}
+        />
+      ) : (
+        <QrCodeLoginDialog
+          open={qrDialogOpen}
+          onOpenChange={setQrDialogOpen}
+          platform={qrDialogPlatform}
+          onSuccess={(credentials) => {
+            for (const [key, value] of Object.entries(credentials)) {
+              if (value) {
+                form.setValue(key as keyof FormValues, value as never);
+              }
+            }
+          }}
+        />
+      )}
+
+      {itemConfigList.map((config, index) => {
+        if (hiddenItemNames?.includes(config.name)) return null;
+
+        // Create a normalized config with type converted to frontend format
+        const normalizedConfig = {
+          ...config,
+          type: normalizeItemType(config.type),
+        };
+        const fieldKey = config.id || config.name || `field-${index}`;
+
+        let isHiddenByCondition = false;
+        if (config.show_if) {
+          const dependValue = resolveShowIfValue(
+            config.show_if.field,
+            watchedValues as Record<string, unknown>,
+            externalDependentValues,
+            systemContext,
+          );
+
+          if (
+            config.show_if.operator === 'eq' &&
+            dependValue !== config.show_if.value
+          ) {
+            isHiddenByCondition = true;
+          }
+          if (
+            config.show_if.operator === 'neq' &&
+            dependValue === config.show_if.value
+          ) {
+            isHiddenByCondition = true;
+          }
+          if (
+            config.show_if.operator === 'in' &&
+            Array.isArray(config.show_if.value) &&
+            !config.show_if.value.includes(dependValue)
+          ) {
+            isHiddenByCondition = true;
+          }
+        }
+
+        // Keep structured drafts mounted across conditional hiding so invalid
+        // JSON cannot disappear from validation when Advanced Settings closes.
+        if (
+          isHiddenByCondition &&
+          normalizedConfig.type !== DynamicFormItemType.JSON &&
+          normalizedConfig.type !== DynamicFormItemType.PROMPT_EDITOR
+        )
+          return null;
+
+        // Keep locked fields visible and resolve only the applicable reason.
+        const { isDisabledByCondition, disabledTooltip: tooltip } =
+          resolveDisabledState(
+            config,
+            watchedValues as Record<string, unknown>,
+            externalDependentValues,
+            systemContext,
+          );
+
+        // All fields are disabled when editing (creation_settings are
+        // immutable) or when ``disable_if`` matches.
+        const isFieldDisabled = !!isEditing || isDisabledByCondition;
+        const disabledTooltip = tooltip ? extractI18nObject(tooltip) : '';
+        const renderDisabledTooltipIcon = () =>
+          disabledTooltip ? (
+            <DisabledTooltipIcon text={disabledTooltip} />
+          ) : null;
+
+        // `__system.*` fields are display-only; their value is resolved
+        // from systemContext (same namespace as show_if), not user input.
+        // Hidden entirely when the deployment doesn't provide the value.
+        if (config.name.startsWith(SYSTEM_FIELD_PREFIX)) {
+          const rawValue =
+            systemContext?.[config.name.slice(SYSTEM_FIELD_PREFIX.length)];
+          const values = (Array.isArray(rawValue) ? rawValue : [rawValue])
+            .filter((v) => v !== undefined && v !== null && v !== '')
+            .map(String);
+          if (values.length === 0) return null;
+
+          return (
+            <SystemInfoField
+              key={config.id}
+              label={extractI18nObject(config.label)}
+              description={
+                config.description
+                  ? extractI18nObject(config.description)
+                  : undefined
+              }
+              values={values}
+            />
+          );
+        }
+
+        // Webhook URL fields are display-only; render outside of form binding
+        if (normalizedConfig.type === 'webhook-url') {
+          const webhookUrl = (systemContext?.webhook_url as string) || '';
+          const extraWebhookUrl =
+            (systemContext?.extra_webhook_url as string) || '';
+
+          if (!webhookUrl) return null;
+
+          return (
+            <WebhookUrlField
+              key={fieldKey}
+              label={extractI18nObject(config.label)}
+              description={
+                config.description
+                  ? extractI18nObject(config.description)
+                  : undefined
+              }
+              url={webhookUrl}
+              extraUrl={extraWebhookUrl || undefined}
+            />
+          );
+        }
+
+        if (normalizedConfig.type === 'embed-code') {
+          const botUuid = (systemContext?.bot_uuid as string) || '';
+          if (!botUuid) return null;
+
+          const baseUrl =
+            import.meta.env.VITE_API_BASE_URL || window.location.origin;
+          const widgetTitle =
+            ((systemContext?.adapter_config as Record<string, unknown>)
+              ?.title as string) || 'LangBot';
+          const safeTitle = widgetTitle
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+          const embedSnippet = `<script data-title="${safeTitle}" src="${baseUrl}/api/v1/embed/${botUuid}/widget.js"><\/script>`;
+
+          return (
+            <EmbedCodeField
+              key={fieldKey}
+              label={extractI18nObject(config.label)}
+              description={
+                config.description
+                  ? extractI18nObject(config.description)
+                  : undefined
+              }
+              snippet={embedSnippet}
+            />
+          );
+        }
+
+        if (config.type === 'download-link') {
+          if (!config.url) return null;
+
+          return (
+            <DownloadLinkField
+              key={config.id}
+              label={extractI18nObject(config.label)}
+              description={
+                config.description
+                  ? extractI18nObject(config.description)
+                  : undefined
+              }
+              url={config.url}
+              filename={config.download_filename}
+              helpUrl={getAdapterDocUrl(config.help_links, i18n.language)}
+              helpLabel={
+                config.help_label
+                  ? extractI18nObject(config.help_label)
+                  : t('bots.viewAdapterDocs')
+              }
+            />
+          );
+        }
+
+        // QR code login button (e.g. Feishu one-click create, WeChat scan login)
+        if (config.type === 'qr-code-login') {
+          return (
+            <FormItem key={fieldKey}>
+              <div
+                className="relative flex items-center gap-4 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-all hover:border-solid hover:shadow-md group"
+                style={{
+                  borderColor:
+                    'color-mix(in srgb, var(--primary) 25%, transparent)',
+                  background:
+                    'color-mix(in srgb, var(--primary) 3%, transparent)',
+                }}
+                onClick={() => {
+                  if (!isEditing) {
+                    setQrDialogPlatform(
+                      (config.login_platform as QrLoginPlatform | 'slack') ||
+                        'feishu',
+                    );
+                    setQrDialogOpen(true);
+                  }
+                }}
+              >
+                <div className="flex items-center justify-center h-12 w-12 rounded-lg bg-primary/10 shrink-0">
+                  <QrCode className="h-6 w-6 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">
+                      {extractI18nObject(config.label)}
+                    </span>
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-primary text-primary-foreground">
+                      {t('common.recommend')}
+                    </span>
+                  </div>
+                  {config.description && (
+                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                      {extractI18nObject(config.description)}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!!isEditing}
+                  className="shrink-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setQrDialogPlatform(
+                      (config.login_platform as QrLoginPlatform | 'slack') ||
+                        'feishu',
+                    );
+                    setQrDialogOpen(true);
+                  }}
+                >
+                  <QrCode className="h-3.5 w-3.5 mr-1" />
+                  {t('common.start')}
+                </Button>
+              </div>
+            </FormItem>
+          );
+        }
+
+        if (
+          config.type === DynamicFormItemType.RICH_TOOLS_SELECTOR ||
+          config.type === DynamicFormItemType.RESOURCES_SELECTOR
+        ) {
+          return (
+            <FormField
+              key={config.id}
+              control={form.control}
+              name={config.name as keyof FormValues}
+              render={({ field }) => (
+                <FormItem className="min-w-0">
+                  <FormControl>
+                    <div
+                      className={cn(
+                        'min-w-0 max-w-full overflow-x-hidden',
+                        isFieldDisabled && 'pointer-events-none opacity-60',
+                      )}
+                    >
+                      <DynamicFormItemComponent
+                        config={config}
+                        field={field}
+                        formValues={watchedValues as Record<string, unknown>}
+                        onFileUploaded={onFileUploaded}
+                        setFormValue={setFormValue}
+                        systemContext={systemContext}
+                      />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          );
+        }
+
+        // Boolean fields use a special inline layout
+        if (normalizedConfig.type === 'boolean') {
+          return (
+            <FormField
+              key={fieldKey}
+              control={form.control}
+              name={config.name as keyof FormValues}
+              render={({ field }) => (
+                <FormItem className="min-w-0">
+                  <div
+                    className={cn(
+                      'flex w-full min-w-0 max-w-full flex-row items-center justify-between rounded-lg border p-4',
+                      isFieldDisabled && 'pointer-events-none opacity-60',
+                    )}
+                  >
+                    <div className="min-w-0 space-y-0.5">
+                      <FormLabel className="flex min-w-0 items-center gap-1.5 text-base">
+                        {extractI18nObject(config.label)}
+                        {renderDisabledTooltipIcon()}
+                      </FormLabel>
+                      {config.description && (
+                        <p className="text-sm break-words text-muted-foreground">
+                          {extractI18nObject(config.description)}
+                        </p>
+                      )}
+                    </div>
+                    <FormControl>
+                      <DynamicFormItemComponent
+                        config={normalizedConfig}
+                        field={field}
+                        formValues={watchedValues as Record<string, unknown>}
+                        onFileUploaded={onFileUploaded}
+                        setFormValue={setFormValue}
+                        systemContext={systemContext}
+                      />
+                    </FormControl>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          );
+        }
+
+        return (
+          <FormField
+            key={fieldKey}
+            control={form.control}
+            name={config.name as keyof FormValues}
+            render={({ field }) => {
+              const customItem = renderItem?.({
+                config: normalizedConfig,
+                field,
+                formValues: watchedValues as Record<string, unknown>,
+                setFormValue,
+              });
+              return (
+                <FormItem
+                  className={cn('min-w-0', isHiddenByCondition && 'hidden')}
+                  hidden={isHiddenByCondition}
+                >
+                  <FormLabel className="flex min-w-0 items-center gap-1.5">
+                    <span className="min-w-0 break-words">
+                      {extractI18nObject(config.label)}{' '}
+                      {config.required && (
+                        <span className="text-red-500">*</span>
+                      )}
+                    </span>
+                    {renderDisabledTooltipIcon()}
+                  </FormLabel>
+                  <FormControl>
+                    <div
+                      className={cn(
+                        'min-w-0 max-w-full overflow-x-hidden',
+                        isFieldDisabled && 'pointer-events-none opacity-60',
+                      )}
+                    >
+                      {customItem !== undefined ? (
+                        customItem
+                      ) : (
+                        <DynamicFormItemComponent
+                          config={normalizedConfig}
+                          field={field}
+                          formValues={watchedValues as Record<string, unknown>}
+                          onFileUploaded={onFileUploaded}
+                          setFormValue={setFormValue}
+                          systemContext={systemContext}
+                        />
+                      )}
+                    </div>
+                  </FormControl>
+                  {config.description && (
+                    <p className="text-sm break-words text-muted-foreground">
+                      {extractI18nObject(config.description)}
+                    </p>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              );
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}

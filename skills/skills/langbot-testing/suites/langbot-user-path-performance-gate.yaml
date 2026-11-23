@@ -1,0 +1,12 @@
+id: langbot-user-path-performance-gate
+title: "LangBot user-path performance gate"
+description: "Browser-visible performance checks for user-facing LangBot paths such as Pipeline Debug Chat."
+type: performance
+priority: p1
+tags:
+  - performance
+  - browser
+  - debug-chat
+  - user-path
+cases:
+  - pipeline-debug-chat-performance

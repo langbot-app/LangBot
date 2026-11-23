@@ -1,0 +1,393 @@
+import { useEffect, useRef, useState, useCallback } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { useTranslation } from 'react-i18next';
+import {
+  Loader2,
+  RefreshCw,
+  CheckCircle2,
+  XCircle,
+  ScanLine,
+} from 'lucide-react';
+import QRCode from 'qrcode';
+import { httpClient } from '@/app/infra/http/HttpClient';
+
+export type QrLoginPlatform = 'feishu' | 'weixin';
+
+interface PlatformConfig {
+  titleKey: string;
+  connectingKey: string;
+  scanQRCodeKey: string;
+  waitingKey: string;
+  successKey: string;
+  failedKey: string;
+  retryKey: string;
+  apiBase: string;
+  brandColor: string;
+  adapterName: string;
+  extractSuccess: (data: Record<string, string>) => Record<string, string>;
+}
+
+const PLATFORM_CONFIGS: Record<QrLoginPlatform, PlatformConfig> = {
+  feishu: {
+    titleKey: 'feishu.createApp',
+    connectingKey: 'feishu.connecting',
+    scanQRCodeKey: 'feishu.scanQRCode',
+    waitingKey: 'feishu.waitingForScan',
+    successKey: 'feishu.createSuccess',
+    failedKey: 'feishu.createFailed',
+    retryKey: 'feishu.retry',
+    apiBase: '/api/v1/platform/adapters/lark/create-app',
+    brandColor: '#3370ff',
+    adapterName: 'lark',
+    extractSuccess: (data) => ({
+      app_id: data.app_id,
+      app_secret: data.app_secret,
+      ...(data.app_name ? { app_name: data.app_name } : {}),
+    }),
+  },
+  weixin: {
+    titleKey: 'weixin.scanLogin',
+    connectingKey: 'feishu.connecting',
+    scanQRCodeKey: 'weixin.scanQRCode',
+    waitingKey: 'feishu.waitingForScan',
+    successKey: 'weixin.loginSuccess',
+    failedKey: 'weixin.loginFailed',
+    retryKey: 'feishu.retry',
+    apiBase: '/api/v1/platform/adapters/weixin/login',
+    brandColor: '#07c160',
+    adapterName: 'openclaw-weixin',
+    extractSuccess: (data) => ({
+      token: data.token,
+      base_url: data.base_url,
+      ...(data.account_id ? { account_id: data.account_id } : {}),
+    }),
+  },
+};
+
+interface QrCodeLoginDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  platform: QrLoginPlatform;
+  onSuccess: (credentials: Record<string, string>) => void;
+}
+
+type DialogState = 'connecting' | 'waiting' | 'success' | 'error';
+
+const POLL_INTERVAL_MS = 3000;
+
+export default function QrCodeLoginDialog({
+  open,
+  onOpenChange,
+  platform,
+  onSuccess,
+}: QrCodeLoginDialogProps) {
+  const { t } = useTranslation();
+  const platformConfig = PLATFORM_CONFIGS[platform];
+
+  const [state, setState] = useState<DialogState>('connecting');
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [expireIn, setExpireIn] = useState(0);
+  const [errorMessage, setErrorMessage] = useState('');
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+
+  const onSuccessRef = useRef(onSuccess);
+  onSuccessRef.current = onSuccess;
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+  const tRef = useRef(t);
+  tRef.current = t;
+  const platformConfigRef = useRef(platformConfig);
+  platformConfigRef.current = platformConfig;
+
+  const cleanup = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    if (sessionIdRef.current) {
+      const token = localStorage.getItem('token');
+      const baseUrl =
+        import.meta.env.VITE_API_BASE_URL || window.location.origin;
+      fetch(
+        `${baseUrl}${platformConfigRef.current.apiBase}/${sessionIdRef.current}`,
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      ).catch(() => {});
+      sessionIdRef.current = null;
+    }
+  }, []);
+
+  const startLogin = useCallback(async () => {
+    cleanup();
+    setState('connecting');
+    setQrDataUrl('');
+    setExpireIn(0);
+    setErrorMessage('');
+
+    const token = localStorage.getItem('token');
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || window.location.origin;
+    const cfg = platformConfigRef.current;
+
+    try {
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      const res = await fetch(`${baseUrl}${cfg.apiBase}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const json = await res.json();
+      if (json.code !== 0) throw new Error(json.msg || 'Request failed');
+
+      const { session_id, qr_data_url, qr_url, expire_at } = json.data;
+      sessionIdRef.current = session_id;
+
+      if (qr_data_url) {
+        setQrDataUrl(qr_data_url);
+      } else if (qr_url) {
+        const dataUrl = await QRCode.toDataURL(qr_url, {
+          width: 280,
+          margin: 2,
+          color: {
+            dark: '#000000',
+            light: '#ffffff',
+          },
+        });
+        setQrDataUrl(dataUrl);
+      }
+      setState('waiting');
+
+      const remaining = Math.max(0, Math.floor(expire_at - Date.now() / 1000));
+      setExpireIn(remaining);
+
+      countdownRef.current = setInterval(() => {
+        setExpireIn((prev) => {
+          if (prev <= 1) {
+            if (countdownRef.current) {
+              clearInterval(countdownRef.current);
+              countdownRef.current = null;
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      pollTimerRef.current = setInterval(async () => {
+        try {
+          const pollRes = await fetch(
+            `${baseUrl}${cfg.apiBase}/status/${session_id}`,
+            { headers: { Authorization: `Bearer ${token}` } },
+          );
+          if (!pollRes.ok) return;
+
+          const pollJson = await pollRes.json();
+          if (pollJson.code !== 0) return;
+
+          const { status, error, ...rest } = pollJson.data;
+
+          if (status === 'success') {
+            sessionIdRef.current = null;
+            cleanup();
+            setState('success');
+            setTimeout(() => {
+              onSuccessRef.current(cfg.extractSuccess(rest));
+              onOpenChangeRef.current(false);
+            }, 1500);
+          } else if (status === 'error') {
+            sessionIdRef.current = null;
+            cleanup();
+            setState('error');
+            setErrorMessage(error || tRef.current(cfg.failedKey));
+          }
+        } catch {
+          // ignore poll errors
+        }
+      }, POLL_INTERVAL_MS);
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') return;
+      setState('error');
+      setErrorMessage(
+        err instanceof Error ? err.message : tRef.current(cfg.failedKey),
+      );
+    }
+  }, [cleanup]);
+
+  useEffect(() => {
+    if (open) {
+      startLogin();
+    }
+    return () => {
+      cleanup();
+    };
+  }, [open, startLogin, cleanup]);
+
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen) {
+      cleanup();
+    }
+    onOpenChange(newOpen);
+  };
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    if (m > 0) {
+      return `${m}:${s.toString().padStart(2, '0')}`;
+    }
+    return `0:${s.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-md p-0 overflow-hidden">
+        {/* Brand header */}
+        <div className="flex items-center gap-3 px-6 pt-6 pb-2">
+          <img
+            src={httpClient.getAdapterIconURL(platformConfig.adapterName)}
+            alt={platform}
+            className="h-10 w-10 rounded-lg"
+          />
+          <div>
+            <DialogTitle className="text-lg">
+              {t(platformConfig.titleKey)}
+            </DialogTitle>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-center justify-center px-6 pb-6 space-y-4">
+          {/* Connecting */}
+          {state === 'connecting' && (
+            <div className="flex flex-col items-center space-y-4 py-12">
+              <div className="relative">
+                <div
+                  className="absolute inset-0 rounded-full animate-ping opacity-20"
+                  style={{ backgroundColor: platformConfig.brandColor }}
+                />
+                <Loader2
+                  className="h-10 w-10 animate-spin relative"
+                  style={{ color: platformConfig.brandColor }}
+                />
+              </div>
+              <p className="text-sm text-muted-foreground font-medium">
+                {t(platformConfig.connectingKey)}
+              </p>
+            </div>
+          )}
+
+          {/* QR code area */}
+          {state === 'waiting' && qrDataUrl && (
+            <div className="flex flex-col items-center space-y-4 py-2">
+              {/* Instruction */}
+              <div
+                className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium"
+                style={{
+                  backgroundColor: `${platformConfig.brandColor}10`,
+                  color: platformConfig.brandColor,
+                }}
+              >
+                <ScanLine className="h-4 w-4" />
+                {t(platformConfig.scanQRCodeKey)}
+              </div>
+
+              {/* QR Code with border animation */}
+              <div className="relative">
+                <div
+                  className="absolute -inset-1 rounded-2xl opacity-30 animate-pulse"
+                  style={{ backgroundColor: platformConfig.brandColor }}
+                />
+                <div className="relative bg-white rounded-xl p-3 shadow-lg">
+                  <img src={qrDataUrl} alt="QR Code" className="w-64 h-64" />
+                </div>
+              </div>
+
+              {/* Countdown */}
+              {expireIn > 0 && (
+                <div className="flex items-center gap-2 text-sm">
+                  <div
+                    className="h-2 w-2 rounded-full animate-pulse"
+                    style={{ backgroundColor: platformConfig.brandColor }}
+                  />
+                  <span className="text-muted-foreground">
+                    {t(platformConfig.waitingKey)}
+                  </span>
+                  <span
+                    className="font-mono font-semibold tabular-nums"
+                    style={{
+                      color:
+                        expireIn < 60 ? '#ef4444' : platformConfig.brandColor,
+                    }}
+                  >
+                    {formatTime(expireIn)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Success */}
+          {state === 'success' && (
+            <div className="flex flex-col items-center space-y-3 py-12">
+              <div className="relative">
+                <div className="absolute inset-0 rounded-full bg-green-100 animate-ping opacity-30" />
+                <CheckCircle2 className="h-16 w-16 text-green-500 relative" />
+              </div>
+              <p className="text-base text-green-600 font-semibold">
+                {t(platformConfig.successKey)}
+              </p>
+            </div>
+          )}
+
+          {/* Error */}
+          {state === 'error' && (
+            <div className="flex flex-col items-center space-y-3 py-12">
+              <XCircle className="h-16 w-16 text-red-400" />
+              <p className="text-sm text-red-500 text-center max-w-xs">
+                {errorMessage || t(platformConfig.failedKey)}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Error footer with retry */}
+        {state === 'error' && (
+          <DialogFooter className="px-6 pb-6 pt-0">
+            <Button variant="outline" onClick={() => handleOpenChange(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              onClick={() => startLogin()}
+              style={{ backgroundColor: platformConfig.brandColor }}
+            >
+              <RefreshCw className="h-4 w-4 mr-1.5" />
+              {t(platformConfig.retryKey)}
+            </Button>
+          </DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}

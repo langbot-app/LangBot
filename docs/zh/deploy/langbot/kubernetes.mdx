@@ -1,0 +1,109 @@
+---
+title: "Kubernetes 部署"
+description: "在 Kubernetes 上部署 LangBot，实现可扩展、生产级的多平台 AI 机器人托管。"
+---
+
+<Warning>
+  您需要提前了解：
+
+  - Kubernetes 集群的基本使用（`kubectl`、Namespace、Deployment、Service、PVC）
+  - 容器间网络通信与持久化存储的配置方式
+</Warning>
+
+LangBot 仓库在 `docker/` 目录下提供了开箱即用的 Kubernetes 部署清单 [`kubernetes.yaml`](https://github.com/langbot-app/LangBot/blob/master/docker/kubernetes.yaml)。本页是该清单的部署说明，重点放在 **Box 沙箱运行时** 在 Kubernetes 下的部署方式——这是与 Docker Compose 部署差异最大的部分。
+
+## 组件构成
+
+清单会在 `langbot` 命名空间下创建以下组件：
+
+| 组件 | 说明 | 端口 |
+| --- | --- | --- |
+| `langbot` | 主应用（WebUI + webhook） | 5300 / 2280-2290 |
+| `langbot-plugin-runtime` | 插件运行时 | 5400 |
+| `langbot-box` | Box 沙箱运行时（可选） | 5410 |
+
+持久化存储：`langbot-data`、`langbot-plugins`、`langbot-plugin-runtime-data`、`langbot-plugin-runtime-state` 四个 PVC；Box 工作区根目录使用节点上的 `hostPath`（`/app/data/box`），而非 PVC。
+
+## 快速开始
+
+```bash
+# 克隆仓库
+git clone https://github.com/langbot-app/LangBot
+cd LangBot/docker
+
+# 部署全部组件
+kubectl apply -f kubernetes.yaml
+
+# 查看状态
+kubectl get all -n langbot
+```
+
+进行旧数据迁移时，Core 会先迁入旧 Skill 和本地资产，再开放 HTTP 服务。清单的 `startupProbe` 默认提供约 30 分钟的启动预算（`periodSeconds: 10`、`failureThreshold: 180`）；请按需迁入的历史数据量调整 `failureThreshold`。启动探针成功后，现有的 liveness/readiness 探针才开始生效。各组件直接使用镜像已安装的 Python 环境，Pod 启动时不执行 `uv sync`。
+
+部署完成后，可通过端口转发访问 WebUI：
+
+```bash
+kubectl port-forward -n langbot svc/langbot 5300:5300
+# 浏览器访问 http://localhost:5300
+```
+
+生产环境推荐使用 Ingress + TLS 对外暴露（清单中已附带被注释的 Ingress / LoadBalancer / NodePort 示例，按需取消注释）。
+
+### 使用 SeekDB / Milvus / Valkey Search
+
+默认镜像只内置 Chroma、Qdrant 与 pgvector 支持。如需使用 SeekDB（含内置嵌入模型）、Milvus 或 Valkey Search，请把 `langbot` Deployment 的镜像改为带对应后缀的标签：`-seekdb`、`-milvus` 或 `-valkey`（如 `rockchin/langbot:latest-milvus`、`rockchin/langbot:vX.Y.Z-milvus`），再配置 `vdb.use`。插件运行时和 Box 继续使用默认镜像即可。
+
+## Box 沙箱运行时
+
+`langbot-box` 为 LangBot 提供沙箱工具（`exec` / `read` / `write` / `edit` / `glob` / `grep`）、Skill 脚本执行、沙箱草稿发布和 stdio 模式的 MCP 服务器。它是**可选组件**：Skill 的管理、激活和只读资源访问由 Core 提供，不要求 Box；执行和沙箱草稿发布需要 Box。不部署时，请在 `langbot` 上设置 `BOX__ENABLED=false`。
+
+### 工作原理与关键约束
+
+LangBot 官方镜像内置 **nsjail 和 Docker CLI**，不包含 dockerd。本清单为 Docker 后端挂载节点的 Docker socket（`/var/run/docker.sock`），由节点的守护进程创建沙箱容器；Pod 本身不运行 dockerd。
+
+由此带来一个**关键约束**：真正创建沙箱容器的是**节点上的 Docker 守护进程**，它解析 bind-mount 路径时使用的是**节点文件系统**视角。所以 Box 工作区根目录必须在以下三处是**同一个绝对路径**：
+
+1. 节点上的实际路径
+2. `langbot-box` 容器内的挂载路径
+3. 它创建的每个沙箱容器内的挂载路径
+
+这正是清单使用 `hostPath`（固定在 `/app/data/box`）而非普通 PVC 的原因：PVC 路径只存在于 Pod 的 mount namespace 中，节点的 dockerd 看不到。清单为兼容旧 `legacy` 部署，保留 Core 的 Box 目录挂载和同节点 `podAffinity`。完成数据库与网络模式迁移后，可移除 Core 的这项挂载及相应亲和；Box 与节点 Docker daemon 之间的同路径要求仍保留，步骤见[技能升级说明](/zh/usage/skills/readme)。
+
+<Warning>
+  本清单默认使用 SQLite 和 `ReadWriteOnce` 数据卷，面向单 Core 部署。移除共享 Box 目录后也不能直接增加 `replicas` 来实现高可用；多 Core 需要另行规划数据库、实例身份及 Runtime 控制连接。
+</Warning>
+
+### 连接与配置
+
+- `langbot` 通过 WebSocket 连接 Box 运行时，端点由 ConfigMap 中的 `BOX__RUNTIME__ENDPOINT: ws://langbot-box:5410` 指定。
+
+<Note>
+  容器内默认主机名是 `langbot_box`（带下划线），而下划线不是合法的 Kubernetes DNS 名称，因此清单中**必须显式**用合法的 Service 名 `langbot-box` 指定端点，不能依赖容器内默认值。
+</Note>
+
+- Box 的工作根目录由自身的 `LANGBOT_BOX_CONFIG` 配置；清单将 `local.host_root` 设为 `/app/data/box`，并将该路径列入 `local.allowed_mount_roots`。其他执行配置由 Core 通过 INIT RPC 下发，Box 不读取自身的 `BOX__*` 环境变量。`network` 模式不接受 Core 提供的本地根目录；Core 上的 `BOX__LOCAL__*` 和 `SKILLS__ROOT` 保留用于旧 `legacy` 部署及迁移来源。
+
+### 安全提示
+
+挂载节点的 Docker socket 会让 Box 运行时（以及在沙箱中执行的任意代码）获得对节点的**实质 root 权限**。请仅在你信任该工作负载的节点上部署 Box，最好使用专用节点池并配合污点/容忍（taint/toleration）隔离。若需要更强的隔离边界，可将 `box.backend` 切换为 `e2b`（设置 `E2B_API_KEY`），并移除 `docker.sock` 挂载与 hostPath。详见[沙箱配置](/zh/usage/sandbox/config)。
+
+### 验证 Box 是否就绪
+
+```bash
+# 查看 Box 运行时日志（应能看到选用的 backend，例如 "using backend: docker"）
+kubectl logs -n langbot -l app=langbot-box -f
+
+# 在 langbot 日志中确认已连上 Box 运行时
+kubectl logs -n langbot -l app=langbot | grep -i "box runtime"
+```
+
+## 不需要沙箱时
+
+如果你不需要沙箱能力，可以删除清单中的 `langbot-box` Deployment / Service，并在 `langbot` Deployment 上设置 `BOX__ENABLED=false`，以避免连接失败的告警日志。
+
+## 后续阅读
+
+- [Docker 部署](/zh/deploy/langbot/docker)
+- [沙箱文档](/zh/usage/sandbox/readme) 与 [沙箱配置](/zh/usage/sandbox/config)
+- [技能系统文档](/zh/usage/skills/readme)
+- 部署清单源文件：仓库内 [`docker/kubernetes.yaml`](https://github.com/langbot-app/LangBot/blob/master/docker/kubernetes.yaml)

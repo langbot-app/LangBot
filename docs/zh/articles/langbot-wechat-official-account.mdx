@@ -1,0 +1,145 @@
+---
+title: "LangBot 公众号：体验基础 AI 问答"
+description: "通过 LangBot 公众号进行基础 AI 问答，并获取产品动态、使用教程和应用实践。"
+---
+
+发布于 2026-09-17 · 作者：LangBot Team
+
+LangBot 是一个开源的 AI 机器人平台，可以将大模型、知识库、Agent、插件和工作流连接到企业微信、Telegram、飞书、钉钉、QQ、Discord 等消息平台。
+
+关注 **LangBot 公众号**，不仅可以了解产品更新、使用方法和真实应用实践，还可以直接发送消息，体验基础 AI 问答服务。
+
+## 直接使用基础 AI 问答
+
+在公众号中发送问题，即可与 LangBot 进行基础对话。例如：
+
+- 帮我解释一个技术概念
+- 把这段文字概括成三句话
+- 帮我写一封简短的邮件
+- 为一个活动想几个标题
+- 翻译或润色一段内容
+- 给我一些学习或工作建议
+
+公众号适合日常咨询、内容生成、翻译润色和一般知识问答，打开微信即可使用。
+
+## 三个入口有什么区别
+
+公众号提供的是**基础 AI 问答**，当前不接入企业知识库，也不提供沙箱工具。请根据需要选择对应入口：
+
+| 入口 | 提供的能力 | 适合的问题 |
+| --- | --- | --- |
+| LangBot 公众号 | 基础 AI 问答 | 日常咨询、写作、总结、翻译和一般知识问答 |
+| 企业微信客服 | LangBot 知识库 | 查询产品手册、价格政策、实施流程、公司制度和会议纪要 |
+| Telegram | LangBot 沙箱 Agent | 运行代码和命令、创建或修改文件、处理数据和完成多步骤任务 |
+
+如果需要查询企业资料，请使用[企业微信客服知识库](/zh/articles/langbot-wecom-customer-service-knowledge-base)。如果需要让 Agent 执行命令、处理文件或运行代码，请使用[Telegram 沙箱 Agent](/zh/articles/langbot-telegram-sandbox-agent)。
+
+## 你可以看到什么
+
+### 产品动态
+
+了解 LangBot 新版本带来的能力，包括模型支持、知识库、Agent 沙箱、Skills、插件系统和平台适配等更新。
+
+每次重要版本发布后，公众号会用更容易理解的方式介绍新功能能解决什么问题，以及适合哪些使用场景。
+
+### 使用教程
+
+从部署 LangBot 到接入消息平台，从配置模型到使用知识库，公众号会持续发布可直接参考的教程。
+
+内容包括：
+
+- 快速部署 LangBot
+- 接入企业微信、Telegram、飞书和钉钉
+- 配置 GPT、Claude、Gemini、DeepSeek 等模型
+- 创建企业知识库问答机器人
+- 使用 Agent 沙箱执行任务
+- 安装和使用插件
+- 连接 Dify、n8n、Langflow 等外部工作流
+
+### 应用案例
+
+你可以了解 LangBot 在不同场景中的使用方式：
+
+- 企业知识库与内部问答
+- 微信客服与售前咨询
+- 群聊 AI 助手
+- 文件处理和代码执行 Agent
+- 客户支持与故障排查
+- 工作流自动化
+
+这些案例可以帮助你判断 LangBot 是否适合自己的团队，也可以作为搭建机器人时的参考。
+
+### 社区精选
+
+LangBot 社区持续产生新的插件、用法和解决方案。公众号会整理值得关注的项目进展、社区实践和优秀案例，帮助你更快发现可以直接使用的能力。
+
+## 在 LangBot Cloud 部署微信公众号 AI 助手
+
+LangBot Cloud 自带公网域名和 HTTPS，不需要购买服务器、安装 Docker 或配置反向代理。开始前只需准备一个可登录[微信公众平台](https://mp.weixin.qq.com/)的公众号。
+
+### 1. 创建 LangBot Cloud 实例
+
+1. 打开 [LangBot Cloud](https://cloud.langbot.app)，登录 LangBot Account。
+2. 为机器人选择一个名称。这个名称也会成为实例的 `.langbot.cloud` 访问地址。
+3. 选择支持微信公众号的套餐，确认价格、资源和消息平台范围后继续。
+4. 确认配置并部署。实例通常会在 1 到 2 分钟内完成初始化。
+5. 状态变为**运行中**后，点击**打开机器人**进入 LangBot 控制台。
+
+### 2. 配置模型和流水线
+
+进入 LangBot 控制台的**模型**页面：
+
+1. Cloud 会提供可直接使用的 LangBot Models 及一定的模型积分；也可以添加自己的模型供应商、Base URL 和 API Key。
+2. 选择或添加一个对话模型。
+3. 进入**流水线**页面，打开默认流水线。
+4. 在 **AI 能力**中选择**内置 Agent**和刚添加的模型，然后保存。
+5. 使用**对话调试**发送一条消息，确认模型可以正常回复。
+
+只有调试对话成功后再继续接入公众号，这样出现问题时更容易区分是模型配置还是微信回调配置导致的。
+
+### 3. 获取公众号开发配置
+
+登录微信公众平台，进入**设置与开发 > 开发接口管理**：
+
+1. 记录公众号的 `AppID` 和 `AppSecret`。
+2. 按微信公众平台要求配置 IP 白名单。Cloud 实例需要填写的出口 IP 以实例或平台页面显示的信息为准。
+3. 打开服务器配置，准备一个自定义 `Token`，并生成 `EncodingAESKey`。
+4. 将消息加解密方式选择为**安全模式**。
+
+`AppSecret`、`Token` 和 `EncodingAESKey` 都属于敏感信息，不要放进截图、公开仓库或聊天记录。
+
+### 4. 在 LangBot 创建公众号机器人
+
+进入 LangBot 控制台的**机器人**页面，创建一个**微信公众号**机器人，然后：
+
+1. 填入 `AppID`、`AppSecret`、`Token` 和 `EncodingAESKey`。
+2. `Mode` 选择 `drop` 时，公众号直接返回模型回答，但必须在微信规定的 15 秒内完成。
+3. 模型响应可能超过 15 秒时，建议选择 `passive`；用户会先收到等待提示，再发送任意文字获取结果。
+4. 绑定前面配置好的流水线，将 `enable` 设为 `true`，保存并启用机器人。
+5. 从机器人配置页面复制 Webhook 回调地址。
+
+### 5. 完成微信回调验证
+
+回到微信公众平台的服务器配置，粘贴 LangBot 生成的完整 Webhook 地址。Cloud 地址已经配置好公网 HTTPS，形式类似：
+
+```text
+https://你的实例名.langbot.cloud/bots/xxxxx
+```
+
+确认微信公众平台和 LangBot 两边填写的 `Token`、`EncodingAESKey` 及加密模式完全一致，然后保存并启用服务器配置。微信提示保存成功，说明回调验证已经通过。
+
+最后关注公众号并发送一条测试消息。如果回调验证失败，请优先检查 IP 白名单、Webhook 地址以及两端的 `Token`、`EncodingAESKey` 和加密模式是否一致。更多截图和字段说明见[微信公众号接入文档](/zh/usage/platforms/wxoa)。如有私有部署要求，再参考 [Docker 部署文档](/zh/deploy/langbot/docker)。
+
+## 关注并开始问答
+
+在微信中搜索 **LangBot** 公众号并关注。进入公众号后直接发送消息，即可开始基础 AI 问答。
+
+也可以使用微信扫描下方二维码关注：
+
+![LangBot 微信公众号二维码](/images/articles/langbot-wechat-official-account-qr.png)
+
+你还可以访问以下资源了解 LangBot：
+
+- [LangBot GitHub](https://github.com/langbot-app/LangBot)
+- [LangBot 官方文档](https://langbot.app/docs)
+- [LangBot Cloud](https://cloud.langbot.app)

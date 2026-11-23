@@ -1,0 +1,23 @@
+id: telemetry-proxy-noise
+title: "Telemetry posting fails through the proxy while the target flow succeeds"
+date: 2026-06-25
+category: env_issue
+symptoms:
+  - "The target Debug Chat or provider smoke request completes successfully."
+  - "The same log window contains a Traceback for telemetry posting."
+  - "The traceback references the Space telemetry endpoint."
+patterns:
+  - "Failed to post telemetry"
+  - "https://space.langbot.app/api/v1/telemetry"
+  - "httpx.ConnectError"
+likely_causes:
+  - "The backend process inherited proxy settings that are required for model/provider access but unreliable for telemetry posting."
+  - "The telemetry endpoint is temporarily unreachable through the local proxy route."
+  - "TLS or proxy negotiation failed for the non-critical telemetry request."
+fix_steps:
+  - "Keep the proxy configuration needed for model/provider access; do not clear it only to hide telemetry noise."
+  - "Check that uppercase and lowercase proxy variables are consistent before rerunning a live Space smoke."
+  - "Classify the target flow and log-health result separately: a successful Debug Chat run can still have an environment log-health finding."
+verification: "A rerun shows the target case success patterns and no telemetry Traceback in the scanned log window, or the report explicitly records the telemetry issue as environment noise."
+related_cases:
+  - langbot-space-debug-chat-concurrency-smoke

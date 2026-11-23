@@ -1,0 +1,42 @@
+id: sandbox-skill-authoring-e2e
+title: "Local Agent publishes and executes an immutable Skill revision"
+mode: agent-browser
+area: sandbox
+type: regression
+priority: p2
+risk: high
+ci_eligible: false
+tags:
+  - sandbox
+  - skills
+  - local-agent
+  - tools
+  - nsjail
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+env_any:
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL|LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+preconditions:
+  - "The selected Local Agent uses a function-calling model and an available Box backend."
+steps:
+  - "Open the target Local Agent in Debug Chat."
+  - "Follow Publish and execute in references/sandbox-skill-authoring.md with a unique Skill name."
+  - "Record the activated revision and the script's independently expected output."
+  - "Attempt a write under the published package, then read back the original contents."
+checks:
+  - "UI and logs show successful draft creation, registration, activation and script execution."
+  - "Script output matches the deterministic expected value."
+  - "Published-package mutation is rejected; outputs remain in the run outbox or writable draft."
+  - "The expected rejected write is distinguishable from unexpected execution failures."
+evidence_required:
+  - ui
+  - backend_log
+  - api_diagnostic
+  - filesystem
+diagnostics:
+  - "Check Box availability and backend selection before interpreting a missing tool."
+  - "The runner may acquire Box before activation; a new package must not recreate the session."

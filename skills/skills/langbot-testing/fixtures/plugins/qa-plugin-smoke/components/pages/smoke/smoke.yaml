@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Page
+metadata:
+  name: smoke
+  label:
+    en_US: Smoke Page
+    zh_Hans: 冒烟测试页
+  description:
+    en_US: Page component for plugin e2e smoke testing.
+    zh_Hans: 插件端到端冒烟测试页面组件。
+spec:
+  path: index.html
+execution:
+  python:
+    path: smoke.py
+    attr: SmokePage

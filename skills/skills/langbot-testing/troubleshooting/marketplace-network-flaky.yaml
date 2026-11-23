@@ -1,0 +1,20 @@
+id: marketplace-network-flaky
+title: "Marketplace requests are flaky but plugin data may still load"
+date: 2026-05-17
+symptoms:
+  - "Marketplace page shows failed plugin list toasts or console network errors."
+  - "Some plugin cards still render and can be installed."
+patterns:
+  - "Failed to get plugin list"
+  - "ERR_NETWORK_CHANGED"
+  - "https://space.langbot.app/api/v1/marketplace"
+likely_causes:
+  - "Transient network/proxy instability while loading marketplace search, tags, icons, releases, or recommendation lists."
+  - "Non-critical marketplace resource requests fail after the main plugin list has already rendered."
+fix_steps:
+  - "Retry the Marketplace page before treating the flow as blocked."
+  - "If the target plugin card is visible, continue through the UI install flow."
+  - "Use /api/v1/plugins and /api/v1/knowledge/engines only to confirm install result."
+verification: "The target plugin appears in Installed Plugins or the relevant component endpoint, such as /api/v1/knowledge/engines for LangRAG."
+related_cases:
+  - langrag-kb-retrieve

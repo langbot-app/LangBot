@@ -1,0 +1,44 @@
+id: langbot-live-control-plane-api
+title: "LangBot live control-plane API probe"
+mode: probe
+area: performance
+type: performance
+priority: p1
+risk: medium
+ci_eligible: false
+tags:
+  - performance
+  - reliability
+  - live-backend
+  - control-plane
+  - metrics
+skills:
+  - langbot-testing
+env:
+  - LANGBOT_BACKEND_URL
+automation: skills/langbot-testing/probes/langbot-live-control-plane-api.mjs
+metrics_thresholds_json: '{"error_rate":{"max":0},"response_shape_failures":{"max":0},"healthz_p95_ms":{"max":500},"system_info_p95_ms":{"max":1000}}'
+load_profile_json: '{"requests":20,"concurrency":4,"endpoints":["/healthz","/api/v1/system/info"],"auth_required":false}'
+steps:
+  - "Confirm the selected LangBot backend is the intended test target."
+  - "Run `rtk bin/lbs test run langbot-live-control-plane-api --dry-run` first; remove `--dry-run` after checking LANGBOT_BACKEND_URL and evidence directory."
+  - "Automation sends a small request batch to /healthz and /api/v1/system/info, then validates status code, JSON shape, and latency budgets."
+checks:
+  - "automation-result.json status is pass when every control-plane request returns HTTP 200, JSON code 0, and required response fields."
+  - "metrics_summary includes per-endpoint p50/p95 latency, error rate, status counts, and response_shape_failures."
+  - "thresholds_summary shows error_rate, response_shape_failures, healthz_p95_ms, and system_info_p95_ms all pass."
+evidence_required:
+  - metrics
+  - network
+  - api_diagnostic
+  - filesystem
+diagnostics:
+  - "This probe measures unauthenticated backend control-plane readiness; it does not cover authenticated UI flows, Debug Chat, model calls, plugins, or RAG."
+  - "A system_info shape failure usually means the API contract or startup state changed and should be investigated before treating latency as healthy."
+success_patterns:
+  - "Live control-plane API probe passed"
+failure_patterns:
+  - "Backend did not respond"
+  - "breached shape, latency, or error-rate thresholds"
+troubleshooting:
+  - socks-proxy-without-socksio

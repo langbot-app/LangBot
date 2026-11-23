@@ -1,0 +1,292 @@
+from __future__ import annotations
+
+import asyncio
+import importlib
+import os
+import re
+import typing
+
+import quart
+import quart_cors
+from werkzeug.exceptions import RequestEntityTooLarge
+
+from ....core import app, entities as core_entities
+from ....utils import importutil
+
+from . import groups
+from . import group
+from .groups import provider as groups_provider
+from .groups import platform as groups_platform
+from .groups import pipelines as groups_pipelines
+from .groups import knowledge as groups_knowledge
+from .groups import resources as groups_resources
+from ...mcp.mount import MCPMount
+
+importutil.import_modules_in_pkg(groups)
+importutil.import_modules_in_pkg(groups_provider)
+importutil.import_modules_in_pkg(groups_platform)
+importutil.import_modules_in_pkg(groups_pipelines)
+importutil.import_modules_in_pkg(groups_knowledge)
+importutil.import_modules_in_pkg(groups_resources)
+
+# The traceability subsystem is self-contained and auto-registers its routes
+# through ``group.group_class``. Importing it here (instead of from within the
+# ``groups`` package) keeps the feature decoupled: the Core controller package
+# contains no code that depends on it, only this single bootstrap import. It
+# runs after the package scan so its routes join the same registry.
+importlib.import_module('langbot.pkg.operation_trace.routes')
+
+
+class BoundedJSONRequest(quart.Request):
+    """Parse bounded HTTP JSON bodies outside the shared event loop."""
+
+    def __init__(self, method, scheme, path, *args, max_content_length=None, **kwargs):
+        if method == 'POST' and path == '/api/v1/artifacts':
+            # Allow bounded multipart overhead while the route enforces the file byte limit.
+            max_content_length = group.MAX_FILE_SIZE + 64 * 1024
+        super().__init__(method, scheme, path, *args, max_content_length=max_content_length, **kwargs)
+        self.max_content_length = max_content_length
+
+    async def get_json(
+        self,
+        force: bool = False,
+        silent: bool = False,
+        cache: bool = True,
+    ) -> typing.Any:
+        # Keep Quart's cache and error semantics, changing only where the
+        # potentially 10 MiB JSON decoder runs. The RouterGroup establishes a
+        # trusted Workspace blocking-work scope before calling route handlers.
+        if cache and self._cached_json[silent] is not Ellipsis:
+            return self._cached_json[silent]
+        if not (force or self.is_json):
+            return None
+
+        data = await self.get_data(cache=cache, as_text=False)
+        try:
+            result = await asyncio.to_thread(self.json_module.loads, data)
+        except ValueError as error:
+            if silent:
+                result = None
+            else:
+                result = self.on_json_loading_failed(error)
+
+        if cache:
+            self._cached_json[silent] = result
+        return result
+
+
+class HTTPController:
+    ap: app.Application
+
+    quart_app: quart.Quart
+
+    def __init__(self, ap: app.Application) -> None:
+        self.ap = ap
+        self.quart_app = quart.Quart(__name__)
+        self.quart_app.request_class = BoundedJSONRequest
+        quart_cors.cors(self.quart_app, allow_origin='*')
+
+        # Set maximum content length to prevent large file uploads
+        self.quart_app.config['MAX_CONTENT_LENGTH'] = group.MAX_FILE_SIZE
+
+        # MCP server (mounted at /mcp, see ..mcp.mount). Built lazily in
+        # initialize() so the service layer is ready.
+        self.mcp_mount: MCPMount | None = None
+
+    async def initialize(self) -> None:
+        # Register custom error handler for file size limit
+        @self.quart_app.errorhandler(RequestEntityTooLarge)
+        async def handle_request_entity_too_large(e):
+            if quart.request.path == '/api/v1/artifacts':
+                from ....i18n import error_text
+
+                return quart.jsonify(
+                    {
+                        'code': 'artifact_too_large',
+                        'msg': error_text('artifact_too_large', 'Artifact exceeds the size limit.'),
+                    }
+                ), 413
+            return quart.jsonify(
+                {
+                    'code': 400,
+                    'msg': 'File size exceeds 10MB limit. Please split large files into smaller parts.',
+                }
+            ), 400
+
+        await self.register_routes()
+
+        # Build the MCP server and start its session-manager lifespan in the
+        # background so the streamable-HTTP transport is ready to serve.
+        self.mcp_mount = MCPMount(self.ap)
+        await self.mcp_mount.start_session_manager()
+        self.ap.logger.info('LangBot MCP server mounted at /mcp (API-key authenticated).')
+
+    async def run(self) -> None:
+        if True:
+
+            async def shutdown_trigger_placeholder():
+                while True:
+                    await asyncio.sleep(1)
+
+            async def exception_handler(*args, **kwargs):
+                try:
+                    await self._run_task(*args, **kwargs)
+                except Exception as e:
+                    self.ap.logger.error(f'Failed to start HTTP service: {e}')
+
+            self.ap.task_mgr.create_task(
+                exception_handler(
+                    host=self.ap.instance_config.data['api'].get('host', '0.0.0.0'),
+                    port=self.ap.instance_config.data['api']['port'],
+                    shutdown_trigger=shutdown_trigger_placeholder,
+                ),
+                name='http-api-quart',
+                scopes=[core_entities.LifecycleControlScope.APPLICATION],
+            )
+
+            # await asyncio.sleep(5)
+
+    async def _run_task(self, host: str, port: int, shutdown_trigger) -> None:
+        """Serve the Quart app, fronted by the MCP dispatcher at /mcp.
+
+        Mirrors Quart.run_task() but wraps the ASGI app so MCP requests are
+        intercepted before Quart's router. Falls back to plain Quart if the
+        MCP mount failed to build for any reason.
+        """
+        from hypercorn.config import Config as HyperConfig
+        from hypercorn.asyncio import serve as hypercorn_serve
+
+        config = HyperConfig()
+        config.access_log_format = '%(h)s %(r)s %(s)s %(b)s %(D)s'
+        config.accesslog = '-'
+        config.bind = [f'{host}:{port}']
+        config.errorlog = config.accesslog
+        config.websocket_max_message_size = group.MAX_FILE_SIZE
+
+        asgi_app = self.quart_app
+        if self.mcp_mount is not None:
+            asgi_app = self.mcp_mount.wrap(self.quart_app)
+
+        await hypercorn_serve(asgi_app, config, shutdown_trigger=shutdown_trigger)
+
+    async def register_routes(self) -> None:
+        @self.quart_app.route('/healthz')
+        async def healthz():
+            get_resource_stats = getattr(
+                self.ap,
+                'get_runtime_resource_stats',
+                None,
+            )
+            return {
+                'code': 0,
+                'msg': 'ok',
+                'resources': (get_resource_stats() if callable(get_resource_stats) else {}),
+            }
+
+        for g in group.preregistered_groups:
+            ginst = g(self.ap, self.quart_app)
+            await ginst.initialize()
+
+        from ....utils import paths
+
+        frontend_path = paths.get_frontend_path()
+
+        async def frontend_index():
+            from .social_preview import cloud_preview_html
+
+            response = await quart.send_from_directory(
+                frontend_path, 'index.html', mimetype='text/html', conditional=False
+            )
+            if quart.request.host.split(':', 1)[0].lower() == 'cloud.langbot.app':
+                response.set_data(cloud_preview_html(await response.get_data(as_text=True), quart.request.host))
+                response.headers.pop('ETag', None)
+                response.headers.pop('Last-Modified', None)
+            return response
+
+        @self.quart_app.route('/')
+        async def index():
+            response = await frontend_index()
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            return response
+
+        @self.quart_app.route('/<path:path>')
+        async def static_file(path: str):
+            if not (
+                os.path.exists(os.path.join(frontend_path, path)) and os.path.isfile(os.path.join(frontend_path, path))
+            ):
+                if os.path.exists(os.path.join(frontend_path, path + '.html')):
+                    path += '.html'
+                elif not path.startswith('api/'):
+                    # SPA fallback: serve index.html for all non-API, non-static routes
+                    # so that React Router can handle client-side routing (Vite SPA).
+                    # For /home/* sub-routes, first try parent .html files (pre-rendered pages).
+                    if path.startswith('home/'):
+                        segments = path.rstrip('/').split('/')
+                        for i in range(len(segments) - 1, 0, -1):
+                            parent_path = '/'.join(segments[:i]) + '.html'
+                            if os.path.exists(os.path.join(frontend_path, parent_path)):
+                                response = await quart.send_from_directory(
+                                    frontend_path, parent_path, mimetype='text/html'
+                                )
+                                response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                                response.headers['Pragma'] = 'no-cache'
+                                response.headers['Expires'] = '0'
+                                return response
+
+                    # Fallback to index.html for SPA client-side routing
+                    response = await frontend_index()
+                    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                    response.headers['Pragma'] = 'no-cache'
+                    response.headers['Expires'] = '0'
+                    return response
+                else:
+                    return await quart.send_from_directory(frontend_path, '404.html')
+
+            mimetype = None
+
+            if path.endswith('.html'):
+                mimetype = 'text/html'
+            elif path.endswith('.js'):
+                mimetype = 'application/javascript'
+            elif path.endswith('.css'):
+                mimetype = 'text/css'
+            elif path.endswith('.png'):
+                mimetype = 'image/png'
+            elif path.endswith('.jpg'):
+                mimetype = 'image/jpeg'
+            elif path.endswith('.jpeg'):
+                mimetype = 'image/jpeg'
+            elif path.endswith('.gif'):
+                mimetype = 'image/gif'
+            elif path.endswith('.svg'):
+                mimetype = 'image/svg+xml'
+            elif path.endswith('.ico'):
+                mimetype = 'image/x-icon'
+            elif path.endswith('.json'):
+                mimetype = 'application/json'
+            elif path.endswith('.txt'):
+                mimetype = 'text/plain'
+
+            compressible = mimetype in ('application/javascript', 'text/css')
+            use_gzip = (
+                compressible
+                and quart.request.accept_encodings.quality('gzip') > 0
+                and os.path.isfile(os.path.join(frontend_path, path + '.gz'))
+            )
+            response = await quart.send_from_directory(
+                frontend_path, path + '.gz' if use_gzip else path, mimetype=mimetype
+            )
+            if compressible:
+                response.vary.add('Accept-Encoding')
+            if use_gzip:
+                response.headers['Content-Encoding'] = 'gzip'
+            if path.startswith('assets/') and re.search(r'-[A-Za-z0-9_-]{8,}\.[^.]+$', path):
+                response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+                response.headers.pop('Expires', None)
+            else:
+                response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                response.headers['Pragma'] = 'no-cache'
+                response.headers['Expires'] = '0'
+            return response

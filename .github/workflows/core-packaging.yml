@@ -1,0 +1,221 @@
+name: Core packaging boundary
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      production_acceptance:
+        description: Also require an upgrade from the published v4.11.7 image
+        type: boolean
+        default: true
+      export_image:
+        description: Export the image for independent Linux acceptance
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      production_acceptance:
+        description: Require the strict published-image upgrade suite (P0 acceptance)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  # A direct PR invocation and a P0 reusable invocation must not cancel one another.
+  group: core-packaging-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: Select lightweight PR checks
+    if: github.event_name == 'pull_request' && !inputs.production_acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      packaging: ${{ steps.select.outputs.packaging }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/classify-test-changes
+        id: select
+
+  artifacts:
+    needs: changes
+    # A P0 PR invocation builds and exercises a real image; the direct PR
+    # workflow owns the artifact boundary checks and should not run them twice.
+    if: >-
+      !cancelled() &&
+      (github.event_name != 'pull_request' ||
+       (!inputs.production_acceptance && needs.changes.result == 'success' &&
+        needs.changes.outputs.packaging == 'true'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v5
+      - name: Check repository release boundaries
+        run: |
+          uv run --no-project --with pyyaml python plugins/scripts/test_repository.py
+      - name: Build Core sdist and wheel without installing Core dependencies
+        run: |
+          uv build
+          python scripts/check_core_artifacts.py dist/*.whl
+          python scripts/check_core_artifacts.py --source dist/*.tar.gz
+      - name: Verify Git export excludes plugin sources
+        run: |
+          git archive --format=tar --output="$RUNNER_TEMP/core-source.tar" HEAD
+          python scripts/check_core_artifacts.py --source "$RUNNER_TEMP/core-source.tar"
+      - name: Verify the production Docker context exclusion
+        run: |
+          docker build --file - --tag langbot-packaging-boundary . <<'DOCKERFILE'
+          FROM scratch
+          COPY . /app
+          DOCKERFILE
+          docker save langbot-packaging-boundary -o "$RUNNER_TEMP/core-context.tar"
+          python scripts/check_core_artifacts.py --source --docker-archive "$RUNNER_TEMP/core-context.tar"
+
+  production-image:
+    # PR production images are owned by the P0 caller. Daily gets the image
+    # smoke and metadata without re-running upgrade or saving a large image.
+    if: inputs.production_acceptance || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      IMAGE_TAG: langbot-ci:${{ github.sha }}
+      DOCKER_BUILD_RECORD_UPLOAD: "false"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and load the production image without publishing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          target: langbot
+          load: true
+          push: false
+          tags: ${{ env.IMAGE_TAG }}
+          build-args: |
+            LANGBOT_BUILD_REVISION=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+      - name: Check the installed image without network or application startup
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/production-image-metadata"
+          docker run --rm --network none --read-only --tmpfs /tmp -i \
+            -e PYTHONDONTWRITEBYTECODE=1 -e EXPECTED_REVISION="$GITHUB_SHA" \
+            "$IMAGE_TAG" /app/.venv/bin/python - \
+            > "$RUNNER_TEMP/production-image-metadata/self-check.json" <<'PY'
+          import importlib.metadata
+          import inspect
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+          import sqlite3
+          import subprocess
+
+          import langbot_plugin
+          from langbot._build_info import CORE_REVISION
+          from langbot_plugin.box.client import ActionRPCBoxClient
+          from langbot_plugin.box.errors import BoxArtifactNotPreparedError, BoxRuntimeCompatibilityError
+          from langbot_plugin.skill_store import SkillStore
+
+          sdk = Path(langbot_plugin.__file__).resolve()
+          assert sdk == Path('/app/sdk/src/langbot_plugin/__init__.py'), sdk
+          assert CORE_REVISION == os.environ['EXPECTED_REVISION'], CORE_REVISION
+          assert sqlite3.sqlite_version == '3.54.1', sqlite3.sqlite_version
+          for name in ('publication_inventory', 'list_publication_manifest_resources'):
+              assert callable(getattr(SkillStore, name, None)), name
+          assert 'max_bytes' in inspect.signature(SkillStore.export_skill_publication).parameters
+          for name in ('upload_file', 'download_file', 'prepare_artifact', 'cleanup_run_files'):
+              assert callable(getattr(ActionRPCBoxClient, name, None)), name
+          assert issubclass(BoxArtifactNotPreparedError, RuntimeError)
+          assert issubclass(BoxRuntimeCompatibilityError, RuntimeError)
+          nsjail = shutil.which('nsjail')
+          assert nsjail and os.access(nsjail, os.X_OK), nsjail
+          cli = subprocess.run(['/app/.venv/bin/lbp', 'ver'], check=True, capture_output=True, text=True)
+          ffmpeg = subprocess.run(['ffmpeg', '-version'], check=True, capture_output=True, text=True)
+          print(json.dumps({
+              'source_revision': CORE_REVISION,
+              'sdk_source': str(sdk),
+              'sdk_version': importlib.metadata.version('langbot-plugin'),
+              'sqlite_version': sqlite3.sqlite_version,
+              'nsjail': nsjail,
+              'lbp': cli.stdout.strip(),
+              'ffmpeg': ffmpeg.stdout.splitlines()[0],
+          }, indent=2))
+          PY
+          cat "$RUNNER_TEMP/production-image-metadata/self-check.json"
+      - name: Export the image and record its source and checksum
+        if: github.event_name == 'workflow_dispatch' && inputs.export_image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_file="production-image-${GITHUB_SHA}.tar.zst"
+          docker image save "$IMAGE_TAG" | zstd -T2 -3 -o "$RUNNER_TEMP/$image_file"
+          (cd "$RUNNER_TEMP" && sha256sum "$image_file") \
+            > "$RUNNER_TEMP/production-image-metadata/image.sha256"
+          docker image inspect "$IMAGE_TAG" > "$RUNNER_TEMP/production-image-metadata/image-inspect.json"
+          printf '%s\n' "$GITHUB_SHA" > "$RUNNER_TEMP/production-image-metadata/source-sha.txt"
+          cat "$RUNNER_TEMP/production-image-metadata/image.sha256"
+          docker image inspect "$IMAGE_TAG" --format '{{.Id}} {{index .Config.Labels "org.opencontainers.image.revision"}}'
+      - name: Upload the production image for Linux acceptance
+        if: github.event_name == 'workflow_dispatch' && inputs.export_image
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-image-${{ github.sha }}
+          path: ${{ runner.temp }}/production-image-${{ github.sha }}.tar.zst
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: error
+      - name: Upload image verification metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-image-metadata-${{ github.sha }}
+          path: ${{ runner.temp }}/production-image-metadata/
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: error
+      - uses: actions/setup-python@v5
+        if: inputs.production_acceptance
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+        if: inputs.production_acceptance
+      - name: Install locked upgrade test dependencies
+        if: inputs.production_acceptance
+        run: uv sync --dev --frozen
+      - name: Run production image upgrade and replacement acceptance
+        if: inputs.production_acceptance
+        env:
+          LANGBOT_IMAGE_CANDIDATE: ${{ env.IMAGE_TAG }}
+          LANGBOT_IMAGE_PREVIOUS: rockchin/langbot:v4.11.7
+        run: |
+          docker pull "$LANGBOT_IMAGE_PREVIOUS"
+          uv run --no-sync pytest tests/e2e/test_image_upgrade.py --required-suite p0_image \
+            -q -rs --junitxml=image-upgrade.xml
+      - uses: actions/upload-artifact@v4
+        if: always() && inputs.production_acceptance
+        with:
+          name: p0-image-upgrade-evidence
+          if-no-files-found: error
+          include-hidden-files: true
+          path: |
+            image-upgrade.xml
+            .qa/image-upgrade/**/container*.log

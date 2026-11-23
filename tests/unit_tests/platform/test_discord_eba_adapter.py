@@ -1,0 +1,683 @@
+from __future__ import annotations
+
+import pathlib
+import datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
+
+import pytest
+import yaml
+
+from langbot.pkg.platform.adapters.discord.adapter import DiscordAdapter
+import langbot.pkg.platform.adapters.discord.adapter as discord_adapter_module
+from langbot.pkg.platform.adapters.discord.event_converter import DiscordEventConverter
+from langbot.pkg.platform.adapters.discord.message_converter import DiscordMessageConverter
+from langbot.pkg.platform.adapters.discord.platform_api import PLATFORM_API_MAP
+from langbot.pkg.platform.adapters.discord.interaction import (
+    build_interaction_view,
+    interaction_event_from_component,
+    parse_interaction_custom_id,
+)
+from langbot_plugin.api.definition.abstract.platform.event_logger import AbstractEventLogger
+from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
+from langbot_plugin.api.entities.builtin.platform import events as platform_events
+from langbot_plugin.api.entities.builtin.platform import message as platform_message
+from langbot_plugin.api.entities.builtin.runner.interaction import InteractionRequest, InteractionHandle
+
+
+class DummyLogger(AbstractEventLogger):
+    async def info(self, text, images=None, message_session_id=None, no_throw=True):
+        pass
+
+    async def debug(self, text, images=None, message_session_id=None, no_throw=True):
+        pass
+
+    async def warning(self, text, images=None, message_session_id=None, no_throw=True):
+        pass
+
+    async def error(self, text, images=None, message_session_id=None, no_throw=True):
+        pass
+
+
+def make_adapter() -> DiscordAdapter:
+    return DiscordAdapter({'client_id': '123', 'token': 'fake'}, DummyLogger())
+
+
+def manifest() -> dict:
+    manifest_path = (
+        pathlib.Path(__file__).parents[3]
+        / 'src'
+        / 'langbot'
+        / 'pkg'
+        / 'platform'
+        / 'adapters'
+        / 'discord'
+        / 'manifest.yaml'
+    )
+    return yaml.safe_load(manifest_path.read_text(encoding='utf-8'))
+
+
+def test_discord_supported_events_match_manifest():
+    assert make_adapter().get_supported_events() == manifest()['spec']['supported_events']
+
+
+def test_discord_supported_apis_match_manifest():
+    supported_apis = make_adapter().get_supported_apis()
+    manifest_apis = manifest()['spec']['supported_apis']
+
+    assert supported_apis == manifest_apis['required'] + manifest_apis['optional']
+
+
+def test_discord_platform_api_map_matches_manifest():
+    manifest_actions = {item['action'] for item in manifest()['spec']['platform_specific_apis']}
+
+    assert set(PLATFORM_API_MAP) == manifest_actions
+
+
+def test_discord_interaction_custom_id_parser_uses_host_indexes():
+    assert parse_interaction_custom_id('lbi:token:a:2') == {
+        'callback_token': 'token',
+        'action_ref': 2,
+    }
+    assert parse_interaction_custom_id('lbi:token:f:0:3') == {
+        'callback_token': 'token',
+        'field_ref': 0,
+        'option_ref': 3,
+    }
+
+
+@pytest.mark.asyncio
+async def test_discord_interaction_view_and_delivery():
+    adapter = make_adapter()
+    channel = SimpleNamespace(id=789, send=AsyncMock(return_value=SimpleNamespace(id=321)))
+    adapter._get_channel = AsyncMock(return_value=channel)
+    request = {
+        'interaction_id': 'form-1',
+        'title': 'Approve?',
+        'actions': [{'id': 'approve', 'label': 'Approve', 'style': 'primary'}],
+        'fallback_text': 'Reply approve.',
+    }
+
+    view = build_interaction_view(request, 'callback-token')
+    assert view.children[0].custom_id == 'lbi:callback-token:a:0'
+
+    result = await adapter.send_interaction(
+        'group', '789', InteractionRequest.model_validate(request), 'callback-token'
+    )
+
+    assert isinstance(result, InteractionHandle)
+    assert result.message_id == 321 and result.rich is True
+    assert result.context['channel_id'] == '789'
+    assert channel.send.await_args.kwargs['view'].children[0].label == 'Approve'
+
+
+@pytest.mark.asyncio
+async def test_discord_guild_interaction_targets_the_originating_channel():
+    adapter = make_adapter()
+    channel = SimpleNamespace(id=555, send=AsyncMock(return_value=SimpleNamespace(id=321)))
+    adapter._get_channel = AsyncMock(return_value=channel)
+    adapter._remember_message_channel(SimpleNamespace(id=42, channel=SimpleNamespace(id=555)))
+    request = InteractionRequest.model_validate(
+        {'interaction_id': 'form-1', 'title': 'Approve?', 'actions': [{'id': 'approve', 'label': 'Approve'}]}
+    )
+
+    # Pipeline group conversations are keyed by guild id; the card must go to the message's channel.
+    result = await adapter.send_interaction('group', '1558675416288333856', request, 'callback-token', reply_to='42')
+
+    adapter._get_channel.assert_awaited_once_with(555)
+    assert result.context['channel_id'] == '555'
+    assert result.context['target_id'] == '1558675416288333856'
+
+    message = SimpleNamespace(edit=AsyncMock())
+    channel.fetch_message = AsyncMock(return_value=message)
+    adapter._get_channel.reset_mock()
+    await adapter.update_interaction(result, 'submitted')
+    adapter._get_channel.assert_awaited_once_with('555')
+    message.edit.assert_awaited_once_with(content='Approve?\n\nSubmitted', view=None)
+
+    # The click happens in the channel, but the Host recorded the guild conversation.
+    interaction = SimpleNamespace(
+        user=SimpleNamespace(id=7),
+        channel=SimpleNamespace(id=555),
+        guild=SimpleNamespace(id=1558675416288333856),
+        message=SimpleNamespace(id=321),
+    )
+    event = interaction_event_from_component(
+        interaction, {'callback_token': 'callback-token', 'action_ref': 0}, adapter._interaction_targets.get('321')
+    )
+    assert (event.target_type, event.target_id) == ('group', '1558675416288333856')
+    assert event.callback_context == {'channel_id': '555'}
+
+
+def test_discord_interaction_component_builds_scoped_host_event():
+    interaction = SimpleNamespace(
+        user=SimpleNamespace(id=123),
+        channel=SimpleNamespace(id=789),
+        guild=SimpleNamespace(id=456),
+    )
+
+    event = interaction_event_from_component(
+        interaction,
+        {'callback_token': 'callback-token', 'action_ref': 0},
+    )
+
+    assert isinstance(event, platform_events.InteractionCallbackEvent)
+    assert event.actor_id == '123'
+    assert event.target_type == 'group'
+    assert event.target_id == '789'
+
+
+@pytest.mark.asyncio
+async def test_discord_update_interaction_removes_components():
+    adapter = make_adapter()
+    message = SimpleNamespace(edit=AsyncMock())
+    channel = SimpleNamespace(fetch_message=AsyncMock(return_value=message))
+    adapter._get_channel = AsyncMock(return_value=channel)
+    handle = InteractionHandle(
+        message_id=321,
+        context={
+            'target_id': '789',
+            'request': {'title': 'Approve?'},
+        },
+    )
+
+    assert 'update_interaction' in adapter.get_supported_apis()
+    await adapter.update_interaction(handle, 'cancelled')
+
+    channel.fetch_message.assert_awaited_once_with(321)
+    message.edit.assert_awaited_once_with(content='Approve?\n\nCancelled', view=None)
+
+
+@pytest.mark.asyncio
+async def test_discord_adapter_dispatches_most_specific_eba_listener():
+    adapter = make_adapter()
+    calls: list[str] = []
+
+    async def wildcard_listener(event, adapter):
+        calls.append('event')
+
+    async def eba_listener(event, adapter):
+        calls.append('eba')
+
+    async def message_listener(event, adapter):
+        calls.append('message')
+
+    adapter.register_listener(platform_events.Event, wildcard_listener)
+    adapter.register_listener(platform_events.EBAEvent, eba_listener)
+    adapter.register_listener(
+        platform_events.MessageReceivedEvent,
+        message_listener,
+    )
+
+    event = platform_events.MessageReceivedEvent(
+        message_id=1,
+        message_chain=platform_message.MessageChain([platform_message.Plain(text='hello')]),
+        sender={'id': 1},
+        chat_id=1,
+    )
+
+    await adapter._dispatch_eba_event(event)
+
+    assert calls == ['message']
+
+
+@pytest.mark.asyncio
+async def test_discord_message_converter_maps_mentions_and_text_to_target():
+    content, files = await DiscordMessageConverter.yiri2target(
+        platform_message.MessageChain(
+            [
+                platform_message.Plain(text='hi '),
+                platform_message.At(target='123'),
+                platform_message.Plain(text=' all '),
+                platform_message.AtAll(),
+            ]
+        )
+    )
+
+    assert content == 'hi <@123> all @everyone'
+    assert files == []
+
+
+@pytest.mark.asyncio
+async def test_discord_message_converter_maps_audio_attachments_to_voice(monkeypatch):
+    wav_header = b'RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x00}\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00'
+    attachment = SimpleNamespace(
+        id=999,
+        filename='voice-message.ogg',
+        url='https://cdn.discordapp.com/attachments/1/2/voice-message.ogg',
+        size=len(wav_header),
+        content_type='audio/ogg',
+        flags=SimpleNamespace(voice=True),
+        duration_secs=4.5,
+    )
+    message = SimpleNamespace(
+        id=123,
+        content='Voice test',
+        created_at=datetime.datetime.now(),
+        attachments=[attachment],
+    )
+    monkeypatch.setattr(
+        DiscordMessageConverter,
+        '_download',
+        AsyncMock(return_value=(wav_header, 'audio/ogg')),
+    )
+
+    chain = await DiscordMessageConverter.target2yiri(message)
+    voices = [c for c in chain if isinstance(c, platform_message.Voice)]
+    assert len(voices) == 1
+    assert voices[0].url == attachment.url
+    assert voices[0].length == 4
+    assert voices[0].base64.startswith('data:audio/ogg;base64,')
+
+
+def test_discord_message_converter_splits_discord_mentions():
+    components = DiscordMessageConverter._text_components('hi <@123> and @everyone')
+
+    assert isinstance(components[0], platform_message.Plain)
+    assert components[0].text == 'hi '
+    assert isinstance(components[1], platform_message.At)
+    assert components[1].target == '123'
+    assert isinstance(components[3], platform_message.AtAll)
+
+
+def fake_user(user_id=123, name='user', bot=False):
+    return SimpleNamespace(
+        id=user_id,
+        name=name,
+        display_name=name.title(),
+        bot=bot,
+        display_avatar=SimpleNamespace(url=f'https://cdn.example/{user_id}.png'),
+    )
+
+
+def fake_guild(guild_id=456):
+    return SimpleNamespace(
+        id=guild_id,
+        name='Guild',
+        member_count=3,
+        icon=None,
+        owner_id=1,
+    )
+
+
+def fake_channel(channel_id=789, guild=None):
+    return SimpleNamespace(
+        id=channel_id,
+        name='general',
+        guild=guild,
+    )
+
+
+def fake_message(content='hello <@123>', *, guild=None, channel=None, author=None, message_id=999):
+    guild = guild if guild is not None else fake_guild()
+    channel = channel if channel is not None else fake_channel(guild=guild)
+    author = author if author is not None else fake_user()
+    return SimpleNamespace(
+        id=message_id,
+        content=content,
+        author=author,
+        channel=channel,
+        guild=guild,
+        attachments=[],
+        created_at=datetime.datetime(2026, 5, 7, tzinfo=datetime.UTC),
+        edited_at=datetime.datetime(2026, 5, 7, 0, 1, tzinfo=datetime.UTC),
+    )
+
+
+@pytest.mark.asyncio
+async def test_discord_converter_maps_message_edit_delete_and_reaction_events():
+    message = fake_message()
+    received = await DiscordEventConverter.message_to_eba(message)
+
+    assert isinstance(received, platform_events.MessageReceivedEvent)
+    assert received.type == 'message.received'
+    assert received.adapter_name == 'discord-omni'
+    assert received.chat_type == platform_entities.ChatType.GROUP
+    assert received.chat_id == 789
+    assert received.group.id == 456
+    assert isinstance(received.message_chain[1], platform_message.Plain)
+    assert isinstance(received.message_chain[2], platform_message.At)
+
+    edited = await DiscordEventConverter.message_edit_to_eba(message, fake_message(content='edited', message_id=999))
+    assert isinstance(edited, platform_events.MessageEditedEvent)
+    assert edited.type == 'message.edited'
+    assert str(edited.new_content) == 'edited'
+
+    deleted = await DiscordEventConverter.message_delete_to_eba(message)
+    assert isinstance(deleted, platform_events.MessageDeletedEvent)
+    assert deleted.type == 'message.deleted'
+    assert deleted.message_id == 999
+
+    reaction = SimpleNamespace(message=message, emoji='👍')
+    reaction_event = DiscordEventConverter.reaction_to_eba(reaction, fake_user(321, 'reactor'), True)
+    assert isinstance(reaction_event, platform_events.MessageReactionEvent)
+    assert reaction_event.type == 'message.reaction'
+    assert reaction_event.reaction == '👍'
+    assert reaction_event.user.id == 321
+
+
+@pytest.mark.asyncio
+async def test_discord_converter_maps_uncached_raw_gateway_events():
+    raw_delete = SimpleNamespace(message_id=10, channel_id=20, guild_id=30)
+    deleted = await DiscordEventConverter.target2yiri(('raw_message_delete', raw_delete), bot_user_id=1)
+    assert isinstance(deleted, platform_events.MessageDeletedEvent)
+    assert deleted.message_id == 10
+    assert deleted.chat_id == 20
+    assert deleted.group.id == 30
+
+    raw_reaction = SimpleNamespace(
+        message_id=11,
+        channel_id=21,
+        guild_id=31,
+        user_id=41,
+        emoji='🔥',
+        member=fake_user(41, 'member'),
+    )
+    reaction = await DiscordEventConverter.target2yiri(('raw_reaction_add', raw_reaction), bot_user_id=1)
+    assert isinstance(reaction, platform_events.MessageReactionEvent)
+    assert reaction.reaction == '🔥'
+    assert reaction.is_add is True
+    assert reaction.user.id == 41
+
+
+def test_discord_converter_maps_member_and_bot_guild_events():
+    guild = fake_guild()
+    member = SimpleNamespace(
+        **fake_user(123, 'member').__dict__,
+        guild=guild,
+        joined_at=datetime.datetime(2026, 5, 7, tzinfo=datetime.UTC),
+    )
+
+    joined = DiscordEventConverter.member_join_to_eba(member, bot_user_id=999)
+    assert isinstance(joined, platform_events.MemberJoinedEvent)
+    assert joined.join_type == 'direct'
+
+    bot_joined = DiscordEventConverter.member_join_to_eba(member, bot_user_id=123)
+    assert isinstance(bot_joined, platform_events.BotInvitedToGroupEvent)
+
+    bot_invited = DiscordEventConverter.guild_join_to_eba(guild)
+    bot_removed = DiscordEventConverter.guild_remove_to_eba(guild)
+    assert isinstance(bot_invited, platform_events.BotInvitedToGroupEvent)
+    assert isinstance(bot_removed, platform_events.BotRemovedFromGroupEvent)
+
+
+@pytest.mark.asyncio
+async def test_discord_send_and_reply_omit_empty_files_and_return_message_result(monkeypatch):
+    adapter = make_adapter()
+    sent = SimpleNamespace(id=111)
+    channel = SimpleNamespace(send=AsyncMock(return_value=sent))
+    object.__setattr__(adapter, '_get_channel', AsyncMock(return_value=channel))
+
+    result = await adapter.send_message(
+        'group',
+        '789',
+        platform_message.MessageChain([platform_message.Plain(text='hello')]),
+    )
+
+    assert result.message_id == 111
+    assert channel.send.await_args.kwargs == {'content': 'hello'}
+
+    monkeypatch.setattr(discord_adapter_module.discord, 'Message', SimpleNamespace)
+    source_message = SimpleNamespace(channel=channel)
+    source = platform_events.MessageReceivedEvent(
+        message_id=1,
+        source_platform_object=source_message,
+    )
+    result = await adapter.reply_message(
+        source,
+        platform_message.MessageChain([platform_message.Plain(text='reply')]),
+        quote_origin=True,
+    )
+
+    assert result.message_id == 111
+    assert channel.send.await_args.kwargs['content'] == 'reply'
+    assert channel.send.await_args.kwargs['reference'] is source_message
+    assert channel.send.await_args.kwargs['mention_author'] is False
+
+
+def stream_adapter():
+    adapter = make_adapter()
+    sent = SimpleNamespace(content='', edit=AsyncMock())
+    sent.edit.return_value = sent
+    channel = SimpleNamespace(send=AsyncMock(return_value=sent))
+    adapter._stream_buffer['stream'] = {
+        'channel': channel,
+        'sent_message': None,
+        'last_content': '',
+        'chunk_count': 0,
+        'updated_at': 0,
+    }
+    return adapter, channel, sent
+
+
+@pytest.mark.asyncio
+async def test_discord_stream_delivers_all_text_across_message_limit():
+    adapter, channel, sent = stream_adapter()
+    source = platform_events.MessageReceivedEvent(message_id=1)
+    await adapter.reply_message_chunk(
+        source,
+        {'resp_message_id': 'stream'},
+        platform_message.MessageChain([platform_message.Plain(text='preview')]),
+    )
+    sent.content = 'preview'
+    content = '0123456789' * 450 + 'END'
+    await adapter.reply_message_chunk(
+        source,
+        {'resp_message_id': 'stream'},
+        platform_message.MessageChain([platform_message.Plain(text=content)]),
+        is_final=True,
+    )
+    sent.edit.assert_awaited_once_with(content=content[:2000])
+    remainder = ''.join(call.args[0] for call in channel.send.await_args_list[1:])
+    assert content[:2000] + remainder == content
+    assert all(len(call.args[0]) <= 2000 for call in channel.send.await_args_list)
+    assert not adapter._stream_buffer
+
+
+@pytest.mark.asyncio
+async def test_discord_stream_keeps_tool_round_and_delivers_terminal_attachment():
+    adapter, channel, sent = stream_adapter()
+    object.__setattr__(adapter, 'reply_message', AsyncMock())
+    source = platform_events.MessageReceivedEvent(message_id=1)
+    attachment = platform_message.File(name='result.txt', base64='T0s=')
+    message = platform_message.MessageChain([attachment])
+    await adapter.reply_message_chunk(
+        source,
+        {'resp_message_id': 'stream', 'tool_calls': [{'id': 'tool'}]},
+        message,
+        is_final=True,
+    )
+    assert 'stream' in adapter._stream_buffer
+    adapter.reply_message.assert_not_awaited()
+    await adapter.reply_message_chunk(source, {'resp_message_id': 'stream'}, message, is_final=True)
+    adapter.reply_message.assert_awaited_once_with(source, message, False)
+    channel.send.assert_not_awaited()
+    assert not adapter._stream_buffer
+
+
+@pytest.mark.asyncio
+async def test_discord_stream_final_failure_is_not_reported_as_success():
+    adapter, channel, _ = stream_adapter()
+    channel.send.side_effect = RuntimeError('delivery failed')
+    with pytest.raises(RuntimeError, match='delivery failed'):
+        await adapter.reply_message_chunk(
+            platform_events.MessageReceivedEvent(message_id=1),
+            {'resp_message_id': 'stream'},
+            platform_message.MessageChain([platform_message.Plain(text='reply')]),
+            is_final=True,
+        )
+    assert not adapter._stream_buffer
+
+
+@pytest.mark.asyncio
+async def test_discord_gateway_uses_one_raw_path_for_cached_events():
+    adapter = make_adapter()
+    object.__setattr__(adapter, '_dispatch_gateway_tuple', AsyncMock())
+    assert not hasattr(adapter.bot, 'on_reaction_add')
+    assert not hasattr(adapter.bot, 'on_reaction_remove')
+    assert not hasattr(adapter.bot, 'on_message_delete')
+    payload = SimpleNamespace(user_id=123)
+    await adapter.bot.on_raw_reaction_add(payload)
+    adapter._dispatch_gateway_tuple.assert_awaited_once_with('raw_reaction_add', payload, None)
+    adapter._dispatch_gateway_tuple.reset_mock()
+    cached = fake_message()
+    await adapter.bot.on_raw_message_delete(SimpleNamespace(cached_message=cached))
+    adapter._dispatch_gateway_tuple.assert_awaited_once_with('message_delete', cached, None)
+
+
+@pytest.mark.asyncio
+async def test_discord_does_not_route_its_own_stream_edits():
+    adapter = make_adapter()
+    object.__setattr__(adapter, '_dispatch_gateway_tuple', AsyncMock())
+    before = fake_message(author=fake_user(bot=True))
+    await adapter.bot.on_message_edit(before, before)
+    adapter._dispatch_gateway_tuple.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_discord_uncached_edit_fetches_message_without_duplicate_or_preview_events():
+    adapter = make_adapter()
+    after = fake_message()
+    channel = SimpleNamespace(fetch_message=AsyncMock(return_value=after))
+    object.__setattr__(adapter, '_get_channel', AsyncMock(return_value=channel))
+    object.__setattr__(adapter, '_dispatch_gateway_tuple', AsyncMock())
+    payload = SimpleNamespace(cached_message=None, data={'content': 'edited'}, channel_id=12, message_id=34)
+    await adapter.bot.on_raw_message_edit(payload)
+    channel.fetch_message.assert_awaited_once_with(34)
+    adapter._dispatch_gateway_tuple.assert_awaited_once_with('message_edit', (None, after), None)
+    adapter._dispatch_gateway_tuple.reset_mock()
+    channel.fetch_message.reset_mock()
+    payload.cached_message = after
+    await adapter.bot.on_raw_message_edit(payload)
+    payload.cached_message = None
+    payload.data = {'embeds': []}
+    await adapter.bot.on_raw_message_edit(payload)
+    payload.data = {'content': 'bot edit', 'author': {'bot': True}}
+    await adapter.bot.on_raw_message_edit(payload)
+    channel.fetch_message.assert_not_awaited()
+    adapter._dispatch_gateway_tuple.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('guild_id', 'expected_guild_id'), [('123', 123), ('456', 456)])
+async def test_guild_event_reply_uses_system_channel(monkeypatch, guild_id, expected_guild_id):
+    adapter = make_adapter()
+    channel = SimpleNamespace(send=AsyncMock(return_value=SimpleNamespace(id=456)))
+    get_guild = Mock(return_value=SimpleNamespace(system_channel=channel))
+    monkeypatch.setattr(adapter.bot, 'get_guild', get_guild)
+    adapter._get_channel = AsyncMock()
+    result = await adapter.send_message(
+        'group', guild_id, platform_message.MessageChain([platform_message.Plain(text='Welcome')])
+    )
+    assert result.message_id == 456
+    get_guild.assert_called_once_with(expected_guild_id)
+    channel.send.assert_awaited_once_with(content='Welcome')
+    adapter._get_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('guild_id', 'expected_guild_id'), [('123', 123), ('456', 456)])
+async def test_guild_event_reply_without_system_channel_does_not_pick_another_channel(
+    monkeypatch, guild_id, expected_guild_id
+):
+    adapter = make_adapter()
+    get_guild = Mock(return_value=SimpleNamespace(system_channel=None))
+    monkeypatch.setattr(adapter.bot, 'get_guild', get_guild)
+    adapter._get_channel = AsyncMock()
+    with pytest.raises(ValueError, match='no system channel'):
+        await adapter.send_message(
+            'group', guild_id, platform_message.MessageChain([platform_message.Plain(text='Welcome')])
+        )
+    get_guild.assert_called_once_with(expected_guild_id)
+    adapter._get_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('quote', [False, True])
+@pytest.mark.parametrize('frozen_channel', [False, True])
+async def test_discord_recovered_reply_preserves_channel_quote_and_file(monkeypatch, quote, frozen_channel):
+    adapter = make_adapter()
+    channel = SimpleNamespace(id=789, send=AsyncMock(return_value=SimpleNamespace(id=901)))
+    adapter._get_channel = AsyncMock(return_value=channel)
+    get_guild = Mock(return_value=SimpleNamespace(system_channel=Mock()) if frozen_channel else None)
+    monkeypatch.setattr(adapter.bot, 'get_guild', get_guild)
+    target = {'target_type': 'group', 'target_id': '123' if frozen_channel else '789', 'message_id': '88'}
+    if frozen_channel:
+        target['chat_id'] = '789'
+    chain = platform_message.MessageChain(
+        [
+            platform_message.At(target='456'),
+            platform_message.Plain(text='recovered'),
+            platform_message.File(name='result.txt', base64='ZXZpZGVuY2U='),
+        ]
+    )
+    result = await adapter.reply_to_event(
+        context={'quote_origin': quote, 'delivery': {'reply_target': target}},
+        target_type='group',
+        target_id=target['target_id'],
+        message=chain,
+    )
+    adapter._get_channel.assert_awaited_once_with('789')
+    if frozen_channel:
+        get_guild.assert_not_called()
+    kwargs = channel.send.await_args.kwargs
+    assert kwargs['content'] == '<@456>recovered'
+    document = kwargs['files'][0]
+    assert document.filename == 'result.txt'
+    assert document.fp.read() == b'evidence'
+    document.close()
+    if quote:
+        assert kwargs['reference'].message_id == 88
+        assert kwargs['reference'].channel_id == 789
+        assert kwargs['mention_author'] is True
+    else:
+        assert 'reference' not in kwargs
+    assert result.message_id == 901
+
+
+@pytest.mark.asyncio
+async def test_discord_event_reply_without_recovery_context_keeps_guild_delivery(monkeypatch):
+    adapter = make_adapter()
+    channel = SimpleNamespace(send=AsyncMock(return_value=SimpleNamespace(id=901)))
+    monkeypatch.setattr(adapter.bot, 'get_guild', Mock(return_value=SimpleNamespace(system_channel=channel)))
+    adapter._get_channel = AsyncMock()
+    await adapter.reply_to_event(
+        context={'delivery': {'reply_target': {'message_id': '88'}}},
+        target_type='group',
+        target_id='123',
+        message=platform_message.MessageChain([platform_message.Plain(text='welcome')]),
+    )
+    channel.send.assert_awaited_once_with(content='welcome')
+    adapter._get_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('target_type', ['group', 'person'])
+async def test_discord_recovered_reply_rejects_missing_original_channel(monkeypatch, target_type):
+    adapter = make_adapter()
+    channel = SimpleNamespace(send=AsyncMock())
+    monkeypatch.setattr(adapter.bot, 'get_guild', Mock(return_value=SimpleNamespace(system_channel=channel)))
+    adapter._get_channel = AsyncMock()
+    with pytest.raises(ValueError, match='original channel ID'):
+        await adapter.reply_to_event(
+            context={'quote_origin': False, 'delivery': {'reply_target': {'target_id': '123'}}},
+            target_type=target_type,
+            target_id='123',
+            message=platform_message.MessageChain([platform_message.Plain(text='recovered')]),
+        )
+    channel.send.assert_not_awaited()
+    adapter._get_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_discord_recovered_quote_requires_original_message():
+    adapter = make_adapter()
+    adapter._get_channel = AsyncMock()
+    with pytest.raises(ValueError, match='message ID is required'):
+        await adapter.reply_to_event(
+            context={'quote_origin': True, 'delivery': {'reply_target': {'chat_id': '789'}}},
+            target_type='group',
+            target_id='123',
+            message=platform_message.MessageChain([platform_message.Plain(text='recovered')]),
+        )
+    adapter._get_channel.assert_not_awaited()

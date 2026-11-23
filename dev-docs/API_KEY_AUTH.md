@@ -1,0 +1,401 @@
+# API Key Authentication
+
+LangBot now supports API key authentication for external systems to access its HTTP service API.
+
+## Managing API Keys
+
+API keys can be managed through the web interface:
+
+1. Log in to the LangBot web interface
+2. Click the "API Keys" button at the bottom of the sidebar
+3. Create an API key and copy its secret immediately
+4. Revoke keys that are no longer needed
+
+Database-backed API-key secrets are returned exactly once. LangBot stores only
+a SHA-256 lookup hash, so an existing secret cannot be displayed or recovered
+later. Each key belongs to one Workspace, has explicit permission scopes, and
+may have an expiry. The Workspace is derived from the authenticated key; an
+`X-Workspace-Id` header cannot redirect it to another tenant.
+
+## Global API Key (config.yaml)
+
+In addition to web-UI-created keys (stored in the database, prefixed `lbk_`),
+LangBot supports a **global API key** defined directly in `data/config.yaml`.
+This is a Community-edition bootstrap option for automated deployments,
+infrastructure-as-code, and AI agents
+that need API/MCP access **without a login session and without creating a
+database record first**.
+
+```yaml
+api:
+    port: 5300
+    # ...
+    global_api_key: 'your-strong-secret-here'   # leave empty to disable
+```
+
+Behavior:
+
+- In Community edition's singleton Workspace, a non-empty
+  `api.global_api_key` is bound to that Workspace and accepted across the HTTP
+  service API and the MCP server.
+- The global config key is rejected when multi-Workspace SaaS mode is enabled;
+  SaaS automation must use a database-backed Workspace key or a closed control
+  plane credential.
+- The global key does **not** require the `lbk_` prefix; use any sufficiently
+  strong secret.
+- Leave it empty (`''`, the default) to disable it entirely; only database-backed
+  `lbk_` keys will then be accepted.
+- Existing installs are unaffected until you add the key — config completion only
+  backfills top-level keys, and the lookup is defensive when the field is absent.
+
+> **Security:** the global key is stored in plaintext in `config.yaml` and has
+> the singleton Workspace's full fixed permission set. Only enable it on
+> trusted/internal Community deployments, keep file permissions tight, always
+> serve over HTTPS, and rotate it if it may have leaked.
+
+## Using API Keys
+
+The standalone [`lbctl` CLI](https://github.com/langbot-app/langbot-cli) uses
+these API keys to manage a running LangBot Workspace through the Service API.
+It can check the key's Workspace identity and server capabilities before
+managing resources. See the CLI repository for installation and commands.
+
+### Authentication Headers
+
+Include your API key in the request header using one of these methods:
+
+**Method 1: X-API-Key header (Recommended)**
+```
+X-API-Key: lbk_your_api_key_here
+```
+
+**Method 2: Authorization Bearer token**
+```
+Authorization: Bearer lbk_your_api_key_here
+```
+
+## Available APIs
+
+Endpoints that declare API-key authentication accept either a user token or a
+Workspace API key. The key must include the permission required by the route.
+This includes:
+
+- **Model Management** - `/api/v1/provider/models/llm` and `/api/v1/provider/models/embedding`
+- **Bot Management** - `/api/v1/platform/bots`
+- **Pipeline Management** - `/api/v1/pipelines`
+- **Knowledge Base** - `/api/v1/knowledge/*`
+- **MCP Servers** - `/api/v1/mcp/servers`
+- And more...
+
+### Authentication Methods
+
+Each endpoint accepts **either**:
+1. **User Token** (via `Authorization: Bearer <user_jwt_token>`) - for web UI and authenticated users
+2. **API Key** (via `X-API-Key` or `Authorization: Bearer <api_key>`) - for external services
+
+### Inspecting API Key Identity
+
+`GET /api/v1/system/context` validates an API key (user JWT not accepted) and returns its bound identity without requiring resource permissions:
+
+```json
+{
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "instance_uuid": "...",
+    "workspace_uuid": "...",
+    "api_key_id": "...",
+    "permissions": ["..."]
+  }
+}
+```
+
+## Example: Model Management
+
+### List All LLM Models
+
+```http
+GET /api/v1/provider/models/llm
+X-API-Key: lbk_your_api_key_here
+```
+
+Response:
+```json
+{
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "models": [
+      {
+        "uuid": "model-uuid",
+        "name": "GPT-4",
+        "description": "OpenAI GPT-4 model",
+        "requester": "openai-chat-completions",
+        "requester_config": {...},
+        "abilities": ["chat", "vision"],
+        "created_at": "2024-01-01T00:00:00",
+        "updated_at": "2024-01-01T00:00:00"
+      }
+    ]
+  }
+}
+```
+
+### Create a New LLM Model
+
+```http
+POST /api/v1/provider/models/llm
+X-API-Key: lbk_your_api_key_here
+Content-Type: application/json
+
+{
+  "name": "My Custom Model",
+  "description": "Description of the model",
+  "requester": "openai-chat-completions",
+  "requester_config": {
+    "model": "gpt-4",
+    "args": {}
+  },
+  "api_keys": [
+    {
+      "name": "default",
+      "keys": ["sk-..."]
+    }
+  ],
+  "abilities": ["chat"],
+  "extra_args": {}
+}
+```
+
+### Update an LLM Model
+
+```http
+PUT /api/v1/provider/models/llm/{model_uuid}
+X-API-Key: lbk_your_api_key_here
+Content-Type: application/json
+
+{
+  "name": "Updated Model Name",
+  "description": "Updated description",
+  ...
+}
+```
+
+### Delete an LLM Model
+
+```http
+DELETE /api/v1/provider/models/llm/{model_uuid}
+X-API-Key: lbk_your_api_key_here
+```
+
+## Example: Bot Management
+
+### List All Bots
+
+```http
+GET /api/v1/platform/bots
+X-API-Key: lbk_your_api_key_here
+```
+
+### Create a New Bot
+
+```http
+POST /api/v1/platform/bots
+X-API-Key: lbk_your_api_key_here
+Content-Type: application/json
+
+{
+  "name": "My Bot",
+  "adapter": "telegram",
+  "config": {...}
+}
+```
+
+## Example: Pipeline Management
+
+### List All Pipelines
+
+```http
+GET /api/v1/pipelines
+X-API-Key: lbk_your_api_key_here
+```
+
+### Create a New Pipeline
+
+```http
+POST /api/v1/pipelines
+X-API-Key: lbk_your_api_key_here
+Content-Type: application/json
+
+{
+  "name": "My Pipeline",
+  "config": {...}
+}
+```
+
+## Error Responses
+
+### 401 Unauthorized
+
+```json
+{
+  "code": -1,
+  "msg": "No valid authentication provided (user token or API key required)"
+}
+```
+
+or
+
+```json
+{
+  "code": -1,
+  "msg": "Invalid API key"
+}
+```
+
+### 404 Not Found
+
+```json
+{
+  "code": -1,
+  "msg": "Resource not found"
+}
+```
+
+### 403 Forbidden
+
+The key is valid for its Workspace but does not include the fixed permission
+required by the route.
+
+### 500 Internal Server Error
+
+```json
+{
+  "code": -2,
+  "msg": "Error message details"
+}
+```
+
+## Security Best Practices
+
+1. **Keep API keys secure**: Store them securely and never commit them to version control
+2. **Use HTTPS**: Always use HTTPS in production to encrypt API key transmission
+3. **Rotate keys regularly**: Create new API keys periodically and revoke old ones
+4. **Use descriptive names**: Give your API keys meaningful names to track their usage
+5. **Delete unused keys**: Remove API keys that are no longer needed
+6. **Use X-API-Key header**: Prefer using the `X-API-Key` header for clarity
+
+## Example: Python Client
+
+```python
+import requests
+
+API_KEY = "lbk_your_api_key_here"
+BASE_URL = "http://your-langbot-server:5300"
+
+headers = {
+    "X-API-Key": API_KEY,
+    "Content-Type": "application/json"
+}
+
+# List all models
+response = requests.get(f"{BASE_URL}/api/v1/provider/models/llm", headers=headers)
+models = response.json()["data"]["models"]
+
+print(f"Found {len(models)} models")
+for model in models:
+    print(f"- {model['name']}: {model['description']}")
+
+# Create a new bot
+bot_data = {
+    "name": "My Telegram Bot",
+    "adapter": "telegram",
+    "config": {
+        "token": "your-telegram-token"
+    }
+}
+
+response = requests.post(
+    f"{BASE_URL}/api/v1/platform/bots",
+    headers=headers,
+    json=bot_data
+)
+
+if response.status_code == 200:
+    bot_uuid = response.json()["data"]["uuid"]
+    print(f"Bot created with UUID: {bot_uuid}")
+```
+
+## Example: cURL
+
+```bash
+# List all models
+curl -X GET \
+  -H "X-API-Key: lbk_your_api_key_here" \
+  http://your-langbot-server:5300/api/v1/provider/models/llm
+
+# Create a new pipeline
+curl -X POST \
+  -H "X-API-Key: lbk_your_api_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Pipeline",
+    "config": {...}
+  }' \
+  http://your-langbot-server:5300/api/v1/pipelines
+
+# Get bot logs
+curl -X POST \
+  -H "X-API-Key: lbk_your_api_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from_index": -1,
+    "max_count": 10
+  }' \
+  http://your-langbot-server:5300/api/v1/platform/bots/{bot_uuid}/logs
+```
+
+## Notes
+
+- API-key-enabled endpoints use the same resource shapes as the web UI
+- No need to learn different API paths - use the existing API documentation with API key authentication
+- API keys never select a Workspace from a request header; their persisted binding is authoritative
+
+## Workspace assistant browser session
+
+The Workspace assistant endpoints under `/api/v1/assistant` are account-session
+features, not API-key/MCP automation tools. They require a Workspace-scoped user
+token and `runtime.operate` for recommendation and turns. Conversation reads
+also enforce account ownership.
+
+- `GET /recommended-model` resolves and validates the recommended tool-capable
+  model when the panel opens. An explicit `model_uuid` in a turn always takes
+  precedence; it never silently falls back if unavailable.
+- `POST /conversations/{id}/turn/stream` accepts the same revision, text/model,
+  or approval decision as `/turn`, and returns NDJSON. `snapshot` frames contain
+  the public conversation; `text` frames contain the cumulative text for the
+  current model invocation; `phase` frames identify the model round or running
+  tool. A snapshot replaces transient text/tool progress. `completed` contains
+  the final conversation (including approval or failed states); `error` is a
+  transport/admission failure. Blank lines are heartbeats.
+- `GET /conversations` lists the latest 100 conversations owned by the current
+  account in this Workspace. `GET /conversations/{id}` includes transient
+  `progress` (cumulative text, round and running tool) while execution is active.
+- Disconnecting a streaming response only detaches the browser. The backend owns
+  the task until completion, approval, timeout or explicit stop. Slow or absent
+  consumers never block execution; reconnect using the conversation snapshot.
+- `POST /conversations/{id}/stop` accepts `{ "revision": N }` for the active turn.
+  It enforces ownership and revision, cancels execution and records `stopped`.
+  Stopping cannot roll back tool effects and clients must never replay a write
+  automatically. Writes still require confirmation of saved arguments.
+- Background execution lives in the current backend process, with at most four
+  simultaneous turns and the existing 120-second turn limit. This is not a durable
+  job queue: backend restarts do not resume interrupted tasks.
+
+The original JSON `/turn` endpoint remains compatible for existing callers.
+
+The assistant recommendation uses Space `/api/v1/models/assistant/recommendation`,
+which selects only from the assistant pool using fresh successful health checks.
+An unavailable recommendation returns 503 without falling back to general chat rankings.
+The browser checks Workspace model providers before mounting the assistant; an empty
+provider list shows Account sign-in and model settings actions instead of a composer.

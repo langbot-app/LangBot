@@ -1,0 +1,171 @@
+---
+title: "调试插件运行时、CLI、SDK"
+---
+
+<Info>
+  插件运行时、CLI、SDK 开源在 LangBot 仓库的 `sdk/` 目录：https://github.com/langbot-app/LangBot/tree/master/sdk ，以 `langbot-plugin` 包发布到 PyPI。
+</Info>
+
+克隆 LangBot 仓库即可同时获得主程序与 SDK 源码，无需再单独克隆 SDK 仓库：
+
+```bash
+git clone https://github.com/langbot-app/LangBot
+```
+
+```text
+LangBot
+├── src/langbot   # LangBot 主程序
+└── sdk           # 插件 SDK、CLI（lbp）、插件运行时、Box 运行时
+```
+
+进入 LangBot 目录，安装依赖：
+
+```bash
+cd LangBot
+uv sync --dev
+```
+
+此时，uv 将自动为您创建虚拟环境(.venv)，若您的编辑器询问您是否使用此虚拟环境，请选择`是`。
+
+<img
+  width="600"
+  src="/images/zh/develop/confirm_venv.png"
+/>
+
+若未弹出，请手动在右下角设置 Python 解释器路径为该 venv 中的解释器。
+
+然后打开 VS Code 底部的终端，这将自动激活 venv。
+
+或者请您手动激活此虚拟环境：
+
+```bash
+# 请自行根据.venv路径来修改命令
+source .venv/bin/activate
+```
+
+## 启动插件运行时
+
+```bash
+python -m langbot_plugin.cli.__init__ rt
+```
+
+Plugin Runtime 接受以下参数：
+
+- `--debug-only`: 不启动`data/plugins`目录下的插件，仅允许通过调试连接加载插件。
+- `--ws-debug-port`: 监听的调试端口，默认是`5401`。
+- `--ws-control-port`: 监听的控制端口（供 LangBot 主程序连接），默认是`5400`。
+- `-s`: 使用`stdio`接受控制连接。**仅在生产环境使用**。
+- `--skip-deps-check`: 为了确保插件依赖均已安装，Runtime 会在每次启动时检查并安装所有已安装插件的依赖。携带此参数可禁用此检查。
+
+### 使 LangBot 使用您本地修改过的 SDK
+
+在 LangBot 仓库根目录执行 `uv sync`，会自动从同仓 `sdk/` 以可编辑方式安装 SDK。修改消息实体或插件数据定义后，Core 会直接使用这些源码，无需另行安装或等待 SDK 发包。
+
+```bash
+uv sync --dev
+uv run main.py --standalone-runtime
+```
+
+独立部署的 Runtime 需使用配套的仓库源码或已发布 SDK；Core 的安装不会自动升级其他 Runtime。单独从 PyPI 安装 Core 时，仍使用其声明的已发布 SDK 版本。
+
+### 使 LangBot 连接到此运行时
+
+在 LangBot 的`data/config.yaml`中配置`plugin.runtime_ws_url`为`ws://localhost:5400/control/ws`。
+
+```yaml
+plugin:
+  runtime_ws_url: ws://localhost:5400/control/ws
+```
+
+在 LangBot 仓库根目录运行 `uv run main.py --standalone-runtime`。重启 LangBot 后，将使用 WebSocket 连接到此运行时。
+
+默认情况下无需配置 `LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN`：当 LangBot 与 Runtime 两端都未设置时，OSS 的本地控制连接直接建立。若部署环境需要为 5400 控制端口增加共享密钥，则应在两端配置同一个至少 32 位的高熵值。Runtime 端配置后，未携带相同密钥的 LangBot 会被拒绝；只在 LangBot 端配置并不会启用 Runtime 端的认证。
+
+### 使用 `lbp run` 调试插件
+
+多 Workspace 版本不再允许调试插件仅凭 `5401` 端口接入 Runtime。每个 Workspace 都有独立且会过期的调试密钥：
+
+1. 确认 LangBot 与 Plugin Runtime 已按上文启动并连接成功。
+2. 在 LangBot WebUI 的“插件”页面点击“调试信息”，复制调试 URL 和调试密钥。该操作需要当前 Workspace 的资源管理权限。
+3. 在插件项目的 `.env` 中配置：
+
+```bash
+DEBUG_RUNTIME_WS_URL=ws://localhost:5401/plugin/debug/ws
+PLUGIN_DEBUG_KEY=<从 WebUI 复制的调试密钥>
+```
+
+4. 在插件项目目录中启动：
+
+```bash
+python -m langbot_plugin.cli.__init__ run
+```
+
+也可以不写入 `.env`，改用 `python -m langbot_plugin.cli.__init__ run --plugin-debug-key '<调试密钥>'`。调试密钥按 Workspace 隔离且有效期为两小时；密钥过期、Runtime 重启或切换 Workspace 后，请回到 WebUI 重新获取。只配置 `DEBUG_RUNTIME_WS_URL` 会被 Runtime 拒绝。
+
+## 以 standalone 模式启动 Box Runtime
+
+Box Runtime 与 Plugin Runtime 的控制连接规则一致：OSS standalone 开发环境默认不强制配置 token，两端都未设置 `LANGBOT_BOX_CONTROL_TOKEN` 时可以直接连接：
+
+```bash
+# 终端 1：LangBot 目录（已激活虚拟环境）
+python -m langbot_plugin.cli.__init__ box
+```
+
+LangBot 的 `data/config.yaml` 使用本地 Box 地址：
+
+```yaml
+box:
+  enabled: true
+  backend: local
+  file_transfer_mode: network
+  runtime:
+    endpoint: ws://127.0.0.1:5410
+```
+
+```bash
+# 终端 2：LangBot 目录
+python main.py --standalone-runtime --standalone-box
+```
+
+若需要保护暴露的 5410 端口，请在启动两个进程前分别设置完全相同、至少 32 位且不含空白的高熵值：
+
+```bash
+export LANGBOT_BOX_CONTROL_TOKEN='<两端完全相同的高熵密钥>'
+```
+
+Box Runtime 端一旦配置 token，就会拒绝未携带相同 token 的 LangBot。只在 LangBot 端设置不会启用 Box Runtime 端认证；显式配置但不足 32 位的值仍会被两端拒绝。不要把真实密钥提交到配置文件或 Git。
+
+设置 `box.file_transfer_mode: network`，即可通过鉴权后的 Box 连接传输附件，无需 Core 与 Runtime 共享附件目录。两端需要支持文件传输动作的 SDK/Runtime。逐步接入期间默认值为 `legacy`，沿用现有传输路径。网络模式通过分块 RPC 传输文件内容，使用小型沙箱命令准备产物快照和确认清理，支持导出 `/workspace` 之外的文件。临时产物快照需要占用工作目录空间。Cloud 启动还会检查共享工作目录，其迁移由 #3010 第 5 阶段跟踪。 网络模式的产物导出需要可写工作目录来准备临时快照；`offline_readonly` 导出请使用 `legacy`。OSS 网络模式下，E2B 的可写工作区文件保留在沙箱中，不再与宿主目录双向镜像。
+
+### Runtime 包缓存
+
+使用配套的 Core 与 SDK 源码时，Host 可以通过鉴权后的 Box 连接准备不可变包。Runtime 校验压缩包及文件树 digest 后，才会发布只读缓存。缓存命中仍须携带当前 Workspace 上下文，digest 本身不授予访问权。这提供后续网络执行所需的基础接口；逐步接入期间，现有 Skill 工具仍使用原来的挂载路径。
+
+```yaml
+box:
+  limits:
+    max_artifact_cache_bytes: 268435456
+    artifact_cache_ttl_sec: 300
+```
+
+默认允许 256 MiB 的可复用包内容和元数据，闲置 300 秒后可回收；上限分别为 256 MiB 和 86,400 秒。会话仍挂载的包持续受保护，包括托管进程运行期间。若受保护的包占满缓存，准备新包会明确失败。沙箱中的投影和可写工作区另有限额。
+
+缓存由 Runtime 管理，位于 `LANGBOT_BOX_DATA_DIR` 下，不使用 Core 包目录。淘汰后会重新传输并校验。GC 只删除可丢弃缓存，不删除数据库中的发布版本。单个压缩包上限为 64 MiB，仍须满足后端限制，例如 E2B 单文件不超过 10 MiB。附件传输的独立限额保持原值。
+
+该缓存需要 POSIX 描述符相对文件操作，本阶段验证的平台为 Linux Runtime。首次使用缓存后修改上述限额，需要重启 Box Runtime。Runtime 崩溃时仍受保护的包会保留并继续占用容量。维护时须先停止该 Runtime 及调用方，确认旧后端会话及进程已退出，再清理其可丢弃缓存。
+
+## SDK（`sdk/`）架构
+
+`sdk/src/langbot_plugin` 中包含以下内容：
+
+- `langbot_plugin.api`：插件相关实体和 API 定义。
+- `langbot_plugin.assets`：插件模板。
+- `langbot_plugin.cli`：插件开发 CLI 工具。
+- `langbot_plugin.entities`：插件系统中非 API 定义的相关实体。
+- `langbot_plugin.runtime`：插件运行时和底层通信（stdio 和 websocket）实现。
+
+## `lbp` CLI 工具
+
+CLI 工具提供 Runtime 启动、插件初始化、插件组件管理、Marketplace 交互等功能。
+
+详细的程序入口请查看[`langbot_plugin.cli.__init__`](https://github.com/langbot-app/LangBot/blob/master/sdk/src/langbot_plugin/cli/__init__.py)。

@@ -1,0 +1,103 @@
+---
+title: "How to Connect DeepSeek R1 to WeChat, Discord & Telegram in 5 Minutes (FREE)"
+description: "A step-by-step guide to connecting DeepSeek R1/V3 API to WeChat (Personal/Enterprise), Discord, Telegram, and more using LangBot. No coding required."
+---
+
+This article is synchronized from the LangBot Blog. [Read the canonical version](https://langbot.app/en/blog/connect-deepseek-to-wechat).
+
+Published 2026-02-21 · Author: LangBot Team
+
+![DeepSeek x WeChat Integration](/images/articles/source/images/covers/deepseek-wechat.png)
+
+DeepSeek has taken the AI world by storm. Its R1 reasoning model rivals OpenAI's o1 but is open-source and significantly cheaper.
+
+However, the official DeepSeek app currently only supports "AI Search" in WeChat, and direct integration into group chats or private workflows is limited.
+
+**What if you could have a fully functional DeepSeek R1 bot in your WeChat groups, Discord servers, and Telegram chats right now?**
+
+With **LangBot**, you can. And it takes less than 5 minutes.
+
+## Why LangBot?
+
+LangBot is an open-source, production-grade IM bot platform. Unlike simple scripts or single-platform bots, LangBot gives you:
+
+*   **Unified Platform:** Connect once, deploy to WeChat, Discord, Telegram, Slack, Lark, and more.
+*   **Model Agnostic:** Use DeepSeek R1, V3, Claude 3.5, GPT-4, or local Ollama models.
+*   **No Coding:** robust WebUI for configuration.
+*   **Enterprise Features:** Knowledge base (RAG), Plugin system, and multi-user management.
+
+## Prerequisites
+
+1.  **A Server or PC:** Docker installed (VPS, local computer, or Synology/NAS).
+2.  **DeepSeek API Key:**
+    *   **Official:** [platform.deepseek.com](https://platform.deepseek.com)
+    *   **SiliconFlow (Recommended for speed):** [cloud.siliconflow.cn](https://cloud.siliconflow.cn) (Faster R1 inference).
+
+## Step 1: Deploy LangBot
+
+If you haven't deployed LangBot yet, run this one command:
+
+```bash
+git clone https://github.com/langbot-app/LangBot
+cd LangBot/docker
+docker compose up -d
+```
+
+Access your dashboard at `http://localhost:5300` (or your server IP).
+
+## Step 2: Configure DeepSeek Model
+
+1.  Go to **Models** -> **Provider List**.
+2.  Find **DeepSeek** (or **SiliconFlow** / **OpenAI Compatible**).
+3.  Enter your API Key.
+4.  Click **Save**.
+
+Now create a **Model Instance**:
+*   **Name:** `DeepSeek-R1-Bot`
+*   **Model:** `deepseek-reasoner` (for R1) or `deepseek-chat` (for V3).
+
+## Step 3: Create a Chat Pipeline
+
+LangBot uses "Pipelines" to manage bot logic.
+
+1.  Go to **Pipelines** -> **New Pipeline**.
+2.  Choose **Chat Pipeline**.
+3.  Select your `DeepSeek-R1-Bot` model.
+4.  (Optional) Add a System Prompt:
+    > "You are a helpful assistant powered by DeepSeek R1. You think deeply before answering."
+
+## Step 4: Connect to WeChat (or any platform)
+
+### For WeChat (Personal / Wechaty)
+*Note: Personal WeChat access relies on third-party libraries and carries some risk. For business use, we recommend Enterprise WeChat (WeCom).*
+
+1.  Go to **Bots** -> **New Bot**.
+2.  Select **WeChat**.
+3.  Choose the **GeweChat** or **Wechaty** adapter (depending on your preference).
+4.  Click **Save**.
+5.  Scan the QR code that appears in the logs or UI.
+
+### For Discord / Telegram
+1.  Select **Discord** or **Telegram**.
+2.  Paste your **Bot Token** (from Discord Developer Portal or BotFather).
+3.  Click **Save**.
+
+## Step 5: Test It Out!
+
+Open your chat app and send a message. You should see DeepSeek R1 "thinking" (if supported) and replying with high-quality reasoning.
+
+## Advanced: Using Search & Tools
+
+DeepSeek is great, but DeepSeek with **Internet Access** is better.
+
+In LangBot:
+1.  Go to **Plugins**.
+2.  Install **Tavily Search** or **Google Search**.
+3.  Add the plugin to your DeepSeek Pipeline.
+
+Now your bot can search the web for real-time info *before* reasoning with DeepSeek R1!
+
+---
+
+**Ready to build?**
+[Star us on GitHub](https://github.com/langbot-app/LangBot) or [Read the Docs](https://langbot.app/docs).

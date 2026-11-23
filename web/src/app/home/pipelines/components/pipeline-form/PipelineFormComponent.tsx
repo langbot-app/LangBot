@@ -1,0 +1,1263 @@
+import { useSnapshotDirty } from '@/app/infra/hooks/useSnapshotDirty';
+import GuidedTour, {
+  type GuidedTourStep,
+} from '@/app/home/components/guided-tour/GuidedTour';
+import EntityLoadState from '@/components/EntityLoadState';
+import { preserveRunnerConfig } from './RunnerConfigPreservation';
+import type { ComponentProps } from 'react';
+import { isCurrentPipelineConfig } from '../../pipeline-config-safety';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { httpClient } from '@/app/infra/http/HttpClient';
+import { systemInfo } from '@/app/infra/http';
+import { GetPipelineResponseData, Pipeline } from '@/app/infra/entities/api';
+import {
+  PipelineConfigTab,
+  PipelineConfigStage,
+} from '@/app/infra/entities/pipeline';
+import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
+import { getDefaultValues } from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useForm, useWatch } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { Input } from '@/components/ui/input';
+import EmojiPicker from '@/components/ui/emoji-picker';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { extractI18nObject } from '@/i18n/I18nProvider';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import {
+  Info,
+  Brain,
+  Zap,
+  Mic,
+  Shield,
+  FileOutput,
+  Puzzle,
+  Trash2,
+  Copy,
+} from 'lucide-react';
+import PipelineExtension from '@/app/home/pipelines/components/pipeline-extensions/PipelineExtension';
+import RunnerSelect from '@/app/home/agents/components/RunnerSelect';
+import {
+  getErrorMessage,
+  readPendingRunnerInstall,
+  resumePendingRunnerInstall,
+  type InstalledRunner,
+} from '@/app/home/agents/runner-marketplace';
+
+/** A mount-scoped editing session: normalized defaults are UI state, not edits. */
+function PersistedRunnerForm(
+  props: ComponentProps<typeof DynamicFormComponent>,
+) {
+  const initialValues = useRef(props.initialValues);
+  const previous = useRef<Record<string, unknown> | undefined>(undefined);
+  const current = useRef(props.initialValues || {});
+  current.current = props.initialValues || {};
+  return (
+    <DynamicFormComponent
+      {...props}
+      initialValues={initialValues.current}
+      onSubmit={(values) => {
+        const emitted = values as Record<string, unknown>;
+        const next = preserveRunnerConfig(
+          current.current,
+          previous.current,
+          emitted,
+        );
+        previous.current = structuredClone(emitted);
+        if (JSON.stringify(next) !== JSON.stringify(current.current)) {
+          current.current = next;
+          props.onSubmit?.(next);
+        }
+      }}
+    />
+  );
+}
+
+interface PipelineFormComponentProps {
+  pipelineId?: string;
+  isEditMode: boolean;
+  disableForm: boolean;
+  showButtons?: boolean;
+  onFinish: () => void;
+  onNewPipelineCreated: (pipelineId: string) => void;
+  onDeletePipeline: () => void;
+  onCancel?: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  onSavingChange?: (saving: boolean) => void;
+  onLegacyPipeline?: (pipeline: Pipeline) => void;
+  onSensitiveToolsChange?: (tools: string[]) => void;
+  guideEnabled?: boolean;
+  debugGuideEnabled?: boolean;
+  monitoringGuideEnabled?: boolean;
+}
+
+export interface PipelineFormHandle {
+  save: () => Promise<boolean>;
+  syncBasicInfo: (values: {
+    name: string;
+    description: string;
+    emoji?: string;
+  }) => void;
+}
+
+const PipelineFormComponent = forwardRef<
+  PipelineFormHandle,
+  PipelineFormComponentProps
+>(function PipelineFormComponent(
+  {
+    onFinish,
+    onNewPipelineCreated,
+    isEditMode,
+    pipelineId,
+    showButtons = true,
+    guideEnabled = false,
+    debugGuideEnabled = false,
+    monitoringGuideEnabled = false,
+    onDeletePipeline,
+    onCancel,
+    onDirtyChange,
+    onSavingChange,
+    onLegacyPipeline,
+    onSensitiveToolsChange,
+  },
+  ref,
+) {
+  const { t } = useTranslation();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showCopyConfirm, setShowCopyConfirm] = useState(false);
+  const [isDefaultPipeline, setIsDefaultPipeline] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const pipelineFormElement = useRef<HTMLFormElement>(null);
+  const isSavingRef = useRef(false);
+  const legacyConfigRef = useRef(false);
+  const [legacyConfig, setLegacyConfig] = useState(false);
+
+  const formSchema = isEditMode
+    ? z.object({
+        basic: z.object({
+          name: z.string().min(1, { message: t('pipelines.nameRequired') }),
+          description: z.string().optional(),
+          emoji: z.string().optional(),
+        }),
+        ai: z.record(z.string(), z.any()),
+        trigger: z.record(z.string(), z.any()),
+        speech: z.record(z.string(), z.any()).optional(),
+        safety: z.record(z.string(), z.any()),
+        output: z.record(z.string(), z.any()),
+      })
+    : z.object({
+        basic: z.object({
+          name: z.string().min(1, { message: t('pipelines.nameRequired') }),
+          description: z.string().optional(),
+          emoji: z.string().optional(),
+        }),
+        ai: z.record(z.string(), z.any()).optional(),
+        trigger: z.record(z.string(), z.any()).optional(),
+        speech: z.record(z.string(), z.any()).optional(),
+        safety: z.record(z.string(), z.any()).optional(),
+        output: z.record(z.string(), z.any()).optional(),
+      });
+
+  type FormValues = z.infer<typeof formSchema>;
+  // Section navigation items with icons
+  const SECTION_ICONS: Record<string, React.ElementType> = {
+    basic: Info,
+    ai: Brain,
+    trigger: Zap,
+    speech: Mic,
+    safety: Shield,
+    output: FileOutput,
+    extensions: Puzzle,
+  };
+
+  const formLabelList: SectionItem[] = isEditMode
+    ? [
+        {
+          label: t('common.management'),
+          name: 'basic',
+          icon: SECTION_ICONS.basic,
+        },
+        {
+          label: t('pipelines.aiCapabilities'),
+          name: 'ai',
+          icon: SECTION_ICONS.ai,
+        },
+        {
+          label: t('pipelines.triggerConditions'),
+          name: 'trigger',
+          icon: SECTION_ICONS.trigger,
+        },
+        {
+          label: t('pipelines.speechProcessing'),
+          name: 'speech',
+          icon: SECTION_ICONS.speech,
+        },
+        {
+          label: t('pipelines.safetyControls'),
+          name: 'safety',
+          icon: SECTION_ICONS.safety,
+        },
+        {
+          label: t('pipelines.outputProcessing'),
+          name: 'output',
+          icon: SECTION_ICONS.output,
+        },
+        {
+          label: t('pipelines.extensions.title'),
+          name: 'extensions',
+          icon: SECTION_ICONS.extensions,
+        },
+      ]
+    : [
+        {
+          label: t('pipelines.basicInfo'),
+          name: 'basic',
+          icon: SECTION_ICONS.basic,
+        },
+      ];
+
+  const [activeSection, setActiveSection] = useState(
+    isEditMode ? 'trigger' : 'basic',
+  );
+  const guideSteps = useMemo<GuidedTourStep[]>(() => {
+    const sections = [
+      'trigger',
+      'speech',
+      'ai',
+      'output',
+      'safety',
+      'extensions',
+      'basic',
+    ];
+    return [
+      ...sections.map((section) => ({
+        id: section,
+        target: `[data-guide="pipeline-section-${section}"]`,
+        title: t(`guidedTour.pipeline.${section}.title`),
+        description: t(`guidedTour.pipeline.${section}.description`),
+        onEnter: () => setActiveSection(section),
+      })),
+      ...(debugGuideEnabled
+        ? [
+            {
+              id: 'debug',
+              target: '[data-guide="pipeline-form-debug"]',
+              title: t('guidedTour.pipeline.debug.title'),
+              description: t('guidedTour.pipeline.debug.description'),
+            },
+          ]
+        : []),
+      ...(monitoringGuideEnabled
+        ? [
+            {
+              id: 'monitoring',
+              target: '[data-guide="pipeline-form-monitoring"]',
+              title: t('guidedTour.pipeline.monitoring.title'),
+              description: t('guidedTour.pipeline.monitoring.description'),
+            },
+          ]
+        : []),
+      {
+        id: 'save',
+        target: '[data-guide="pipeline-form-save"]',
+        title: t('guidedTour.pipeline.save.title'),
+        description: t('guidedTour.pipeline.save.description'),
+        onEnter: () => setActiveSection('trigger'),
+      },
+    ];
+  }, [t, debugGuideEnabled, monitoringGuideEnabled]);
+  const primarySectionNames = ['trigger', 'speech', 'ai', 'output'];
+  const primarySections = primarySectionNames
+    .map((name) => formLabelList.find((section) => section.name === name))
+    .filter((section): section is SectionItem => Boolean(section));
+  const secondarySections = formLabelList
+    .filter((section) => !primarySectionNames.includes(section.name))
+    .sort((left, right) => {
+      if (left.name === 'basic') return 1;
+      if (right.name === 'basic') return -1;
+      return 0;
+    });
+
+  const [aiConfigTabSchema, setAIConfigTabSchema] =
+    useState<PipelineConfigTab>();
+  const [triggerConfigTabSchema, setTriggerConfigTabSchema] =
+    useState<PipelineConfigTab>();
+  const [speechConfigTabSchema, setSpeechConfigTabSchema] =
+    useState<PipelineConfigTab>();
+  const [safetyConfigTabSchema, setSafetyConfigTabSchema] =
+    useState<PipelineConfigTab>();
+  const [outputConfigTabSchema, setOutputConfigTabSchema] =
+    useState<PipelineConfigTab>();
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [metadataLoaded, setMetadataLoaded] = useState(false);
+  const [pipelineLoaded, setPipelineLoaded] = useState(!isEditMode);
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      basic: {
+        name: '',
+        description: '',
+        emoji: '⚙️',
+      },
+      ai: {},
+      trigger: {},
+      safety: {},
+      output: {},
+    },
+  });
+  useWatch({
+    control: form.control,
+    compute: (values) => [
+      values.ai?.runner?.id,
+      values.output?.misc?.['remove-think'],
+    ],
+  });
+  const runnerInstallScope = `pipeline:${pipelineId || 'new'}`;
+  const applyInstalledRunner = useCallback((installed: InstalledRunner) => {
+    setAIConfigTabSchema(installed.configTab);
+  }, []);
+  const dynamicFormSystemContext = useMemo(
+    () => ({
+      pipeline_id: pipelineId,
+      prompt_library_kind: 'messaging',
+      // Cloud-only settings (e.g. the daily quota notice) use show_if on this.
+      is_cloud: systemInfo.edition === 'cloud',
+    }),
+    [pipelineId],
+  );
+
+  // Track unsaved changes by comparing current form values against a saved snapshot
+  const savedSnapshotRef = useRef<string>('');
+  // Track which dynamic form stages have completed their initial mount emission.
+  const initializedStagesRef = useRef<Set<string>>(new Set());
+  const {
+    isDirty: hasUnsavedChanges,
+    dirtyRef: hasUnsavedChangesRef,
+    refreshDirty,
+  } = useSnapshotDirty(form, savedSnapshotRef, isEditMode);
+
+  // Notify parent when dirty state changes
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedChanges);
+  }, [hasUnsavedChanges, onDirtyChange]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadFailed(false);
+    setMetadataLoaded(false);
+    setPipelineLoaded(!isEditMode);
+    // get config schema from metadata
+    httpClient
+      .getGeneralPipelineMetadata()
+      .then((resp) => {
+        if (cancelled) return;
+        for (const config of resp.configs) {
+          if (config.name === 'ai') {
+            setAIConfigTabSchema(config);
+          } else if (config.name === 'trigger') {
+            setTriggerConfigTabSchema(config);
+          } else if (config.name === 'speech') {
+            setSpeechConfigTabSchema(config);
+          } else if (config.name === 'safety') {
+            setSafetyConfigTabSchema(config);
+          } else if (config.name === 'output') {
+            setOutputConfigTabSchema(config);
+          }
+        }
+        setMetadataLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadFailed(true);
+      });
+
+    if (isEditMode) {
+      httpClient
+        .getPipeline(pipelineId || '')
+        .then((resp: GetPipelineResponseData) => {
+          if (cancelled) return;
+          if (!isCurrentPipelineConfig(resp.pipeline.config)) {
+            legacyConfigRef.current = true;
+            setLegacyConfig(true);
+            onLegacyPipeline?.(resp.pipeline);
+            return;
+          }
+          setIsDefaultPipeline(resp.pipeline.is_default ?? false);
+
+          const loadedValues = {
+            basic: {
+              name: resp.pipeline.name ?? '',
+              description: resp.pipeline.description ?? '',
+              emoji: resp.pipeline.emoji || '⚙️',
+            },
+            ai: resp.pipeline.config.ai,
+            trigger: resp.pipeline.config.trigger,
+            speech: resp.pipeline.config.speech,
+            safety: resp.pipeline.config.safety,
+            output: resp.pipeline.config.output,
+          };
+          form.reset(loadedValues);
+          savedSnapshotRef.current = JSON.stringify(loadedValues);
+          refreshDirty();
+          initializedStagesRef.current.clear();
+          setPipelineLoaded(true);
+        })
+        .catch(() => {
+          if (!cancelled) setLoadFailed(true);
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    form,
+    isEditMode,
+    pipelineId,
+    loadAttempt,
+    onLegacyPipeline,
+    refreshDirty,
+  ]);
+
+  useEffect(() => {
+    if (
+      !metadataLoaded ||
+      !pipelineLoaded ||
+      !readPendingRunnerInstall(runnerInstallScope)
+    ) {
+      return;
+    }
+    let cancelled = false;
+    void resumePendingRunnerInstall(runnerInstallScope)
+      .then((installed) => {
+        if (cancelled || !installed) return;
+        applyInstalledRunner(installed);
+        toast.success(
+          t('agents.runnerInstallSuccess', {
+            runner: extractI18nObject(installed.runner.label),
+          }),
+        );
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          toast.error(
+            getErrorMessage(error) || t('wizard.aiEngine.installFailed'),
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    applyInstalledRunner,
+    metadataLoaded,
+    pipelineLoaded,
+    runnerInstallScope,
+    t,
+  ]);
+
+  useEffect(() => {
+    if (!isEditMode) {
+      form.reset({
+        basic: {
+          name: '',
+          description: '',
+          emoji: '⚙️',
+        },
+      });
+    }
+  }, [form, isEditMode]);
+
+  function handleFormSubmit(values: FormValues) {
+    if (isEditMode) {
+      void handleModify(values);
+    } else {
+      handleCreate(values);
+    }
+  }
+
+  function handleCreate(values: FormValues) {
+    if (isSavingRef.current) return;
+    const pipeline: Pipeline = {
+      config: {},
+      description: values.basic.description ?? '',
+      name: values.basic.name,
+      emoji: values.basic.emoji,
+    };
+    isSavingRef.current = true;
+    setIsSaving(true);
+    onSavingChange?.(true);
+    httpClient
+      .createPipeline(pipeline)
+      .then((resp) => {
+        onFinish();
+        onNewPipelineCreated(resp.uuid);
+        toast.success(t('pipelines.createSuccess'));
+      })
+      .catch((err) => {
+        toast.error(t('pipelines.createError') + err.msg);
+      })
+      .finally(() => {
+        isSavingRef.current = false;
+        setIsSaving(false);
+        onSavingChange?.(false);
+      });
+  }
+
+  async function handleModify(values: FormValues): Promise<boolean> {
+    // Imperative saves bypass native form submission validation. In particular,
+    // never save an old structured value while its visible JSON draft is invalid.
+    if (
+      pipelineFormElement.current &&
+      !pipelineFormElement.current.checkValidity()
+    )
+      return false;
+    if (isSavingRef.current || legacyConfigRef.current || !pipelineLoaded)
+      return false;
+    const submittedSnapshot = JSON.stringify(values);
+    const realConfig = {
+      ai: values.ai,
+      trigger: values.trigger,
+      speech: values.speech,
+      safety: values.safety,
+      output: values.output,
+    };
+
+    const pipeline: Pipeline = {
+      config: realConfig,
+      // created_at: '',
+      description: values.basic.description ?? '',
+      // for_version: '',
+      name: values.basic.name,
+      emoji: values.basic.emoji,
+      // stages: [],
+      // updated_at: '',
+      // uuid: pipelineId || '',
+      // is_default: false,
+    };
+    isSavingRef.current = true;
+    setIsSaving(true);
+    onSavingChange?.(true);
+    try {
+      await httpClient.updatePipeline(pipelineId || '', pipeline);
+      savedSnapshotRef.current = submittedSnapshot;
+      refreshDirty();
+      onFinish();
+      toast.success(t('pipelines.saveSuccess'));
+      return true;
+    } catch (err) {
+      const message =
+        typeof err === 'object' && err && 'msg' in err
+          ? String((err as { msg?: string }).msg || '')
+          : '';
+      toast.error(t('pipelines.saveError') + message);
+      return false;
+    } finally {
+      isSavingRef.current = false;
+      setIsSaving(false);
+      onSavingChange?.(false);
+    }
+  }
+
+  useImperativeHandle(ref, () => ({
+    syncBasicInfo(values) {
+      form.setValue('basic', {
+        ...form.getValues('basic'),
+        name: values.name,
+        description: values.description,
+        emoji: values.emoji || '⚙️',
+      });
+      if (savedSnapshotRef.current) {
+        const snapshot = JSON.parse(savedSnapshotRef.current) as FormValues;
+        snapshot.basic = {
+          ...snapshot.basic,
+          name: values.name,
+          description: values.description,
+          emoji: values.emoji || '⚙️',
+        };
+        savedSnapshotRef.current = JSON.stringify(snapshot);
+        refreshDirty();
+      }
+    },
+    async save() {
+      if (legacyConfigRef.current || !pipelineLoaded) return false;
+      if (!hasUnsavedChangesRef.current) return true;
+      if (isSavingRef.current || !isEditMode) return false;
+      const valid = await form.trigger();
+      if (!valid) return false;
+      return handleModify(form.getValues());
+    },
+  }));
+
+  // Called from DynamicFormComponent onSubmit callbacks.
+  // On the first emission for a stage (mount-time default filling), the
+  // snapshot is synchronously re-captured so that hasUnsavedChanges stays false.
+  // However, if the form is already dirty (the user has made real changes),
+  // we must NOT re-capture the snapshot — otherwise we would silently absorb
+  // those real changes and flip hasUnsavedChanges back to false.
+  function handleDynamicFormEmit(
+    formName: keyof FormValues,
+    stageName: string,
+    values: object,
+  ) {
+    const wasDirty = hasUnsavedChangesRef.current;
+    const stageKey = `${String(formName)}.${stageName}`;
+    const isFirstEmission =
+      !initializedStagesRef.current.has(stageKey) &&
+      !(formName === 'output' && stageName === 'misc');
+
+    const currentValues =
+      (form.getValues(formName) as Record<string, unknown>) || {};
+    const nextValues: Record<string, unknown> = {
+      ...currentValues,
+      [stageName]: values,
+    };
+
+    if (formName === 'ai' && stageName === 'runner') {
+      const selectedRunner = (values as Record<string, unknown>).id;
+      const runnerConfigs =
+        currentValues.runner_config &&
+        typeof currentValues.runner_config === 'object' &&
+        !Array.isArray(currentValues.runner_config)
+          ? (currentValues.runner_config as Record<string, unknown>)
+          : {};
+
+      if (
+        typeof selectedRunner === 'string' &&
+        selectedRunner &&
+        !(selectedRunner in runnerConfigs)
+      ) {
+        const runnerStage = aiConfigTabSchema?.stages.find(
+          (stage) => stage.name === selectedRunner,
+        );
+        if (runnerStage) {
+          nextValues.runner_config = {
+            ...runnerConfigs,
+            [selectedRunner]: getDefaultValues(runnerStage.config),
+          };
+        }
+      }
+    }
+
+    form.setValue(formName, nextValues);
+    if (formName === 'output' && stageName === 'misc') {
+      const removeThink = (values as Record<string, unknown>)['remove-think'];
+      const previousThink = (
+        currentValues.misc as Record<string, unknown> | undefined
+      )?.['remove-think'];
+      const runnerId = form.getValues('ai.runner.id') as string;
+      const supported = aiConfigTabSchema?.stages.some(
+        (stage) =>
+          stage.name === runnerId &&
+          stage.config.some((item) => item.name === 'remove-think'),
+      );
+      if (
+        supported &&
+        typeof removeThink === 'boolean' &&
+        removeThink !== previousThink
+      ) {
+        const configs = form.getValues('ai.runner_config') || {};
+        form.setValue('ai.runner_config', {
+          ...configs,
+          [runnerId]: { ...configs[runnerId], 'remove-think': removeThink },
+        });
+      }
+    }
+
+    if (isFirstEmission) {
+      initializedStagesRef.current.add(stageKey);
+      // Only re-capture the snapshot when the form has no other pending
+      // changes.  If the user already modified something (e.g. switched
+      // runner), the snapshot must remain at the last-saved state so that
+      // hasUnsavedChanges stays true.
+      const currentSnapshot = JSON.stringify(form.getValues());
+      if (savedSnapshotRef.current === '' || !wasDirty) {
+        savedSnapshotRef.current = currentSnapshot;
+        refreshDirty();
+      }
+    }
+  }
+
+  function handleRunnerConfigEmit(stageName: string, values: object) {
+    const currentRunnerConfigs =
+      (form.getValues('ai.runner_config') as Record<
+        string,
+        Record<string, unknown>
+      >) || {};
+    const removeThink = (values as Record<string, unknown>)['remove-think'];
+    const previousThink = currentRunnerConfigs[stageName]?.['remove-think'];
+    form.setValue('ai.runner_config', {
+      ...currentRunnerConfigs,
+      [stageName]: values,
+    });
+    if (typeof removeThink === 'boolean' && removeThink !== previousThink) {
+      const output = form.getValues('output') || {};
+      form.setValue('output', {
+        ...output,
+        misc: { ...output.misc, 'remove-think': removeThink },
+      });
+    }
+  }
+
+  function renderDynamicForms(
+    stage: PipelineConfigStage,
+    formName: keyof FormValues,
+  ) {
+    // Special handling for AI config section
+    if (formName === 'ai') {
+      const runnerConfig = (form.getValues('ai.runner') as any) || {};
+      const currentRunner = runnerConfig.id;
+
+      // If this is the runner selector stage, render it directly
+      if (stage.name === 'runner') {
+        return (
+          <Card key={stage.name}>
+            <CardHeader>
+              <CardTitle>{extractI18nObject(stage.label)}</CardTitle>
+              <CardDescription>
+                {t('pipelines.extensions.runnerScopeHint')}
+              </CardDescription>
+              {stage.description && (
+                <CardDescription>
+                  {extractI18nObject(stage.description)}
+                </CardDescription>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <DynamicFormComponent
+                itemConfigList={stage.config}
+                initialValues={
+                  (form.getValues(formName) as Record<string, unknown>)?.[
+                    stage.name
+                  ] || {}
+                }
+                systemContext={dynamicFormSystemContext}
+                renderItem={({ config, field }) =>
+                  config.name === 'id' ? (
+                    <RunnerSelect
+                      options={config.options ?? []}
+                      label={extractI18nObject(config.label)}
+                      value={String(field.value ?? '')}
+                      onValueChange={field.onChange}
+                      installScope={runnerInstallScope}
+                      onInstalled={applyInstalledRunner}
+                    />
+                  ) : undefined
+                }
+                onSubmit={(values) => {
+                  handleDynamicFormEmit(formName, stage.name, values);
+                }}
+              />
+            </CardContent>
+          </Card>
+        );
+      }
+
+      // Do not render if not the currently selected runner
+      if (stage.name !== currentRunner) {
+        return null;
+      }
+
+      // For plugin runner configs, store in ai.runner_config[runnerId]
+      const isPluginRunner =
+        currentRunner && currentRunner.startsWith('plugin:');
+      if (isPluginRunner) {
+        const runnerConfigs = (form.getValues('ai.runner_config') as any) || {};
+        const stageInitialValues = runnerConfigs[stage.name] || {};
+        return (
+          <Card key={stage.name}>
+            <CardHeader>
+              <CardTitle>{extractI18nObject(stage.label)}</CardTitle>
+              {stage.description && (
+                <CardDescription>
+                  {extractI18nObject(stage.description)}
+                </CardDescription>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <PersistedRunnerForm
+                itemConfigList={stage.config}
+                initialValues={stageInitialValues}
+                systemContext={dynamicFormSystemContext}
+                onSubmit={(values) => {
+                  handleRunnerConfigEmit(stage.name, values);
+                }}
+              />
+            </CardContent>
+          </Card>
+        );
+      }
+    }
+
+    const StageForm =
+      formName === 'output' && stage.name === 'misc'
+        ? PersistedRunnerForm
+        : DynamicFormComponent;
+    const stageInitialValues: Record<string, any> =
+      (form.getValues(formName) as Record<string, any>)?.[stage.name] || {};
+
+    return (
+      <Card key={stage.name}>
+        <CardHeader>
+          <CardTitle>{extractI18nObject(stage.label)}</CardTitle>
+          {stage.description && (
+            <CardDescription>
+              {extractI18nObject(stage.description)}
+            </CardDescription>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <StageForm
+            itemConfigList={stage.config}
+            initialValues={stageInitialValues}
+            systemContext={dynamicFormSystemContext}
+            onSubmit={(values) => {
+              handleDynamicFormEmit(formName, stage.name, values);
+            }}
+          />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const handleDelete = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = () => {
+    if (pipelineId) {
+      httpClient
+        .deletePipeline(pipelineId)
+        .then(() => {
+          onDeletePipeline();
+          setShowDeleteConfirm(false);
+          toast.success(t('pipelines.deleteSuccess'));
+        })
+        .catch((err) => {
+          toast.error(t('pipelines.deleteError') + err.msg);
+        });
+    }
+  };
+
+  const handleCopy = () => {
+    setShowCopyConfirm(true);
+  };
+
+  const confirmCopy = () => {
+    if (pipelineId) {
+      httpClient
+        .copyPipeline(pipelineId)
+        .then(() => {
+          onFinish();
+          toast.success(t('common.copySuccess'));
+          setShowCopyConfirm(false);
+          onCancel?.();
+        })
+        .catch((err) => {
+          toast.error(t('pipelines.createError') + err.msg);
+        });
+    }
+  };
+
+  if (legacyConfig)
+    return (
+      <Alert>
+        <AlertDescription>{t('pipelineMigration.legacyGate')}</AlertDescription>
+      </Alert>
+    );
+  if (loadFailed)
+    return (
+      <EntityLoadState error onRetry={() => setLoadAttempt((n) => n + 1)} />
+    );
+  if (!metadataLoaded || !pipelineLoaded) return <EntityLoadState />;
+
+  return (
+    <>
+      <GuidedTour
+        enabled={guideEnabled && isEditMode}
+        storageKey="langbot_pipeline_setup_guide_v1"
+        steps={guideSteps}
+        testId="pipeline-setup-guide"
+      />
+      <div className="h-full p-0 flex flex-col">
+        <Form {...form}>
+          <form
+            id="pipeline-form"
+            ref={pipelineFormElement}
+            onSubmit={form.handleSubmit(handleFormSubmit)}
+            className="h-full flex flex-col flex-1 min-h-0 mb-2"
+          >
+            <div className="flex-1 flex min-h-0 flex-col">
+              {/* Keep the primary pipeline flow visible while editing. */}
+              {formLabelList.length > 1 && (
+                <nav className="mb-4 shrink-0 space-y-2 border-b pb-4">
+                  <Tabs value={activeSection} onValueChange={setActiveSection}>
+                    <div className="overflow-x-auto">
+                      <TabsList className="grid min-w-[34rem] w-full grid-cols-4">
+                        {primarySections.map((section) => {
+                          const Icon = section.icon;
+                          return (
+                            <TabsTrigger
+                              key={section.name}
+                              data-guide={`pipeline-section-${section.name}`}
+                              value={section.name}
+                            >
+                              <Icon />
+                              {section.label}
+                            </TabsTrigger>
+                          );
+                        })}
+                      </TabsList>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {secondarySections.map((section) => {
+                        const Icon = section.icon;
+                        return (
+                          <Button
+                            key={section.name}
+                            data-guide={`pipeline-section-${section.name}`}
+                            type="button"
+                            variant={
+                              activeSection === section.name
+                                ? 'secondary'
+                                : 'ghost'
+                            }
+                            size="sm"
+                            onClick={() => setActiveSection(section.name)}
+                          >
+                            <Icon />
+                            {section.label}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </Tabs>
+                </nav>
+              )}
+
+              {/* Content panel */}
+              <div className="flex-1 overflow-y-auto min-h-0">
+                {activeSection === 'basic' && (
+                  <div className="space-y-6">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>
+                          {isEditMode
+                            ? t('common.management')
+                            : t('pipelines.basicInfo')}
+                        </CardTitle>
+                        <CardDescription>
+                          {isEditMode
+                            ? t('pipelines.managementDescription')
+                            : t('pipelines.basicInfoDescription')}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {!isEditMode && (
+                          <>
+                            <div className="flex gap-4 items-start">
+                              <FormField
+                                control={form.control}
+                                name="basic.name"
+                                render={({ field }) => (
+                                  <FormItem className="flex-1">
+                                    <FormLabel>
+                                      {t('common.name')}
+                                      <span className="text-destructive">
+                                        *
+                                      </span>
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        {...field}
+                                        value={field.value ?? ''}
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={form.control}
+                                name="basic.emoji"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>{t('common.icon')}</FormLabel>
+                                    <FormControl>
+                                      <EmojiPicker
+                                        value={field.value}
+                                        onChange={field.onChange}
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+
+                            <FormField
+                              control={form.control}
+                              name="basic.description"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>
+                                    {t('common.description')}
+                                  </FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      {...field}
+                                      value={field.value ?? ''}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </>
+                        )}
+
+                        {isEditMode && (
+                          <div className="flex items-center justify-between rounded-lg border p-4">
+                            <div className="space-y-0.5">
+                              <p className="text-sm font-medium">
+                                {t('pipelines.copyPipelineAction')}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {t('pipelines.copyPipelineHint')}
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={handleCopy}
+                            >
+                              <Copy className="size-4 mr-1.5" />
+                              {t('common.copy')}
+                            </Button>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Danger Zone (edit mode only) */}
+                    {isEditMode && (
+                      <Card className="border-destructive/50">
+                        <CardHeader>
+                          <CardTitle className="text-destructive">
+                            {t('pipelines.dangerZone')}
+                          </CardTitle>
+                          <CardDescription>
+                            {t('pipelines.dangerZoneDescription')}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-1">
+                              <p className="text-sm font-medium">
+                                {t('pipelines.deletePipelineAction')}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {isDefaultPipeline
+                                  ? t('pipelines.defaultPipelineCannotDelete')
+                                  : t('pipelines.deletePipelineHint')}
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              disabled={isDefaultPipeline}
+                              onClick={handleDelete}
+                            >
+                              <Trash2 className="size-4 mr-1.5" />
+                              {t('common.delete')}
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                )}
+
+                {/* Dynamic config sections (edit mode only) */}
+                {isEditMode && (
+                  <>
+                    {aiConfigTabSchema && (
+                      <div
+                        className="space-y-6"
+                        hidden={activeSection !== 'ai'}
+                      >
+                        {aiConfigTabSchema.stages.map((stage) =>
+                          renderDynamicForms(stage, 'ai'),
+                        )}
+                      </div>
+                    )}
+
+                    {activeSection === 'trigger' && triggerConfigTabSchema && (
+                      <div className="space-y-6">
+                        {triggerConfigTabSchema.stages.map((stage) =>
+                          renderDynamicForms(stage, 'trigger'),
+                        )}
+                      </div>
+                    )}
+
+                    {activeSection === 'speech' && speechConfigTabSchema && (
+                      <div className="space-y-6">
+                        {speechConfigTabSchema.stages.map((stage) =>
+                          renderDynamicForms(stage, 'speech'),
+                        )}
+                      </div>
+                    )}
+
+                    {activeSection === 'safety' && safetyConfigTabSchema && (
+                      <div className="space-y-6">
+                        {safetyConfigTabSchema.stages.map((stage) =>
+                          renderDynamicForms(stage, 'safety'),
+                        )}
+                      </div>
+                    )}
+
+                    {activeSection === 'output' && outputConfigTabSchema && (
+                      <div className="space-y-6">
+                        {outputConfigTabSchema.stages.map((stage) =>
+                          renderDynamicForms(stage, 'output'),
+                        )}
+                      </div>
+                    )}
+
+                    {activeSection === 'extensions' && pipelineId && (
+                      <PipelineExtension
+                        pipelineId={pipelineId}
+                        onSensitiveToolsChange={onSensitiveToolsChange}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </form>
+          {/* Button bar pinned to bottom */}
+          {showButtons && (
+            <div className="flex justify-end items-center gap-2 pt-4 border-t mb-0 sticky bottom-0 z-10">
+              {isEditMode && hasUnsavedChanges && (
+                <div className="text-amber-600 dark:text-amber-400 text-sm flex items-center gap-1.5 mr-auto">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  {t('pipelines.unsavedChanges')}
+                </div>
+              )}
+
+              {isEditMode && !isDefaultPipeline && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={handleDelete}
+                >
+                  {t('common.delete')}
+                </Button>
+              )}
+
+              {isEditMode && isDefaultPipeline && (
+                <div className="text-muted-foreground text-sm h-full flex items-center mr-2">
+                  {t('pipelines.defaultPipelineCannotDelete')}
+                </div>
+              )}
+
+              {isEditMode && (
+                <Button
+                  type="button"
+                  variant="default"
+                  onClick={handleCopy}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  {t('common.copy')}
+                </Button>
+              )}
+
+              <Button type="submit" form="pipeline-form" disabled={isSaving}>
+                {isEditMode ? t('common.save') : t('common.submit')}
+              </Button>
+            </div>
+          )}
+        </Form>
+      </div>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('common.confirmDelete')}</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">{t('pipelines.deleteConfirmation')}</div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteConfirm(false)}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete}>
+              {t('common.confirmDelete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Copy confirmation dialog */}
+      <Dialog open={showCopyConfirm} onOpenChange={setShowCopyConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('pipelines.copyConfirmTitle')}</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">{t('pipelines.copyConfirmation')}</div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCopyConfirm(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button onClick={confirmCopy}>{t('common.confirm')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+});
+
+export default PipelineFormComponent;
+interface SectionItem {
+  label: string;
+  name: string;
+  icon: React.ElementType;
+}

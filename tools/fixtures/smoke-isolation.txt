@@ -1,0 +1,2 @@
+The separate knowledge base sentinel is cedar-isolation-4826.
+This document belongs only to the second smoke knowledge base.

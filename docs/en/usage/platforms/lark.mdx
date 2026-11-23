@@ -1,0 +1,178 @@
+---
+title: "Feishu"
+description: "Build a Feishu/Lark AI bot with LangBot. Connect GPT, Claude, Dify and more to Feishu groups and messaging."
+icon: "/images/platforms/lark.svg"
+---
+
+## Select Platform Domain
+
+When creating a bot, you need to select the **Platform Domain** in the **Adapter Configuration** section:
+
+- **Feishu (open.feishu.cn)**: For mainland China Feishu users (default)
+- **Lark (open.larksuite.com)**: For overseas Lark users
+- **Custom**: For private deployment users
+
+![Select Platform Domain](/images/zh/deploy/bots/lark/lark_platform_domain.png)
+
+<Warning>
+If you select overseas Lark, make sure to use the `open.larksuite.com` domain, otherwise the connection may fail. For private deployment users, please select custom and fill in the corresponding domain based on your actual deployment address.
+</Warning>
+
+## One-Click Setup (Recommended)
+
+LangBot supports one-click Feishu app creation with automatic credential filling — no manual copy-paste needed.
+
+1. Open LangBot WebUI, go to **Bots > Create Bot**
+2. Enter a bot name, select `Feishu` as the platform/adapter
+3. In the **One-Click Create App** section that appears, click the **Start** button
+
+![One-Click Create Feishu App](/images/zh/deploy/bots/lark/lark_oneclick_qrcode.png)
+
+4. Scan the QR code with Feishu. On your phone, you'll see the Feishu Open Platform's bot creation page
+5. Choose to **use an existing app** or **create a new one**:
+
+![Select on Phone](/images/zh/deploy/bots/lark/lark_select_or_create_bot.png)
+
+If you choose an existing app, a list of your apps will be shown:
+
+![Select Existing App](/images/zh/deploy/bots/lark/lark_select_existing.png)
+
+6. After authorization, the phone will show "Configuration Successful", and app_id / app_secret will be **auto-filled** in the LangBot WebUI
+
+![Config Success](/images/zh/deploy/bots/lark/lark_config_success.png)
+
+7. The new adapter identifies the bot automatically; no bot name is needed to recognize group mentions. If the legacy adapter still shows this field, enter the same name as the Feishu bot.
+
+![Fill Bot Name](/images/zh/deploy/bots/lark/lark_fill_bot_name.png)
+
+8. Click **Submit** to complete
+
+### Additional permissions and event subscriptions
+
+<Note>
+An app created or authorized by QR code may not have all the permissions and event subscriptions your use case requires. Sending and receiving messages does not mean member join/leave events are subscribed. You can update the existing app in the developer console without creating another bot.
+</Note>
+
+1. Open the [Feishu developer console](https://open.feishu.cn/app) or [Lark developer console](https://open.larksuite.com/app). Select the app you created or authorized, using its App ID to confirm.
+2. Under **Permissions**, add the permissions required for your features. Permissions control which data and operations the bot can access.
+3. Under **Events & Callbacks > Event Configuration**, subscribe to the events you need. Subscriptions control which notifications are sent to LangBot; granting permissions does not automatically subscribe to events.
+4. Save the changes and complete any release or administrator approval requested by the platform. Once effective, trigger a new event to verify delivery; earlier actions are not replayed by adding a subscription.
+
+<Warning>
+**Remember to publish a new app version after adding events.** Complete the release under **Version Management & Release**, and wait for administrator approval if required. Adding and saving an event does not activate changes that are still pending release. LangBot may show a healthy connection while these events are not delivered.
+</Warning>
+
+If member join/leave events still do not arrive after subscribing, first check for changes pending release or approval. Once the new version is effective, have a member join or leave a group containing the bot again, then check the event records in LangBot.
+
+To receive group membership changes, the bot must be in the group and the app must subscribe to:
+
+| Feature | Feishu event |
+| --- | --- |
+| User joins a group | `im.chat.member.user.added_v1` |
+| User leaves or is removed from a group | `im.chat.member.user.deleted_v1` |
+
+The bot joining a group (`im.chat.member.bot.added_v1`) is a separate event and does not cover other members. Also configure **Event Routing** in LangBot to send these events to an Agent or plugin processor; pipelines only process message events.
+
+---
+
+## Create Bot
+
+Go to the [Feishu Open Platform](https://open.feishu.cn/app), log in, and create an enterprise self-built application or store application. [(difference introduction)](https://open.feishu.cn/document/platform-overveiw/overview)
+
+![alt text](/images/zh/deploy/bots/lark/lark_01.png)
+
+![alt text](/images/zh/deploy/bots/lark/lark_02.png)
+
+Add bot capability to the application:
+![alt text](/images/zh/deploy/bots/lark/lark_03.png)
+
+Add the permissions shown in the image in the permission management:
+
+![alt text](/images/zh/deploy/bots/lark/lark_04.png)
+
+If card streaming permissions are required, additionally add the following card creation and update permissions as shown in the image:
+
+![img_1.png](../../../images/zh/deploy/bots/lark/lark_14.png)
+
+<Warning>
+If you need to change the default card template, you need to modify the card template in the platform adapter's code yourself.
+</Warning>
+
+### Connect to LangBot
+
+Find `app_id` and `app_secret` on the `Credentials and Basic Information` page.
+
+![alt text](/images/zh/deploy/bots/lark/lark_05.png)
+
+
+
+Open LangBot's Webui configuration page, create a new bot
+
+Fill in the relevant information in the form
+
+![alt text](/images/zh/deploy/bots/lark/connect_to_langbot.png)
+
+Streaming related:
+![Streaming related](../../../images/zh/deploy/bots/lark/connect_to_langbot01.png)
+
+After filling in, start LangBot. If configured successfully, the log will show `[01-29 23:42:56.796] manager.py (68) - [INFO] : Initializing platform adapter 1: lark`, keep LangBot running.
+
+<Warning title="">
+By default, WebSocket long connection mode is used, corresponding to the long connection subscription below. But in some cases (such as international version of Feishu), long connection mode is not available, in which case you need to use Webhook mode, corresponding to the `Send events to developer server` mode, please refer to the following configuration:
+
+- `enable-webhook`: Set to `true`
+- `encrypt-key`: Set to `Encrypt Key` in the `Encryption Strategy` of the `Events and Callbacks` page
+
+Note that in Webhook mode, LangBot needs to be deployed on a server with a public IP, and ensure that the firewall has opened the port configured above.
+
+</Warning>
+<Tip>
+**No public server?** [LangBot Cloud](https://space.langbot.app/cloud) includes built-in domain and HTTPS — get Lark bots working out of the box.
+</Tip>
+
+### Configure Event Subscription
+
+Go to the `Events and Callbacks` page, configure the subscription method as `Long Connection`:
+
+![alt text](/images/zh/deploy/bots/lark/lark_07.png)
+
+And add the event: `Receive Messages`
+
+![alt text](/images/zh/deploy/bots/lark/lark_08.png)
+
+
+Set up `Callback Configuration`, select the long connection callback (use webhook if using webhook mode)
+
+![Set up callback configuration](/images/zh/deploy/bots/lark/lark_16.png)
+
+Add the callback `Card Callback Interaction`
+
+![Add callback](/images/zh/deploy/bots/lark/lark_17.png)
+
+<Warning title="">
+Webhook mode configuration method:
+
+![alt text](/images/zh/deploy/bots/lark/lark_13.png)
+
+Please start LangBot first, fill in the Webhook address obtained from LangBot here.
+
+</Warning>
+
+### Publish Bot
+
+Click `Create Version` at the top, fill in the version number and other information, click `Save` below.
+
+![alt text](/images/zh/deploy/bots/lark/lark_09.png)
+
+Add the bot to a Feishu group to use it:
+
+![alt text](/images/zh/deploy/bots/lark/lark_10.png)
+
+![alt text](/images/zh/deploy/bots/lark/lark_11.png)
+
+Private chat can also be used directly
+
+![alt text](/images/zh/deploy/bots/lark/lark_12.png)
+
+## Common Issues
+- Store app bots cannot respond to chat messages immediately after creation/saving. Due to the [app_ticket event](https://open.feishu.cn/document/server-docs/application-v6/event/app_ticket-events) delay mechanism, you need to wait about 2 minutes before it can work normally.

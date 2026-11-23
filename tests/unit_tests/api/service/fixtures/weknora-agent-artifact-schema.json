@@ -1,0 +1,154 @@
+[
+  {
+    "name": "base-url",
+    "label": {
+      "en_US": "Base URL",
+      "zh_Hans": "\u57fa\u7840 URL"
+    },
+    "description": {
+      "en_US": "The WeKnora API base URL, including /api/v1.",
+      "zh_Hans": "WeKnora API \u57fa\u7840 URL\uff0c\u5305\u542b /api/v1\u3002"
+    },
+    "type": "string",
+    "required": true,
+    "default": "http://localhost:8080/api/v1"
+  },
+  {
+    "name": "api-key",
+    "label": {
+      "en_US": "API Key",
+      "zh_Hans": "API \u5bc6\u94a5"
+    },
+    "description": {
+      "en_US": "API key generated from WeKnora Settings -> API Keys.",
+      "zh_Hans": "\u4ece WeKnora \u8bbe\u7f6e -> API Keys \u751f\u6210\u7684 API \u5bc6\u94a5\u3002"
+    },
+    "type": "secret",
+    "required": true,
+    "default": ""
+  },
+  {
+    "name": "app-type",
+    "label": {
+      "en_US": "App Type",
+      "zh_Hans": "\u5e94\u7528\u7c7b\u578b"
+    },
+    "type": "select",
+    "required": true,
+    "default": "agent",
+    "options": [
+      {
+        "name": "agent",
+        "label": {
+          "en_US": "Agent (Smart Reasoning)",
+          "zh_Hans": "Agent\uff08\u667a\u80fd\u63a8\u7406\uff09"
+        }
+      },
+      {
+        "name": "chat",
+        "label": {
+          "en_US": "Chat (Knowledge Base RAG)",
+          "zh_Hans": "\u804a\u5929\uff08\u77e5\u8bc6\u5e93 RAG\uff09"
+        }
+      }
+    ]
+  },
+  {
+    "name": "agent-id",
+    "label": {
+      "en_US": "Agent ID",
+      "zh_Hans": "\u667a\u80fd\u4f53 ID"
+    },
+    "description": {
+      "en_US": "When omitted, chat uses builtin-quick-answer and agent uses builtin-smart-reasoning. An explicit empty value lets the server choose. Saved IDs apply in both modes.",
+      "zh_Hans": "\u672a\u8bbe\u7f6e\u65f6\uff0c\u804a\u5929\u4f7f\u7528 builtin-quick-answer\uff0c\u667a\u80fd\u4f53\u4f7f\u7528 builtin-smart-reasoning\u3002\u663e\u5f0f\u7559\u7a7a\u5219\u7531\u670d\u52a1\u7aef\u9009\u62e9\u3002\u5df2\u4fdd\u5b58\u7684 ID \u5728\u4e24\u79cd\u6a21\u5f0f\u4e0b\u5747\u751f\u6548\u3002"
+    },
+    "type": "string",
+    "required": false
+  },
+  {
+    "name": "knowledge-base-ids",
+    "label": {
+      "en_US": "Knowledge Base IDs",
+      "zh_Hans": "\u77e5\u8bc6\u5e93 ID \u5217\u8868"
+    },
+    "description": {
+      "en_US": "Remote WeKnora knowledge base IDs used in both modes, not LangBot knowledge base UUIDs. Values and order are preserved.",
+      "zh_Hans": "\u4e24\u79cd\u6a21\u5f0f\u5747\u53ef\u4f7f\u7528\u7684\u8fdc\u7aef WeKnora \u77e5\u8bc6\u5e93 ID\uff0c\u4e0d\u662f LangBot \u77e5\u8bc6\u5e93 UUID\u3002\u4fdd\u7559\u539f\u503c\u548c\u987a\u5e8f\u3002"
+    },
+    "type": "array[string]",
+    "required": false,
+    "default": []
+  },
+  {
+    "name": "web-search-enabled",
+    "label": {
+      "en_US": "Enable Web Search",
+      "zh_Hans": "\u542f\u7528\u7f51\u7edc\u641c\u7d22"
+    },
+    "description": {
+      "en_US": "Whether to enable web search in agent mode.",
+      "zh_Hans": "\u662f\u5426\u5728 Agent \u6a21\u5f0f\u4e0b\u542f\u7528\u7f51\u7edc\u641c\u7d22\u3002"
+    },
+    "type": "boolean",
+    "required": false,
+    "default": false,
+    "show_if": {
+      "field": "app-type",
+      "operator": "eq",
+      "value": "agent"
+    }
+  },
+  {
+    "name": "advanced-settings",
+    "label": {
+      "en_US": "Advanced Settings",
+      "zh_Hans": "\u9ad8\u7ea7\u8bbe\u7f6e"
+    },
+    "description": {
+      "en_US": "Show timeout and fallback prompt controls.",
+      "zh_Hans": "\u663e\u793a\u8d85\u65f6\u548c\u56de\u9000\u63d0\u793a\u8bcd\u8c03\u4f18\u9009\u9879\u3002"
+    },
+    "type": "boolean",
+    "required": false,
+    "default": false
+  },
+  {
+    "name": "timeout",
+    "label": {
+      "en_US": "Timeout",
+      "zh_Hans": "\u8d85\u65f6\u65f6\u95f4"
+    },
+    "description": {
+      "en_US": "Request timeout in seconds.",
+      "zh_Hans": "\u8bf7\u6c42\u8d85\u65f6\u65f6\u95f4\uff08\u79d2\uff09\u3002"
+    },
+    "type": "integer",
+    "required": false,
+    "default": 120,
+    "show_if": {
+      "field": "advanced-settings",
+      "operator": "eq",
+      "value": true
+    }
+  },
+  {
+    "name": "base-prompt",
+    "label": {
+      "en_US": "Base Prompt",
+      "zh_Hans": "\u57fa\u7840\u63d0\u793a\u8bcd"
+    },
+    "description": {
+      "en_US": "Default prompt when the user message is empty.",
+      "zh_Hans": "\u7528\u6237\u6d88\u606f\u4e3a\u7a7a\u65f6\u4f7f\u7528\u7684\u9ed8\u8ba4\u63d0\u793a\u8bcd\u3002"
+    },
+    "type": "string",
+    "required": false,
+    "default": "\u8bf7\u56de\u7b54\u7528\u6237\u7684\u95ee\u9898\u3002",
+    "show_if": {
+      "field": "advanced-settings",
+      "operator": "eq",
+      "value": true
+    }
+  }
+]

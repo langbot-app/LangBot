@@ -1,0 +1,84 @@
+# Local Runner
+
+Use this reference when validating the pluginized `langbot-team/LocalAgent` runner through the WebUI.
+
+The goal is behavior parity with the old built-in local-agent runner. The code does not need to be identical, but the visible behavior should match: effective prompt, current input, history, model selection and fallback, tool calling, knowledge retrieval, multimodal input, streaming and non-streaming output all have to reach the runner through the host and SDK.
+
+For path-by-path coverage, read [Local Runner Coverage](local-agent-runner-coverage.md).
+
+## Main Surface
+
+- Open `LANGBOT_FRONTEND_URL`.
+- Navigate to `Pipelines`.
+- Open the target pipeline.
+- In `Configuration > AI`, select runner `Default`.
+- Configure:
+  - `Model`: an LLM model that is known to answer Debug Chat.
+  - `Knowledge Bases`: only when validating RAG behavior.
+  - `Rerank Model`: leave `None` unless the case explicitly tests reranking.
+- Save the pipeline before using Debug Chat.
+
+## Debug Chat Checks
+
+Use `Debug Chat` as the primary local-agent validation path.
+
+For a basic runner check, send a deterministic prompt such as:
+
+```text
+请只回复 OK，用于前端调试测试。
+```
+
+For a RAG check, bind a knowledge base containing a unique sentinel and ask for that sentinel.
+
+For a tool check, ensure the target tool is visible in `/api/v1/tools`, then ask the runner to call it with deterministic input.
+Avoid simultaneous fixtures with the same visible tool name. The current MCP fixture uses `qa_mcp_echo` and the plugin fixture uses `qa_plugin_echo` for unambiguous runner checks. If a run returns `qa-plugin-smoke:<input>` during an MCP case, it exercised a plugin tool or stale registration, not the MCP tool.
+If the direct MCP fixture passes but `/api/v1/tools` still shows the old MCP name, run `node scripts/e2e/mcp-stdio-register.mjs` to refresh `qa-local-stdio` before rerunning Debug Chat.
+
+For a multimodal check, upload a small image and ask for a deterministic acknowledgement. Prefer the bundled 64x64 red-square fixture over a 1x1 image because some model providers reject tiny images before the runner path is exercised.
+
+For sustained agentic behavior, run `local-agent-complex-coding-task-debug-chat`. It gives the runner one complete task in an isolated Box workspace, requires it to inspect a failing multi-file project, iterate on production fixes, rerun tests, and produce host-verifiable artifacts. Keep the normal context budget for this case; it is not a context-compaction or provider-concurrency probe.
+
+For a Debug Chat non-streaming delivery check, disable the Debug Chat stream switch before sending the prompt. This validates the UI/adapter delivery path. Runner-internal non-streaming model invocation is covered by component tests that set `runtime_metadata.streaming_supported=false`.
+
+## Timeout And Tool Regression Checks
+
+When validating runner timeout or SDK deadline changes, confirm `Configuration > AI` renders the runner timeout field and that the saved value is the one used by the run context. The default local-agent timeout is expected to be `300` seconds unless the pipeline overrides it.
+
+Pair a basic Debug Chat run with a deterministic plugin tool call, for example `qa_plugin_echo`, then correlate the browser response with backend logs. A healthy run shows the tool call started and completed, and does not emit `runner.timeout`, `Action ... timed out`, `All models failed`, `Traceback`, or unexpected `ERROR` lines for the same request.
+
+## Minimum Regression Gate
+
+Run these cases before saying the pluginized local-agent behavior is healthy:
+
+- `local-agent-basic-debug-chat`: basic streaming model invocation.
+- `local-agent-model-fallback-before-first-chunk-debug-chat`: primary model failure before the first visible chunk switches to the configured fallback.
+- `local-agent-streaming-post-commit-failure-debug-chat`: a provider error after a committed content chunk terminates the run without invoking fallback.
+- `local-agent-effective-prompt-debug-chat`: host effective prompt after PromptPreProcessing reaches the runner.
+- `local-agent-rag-debug-chat`: LangRAG retrieval reaches the runner and affects the answer.
+- `mcp-stdio-tool-call`: MCP tool discovery and local-agent tool loop.
+- `local-agent-plugin-tool-call-debug-chat`: plugin tool discovery and local-agent tool loop.
+- `local-agent-tool-error-recovery-debug-chat`: plugin tool execution errors are returned to the model as tool results and can produce a final recovery answer.
+- `local-agent-tool-loop-limit-debug-chat`: repeated plugin tool requests stop at the configured max tool iteration limit.
+- `local-agent-combo-rag-compaction-tool-debug-chat`: one Debug Chat run combines compacted history, LangRAG context, and a plugin tool result.
+- `local-agent-multitool-rag-compaction-debug-chat`: one Debug Chat run combines compacted history, LangRAG context, and two serial plugin tool calls.
+- `local-agent-parallel-tools-rag-compaction-debug-chat`: one Debug Chat run combines compacted history, LangRAG context, and two same-turn parallel plugin tool calls.
+- `local-agent-multimodal-debug-chat`: uploaded image reaches `ctx.input.contents`.
+- `local-agent-rag-multimodal-debug-chat`: RAG retrieval still works when the same user message carries an image.
+- `local-agent-nonstreaming-debug-chat`: Debug Chat still returns a complete visible response when UI streaming is disabled.
+
+## Pass Criteria
+
+- The UI shows the user message and a bot response.
+- Console has no unexpected React/runtime errors.
+- Backend logs show the debug-chat request completed rather than timing out in plugin/runtime calls.
+- When testing RAG or tools, the answer contains the expected sentinel or tool result, not a generic explanation.
+- Provider errors such as `model_not_found` or `no available channel` are environment/model availability failures. They do not prove MCP, RAG, or local-agent runner failure unless the same model works outside the tested runner path.
+- A model that works for basic streaming may still fail for tool-call, multimodal, or non-streaming request shapes. Treat `runner.llm_error` and `runner.tool_loop_error` with `model_not_found`, `invalid api key`, or upstream saturation as environment/model-route failures until retested with a known-good model for that exact shape.
+
+## Diagnostic API
+
+API checks are diagnostic only:
+
+- `GET /api/v1/pipelines/{uuid}` confirms saved runner config.
+- `GET /api/v1/tools` confirms available MCP/plugin tools.
+- `GET /api/v1/knowledge/bases` confirms available knowledge bases.

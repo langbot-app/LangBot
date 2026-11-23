@@ -1,0 +1,114 @@
+---
+title: "Kubernetes Deployment"
+description: "Deploy LangBot on Kubernetes for scalable, production-grade AI bot hosting across messaging platforms."
+---
+
+<Warning>
+  Before you start, you should be familiar with:
+
+  - Basic Kubernetes usage (`kubectl`, Namespace, Deployment, Service, PVC)
+  - How to configure inter-container networking and persistent storage
+</Warning>
+
+The LangBot repository ships a ready-to-use Kubernetes manifest at [`docker/kubernetes.yaml`](https://github.com/langbot-app/LangBot/blob/master/docker/kubernetes.yaml). This page is the deployment guide for that manifest, focusing on the **Box sandbox runtime** under Kubernetes — the part that differs most from the Docker Compose deployment.
+
+## Components
+
+The manifest creates the following components in the `langbot` namespace:
+
+| Component | Description | Ports |
+| --- | --- | --- |
+| `langbot` | Main app (WebUI + webhooks) | 5300 / 2280-2290 |
+| `langbot-plugin-runtime` | Plugin runtime | 5400 |
+| `langbot-box` | Box sandbox runtime (optional) | 5410 |
+
+Persistent storage: four PVCs (`langbot-data`, `langbot-plugins`, `langbot-plugin-runtime-data`, `langbot-plugin-runtime-state`). The Box workspace root uses a node `hostPath` (`/app/data/box`) rather than a PVC.
+
+## Quick Start
+
+```bash
+# Clone the repository
+git clone https://github.com/langbot-app/LangBot
+cd LangBot/docker
+
+# Deploy all components
+kubectl apply -f kubernetes.yaml
+
+# Check status
+kubectl get all -n langbot
+```
+
+When importing legacy Skills and local assets, Core completes migration before opening its HTTP service. The manifest's `startupProbe` provides about 30 minutes for startup (`periodSeconds: 10`, `failureThreshold: 180`); adjust `failureThreshold` for the amount of retained data to import. The existing liveness/readiness probes take effect after the startup probe succeeds. Components use the Python environment installed in the image and do not run `uv sync` when Pods start.
+
+Access the WebUI via port-forward:
+
+```bash
+kubectl port-forward -n langbot svc/langbot 5300:5300
+# Visit http://localhost:5300
+```
+
+For production, expose via Ingress + TLS (the manifest already includes commented Ingress / LoadBalancer / NodePort examples — uncomment as needed).
+
+### Using SeekDB, Milvus or Valkey Search
+
+The default image only ships Chroma, Qdrant and pgvector support. To use SeekDB
+(including its built-in embedding model), Milvus or Valkey Search, switch the
+`langbot` Deployment to the image tag with the matching suffix, `-seekdb`,
+`-milvus` or `-valkey` (for example `rockchin/langbot:latest-milvus` or
+`rockchin/langbot:vX.Y.Z-milvus`), then set `vdb.use`. The plugin runtime and
+Box keep the default image.
+
+## Box Sandbox Runtime
+
+`langbot-box` provides sandbox tools (`exec` / `read` / `write` / `edit` / `glob` / `grep`), Skill script execution, sandbox draft publication and stdio-mode MCP servers. It is **optional**: Core provides Skill management, activation and read-only resource access without Box; execution and sandbox draft publication require Box. Set `BOX__ENABLED=false` on `langbot` when Box is not deployed.
+
+### How it works & the key constraint
+
+The official LangBot image ships **nsjail and the Docker CLI**, but no dockerd. This manifest mounts the node's Docker socket (`/var/run/docker.sock`) for the Docker backend, so the node's daemon creates sandbox containers; dockerd does not run inside the Pod.
+
+This imposes a **key constraint**: the daemon that actually creates sandbox containers is the **node's Docker daemon**, which resolves bind-mount paths against the **node filesystem**. So the Box workspace root must be the **same absolute path** in all three places:
+
+1. The actual path on the node
+2. The mount path inside the `langbot-box` container
+3. The mount path inside every sandbox container it spawns
+
+This is why the manifest uses a `hostPath` (fixed at `/app/data/box`) instead of a regular PVC: a PVC path only exists inside the Pod's mount namespace, which the node's dockerd cannot see. The manifest retains Core's Box mount and same-node `podAffinity` for existing `legacy` deployments. After migrating to database storage and network mode, remove that Core mount and the corresponding affinity; the identical-path requirement between Box and the node's Docker daemon still applies. See [Skill upgrade instructions](/en/usage/skills/readme).
+
+<Warning>
+  This manifest defaults to SQLite and `ReadWriteOnce` storage for a single Core. Removing the shared Box directory does not make increasing `replicas` sufficient for high availability; multiple Cores require separate planning for the database, instance identity and Runtime control connections.
+</Warning>
+
+### Connection & configuration
+
+- `langbot` connects to the Box runtime over WebSocket, using the endpoint from the ConfigMap: `BOX__RUNTIME__ENDPOINT: ws://langbot-box:5410`.
+
+<Note>
+  The in-container default hostname is `langbot_box` (with an underscore), which is **not** a valid Kubernetes DNS name. The endpoint must therefore be set **explicitly** to the valid Service name `langbot-box` — you cannot rely on the in-container default.
+</Note>
+
+- Box owns its workspace root through `LANGBOT_BOX_CONFIG`; the manifest sets `local.host_root` to `/app/data/box` and includes that path in `local.allowed_mount_roots`. Core sends other execution settings through the INIT RPC; Box does not read its own `BOX__*` environment variables. Network mode does not accept Core-local roots. Core's `BOX__LOCAL__*` and `SKILLS__ROOT` remain for existing `legacy` deployments and migration sources.
+
+### Security note
+
+Mounting the node's Docker socket grants the Box runtime (and any code executed in the sandbox) effective root on the node. Only deploy Box on nodes you trust for this workload — ideally a dedicated node pool isolated with taints/tolerations. For a stronger isolation boundary, switch `box.backend` to `e2b` (set `E2B_API_KEY`) and drop the `docker.sock` mount + hostPath. See [Sandbox configuration](/en/usage/sandbox/config).
+
+### Verify Box is ready
+
+```bash
+# Box runtime logs (should show the selected backend, e.g. "using backend: docker")
+kubectl logs -n langbot -l app=langbot-box -f
+
+# Confirm langbot connected to the Box runtime
+kubectl logs -n langbot -l app=langbot | grep -i "box runtime"
+```
+
+## When you don't need the sandbox
+
+If you do not need the sandbox, remove the `langbot-box` Deployment / Service from the manifest and set `BOX__ENABLED=false` on the `langbot` Deployment to avoid connection-failure warnings in the logs.
+
+## Further reading
+
+- [Docker Deployment](/en/deploy/langbot/docker)
+- [Sandbox docs](/en/usage/sandbox/readme) and [Sandbox configuration](/en/usage/sandbox/config)
+- [Skills docs](/en/usage/skills/readme)
+- Manifest source file: [`docker/kubernetes.yaml`](https://github.com/langbot-app/LangBot/blob/master/docker/kubernetes.yaml) in the repo

@@ -1,0 +1,971 @@
+# LangBot regression tools
+
+Public-dataset quality evaluation uses the [evaluation workflow](evaluation/README.md).
+It prepares pinned question plans, executes installed Pipeline arms, records real
+model inputs, and reports paired answer and evidence metrics.
+
+## Layout and entrypoints
+
+Run module entrypoints from the repository root:
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite smoke --lbctl /path/to/lbctl --plugins plugins --output .qa/smoke
+uv run --no-sync python -m tools.entrypoints.regression_job validate --profile tools/profiles/job.json
+uv run --no-sync python -m tools.entrypoints.regression_suite validate --profile tools/profiles/groups.json
+```
+
+The directory boundaries are intentional:
+
+- `entrypoints/` contains executable orchestration and reporting commands.
+- `regression/` contains shared harness code and scenario-domain modules.
+- `profiles/` contains suite inputs; `fixtures/` contains mock and plugin data; `contracts/` contains the behavior catalog.
+- `tests/` contains the tool and harness tests. Run them with `python -m unittest discover -s tools/tests -p 'test_*.py' -v`.
+
+Imports use the `tools.entrypoints` and `tools.regression` package paths. Keep commands rooted at the repository so profile and fixture paths resolve consistently.
+
+Common workload primitives live in `regression/http_bot.py` (group requests
+and signing), `regression/run_ledger.py` (read-only RunLedger evidence),
+`regression/resource_cleanup.py` (owned-resource journals and cleanup checks),
+and `regression/evidence.py` (assertion receipts). Import these from runners and
+cases rather than routing through an executable entrypoint. Keep
+scenario-specific expected outcomes and workflows with their scenarios.
+
+Run the deterministic OpenAI Chat Completions endpoint with Python 3.11+, without
+API credentials or third-party dependencies:
+
+```sh
+python3 -m tools.entrypoints.mock_llm --port 18080 --record /tmp/langbot-mock-requests.jsonl
+```
+
+In LangBot, create an `openai-chat-completions` Provider whose base URL is
+`http://127.0.0.1:18080/v1` and whose API key is any test-only value. Use a model
+from `GET /v1/models`. The loopback address works when Core and this tool run on
+the same host; containers must use an address reachable from their own network.
+
+| Model | Behavior |
+| --- | --- |
+| `mock-chat` | Returns `LANGBOT_CHAT_OK`, including SSE streaming |
+| `mock-rag` | Requires the golden document sentinel in the model input, then returns `LANGBOT_RAG_OK` |
+| `mock-embedding` | Returns deterministic normalized token-hash vectors from `/v1/embeddings` |
+| `mock-box` | Calls `exec` twice to write/read `/workspace/mock-llm.txt`, then returns `LANGBOT_BOX_OK` |
+| `mock-401`, `mock-429`, `mock-503` | Returns the selected HTTP failure |
+| `mock-slow` | Delays the response by two seconds |
+| `mock-slow-stream` | Delays each SSE chunk by 0.2 seconds |
+
+`mock-rag` requires `aurora-parser-rag-9137` in the submitted messages. The
+[golden HTML fixture](../skills/skills/langbot-testing/fixtures/rag/parser-golden.html)
+contains this marker; retrieve it into the model context without including it
+in the user's question.
+
+For `mock-box`, enable Box in the Runner and expose the native `exec` tool. Each
+tool result must contain `LANGBOT_BOX_SENTINEL` before the next step is returned.
+Tool-call IDs and fragmented streaming arguments use the normal OpenAI protocol.
+Scenario progress comes from each request's current conversation turn, so
+concurrent sessions and retries do not consume a shared script counter.
+Tagged group traffic additionally requires the previous user turn and assistant
+acknowledgement in the model input, and rejects another group's history. Final
+responses carry a per-turn acknowledgement checked by the traffic driver.
+
+Add fixed response/tool sequences with `--scenarios path/to/scenarios.json`, using
+`fixtures/mock_llm_scenarios.json` as the example. `expect_tool_output` checks a substring
+in the previous tool results; `expect_prompt` checks the submitted messages.
+The server returns tool calls; it never executes
+their commands. Request recordings contain prompts, tool results, responses,
+status, and disconnects, but no HTTP headers. Use test data only.
+
+Run the focused HTTP checks on the Linux test host:
+
+```sh
+python3 -m unittest discover -s tools/tests -p test_mock_llm.py -v
+```
+
+These checks validate the mock server. A LangBot regression must additionally
+verify real tool outputs and retrieved document IDs/content. Token usage is
+synthetic, and this endpoint does not evaluate answer quality or embedding models.
+
+`mock-embedding` accepts string/batch inputs, float/base64 encoding, and optional
+dimensions (default 384). It tests the embedding protocol and RAG plumbing;
+token hashes do not establish semantic retrieval quality.
+
+## Normal traffic and resource collection
+
+`entrypoints/regression_traffic.py` executes a JSON list of normal `lbctl` cases at a selected
+rate. Each case has a name, CLI arguments, and an expected response substring:
+
+```json
+[{"name":"chat","args":["pipeline","run","PIPELINE_UUID","--message","Hello"],"expect":"LANGBOT_CHAT_OK"}]
+```
+
+Prepare a Workspace-bound CLI context and its API key environment variable, then
+run on the Linux test host:
+
+```sh
+python3 -m tools.entrypoints.regression_traffic \
+  --lbctl /path/to/lbctl --config /path/to/lbctl.yaml \
+  --cases /path/to/cases.json --output /path/to/new-results-directory \
+  --duration 600 --rps 2 --workers 4 --cooldown 30 \
+  --pid core=CORE_PID --pid mock=MOCK_PID \
+  --health core=http://127.0.0.1:5300/healthz \
+  --health mock=http://127.0.0.1:18080/healthz
+```
+
+Add `--container CONTAINER_ID` for Docker CPU/memory/PID statistics. The executing
+account must be able to inspect the selected process trees and Docker daemon.
+Traffic and cloud soak share the process and endpoint probes in
+`regression/observations.py`. Traffic collection works without cgroup v2. PID resource totals
+include descendants, so select disjoint trees.
+
+The result directory contains `requests.jsonl`, `resources.jsonl`, `progress.json`,
+and `summary.json`. The requested rate is a target: four workers bound concurrency,
+and slow requests lower the achieved rate. Requests with unknown outcomes are
+recorded without retry. A command fails its business check if it returns an error
+or omits the expected response. Health/resource collection failures also make the
+run fail. API key values are redacted from recorded CLI output.
+
+`--max-requests 96` makes `--duration` the completion budget for all 96 requests,
+including enabled per-request ledger verification. Missing, failed, or late
+requests fail the run; in-flight requests are drained without retry. Cooldown
+and final ledger closeout still run afterward and retain their checks.
+`request_limit` records the limit; `planned_requests` and `delivery_ratio` use
+this fixed count. Omit the option to retain time-based load.
+
+Latency percentiles include the entire CLI invocation and use successful
+requests only. Achieved request rate is `requests / load_elapsed_seconds`.
+`health_samples` counts sampling rounds; `health_failures` counts rounds with
+any failed health probe or process/container resource read.
+
+## Fixed-arrival load and capacity exploration
+
+Load phases can set `arrival_mode: "open-loop"` and a positive `queue_capacity`
+(default 128). Arrivals follow a fixed schedule throughout `duration_seconds`,
+even when responses slow down. A bounded client queue retains waiting arrivals;
+workers still bound in-flight requests, and each group still executes one turn
+at a time. Omit `arrival_mode` to keep the existing paced behavior.
+`max_requests` is available only in paced mode.
+
+Every planned arrival is recorded in `arrivals.jsonl` with an `arrival_id`,
+scheduled time and final outcome. The summary reconciles scheduled arrivals
+against dispatched, dropped, expired and blocked arrivals. A full client queue
+drops an arrival explicitly. The load deadline expires waiting arrivals and
+drains only requests already dispatched. A failed group blocks its later
+arrivals because their conversation history is uncertain. Every undispatched
+arrival makes the run fail, including when `performance_mode` is `observe`.
+
+`requests.jsonl` contains actual requests with their scheduling, dispatch and
+completion times. Each case reports `arrival_p95_seconds` across all dispatched
+outcomes, including ledger verification, alongside the existing successful
+response-time percentiles. `max_arrival_p95_seconds` sets per-case thresholds
+for open-loop phases. Inspect arrival counts and failures together with latency;
+the percentile population excludes arrivals that never reached the service.
+
+The client queue and the Core/Box health queues have separate observations.
+Worker limits and serialized groups can constrain dispatch. Capacity results
+must state those limits, the workload mix, mock delays and the host resource
+envelope. A saturated run remains failed evidence of that tested configuration.
+A later low-rate phase verifies whether service queues and resources recover.
+
+Use the source-stack entrypoint with the checked-in load overrides:
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_ci \
+  --suite endurance --plugins plugins --lbctl /path/to/lbctl \
+  --load-profile tools/profiles/arrival-ramp.json --budget-seconds 900 \
+  --output .qa/arrival-ramp-001
+
+uv run --no-sync python -m tools.entrypoints.regression_ci \
+  --suite endurance --plugins plugins --lbctl /path/to/lbctl \
+  --load-profile tools/profiles/arrival-soak.json --budget-seconds 1200 \
+  --output .qa/arrival-soak-001
+```
+
+`--load-profile` accepts `phases`, `thresholds`, `resource_limits`,
+`performance_mode` and `box_command_delay_seconds`, validated before service
+creation. The Box command delay must be finite and nonnegative, and defaults to
+one second per command. The existing chat/Box/RAG
+resources, plugin installation, run-ledger verification and independent mixed
+evidence checks remain part of the source-stack run. `--budget-seconds` bounds
+execution after preparation. Both options apply to `--suite endurance`.
+The ramp uses 0.8, 4 and 0.8 aggregate arrivals/second; the soak runs 15 minutes at
+0.8 arrivals/second with a four-second delay in each Box command, so different
+Boxes execute concurrently at that arrival rate. The workload fingerprint
+includes the actual generated mock scenario file. Their latency limits are
+exploratory test settings and need
+calibration against measured workloads. Keep the existing Docker-daemon
+prerequisites of the source-stack runner.
+
+## Configured regression suites
+
+[`entrypoints/regression_suite.py`](entrypoints/regression_suite.py) turns a JSON profile into a repeatable
+resource preparation, traffic, observation, verdict, and cleanup sequence. Start
+with [`profiles/groups.json`](profiles/groups.json) for
+continuous group conversations. The earlier
+[`normal.json`](profiles/normal.json) profile retains independent CLI
+requests; parallel CLI workers alone do not simulate persistent groups.
+
+Use a dedicated QA Workspace. First provision the instance with `lbctl install`
+or your source deployment, enable Docker Box, start the mock and embedding
+backends, and prepare a Workspace-bound `lbctl` config. Set the profile's CLI
+config path, backend URLs, and three plugin archive paths. The sample embedding
+endpoint must serve `all-MiniLM-L6-v2`; the mock serves generation only. Relative
+paths resolve against the profile directory, so adjust them if you move it.
+
+Run on the Linux test host:
+
+```sh
+python3 -m tools.entrypoints.regression_suite validate --profile tools/profiles/groups.json
+python3 -m tools.entrypoints.regression_suite run \
+  --profile tools/profiles/groups.json --output .qa/regression/run-001
+```
+
+`validate` checks profile syntax and references without contacting the instance.
+The output directory for `run` must be new. CLI options `--duration`, `--rps`, and
+`--workers` override those values in every phase. No additional Python dependency
+is needed.
+
+A load phase may set `max_requests` to a positive integer. It uses the same
+completion-budget semantics as `regression_traffic --max-requests`; otherwise
+the phase keeps its time-based behavior.
+
+The profile controls:
+
+- `plugins`: local archives or GitHub/marketplace request files, installed with
+  `lbctl plugin install ... --wait`.
+- `resources`: Providers, models, knowledge bases, document ingestion, Pipelines,
+  and Bots, created in dependency order. `${resource_id}` refers to a UUID
+  returned by an earlier creation; `${workspace_uuid}` is the current Workspace.
+  Pipeline config patches merge with actual server defaults. Independent CLI
+  cases can use existing resources supplied through `vars`; group mode creates
+  its own signed HTTP Bots.
+- `cases`: CLI argument arrays or `http_group` settings and expected business text. Integer `weight`
+  values set the mix; `2/1/1/1` means `40/20/20/20`. An optional `body` object
+  becomes the case's request file. All workers share the weighted sequence.
+- `phases`: each phase has a name, duration, target RPS, worker limit, and optional
+  cooldown. Multiple phases provide a step load. In-flight requests drain at the
+  end; the concurrency limit can reduce achieved RPS.
+- `observe`: health URLs, host PIDs, PID files, and Docker container names/IDs.
+  Set PIDs for disjoint process trees to avoid counting descendants twice.
+  `box_data_root` discovers Box containers mounted below that deployment's data
+  directory on every sample, including sandboxes created as new groups speak.
+  The complete Job sets it automatically; on an existing instance, set it to
+  the instance's Box data directory when sampling dynamic Docker sandboxes.
+- `thresholds`: minimum achieved/target RPS ratio and maximum P95 seconds per
+  case, in addition to the existing business and health/resource checks. The
+  sample limits are starting acceptance settings, not established product SLOs.
+- `cleanup`: `on-success` (default), `always`, or `never`. Only recorded resources
+  created by this run are deleted, in reverse order. Plugins and the existing
+  instance remain installed. Failed/unknown creations are not automatically
+  retried; inspect the instance if a creation outcome is unknown.
+
+Failed runs retain resources by default. After inspection, clean them with the
+same profile and credentials:
+
+```sh
+python3 -m tools.entrypoints.regression_suite cleanup \
+  --profile tools/profiles/groups.json --output .qa/regression/run-001
+```
+
+Cleanup checks the Workspace against `owned.json` and records remaining items
+after partial failures. Keep `owned.json` until cleanup completes. Each run also
+contains `profile.json`, resolved `resources.json`, and one directory per phase
+with the original request/resource records. The root `summary.json` includes
+target/achieved RPS, phase results, threshold failures, and the final verdict.
+
+The `entrypoints/regression_suite.py` entry reuses an existing instance and backend processes.
+Use the complete lifecycle Job below to own deployment, credentials and backends.
+The independent `normal.json` cases use a new-session CLI entry. Group traffic
+uses the signed HTTP Bot adapter instead, as described below. Real IM adapter
+acceptance and resource-leak verdicts need separate scenarios. Test the suite
+plumbing on Linux with:
+
+```sh
+python3 -m unittest discover -s tools/tests -p test_regression_suite.py -v
+```
+
+### Persistent group traffic
+
+The group profile creates three HTTP Bots routed to chat, Box, and RAG Pipelines.
+Their signed `/bots/<uuid>/sync` ingress produces real `GroupMessage` events and
+uses Core's session manager. Four groups follow a `2/1/1` case assignment;
+members take turns within each group. The same member IDs appear in different
+groups to exercise group isolation. Box session selection uses the group launcher ID.
+
+In each group phase, `groups` selects the number of stable sessions and
+`members_per_group` selects the rotating member identities. `rps` remains the
+aggregate target, so a group's target speaking interval is `groups / rps`
+seconds. `workers` bounds total in-flight requests independently of group count.
+For example, 8 groups at 4 RPS target one message every 2 seconds per group.
+Both the Suite and Job accept `--groups` and `--members-per-group` overrides.
+The group count must cover the full weighted case sequence (4 in the sample).
+
+Only one request is in flight per group. A failure or unknown outcome stops that
+group without retry while other groups continue. Every selected group must
+complete at least two turns in total for the phase to pass. The fake model checks
+that the preceding user message and assistant acknowledgement survived in actual
+model input, including when a different member speaks next. Cross-group markers
+fail the oracle. The normal Box/tool-output and RAG-context checks still apply.
+
+`group-state.json` carries group IDs, turn numbers and acknowledgements across
+phases; existing groups keep their conversations when later phases add groups.
+It refuses changed cases or a state left in progress by interruption. Do not
+clear that marker to blindly resume: inspect the run and use a fresh output
+directory when the last turn's outcome is unknown. Each phase summary includes
+group-level turn counts and member IDs alongside case latency and health data.
+
+The Suite generates the HTTP Bot signing secret and passes it through
+`LANGBOT_QA_GROUP_SECRET`. Resource request bodies containing credentials are
+stored under `.private/`; do not share that directory. Cases specify `http_group`
+with `url`, `secret_env`, and `message` instead of CLI `args`. Core needs no code
+changes. The `/sync` response collapses streaming parts: this tests multi-turn
+group processing, not real IM delivery or callback streaming order.
+Every selected group must also receive traffic in each phase. Group latency
+measures the signed HTTP request through its completed reply; independent CLI
+latency includes CLI startup. Compare results within the same traffic mode.
+
+`lbctl` v0.3 may report Bot verification failure after a successful creation
+because its safe projection omits event bindings. The Suite records the returned
+Bot UUID before reading the full Core Bot API with the endpoint, Workspace and
+environment credential confirmed by `lbctl whoami`. It then
+checks the masked signing secret and effective route with a signed warmup turn
+before load. The creation is not retried.
+
+## Complete lifecycle Job
+
+[`entrypoints/regression_job.py`](entrypoints/regression_job.py) owns the deployment as well as the suite.
+Use [`profiles/job.json`](profiles/job.json) to pin the Core
+Release and select the suite and plugin input directory. The job runs this chain:
+
+1. `lbctl install --profile all` creates a fresh deployment inside the run directory.
+2. A Compose override starts our mock backend on the deployment's private network
+   and injects a generated test-only API key. The Job binds its own CLI context.
+3. The suite installs plugins, creates resources and ingests documents. Each case
+   runs once as warmup before measured traffic starts.
+4. Configured load phases run with health, process-tree and container sampling.
+5. Service-log tails and raw request/resource records are retained. Successful
+   Jobs stop the deployment, remove only sandboxes mounted under their own data
+   root, and use `lbctl uninstall --purge-data` to reclaim the deployment.
+
+Both generation and embedding use our mock backend, with no external model
+service or real model credentials. Plugin archives, the pinned Core image,
+`lbctl`, Docker and Compose v2 are Job inputs/prerequisites. This wrapper uses
+PyYAML, already included in LangBot's dependencies, to verify the CLI's deployment
+record and recover ownership after an interrupted install.
+
+Run on a Linux host with Docker access and permission to inspect the selected
+container processes. Use an idle dedicated Docker daemon: current Box runtime
+startup cleanup can remove sandboxes from another runtime. The Job refuses to
+start when existing Box sandboxes are present. The current `lbctl` installer
+also reserves host port 5401 and 2280–2285, independently of its HTTP port.
+
+Set the plugin directory and the `lbctl` executable in `job.json`, then run:
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_job validate --profile tools/profiles/job.json
+uv run --no-sync python -m tools.entrypoints.regression_job run \
+  --profile tools/profiles/job.json --output .qa/regression/job-001
+```
+
+`--duration`, `--rps` and `--workers` override every load phase. Each output
+directory must be new. Job cleanup policy is `on-success`, `always`, or `never`;
+it governs the whole deployment, whereas suite cleanup governs API resources
+when a suite runs on an existing deployment. `purge_data: false` preserves the
+deployment data after removing containers. Failed Jobs retain their environment
+by default; after inspection use:
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_job cleanup \
+  --output .qa/regression/job-001
+```
+
+The root `summary.json` is the final Job verdict; `suite/` contains the measured
+results, `mock/requests.jsonl` contains backend recordings, and `services.log`
+contains up to 10,000 log lines per service. Generated credentials and deployment
+inputs stay in `.private/`; share the result files, not that directory. A Job has
+its own CLI locator/config and records its deployment identity before cleanup.
+Changing that identity makes cleanup fail closed. Cleanup uses the saved Job
+state and does not require the original profile or plugin input files.
+
+The Job replaces the real embedding model with `mock-embedding`. This measures
+LangBot/plugin/Box/RAG overhead, not real-model inference cost or retrieval
+quality. Run the Job plumbing checks on Linux with:
+
+```sh
+uv run --no-sync python -m unittest discover -s tools/tests -p 'test_*.py' -v
+```
+
+## Local plugin lifecycle
+
+Run the separate plugin lifecycle Job on a disposable Linux stack:
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite plugin-lifecycle \
+  --lbctl /path/to/lbctl --output .qa/plugin-lifecycle-001
+```
+
+Its three chains install a dependency-free local Page fixture, store a Unicode
+marker and configure it, then exercise an update, a repeated installation and
+invalid archive, or an initialization failure followed by explicitly reinstalling
+a known good package and updating again. Assertions check completed task status,
+the executing version, retained configuration and plugin storage, and unique
+installation visibility. Cleanup verifies API removal and termination of observed
+worker PIDs, including their process start times. The 600-second budget is a cap;
+the Job stops when its finite cases finish.
+
+The current HTTP installation path does not promise automatic rollback after
+initialization failure. This Job verifies explicit recovery; the separate
+`plugins.upgrade_recovery` coverage obligation remains unclaimed. A failed
+generation must be absent or reject Page calls. If Core instead restores the old
+version automatically, that version must pass its full configuration, storage and
+Page oracle. It uses the
+existing runner's stack preparation and local HTTP uploads, installs only the
+bundled fixtures without Marketplace access, and is not included in smoke or daily
+by default. Cases, task outcomes, worker identities and cleanup journals are saved
+under `gate/suite/`.
+
+## Finite core smoke
+
+Use [`profiles/smoke.json`](profiles/smoke.json) for a finite
+functional check on an existing Core. It prepares 35 resources through `lbctl`,
+ingests HTML and plain-text fixtures through GeneralParsers, then executes 28
+cases / 43 requests. Reports group the verdicts by stage:
+
+| Stage | Cases and independent checks |
+| --- | --- |
+| Configuration | Identity and plugins; provider, model, Pipeline and knowledge-base readback; document completed status and Workspace/KB ownership |
+| Ingress | Missing and incorrect signatures return HTTP 401 / code 40101 without creating a group AgentRun; valid signatures are exercised by group conversations |
+| Conversation | Ordinary and Unicode chat; chat, Box and RAG groups each use two interleaved groups with three turns and rotating members; model input must retain prior user/reply history without cross-group history |
+| Model | Slow SSE reply; HTTP 401, 429 and 503 primary failures followed by successful fallback; recorded model/status/stream sequence must match |
+| Tools | Docker write/read across rounds, two tool calls in one model response, and expected exit code 7 with separate stdout/stderr returned to the model |
+| Delivery | ASCII and Unicode filenames/content delivered as one attachment with exact bytes |
+| Retrieval | HTML and text parsing/ingestion, RAG model input, retrieval from two knowledge bases with distinct sentinels and KB ownership, and an empty knowledge base returning an empty list |
+
+Cleanup is checked separately: delete journaled API resources and confirm their
+UUIDs are absent from CLI list readback. Evidence goes to `cleanup-checks.json`;
+cleanup failures affect the overall verdict.
+
+Start a dedicated `entrypoints/mock_llm.py` with the bundled scenarios and `--record` as
+shown above. Copy the smoke profile and configure the CLI executable/config,
+service URLs, plugin archives, `vars.mock_records` to that mock recording file,
+and `vars.core_db` to the target Core's existing SQLite `langbot.db`. The suite
+must read both local files. Keep fixture paths valid relative to the copied
+profile. Do not share the mock with other traffic during this run: fallback
+checks compare requests appended during each case.
+
+Set `plugins: []` to reuse installed plugins; LocalAgent, LangRAG and
+GeneralParsers must still be enabled and initialized. The embedding endpoint
+must serve the configured model (`all-MiniLM-L6-v2` by default). Generation is
+deterministic mock traffic; Core, plugins, Box, document parsing and retrieval
+execute normally.
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_suite validate --profile /path/to/smoke.json
+uv run --no-sync python -m tools.entrypoints.regression_suite run \
+  --profile /path/to/smoke.json --output .qa/smoke-001
+```
+
+A correct reply alone does not pass. Each Pipeline/group request must match one
+new AgentRun in the authenticated workspace with `completed` status and a persisted
+`run.completed` event. The ledger is opened read-only. This version requires
+local SQLite access; remote-only Core and PostgreSQL ledgers are not supported.
+The observation timeout does not extend the Runner deadline or retry requests.
+Unknown outcomes fail the suite; later turns of that group are skipped while
+independent cases continue. An expected tool exit code of 7 passes only when
+its output is correct and the agent handles the result and completes normally.
+
+`summary.json` contains the overall and per-stage verdicts; exit code 0 means all
+checks and required cleanup passed. `cases.json` records per-request evidence,
+`environment.json` records identity/capabilities/plugins, and `owned.json` tracks
+created resources. Successful runs delete those API resources. Failures retain
+them by default; after inspection use:
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_suite cleanup \
+  --profile /path/to/smoke.json --output .qa/smoke-001
+```
+
+Box sessions and AgentRun records follow the reused service's normal retention
+policy. Load override flags are rejected for smoke. `stage` labels cases;
+`fields` compares exact response values by dotted path (including array indices),
+`forbid` rejects response substrings, and `mock_requests` checks the actual
+model/status/stream sequence. `box_exec` defaults to exit code 0; error-handling
+cases can specify `exit_code` and `stderr` explicitly.
+
+To use a fresh deployment, select this suite in `job.json`; the Job supplies its
+SQLite/recording paths and uses mock embedding. Smoke skips load warmup and timed
+phases. The dedicated Docker daemon requirement above still applies.
+
+## PR smoke gate
+
+`Core Smoke` runs regression-tool tests and a real Core smoke in parallel on
+GitHub-hosted Linux runners. The smoke starts Core from the checked-out candidate,
+uses the SDK from `uv.lock`, plugins built from the same checkout, `lbctl`
+v0.3.0, a Docker Box and mock generation/embedding. It needs no model credentials
+or access to a developer's running environment.
+The SDK CLI builds LocalAgent, LangRAG and GeneralParsers into `.lbpkg` archives.
+`plugins/manifest.json` records selection mode, plugin versions, archive hashes
+and exact installation/readiness readback. Build logs are preserved alongside it.
+The published route remains available when `--plugins` is omitted; see
+[published plugin preparation and replay](published-plugins.md).
+
+The same job also runs `--required-suite shared_provider_concurrency` as a separate
+step, outside the smoke execution budget. Eight conversations each complete two
+turns through real Core, SDK Runtime, LocalAgent and one shared LiteLLM requester;
+only remote generation uses a loopback mock. The contract checks overlapping token
+counts, conversation history and persisted run completion, rejects token-count
+fallback, and always uploads its JUnit result.
+
+Dependency installation, service startup, sandbox image download and plugin
+installation are preparation. The PR job uses `--suite scenarios --scenario-groups
+plugins`, including EssentialCommands and FAQManager, under a 300-second execution
+guard. Its required status name remains `Core smoke (60s)` for branch-rule
+compatibility. The base `--suite smoke` retains its 60-second budget for 28 cases /
+37 requests (two turns per group), verdict checks and API cleanup. A missing
+verdict, failed check or timeout fails the gate. The entire cold workflow,
+including the separate concurrency contract, has a 15-minute timeout.
+
+On an existing prepared stack, use:
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_gate \
+  --profile /path/to/smoke.json --output .qa/gate-001
+```
+
+`gate.json` records the budget, measured duration, verdict and process resource
+peaks. `resources.jsonl` samples configured process trees every second (RSS,
+cumulative CPU time, threads and file descriptors); suite artifacts contain
+per-case timings and business evidence. These are diagnostics, not calibrated
+performance-regression thresholds. Docker sandbox resource sampling remains in
+the longer load runner. A timeout kills the local Suite/CLI process group without
+retrying requests; a reused remote service can still have an in-flight run, so
+inspect its retained ownership journal before cleanup. CI tears down its own
+service processes and owned sandboxes afterward.
+
+The workflow always creates its two checks on PRs and cancels superseded runs.
+The existing required check names remain `Regression tools` and `Core smoke (60s)`.
+`Daily Endurance` is independent and is not required for merging. Longer load and
+soak tests use the existing Suite and Job entry points with separately calibrated
+latency, throughput and resource budgets; the one-minute smoke does not replace them.
+
+For the optional JSON-configurable transaction mix used for local smoke,
+pressure and soak tests, see [Configurable mixload](mixload.md). It does
+not change the stock Daily job described below.
+
+## Daily mixed workload and weekly contracts
+
+`Daily Endurance` keeps one owned Core/Runtime/Box deployment per run. The
+19:23 UTC schedule (03:23 Asia/Shanghai) runs the mixed business load every day,
+so each day produces comparable throughput, latency and resource observations.
+Manual dispatch can additionally select `workload: contracts` for a finite
+contract pass. The job is independent of PR merge checks.
+
+The mixed mode uses the existing `endurance` profile and harness:
+
+- Three signed HTTP Bots route chat, Box-tool and RAG traffic to separate Pipelines.
+  LocalAgent, LangRAG and GeneralParsers are built from this checkout and installed
+  once. Three independent loopback generation servers back distinct Providers;
+  embedding uses its own Provider and the main mock endpoint, and is not counted
+  as an additional generation backend.
+- The first phase runs 8 groups, 3 rotating members per group, 2 target RPS and
+  8 workers for 180 seconds, followed by 30 seconds of cooldown. The second keeps
+  those conversations and expands to 16 groups, 4 target RPS and 12 workers for
+  300 seconds, followed by 60 seconds of cooldown. The `2/1/1` chat/Box/RAG mix
+  creates at least two Box groups in each phase. Groups are serial internally
+  and concurrent across groups; workers bound in-flight requests rather than
+  generating an unbounded client backlog.
+- Box reuse remains scoped to each group, not to the whole Pipeline. Every exec
+  reports its real hostname. Acceptance checks observed Provider request tokens,
+  group history, source Bots, distinct reused Box identities and overlapping
+  persisted Box tool-event windows. Configured group/worker counts alone cannot
+  establish concurrent execution. Event windows include transport and scheduling,
+  and are not CPU timings.
+
+The configured phases total 570 seconds within the 900-second execution guard;
+service, image and plugin preparation precede that guard. The whole GitHub job
+retains its 45-minute timeout. Edit the existing `groups.json`/`endurance.json`
+profiles for prepared-stack load settings; the generic Suite also accepts
+`--groups`, `--members-per-group`, `--rps`, `--workers` and `--duration` overrides.
+The source CI entrypoint uses the committed endurance profile.
+
+`gate/mixed.json` records the independent mixed-workload verdict and observed
+counts. Each phase retains requests, group membership, HTTP overlap,
+AgentRun reconciliation, live container/session counts and sampled queue
+load/cooldown observations. Missing metrics remain `unknown` and leave mixed acceptance incomplete. Each
+phase must observe all four queue metrics and a zero queue throughout its final
+cooldown window. Every generation Provider must overlap another Provider in
+recorded service time; this does not require a three-way intersection. A sampled
+live Box session or container does not by itself prove busy execution. Business, health,
+resource and mixed-evidence failures still fail the job. Throughput/P95 remain
+observations on hosted runners; no performance threshold is calibrated or changed.
+
+The manual contract mode runs `--suite scenarios` once, under the existing
+300-second execution guard, with the existing optional restart checks. It retains
+the base cases and these selected local groups:
+
+| Group | Behavior retained by the finite contract pass |
+|---|---|
+| `faults` | Cancel/timeout cleanup, model retry side effects, partial stream failure, exhausted fallback, Box path rejection |
+| `resources` | API-key revocation, direct Agent execution, document deletion with a surviving retrieval control |
+| `plugins` | EssentialCommands without model/AgentRun execution; FAQManager Page API CRUD and search freshness |
+| `lifecycle` | Signed HTTP callback 5xx retry identity and subsequent delivery |
+
+Manual `scenario_groups`, `extra_plugins` and `restart_services` inputs apply only
+to contract mode. By default all four groups, EssentialCommands/FAQManager and
+one-time Core/Runtime restart checks are enabled. The short base business pass
+provides the fixtures for these assertions; it is no longer repeatedly traversed
+for 30 minutes. Restart receipts, exact terminal run IDs, coverage and owned API
+cleanup remain part of acceptance. Disabled groups are unexecuted, not passes.
+
+This rotation reduces repeated deployments and business traffic without deleting
+independent assertions. Mixed success does not replace API contracts, live Dify/n8n,
+Skill persistence, upgrade/migration or backend-specific acceptance. Those retain
+their own inputs and execution requirements. Both modes use one Workspace and do
+not establish cross-Workspace isolation or real model/provider capacity.
+
+Run either mode on a disposable Linux host with an idle Docker daemon:
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite endurance \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/mixed-001
+
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite scenarios \
+  --scenario-groups faults resources lifecycle plugins --restart-services \
+  --lbctl /path/to/lbctl --plugins plugins \
+  --extra-plugins misc/EssentialCommands misc/FAQManager --output .qa/contracts-001
+```
+
+The older `--suite daily` repeated-scenario entry remains available for explicit
+reproduction, but the schedule no longer selects it. `smoke` and `scenarios`
+retain their 60- and 300-second guards. Source mode installs the selected checkout's
+plugins; omitting `--plugins` retains the published package route. Missing or
+incompatible packages fail preparation. All runs preserve ownership-scoped cleanup
+and stop only the processes and sandboxes belonging to that run. GitHub retains
+mode, verdicts, phase records, mock requests and service logs for 30 days,
+including failures; `.private/` credentials are not uploaded.
+
+## Durable state lifecycle job
+
+Run the finite state job on the same disposable Linux stack:
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite state \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/state-001
+```
+
+The dependent chain creates a Pipeline, model bindings, HTTP Bot and isolated
+knowledge base. It verifies conversation history and exact document content
+through Runtime and Core restarts, changes the Pipeline model and replaces one
+document while retaining a control document, then repeats the readback after
+another Core restart. Deleting all documents must leave both file listings and
+retrieval empty; normal Suite cleanup checks the owned configuration resources.
+
+The business chain has a 270-second budget and a 30-second cleanup reserve;
+plugin installation and initial service startup are outside this budget.
+`gate/suite/cases.json` retains assertions, process replacement receipts, exact
+HTTP statuses and retrieved content. Authenticated monitoring requests read back
+each exact completed run and its conversation ID, and verify selected historical
+runs after subsequent process replacements. A missing phase or failed assertion fails
+the job. The job is opt-in and does not change Smoke or the daily schedule. It
+checks graceful process restart durability, not abrupt power loss or migrations.
+
+## Shared PR and Daily API contract jobs
+
+The PR API job runs one fixed-order pass of all seven chains on related Core
+changes. Daily runs the same chains in fixed order, then in shuffled order
+(14 case rows), using the GitHub run ID as the shuffle seed. Requests within
+each chain keep their create/read/update/delete order. The seed replays chain
+ordering; resource names and credentials are unique to each run.
+
+To run the PR profile or replay Daily on a disposable Linux/Docker host:
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite api --api-fixed-only \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/api-pr-001
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite api --api-seed 20261028 \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/api-daily-001
+```
+
+Both use a 600-second execution guard after preparation, and a 15-minute CI
+job timeout including preparation. GitHub Actions preserves their separate
+`pr-api-<run_id>-<attempt>` and `daily-api-<run_id>-<attempt>` artifacts for 30 days.
+
+The chains cover Provider and LLM/embedding/rerank model CRUD, Pipeline extension
+validation, API key permissions/revocation, Skill files and revision conflicts,
+and disabled MCP configuration. Checks require matching HTTP/business status,
+read back stored state, and reject unexpected mutation after invalid requests.
+Resources carry unique ownership markers and are deleted in `finally`; API keys
+are revoked. Cleanup errors remain failures. MCP fixtures stay disabled and use
+loopback addresses. This job does not exercise external MCP servers, real model
+inference, concurrent API mutations, or cross-Workspace isolation.
+
+Inspect `gate/gate.json` for the verdict, seed and exact case order;
+`gate/suite/cases.json` for contract IDs, rounds, HTTP steps, named assertions and cleanup; and
+`gate/suite/coverage.json` for observed route templates and behavior contracts.
+An HTTP route hit includes rejected requests and is not proof of all behavior
+behind that route. Invalid MCP modes must return HTTP 400 and leave the original
+configuration unchanged. Any failed contract or cleanup makes the job fail.
+
+## Read a saved regression report
+
+Pass the directory that contains `gate/`. The command reads the existing evidence and
+writes Markdown to stdout. A failed or incomplete run exits with status 1.
+
+```sh
+python -m tools.entrypoints.regression_report api-fixed .qa/api
+python -m tools.entrypoints.regression_report api-daily /path/to/unpacked-daily-api-artifact
+python -m tools.entrypoints.regression_report daily /path/to/unpacked-daily-artifact/daily
+python -m tools.entrypoints.regression_report core-smoke .qa/core-smoke
+```
+
+For Daily, keep `daily-workload.txt` beside the run directory when unpacking the artifact.
+CI also supplies the tested SHA and runner step outcome. Use `--help` for those optional inputs.
+
+## Concurrent isolation job
+
+Run this finite job on a disposable Linux/Docker host:
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite isolation \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/isolation-001
+```
+
+It uses two concurrent requests in one Workspace. Three scenarios cover two
+sessions on one Pipeline, two sessions on different Pipelines/models, and
+cancelling an active Box tool while a neighboring conversation completes.
+The first two scenarios each make two turns per session, checking request tokens,
+previous-turn history, Bot identity, model routing and exact terminal results.
+The cancellation scenario reuses the delayed-side-effect check and requires the
+Box to become idle. Read-only ledger intervals must overlap; serialized execution
+cannot pass as a concurrency test. Every accepted request must match exactly one
+terminal run, and mock records must contain exactly the owned model calls.
+
+HTTP Bot `/sync` collects cumulative stream snapshots, so each text component
+must be a monotonic prefix of that request's expected reply and the last must be
+complete. The job cannot count final delivery frames on this lossy endpoint.
+The 300-second guard bounds execution after preparation; there are no throughput
+or latency thresholds. `gate/suite/cases.json` retains per-request evidence and
+`gate/gate.json` the overall verdict. The job is explicit and does not change
+default daily or PR smoke cases. It does not test cross-Workspace isolation or
+high concurrency.
+
+## CLI compatibility check
+
+Run on the same disposable Linux host:
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite cli \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/cli-001
+```
+
+The finite job checks
+Workspace identity, capability discovery, Pipeline create/read/update/delete,
+and invalid credentials. It uses the supplied CLI binary and records its version;
+select the latest stable release when validating the evolving CLI.
+
+Assertions allow additional output fields and changes to human-readable wording.
+Workspace identity, created resource identity, actual backend state, cleanup and
+nonzero exit on authentication failure remain required. HTTP readback provides
+an independent oracle, so an exit code of zero alone cannot pass a mutation.
+The suite is opt-in and adds no daily schedule or PR gate.
+
+## Sustained regression and baseline comparison
+
+[`profiles/endurance.json`](profiles/endurance.json) runs
+the two-phase 8-to-16-group chat/Box/RAG ramp described above, with cooldown
+after each phase. Configure its
+CLI context, plugin inputs, model endpoints, Core SQLite path and Core/Runtime/Box
+PID files as for smoke. Set `plugins: []` to reuse initialized plugins. Configure
+`observe.box_data_root` to the target deployment's Box mount root; the caller must
+have Docker inspection access. Do not start another Box runtime on a shared daemon.
+The generic Suite and release Job run the profile's business and resource checks.
+The independent wire/Provider/Box concurrency and cooldown verdict is supplied by
+`regression_ci --suite endurance`.
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_suite validate \
+  --profile /path/to/endurance.json
+uv run --no-sync python -m tools.entrypoints.regression_suite run \
+  --profile /path/to/endurance.json --output .qa/endurance-baseline
+# --duration overrides each phase; edit phase durations separately to preserve the ramp.
+```
+
+This profile checks more than reply text:
+
+- Each Runner request is reconciled to one completed AgentRun with a persisted
+  completion event; Box additionally verifies two real Docker exec results.
+  After drain and cooldown, the complete set of runs for the phase's conversations
+  must match the verified set. Delayed extra, missing and nonterminal runs fail.
+- At least 90% of target successful throughput must be delivered, with per-case
+  P95 limits. Reports retain planned/actual counts, scheduling delay and request
+  drain time. The load is bounded by workers and serial group sessions; it is
+  not an open arrival-rate capacity benchmark.
+- Process RSS, FD, thread and process-count medians from the final 30 seconds of cooldown are compared
+  with a stable window after the first minute. Docker memory, PIDs and container
+  counts are checked separately because sandbox processes are not children of
+  the Box service. If a discovered container disappears before stats collection,
+  the sampler refreshes the set and retries once, retaining the first error and
+  membership change. Unchanged-set errors, failed recovery, missing samples and
+  budget excesses fail.
+
+The supplied limits are initial QA budgets, not product SLOs or proof of a leak.
+Fixed groups prevent deliberate session growth from being mistaken for leakage;
+Core and plugin caches can still retain memory legitimately. Inspect failures
+before changing a budget. Process-tree CPU remains a raw diagnostic: child exits
+can reduce the cumulative sum, so it is not used as a CPU regression verdict.
+
+`requests.jsonl` separates dispatch/response latency from ledger setup and result
+verification. Resource samples go to `resources.jsonl`; `summary.json` contains
+throughput, latency, recovery and ledger closeout results. Failed runs retain
+resources and evidence. The normal Suite cleanup command removes only owned API
+resources after inspection.
+
+To compare two successful runs from the same reserved test host:
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_analysis \
+  --baseline .qa/endurance-baseline --candidate .qa/endurance-candidate \
+  --output .qa/comparison.json
+```
+
+The comparison rejects failed runs, missing dependency evidence, different enabled
+plugin versions, fixtures, expanded case/resource inputs, phase geometry, budgets,
+or observer-host identity. Both runs must use identical load/analysis/smoke oracle
+files and mock scenarios; their hashes are recorded in the contract. Target URL
+hosts, ports and credentials may differ; URL schemes and
+paths, model names and actual stimulus variables remain part of the contract.
+Both runs must use the same hardware allocation, model backend and background
+load; the contract does not establish those external conditions automatically.
+The default comparison allows at most 20% P95 growth and 10% successful-throughput
+loss, requires 30 requests per case in both runs, and rejects invalid metrics or
+incomplete ledger closeout. Set tolerances from repeated controls on your host.
+
+Keep this longer test outside the one-minute merge gate while its budgets and
+repeatability are being evaluated. The same profile can be selected by the
+release-deployment Job, which supplies its ledger path and process IDs; that
+fresh-deployment path still needs separate end-to-end validation.
+
+## Business behavior coverage
+
+`contracts/regression_contracts.json` declares behavior obligations independently of how
+many requests a workload repeats. It includes explicit unimplemented risks
+(cancellation, restart recovery, credential revocation, Workspace isolation,
+PostgreSQL parity, real adapters and embeddings). This is coverage of the
+registered scope, not a percentage of all product behavior or API endpoints.
+
+Runners record named assertions as they execute. A green legacy request without
+assertion evidence is **incomplete**. An evaluated failing assertion counts as
+covered and failed; a timeout before an assertion does not count. A contract with
+multiple required assertions passes only when all are observed. Repeated
+observations cannot hide an incomplete or failed turn. History contracts require
+a subsequent turn, not merely the initial reply. Database/Box-event inspections
+are reported separately as gray-box evidence.
+
+Reports distinguish `passed`, `failed`, `incomplete`, `skipped`, `not_run` (a test
+exists but did not execute) and `missing_test`. Coverage and pass rate have separate
+denominators. The catalog fingerprint identifies the registered denominator.
+New case names with no contract appear as unclassified, and malformed evidence
+is reported as an error instead of silently accepted.
+
+The source route inventory discovers current static RouterGroup HTTP declarations
+and flags routes without a linked behavior contract. Links describe test intent;
+they are not observed HTTP hits or proof that every method behavior is tested.
+Dynamic routes, WebSockets and platform-dispatched routes are outside this static
+inventory. Full source locations and any unresolved declarations are retained
+in `coverage.json`; new declarations appear without editing the case list.
+
+```sh
+python -m tools.entrypoints.regression_coverage --run .qa/smoke/suite \
+  --run .qa/endurance/suite --output .qa/behavior-coverage
+```
+
+`coverage.json` and `coverage.md` are written by the Suite. CI consumers can
+publish these files as artifacts. Uncovered contracts do not add a merge gate. A missing or corrupt evidence
+file is a reporting failure; the report remains available for inspection.
+
+Pass `--http-log /path/to/core.log` to include observed methods, declared route
+templates and status counts from Hypercorn access records. Query strings and
+resource identifiers are not retained in this report. Unmatched requests are
+counted by method/status; webhook sub-paths are not separate declared routes.
+Missing logs or logs without recognizable access records are evidence errors.
+HTTP hits remain separate from assertion coverage.
+
+`regression_scenarios.expanded_profile()` builds 46 finite cases from the smoke
+fixtures (86 requests with two groups and three turns). It adds signed ingress
+rejection, API authentication, group reset/history isolation, tool recovery and
+empty retrieval cases. Save its returned profile alongside the existing fixture
+paths, bind `cli.config` to the target Workspace, and run it through
+`entrypoints/regression_suite.py`. Its three `mock-daily-*` models require the matching
+expanded mock scenario fixtures. The profile exercises one authenticated
+Workspace; OSS does not support creating a second Workspace. Multiple resources
+or group IDs do not establish cross-Workspace isolation.
+
+## Repeating finite scenarios within one budget
+
+Add this to a finite smoke/scenario profile to run its ordered cases repeatedly:
+
+```json
+"execution": {
+  "total_seconds": 1800,
+  "drain_seconds": 120,
+  "cooldown_seconds": 60
+}
+```
+
+Run it with `python -m tools.entrypoints.regression_suite run --profile ... --output ...`
+entry point. Installation and plugin readiness precede the shared clock; the clock
+starts immediately before creating scenario resources. It covers preparation,
+case execution, owned-resource cleanup and final quiet sampling. The existing
+cleanup policy still applies; use `cleanup: "always"` in disposable deployments
+that must clean up after a failed run. Keep an outer process/environment supervisor
+as the hard wall-clock backstop: socket timeouts bound individual I/O waits, and
+local process termination cannot cancel work already accepted by the server.
+
+Every configured case and group turn is required in the first pass. A shortfall
+is `INCOMPLETE` and returns nonzero. Further cycles are optional: admission stops
+before the drain/cleanup reserve, including between cases and turns. An unfinished
+optional cycle does not fail the run by itself. Each attempted failure/unknown
+remains recorded; unknown results stop subsequent cycles after independent cases
+in the current cycle finish. Side-effecting requests are never retried. Known
+conversation AgentRuns are reconciled again at closeout for unexpected/unfinished
+runs. Outcomes without a session identity remain unknown.
+
+`cases.json` retains every attempted row and its cycle number; `cycles.json`
+records completion and status per cycle. `execution.json` records stage times.
+`resources.jsonl` uses the existing load/cooldown format plus the specific stage;
+existing `resource_limits` apply, including failure for missing recovery evidence.
+The final summary distinguishes `FAIL` and `INCOMPLETE`; both return nonzero.
+The CLI and deployment Job share the same resource cleanup, quiet sampling, final
+ledger reconciliation, coverage report and verdict. The Job preserves this
+sequence after partial resource preparation; its environment teardown follows
+the suite result and its own cleanup policy.
+Sampling starts before scenario resource creation, so choose the existing warmup
+window to cover the measured preparation and initial case warmup.
+
+Repeated cases create fresh group/conversation identities. The summary records
+observed session/run counts and the owned API resource count. History, Box reuse
+keys and idle expiry retain their product semantics, so repeated sessions can
+intentionally grow stored test data and live sandboxes. Resource budget failures
+remain failures; use an explicitly bounded profile when measuring steady reuse.
+Cleanup uses only `owned.json` and checks the authenticated Workspace. It does not
+delete arbitrary history, files, or containers; the deployment owner handles its
+outer teardown. The final quiet period lasts the configured cooldown, bounded by the remaining
+total budget. An early abort does not wait out the unused execution budget. Cleanup or drain exceeding its reserved endpoint is a failure.
+
+Finite scenarios record successful request rate and full-step P95 as observations
+(the step includes its verification). Load profiles can set
+`performance_mode: "observe"` to record throughput and latency while disabling
+only configured RPS/P95 thresholds. Business assertions, unresolved results,
+health failures, and process/container resource limits still determine success.
+The default load mode remains `gate` for existing benchmark users.
+
+## CI selection and regression tiers
+
+See the [CI tiers and evidence guide](../dev-docs/CROSS_COMPONENT_TESTING.md#ci-tiers-and-evidence) for PR selection, required smoke, and full daily/manual verification. The CI tooling tests can be run locally with `python -m unittest discover -s tools/tests -p "test_*.py"` in a Python environment with PyYAML.
+
+
+## Optional public RAG experiments
+
+The opt-in Linux launcher runs in a disposable local Core/Runtime with Chroma.
+See [BEIR SciFact retrieval](vdb-benchmark-public.md) for reproducible public
+relevance and HTTP latency, and [WikiText upload/RAG RSS](vdb-benchmark-memory.md)
+for process memory, mapping categories and the separate allocation diagnostic.
+Public inputs are fetched at runtime and hash-verified. Do not commit source
+corpora, model weights, local profiles with secrets, raw traces or results.

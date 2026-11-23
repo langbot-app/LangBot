@@ -1,0 +1,90 @@
+name: Sync GitHub Wiki
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "docs/en/**"
+      - "docs/zh/**"
+      - "docs/ja/**"
+      - "docs/scripts/build-github-wiki.py"
+      - ".github/workflows/sync-github-wiki.yml"
+  pull_request:
+    paths:
+      - "docs/en/**"
+      - "docs/zh/**"
+      - "docs/ja/**"
+      - "docs/scripts/build-github-wiki.py"
+      - "docs/tests/test_build_github_wiki.py"
+      - ".github/workflows/sync-github-wiki.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-langbot-github-wiki
+  cancel-in-progress: false
+
+jobs:
+  build:
+    defaults:
+      run:
+        working-directory: docs
+    name: Build Wiki mirror
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Run converter tests
+        run: python -m unittest tests/test_build_github_wiki.py
+      - name: Build Wiki pages
+        run: python scripts/build-github-wiki.py --output dist/github-wiki
+      - name: Validate generated pages
+        run: |
+          test -f dist/github-wiki/Home.md
+          test -f dist/github-wiki/_Sidebar.md
+          test "$(find dist/github-wiki -maxdepth 1 -name '*.md' | wc -l)" -gt 250
+      - name: Upload generated Wiki
+        uses: actions/upload-artifact@v7
+        with:
+          name: github-wiki
+          path: docs/dist/github-wiki
+          if-no-files-found: error
+
+  sync:
+    name: Publish to LangBot Wiki
+    if: github.event_name != 'pull_request' && github.repository == 'langbot-app/LangBot' && github.ref == 'refs/heads/master' && vars.DOCS_PUBLISH_ENABLED == 'true'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: github-wiki
+          path: generated
+      - name: Clone target Wiki
+        env:
+          WIKI_PUSH_TOKEN: ${{ secrets.LANGBOT_WIKI_PUSH_TOKEN || secrets.RELEASE_UPLOAD_GITHUB_TOKEN }}
+        run: |
+          test -n "$WIKI_PUSH_TOKEN"
+          git clone "https://x-access-token:${WIKI_PUSH_TOKEN}@github.com/langbot-app/LangBot.wiki.git" target
+      - name: Replace and publish Wiki contents
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          find target -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a generated/. target/
+          cd target
+          git add -A
+          if git diff --cached --quiet; then
+            echo "GitHub Wiki is already up to date."
+            exit 0
+          fi
+          git config user.name "langbot-docs-sync[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs: sync from LangBot/docs@${SOURCE_SHA::7}"
+          git push origin HEAD:master

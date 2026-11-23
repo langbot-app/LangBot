@@ -1,0 +1,8 @@
+/plugins export-ignore
+/sdk/tests export-ignore
+/sdk/examples export-ignore
+/sdk/docs export-ignore
+/sdk/scripts export-ignore
+/sdk/local_e2e export-ignore
+/sdk/data export-ignore
+*.lbpkg export-ignore

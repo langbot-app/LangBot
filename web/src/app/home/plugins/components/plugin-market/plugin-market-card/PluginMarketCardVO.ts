@@ -1,0 +1,58 @@
+export interface IPluginMarketCardVO {
+  pluginId: string;
+  author: string;
+  pluginName: string;
+  label: string;
+  description: string;
+  installCount: number;
+  likeCount?: number;
+  iconURL: string;
+  githubURL: string;
+  version: string;
+  certificationStatus?: string;
+  components?: Record<string, number>;
+  tags?: string[];
+  type?: 'plugin' | 'mcp' | 'skill';
+  /** Whether this extension is already installed in the current workspace. */
+  installed?: boolean;
+  /** Whether the installed extension has a newer marketplace version. */
+  hasUpdate?: boolean;
+}
+
+export class PluginMarketCardVO implements IPluginMarketCardVO {
+  pluginId: string;
+  description: string;
+  label: string;
+  author: string;
+  pluginName: string;
+  iconURL: string;
+  githubURL: string;
+  installCount: number;
+  likeCount: number;
+  version: string;
+  certificationStatus?: string;
+  components?: Record<string, number>;
+  tags?: string[];
+  type?: 'plugin' | 'mcp' | 'skill';
+  installed?: boolean;
+  hasUpdate?: boolean;
+
+  constructor(prop: IPluginMarketCardVO) {
+    this.description = prop.description;
+    this.label = prop.label;
+    this.author = prop.author;
+    this.pluginName = prop.pluginName;
+    this.iconURL = prop.iconURL;
+    this.githubURL = prop.githubURL;
+    this.installCount = prop.installCount;
+    this.likeCount = prop.likeCount ?? 0;
+    this.pluginId = prop.pluginId;
+    this.version = prop.version;
+    this.certificationStatus = prop.certificationStatus;
+    this.components = prop.components;
+    this.tags = prop.tags;
+    this.type = prop.type;
+    this.installed = prop.installed ?? false;
+    this.hasUpdate = prop.hasUpdate ?? false;
+  }
+}

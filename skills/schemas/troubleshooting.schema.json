@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://langbot.app/schemas/langbot-skills/troubleshooting.schema.json",
+  "title": "LangBot Skill Troubleshooting Entry",
+  "type": "object",
+  "required": ["id", "title", "symptoms", "patterns", "likely_causes", "fix_steps", "verification"],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["product", "env_issue", "external_dependency", "blocked", "flaky"]
+    },
+    "symptoms": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "patterns": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "likely_causes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "fix_steps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "verification": {
+      "type": "string"
+    },
+    "related_cases": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

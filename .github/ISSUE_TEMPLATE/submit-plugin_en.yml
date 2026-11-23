@@ -1,0 +1,24 @@
+name: Submit a new plugin
+title: "[Plugin]: Request to register a new plugin"
+labels: ["Independent Plugin"]
+description: "This template is only for submitting new plugins"
+body:
+  - type: input
+    attributes:
+      label: Plugin name
+      description: Fill in the name of the plugin
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Plugin code repository address
+      description: Only support Github
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Plugin description
+      description: The description of the plugin
+    validations:
+      required: true
+      

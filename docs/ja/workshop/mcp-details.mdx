@@ -1,0 +1,25 @@
+---
+title: "MCPエコシステムの詳細"
+---
+
+[MCPプロトコル](https://modelcontextprotocol.io/)は、アプリケーションとLLM間のインタラクションを記述するプロトコルであり、さまざまな製品で採用されています。LangBotはMCPクライアントとして動作し、MCPサーバーに接続して、ユーザーとの会話中にLLMが使用する広範なツールを提供できます。
+
+## MCPサーバーの検索
+
+LangBotでMCPツールを使用するには、既存のMCPサーバーを見つけて接続する必要があります。
+市場には2種類のMCPサーバーがあります:
+
+- NodeまたはPythonで実装された実行可能ファイルで、`stdio`(標準入出力)を通じてLangBotと通信します
+- HTTPプロトコルに基づくWebサービスで、HTTPプロトコルを通じてLangBotと通信します
+
+<Info title="- 既存のMCPサーバーは[MCPサーバーリスト](https://github.com/punkpeye/awesome-mcp-servers)で確認できます。">
+- オンラインでホストされているMCPサーバーについては、[Composio MCP](https://mcp.composio.dev/)で見つけることができます。
+- 独自のMCPサーバーを作成するには、[MCPプロトコルドキュメント](https://modelcontextprotocol.io/quickstart/server)および[MCPサーバーの例](https://modelcontextprotocol.io/examples)を参照してください。
+
+</Info>
+
+## MCPサーバーの設定
+
+[システム設定ドキュメント](/en/deploy/settings.html)を参照してください
+
+設定後、チャットで`!func`コマンドを使用して、登録されたMCPツールを表示できます。Function Callingをサポートするモデルとチャットする際、LangBotは自動的にMCPツールを呼び出します。

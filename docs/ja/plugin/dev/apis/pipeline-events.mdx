@@ -1,0 +1,285 @@
+---
+title: "パイプラインイベントとAPI"
+---
+
+LangBotプラグインはパイプラインイベントを登録して処理できます。使用方法については、[コンポーネント: イベントリスナー](/ja/plugin/dev/components/event-listener)を参照してください。
+
+## イベント一覧
+
+一部のイベントには`設定可能な属性`があり、プラグインコードで変更して、その後のLangBot処理で使用できます。
+
+### \*MessageReceived
+
+グループチャットまたはプライベートチャットでメッセージを受信したときにトリガーされます。
+
+```python
+class PersonMessageReceived(BaseEventModel):
+    """プライベートチャットメッセージを受信したとき"""
+
+    event_name: str = "PersonMessageReceived"
+
+    launcher_type: str
+    """起動元オブジェクトタイプ(person)"""
+
+    launcher_id: typing.Union[int, str]
+    """送信者ID"""
+
+    sender_id: typing.Union[int, str]
+    """送信者ID、プライベートチャットの場合はlauncher_idと同じ"""
+
+    message_event: platform_events.PersonMessage
+    """元のメッセージイベントオブジェクト。送信者情報を含みます。"""
+
+    message_chain: platform_message.MessageChain = pydantic.Field(
+        serialization_alias="message_chain"
+    )
+    """メッセージチェーン"""
+
+
+class GroupMessageReceived(BaseEventModel):
+    """グループチャットメッセージを受信したとき"""
+
+    event_name: str = "GroupMessageReceived"
+
+    launcher_type: str
+    """起動元オブジェクトタイプ(group)"""
+
+    launcher_id: typing.Union[int, str]
+    """グループID"""
+
+    sender_id: typing.Union[int, str]
+    """送信者ID"""
+
+    message_event: platform_events.GroupMessage
+    """元のメッセージイベントオブジェクト。グループと送信者情報を含みます。"""
+
+    message_chain: platform_message.MessageChain = pydantic.Field(
+        serialization_alias="message_chain"
+    )
+    """メッセージチェーン"""
+```
+
+### \*NormalMessageReceived
+
+グループチャットまたはプライベートチャットメッセージを受信し、LLMで処理する必要があるメッセージ(コマンドでないメッセージ)であると判定されたときにトリガーされます。
+
+```python
+class PersonNormalMessageReceived(BaseEventModel):
+    """処理すべきプライベートチャット通常メッセージが判定されたときにトリガーされる"""
+
+    event_name: str = "PersonNormalMessageReceived"
+
+    launcher_type: str
+    """起動元オブジェクトタイプ(person)"""
+
+    launcher_id: typing.Union[int, str]
+    """起動元オブジェクトID"""
+
+    sender_id: typing.Union[int, str]
+    """送信者ID、プライベートチャットの場合はlauncher_idと同じ"""
+
+    text_message: str
+    """メッセージテキスト"""
+
+    message_event: platform_events.PersonMessage
+    """元のメッセージイベントオブジェクト。送信者情報を含みます。"""
+
+    message_chain: platform_message.MessageChain = pydantic.Field(
+        serialization_alias="message_chain"
+    )
+    """メッセージチェーン"""
+
+    # ========== 設定可能な属性 ==========
+
+    user_message_alter: typing.Optional[provider_message.ContentElement] = None
+    """変更されたメッセージテキスト、langbot_plugin.api.entities.builtin.provider.message.ContentElement型"""
+
+    reply_message_chain: typing.Optional[platform_message.MessageChain] = None
+    """直接返信メッセージチェーン、デフォルト動作を防止した場合のみ有効"""
+
+
+class GroupNormalMessageReceived(BaseEventModel):
+    """処理すべきグループチャット通常メッセージが判定されたときにトリガーされる"""
+
+    event_name: str = "GroupNormalMessageReceived"
+
+    launcher_type: str
+    """起動元オブジェクトタイプ(group)"""
+
+    launcher_id: typing.Union[int, str]
+    """グループID"""
+
+    sender_id: typing.Union[int, str]
+    """送信者ID"""
+
+    text_message: str
+    """メッセージテキスト"""
+
+    message_event: platform_events.GroupMessage
+    """元のメッセージイベントオブジェクト。グループと送信者情報を含みます。"""
+
+    message_chain: platform_message.MessageChain = pydantic.Field(
+        serialization_alias="message_chain"
+    )
+    """メッセージチェーン"""
+
+    # ========== 設定可能な属性 ==========
+
+    user_message_alter: typing.Optional[provider_message.ContentElement] = None
+    """変更されたメッセージテキスト、langbot_plugin.api.entities.builtin.provider.message.ContentElement型"""
+
+    reply_message_chain: typing.Optional[platform_message.MessageChain] = None
+    """直接返信メッセージチェーン、デフォルト動作を防止した場合のみ有効"""
+```
+
+### \*CommandSent
+
+<Warning>
+  使用は推奨されなくなりました。代わりに[コンポーネント: Command](/ja/plugin/dev/components/command)を使用してください。
+</Warning>
+
+グループチャットまたはプライベートチャットでコマンドを受信したときにトリガーされます。
+
+```python
+class PersonCommandSent(BaseEventModel):
+    """処理すべきプライベートチャットコマンドが判定されたときにトリガーされる"""
+
+    event_name: str = "PersonCommandSent"
+
+    launcher_type: str
+
+    launcher_id: typing.Union[int, str]
+
+    sender_id: typing.Union[int, str]
+
+    command: str
+    """コマンドテキスト"""
+
+    params: list[str]
+    """コマンドパラメータ"""
+
+    text_message: str
+    """メッセージテキスト"""
+
+    is_admin: bool
+    """管理者かどうか"""
+
+
+class GroupCommandSent(BaseEventModel):
+    """処理すべきグループチャットコマンドが判定されたときにトリガーされる"""
+
+    event_name: str = "GroupCommandSent"
+
+    launcher_type: str
+
+    launcher_id: typing.Union[int, str]
+
+    sender_id: typing.Union[int, str]
+
+    command: str
+    """コマンドテキスト"""
+
+    params: list[str]
+    """コマンドパラメータ"""
+
+    text_message: str
+    """メッセージテキスト"""
+
+    is_admin: bool
+    """管理者かどうか"""
+```
+
+### NormalMessageResponded
+
+メッセージがLLMレスポンスを受信したときにトリガーされます。
+
+```python
+class NormalMessageResponded(BaseEventModel):
+    """通常メッセージに返信するときにトリガーされる"""
+
+    event_name: str = "NormalMessageResponded"
+
+    launcher_type: str
+
+    launcher_id: typing.Union[int, str]
+
+    sender_id: typing.Union[int, str]
+
+    session: provider_session.Session
+    """セッションオブジェクト"""
+
+    prefix: str
+    """返信メッセージプレフィックス"""
+
+    response_text: str
+    """返信メッセージテキスト"""
+
+    finish_reason: str
+    """レスポンス終了理由"""
+
+    funcs_called: list[str]
+    """呼び出された関数のリスト"""
+
+    # ========== 設定可能な属性 ==========
+
+    reply_message_chain: typing.Optional[platform_message.MessageChain] = None
+    """返信メッセージコンポーネントリスト、デフォルト動作を防止した場合のみ有効"""
+```
+
+### PromptPreProcessing
+
+LLMレスポンスコンテキスト(プロンプト)を構築するときにトリガーされます。
+
+```python
+class PromptPreProcessing(BaseEventModel):
+    """セッション内のプロンプトを前処理するときにトリガーされる"""
+
+    event_name: str = "PromptPreProcessing"
+
+    session_name: str
+    """セッション名、形式は person_1234567890 または group_1234567890"""
+
+    # ========== 設定可能な属性 ==========
+
+    default_prompt: list[typing.Union[provider_message.Message, provider_message.MessageChunk]]
+    """この会話のシナリオプリセット(システムプロンプト)、変更可能、langbot_plugin.api.entities.builtin.provider.message.Messageまたはlangbot_plugin.api.entities.builtin.provider.message.MessageChunk型"""
+
+    prompt: list[typing.Union[provider_message.Message, provider_message.MessageChunk]]
+    """この会話の既存メッセージレコード、変更可能、langbot_plugin.api.entities.builtin.provider.message.Messageまたはlangbot_plugin.api.entities.builtin.provider.message.MessageChunk型"""
+```
+
+このターンの検索証拠は、`Message(role="system", content=...)` を `prompt` または `default_prompt` に追加して渡せます。Host は `prompt` 内で追加または変更されたシステムメッセージを、適用後の `default_prompt` に続けて Runner の `get_prompt()` API から返します。最終的なイベント処理順序を保ち、ターンごとに再構築します。Runner はモデル呼び出しの前にコンテキスト予算を適用します。会話履歴は引き続き Runner の履歴 API から取得します。プロンプト前処理のコンテキストは現在の実行に属します。
+
+イベント処理後のクエリ変数 `_knowledge_base_uuids` が、この実行の自動検索対象を選択します。空リストは自動検索を無効にし、未設定の場合は構成済みの選択を維持します。明示的な検索 API は引き続き実行時に固定されたリソース権限を検証します。メモリプラグインは、自身のクエリ単位の検索を終えてから、そのナレッジベースを自動検索対象から除外してください。
+
+## EventListener コンテキスト
+
+イベントハンドラーは `event_context.event` から現在のイベントを取得します。`EventContext` の完全なプロパティとメソッドは[コンテキスト API](/ja/plugin/dev/apis/agent-run#eventlistener)を参照してください。
+
+### デフォルト動作を阻止
+
+`event_context.prevent_default()` を呼び出すと、現在のイベントのデフォルト処理が停止します。この操作を利用できるイベントは次のとおりです。
+
+<Info>
+以下のイベントのみデフォルト動作を阻止できます：
+
+  - PersonMessageReceived
+  - GroupMessageReceived
+  - PersonNormalMessageReceived
+  - GroupNormalMessageReceived
+  - PersonCommandSent
+  - GroupCommandSent
+  - NormalMessageResponded
+</Info>
+
+`event_context.prevent_postorder()` を呼び出すと、後続プラグインによる現在のイベント処理を停止できます。
+
+#### モニタリングでの表示
+
+プラグインがメッセージ系イベントで `prevent_default()` を呼び出してメッセージを引き受けると、LangBot のモニタリングではそのメッセージが「プラグインが処理 · 作者/プラグイン名」と表示され、パイプラインに設定された Runner は処理者として表示されなくなります。イベント処理中にプラグインが送った内容も記録されます。
+
+- `event_context.reply()` で送った返信は、そのメッセージへの返信として記録されます。送信に失敗すると `PluginReplyError` エラーが記録されます。
+- `self.plugin.send_message()` で送ったメッセージは、プラグインが送信したメッセージとして記録されます。送信に失敗すると `PluginSendError` エラーが記録されます。
+- `self.plugin.invoke_llm()` / `invoke_llm_stream()` の呼び出しは LLM 呼び出しとして記録されます。
+
+プラグインのメッセージや LLM 呼び出しをきっかけのメッセージに関連付けるには、イベント起点の関連付けに対応した Plugin Runtime（`langbot-plugin`）が必要です。古い Runtime でも記録はされますが、関連付けはされません。ハンドラーが戻った後に動くバックグラウンド処理は、元のメッセージに関連付けられません。

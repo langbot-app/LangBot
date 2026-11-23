@@ -1,0 +1,738 @@
+import { useState } from 'react';
+import {
+  Plus,
+  ChevronDown,
+  ChevronRight,
+  Trash2,
+  Settings,
+  LogIn,
+  Radar,
+} from 'lucide-react';
+import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
+import {
+  LangBotModelAvailabilityItem,
+  ModelProvider,
+  ReasoningConfig,
+} from '@/app/infra/entities/api';
+import { Button } from '@/components/ui/button';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { useTranslation } from 'react-i18next';
+import langbotIcon from '@/app/assets/langbot-logo.webp';
+import {
+  ExtraArg,
+  ModelType,
+  ScanModelsResult,
+  SelectedScannedModel,
+  TestResult,
+  ProviderModels,
+} from '../types';
+import ModelItem from './ModelItem';
+import { sortModelsByCatalog } from '../../model-availability/sort-models';
+import AddModelPopover from './AddModelPopover';
+
+interface ProviderCardProps {
+  provider: ModelProvider;
+  canManage: boolean;
+  isLangBotModels?: boolean;
+  supportTypes?: string[];
+  isExpanded: boolean;
+  isLoading: boolean;
+  models?: ProviderModels;
+  isWorkspaceOwner: boolean;
+  ownerSpaceBound: boolean;
+  spaceCredits: number | null;
+  modelMetadata: Record<string, LangBotModelAvailabilityItem>;
+  modelAvailabilityLoaded: boolean;
+  // Popover states
+  addModelPopoverOpen: string | null;
+  editModelPopoverOpen: string | null;
+  deleteConfirmOpen: string | null;
+  // Handlers
+  onToggle: () => void;
+  onEditProvider: () => void;
+  onDeleteProvider: () => void;
+  onSpaceLogin: () => void;
+  onOpenAddModel: () => void;
+  onCloseAddModel: () => void;
+  onAddModel: (
+    modelType: ModelType,
+    name: string,
+    abilities: string[],
+    extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
+    contextLength?: number | null,
+  ) => Promise<void>;
+  onScanModels: (modelType?: ModelType) => Promise<ScanModelsResult>;
+  onAddScannedModels: (
+    modelType: ModelType,
+    models: SelectedScannedModel[],
+  ) => Promise<void>;
+  onOpenEditModel: (modelId: string) => void;
+  onCloseEditModel: () => void;
+  onUpdateModel: (
+    modelId: string,
+    modelType: ModelType,
+    name: string,
+    abilities: string[],
+    extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
+    contextLength?: number | null,
+  ) => Promise<void>;
+  onOpenDeleteConfirm: (modelId: string) => void;
+  onCloseDeleteConfirm: () => void;
+  onDeleteModel: (modelId: string, modelType: ModelType) => Promise<void>;
+  onTestModel: (
+    name: string,
+    modelType: ModelType,
+    abilities: string[],
+    extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
+  ) => Promise<void>;
+  isSubmitting: boolean;
+  isTesting: boolean;
+  testResult: TestResult | null;
+  onResetTestResult: () => void;
+}
+
+function maskApiKey(key: string): string {
+  if (!key) return '';
+  if (key.length <= 8) return '****';
+  return `${key.slice(0, 4)}...${key.slice(-4)}`;
+}
+
+export default function ProviderCard({
+  provider,
+  canManage,
+  isLangBotModels = false,
+  supportTypes,
+  isExpanded,
+  isLoading,
+  models,
+  isWorkspaceOwner,
+  ownerSpaceBound,
+  spaceCredits,
+  modelMetadata,
+  modelAvailabilityLoaded,
+  addModelPopoverOpen,
+  editModelPopoverOpen,
+  deleteConfirmOpen,
+  onToggle,
+  onEditProvider,
+  onDeleteProvider,
+  onSpaceLogin,
+  onOpenAddModel,
+  onCloseAddModel,
+  onAddModel,
+  onScanModels,
+  onAddScannedModels,
+  onOpenEditModel,
+  onCloseEditModel,
+  onUpdateModel,
+  onOpenDeleteConfirm,
+  onCloseDeleteConfirm,
+  onDeleteModel,
+  onTestModel,
+  isSubmitting,
+  isTesting,
+  testResult,
+  onResetTestResult,
+}: ProviderCardProps) {
+  const { t } = useTranslation();
+  const [deleteProviderConfirmOpen, setDeleteProviderConfirmOpen] =
+    useState(false);
+  const [addModelMode, setAddModelMode] = useState<'manual' | 'scan'>('manual');
+
+  const modelsCountFromLoaded = models
+    ? (models.llm?.length || 0) +
+      (models.embedding?.length || 0) +
+      (models.rerank?.length || 0) +
+      (models.asr?.length || 0) +
+      (models.tts?.length || 0)
+    : undefined;
+  const totalModels =
+    modelsCountFromLoaded !== undefined
+      ? modelsCountFromLoaded
+      : (provider.llm_count || 0) +
+        (provider.embedding_count || 0) +
+        (provider.rerank_count || 0) +
+        (provider.asr_count || 0) +
+        (provider.tts_count || 0);
+
+  const canDelete = !isLangBotModels && totalModels === 0;
+
+  return (
+    <Card className="mb-2">
+      <Collapsible open={isExpanded} onOpenChange={onToggle}>
+        <CardHeader className="py-0 px-4 min-w-0 [&]:grid-cols-[minmax(0,1fr)]">
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              {isLangBotModels ? (
+                <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0">
+                  <img
+                    src={langbotIcon}
+                    alt="LangBot"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <img
+                  src={httpClient.getProviderRequesterIconURL(
+                    provider.requester,
+                  )}
+                  alt={provider.name}
+                  className="h-9 w-9 rounded-lg"
+                />
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                  <CardTitle className="text-base truncate">
+                    {provider.name}
+                  </CardTitle>
+                  <Badge variant="outline" className="text-xs shrink-0">
+                    {t('models.modelsCount', { count: totalModels })}
+                  </Badge>
+                </div>
+                <p
+                  className={`text-xs text-muted-foreground ${isLangBotModels ? 'leading-relaxed' : 'truncate'}`}
+                >
+                  {isLangBotModels ? (
+                    <>
+                      {t('models.langbotModelsDescription')}
+                      {!ownerSpaceBound && (
+                        <span className="mt-1 block">
+                          {t('models.ownerMustBindSpace')}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {provider.base_url}
+                      {provider.base_url &&
+                        provider.api_keys?.length > 0 &&
+                        ' · '}
+                      {provider.api_keys?.length > 0 &&
+                        maskApiKey(provider.api_keys[0])}
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 ml-2 shrink-0">
+              {isLangBotModels && isWorkspaceOwner && !ownerSpaceBound && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSpaceLogin();
+                  }}
+                >
+                  <LogIn className="h-4 w-4 mr-1" />
+                  {t('models.loginWithSpace')}
+                </Button>
+              )}
+              {isLangBotModels && ownerSpaceBound && spaceCredits !== null && (
+                <div className="flex items-center gap-1 border rounded-md px-2 h-8 text-sm mr-2">
+                  <span>
+                    {(spaceCredits / 5000).toFixed(2)} {t('models.credits')}
+                  </span>
+                  {isWorkspaceOwner && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(
+                          `${systemInfo.cloud_service_url}/profile?tab=billing`,
+                          '_blank',
+                        );
+                      }}
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
+              )}
+              {isLangBotModels && !isWorkspaceOwner && ownerSpaceBound && (
+                <span className="text-xs text-muted-foreground">
+                  {t('models.usesOwnerSpaceBilling')}
+                </span>
+              )}
+              {canManage && !isLangBotModels && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEditProvider();
+                    }}
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                  {canDelete && (
+                    <Popover
+                      open={deleteProviderConfirmOpen}
+                      onOpenChange={setDeleteProviderConfirmOpen}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        className="w-64"
+                        align="end"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="space-y-3">
+                          <p className="text-sm">
+                            {t('models.deleteProviderConfirmation')}
+                          </p>
+                          <div className="flex gap-2 justify-end">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setDeleteProviderConfirmOpen(false)
+                              }
+                            >
+                              {t('common.cancel')}
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                onDeleteProvider();
+                                setDeleteProviderConfirmOpen(false);
+                              }}
+                            >
+                              {t('common.delete')}
+                            </Button>
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center justify-between mt-2">
+            {totalModels > 0 ? (
+              <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer">
+                {isExpanded ? (
+                  <ChevronDown className="h-3 w-3" />
+                ) : (
+                  <ChevronRight className="h-3 w-3" />
+                )}
+                <span>
+                  {isExpanded
+                    ? t('models.collapseModels')
+                    : t('models.expandModels')}
+                </span>
+              </CollapsibleTrigger>
+            ) : (
+              <div />
+            )}
+            {canManage && !isLangBotModels && (
+              <div className="flex items-center gap-1">
+                <AddModelPopover
+                  isOpen={
+                    addModelPopoverOpen === provider.uuid &&
+                    addModelMode === 'manual'
+                  }
+                  initialMode="manual"
+                  supportTypes={supportTypes}
+                  trigger={
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-xs"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAddModelMode('manual');
+                      }}
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      {t('common.add')}
+                    </Button>
+                  }
+                  onOpen={() => {
+                    setAddModelMode('manual');
+                    onOpenAddModel();
+                  }}
+                  onClose={onCloseAddModel}
+                  onAddModel={onAddModel}
+                  onScanModels={onScanModels}
+                  onAddScannedModels={onAddScannedModels}
+                  onTestModel={onTestModel}
+                  isSubmitting={isSubmitting}
+                  isTesting={isTesting}
+                  testResult={testResult}
+                  onResetTestResult={onResetTestResult}
+                />
+                <AddModelPopover
+                  isOpen={
+                    addModelPopoverOpen === provider.uuid &&
+                    addModelMode === 'scan'
+                  }
+                  initialMode="scan"
+                  supportTypes={supportTypes}
+                  trigger={
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-xs"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAddModelMode('scan');
+                      }}
+                    >
+                      <Radar className="h-3 w-3 mr-1" />
+                      {t('models.scanModels')}
+                    </Button>
+                  }
+                  onOpen={() => {
+                    setAddModelMode('scan');
+                    onOpenAddModel();
+                  }}
+                  onClose={onCloseAddModel}
+                  onAddModel={onAddModel}
+                  onScanModels={onScanModels}
+                  onAddScannedModels={onAddScannedModels}
+                  onTestModel={onTestModel}
+                  isSubmitting={isSubmitting}
+                  isTesting={isTesting}
+                  testResult={testResult}
+                  onResetTestResult={onResetTestResult}
+                />
+              </div>
+            )}
+          </div>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="px-4 mt-2">
+            {isLoading ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                {t('common.loading')}...
+              </p>
+            ) : models ? (
+              <div className="space-y-2">
+                {(isLangBotModels
+                  ? sortModelsByCatalog(models.llm, modelMetadata)
+                  : models.llm
+                ).map((model) => (
+                  <ModelItem
+                    key={model.uuid}
+                    model={model}
+                    canManage={canManage}
+                    modelType="llm"
+                    isLangBotModels={isLangBotModels}
+                    metadata={
+                      modelMetadata[model.uuid] ?? modelMetadata[model.name]
+                    }
+                    availabilityLoaded={modelAvailabilityLoaded}
+                    editModelPopoverOpen={editModelPopoverOpen}
+                    deleteConfirmOpen={deleteConfirmOpen}
+                    onOpenEditModel={onOpenEditModel}
+                    onCloseEditModel={onCloseEditModel}
+                    onOpenDeleteConfirm={onOpenDeleteConfirm}
+                    onCloseDeleteConfirm={onCloseDeleteConfirm}
+                    onDeleteModel={() => onDeleteModel(model.uuid, 'llm')}
+                    onUpdateModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                      contextLength,
+                    ) =>
+                      onUpdateModel(
+                        model.uuid,
+                        'llm',
+                        name,
+                        abilities,
+                        extraArgs,
+                        reasoningConfig,
+                        contextLength,
+                      )
+                    }
+                    onTestModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                    ) =>
+                      onTestModel(
+                        name,
+                        'llm',
+                        abilities,
+                        extraArgs,
+                        reasoningConfig,
+                      )
+                    }
+                    isSubmitting={isSubmitting}
+                    isTesting={isTesting}
+                    testResult={testResult}
+                    onResetTestResult={onResetTestResult}
+                  />
+                ))}
+                {(isLangBotModels
+                  ? sortModelsByCatalog(models.embedding, modelMetadata)
+                  : models.embedding
+                ).map((model) => (
+                  <ModelItem
+                    key={model.uuid}
+                    model={model}
+                    canManage={canManage}
+                    modelType="embedding"
+                    isLangBotModels={isLangBotModels}
+                    metadata={
+                      modelMetadata[model.uuid] ?? modelMetadata[model.name]
+                    }
+                    availabilityLoaded={modelAvailabilityLoaded}
+                    editModelPopoverOpen={editModelPopoverOpen}
+                    deleteConfirmOpen={deleteConfirmOpen}
+                    onOpenEditModel={onOpenEditModel}
+                    onCloseEditModel={onCloseEditModel}
+                    onOpenDeleteConfirm={onOpenDeleteConfirm}
+                    onCloseDeleteConfirm={onCloseDeleteConfirm}
+                    onDeleteModel={() => onDeleteModel(model.uuid, 'embedding')}
+                    onUpdateModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                    ) =>
+                      onUpdateModel(
+                        model.uuid,
+                        'embedding',
+                        name,
+                        abilities,
+                        extraArgs,
+                        reasoningConfig,
+                      )
+                    }
+                    onTestModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                    ) =>
+                      onTestModel(
+                        name,
+                        'embedding',
+                        abilities,
+                        extraArgs,
+                        reasoningConfig,
+                      )
+                    }
+                    isSubmitting={isSubmitting}
+                    isTesting={isTesting}
+                    testResult={testResult}
+                    onResetTestResult={onResetTestResult}
+                  />
+                ))}
+                {(isLangBotModels
+                  ? sortModelsByCatalog(models.rerank, modelMetadata)
+                  : models.rerank
+                ).map((model) => (
+                  <ModelItem
+                    key={model.uuid}
+                    model={model}
+                    canManage={canManage}
+                    modelType="rerank"
+                    isLangBotModels={isLangBotModels}
+                    metadata={
+                      modelMetadata[model.uuid] ?? modelMetadata[model.name]
+                    }
+                    availabilityLoaded={modelAvailabilityLoaded}
+                    editModelPopoverOpen={editModelPopoverOpen}
+                    deleteConfirmOpen={deleteConfirmOpen}
+                    onOpenEditModel={onOpenEditModel}
+                    onCloseEditModel={onCloseEditModel}
+                    onOpenDeleteConfirm={onOpenDeleteConfirm}
+                    onCloseDeleteConfirm={onCloseDeleteConfirm}
+                    onDeleteModel={() => onDeleteModel(model.uuid, 'rerank')}
+                    onUpdateModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                    ) =>
+                      onUpdateModel(
+                        model.uuid,
+                        'rerank',
+                        name,
+                        abilities,
+                        extraArgs,
+                        reasoningConfig,
+                      )
+                    }
+                    onTestModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                    ) =>
+                      onTestModel(
+                        name,
+                        'rerank',
+                        abilities,
+                        extraArgs,
+                        reasoningConfig,
+                      )
+                    }
+                    isSubmitting={isSubmitting}
+                    isTesting={isTesting}
+                    testResult={testResult}
+                    onResetTestResult={onResetTestResult}
+                  />
+                ))}
+                {(models.asr || []).map((model) => (
+                  <ModelItem
+                    key={model.uuid}
+                    model={model}
+                    canManage={canManage}
+                    modelType="asr"
+                    isLangBotModels={isLangBotModels}
+                    metadata={
+                      modelMetadata[model.uuid] ?? modelMetadata[model.name]
+                    }
+                    availabilityLoaded={modelAvailabilityLoaded}
+                    editModelPopoverOpen={editModelPopoverOpen}
+                    deleteConfirmOpen={deleteConfirmOpen}
+                    onOpenEditModel={onOpenEditModel}
+                    onCloseEditModel={onCloseEditModel}
+                    onOpenDeleteConfirm={onOpenDeleteConfirm}
+                    onCloseDeleteConfirm={onCloseDeleteConfirm}
+                    onDeleteModel={() => onDeleteModel(model.uuid, 'asr')}
+                    onUpdateModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                    ) =>
+                      onUpdateModel(
+                        model.uuid,
+                        'asr',
+                        name,
+                        abilities,
+                        extraArgs,
+                        reasoningConfig,
+                      )
+                    }
+                    onTestModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                    ) =>
+                      onTestModel(
+                        name,
+                        'asr',
+                        abilities,
+                        extraArgs,
+                        reasoningConfig,
+                      )
+                    }
+                    isSubmitting={isSubmitting}
+                    isTesting={isTesting}
+                    testResult={testResult}
+                    onResetTestResult={onResetTestResult}
+                  />
+                ))}
+                {(models.tts || []).map((model) => (
+                  <ModelItem
+                    key={model.uuid}
+                    model={model}
+                    canManage={canManage}
+                    modelType="tts"
+                    isLangBotModels={isLangBotModels}
+                    metadata={
+                      modelMetadata[model.uuid] ?? modelMetadata[model.name]
+                    }
+                    availabilityLoaded={modelAvailabilityLoaded}
+                    editModelPopoverOpen={editModelPopoverOpen}
+                    deleteConfirmOpen={deleteConfirmOpen}
+                    onOpenEditModel={onOpenEditModel}
+                    onCloseEditModel={onCloseEditModel}
+                    onOpenDeleteConfirm={onOpenDeleteConfirm}
+                    onCloseDeleteConfirm={onCloseDeleteConfirm}
+                    onDeleteModel={() => onDeleteModel(model.uuid, 'tts')}
+                    onUpdateModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                    ) =>
+                      onUpdateModel(
+                        model.uuid,
+                        'tts',
+                        name,
+                        abilities,
+                        extraArgs,
+                        reasoningConfig,
+                      )
+                    }
+                    onTestModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                    ) =>
+                      onTestModel(
+                        name,
+                        'tts',
+                        abilities,
+                        extraArgs,
+                        reasoningConfig,
+                      )
+                    }
+                    isSubmitting={isSubmitting}
+                    isTesting={isTesting}
+                    testResult={testResult}
+                    onResetTestResult={onResetTestResult}
+                  />
+                ))}
+                {models.llm.length === 0 &&
+                  models.embedding.length === 0 &&
+                  models.rerank.length === 0 &&
+                  (!models.asr || models.asr.length === 0) &&
+                  (!models.tts || models.tts.length === 0) && (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      {t('models.noModels')}
+                    </p>
+                  )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                {t('models.noModels')}
+              </p>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
+  );
+}

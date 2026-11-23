@@ -1,0 +1,65 @@
+---
+title: "Message Platform Entities"
+---
+
+LangBot supports multiple messaging platforms, and each platform has different `message entity` formats. To abstract away these differences, we have implemented a unified standard. Plugin developers only need to master and use the message entities described on this page in plugins, and LangBot's internal message processing logic can automatically handle message parsing and conversion.
+
+## Message Chain
+
+`Messages` on messaging platforms are different from messages used for AI interaction. Messages on messaging platforms are described in the form of `message chains`. Each independent message displayed on QQ is a message chain, which can contain various `message chain components` such as `text`, `images`, `@mentions`, etc. For example:
+
+![](/images/zh/plugin/dev/apis/plugin_dev_messages_01.png)
+
+This is a message chain containing one Plain component (Hello World) and one Image component (Usagi).
+
+The definitions of message chains and message chain components are located in `langbot_plugin.api.entities.builtin.platform.message`.
+
+### Constructing Message Chains
+
+Please first import the `langbot_plugin.api.entities.builtin.platform.message` package to use the message components within it.
+
+```python
+from langbot_plugin.api.entities.builtin.platform.message import *
+
+# Build a message containing text "Hello LangBot" and an image (from URL)
+msg_chain = MessageChain([
+    Plain(text="Hello LangBot"),
+    Image(url='https://qchatgpt.rockchin.top/langbot-logo.png')
+])
+
+# Build a message containing @everyone and text "Hello LangBot"
+msg_chain = MessageChain([
+    AtAll(),
+    Plain(text="Hello LangBot")
+])
+
+# Build a message containing @specific member and text "Hello LangBot"
+msg_chain = MessageChain([
+    At(target=123456),
+    Plain(text="Hello LangBot")
+])
+```
+
+Currently supported message chain components:
+
+- `Source` - Source message chain information. Messages received from messaging platforms will include this component at the front of the message chain to record message information
+- `Plain` - Plain text message
+- `Quote` - Quote message
+- `Image` - Image message
+- `AtAll` - @everyone message
+- `At` - @specific member message
+- `Voice` - Voice message
+  - Need to check messaging platform support
+- `Forward` - Forward message
+  - Not supported on many platforms, not recommended
+- `File` - File message
+
+When creating components, named parameters must be used. For specific usage, you can check the definitions in the source code `langbot_plugin.api.entities.builtin.platform.message`.
+
+## Other Entities
+
+In addition to the above entities, there are also entities like `Friend` and `Group`. These entities are defined in `langbot_plugin.api.entities.builtin.platform.entities`.
+
+## Platform APIs
+
+Use [Platform APIs](/en/plugin/dev/apis/platform) to query users, manage groups, and call platform-specific actions. Runner uses the same `self.plugin` entrypoint; use `ctx.reply()` for the current conversation.

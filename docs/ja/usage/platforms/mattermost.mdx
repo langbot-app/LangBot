@@ -1,0 +1,48 @@
+---
+title: "Mattermost"
+description: "LangBot に Mattermost ボットを接続し、エージェントやワークフローを数分で Mattermost サーバーに導入します。"
+icon: "/images/platforms/mattermost.svg"
+---
+
+<Note>
+以下のスクリーンショットは中国語の画面です。本文で説明する対応するメニューや入力欄を参照して操作してください。
+</Note>
+
+## ボットアカウントの作成
+
+Mattermost インスタンス（セルフホスト版または Mattermost が提供するホスト版）にログインします。左上の `Mattermost アイコン`をクリックし、メニューから「統合機能（Integrations）」を選択します。
+
+![Mattermost メニューから統合機能を開く](/images/zh/deploy/bots/mattermost/Mattermost_main_page.png)
+
+統合機能のページで、左側のメニューから「ボットアカウント（Bot Accounts）」を選択し、右上の「ボットアカウントを追加（Add Bot Account）」をクリックします。
+
+![ボットアカウントの一覧から新しいアカウントを追加する](/images/zh/deploy/bots/mattermost/Mattermost_bot_account.png)
+
+ボットのユーザー名を入力します。
+
+![ボットのユーザー名を入力する](/images/zh/deploy/bots/mattermost/Mattermost_bot_add_new.png)
+
+ロールは「メンバー（Member）」を選択します（管理者向けの機能には現在対応していません）。ダイレクトメッセージが必要な場合は `post:all`、公開チャンネルのみを使用する場合は `post:channels` だけを選択します。右下の「ボットアカウントを作成（Create Bot Account）」をクリックします。
+
+![ボットのロールと投稿権限を選択する](/images/zh/deploy/bots/mattermost/Mattermost_bot_deploy.png)
+
+ボタンをクリックしてトークンをコピーします。トークンは一度しか表示されないため、安全な場所に保存してください。右下の「完了（Done）」をクリックします。
+
+![アカウント作成を完了する前にボットのトークンをコピーする](/images/zh/deploy/bots/mattermost/Mattermost_bot_token.png)
+
+## LangBot でのボット設定
+
+LangBot Cloud またはセルフホストの LangBot インスタンスを開き、以下の画像の赤い矢印の順に操作します。
+
+- 左側の「ボット」タブにカーソルを合わせ、表示される `+` アイコンをクリックします。
+- 「ボット名」欄にボットの名前を入力します。
+- プラットフォームアダプターのドロップダウンを開き、`Mattermost` を選択します。
+- Mattermost インスタンスのアドレスと、先ほど作成したボットアカウントのトークンを入力します。
+- （任意）パイプラインまたは AI プロバイダーがストリーミング出力に対応していない場合は、このオプションを無効にします。
+- 右上の「送信（Submit）」をクリックすると、ボットの編集画面が開きます。
+
+![LangBot に Mattermost ボットを追加し、インスタンスのアドレスとトークンを入力する](/images/zh/deploy/bots/mattermost/Mattermost_langbot_add_new.png)
+
+既存のパイプラインを紐付け、必要に応じてルーティングを設定し、右上の「保存（Save）」をクリックします。
+
+![パイプラインを紐付けて Mattermost ボットの設定を保存する](/images/zh/deploy/bots/mattermost/Mattermost_langbot_deploy.png)

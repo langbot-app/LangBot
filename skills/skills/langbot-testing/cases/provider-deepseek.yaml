@@ -1,0 +1,42 @@
+id: provider-deepseek
+title: "DeepSeek provider can be configured and used"
+mode: agent-browser
+area: provider
+type: provider
+priority: p2
+risk: medium
+ci_eligible: false
+tags:
+  - provider
+  - model
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+preconditions:
+  - "A DeepSeek-compatible API key and model route are available from the active secret source and must not be printed in reports."
+  - "A test pipeline is available for confirming the saved provider can answer Debug Chat."
+steps:
+  - "Open LANGBOT_FRONTEND_URL."
+  - "Navigate to Models."
+  - "Add or edit a DeepSeek provider."
+  - "Fill the required base URL, API key, and model fields from the active secret source."
+  - "Run the provider or model test action in the UI."
+  - "Run a small Pipeline Debug Chat prompt to confirm the provider is usable."
+checks:
+  - "UI: The provider/model test action succeeds in the page."
+  - "UI: A Pipeline Debug Chat prompt returns a Bot response after provider setup."
+  - "Console: No unexpected frontend errors appear while saving or testing the provider."
+  - "Secret safety: No API key, token, or secret is printed in logs or reports."
+evidence_required:
+  - ui
+  - console
+  - backend_log
+diagnostics:
+  - "If provider testing fails, inspect backend logs and provider error messages to distinguish invalid credentials from UI wiring issues."
+  - "Use API/curl only as a diagnostic aid after reproducing through the UI."
+troubleshooting:
+  - proxy-env-mismatch
+  - plugin-runtime-timeout

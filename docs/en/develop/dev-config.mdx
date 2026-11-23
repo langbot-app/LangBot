@@ -1,0 +1,191 @@
+---
+title: "Development Configuration"
+---
+
+LangBot is divided into frontend and backend. The frontend is developed using Vite + React Router + shadcn, and the backend is developed using Quart (an asynchronous version of Flask).
+
+## Backend
+
+The code is located in the `pkg` directory and is started by the `main.py` file in the root directory.
+
+Install dependencies, we use uv to manage dependencies.
+
+```bash
+pip install uv
+uv sync --dev
+```
+
+Start the backend
+
+```bash
+uv run main.py
+```
+
+At this point, the configuration file will be automatically generated in the `data/config.yaml` file.
+
+## Frontend
+
+The code is located in the `web` directory and requires Node.js and [pnpm](https://pnpm.io/installation).
+
+Copy `.env.example` to `.env` and fill in the values.
+
+- Usage in Linux and other environments
+
+```bash
+cp .env.example .env
+```
+
+-  Usage in Windows environments
+
+```bash
+copy .env.example .env
+```
+
+Install dependencies and start the frontend
+
+```bash
+pnpm install
+pnpm dev
+
+# If pnpm is not installed, you can also use npm to solve dependencies and start
+npm install
+npm run dev
+```
+
+Then according to the output information, visit `http://127.0.0.1:3000` to view the standalone frontend page.
+
+<Info title="When using `pnpm dev` to start locally, the environment variable `VITE_API_BASE_URL` will be automatically used by the frontend to ensure that the frontend can access the `5300` port of the locally running backend.">
+
+In production environments, the frontend will be precompiled into static files and provided by the backend, and the frontend will automatically access the backend address on the same domain.
+</Info>
+
+## Code Formatting
+
+The repository contains lint and format check workflows, and your code will be automatically checked when you push it. Please configure pre-commit to check your code locally before submitting.
+
+```bash
+uv run pre-commit install
+```
+
+## API Documentation
+
+We will write API documentation in APIFox before developing each interface. Please refer to [API Documentation(Chinese)](https://ok52vhsenr.apifox.cn/).
+
+## Database Migrations
+
+LangBot uses [Alembic](https://alembic.sqlalchemy.org/) to manage database migrations, supporting both SQLite and PostgreSQL seamlessly without database-specific branching.
+
+### Migration File Location
+
+```
+src/langbot/pkg/persistence/alembic/versions/
+```
+
+### Creating a New Migration
+
+The recommended way is to use **autogenerate**, which compares ORM models against the database schema and generates a migration script:
+
+```bash
+# Run from the project root (requires data/config.yaml)
+uv run python -m langbot.pkg.persistence.alembic_runner autogenerate "describe your changes"
+```
+
+The generated file will appear in `src/langbot/pkg/persistence/alembic/versions/`. Review and edit the generated script to confirm the changes are correct before committing.
+
+<Info>
+Autogenerate can automatically detect column additions/removals, table changes, type changes, etc. However, for **data migrations** (e.g., modifying JSON field content), you need to manually add code to the generated script.
+</Info>
+
+You can also create migration files manually, following the naming convention `NNNN_description.py`:
+
+```python
+"""Describe your migration
+
+Revision ID: 0003_add_bot_description
+Revises: 0002_sample
+Create Date: 2026-04-08
+"""
+from alembic import op
+import sqlalchemy as sa
+
+revision = '0003_add_bot_description'
+down_revision = '0002_sample'  # Points to the previous migration's revision
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    # Schema change (works on both SQLite and PostgreSQL)
+    op.add_column('bots', sa.Column('description', sa.String(512), server_default=''))
+
+
+def downgrade() -> None:
+    op.drop_column('bots', 'description')
+```
+
+### Migration Patterns
+
+<AccordionGroup>
+<Accordion title="Schema Changes (add/drop columns, create tables)">
+```python
+def upgrade() -> None:
+    # Add a column
+    op.add_column('table_name', sa.Column('new_col', sa.String(255), server_default=''))
+    
+    # Create a new table
+    op.create_table(
+        'new_table',
+        sa.Column('id', sa.Integer, primary_key=True, autoincrement=True),
+        sa.Column('name', sa.String(255), nullable=False),
+    )
+```
+
+<Info>
+`env.py` sets `render_as_batch=True`, which makes Alembic automatically handle SQLite's ALTER TABLE limitations (via temporary table rebuild). No need to branch on database type.
+</Info>
+</Accordion>
+
+<Accordion title="Data Migrations (read and modify data)">
+```python
+import json
+
+def upgrade() -> None:
+    conn = op.get_bind()
+    rows = conn.execute(sa.text("SELECT uuid, config FROM pipelines")).fetchall()
+    for row in rows:
+        config = json.loads(row[1]) if isinstance(row[1], str) else row[1]
+        config.setdefault('ai', {})['new_key'] = 'default_value'
+        conn.execute(
+            sa.text("UPDATE pipelines SET config = :cfg WHERE uuid = :uuid"),
+            {"cfg": json.dumps(config), "uuid": row[0]}
+        )
+```
+</Accordion>
+</AccordionGroup>
+
+### How It Works
+
+Migrations run automatically when LangBot starts — no manual commands needed:
+
+1. On first startup, the baseline version is automatically stamped (marking the existing database)
+2. On subsequent startups, all pending migrations are applied (`alembic upgrade head`)
+
+### CI Testing
+
+The repository includes a `test-migrations.yml` workflow that automatically tests migration scripts on both SQLite and PostgreSQL when `persistence/` related files change.
+
+### CLI Tool
+
+```bash
+# Autogenerate migration (compare ORM models against DB)
+uv run python -m langbot.pkg.persistence.alembic_runner autogenerate "description"
+
+# Upgrade database
+uv run python -m langbot.pkg.persistence.alembic_runner upgrade
+
+# Show current revision
+uv run python -m langbot.pkg.persistence.alembic_runner current
+
+# Stamp revision (without running migrations)
+uv run python -m langbot.pkg.persistence.alembic_runner stamp head
+```

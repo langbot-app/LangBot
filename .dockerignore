@@ -1,0 +1,55 @@
+.github
+.git
+**/.git
+__pycache__
+**/__pycache__
+*.pyc
+**/*.pyc
+.venv
+.qa/
+.vscode
+.data
+.temp
+web/.next
+web/node_modules
+web/.env
+
+# Documentation site dependencies and generated output
+docs/node_modules/
+docs/.next/
+docs/dist/
+docs/.fumapress/
+docs/.waku/
+docs/content/
+docs/public/
+
+plugins/
+# Core installs the runtime SDK from the same checkout.
+sdk/tests/
+sdk/examples/
+sdk/docs/
+sdk/scripts/
+sdk/local_e2e/
+sdk/data/
+sdk/.venv/
+sdk/.pytest_cache/
+sdk/.mypy_cache/
+sdk/.ruff_cache/
+**/*.lbpkg
+
+# Not needed at runtime: documentation (incl. ~70 MB of images), tests,
+# repo-level dev tooling and agent skills.
+docs/
+dev-docs/
+tests/
+tools/
+skills/
+examples/
+
+# Plugin scaffolding reads these hidden template files at runtime.
+!sdk/src/langbot_plugin/assets/templates/.github/
+!sdk/src/langbot_plugin/assets/templates/.github/**
+!sdk/src/langbot_plugin/assets/templates/.vscode/
+!sdk/src/langbot_plugin/assets/templates/.vscode/**
+!sdk/src/langbot_plugin/assets/templates/.gitignore.example
+!sdk/src/langbot_plugin/assets/templates/.env.example.example

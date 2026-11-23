@@ -1,0 +1,66 @@
+---
+title: "KOOK"
+description: "用 LangBot 搭建 KOOK 开黑啦 AI 机器人，将大模型接入 KOOK 频道。"
+icon: "/images/platforms/kook.png"
+---
+## 创建机器人
+
+前往 [KOOK 开发者中心](https://developer.kookapp.cn/)，登录后进入控制台。
+
+![KOOK 开发者控制台](/images/zh/deploy/bots/kook/01-dashboard.png)
+
+点击「新建应用」，填写应用信息。
+
+![创建应用](/images/zh/deploy/bots/kook/02-create-app.png)
+
+应用创建完成后，进入应用详情页。
+
+![应用已创建](/images/zh/deploy/bots/kook/03-app-created.png)
+
+在应用概览页面可以查看应用的基本信息。
+
+![应用概览](/images/zh/deploy/bots/kook/04-app-overview.png)
+
+## 获取 Bot Token
+
+在应用页面中，点击「机器人」标签，复制 Bot Token 并妥善保存，后续需要使用。
+
+![获取 Bot Token](/images/zh/deploy/bots/kook/05-bot-token.png)
+
+## 配置机器人权限
+
+**重要：** 在「机器人」设置中，找到「消息过滤」选项，点击配置。
+
+![消息过滤设置](/images/zh/deploy/bots/kook/07-message-filters.png)
+
+开启所有消息相关事件权限，包括频道消息和私聊消息事件，否则机器人将无法接收消息。
+
+![启用权限](/images/zh/deploy/bots/kook/08-permissions-enabled.png)
+
+## 邀请机器人
+
+在机器人设置页面，可以生成邀请链接，将机器人邀请到你的服务器。
+
+![生成邀请链接](/images/zh/deploy/bots/kook/06-invite-link.png)
+
+## 对接 LangBot
+
+打开 LangBot Webui 页面，在「机器人」页面点击创建新机器人。
+
+![LangBot 机器人管理](/images/zh/deploy/bots/kook/09-langbot-bots.png)
+
+选择 KOOK 平台，填写机器人名称和 Bot Token。
+
+![配置 KOOK 机器人](/images/zh/deploy/bots/kook/10-bot-config.png)
+
+保存后，机器人将出现在列表中。
+
+![机器人已创建](/images/zh/deploy/bots/kook/11-bot-created.png)
+
+点击启用按钮，启动机器人。若成功配置，机器人状态将显示为运行中。
+
+![机器人已启用](/images/zh/deploy/bots/kook/12-bot-enabled.png)
+
+## 使用机器人
+
+现在在 KOOK 服务器中，机器人就可以正常接收和回复消息了。机器人支持频道消息和私聊消息。

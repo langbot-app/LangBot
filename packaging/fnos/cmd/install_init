@@ -1,0 +1,12 @@
+#!/bin/bash
+# cmd/install_init - pre-install hook (runs before files are applied)
+# Sweep stray processes from a previous failed/killed install: orphans whose
+# parent was hard-killed keep running and hold the runtime/box ws ports,
+# which breaks the new instance. No match is the normal case on a clean
+# install — pkill exits 1.
+
+RUN_USER=$(id -un)
+pkill -KILL -u "${RUN_USER}" -f "appcenter/langbot" 2>/dev/null || true
+pkill -KILL -u "${RUN_USER}" -f "appshare/langbot" 2>/dev/null || true
+
+exit 0

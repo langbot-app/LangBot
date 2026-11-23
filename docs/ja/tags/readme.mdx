@@ -1,0 +1,89 @@
+---
+title: "Service API 概要"
+---
+
+LangBotは、外部サービスと統合・自動管理するための RESTful API を提供します。これらのAPIはAPIキーで認証され、HTTP APIのサブセットです。
+
+<Warning>
+Service APIは現在ベータ版であり、一部のAPIは頻繁に変更される可能性があります。
+</Warning>
+
+## 汎用操作エンドポイント
+
+`GET /api/v1/operations` は API Key またはユーザートークンで実行可能な操作を `{"operations": [...]}` として返します。`?domain=agent&q=list` で絞り込めます。説明には `id`、`label`、`summary`、`description`、`domain`、`risk`、`side_effect`、`streaming`、`permission`、`version`、`input_schema`、`output_schema` が含まれます。`GET /api/v1/operations/<operation_id>` は個別の説明を返し、非公開・不明・権限不足の場合は 404 になります。`exposure: none` の操作は一覧には含まれませんが、既知の ID は Application API の認可に従って実行できます。
+
+```bash
+curl "$LANGBOT_URL/api/v1/operations" -H "X-API-Key: $LANGBOT_API_KEY"
+curl "$LANGBOT_URL/api/v1/operations/agent.list" \
+  -H "X-API-Key: $LANGBOT_API_KEY" -H 'Content-Type: application/json' -d '{}'
+curl -N "$LANGBOT_URL/api/v1/operations/agent.debug.stream/stream" \
+  -H "X-API-Key: $LANGBOT_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"agent_uuid":"YOUR_AGENT_UUID","payload":{"text":"hello"}}'
+```
+
+`POST /api/v1/operations/<operation_id>` は操作の入力を JSON オブジェクトとして受け取り、空の body は `{}` として扱います。成功時は `{"code":0,"msg":"ok","data":<output>}`、失敗時は対応する HTTP ステータスと `{"code":<error_code>,"msg":<message>,"data":<details_or_null>}` を返します。不正な入力は 400、権限不足は 403、不明な操作は 404 です。ストリーミング操作を通常の入口で呼ぶ場合、または通常の操作を `/stream` で呼ぶ場合は 400 `invalid_execution_mode` になります。
+
+`POST /api/v1/operations/<operation_id>/stream` は `text/event-stream` を返します。各イベントは `data: <json>` と空行で区切られます。
+
+```text
+data: {"kind":"result","data":{}}
+
+event: done
+data: {}
+
+```
+
+異常終了は `event: error` と `data: {"code":"permission_denied","msg":"..."}` で、`done` は送信しません。開始後のエラーは HTTP ステータスではなく SSE イベントで通知されるため、両方を確認してください。
+
+Workspace は認証済みのコンテキストだけで決まります。入力のトップレベルの `workspace` と `workspace_uuid` は無視されます。バイナリや multipart アップロードには既存の専用ルートを使用します。
+
+`operation.binary_base64` がある場合、SSE イベントを含む任意の深さのバイナリ出力は、パディング付きの標準 RFC 4648 base64 文字列（URL-safe ではない）になります。`output_schema` は対象フィールドを `"contentEncoding": "base64"` で示し、クライアントはこれに従ってデコードします。
+
+API Key は `plugin.permissions.update` または既存の権限ルートで確認できます。`resource.manage` に加え、保持する権限を含めた各 capability と Workspace 操作が必要とするすべての権限を持つ必要があり、自身にない権限は付与できません。互換モードでは全権限 ID を一度に確認します。操作ログには確認した API Key が記録されます。利用前に `/api/v1/system/capabilities` の `operation.invoke`、`operation.stream`、`plugin.permissions.confirm_api_key` を確認してください。
+
+## APIキーの取得
+
+WebUIのサイドバーにある `API Keys` ボタンをクリックして、APIキーを作成します。
+
+![create_api_key](/images/zh/api/create_api_key.png)
+
+作成後、APIキーをコピーして保存します。
+
+![copy_api_key](/images/zh/api/copy_api_key.png)
+
+## 認証方法
+
+すべてのService APIは、以下の2つの認証方法をサポートしています：
+
+- **APIキー**: `X-API-Key: <your-key>` または `Authorization: Bearer <your-key>` ヘッダー経由
+- **ユーザートークン**: `Authorization: Bearer <user-token>` ヘッダー経由（ログイン後に取得）
+
+## APIの使用
+
+左サイドバーには、利用可能なすべてのAPIが一覧表示されています。インスタンスアドレス（デフォルトは `http://localhost:5300`）とAPIキーを入力し、`Try it out` ボタンをクリックしてAPIを呼び出せます。
+
+## コアコンセプト
+
+### Provider + Model アーキテクチャ
+
+LangBotは **プロバイダー（Provider）+ モデル（Model）** の2層アーキテクチャでAIモデルを管理します：
+
+- **プロバイダー**: APIエンドポイント（`base_url`）、リクエスタータイプ、APIキーを定義。1つのプロバイダーに複数のモデルを関連付け可能。
+- **モデル**: プロバイダーに関連付け（`provider_uuid` 経由）、具体的なモデル名とパラメータを定義。プロバイダーのAPIエンドポイントとキーを継承。
+
+```
+Provider (OpenAI)
+├── base_url: https://api.openai.com/v1
+├── api_keys: [sk-xxx]
+├── LLM: gpt-4o
+├── LLM: gpt-4o-mini
+└── Embedding: text-embedding-3-small
+```
+
+### リクエスター
+
+リクエスターはAIサービスとの通信プロトコルを定義します。`GET /api/v1/provider/requesters` で利用可能なリクエスター一覧を取得できます。
+
+### 非同期タスク
+
+一部の操作（プラグインのインストール/削除/アップグレード）は非同期で実行され、`task_id` を返します。WebUIで進捗を確認できます。

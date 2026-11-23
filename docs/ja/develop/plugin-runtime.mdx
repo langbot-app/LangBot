@@ -1,0 +1,171 @@
+---
+title: "プラグインランタイム、CLI、SDKのデバッグ"
+---
+
+<Info>
+  プラグインランタイム、CLI、SDK は LangBot リポジトリの `sdk/` ディレクトリでオープンソース化されています: https://github.com/langbot-app/LangBot/tree/master/sdk 。PyPI には `langbot-plugin` パッケージとして公開されています。
+</Info>
+
+LangBot リポジトリをクローンするだけで、本体と SDK のソースコードの両方が手に入ります。SDK リポジトリを別途クローンする必要はありません：
+
+```bash
+git clone https://github.com/langbot-app/LangBot
+```
+
+```text
+LangBot
+├── src/langbot   # LangBot 本体
+└── sdk           # プラグイン SDK、CLI（lbp）、プラグインランタイム、Box ランタイム
+```
+
+LangBotディレクトリに移動し、依存関係をインストールします：
+
+```bash
+cd LangBot
+uv sync --dev
+```
+
+この時点で、uvは自動的に仮想環境(.venv)を作成します。エディターがこの仮想環境を使用するかどうかを尋ねる場合は、`Yes`を選択してください。
+
+<img
+  width="600"
+  src="/images/zh/develop/confirm_venv.png"
+/>
+
+プロンプトが表示されない場合は、右下隅からPythonインタープリターのパスをvenv内のインタープリターに手動で設定してください。
+
+次に、VS Code下部のターミナルを開きます。これにより自動的にvenvがアクティブ化されます。
+
+または、この仮想環境を手動でアクティブ化できます：
+
+```bash
+# .venvのパスに応じてコマンドを変更してください
+source .venv/bin/activate
+```
+
+## プラグインランタイムの起動
+
+```bash
+python -m langbot_plugin.cli.__init__ rt
+```
+
+プラグインランタイムは以下のパラメーターを受け入れます:
+
+- `--debug-only`: `data/plugins`ディレクトリのプラグインを起動せず、デバッグ接続を通じたプラグインの読み込みのみを許可します。
+- `--ws-debug-port`: リッスンするデバッグポート、デフォルトは`5401`です。
+- `--ws-control-port`: リッスンする制御ポート(LangBotメインプログラム接続用)、デフォルトは`5400`です。
+- `-s`: `stdio`を使用して制御接続を受け入れます。**本番環境でのみ使用してください**。
+- `--skip-deps-check`: すべてのプラグイン依存関係がインストールされていることを確認するため、ランタイムは起動時に毎回すべてのインストール済みプラグインの依存関係をチェックしてインストールします。このパラメーターを使用してこのチェックを無効にします。
+
+### LangBotでローカル修正したSDKを使用する
+
+LangBot リポジトリのルートで `uv sync` を実行すると、同じチェックアウトの `sdk/` が編集可能モードでインストールされます。メッセージエンティティやプラグインデータ定義の変更は Core に直接反映され、追加インストールや SDK の公開を待つ必要はありません。
+
+```bash
+uv sync --dev
+uv run main.py --standalone-runtime
+```
+
+別途配置した Runtime には、対応するチェックアウトまたは公開済み SDK が必要です。Core のインストールは他の Runtime 環境を更新しません。PyPI から Core を単独インストールする場合は、宣言された公開済み SDK バージョンを使用します。
+
+### LangBotをこのランタイムに接続する
+
+LangBotの`data/config.yaml`で`plugin.runtime_ws_url`を`ws://localhost:5400/control/ws`に設定します。
+
+```yaml
+plugin:
+  runtime_ws_url: ws://localhost:5400/control/ws
+```
+
+LangBot リポジトリのルートで `uv run main.py --standalone-runtime` を実行します。再起動後、LangBot は WebSocket でこの Runtime に接続します。
+
+`LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN` は既定では省略可能です。LangBot と Runtime の両方で未設定の場合、ローカル OSS の制御接続はトークンなしで確立されます。公開された 5400 ポートを保護する場合は、両側に同じ 32 文字以上の高エントロピー値を設定してください。Runtime 側に token を設定すると、同じ値を送信しない LangBot は拒否されます。LangBot 側だけに設定しても Runtime 側の認証は有効になりません。
+
+### `lbp run` でプラグインをデバッグする
+
+Multi-Workspace 版では、デバッグプラグインは `5401` ポートへ到達できるだけでは Runtime に接続できません。Workspace ごとに、有効期限付きの個別デバッグキーが必要です：
+
+1. 上記の手順で LangBot と Plugin Runtime が起動し、接続済みであることを確認します。
+2. LangBot WebUI の「プラグイン」ページで「デバッグ情報」を開き、デバッグ URL とデバッグキーをコピーします。この操作には現在の Workspace のリソース管理権限が必要です。
+3. プラグインプロジェクトの `.env` に設定します：
+
+```bash
+DEBUG_RUNTIME_WS_URL=ws://localhost:5401/plugin/debug/ws
+PLUGIN_DEBUG_KEY=<WebUI からコピーしたデバッグキー>
+```
+
+4. プラグインプロジェクトのディレクトリで起動します：
+
+```bash
+python -m langbot_plugin.cli.__init__ run
+```
+
+`.env` に保存せず、`python -m langbot_plugin.cli.__init__ run --plugin-debug-key '<デバッグキー>'` を使用することもできます。キーは Workspace ごとに分離され、有効期限は 2 時間です。期限切れ、Runtime の再起動、または Workspace の切り替え後は WebUI から再取得してください。`DEBUG_RUNTIME_WS_URL` だけを設定したクライアントは拒否されます。
+
+## Box Runtime を standalone モードで起動する
+
+Box Runtime の制御接続ルールは Plugin Runtime と同じです。OSS standalone 開発では token は省略可能で、両側で `LANGBOT_BOX_CONTROL_TOKEN` が未設定の場合も接続できます：
+
+```bash
+# ターミナル 1：LangBot ディレクトリ（仮想環境を有効化済み）
+python -m langbot_plugin.cli.__init__ box
+```
+
+LangBot の `data/config.yaml` でローカル Box Runtime を指定します：
+
+```yaml
+box:
+  enabled: true
+  backend: local
+  file_transfer_mode: network
+  runtime:
+    endpoint: ws://127.0.0.1:5410
+```
+
+```bash
+# ターミナル 2：LangBot ディレクトリ
+python main.py --standalone-runtime --standalone-box
+```
+
+公開された 5410 ポートを保護する場合は、両方のプロセスを起動する前に、同じ 32 文字以上で空白を含まない高エントロピー値を設定してください：
+
+```bash
+export LANGBOT_BOX_CONTROL_TOKEN='<両側で完全に同じ高エントロピーシークレット>'
+```
+
+Box Runtime 側に token を設定すると、同じ値を送信しない LangBot は拒否されます。LangBot 側だけに設定しても Box Runtime 側の認証は有効になりません。明示的に設定した値が 32 文字未満の場合は、引き続き両側で拒否されます。実際の値を設定ファイルや Git にコミットしないでください。
+
+`box.file_transfer_mode: network` を設定すると、認証済みの Box 接続を通じて添付ファイルを転送できます。Core と Runtime で添付ファイル用ディレクトリを共有する必要はありません。両側にファイル転送アクションをサポートする SDK/Runtime が必要です。段階的な導入中の既定値は `legacy` で、既存の転送方法を使用します。ネットワークモードでは、ファイル内容を分割 RPC で転送し、小さなサンドボックスコマンドで出力のスナップショット作成と削除確認を行います。`/workspace` 外のファイルもエクスポートできます。一時スナップショットにはワークスペースのディスク容量が必要です。Cloud の起動時には共有ワークスペースの準備も検証され、この移行は #3010 の第 5 段階で追跡します。 ネットワークモードの出力エクスポートには、一時スナップショット用の書き込み可能なワークスペースが必要です。`offline_readonly` のエクスポートには `legacy` を使用してください。OSS のネットワークモードでは E2B の書き込み可能なワークスペースをサンドボックス内に保持し、ホストへの双方向ミラーは使用しません。
+
+### Runtime パッケージキャッシュ
+
+対応する Core と SDK のソースを使用すると、Host は認証済み Box 接続で不変パッケージを準備できます。Runtime はアーカイブとファイルツリーの digest を検証した後、読み取り専用キャッシュを公開します。キャッシュに存在する場合も現在の Workspace コンテキストが必要であり、digest 自体はアクセス権を与えません。これはネットワーク実行用の基盤 API です。段階的な導入中、既存の Skill ツールは従来のマウント経路を使用します。
+
+```yaml
+box:
+  limits:
+    max_artifact_cache_bytes: 268435456
+    artifact_cache_ttl_sec: 300
+```
+
+既定では再利用可能な内容とメタデータを 256 MiB まで保持し、300 秒間使用されていないエントリを回収できます。設定上限はそれぞれ 256 MiB と 86,400 秒です。セッションにマウント中のパッケージは、管理プロセスの実行中も保護されます。保護対象だけで容量を使い切ると、新しいパッケージの準備は明示的に失敗します。サンドボックス内のコピーと書き込み可能なワークスペースには別の制限があります。
+
+キャッシュは Runtime が `LANGBOT_BOX_DATA_DIR` 配下で管理し、Core のパッケージディレクトリを使用しません。回収後は再転送して検証します。GC が削除するのは破棄可能なキャッシュだけで、データベースの公開バージョンは削除しません。アーカイブは 64 MiB 以下である必要があり、E2B のファイル単位 10 MiB など、バックエンドの制限も適用されます。添付ファイル転送の独立した制限は変更しません。
+
+このキャッシュには POSIX のディレクトリ記述子に相対的なファイル操作が必要で、検証済みの Runtime プラットフォームは Linux です。キャッシュ使用開始後に上記の制限を変更する場合は Box Runtime の再起動が必要です。Runtime のクラッシュ時に保護されていたエントリは容量を使用したまま保持されます。保守時は対象 Runtime と呼び出し元を停止し、古いバックエンドセッションとプロセスが終了したことを確認してから、その破棄可能なキャッシュだけを削除してください。
+
+## SDK（`sdk/`）アーキテクチャ
+
+`sdk/src/langbot_plugin` には以下が含まれています:
+
+- `langbot_plugin.api`: プラグイン関連のエンティティとAPI定義。
+- `langbot_plugin.assets`: プラグインテンプレート。
+- `langbot_plugin.cli`: プラグイン開発CLIツール。
+- `langbot_plugin.entities`: APIで定義されていないプラグインシステム関連のエンティティ。
+- `langbot_plugin.runtime`: プラグインランタイムと基礎通信(stdioおよびwebsocket)の実装。
+
+## `lbp` CLIツール
+
+CLIツールは、ランタイムの起動、プラグインの初期化、プラグインコンポーネント管理、Marketplaceとのインタラクションなどの機能を提供します。
+
+詳細なプログラムエントリポイントについては、[`langbot_plugin.cli.__init__`](https://github.com/langbot-app/LangBot/blob/master/sdk/src/langbot_plugin/cli/__init__.py)を参照してください。

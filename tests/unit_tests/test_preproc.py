@@ -1,0 +1,303 @@
+from __future__ import annotations
+
+import importlib
+import sys
+import types
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
+
+import pytest
+
+from langbot_plugin.api.entities.builtin.pipeline.query import Query
+from langbot_plugin.api.entities.builtin.platform.entities import Friend
+from langbot_plugin.api.entities.builtin.platform.events import FriendMessage
+from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+from langbot_plugin.api.entities.builtin.provider.message import Message
+from langbot_plugin.api.entities.builtin.provider.prompt import Prompt
+from langbot_plugin.api.entities.builtin.provider.session import Conversation, LauncherTypes, Session
+
+from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
+from langbot.pkg.api.http.context import ExecutionContext
+
+
+_RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
+_CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
+    bot_uuid='bot-1',
+    pipeline_uuid='pipe-1',
+)
+
+
+def _make_query() -> Query:
+    message_chain = MessageChain([Plain(text='create a skill')])
+    query = Query(
+        query_id=1,
+        launcher_type=LauncherTypes.PERSON,
+        launcher_id='launcher-1',
+        sender_id='sender-1',
+        message_event=FriendMessage(
+            message_chain=message_chain,
+            time=0,
+            sender=Friend(id='sender-1', nickname='Tester', remark='Tester'),
+        ),
+        message_chain=message_chain,
+        bot_uuid='bot-1',
+        pipeline_uuid='pipe-1',
+        pipeline_config={
+            'ai': {
+                'runner': {'id': _RUNNER_ID},
+                'runner_config': {
+                    _RUNNER_ID: {
+                        'model': {'primary': 'model-1', 'fallbacks': []},
+                        'prompt': [{'role': 'system', 'content': 'system prompt'}],
+                        'knowledge-bases': [],
+                    }
+                },
+            },
+            'trigger': {'misc': {}},
+        },
+        variables={},
+    )
+    object.__setattr__(query, '_execution_context', _CONTEXT)
+    return query
+
+
+def _make_conversation() -> Conversation:
+    return Conversation(
+        prompt=Prompt(name='default', messages=[Message(role='system', content='system prompt')]),
+        messages=[],
+        pipeline_uuid='pipe-1',
+        bot_uuid='bot-1',
+        uuid='conv-1',
+    )
+
+
+def _make_app(*, skill_service) -> SimpleNamespace:
+    session = Session(launcher_type=LauncherTypes.PERSON, launcher_id='launcher-1', sender_id='sender-1')
+    conversation = _make_conversation()
+    model = SimpleNamespace(model_entity=SimpleNamespace(uuid='model-1', abilities={'func_call'}))
+    tool_mgr = SimpleNamespace(get_resolved_tool_catalog=AsyncMock(return_value=[]))
+    descriptor = RunnerDescriptor(
+        usages=['agent'],
+        id=_RUNNER_ID,
+        source='plugin',
+        label={'en_US': 'Local Agent'},
+        plugin_author='langbot-team',
+        plugin_name='LocalAgent',
+        runner_name='default',
+        config_schema=[
+            {'name': 'model', 'type': 'model-fallback-selector'},
+            {'name': 'prompt', 'type': 'prompt-editor'},
+            {'name': 'knowledge-bases', 'type': 'knowledge-base-multi-selector'},
+        ],
+        capabilities={
+            'tool_calling': True,
+            'knowledge_retrieval': True,
+            'multimodal_input': True,
+            'skill_authoring': True,
+        },
+    )
+
+    return SimpleNamespace(
+        sess_mgr=SimpleNamespace(
+            get_session=AsyncMock(return_value=session),
+            get_conversation=AsyncMock(return_value=conversation),
+        ),
+        model_mgr=SimpleNamespace(get_model_by_uuid=AsyncMock(return_value=model)),
+        runner_registry=SimpleNamespace(get=AsyncMock(return_value=descriptor)),
+        tool_mgr=tool_mgr,
+        plugin_connector=SimpleNamespace(
+            emit_event=AsyncMock(
+                return_value=SimpleNamespace(
+                    event=SimpleNamespace(
+                        default_prompt=conversation.prompt.messages.copy(),
+                        prompt=conversation.messages.copy(),
+                    )
+                )
+            )
+        ),
+        pipeline_service=SimpleNamespace(
+            get_pipeline=AsyncMock(return_value={'extensions_preferences': {'enable_all_skills': True}})
+        ),
+        skill_mgr=SimpleNamespace(
+            ensure_loaded=AsyncMock(),
+            get_skills=Mock(return_value={}),
+            build_skill_aware_prompt_addition=Mock(return_value=''),
+            skills={},
+        ),
+        skill_service=skill_service,
+        logger=Mock(),
+    )
+
+
+def _import_preproc_modules():
+    fake_app_module = types.ModuleType('langbot.pkg.core.app')
+    fake_app_module.Application = object
+    sys.modules['langbot.pkg.core.app'] = fake_app_module
+
+    for module_name in (
+        'langbot.pkg.pipeline.preproc.preproc',
+        'langbot.pkg.pipeline.stage',
+    ):
+        sys.modules.pop(module_name, None)
+
+    preproc_module = importlib.import_module('langbot.pkg.pipeline.preproc.preproc')
+    entities_module = importlib.import_module('langbot.pkg.pipeline.entities')
+    return preproc_module, entities_module
+
+
+@pytest.mark.asyncio
+async def test_preproc_resolves_host_tools_for_plugin_runner():
+    preproc_module, entities_module = _import_preproc_modules()
+
+    app = _make_app(skill_service=SimpleNamespace())
+    stage = preproc_module.PreProcessor(app)
+
+    result = await stage.process(_make_query(), 'PreProcessor')
+
+    assert result.result_type == entities_module.ResultType.CONTINUE
+    app.tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
+        _CONTEXT,
+        None,
+        None,
+        include_skill_authoring=True,
+        include_mcp_resource_tools=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_preproc_keeps_host_skill_tools_visible_when_skill_service_missing():
+    preproc_module, entities_module = _import_preproc_modules()
+
+    app = _make_app(skill_service=None)
+    stage = preproc_module.PreProcessor(app)
+
+    result = await stage.process(_make_query(), 'PreProcessor')
+
+    assert result.result_type == entities_module.ResultType.CONTINUE
+    app.tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
+        _CONTEXT,
+        None,
+        None,
+        include_skill_authoring=True,
+        include_mcp_resource_tools=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_preproc_disables_mcp_resource_tools_when_agent_reading_is_disabled():
+    preproc_module, entities_module = _import_preproc_modules()
+
+    app = _make_app(skill_service=SimpleNamespace())
+    stage = preproc_module.PreProcessor(app)
+    query = _make_query()
+    query.variables['_pipeline_mcp_resource_agent_read_enabled'] = False
+
+    result = await stage.process(query, 'PreProcessor')
+
+    assert result.result_type == entities_module.ResultType.CONTINUE
+    app.tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
+        _CONTEXT,
+        None,
+        None,
+        include_skill_authoring=True,
+        include_mcp_resource_tools=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_preproc_leaves_skill_prompt_projection_to_runner_resources():
+    preproc_module, entities_module = _import_preproc_modules()
+
+    app = _make_app(skill_service=SimpleNamespace())
+    app.skill_mgr.build_skill_aware_prompt_addition = Mock(
+        return_value='\n\nAvailable Skills:\n- demo (demo): Demo skill.\n\nCall activate ...'
+    )
+
+    query = _make_query()
+    result = await stage_process_capture(preproc_module, app, query)
+
+    assert result.result_type == entities_module.ResultType.CONTINUE
+    app.skill_mgr.build_skill_aware_prompt_addition.assert_not_called()
+    head = query.prompt.messages[0]
+    assert head.role == 'system'
+    assert head.content == 'system prompt'
+
+
+@pytest.mark.asyncio
+async def test_preproc_respects_pipeline_bound_skills_subset():
+    """When all skills are disabled, the authorized subset is retained for resources."""
+    preproc_module, entities_module = _import_preproc_modules()
+
+    app = _make_app(skill_service=SimpleNamespace())
+    app.pipeline_service.get_pipeline = AsyncMock(
+        return_value={
+            'extensions_preferences': {
+                'enable_all_skills': False,
+                'skills': ['only-this'],
+            }
+        }
+    )
+    app.skill_mgr.build_skill_aware_prompt_addition = Mock(return_value='')
+
+    query = _make_query()
+    result = await stage_process_capture(preproc_module, app, query)
+
+    assert result.result_type == entities_module.ResultType.CONTINUE
+    app.skill_mgr.build_skill_aware_prompt_addition.assert_not_called()
+    assert query.variables.get('_pipeline_bound_skills') == ['only-this']
+
+
+@pytest.mark.asyncio
+async def test_preproc_skips_injection_when_addendum_is_empty():
+    """No visible skills → system prompt is left untouched (no
+    ``Available Skills`` block appended)."""
+    preproc_module, entities_module = _import_preproc_modules()
+
+    app = _make_app(skill_service=SimpleNamespace())
+    app.skill_mgr.build_skill_aware_prompt_addition = Mock(return_value='')
+
+    query = _make_query()
+    result = await stage_process_capture(preproc_module, app, query)
+
+    assert result.result_type == entities_module.ResultType.CONTINUE
+    app.skill_mgr.build_skill_aware_prompt_addition.assert_not_called()
+    if query.prompt and query.prompt.messages:
+        assert 'Available Skills' not in (query.prompt.messages[0].content or '')
+
+
+@pytest.mark.asyncio
+async def test_preproc_projects_turn_system_context_without_mutating_conversation_prompt():
+    preproc_module, _ = _import_preproc_modules()
+    app = _make_app(skill_service=SimpleNamespace())
+    conversation = app.sess_mgr.get_conversation.return_value
+    conversation.messages = [Message(role='user', content='Previous question')]
+
+    async def inject(event, bound_plugins):
+        event.default_prompt.append(Message(role='system', content='Turn profile'))
+        event.prompt.append(Message(role='system', content='Turn episodic evidence'))
+        return SimpleNamespace(event=event)
+
+    app.plugin_connector.emit_event.side_effect = inject
+    query = _make_query()
+    await stage_process_capture(preproc_module, app, query)
+
+    assert [message.content for message in query.prompt.messages] == ['system prompt', 'Turn profile']
+    assert [message.content for message in conversation.prompt.messages] == ['system prompt']
+    assert [message.content for message in query.messages] == ['Previous question', 'Turn episodic evidence']
+    context = query.variables['_host_prompt_preprocessing_system_context']
+    assert [message['content'] for message in context] == ['Turn episodic evidence']
+
+    # A later preprocessing pass replaces the turn projection, including an empty one.
+    app.plugin_connector.emit_event.side_effect = lambda event, plugins: SimpleNamespace(event=event)
+    await stage_process_capture(preproc_module, app, query)
+    assert query.variables['_host_prompt_preprocessing_system_context'] == []
+
+
+async def stage_process_capture(preproc_module, app, query):
+    """Run PreProcessor.process and return the result while keeping ``query``
+    accessible to the assertions (process mutates query in place)."""
+    stage = preproc_module.PreProcessor(app)
+    return await stage.process(query, 'PreProcessor')

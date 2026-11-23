@@ -1,0 +1,6 @@
+prune plugins
+graft sdk/src
+include sdk/pyproject.toml sdk/README.md sdk/LICENSE
+include uv.lock
+global-exclude *.lbpkg
+global-exclude *.py[cod]

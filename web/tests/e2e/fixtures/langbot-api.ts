@@ -1,0 +1,1573 @@
+import { Page, Route } from '@playwright/test';
+
+type JsonRecord = Record<string, unknown>;
+
+interface SkillMock {
+  name: string;
+  display_name: string;
+  description: string;
+  instructions: string;
+  package_root: string;
+  updated_at: string;
+}
+
+interface PipelineMock {
+  uuid: string;
+  name: string;
+  description: string;
+  config: JsonRecord;
+  emoji: string;
+  kind: 'agent' | 'pipeline';
+  is_default: boolean;
+  updated_at: string;
+}
+
+interface KnowledgeBaseMock {
+  uuid: string;
+  name: string;
+  description: string;
+  emoji: string;
+  knowledge_engine_plugin_id: string;
+  creation_settings: JsonRecord;
+  retrieval_settings: JsonRecord;
+  initialized: boolean;
+  knowledge_engine: {
+    plugin_id: string;
+    name: {
+      en_US: string;
+      zh_Hans: string;
+    };
+    capabilities: string[];
+  };
+  updated_at: string;
+}
+
+interface MCPServerMock {
+  name: string;
+  mode: 'sse' | 'stdio' | 'http';
+  enable: boolean;
+  extra_args: JsonRecord;
+  runtime_info: {
+    status: 'connected';
+    tool_count: number;
+    tools: unknown[];
+  };
+  readme: string;
+  updated_at: string;
+}
+
+interface BotMock {
+  uuid: string;
+  name: string;
+  description: string;
+  enable: boolean;
+  adapter: string;
+  adapter_config: JsonRecord;
+  use_pipeline_uuid?: string;
+  event_bindings: unknown[];
+  plugin_processors: unknown[];
+  pipeline_routing_rules: unknown[];
+  adapter_runtime_values: JsonRecord;
+  updated_at: string;
+}
+
+export interface WorkspaceEntryMock {
+  workspace: {
+    uuid: string;
+    instance_uuid: string;
+    name: string;
+    slug: string;
+    type: 'personal' | 'team';
+    status: 'active';
+    source: 'local' | 'cloud_projection';
+  };
+  membership: {
+    uuid: string;
+    workspace_uuid: string;
+    account_uuid: string;
+    display_name: string;
+    email: string;
+    role: 'owner' | 'admin' | 'developer' | 'operator' | 'viewer';
+    status: 'active';
+    joined_at: string;
+    created_at: string;
+  };
+  permissions: string[];
+  placement_generation: number;
+}
+
+interface LangBotApiMockState {
+  authenticated: boolean;
+  withAssistant: boolean;
+  bots: BotMock[];
+  counters: Record<string, number>;
+  knowledgeBases: KnowledgeBaseMock[];
+  mcpServers: MCPServerMock[];
+  monitoringData: unknown;
+  monitoringSessions: unknown[];
+  pipelines: PipelineMock[];
+  sessionAnalyses: Record<string, unknown>;
+  sessionMessages: Record<string, unknown[]>;
+  skills: SkillMock[];
+  withAdapterEvents: boolean;
+  withRunnerToolSelector: boolean;
+  workspaces: WorkspaceEntryMock[];
+}
+
+function ok(data: unknown) {
+  return {
+    code: 0,
+    message: 'ok',
+    data,
+    timestamp: Date.now(),
+  };
+}
+
+async function fulfillJson(route: Route, data: unknown) {
+  await route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(ok(data)),
+  });
+}
+
+function routePath(route: Route) {
+  return new URL(route.request().url()).pathname;
+}
+
+function parseJsonBody(route: Route): JsonRecord {
+  return JSON.parse(route.request().postData() || '{}') as JsonRecord;
+}
+
+function now() {
+  return new Date().toISOString();
+}
+
+export function makeWorkspaceEntry(
+  uuid: string,
+  name: string,
+  source: 'local' | 'cloud_projection' = 'cloud_projection',
+): WorkspaceEntryMock {
+  const createdAt = now();
+  return {
+    workspace: {
+      uuid,
+      instance_uuid: 'instance-playwright',
+      name,
+      slug: uuid,
+      type: 'team',
+      status: 'active',
+      source,
+    },
+    membership: {
+      uuid: `membership-${uuid}`,
+      workspace_uuid: uuid,
+      account_uuid: 'account-playwright',
+      display_name: 'Playwright Admin',
+      email: 'admin@example.com',
+      role: 'owner',
+      status: 'active',
+      joined_at: createdAt,
+      created_at: createdAt,
+    },
+    permissions: [
+      'api_key.manage',
+      'audit.view',
+      'data.export',
+      'member.invite',
+      'member.remove',
+      'member.update_role',
+      'member.view',
+      'provider_secret.manage',
+      'resource.manage',
+      'resource.view',
+      'runtime.operate',
+      'workspace.view',
+    ],
+    placement_generation: 1,
+  };
+}
+
+function defaultWorkspaceEntry(): WorkspaceEntryMock {
+  return makeWorkspaceEntry(
+    'workspace-playwright',
+    'Playwright Workspace',
+    'local',
+  );
+}
+
+function nextId(state: LangBotApiMockState, prefix: string) {
+  state.counters[prefix] = (state.counters[prefix] || 0) + 1;
+  return `${prefix}-${state.counters[prefix]}`;
+}
+
+function emptyMonitoringData() {
+  return {
+    overview: {
+      total_messages: 0,
+      llm_calls: 0,
+      embedding_calls: 0,
+      model_calls: 0,
+      success_rate: 0,
+      active_sessions: 0,
+    },
+    messages: [],
+    llmCalls: [],
+    toolCalls: [],
+    embeddingCalls: [],
+    sessions: [],
+    errors: [],
+    totalCount: {
+      messages: 0,
+      llmCalls: 0,
+      toolCalls: 0,
+      embeddingCalls: 0,
+      sessions: 0,
+      errors: 0,
+    },
+  };
+}
+
+type RawMonitoringMessage = Record<string, unknown>;
+
+/** Mirror of the backend execution status groups so fixtures stay realistic. */
+function executionStatusGroup(status: string, source: 'agent' | 'pipeline') {
+  if (source === 'agent') {
+    if (status === 'failed' || status === 'timeout') return 'failed';
+    if (status === 'created' || status === 'queued') return 'queued';
+    if (status === 'claimed' || status === 'running') return 'running';
+    if (status === 'cancelled') return 'cancelled';
+    return status;
+  }
+  if (status === 'success') return 'completed';
+  if (status === 'error') return 'failed';
+  if (status === 'pending') return 'running';
+  if (status === 'discarded' || status === 'not_matched') return 'ignored';
+  return status;
+}
+
+/** Best-effort text extraction from a serialized message chain (mirrors backend). */
+function executionText(raw: unknown): string {
+  const source = String(raw ?? '');
+  try {
+    const parts: string[] = [];
+    const walk = (node: unknown, depth = 0): void => {
+      if (depth > 6) return;
+      if (Array.isArray(node)) {
+        node.forEach((item) => walk(item, depth + 1));
+      } else if (node && typeof node === 'object') {
+        for (const [key, value] of Object.entries(node)) {
+          if (key === 'text' && typeof value === 'string') parts.push(value);
+          else walk(value, depth + 1);
+        }
+      }
+    };
+    walk(JSON.parse(source));
+    return parts.join(' ').trim() || source;
+  } catch {
+    return source;
+  }
+}
+
+/** Derive the unified execution list from a mocked monitoring payload. */
+export function buildExecutionList(monitoringData: unknown) {
+  const payload = monitoringData as
+    { messages?: RawMonitoringMessage[] } | undefined;
+  const items = (payload?.messages ?? [])
+    .filter((message) => message.role !== 'assistant')
+    .map((message) => {
+      const status = String(message.status ?? 'success');
+      return {
+        source: 'pipeline' as const,
+        id: String(message.id),
+        event_id: null,
+        status,
+        status_group: executionStatusGroup(status, 'pipeline'),
+        title: executionText(message.message_content),
+        input_preview: executionText(message.message_content),
+        target_kind: 'pipeline' as const,
+        target_id: (message.pipeline_id as string) ?? null,
+        target_name: (message.pipeline_name as string) ?? null,
+        bot_id: (message.bot_id as string) ?? null,
+        bot_name: (message.bot_name as string) ?? null,
+        pipeline_id: (message.pipeline_id as string) ?? null,
+        pipeline_name: (message.pipeline_name as string) ?? null,
+        runner_id: (message.runner_name as string) ?? null,
+        conversation_id: null,
+        session_id: (message.session_id as string) ?? null,
+        created_at_ms: Date.parse(String(message.timestamp ?? '')) || null,
+        started_at_ms: null,
+        finished_at_ms: null,
+        duration_ms: null,
+        usage: null,
+        cost: null,
+        queue_name: null,
+        debug: false,
+        has_error: status === 'error',
+      };
+    });
+
+  const byStatus: Record<string, number> = {};
+  for (const item of items) {
+    byStatus[item.status_group] = (byStatus[item.status_group] ?? 0) + 1;
+  }
+  const completed = byStatus.completed ?? 0;
+  const failed = byStatus.failed ?? 0;
+  const denominator = completed + failed;
+
+  return {
+    items,
+    total: items.length,
+    limit: items.length,
+    offset: 0,
+    has_more: false,
+    summary: {
+      executions: {
+        total: items.length,
+        by_source: { agent: 0, pipeline: items.length },
+        by_status: byStatus,
+        completed,
+        failed,
+        running: byStatus.running ?? 0,
+        queued: byStatus.queued ?? 0,
+        cancelled: byStatus.cancelled ?? 0,
+        ignored: byStatus.ignored ?? 0,
+        waiting: 0,
+        success_rate:
+          denominator > 0
+            ? Math.round((completed / denominator) * 10000) / 100
+            : null,
+        denominator,
+        p50_duration_ms: null,
+        p95_duration_ms: null,
+        duration_sample: 0,
+        debug: 0,
+        real: items.length,
+      },
+      tokens: { total_tokens: 0, calls: 0, calls_with_usage: 0 },
+    },
+  };
+}
+
+function emptyTokenStatistics() {
+  return {
+    summary: {
+      total_calls: 0,
+      success_calls: 0,
+      error_calls: 0,
+      total_input_tokens: 0,
+      total_output_tokens: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      avg_tokens_per_call: 0,
+      avg_duration_ms: 0,
+      avg_tokens_per_second: 0,
+      zero_token_success_calls: 0,
+    },
+    by_model: [],
+    timeseries: [],
+    bucket: 'day',
+  };
+}
+
+function makeSkill(data: JsonRecord): SkillMock {
+  return {
+    name: String(data.name || ''),
+    display_name: String(data.display_name || ''),
+    description: String(data.description || ''),
+    instructions: String(data.instructions || ''),
+    package_root: String(data.package_root || ''),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function makePipeline(
+  state: LangBotApiMockState,
+  data: JsonRecord,
+  uuid = nextId(state, 'pipeline'),
+): PipelineMock {
+  const kind =
+    data.kind === 'agent' || uuid.startsWith('agent-') ? 'agent' : 'pipeline';
+  const runnerId = 'plugin:langbot-team/LocalAgent/default';
+  const runnerConfig = {
+    model: {
+      primary: 'llm-valid',
+      fallbacks: [],
+    },
+    'enable-all-tools': false,
+    tools: ['unavailable_plugin_tool'],
+  };
+  const defaultConfig =
+    kind === 'agent'
+      ? {
+          runner: { id: runnerId, 'expire-time': 0 },
+          runner_config: { [runnerId]: runnerConfig },
+        }
+      : {
+          ai: {
+            runner: { id: runnerId, 'expire-time': 0 },
+            runner_config: { [runnerId]: runnerConfig },
+          },
+          trigger: {},
+          safety: {},
+          output: {},
+        };
+  return {
+    uuid,
+    name: String(data.name || ''),
+    description: String(data.description || ''),
+    config: (data.config as JsonRecord | undefined) || defaultConfig,
+    emoji: String(data.emoji || '⚙️'),
+    kind,
+    is_default: false,
+    updated_at: now(),
+  };
+}
+
+export function pipelineMetadata(withRunnerToolSelector = false) {
+  const runnerId = 'plugin:langbot-team/LocalAgent/default';
+  return {
+    configs: [
+      {
+        name: 'ai',
+        label: {
+          en_US: 'AI Feature',
+          zh_Hans: 'AI 能力',
+        },
+        stages: [
+          {
+            name: 'runner',
+            label: {
+              en_US: 'Runtime',
+              zh_Hans: '运行方式',
+            },
+            config: [
+              {
+                name: 'id',
+                label: {
+                  en_US: 'Runner',
+                  zh_Hans: '运行器',
+                },
+                type: 'select',
+                required: true,
+                default: runnerId,
+                options: [
+                  {
+                    name: runnerId,
+                    label: {
+                      en_US: 'Local Agent',
+                      zh_Hans: '本地 Agent',
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            name: runnerId,
+            label: {
+              en_US: 'Local Agent',
+              zh_Hans: '本地 Agent',
+            },
+            config: [
+              {
+                id: 'model',
+                name: 'model',
+                label: {
+                  en_US: 'Model',
+                  zh_Hans: '模型',
+                },
+                type: 'model-fallback-selector',
+                required: true,
+                default: {
+                  primary: 'llm-valid',
+                  fallbacks: [],
+                },
+              },
+              ...(withRunnerToolSelector
+                ? [
+                    {
+                      id: 'plugin:langbot-team/LocalAgent/default.tools',
+                      name: 'tools',
+                      label: {
+                        en_US: 'Tools',
+                        zh_Hans: '工具',
+                      },
+                      type: 'rich-tools-selector',
+                      required: false,
+                      default: [],
+                    },
+                  ]
+                : []),
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function agentMetadata(withRunnerToolSelector = false) {
+  const metadata = pipelineMetadata(withRunnerToolSelector);
+  return {
+    runner_config: metadata.configs[0],
+    kinds: [
+      {
+        name: 'agent',
+        supported_event_patterns: ['*'],
+        message_only: false,
+      },
+      {
+        name: 'pipeline',
+        supported_event_patterns: ['message.*'],
+        message_only: true,
+      },
+    ],
+  };
+}
+
+function providerModelList() {
+  return {
+    models: [
+      {
+        uuid: '',
+        name: 'Broken Empty UUID Model',
+        provider_uuid: 'provider-empty',
+        provider: {
+          uuid: 'provider-empty',
+          name: 'Broken Provider',
+          requester: 'mock-provider',
+        },
+      },
+      {
+        uuid: 'llm-valid',
+        name: 'Valid Mock Model',
+        provider_uuid: 'provider-valid',
+        provider: {
+          uuid: 'provider-valid',
+          name: 'Mock Provider',
+          requester: 'mock-provider',
+        },
+        abilities: ['func_call'],
+      },
+    ],
+  };
+}
+
+function knowledgeEngine() {
+  return {
+    plugin_id: 'builtin/minimal-knowledge',
+    name: {
+      en_US: 'Minimal Knowledge Engine',
+      zh_Hans: '最小知识库引擎',
+    },
+    description: {
+      en_US: 'Minimal mocked engine for frontend smoke tests.',
+      zh_Hans: '用于前端冒烟测试的最小模拟引擎。',
+    },
+    capabilities: ['text_retrieval'],
+    creation_schema: [],
+    retrieval_schema: [],
+  };
+}
+
+function makeKnowledgeBase(
+  state: LangBotApiMockState,
+  data: JsonRecord,
+  uuid = nextId(state, 'knowledge'),
+): KnowledgeBaseMock {
+  const engine = knowledgeEngine();
+  return {
+    uuid,
+    name: String(data.name || ''),
+    description: String(data.description || ''),
+    emoji: String(data.emoji || '📚'),
+    knowledge_engine_plugin_id: String(
+      data.knowledge_engine_plugin_id || engine.plugin_id,
+    ),
+    creation_settings: (data.creation_settings as JsonRecord | undefined) || {},
+    retrieval_settings:
+      (data.retrieval_settings as JsonRecord | undefined) || {},
+    initialized:
+      data.initialized === false || data.defer_initialization === true
+        ? false
+        : true,
+    knowledge_engine: {
+      plugin_id: engine.plugin_id,
+      name: engine.name,
+      capabilities: engine.capabilities,
+    },
+    updated_at: now(),
+  };
+}
+
+function makeMCPServer(data: JsonRecord): MCPServerMock {
+  return {
+    name: String(data.name || ''),
+    mode: (data.mode as MCPServerMock['mode']) || 'sse',
+    enable: data.enable !== false,
+    extra_args: (data.extra_args as JsonRecord | undefined) || {},
+    runtime_info: {
+      status: 'connected',
+      tool_count: 0,
+      tools: [],
+    },
+    readme: '',
+    updated_at: now(),
+  };
+}
+
+function makeBot(
+  state: LangBotApiMockState,
+  data: JsonRecord,
+  uuid = nextId(state, 'bot'),
+): BotMock {
+  return {
+    uuid,
+    name: String(data.name || ''),
+    description: String(data.description || ''),
+    enable: data.enable !== false,
+    adapter: String(data.adapter || 'playwright-adapter'),
+    adapter_config: (data.adapter_config as JsonRecord | undefined) || {},
+    use_pipeline_uuid: data.use_pipeline_uuid
+      ? String(data.use_pipeline_uuid)
+      : undefined,
+    event_bindings: (data.event_bindings as unknown[] | undefined) || [],
+    plugin_processors: (data.plugin_processors as unknown[] | undefined) || [],
+    pipeline_routing_rules:
+      (data.pipeline_routing_rules as unknown[] | undefined) || [],
+    adapter_runtime_values: {
+      webhook_full_url: `https://playwright.test/bots/${uuid}/webhook`,
+      extra_webhook_full_url: '',
+    },
+    updated_at: now(),
+  };
+}
+
+function mockAdapters(withAdapterEvents = false) {
+  return [
+    {
+      name: 'playwright-adapter',
+      label: {
+        en_US: 'Playwright Adapter',
+        zh_Hans: 'Playwright 适配器',
+      },
+      description: {
+        en_US: 'Minimal adapter for frontend E2E tests.',
+        zh_Hans: '用于前端 E2E 测试的最小适配器。',
+      },
+      spec: {
+        categories: ['testing'],
+        ...(withAdapterEvents
+          ? {
+              supported_events: [
+                'message.received',
+                'message.edited',
+                'group.member_joined',
+                'group.member_left',
+                'feedback.received',
+              ],
+            }
+          : {}),
+        config: [],
+      },
+    },
+  ];
+}
+
+async function handleBackendApi(route: Route, state: LangBotApiMockState) {
+  const request = route.request();
+  const url = new URL(request.url());
+  const path = url.pathname;
+  const method = request.method();
+
+  if (path === '/api/v1/system/info') {
+    return fulfillJson(route, {
+      debug: false,
+      version: 'frontend-smoke',
+      edition: 'community',
+      cloud_service_url: 'https://space.langbot.app',
+      enable_marketplace: true,
+      allow_modify_login_info: true,
+      disable_models_service: false,
+      limitation: {
+        max_bots: -1,
+        max_pipelines: -1,
+        max_extensions: -1,
+      },
+      outbound_ips: [],
+      wizard_status: 'completed',
+      wizard_progress: null,
+    });
+  }
+
+  if (path === '/api/v1/user/account-info') {
+    return fulfillJson(route, {
+      initialized: true,
+      authenticated_invitation_acceptance_enabled: false,
+      invitation_registration_enabled: true,
+      password_login_enabled: true,
+      space_login_enabled: false,
+    });
+  }
+
+  if (path === '/api/v1/user/check-token') {
+    return fulfillJson(route, {
+      token: state.authenticated ? 'playwright-token' : '',
+    });
+  }
+
+  if (path === '/api/v1/user/auth') {
+    state.authenticated = true;
+    return fulfillJson(route, { token: 'playwright-token' });
+  }
+
+  if (path === '/api/v1/user/space/callback') {
+    state.authenticated = true;
+    return fulfillJson(route, {
+      token: 'playwright-space-token',
+      user: 'admin@example.com',
+    });
+  }
+
+  if (path === '/api/v1/user/info') {
+    return fulfillJson(route, {
+      // Most tests exercise an unlinked local user. Assistant tests opt into
+      // an account identity and mock its additional provider/conversation APIs.
+      account_uuid: state.withAssistant ? 'account-playwright' : null,
+      user: 'admin@example.com',
+      account_type: 'local',
+      has_password: true,
+    });
+  }
+
+  if (path === '/api/v1/user/space-credits') {
+    return fulfillJson(route, { credits: null });
+  }
+
+  if (path === '/api/v1/workspaces/bootstrap') {
+    return fulfillJson(route, { workspaces: state.workspaces });
+  }
+
+  if (path === '/api/v1/workspaces/current/sandbox') {
+    return fulfillJson(route, {
+      backend: null,
+      effective_backend: 'docker',
+      enabled: true,
+      backends: [
+        { name: 'docker', available: true, reason: null },
+        { name: 'e2b', available: false, reason: 'environment_unavailable' },
+        { name: 'nsjail', available: false, reason: 'environment_unavailable' },
+      ],
+    });
+  }
+
+  if (path === '/api/v1/workspaces/current/language') {
+    return fulfillJson(route, {
+      language: 'en_US',
+      supported_languages: [
+        'en_US',
+        'zh_Hans',
+        'zh_Hant',
+        'ja_JP',
+        'es_ES',
+        'ru_RU',
+        'th_TH',
+        'vi_VN',
+      ],
+    });
+  }
+
+  if (path === '/api/v1/workspaces/current') {
+    const selectedWorkspaceUuid = request.headers()['x-workspace-id'];
+    const entry = state.workspaces.find(
+      (item) => item.workspace.uuid === selectedWorkspaceUuid,
+    );
+    return fulfillJson(route, entry || state.workspaces[0]);
+  }
+
+  if (path === '/api/v1/workspaces') {
+    return fulfillJson(route, {
+      workspaces: state.workspaces.map((entry) => entry.workspace),
+    });
+  }
+
+  if (path === '/api/v1/platform/adapters') {
+    return fulfillJson(route, {
+      adapters: mockAdapters(state.withAdapterEvents),
+    });
+  }
+
+  if (path === '/api/v1/platform/bots') {
+    if (method === 'POST') {
+      const bot = makeBot(state, parseJsonBody(route));
+      state.bots = [
+        ...state.bots.filter((item) => item.uuid !== bot.uuid),
+        bot,
+      ];
+      return fulfillJson(route, { uuid: bot.uuid });
+    }
+
+    return fulfillJson(route, { bots: state.bots });
+  }
+
+  const botLogsMatch = path.match(/^\/api\/v1\/platform\/bots\/([^/]+)\/logs$/);
+  if (botLogsMatch) {
+    return fulfillJson(route, { logs: [], total_count: 0 });
+  }
+
+  const botMatch = path.match(/^\/api\/v1\/platform\/bots\/([^/]+)$/);
+  if (botMatch) {
+    const botId = decodeURIComponent(botMatch[1]);
+
+    if (method === 'PUT') {
+      const current = state.bots.find((item) => item.uuid === botId);
+      const bot = makeBot(
+        state,
+        { ...(current || {}), ...parseJsonBody(route) },
+        botId,
+      );
+      state.bots = [...state.bots.filter((item) => item.uuid !== botId), bot];
+      return fulfillJson(route, {});
+    }
+
+    if (method === 'DELETE') {
+      state.bots = state.bots.filter((item) => item.uuid !== botId);
+      return fulfillJson(route, {});
+    }
+
+    const bot = state.bots.find((item) => item.uuid === botId);
+    return fulfillJson(route, {
+      bot: bot || makeBot(state, { name: botId }, botId),
+    });
+  }
+
+  if (path === '/api/v1/provider/models/llm') {
+    return fulfillJson(route, providerModelList());
+  }
+
+  if (path === '/api/v1/provider/models/embedding') {
+    return fulfillJson(route, { models: [] });
+  }
+
+  if (path === '/api/v1/provider/models/rerank') {
+    return fulfillJson(route, { models: [] });
+  }
+
+  if (path === '/api/v1/tools') {
+    return fulfillJson(route, {
+      tools: [
+        {
+          name: 'available_plugin_tool',
+          human_desc: 'Available plugin tool for frontend E2E tests.',
+          source: 'plugin',
+          source_id: 'qa/plugin-smoke',
+          source_name: 'qa/plugin-smoke',
+        },
+      ],
+    });
+  }
+
+  if (path === '/api/v1/agents/_/metadata') {
+    return fulfillJson(route, agentMetadata(true));
+  }
+
+  if (path === '/api/v1/agents') {
+    if (method === 'POST') {
+      const agent = makePipeline(state, parseJsonBody(route));
+      state.pipelines = [
+        ...state.pipelines.filter((item) => item.uuid !== agent.uuid),
+        agent,
+      ];
+      return fulfillJson(route, { uuid: agent.uuid, kind: agent.kind });
+    }
+
+    return fulfillJson(route, { agents: state.pipelines });
+  }
+
+  const agentDebugMatch = path.match(
+    /^\/api\/v1\/agents\/([^/]+)\/debug(?:\/stream)?$/,
+  );
+  if (agentDebugMatch) {
+    const payload = parseJsonBody(route);
+    const result = {
+      event_id: nextId(state, 'event'),
+      event_type: String(payload.event_type || 'message.received'),
+      conversation_id: String(payload.conversation_id || 'debug-session'),
+      final_text: 'Mock Agent response',
+      outputs: [
+        {
+          kind: 'message',
+          role: 'assistant',
+          text: 'Mock Agent response',
+        },
+      ],
+    };
+    if (path.endsWith('/stream')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/x-ndjson',
+        body: JSON.stringify({ kind: 'completed', data: result }) + '\n',
+      });
+    }
+    return fulfillJson(route, result);
+  }
+
+  const agentMatch = path.match(/^\/api\/v1\/agents\/([^/]+)$/);
+  if (agentMatch) {
+    const agentId = decodeURIComponent(agentMatch[1]);
+
+    if (method === 'PUT') {
+      const current = state.pipelines.find((item) => item.uuid === agentId);
+      const agent = makePipeline(
+        state,
+        { ...(current || {}), ...parseJsonBody(route) },
+        agentId,
+      );
+      state.pipelines = [
+        ...state.pipelines.filter((item) => item.uuid !== agentId),
+        agent,
+      ];
+      return fulfillJson(route, {});
+    }
+
+    if (method === 'DELETE') {
+      state.pipelines = state.pipelines.filter((item) => item.uuid !== agentId);
+      return fulfillJson(route, {});
+    }
+
+    const agent = state.pipelines.find((item) => item.uuid === agentId);
+    return fulfillJson(route, {
+      agent:
+        agent ||
+        makePipeline(
+          state,
+          {
+            name: agentId,
+            kind: agentId.startsWith('agent-') ? 'agent' : 'pipeline',
+          },
+          agentId,
+        ),
+    });
+  }
+
+  if (path === '/api/v1/pipelines/_/metadata') {
+    return fulfillJson(route, pipelineMetadata(state.withRunnerToolSelector));
+  }
+
+  if (path === '/api/v1/pipelines') {
+    if (method === 'POST') {
+      const pipeline = makePipeline(state, parseJsonBody(route));
+      state.pipelines = [
+        ...state.pipelines.filter((item) => item.uuid !== pipeline.uuid),
+        pipeline,
+      ];
+      return fulfillJson(route, { uuid: pipeline.uuid });
+    }
+
+    return fulfillJson(route, { pipelines: state.pipelines });
+  }
+
+  if (
+    /^\/api\/v1\/pipelines\/[^/]+\/ws\/messages\/(person|group)$/.test(path)
+  ) {
+    return fulfillJson(route, { messages: [] });
+  }
+
+  if (/^\/api\/v1\/pipelines\/[^/]+\/ws\/reset\/(person|group)$/.test(path)) {
+    return fulfillJson(route, { message: 'reset' });
+  }
+
+  const pipelineMatch = path.match(/^\/api\/v1\/pipelines\/([^/]+)$/);
+  if (pipelineMatch) {
+    const pipelineId = decodeURIComponent(pipelineMatch[1]);
+
+    if (method === 'PUT') {
+      const current = state.pipelines.find((item) => item.uuid === pipelineId);
+      const pipeline = makePipeline(
+        state,
+        { ...(current || {}), ...parseJsonBody(route) },
+        pipelineId,
+      );
+      state.pipelines = [
+        ...state.pipelines.filter((item) => item.uuid !== pipelineId),
+        pipeline,
+      ];
+      return fulfillJson(route, {});
+    }
+
+    if (method === 'DELETE') {
+      state.pipelines = state.pipelines.filter(
+        (item) => item.uuid !== pipelineId,
+      );
+      return fulfillJson(route, {});
+    }
+
+    const pipeline = state.pipelines.find((item) => item.uuid === pipelineId);
+    return fulfillJson(route, {
+      pipeline:
+        pipeline || makePipeline(state, { name: pipelineId }, pipelineId),
+    });
+  }
+
+  const pipelineExtensionsMatch = path.match(
+    /^\/api\/v1\/pipelines\/([^/]+)\/extensions$/,
+  );
+  if (pipelineExtensionsMatch) {
+    return fulfillJson(route, {
+      enable_all_plugins: true,
+      enable_all_mcp_servers: true,
+      enable_all_skills: true,
+      bound_plugins: [],
+      available_plugins: [],
+      bound_mcp_servers: [],
+      available_mcp_servers: state.mcpServers,
+      bound_skills: [],
+      available_skills: state.skills,
+    });
+  }
+
+  if (path === '/api/v1/knowledge/bases') {
+    if (method === 'POST') {
+      const base = makeKnowledgeBase(state, parseJsonBody(route));
+      state.knowledgeBases = [
+        ...state.knowledgeBases.filter((item) => item.uuid !== base.uuid),
+        base,
+      ];
+      return fulfillJson(route, { uuid: base.uuid });
+    }
+
+    return fulfillJson(route, { bases: state.knowledgeBases });
+  }
+
+  const knowledgeBaseFilesMatch = path.match(
+    /^\/api\/v1\/knowledge\/bases\/([^/]+)\/files$/,
+  );
+  if (knowledgeBaseFilesMatch) {
+    return fulfillJson(route, { files: [] });
+  }
+
+  const knowledgeBaseMatch = path.match(
+    /^\/api\/v1\/knowledge\/bases\/([^/]+)$/,
+  );
+  if (knowledgeBaseMatch) {
+    const baseId = decodeURIComponent(knowledgeBaseMatch[1]);
+
+    if (method === 'PUT') {
+      const current = state.knowledgeBases.find((item) => item.uuid === baseId);
+      const payload = parseJsonBody(route);
+      const base = makeKnowledgeBase(
+        state,
+        {
+          ...(current || {}),
+          ...payload,
+          initialized:
+            payload.initialize_engine === true ? true : current?.initialized,
+        },
+        baseId,
+      );
+      state.knowledgeBases = [
+        ...state.knowledgeBases.filter((item) => item.uuid !== baseId),
+        base,
+      ];
+      return fulfillJson(route, { uuid: base.uuid });
+    }
+
+    if (method === 'DELETE') {
+      state.knowledgeBases = state.knowledgeBases.filter(
+        (item) => item.uuid !== baseId,
+      );
+      return fulfillJson(route, {});
+    }
+
+    const base = state.knowledgeBases.find((item) => item.uuid === baseId);
+    return fulfillJson(route, {
+      base: base || makeKnowledgeBase(state, { name: baseId }, baseId),
+    });
+  }
+
+  if (path === '/api/v1/knowledge/engines') {
+    return fulfillJson(route, { engines: [knowledgeEngine()] });
+  }
+
+  if (path === '/api/v1/knowledge/migration/status') {
+    return fulfillJson(route, {
+      needed: false,
+      internal_kb_count: 0,
+      external_kb_count: 0,
+    });
+  }
+
+  if (path === '/api/v1/plugins') {
+    return fulfillJson(route, { plugins: [] });
+  }
+
+  if (path === '/api/v1/extensions') {
+    return fulfillJson(route, { extensions: [] });
+  }
+
+  if (path === '/api/v1/mcp/servers') {
+    if (method === 'POST') {
+      const server = makeMCPServer(parseJsonBody(route));
+      state.mcpServers = [
+        ...state.mcpServers.filter((item) => item.name !== server.name),
+        server,
+      ];
+      return fulfillJson(route, { task_id: nextId(state, 'task') });
+    }
+
+    return fulfillJson(route, { servers: state.mcpServers });
+  }
+
+  const mcpTestMatch = path.match(/^\/api\/v1\/mcp\/servers\/([^/]+)\/test$/);
+  if (mcpTestMatch) {
+    return fulfillJson(route, {
+      runtime_info: {
+        status: 'connected',
+        tool_count: 0,
+        tools: [],
+      },
+    });
+  }
+
+  const mcpServerMatch = path.match(/^\/api\/v1\/mcp\/servers\/([^/]+)$/);
+  if (mcpServerMatch) {
+    const serverName = decodeURIComponent(mcpServerMatch[1]);
+
+    if (method === 'PUT') {
+      const existing = state.mcpServers.find(
+        (item) => item.name === serverName,
+      );
+      const server = makeMCPServer({
+        ...(existing || {}),
+        ...parseJsonBody(route),
+        name: serverName,
+      });
+      state.mcpServers = [
+        ...state.mcpServers.filter((item) => item.name !== serverName),
+        server,
+      ];
+      return fulfillJson(route, { task_id: nextId(state, 'task') });
+    }
+
+    if (method === 'DELETE') {
+      state.mcpServers = state.mcpServers.filter(
+        (item) => item.name !== serverName,
+      );
+      return fulfillJson(route, { task_id: nextId(state, 'task') });
+    }
+
+    const server = state.mcpServers.find((item) => item.name === serverName);
+    return fulfillJson(route, {
+      server: server || makeMCPServer({ name: serverName }),
+    });
+  }
+
+  if (path === '/api/v1/skills') {
+    if (method === 'POST') {
+      const skill = makeSkill(
+        JSON.parse(request.postData() || '{}') as JsonRecord,
+      );
+      state.skills = [
+        ...state.skills.filter((item) => item.name !== skill.name),
+        skill,
+      ];
+      return fulfillJson(route, { skill });
+    }
+
+    return fulfillJson(route, { skills: state.skills });
+  }
+
+  const skillFileMatch = path.match(
+    /^\/api\/v1\/skills\/([^/]+)\/files\/(.+)$/,
+  );
+  if (skillFileMatch) {
+    const skillName = decodeURIComponent(skillFileMatch[1]);
+    const filePath = decodeURIComponent(skillFileMatch[2]);
+    const skill = state.skills.find((item) => item.name === skillName);
+    return fulfillJson(route, {
+      skill: { name: skillName },
+      path: filePath,
+      content: skill?.instructions || '',
+    });
+  }
+
+  const skillFilesMatch = path.match(/^\/api\/v1\/skills\/([^/]+)\/files$/);
+  if (skillFilesMatch) {
+    const skillName = decodeURIComponent(skillFilesMatch[1]);
+    return fulfillJson(route, {
+      skill: { name: skillName },
+      base_path: '.',
+      entries: [
+        {
+          path: 'SKILL.md',
+          name: 'SKILL.md',
+          is_dir: false,
+          size: null,
+        },
+      ],
+      truncated: false,
+    });
+  }
+
+  const skillMatch = path.match(/^\/api\/v1\/skills\/([^/]+)$/);
+  if (skillMatch) {
+    const skillName = decodeURIComponent(skillMatch[1]);
+    if (method === 'PUT') {
+      const skill = makeSkill({
+        ...parseJsonBody(route),
+        name: skillName,
+      });
+      state.skills = [
+        ...state.skills.filter((item) => item.name !== skillName),
+        skill,
+      ];
+      return fulfillJson(route, { skill });
+    }
+
+    if (method === 'DELETE') {
+      state.skills = state.skills.filter((item) => item.name !== skillName);
+      return fulfillJson(route, {});
+    }
+
+    const skill = state.skills.find((item) => item.name === skillName) || {
+      name: skillName,
+      display_name: '',
+      description: '',
+      instructions: '',
+      package_root: '',
+      updated_at: new Date().toISOString(),
+    };
+    return fulfillJson(route, { skill });
+  }
+
+  if (path === '/api/v1/system/status/plugin-system') {
+    return fulfillJson(route, {
+      is_enable: true,
+      is_connected: true,
+      plugin_connector_error: '',
+    });
+  }
+
+  if (path === '/api/v1/plugins/debug-info') {
+    return fulfillJson(route, {
+      debug_url: 'ws://127.0.0.1:5300/plugin/debug',
+      plugin_debug_key: 'test-debug-key',
+    });
+  }
+
+  if (path === '/api/v1/box/status') {
+    return fulfillJson(route, {
+      available: true,
+      enabled: true,
+      profile: 'playwright',
+      recent_error_count: 0,
+      active_sessions: 0,
+      managed_processes: 0,
+      session_ttl_sec: 3600,
+      backend: {
+        name: 'playwright',
+        available: true,
+      },
+    });
+  }
+
+  if (path === '/api/v1/box/sessions') {
+    return fulfillJson(route, []);
+  }
+
+  if (path === '/api/v1/monitoring/data') {
+    return fulfillJson(route, state.monitoringData);
+  }
+
+  if (path === '/api/v1/monitoring/sessions') {
+    return fulfillJson(route, {
+      sessions: state.monitoringSessions,
+      total: state.monitoringSessions.length,
+    });
+  }
+
+  if (path === '/api/v1/monitoring/messages') {
+    const sessionId = url.searchParams.get('sessionId') || '';
+    const messages = state.sessionMessages[sessionId] || [];
+    return fulfillJson(route, {
+      messages,
+      total: messages.length,
+    });
+  }
+
+  const sessionAnalysisMatch = path.match(
+    /^\/api\/v1\/monitoring\/sessions\/([^/]+)\/analysis$/,
+  );
+  if (sessionAnalysisMatch) {
+    const sessionId = decodeURIComponent(sessionAnalysisMatch[1]);
+    return fulfillJson(
+      route,
+      state.sessionAnalyses[sessionId] || {
+        session_id: sessionId,
+        found: true,
+        tool_calls: [],
+      },
+    );
+  }
+
+  if (path === '/api/v1/monitoring/overview') {
+    const data = state.monitoringData as { overview?: unknown };
+    return fulfillJson(route, data.overview || emptyMonitoringData().overview);
+  }
+
+  if (path === '/api/v1/monitoring/executions') {
+    return fulfillJson(route, buildExecutionList(state.monitoringData));
+  }
+
+  const executionDetail = path.match(
+    /^\/api\/v1\/monitoring\/executions\/(agent|pipeline|event|auto)\/(.+)$/,
+  );
+  if (executionDetail) {
+    const [, , executionId] = executionDetail;
+    const payload = state.monitoringData as {
+      messages?: RawMonitoringMessage[];
+      llmCalls?: RawMonitoringMessage[];
+      toolCalls?: RawMonitoringMessage[];
+      errors?: RawMonitoringMessage[];
+    };
+    const row = buildExecutionList(payload).items.find(
+      (item) => item.id === executionId,
+    );
+    if (!row)
+      return route.fulfill({
+        status: 404,
+        json: { code: 404, msg: 'Execution not found' },
+      });
+    const root = (payload.messages ?? []).find(
+      (item) => item.id === executionId,
+    )!;
+    const content = (item: RawMonitoringMessage) => ({
+      ...item,
+      content: item.message_content,
+      timestamp_ms: Date.parse(String(item.timestamp)),
+      origin: item.role === 'assistant' ? 'delivery' : 'input',
+    });
+    const pages = Object.fromEntries(
+      Object.entries({
+        inputs: [content(root)],
+        outputs: [],
+        deliveries: (payload.messages ?? [])
+          .filter((item) => item.parent_message_id === executionId)
+          .map(content),
+        conversation: (payload.messages ?? [])
+          .filter(
+            (item) =>
+              item.session_id === root.session_id &&
+              item.bot_id === root.bot_id,
+          )
+          .map(content),
+        related: [],
+        events: [],
+        llm_calls: (payload.llmCalls ?? []).filter(
+          (item) => item.message_id === executionId,
+        ),
+        tool_calls: (payload.toolCalls ?? []).filter(
+          (item) => item.message_id === executionId,
+        ),
+        errors: (payload.errors ?? []).filter(
+          (item) => item.message_id === executionId,
+        ),
+      }).map(([key, items]) => [
+        key,
+        { items, next_offset: items.length, has_more: false },
+      ]),
+    );
+    return fulfillJson(route, {
+      source: row.source,
+      row,
+      pages,
+      legacy_context: true,
+    });
+  }
+
+  if (path === '/api/v1/monitoring/token-statistics') {
+    return fulfillJson(route, emptyTokenStatistics());
+  }
+
+  if (path === '/api/v1/monitoring/feedback/stats') {
+    return fulfillJson(route, {
+      total_feedback: 0,
+      total_likes: 0,
+      total_dislikes: 0,
+      satisfaction_rate: 0,
+    });
+  }
+
+  if (path === '/api/v1/monitoring/feedback') {
+    return fulfillJson(route, { feedback: [], total: 0 });
+  }
+
+  if (path === '/api/v1/survey/pending') {
+    return fulfillJson(route, { survey: null });
+  }
+
+  if (path === '/api/v1/system/tasks') {
+    return fulfillJson(route, { tasks: [] });
+  }
+
+  if (
+    path === '/api/v1/marketplace/plugins' ||
+    path === '/api/v1/marketplace/plugins/search' ||
+    path === '/api/v1/marketplace/extensions/search' ||
+    path === '/api/v1/marketplace/mcps/search' ||
+    path === '/api/v1/marketplace/skills/search'
+  ) {
+    return fulfillJson(route, { plugins: [], total: 0 });
+  }
+
+  if (path === '/api/v1/marketplace/tags') {
+    return fulfillJson(route, { tags: [] });
+  }
+
+  if (path === '/api/v1/marketplace/recommendation-lists') {
+    return fulfillJson(route, { lists: [] });
+  }
+
+  if (path === '/api/v1/dist/info/releases') {
+    return fulfillJson(route, []);
+  }
+
+  if (path === '/api/v1/dist/info/repo') {
+    return fulfillJson(route, {
+      repo: {
+        stargazers_count: 0,
+        forks_count: 0,
+        open_issues_count: 0,
+      },
+      contributors: [],
+    });
+  }
+
+  await fulfillJson(route, {});
+}
+
+async function handleCloudApi(route: Route) {
+  const path = routePath(route);
+
+  if (
+    path === '/api/v1/marketplace/plugins' ||
+    path === '/api/v1/marketplace/plugins/search' ||
+    path === '/api/v1/marketplace/extensions/search' ||
+    path === '/api/v1/marketplace/mcps/search' ||
+    path === '/api/v1/marketplace/skills/search'
+  ) {
+    return fulfillJson(route, { plugins: [], total: 0 });
+  }
+
+  if (path === '/api/v1/marketplace/tags') {
+    return fulfillJson(route, { tags: [] });
+  }
+
+  if (path === '/api/v1/marketplace/recommendation-lists') {
+    return fulfillJson(route, { lists: [] });
+  }
+
+  if (path === '/api/v1/dist/info/releases') {
+    return fulfillJson(route, []);
+  }
+
+  if (path === '/api/v1/dist/info/repo') {
+    return fulfillJson(route, {
+      repo: {
+        stargazers_count: 0,
+        forks_count: 0,
+        open_issues_count: 0,
+      },
+      contributors: [],
+    });
+  }
+
+  await fulfillJson(route, {});
+}
+
+export async function installLangBotApiMocks(
+  page: Page,
+  options: {
+    authenticated?: boolean;
+    withAssistant?: boolean;
+    language?: string;
+    monitoringData?: unknown;
+    monitoringSessions?: unknown[];
+    sessionAnalyses?: Record<string, unknown>;
+    sessionMessages?: Record<string, unknown[]>;
+    storage?: JsonRecord;
+    withAdapterEvents?: boolean;
+    withRunnerToolSelector?: boolean;
+    workspaces?: WorkspaceEntryMock[];
+  } = {},
+) {
+  const {
+    authenticated = false,
+    withAssistant = false,
+    language = 'en-US',
+    monitoringData,
+    monitoringSessions,
+    sessionAnalyses,
+    sessionMessages,
+    storage = {},
+    withAdapterEvents = false,
+    withRunnerToolSelector = false,
+    workspaces = [defaultWorkspaceEntry()],
+  } = options;
+  const state: LangBotApiMockState = {
+    authenticated,
+    withAssistant,
+    bots: [],
+    counters: {},
+    knowledgeBases: [],
+    mcpServers: [],
+    monitoringData: monitoringData || emptyMonitoringData(),
+    monitoringSessions: monitoringSessions || [],
+    pipelines: [],
+    sessionAnalyses: sessionAnalyses || {},
+    sessionMessages: sessionMessages || {},
+    skills: [],
+    withAdapterEvents,
+    withRunnerToolSelector,
+    workspaces,
+  };
+
+  await page.addInitScript(
+    ({ authenticated, language, storage }) => {
+      localStorage.setItem('langbot_language', language);
+      localStorage.setItem('extensions_group_by_type', 'false');
+      if (!Object.hasOwn(storage, 'langbot_sidebar_guide_v1')) {
+        localStorage.setItem('langbot_sidebar_guide_v1', 'completed');
+      }
+      const contextualGuides = [
+        'langbot_bot_detail_guide_v1',
+        'langbot_runner_setup_guide_v1',
+        'langbot_knowledge_detail_guide_v1',
+        'langbot_pipeline_setup_guide_v1',
+        'langbot_plugin_processor_setup_guide_v1',
+      ];
+      for (const guideKey of contextualGuides) {
+        if (!Object.hasOwn(storage, guideKey)) {
+          localStorage.setItem(guideKey, 'completed');
+        }
+      }
+
+      if (authenticated) {
+        localStorage.setItem('token', 'playwright-token');
+        localStorage.setItem('userEmail', 'admin@example.com');
+      } else {
+        localStorage.removeItem('token');
+        localStorage.removeItem('userEmail');
+      }
+
+      for (const [key, value] of Object.entries(storage)) {
+        localStorage.setItem(key, String(value));
+      }
+    },
+    { authenticated, language, storage },
+  );
+
+  await page.route('**/api/v1/**', (route) => handleBackendApi(route, state));
+  await page.route('https://space.langbot.app/**', handleCloudApi);
+}

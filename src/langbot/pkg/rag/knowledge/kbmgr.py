@@ -1,0 +1,1243 @@
+from __future__ import annotations
+import asyncio
+import io
+import inspect
+import mimetypes
+import os.path
+import traceback
+import uuid
+import zipfile
+from typing import Any
+
+import sqlalchemy
+from langbot_plugin.api.entities.builtin.rag import context as rag_context
+
+from langbot.pkg.api.http.authz import WorkspaceRequiredError
+from langbot.pkg.api.http.context import ExecutionContext, RequestContext
+from langbot.pkg.api.http.service.tenant import TenantContext, require_workspace_uuid
+from langbot.pkg.core import app, taskmgr
+from langbot.pkg.core.task_boundary import run_in_workspace_uow
+from langbot.pkg.entity.persistence import rag as persistence_rag
+from langbot.pkg.i18n import t
+from langbot.pkg.workspace.errors import WorkspaceInvariantError, WorkspaceNotFoundError
+from langbot.pkg.telemetry import usage
+
+from .base import KnowledgeBaseInterface
+
+
+_MAX_ZIP_ARCHIVE_ENTRIES = 1024
+_MAX_ZIP_DOCUMENTS = 8
+_MAX_ZIP_FILE_BYTES = 10 * 1024 * 1024
+_MAX_ZIP_UNCOMPRESSED_BYTES = 40 * 1024 * 1024
+_MAX_ZIP_COMPRESSION_RATIO = 100
+
+
+class RuntimeKnowledgeBase(KnowledgeBaseInterface):
+    ap: app.Application
+
+    knowledge_base_entity: persistence_rag.KnowledgeBase
+
+    def __init__(
+        self,
+        ap: app.Application,
+        knowledge_base_entity: persistence_rag.KnowledgeBase,
+        execution_context: ExecutionContext,
+    ):
+        super().__init__(ap)
+        self.knowledge_base_entity = knowledge_base_entity
+        self.execution_context = execution_context
+        # Shared across KB object reloads, but deliberately not a remote-work fence.
+        self._ingestion_tasks = ap.__dict__.setdefault('_knowledge_ingestion_tasks', {})
+        locks = ap.__dict__.setdefault('_knowledge_ingestion_locks', {})
+        self.ingestion_admission_lock = locks.setdefault(
+            (execution_context.workspace_uuid, self.get_uuid()), asyncio.Lock()
+        )
+
+    async def initialize(self):
+        await self.reconcile_interrupted_ingestions(self.execution_context)
+
+    async def reconcile_interrupted_ingestions(self, execution_context: ExecutionContext) -> None:
+        """Persist loss of Host observation, never infer remote quiescence.
+
+        A restarted Host cannot observe the old SDK request's outcome. Retain its
+        row, upload and identity for operator reconciliation; do not retry/delete.
+        The shared admission lock protects newly queued tasks during KB reloads.
+        """
+        async with self.ingestion_admission_lock:
+            live_ids = [
+                key[2]
+                for key, task in self._ingestion_tasks.items()
+                if key[:2] == (execution_context.workspace_uuid, self.get_uuid()) and not task.done()
+            ]
+
+            async def reconcile():
+                await self._assert_execution_context(execution_context)
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.update(persistence_rag.File)
+                    .where(persistence_rag.File.workspace_uuid == execution_context.workspace_uuid)
+                    .where(persistence_rag.File.kb_id == self.get_uuid())
+                    .where(persistence_rag.File.status.in_(['pending', 'processing']))
+                    .where(persistence_rag.File.uuid.not_in(live_ids))
+                    .values(status='interrupted')
+                )
+
+            await run_in_workspace_uow(self.ap, execution_context.workspace_uuid, reconcile)
+
+    async def _assert_execution_context(self, execution_context: ExecutionContext) -> None:
+        """Reject stale or cross-Workspace runtime access."""
+
+        if not isinstance(execution_context, ExecutionContext):
+            raise WorkspaceRequiredError('ExecutionContext is required for knowledge runtime access')
+        if (
+            execution_context.instance_uuid != self.execution_context.instance_uuid
+            or execution_context.workspace_uuid != self.execution_context.workspace_uuid
+            or execution_context.placement_generation != self.execution_context.placement_generation
+        ):
+            raise WorkspaceNotFoundError('Knowledge base not found')
+        if self.knowledge_base_entity.workspace_uuid != execution_context.workspace_uuid:
+            raise WorkspaceNotFoundError('Knowledge base not found')
+        binding = await self.ap.workspace_service.get_execution_binding(
+            execution_context.workspace_uuid,
+            expected_generation=execution_context.placement_generation,
+        )
+        if binding.instance_uuid != execution_context.instance_uuid:
+            raise WorkspaceNotFoundError('Knowledge base not found')
+
+    async def _require_plugin_runtime_context(
+        self,
+        execution_context: ExecutionContext,
+    ) -> ExecutionContext:
+        """Fence every singleton Plugin Runtime call to this runtime KB."""
+
+        await self._assert_execution_context(execution_context)
+        return await self.ap.plugin_connector.require_workspace_context(execution_context)
+
+    def _require_upload_object_key(
+        self,
+        execution_context: ExecutionContext,
+        object_key: str,
+    ) -> None:
+        """Reject raw, cross-Workspace, stale, or non-upload object keys."""
+
+        try:
+            self.ap.storage_mgr.require_scoped_object_key(
+                execution_context,
+                object_key,
+                expected_owner_type='upload_document',
+            )
+        except (WorkspaceRequiredError, ValueError) as exc:
+            raise WorkspaceNotFoundError('Upload not found') from exc
+
+    @usage.observe_runtime('kb.file.ingest')
+    async def _store_file_task(
+        self,
+        execution_context: ExecutionContext,
+        file: persistence_rag.File,
+        task_context: taskmgr.TaskContext,
+        parser_plugin_id: str | None = None,
+        file_size: int | None = None,
+    ):
+        key = (execution_context.workspace_uuid, self.get_uuid(), file.uuid)
+        current_task = asyncio.current_task()
+        existing = self._ingestion_tasks.get(key)
+        if existing is not None and existing is not current_task and not existing.done():
+            raise RuntimeError('Knowledge file ingestion is already running')
+        self._ingestion_tasks[key] = current_task
+        engine_document_id = None
+        dispatched = False
+        confirmed_failure = False
+        cleanup_upload = False
+        status_visible = False
+        try:
+            await run_in_workspace_uow(
+                self.ap,
+                execution_context.workspace_uuid,
+                lambda: self._assert_execution_context(execution_context),
+            )
+            if not file.artifact_id:
+                self._require_upload_object_key(execution_context, file.file_name)
+            # Claim only pending work. Recovered/terminal rows cannot be replayed.
+            status_visible = False
+            for retry_delay in (0.0, 0.01, 0.05, 0.1):
+                if retry_delay:
+                    await asyncio.sleep(retry_delay)
+                async with self.ingestion_admission_lock:
+                    claimed = await self._set_file_status(
+                        execution_context, file.uuid, 'processing', expected_statuses=('pending',)
+                    )
+                if claimed:
+                    status_visible = True
+                    break
+            if not status_visible:
+                raise WorkspaceNotFoundError('Knowledge file is missing, already claimed, or interrupted')
+
+            task_context.set_current_action('Processing file')
+
+            # Get file size from storage
+            if file.artifact_id and file_size is None:
+                file_size = (await self._read_artifact_file(execution_context, file))['metadata']['size']
+            if file_size is None:
+                file_size = await self.ap.storage_mgr.size_scoped_object_key(
+                    execution_context,
+                    file.file_name,
+                    expected_owner_type='upload_document',
+                )
+
+            # Detect MIME type from extension
+            mime_type, _ = mimetypes.guess_type(file.file_name)
+            if mime_type is None:
+                mime_type = 'application/octet-stream'
+
+            # If a parser plugin is specified, call it before ingestion
+            parsed_content = None
+            if parser_plugin_id:
+                task_context.set_current_action('Parsing file')
+                if file.artifact_id:
+                    file_bytes = (await self._read_artifact_file(execution_context, file))['content']
+                else:
+                    file_bytes = await self.ap.storage_mgr.load_scoped_object_key(
+                        execution_context,
+                        file.file_name,
+                        expected_owner_type='upload_document',
+                    )
+                parse_context = {
+                    'mime_type': mime_type,
+                    'filename': file.file_name,
+                    'metadata': {},
+                }
+                await self._require_plugin_runtime_context(execution_context)
+                dispatched = True
+                parsed_content = await self.ap.plugin_connector.call_parser(parser_plugin_id, parse_context, file_bytes)
+                dispatched = False
+
+            # From dispatch until a valid response, failure is an unknown outcome.
+            dispatched = True
+            result = await self._ingest_document(
+                execution_context,
+                {
+                    'document_id': file.uuid,
+                    'filename': file.file_name,
+                    'extension': file.extension,
+                    'file_size': file_size,
+                    'mime_type': mime_type,
+                },
+                f'artifact:{file.uuid}' if file.artifact_id else file.file_name,  # scoped runtime handle
+                parsed_content=parsed_content,
+            )
+
+            # Failed ingestion can still have created an upstream document (for
+            # example, upload succeeded but parsing failed). Retain that identity
+            # for cleanup too. Never coerce or normalize an opaque engine ID.
+            returned_id = result.get('document_id')
+            if isinstance(returned_id, str) and returned_id.strip():
+                engine_document_id = returned_id
+            if result.get('status') == 'failed':
+                confirmed_failure = engine_document_id is not None
+                error_msg = result.get('error_message', 'Plugin ingestion returned failed status')
+                raise Exception(error_msg)
+            if engine_document_id is None:
+                raise ValueError('Plugin ingestion must return a nonempty string document_id')
+
+            # Commit the identity and completion together, never a status-only
+            # success that loses the only way to address the upstream document.
+            if not await self._set_file_status(
+                execution_context,
+                file.uuid,
+                'completed',
+                engine_document_id=engine_document_id,
+                expected_statuses=('processing',),
+            ):
+                raise WorkspaceNotFoundError('Knowledge file not found or ingestion interrupted')
+            cleanup_upload = True
+
+        except (Exception, asyncio.CancelledError) as e:
+            cancelled = isinstance(e, asyncio.CancelledError)
+            status = 'interrupted' if cancelled or (dispatched and not confirmed_failure) else 'failed'
+            self.ap.logger.warning(f'Knowledge ingestion {status} for file {file.uuid}')
+            # A cancelled RPC waiter or transport error cannot establish remote
+            # failure. Preserve any returned ID and never downgrade a committed
+            # completion after an ambiguous commit acknowledgement.
+            try:
+                if status_visible or cancelled:
+                    changed = await self._set_file_status(
+                        execution_context,
+                        file.uuid,
+                        status,
+                        engine_document_id=engine_document_id,
+                        expected_statuses=('pending', 'processing') if cancelled else ('processing',),
+                    )
+                    cleanup_upload = changed and status == 'failed'
+            except Exception:
+                self.ap.logger.warning(f'Skipping stale RAG task status update for file {file.uuid}')
+            raise
+        finally:
+            if self._ingestion_tasks.get(key) is current_task:
+                self._ingestion_tasks.pop(key, None)
+            # Only release recovery material after an acknowledged terminal write.
+            if cleanup_upload and not file.artifact_id:
+                try:
+                    await run_in_workspace_uow(
+                        self.ap,
+                        execution_context.workspace_uuid,
+                        lambda: self._assert_execution_context(execution_context),
+                    )
+                    await self.ap.storage_mgr.delete_scoped_object_key(
+                        execution_context,
+                        file.file_name,
+                        expected_owner_type='upload_document',
+                    )
+                except (WorkspaceRequiredError, WorkspaceNotFoundError):
+                    self.ap.logger.warning(f'Skipping stale RAG upload cleanup for file {file.uuid}')
+
+    async def _set_file_status(
+        self,
+        execution_context: ExecutionContext,
+        file_uuid: str,
+        status: str,
+        *,
+        engine_document_id: str | None = None,
+        expected_statuses: tuple[str, ...] | None = None,
+    ) -> bool:
+        """Commit one detached-task status/identity transition in its tenant UoW."""
+
+        async def update() -> bool:
+            await self._assert_execution_context(execution_context)
+            values = {'status': status}
+            if engine_document_id is not None:
+                values['engine_document_id'] = engine_document_id
+            statement = (
+                sqlalchemy.update(persistence_rag.File)
+                .where(persistence_rag.File.workspace_uuid == execution_context.workspace_uuid)
+                .where(persistence_rag.File.kb_id == self.knowledge_base_entity.uuid)
+                .where(persistence_rag.File.uuid == file_uuid)
+                .values(**values)
+            )
+            if expected_statuses is not None:
+                statement = statement.where(persistence_rag.File.status.in_(expected_statuses))
+            result = await self.ap.persistence_mgr.execute_async(statement)
+            changed = getattr(result, 'rowcount', 0) > 0
+            if not changed and engine_document_id is not None:
+                # A different Host may already have recovered observation. Save
+                # the late identity without claiming that the attempt completed.
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.update(persistence_rag.File)
+                    .where(persistence_rag.File.workspace_uuid == execution_context.workspace_uuid)
+                    .where(persistence_rag.File.kb_id == self.get_uuid())
+                    .where(persistence_rag.File.uuid == file_uuid)
+                    .where(persistence_rag.File.status == 'interrupted')
+                    .values(engine_document_id=engine_document_id)
+                )
+            return changed
+
+        persistence_mgr = self.ap.persistence_mgr
+        managed_mode = getattr(getattr(persistence_mgr, 'mode', None), 'value', None) in {
+            'cloud_runtime',
+            'oss_compat',
+        }
+        tenant_uow = getattr(persistence_mgr, 'tenant_uow', None)
+        if managed_mode:
+            if not callable(tenant_uow):
+                raise RuntimeError('Knowledge tasks require an explicit tenant UoW')
+            async with tenant_uow(execution_context.workspace_uuid):
+                return await update()
+        return await update()
+
+    async def store_file(
+        self,
+        execution_context: ExecutionContext,
+        file_id: str,
+        parser_plugin_id: str | None = None,
+    ) -> int:
+        await self._assert_execution_context(execution_context)
+        self._require_upload_object_key(execution_context, file_id)
+        # pre checking
+        if not await self.ap.storage_mgr.exists_scoped_object_key(
+            execution_context,
+            file_id,
+            expected_owner_type='upload_document',
+        ):
+            raise WorkspaceNotFoundError('Upload not found')
+
+        file_name = file_id
+        _, ext = os.path.splitext(file_name)
+        extension = ext.lstrip('.').lower() if ext else ''
+
+        if extension == 'zip':
+            return await self._store_zip_file(execution_context, file_id, parser_plugin_id=parser_plugin_id)
+
+        file_size = await self.ap.storage_mgr.size_scoped_object_key(
+            execution_context, file_id, expected_owner_type='upload_document'
+        )
+        file_uuid = str(uuid.uuid4())
+        kb_id = self.knowledge_base_entity.uuid
+
+        file_obj_data = {
+            'uuid': file_uuid,
+            'workspace_uuid': execution_context.workspace_uuid,
+            'kb_id': kb_id,
+            'file_name': file_name,
+            'extension': extension,
+            'status': 'pending',
+        }
+
+        return await self._schedule_file(execution_context, file_obj_data, parser_plugin_id, file_size)
+
+    async def _read_artifact_file(self, execution_context, file):
+        await self._assert_execution_context(execution_context)
+        return await self.ap.artifact_service.read_business(
+            execution_context,
+            file.artifact_id,
+            holder_type='knowledge_file',
+            holder_id=file.uuid,
+            max_bytes=10 * 1024 * 1024,
+        )
+
+    async def store_artifact(self, context: RequestContext, artifact_id: str, parser_plugin_id=None) -> int:
+        execution_context = ExecutionContext.from_request(context)
+        await self._assert_execution_context(execution_context)
+        metadata = await self.ap.artifact_service.get(context, artifact_id)
+        file_name = metadata['name']
+        extension = os.path.splitext(file_name)[1].lstrip('.').lower()
+        if extension == 'zip':
+            raise ValueError(t('Artifact ZIP ingestion is not supported; use the existing document upload entrypoint'))
+        file_uuid = str(uuid.uuid4())
+        file_obj_data = dict(
+            uuid=file_uuid,
+            workspace_uuid=execution_context.workspace_uuid,
+            kb_id=self.get_uuid(),
+            file_name=file_name,
+            extension=extension,
+            status='pending',
+            artifact_id=artifact_id,
+        )
+        return await self._schedule_file(
+            execution_context,
+            file_obj_data,
+            parser_plugin_id,
+            metadata['size'],
+            source_context=context,
+        )
+
+    async def _schedule_file(self, execution_context, file_obj_data, parser_plugin_id, file_size, source_context=None):
+        file_uuid = file_obj_data['uuid']
+        file_id = file_obj_data['file_name']
+        extension = file_obj_data['extension']
+        kb_id = self.get_uuid()
+        file_obj = persistence_rag.File(**file_obj_data)
+        # Serialize admission with reconciliation, not with remote ingestion.
+        async with self.ingestion_admission_lock:
+            async with self.ap.persistence_mgr.tenant_uow(execution_context.workspace_uuid) as uow:
+                admitted = await uow.execute(
+                    sqlalchemy.update(persistence_rag.KnowledgeBase)
+                    .where(persistence_rag.KnowledgeBase.workspace_uuid == execution_context.workspace_uuid)
+                    .where(persistence_rag.KnowledgeBase.uuid == kb_id)
+                    .where(persistence_rag.KnowledgeBase.deleting.is_(False))
+                    .values(deleting=False)
+                )
+                if admitted.rowcount != 1:
+                    raise ValueError(t('Knowledge base deletion is pending; retry deletion before admitting new files'))
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.insert(persistence_rag.File).values(file_obj_data)
+                )
+                if source_context is not None:
+                    await self.ap.artifact_service.bind_business(
+                        source_context,
+                        file_obj.artifact_id,
+                        holder_type='knowledge_file',
+                        holder_id=file_uuid,
+                    )
+            ctx = taskmgr.TaskContext.new()
+            coroutine = self._store_file_task(
+                execution_context, file_obj, task_context=ctx, parser_plugin_id=parser_plugin_id, file_size=file_size
+            )
+            try:
+                wrapper = self.ap.task_mgr.create_user_task(
+                    coroutine,
+                    kind='knowledge-operation',
+                    name=f'knowledge-store-file-{file_id}',
+                    label=f'Store file {file_id}',
+                    context=ctx,
+                    instance_uuid=execution_context.instance_uuid,
+                    workspace_uuid=execution_context.workspace_uuid,
+                    placement_generation=execution_context.placement_generation,
+                )
+            except BaseException:
+                coroutine.close()
+                async with self.ap.persistence_mgr.tenant_uow(execution_context.workspace_uuid):
+                    if file_obj.artifact_id:
+                        await self.ap.artifact_service.release_business(
+                            execution_context,
+                            file_obj.artifact_id,
+                            holder_type='knowledge_file',
+                            holder_id=file_uuid,
+                        )
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.delete(persistence_rag.File)
+                        .where(persistence_rag.File.workspace_uuid == execution_context.workspace_uuid)
+                        .where(persistence_rag.File.uuid == file_uuid)
+                    )
+                raise
+            key = (execution_context.workspace_uuid, kb_id, file_uuid)
+            self._ingestion_tasks[key] = wrapper.task
+
+            def forget_task(task):
+                # The task manager wraps the coroutine; pre-start cancellation
+                # need not enter that wrapper's finally block.
+                if inspect.getcoroutinestate(coroutine) == inspect.CORO_CREATED:
+                    coroutine.close()
+                if self._ingestion_tasks.get(key) is task:
+                    self._ingestion_tasks.pop(key, None)
+
+            wrapper.task.add_done_callback(forget_task)
+        self._record_upload(execution_context, extension, file_size)
+        return wrapper.id
+
+    def _record_upload(self, execution_context, extension, file_size):
+        try:
+            usage.inc(
+                self.ap,
+                execution_context.workspace_uuid,
+                'kb.file.upload',
+                engine=self.get_knowledge_engine_plugin_id(),
+                ext=extension,
+                size=usage.bucket(file_size, (1024**2, 10 * 1024**2, 50 * 1024**2), ('<1M', '<10M', '<50M', '>=50M')),
+            )
+        except Exception:
+            pass
+
+    async def _store_zip_file(
+        self,
+        execution_context: ExecutionContext,
+        zip_file_id: str,
+        parser_plugin_id: str | None = None,
+    ) -> int:
+        """Handle ZIP file by extracting each document and storing them separately."""
+        await self._assert_execution_context(execution_context)
+        self._require_upload_object_key(execution_context, zip_file_id)
+        self.ap.logger.info(f'Processing ZIP file: {zip_file_id}')
+
+        zip_bytes = await self.ap.storage_mgr.load_scoped_object_key(
+            execution_context,
+            zip_file_id,
+            expected_owner_type='upload_document',
+        )
+        self._record_upload(execution_context, 'zip', len(zip_bytes))
+
+        supported_extensions = {'txt', 'pdf', 'docx', 'md', 'html'}
+        stored_file_tasks = []
+
+        try:
+            # use utf-8 encoding
+            with zipfile.ZipFile(io.BytesIO(zip_bytes), 'r', metadata_encoding='utf-8') as zip_ref:
+                if len(zip_ref.filelist) > _MAX_ZIP_ARCHIVE_ENTRIES:
+                    raise ValueError('ZIP archive contains too many entries')
+
+                supported_files: list[zipfile.ZipInfo] = []
+                total_uncompressed_bytes = 0
+                for file_info in zip_ref.filelist:
+                    # skip directories and hidden files
+                    normalized_name = file_info.filename.replace('\\', '/').strip('/')
+                    path_parts = normalized_name.split('/')
+                    if (
+                        file_info.is_dir()
+                        or not normalized_name
+                        or any(part.startswith('.') for part in path_parts)
+                        or '__MACOSX' in path_parts
+                    ):
+                        continue
+
+                    _, file_ext = os.path.splitext(file_info.filename)
+                    file_extension = file_ext.lstrip('.').lower()
+                    if file_extension not in supported_extensions:
+                        self.ap.logger.debug(f'Skipping unsupported file in ZIP: {file_info.filename}')
+                        continue
+                    if file_info.flag_bits & 0x1:
+                        raise ValueError('Encrypted ZIP entries are not supported')
+                    if file_info.file_size > _MAX_ZIP_FILE_BYTES:
+                        raise ValueError(f'ZIP document exceeds the file size limit: {file_info.filename}')
+                    if (
+                        file_info.file_size
+                        and file_info.file_size > max(file_info.compress_size, 1) * _MAX_ZIP_COMPRESSION_RATIO
+                    ):
+                        raise ValueError(f'ZIP document exceeds the compression-ratio limit: {file_info.filename}')
+                    total_uncompressed_bytes += file_info.file_size
+                    if total_uncompressed_bytes > _MAX_ZIP_UNCOMPRESSED_BYTES:
+                        raise ValueError('ZIP documents exceed the uncompressed size limit')
+                    supported_files.append(file_info)
+                    if len(supported_files) > _MAX_ZIP_DOCUMENTS:
+                        raise ValueError('ZIP archive contains too many supported documents')
+
+                for file_info in supported_files:
+                    try:
+                        file_content = await asyncio.to_thread(zip_ref.read, file_info)
+
+                        base_name = file_info.filename.replace('/', '_').replace('\\', '_')
+                        file_stem, file_ext = os.path.splitext(base_name)
+                        extension = file_ext.lstrip('.')
+
+                        extracted_file_id = file_stem + '_' + str(uuid.uuid4())[:8] + '.' + extension
+                        extracted_object_key = await self.ap.storage_mgr.save_scoped(
+                            execution_context,
+                            owner_type='upload_document',
+                            owner=f'knowledge-base:{self.knowledge_base_entity.uuid}',
+                            key=extracted_file_id,
+                            value=file_content,
+                        )
+
+                        try:
+                            task_id = await self.store_file(
+                                execution_context,
+                                extracted_object_key,
+                                parser_plugin_id=parser_plugin_id,
+                            )
+                        except Exception:
+                            await self.ap.storage_mgr.delete_scoped_object_key(
+                                execution_context,
+                                extracted_object_key,
+                                expected_owner_type='upload_document',
+                            )
+                            raise
+                        stored_file_tasks.append(task_id)
+
+                        self.ap.logger.info(
+                            f'Extracted and stored file from ZIP: {file_info.filename} -> {extracted_object_key}'
+                        )
+
+                    except taskmgr.TaskCapacityError:
+                        raise
+                    except Exception as e:
+                        self.ap.logger.warning(f'Failed to extract file {file_info.filename} from ZIP: {e}')
+                        continue
+
+            if not stored_file_tasks:
+                raise Exception('No supported files found in ZIP archive')
+
+            self.ap.logger.info(
+                f'Successfully processed ZIP file {zip_file_id}, extracted {len(stored_file_tasks)} files'
+            )
+            return stored_file_tasks[0]
+        finally:
+            try:
+                await self._assert_execution_context(execution_context)
+                await self.ap.storage_mgr.delete_scoped_object_key(
+                    execution_context,
+                    zip_file_id,
+                    expected_owner_type='upload_document',
+                )
+            except FileNotFoundError:
+                pass
+            except (WorkspaceRequiredError, WorkspaceNotFoundError):
+                self.ap.logger.warning(f'Skipping stale RAG ZIP cleanup for upload {zip_file_id}')
+            except Exception as e:
+                self.ap.logger.warning(f'Failed to cleanup ZIP file {zip_file_id}: {e}')
+
+    @usage.observe_runtime('kb.retrieve')
+    async def retrieve(
+        self,
+        execution_context: ExecutionContext,
+        query: str,
+        settings: dict | None = None,
+    ) -> list[rag_context.RetrievalResultEntry]:
+        await self._assert_execution_context(execution_context)
+        # Merge stored retrieval_settings with per-request overrides
+        stored = self.knowledge_base_entity.retrieval_settings or {}
+        merged = {**stored, **(settings or {})}
+        if 'top_k' not in merged:
+            merged['top_k'] = 5  # fallback default
+
+        response = await self._retrieve(execution_context, query, merged)
+
+        results_data = response.get('results', [])
+        entries = []
+        for r in results_data:
+            if isinstance(r, dict):
+                entries.append(rag_context.RetrievalResultEntry(**r))
+            elif isinstance(r, rag_context.RetrievalResultEntry):
+                entries.append(r)
+        return entries
+
+    @usage.observe_runtime('kb.file.delete')
+    async def delete_file(self, execution_context: ExecutionContext, file_id: str):
+        await self._assert_execution_context(execution_context)
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_rag.File)
+            .where(persistence_rag.File.workspace_uuid == execution_context.workspace_uuid)
+            .where(persistence_rag.File.kb_id == self.knowledge_base_entity.uuid)
+            .where(persistence_rag.File.uuid == file_id)
+            .limit(1)
+        )
+        file = result.first()
+        if file is None:
+            raise WorkspaceNotFoundError('Knowledge file not found')
+        # Pending/processing tasks may still create an upstream document. Do not
+        # discard their tracking row or race a delete against that creation.
+        if file.status in {'pending', 'processing'}:
+            raise RuntimeError(
+                'Cannot delete a file while ingestion is pending or processing; wait for the task to finish'
+            )
+        if file.status == 'interrupted':
+            raise RuntimeError(
+                'Knowledge ingestion was interrupted; its remote outcome is unknown. '
+                'The file, upload and known engine identity were retained. '
+                'Check plugin/upstream state and stop or settle the old ingestion before operator reconciliation; '
+                'automatic deletion or re-ingestion is unsafe.'
+            )
+        document_id = file.engine_document_id if file.engine_document_id is not None else file_id
+        if await self._delete_document(execution_context, document_id) is not True:
+            raise RuntimeError(
+                'Knowledge engine did not confirm document deletion; the file was retained. '
+                'Check the engine configuration and plugin logs before retrying.'
+            )
+
+        # The plugin call may outlive the original placement generation.
+        await self._assert_execution_context(execution_context)
+        async with self.ap.persistence_mgr.tenant_uow(execution_context.workspace_uuid):
+            if file.artifact_id:
+                await self.ap.artifact_service.release_business(
+                    execution_context,
+                    file.artifact_id,
+                    holder_type='knowledge_file',
+                    holder_id=file.uuid,
+                )
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.delete(persistence_rag.File)
+                .where(persistence_rag.File.workspace_uuid == execution_context.workspace_uuid)
+                .where(persistence_rag.File.kb_id == self.knowledge_base_entity.uuid)
+                .where(persistence_rag.File.uuid == file_id)
+            )
+
+    def get_uuid(self) -> str:
+        """Get the UUID of the knowledge base"""
+        return self.knowledge_base_entity.uuid
+
+    def get_name(self) -> str:
+        """Get the name of the knowledge base"""
+        return self.knowledge_base_entity.name
+
+    def get_knowledge_engine_plugin_id(self) -> str:
+        """Get the Knowledge Engine plugin ID"""
+        return self.knowledge_base_entity.knowledge_engine_plugin_id or ''
+
+    async def dispose(self, execution_context: ExecutionContext):
+        """Dispose the knowledge base, notifying the plugin to cleanup."""
+        await self._assert_execution_context(execution_context)
+        await self._on_kb_delete(execution_context)
+
+    # ========== Plugin Communication Methods ==========
+
+    async def _on_kb_create(self, execution_context: ExecutionContext) -> None:
+        """Notify plugin about KB creation."""
+        await self._assert_execution_context(execution_context)
+        plugin_id = self.knowledge_base_entity.knowledge_engine_plugin_id
+        if not plugin_id:
+            return
+
+        try:
+            config = self.knowledge_base_entity.creation_settings or {}
+            self.ap.logger.info(
+                f'Calling RAG plugin {plugin_id}: on_knowledge_base_create(kb_id={self.knowledge_base_entity.uuid})'
+            )
+            await self._require_plugin_runtime_context(execution_context)
+            await self.ap.plugin_connector.rag_on_kb_create(plugin_id, self.knowledge_base_entity.uuid, config)
+        except Exception as e:
+            self.ap.logger.error(f'Failed to notify plugin {plugin_id} on KB create: {e}')
+            raise
+
+    async def _on_kb_delete(self, execution_context: ExecutionContext) -> None:
+        """Notify plugin about KB deletion."""
+        await self._assert_execution_context(execution_context)
+        plugin_id = self.knowledge_base_entity.knowledge_engine_plugin_id
+        if not plugin_id:
+            return
+
+        await self._require_plugin_runtime_context(execution_context)
+        try:
+            self.ap.logger.info(
+                f'Calling RAG plugin {plugin_id}: on_knowledge_base_delete(kb_id={self.knowledge_base_entity.uuid})'
+            )
+            await self.ap.plugin_connector.rag_on_kb_delete(plugin_id, self.knowledge_base_entity.uuid)
+        except Exception as e:
+            self.ap.logger.error(f'Failed to notify plugin {plugin_id} on KB delete: {e}')
+            raise
+
+    async def _ingest_document(
+        self,
+        execution_context: ExecutionContext,
+        file_metadata: dict[str, Any],
+        storage_path: str,
+        parsed_content: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Call plugin to ingest document."""
+        await self._assert_execution_context(execution_context)
+        kb = self.knowledge_base_entity
+        plugin_id = kb.knowledge_engine_plugin_id
+        if not plugin_id:
+            self.ap.logger.error(f'No RAG plugin ID configured for KB {kb.uuid}. Ingestion failed.')
+            raise ValueError('RAG Plugin ID required')
+
+        self.ap.logger.info(f'Calling RAG plugin {plugin_id}: ingest(doc={file_metadata.get("filename")})')
+
+        # Inject knowledge_base_id into file metadata as required by SDK schema
+        file_metadata['knowledge_base_id'] = kb.uuid
+
+        context_data = {
+            'file_object': {
+                'metadata': file_metadata,
+                'storage_path': storage_path,
+            },
+            'knowledge_base_id': kb.uuid,
+            'collection_id': kb.collection_id or kb.uuid,
+            'creation_settings': kb.creation_settings or {},
+            'parsed_content': parsed_content,
+        }
+
+        await self._require_plugin_runtime_context(execution_context)
+        try:
+            result = await self.ap.plugin_connector.call_rag_ingest(plugin_id, context_data)
+            return result
+        except Exception as e:
+            self.ap.logger.error(f'Plugin ingestion failed: {e}')
+            raise
+
+    async def _retrieve(
+        self,
+        execution_context: ExecutionContext,
+        query: str,
+        settings: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Call plugin to retrieve documents.
+
+        Raises:
+            ValueError: If no RAG plugin is configured for this KB.
+            Exception: If the plugin retrieval call fails.
+        """
+        await self._assert_execution_context(execution_context)
+        kb = self.knowledge_base_entity
+        plugin_id = kb.knowledge_engine_plugin_id
+        if not plugin_id:
+            raise ValueError(f'No RAG plugin ID configured for KB {kb.uuid}. Retrieval failed.')
+
+        # Session context (e.g. session_name) stays in retrieval_settings
+        # for plugins that need it. Do NOT move them into filters, as filters
+        # are passed directly to vector_search by some plugins (e.g. LangRAG)
+        # and would cause empty results when the metadata field doesn't exist.
+        plugin_settings = dict(settings)
+        filters = plugin_settings.pop('filters', {})
+
+        retrieval_context = {
+            'query': query,
+            'knowledge_base_id': kb.uuid,
+            'collection_id': kb.collection_id or kb.uuid,
+            'retrieval_settings': plugin_settings,
+            'creation_settings': kb.creation_settings or {},
+            'filters': filters,
+        }
+
+        await self._require_plugin_runtime_context(execution_context)
+        result = await self.ap.plugin_connector.call_rag_retrieve(
+            plugin_id,
+            retrieval_context,
+        )
+        return result
+
+    async def _delete_document(self, execution_context: ExecutionContext, document_id: str) -> bool:
+        """Call plugin to delete document."""
+        await self._assert_execution_context(execution_context)
+        kb = self.knowledge_base_entity
+        plugin_id = kb.knowledge_engine_plugin_id
+        if not plugin_id:
+            return False
+
+        self.ap.logger.info(f'Calling RAG plugin {plugin_id}: delete_document(doc_id={document_id})')
+
+        await self._require_plugin_runtime_context(execution_context)
+        try:
+            return await self.ap.plugin_connector.call_rag_delete_document(plugin_id, document_id, kb.uuid)
+        except Exception as e:
+            self.ap.logger.error(f'Plugin document deletion failed: {e}')
+            return False
+
+
+class RAGManager:
+    ap: app.Application
+
+    knowledge_bases: dict[tuple[str, str], RuntimeKnowledgeBase]
+
+    def __init__(self, ap: app.Application):
+        self.ap = ap
+        self.knowledge_bases = {}
+        self._scope_generations: dict[tuple[str, str], int] = {}
+        self._knowledge_keys_by_scope: dict[
+            tuple[str, str],
+            set[tuple[str, str]],
+        ] = {}
+
+    def _cache_runtime(
+        self,
+        runtime: RuntimeKnowledgeBase,
+    ) -> None:
+        context = runtime.execution_context
+        self._observe_execution_context(context)
+        key = (
+            context.workspace_uuid,
+            runtime.get_uuid(),
+        )
+        self.knowledge_bases[key] = runtime
+        scope = (context.instance_uuid, context.workspace_uuid)
+        self._knowledge_keys_by_scope.setdefault(scope, set()).add(key)
+
+    def _pop_runtime(
+        self,
+        context: ExecutionContext,
+        kb_uuid: str,
+    ) -> RuntimeKnowledgeBase | None:
+        key = (context.workspace_uuid, kb_uuid)
+        runtime = self.knowledge_bases.pop(key, None)
+        scope = (context.instance_uuid, context.workspace_uuid)
+        keys = self._knowledge_keys_by_scope.get(scope)
+        if keys is not None:
+            keys.discard(key)
+            if not keys:
+                self._knowledge_keys_by_scope.pop(scope, None)
+                self._scope_generations.pop(scope, None)
+        return runtime
+
+    def _observe_execution_context(self, context: ExecutionContext) -> None:
+        scope = (context.instance_uuid, context.workspace_uuid)
+        previous_generation = self._scope_generations.get(scope)
+        if previous_generation is not None and context.placement_generation < previous_generation:
+            raise WorkspaceInvariantError('RAG runtime placement generation rolled back')
+        if previous_generation == context.placement_generation:
+            return
+        if previous_generation is not None:
+            for key in self._knowledge_keys_by_scope.pop(scope, ()):
+                self.knowledge_bases.pop(key, None)
+        self._scope_generations[scope] = context.placement_generation
+
+    async def initialize(self):
+        await self.load_knowledge_bases_from_db()
+
+    async def _to_execution_context(
+        self,
+        context: RequestContext | ExecutionContext,
+        *,
+        _binding_validated: bool = False,
+    ) -> ExecutionContext:
+        if isinstance(context, RequestContext):
+            execution_context = ExecutionContext.from_request(context)
+        elif isinstance(context, ExecutionContext):
+            execution_context = context
+        else:
+            raise WorkspaceRequiredError('RequestContext or ExecutionContext is required')
+
+        if not _binding_validated:
+            binding = await self.ap.workspace_service.get_execution_binding(
+                execution_context.workspace_uuid,
+                expected_generation=execution_context.placement_generation,
+            )
+            if binding.instance_uuid != execution_context.instance_uuid:
+                raise WorkspaceNotFoundError('Workspace not found')
+        scope = (
+            execution_context.instance_uuid,
+            execution_context.workspace_uuid,
+        )
+        if scope in self._scope_generations:
+            self._observe_execution_context(execution_context)
+        return execution_context
+
+    async def _get_engine_map(self, context: TenantContext) -> dict[str, dict]:
+        engine_map: dict[str, dict] = {}
+        connector = getattr(self.ap, 'plugin_connector', None)
+        if connector is not None and connector.is_enable_plugin:
+            await connector.require_workspace_context(context)
+            try:
+                engines = await connector.list_knowledge_engines()
+                engine_map = {engine['plugin_id']: engine for engine in engines}
+            except Exception as e:
+                self.ap.logger.warning(f'Failed to list Knowledge Engines: {e}')
+        return engine_map
+
+    async def get_all_knowledge_base_details(self, context: TenantContext) -> list[dict]:
+        """Get all knowledge bases with enriched Knowledge Engine details."""
+        workspace_uuid = require_workspace_uuid(context)
+        # 1. Get raw KBs from DB
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_rag.KnowledgeBase).where(
+                persistence_rag.KnowledgeBase.workspace_uuid == workspace_uuid
+            )
+        )
+        knowledge_bases = result.all()
+
+        # 2. Get all available Knowledge Engines for enrichment
+        engine_map = await self._get_engine_map(context)
+
+        # 3. Serialize and enrich
+        kb_list = []
+        for kb in knowledge_bases:
+            kb_dict = self.ap.persistence_mgr.serialize_model(persistence_rag.KnowledgeBase, kb)
+            self._enrich_kb_dict(kb_dict, engine_map)
+            kb_list.append(kb_dict)
+
+        return kb_list
+
+    async def get_knowledge_base_details(self, context: TenantContext, kb_uuid: str) -> dict | None:
+        """Get specific knowledge base with enriched Knowledge Engine details."""
+        workspace_uuid = require_workspace_uuid(context)
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_rag.KnowledgeBase)
+            .where(persistence_rag.KnowledgeBase.workspace_uuid == workspace_uuid)
+            .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+        )
+        kb = result.first()
+        if not kb:
+            return None
+
+        kb_dict = self.ap.persistence_mgr.serialize_model(persistence_rag.KnowledgeBase, kb)
+
+        # Fetch engines
+        engine_map = await self._get_engine_map(context)
+
+        self._enrich_kb_dict(kb_dict, engine_map)
+        return kb_dict
+
+    @staticmethod
+    def _to_i18n_name(name) -> dict:
+        """Ensure name is always an I18nObject-compatible dict.
+
+        If *name* is already a dict (with ``en_US`` / ``zh_Hans`` keys) it is
+        returned as-is.  A plain string is wrapped into an I18nObject so the
+        frontend ``extractI18nObject`` helper never receives an unexpected type.
+        """
+        if isinstance(name, dict):
+            return name
+        return {'en_US': str(name), 'zh_Hans': str(name)}
+
+    def _enrich_kb_dict(self, kb_dict: dict, engine_map: dict) -> None:
+        """Helper to inject engine info into KB dict."""
+        plugin_id = kb_dict.get('knowledge_engine_plugin_id')
+
+        # Default fallback structure — name must be I18nObject for frontend compatibility
+        fallback_name = self._to_i18n_name(plugin_id or 'Internal (Legacy)')
+        fallback_info = {
+            'plugin_id': plugin_id,
+            'name': fallback_name,
+            'capabilities': [],
+        }
+
+        if not plugin_id:
+            kb_dict['knowledge_engine'] = fallback_info
+            return
+
+        engine_info = engine_map.get(plugin_id)
+        if engine_info:
+            kb_dict['knowledge_engine'] = {
+                'plugin_id': plugin_id,
+                'name': self._to_i18n_name(engine_info.get('name', plugin_id)),
+                'capabilities': engine_info.get('capabilities', []),
+            }
+        else:
+            kb_dict['knowledge_engine'] = fallback_info
+
+    async def create_knowledge_base(
+        self,
+        context: RequestContext | ExecutionContext,
+        name: str,
+        knowledge_engine_plugin_id: str,
+        creation_settings: dict,
+        retrieval_settings: dict | None = None,
+        description: str = '',
+        initialize: bool = True,
+    ) -> persistence_rag.KnowledgeBase:
+        """Create a new knowledge base using a RAG plugin."""
+        execution_context = await self._to_execution_context(context)
+        # Validate that the Knowledge Engine plugin exists
+        if self.ap.plugin_connector.is_enable_plugin:
+            await self.ap.plugin_connector.require_workspace_context(execution_context)
+            try:
+                engines = await self.ap.plugin_connector.list_knowledge_engines()
+                engine_ids = [e.get('plugin_id') for e in engines]
+                if knowledge_engine_plugin_id not in engine_ids:
+                    raise ValueError(f'Knowledge Engine plugin {knowledge_engine_plugin_id} not found')
+            except ValueError:
+                raise
+            except Exception as e:
+                self.ap.logger.warning(f'Failed to validate Knowledge Engine plugin existence: {e}')
+
+        kb_uuid = str(uuid.uuid4())
+        # Use UUID as collection ID by default for isolation
+        collection_id = kb_uuid
+
+        kb_data = {
+            'uuid': kb_uuid,
+            'workspace_uuid': execution_context.workspace_uuid,
+            'name': name,
+            'description': description,
+            'knowledge_engine_plugin_id': knowledge_engine_plugin_id,
+            'collection_id': collection_id,
+            'creation_settings': creation_settings,
+            'retrieval_settings': retrieval_settings or {},
+            'initialized': initialize,
+        }
+
+        # Create Entity
+        kb = persistence_rag.KnowledgeBase(**kb_data)
+
+        # Persist
+        await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_rag.KnowledgeBase).values(kb_data))
+
+        if initialize:
+            # Drafts stay out of the runtime until their engine settings are saved.
+            runtime_kb = await self.load_knowledge_base(execution_context, kb)
+
+            # Roll back the record and runtime entry if plugin initialization fails.
+            try:
+                await runtime_kb._on_kb_create(execution_context)
+            except Exception:
+                self._pop_runtime(execution_context, kb_uuid)
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.delete(persistence_rag.KnowledgeBase)
+                    .where(persistence_rag.KnowledgeBase.workspace_uuid == execution_context.workspace_uuid)
+                    .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+                )
+                raise
+
+        self.ap.logger.info(f'Created new Knowledge Base {name} ({kb_uuid}) using plugin {knowledge_engine_plugin_id}')
+        usage.inc(self.ap, execution_context.workspace_uuid, 'kb.create', engine=knowledge_engine_plugin_id)
+        return kb
+
+    async def load_knowledge_bases_from_db(self):
+        self.ap.logger.info('Loading knowledge bases from db...')
+
+        self.knowledge_bases = {}
+        self._scope_generations = {}
+        self._knowledge_keys_by_scope = {}
+
+        list_bindings = getattr(self.ap.workspace_service, 'list_active_execution_bindings', None)
+        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+        cloud_runtime = getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+        if cloud_runtime:
+            if not callable(list_bindings) or not callable(tenant_uow):
+                raise RuntimeError('Cloud knowledge loading requires explicit instance discovery and tenant UoWs')
+            for binding in await list_bindings():
+                async with tenant_uow(binding.workspace_uuid):
+                    result = await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.select(persistence_rag.KnowledgeBase)
+                        .where(persistence_rag.KnowledgeBase.workspace_uuid == binding.workspace_uuid)
+                        .order_by(persistence_rag.KnowledgeBase.uuid)
+                    )
+                    for knowledge_base in result.all():
+                        if knowledge_base.initialized is False:
+                            continue
+                        try:
+                            await self.load_knowledge_base(
+                                ExecutionContext(
+                                    instance_uuid=binding.instance_uuid,
+                                    workspace_uuid=binding.workspace_uuid,
+                                    placement_generation=binding.placement_generation,
+                                ),
+                                knowledge_base,
+                                _binding_validated=True,
+                            )
+                        except Exception as e:
+                            self.ap.logger.error(
+                                f'Error loading knowledge base {knowledge_base.uuid}: {e}\n{traceback.format_exc()}'
+                            )
+            return
+
+        # Compatibility path for isolated manager tests and older embedders.
+        result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(persistence_rag.KnowledgeBase))
+        knowledge_bases = result.all()
+
+        for knowledge_base in knowledge_bases:
+            if knowledge_base.initialized is False:
+                continue
+            try:
+                binding = await self.ap.workspace_service.get_execution_binding(knowledge_base.workspace_uuid)
+                execution_context = ExecutionContext(
+                    instance_uuid=binding.instance_uuid,
+                    workspace_uuid=binding.workspace_uuid,
+                    placement_generation=binding.placement_generation,
+                )
+                await self.load_knowledge_base(execution_context, knowledge_base)
+            except Exception as e:
+                self.ap.logger.error(
+                    f'Error loading knowledge base {knowledge_base.uuid}: {e}\n{traceback.format_exc()}'
+                )
+
+    async def load_knowledge_base(
+        self,
+        context: RequestContext | ExecutionContext,
+        knowledge_base_entity: persistence_rag.KnowledgeBase | sqlalchemy.Row | dict,
+        *,
+        _binding_validated: bool = False,
+    ) -> RuntimeKnowledgeBase:
+        if isinstance(knowledge_base_entity, sqlalchemy.Row):
+            # Safe access to _mapping for SQLAlchemy 1.4+
+            knowledge_base_entity = persistence_rag.KnowledgeBase(**knowledge_base_entity._mapping)
+        elif isinstance(knowledge_base_entity, dict):
+            # Filter out non-database fields (like knowledge_engine which is computed)
+            filtered_dict = {
+                k: v for k, v in knowledge_base_entity.items() if k in persistence_rag.KnowledgeBase.ALL_DB_FIELDS
+            }
+            knowledge_base_entity = persistence_rag.KnowledgeBase(**filtered_dict)
+
+        execution_context = await self._to_execution_context(
+            context,
+            _binding_validated=_binding_validated,
+        )
+        if knowledge_base_entity.workspace_uuid != execution_context.workspace_uuid:
+            raise WorkspaceNotFoundError('Knowledge base not found')
+        runtime_knowledge_base = RuntimeKnowledgeBase(
+            ap=self.ap,
+            knowledge_base_entity=knowledge_base_entity,
+            execution_context=execution_context,
+        )
+
+        await runtime_knowledge_base.initialize()
+
+        self._cache_runtime(runtime_knowledge_base)
+
+        return runtime_knowledge_base
+
+    async def get_knowledge_base_by_uuid(
+        self,
+        context: RequestContext | ExecutionContext,
+        kb_uuid: str,
+    ) -> RuntimeKnowledgeBase | None:
+        execution_context = await self._to_execution_context(context)
+        return self.knowledge_bases.get((execution_context.workspace_uuid, kb_uuid))
+
+    async def remove_knowledge_base_from_runtime(
+        self,
+        context: RequestContext | ExecutionContext,
+        kb_uuid: str,
+    ) -> None:
+        execution_context = await self._to_execution_context(context)
+        self._pop_runtime(execution_context, kb_uuid)
+
+    async def delete_knowledge_base(
+        self,
+        context: RequestContext | ExecutionContext,
+        kb_uuid: str,
+    ) -> None:
+        execution_context = await self._to_execution_context(context)
+        kb = await self.get_knowledge_base_by_uuid(execution_context, kb_uuid)
+        if kb is None:
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(persistence_rag.KnowledgeBase)
+                .where(persistence_rag.KnowledgeBase.workspace_uuid == execution_context.workspace_uuid)
+                .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+            )
+            entity = result.first()
+            if entity is None:
+                raise WorkspaceNotFoundError('Knowledge base not found')
+            if entity.initialized is False:
+                # Drafts have never created upstream state and are intentionally not cached.
+                return
+            if isinstance(entity, sqlalchemy.Row):
+                entity = persistence_rag.KnowledgeBase(**entity._mapping)
+            # Retry after restart without creating upstream state or reopening admission.
+            kb = RuntimeKnowledgeBase(self.ap, entity, execution_context)
+            self._cache_runtime(kb)
+        await kb.dispose(execution_context)
+        self._pop_runtime(execution_context, kb_uuid)

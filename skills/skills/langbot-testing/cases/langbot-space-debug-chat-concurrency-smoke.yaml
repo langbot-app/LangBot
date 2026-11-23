@@ -1,0 +1,84 @@
+id: langbot-space-debug-chat-concurrency-smoke
+title: "LangBot Debug Chat real Space-provider concurrency smoke"
+mode: probe
+area: performance
+type: performance
+priority: p1
+risk: high
+ci_eligible: false
+tags:
+  - performance
+  - debug-chat
+  - websocket
+  - space
+  - live-provider
+  - smoke
+  - metrics
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_E2E_LOGIN_USER
+automation: skills/langbot-testing/probes/langbot-debug-chat-concurrency.mjs
+automation_env:
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_E2E_LOGIN_USER
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_debug_chat_load_requests: "3"
+automation_debug_chat_load_concurrency: "2"
+automation_debug_chat_load_timeout_ms: "120000"
+automation_debug_chat_load_response_p95_ms: "120000"
+automation_debug_chat_load_max_error_rate: "0"
+automation_debug_chat_load_expected_prefix: "SPACEQA"
+automation_debug_chat_load_prompt_template: '请只回复 "{expected}"，不要解释，不要添加其他字符。'
+automation_debug_chat_load_stream: "true"
+automation_debug_chat_load_reset: "true"
+metrics_thresholds_json: '{"response_p95_ms":{"max":120000},"error_rate":{"max":0}}'
+load_profile_json: '{"requests":3,"concurrency":2,"path":"Pipeline Debug Chat WebSocket","provider":"LangBot Space model route","metric":"send-to-final-assistant-response","classification":"smoke-not-benchmark"}'
+setup_automation:
+  - "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+setup_provides_env:
+  - LANGBOT_PIPELINE_URL
+  - LANGBOT_PIPELINE_NAME
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+  - LANGBOT_LOCAL_AGENT_MODEL_UUID
+  - LANGBOT_E2E_MODEL_UUID
+preconditions:
+  - "The selected local LangBot instance is safe for a low-volume real Space model smoke run."
+  - "Treat Space/provider/network failures as environment or dependency findings until fake-provider baseline evidence separates LangBot overhead."
+steps:
+  - "Prepare a local-agent pipeline with a tested Space model and fallback models."
+  - "Reset the target Debug Chat session."
+  - "Open a small number of concurrent WebSocket Debug Chat connections and send unique deterministic prompts through the live Space provider path."
+checks:
+  - "automation-result.json status is pass when every request receives its own expected assistant response."
+  - "metrics_summary includes request count, concurrency, p95 response latency, throughput, and error rate."
+  - "The report classifies the result as a live-provider smoke, not a stable LangBot overhead benchmark."
+evidence_required:
+  - metrics
+  - network
+  - api_diagnostic
+  - filesystem
+diagnostics:
+  - "This probe measures real user-path latency through Space and includes provider latency, model behavior, and network effects."
+  - "Compare with langbot-fake-provider-debug-chat-load before attributing slow or failed runs to LangBot itself."
+success_patterns:
+  - "Debug Chat WebSocket concurrency probe passed"
+  - "Streaming completed"
+failure_patterns:
+  - "invalid api key"
+  - "WebSocket connection error"
+  - "Timed out after"
+  - "Final assistant response did not include"
+  - "All models failed during streaming setup"
+troubleshooting:
+  - local-agent-model-route-unavailable
+  - marketplace-network-flaky
+  - proxy-env-mismatch
+  - telemetry-proxy-noise

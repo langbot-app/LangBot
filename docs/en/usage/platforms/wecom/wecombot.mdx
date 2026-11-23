@@ -1,0 +1,146 @@
+---
+title: "WeCom Intelligent Bot"
+description: "Build a WeCom (Enterprise WeChat) AI bot with LangBot to bring LLM chat into your organization."
+---
+
+## One-Click Setup (Recommended)
+
+LangBot supports one-click WeCom bot creation with automatic BotId and Secret filling — no manual copy-paste needed.
+
+1. Open LangBot WebUI, go to **Bots > Create Bot**
+2. Enter a bot name, select `WeCom Intelligent Bot` as the platform/adapter
+3. In the **One-Click Create Bot** section that appears, click the **Start** button
+
+![One-Click Create Bot](/images/zh/deploy/bots/wecom/wecombot/wecombot_oneclick.png)
+
+4. Scan the QR code with WeCom. On your phone, tap **One-Click Create Intelligent Bot**
+
+![Phone One-Click Create](/images/zh/deploy/bots/wecom/wecombot/wecombot_scan_create.png)
+
+5. After authorization, BotId and Secret will be **auto-filled** in the form
+6. **Manually fill in the bot name** — it must match the bot name in WeCom
+
+![Fill Bot Name](/images/zh/deploy/bots/wecom/wecombot/wecombot_fill_name.png)
+
+7. Click **Submit** to complete
+
+<Warning>
+WeCom Intelligent Bot **cannot use existing bots** for one-click setup — only new bots. To use an existing bot, refer to the manual configuration below.
+</Warning>
+
+---
+
+## Manual Configuration
+
+### Creating a Bot
+
+First, log in to the [WeCom Admin Console](https://work.weixin.qq.com/wework_admin/frame#/).
+
+![Homepage](/images/zh/deploy/bots/wecom/wecombot/wecombot_1.png)
+
+Click `Security And Management` in the left sidebar, then click `Intelligent Bot` under `Management Tool`.
+
+As shown:
+
+![Intelligent Bot](/images/zh/deploy/bots/wecom/wecombot/wecombot_2.png)
+
+Click `Create Bot` and select `Manual Creation`, scroll to the bottom of the page, click `Create via API Mode`, and enter the page:
+
+![Create via API Mode](/images/zh/deploy/bots/wecom/wecombot/wecombot_3.png)
+
+### Long Connection Configuration
+
+#### Enable Long Connection API Mode
+In the WeCom Admin Console, go to the Intelligent Bot configuration page, enable "API Mode" and select "Long Connection":
+
+![Long Connection Mode](/images/zh/deploy/bots/wecom/wecombot/wecombot_9.png)
+
+#### Obtaining Credentials
+After enabling the Long Connection API mode, you need to obtain the following credentials to establish the connection:
+
+| Credential | Description |
+|------------|-------------|
+| BotID | The unique identifier of the intelligent bot, used to identify the bot |
+| Secret | The dedicated key for long connections, used for identity verification |
+
+<Warning>
+Note:
+- The Secret is a dedicated key for long connections, which is different from the Token/EncodingAESKey used in the callback URL mode
+- Please keep the Secret safe and avoid leaking it
+- Mode switching impact: API mode can only use one method (long connection or callback URL). Switching to "Callback URL" mode will invalidate existing long connections; conversely, switching from "Callback URL" to "Long Connection" mode will make the original callback URL no longer effective
+</Warning>
+
+#### Configuring the Bot
+Start the LangBot main program, select the adapter `WeCom Intelligent Bot`, and fill in the configuration items.
+Enter the BotID, Secret, and bot name from the long connection into the fields, click save and enable.
+> The bot name must match the name of the newly created bot, otherwise the bot will not respond in group chats.
+
+![Long Connection Configuration](/images/zh/deploy/bots/wecom/wecombot/wecombot_10.png)
+
+
+### URL Callback Configuration
+
+Click to randomly generate Token and EncodingAESKey, then fill in the basic bot information above. **Pay attention to setting the visibility scope**.
+
+![Parameter Retrieval](/images/zh/deploy/bots/wecom/wecombot/wecombot_11.png)
+
+Click `My Company` in the left sidebar and save the Company ID at the bottom.
+
+#### Configuring Callback URL
+
+Start the LangBot main program, select the adapter `WeCom Intelligent Bot`, and fill in the configuration items.  
+Among them, the token is Token, the Encoding-AESKey is EncodingAESKey, and the Bot ID can be filled in as xxx (or filled in randomly, it will be changed later). After filling in, click  
+`Save`, and `Enable` the robot.
+
+![WeCom Intelligent Bot Adapter](/images/zh/deploy/bots/wecom/wecombot/wecombot_4.png)
+
+On the LangBot homepage, enable and select the corresponding bot, click to enter the configuration page, copy the Webhook callback address
+
+<Info>
+We recommend that you first refer to [Configure HTTP Reverse Proxy](/en/workshop/production/proxy-and-ssl) to configure the LangBot callback address.
+</Info>
+
+![Webhook Callback Address](/images/zh/deploy/bots/wecom/wecombot/wecombot_8.png)
+
+Return to the WeCom robot configuration page and fill the copied webhook address into `URL Callback`. If the creation is successful, it will jump to the details page. If the message `Request URL Failed` appears, please double-check whether the above steps have been completed one by one.
+
+Details page after successful creation:  
+![Creation Successful](/images/zh/deploy/bots/wecom/wecombot/wecombot_5.png)
+
+Copy the `Bot ID` and bot name from the WeCom robot details page, return to the LangBot management page, change the Bot ID of the deployed intelligent robot to the copied ID, fill in the bot name, and restart the robot.
+
+### Enable Streaming
+
+A streaming toggle has been added for locally deployed models or models that do not support streaming.
+
+![Streaming Toggle](/images/zh/deploy/bots/wecom/wecombot/wecombot_12.png)
+
+
+### Start Using
+
+Enter WeCom, click `➕`, as shown:
+
+![Add Bot](/images/zh/deploy/bots/wecom/wecombot/wecombot_6.png)
+
+Click `Company-Created`, select the created bot, and enter the chat interface.
+
+Similarly, if you want to invite the bot to a group chat, click the add member button in the group chat and add the bot from there.
+
+### Orchestration events
+
+The new WeCom AI Bot adapter exposes these business events in both WebSocket and Webhook modes. Choose a processor for each event in the bot's event routing settings.
+
+| Event | Use case and data |
+| --- | --- |
+| `message.received` | Handle incoming user messages for conversations or tasks. |
+| `wecombot.enter_chat` | Start a welcome or onboarding workflow when a user enters the bot chat. Includes the user, chat ID, and raw event data. |
+| `wecombot.template_card_event` | Handle card clicks and submissions, branching on `task_id`, `event_key`, or `selected_items`. Includes card type, user, chat, and raw event data. |
+| `feedback.received` | Collect feedback on bot replies. |
+
+WeCom sends the chat-entry event; it does not mean that a friend was added. Welcome replies must complete within the platform's 5-second window. Prefer a fast, fixed text response. LangBot uses the dedicated welcome API for text event replies and reports an expired window explicitly. Avoid slow model calls to generate welcome messages.
+
+LangBot interaction forms and Dify forms continue through their existing callback flows, without also triggering a card business event. Connection, authentication, and reconnection states are not orchestration events.
+
+### Effect Images
+
+![Effect Image 1](/images/zh/deploy/bots/wecom/wecombot/wecombot_7.png)

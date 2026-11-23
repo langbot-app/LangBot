@@ -1,0 +1,6 @@
+LangBot QA test document.
+
+The local agent runner retrieval sentinel is azalea-cobalt-7421.
+When asked about the sentinel, answer with exactly azalea-cobalt-7421.
+
+This document is intentionally small so LangRAG ingestion and retrieval can be tested quickly.

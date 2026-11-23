@@ -1,0 +1,648 @@
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from '@/components/ui/card';
+import { LanguageSelector } from '@/components/ui/language-selector';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  beginAuthenticatedSession,
+  bootstrapWorkspaceSession,
+  clearPendingInvitationToken,
+  getPendingInvitationToken,
+  httpClient,
+} from '@/app/infra/http';
+import { useNavigate } from 'react-router-dom';
+import {
+  Mail,
+  Lock,
+  Loader2,
+  AlertCircle,
+  RefreshCw,
+  Layers,
+  Fingerprint,
+  ShieldCheck,
+  KeyRound,
+  ArrowLeft,
+} from 'lucide-react';
+import { startAuthentication } from '@simplewebauthn/browser';
+import langbotIcon from '@/app/assets/langbot-logo.webp';
+import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
+
+const formSchema = (t: (key: string) => string) =>
+  z.object({
+    email: z.string().email(t('common.invalidEmail')),
+    password: z.string().min(1, t('common.emptyPassword')),
+  });
+
+const TERMINAL_INVITATION_ERROR_CODES = new Set([
+  'invitation_invalid',
+  'invitation_expired',
+  'invitation_revoked',
+  'invitation_used',
+  'invitation_email_mismatch',
+]);
+
+export default function Login() {
+  const navigate = useNavigate();
+  const { t } = useTranslation();
+  const [spaceLoading, setSpaceLoading] = useState(false);
+  const [showLocalLogin, setShowLocalLogin] = useState(false);
+  const [showSpaceLogin, setShowSpaceLogin] = useState(false);
+  const [showPasskeyLogin, setShowPasskeyLogin] = useState(false);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
+  // Second-factor step: primary credentials passed, awaiting a TOTP or recovery code.
+  const [totpStep, setTotpStep] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState('');
+  // Issued alongside `totp_required`; required to complete the second factor.
+  const [totpChallengeToken, setTotpChallengeToken] = useState('');
+  const [totpCode, setTotpCode] = useState('');
+  const [totpLoading, setTotpLoading] = useState(false);
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const autoSpaceLoginStarted = useRef(false);
+
+  const form = useForm<z.infer<ReturnType<typeof formSchema>>>({
+    resolver: zodResolver(formSchema(t)),
+    defaultValues: {
+      email: '',
+      password: '',
+    },
+  });
+
+  useEffect(() => {
+    checkAccountInfo();
+  }, []);
+
+  async function checkAccountInfo() {
+    try {
+      setLoadError(null);
+      const res = await httpClient.getAccountInfo();
+      if (!res.initialized) {
+        navigate('/register');
+        return;
+      }
+      setShowLocalLogin(res.password_login_enabled !== false);
+      setShowSpaceLogin(res.space_login_enabled !== false);
+      // Passkeys are OSS-only: the core reports explicit false on cloud, so an
+      // absent flag must not be read as "enabled".
+      setShowPasskeyLogin(
+        res.passkey_login_enabled === true || res.passkey_supported === true,
+      );
+      setLoading(false);
+
+      // Also check if already logged in
+      checkIfAlreadyLoggedIn();
+    } catch (err) {
+      let detail = '';
+      if (err instanceof Error) {
+        detail = err.message;
+      } else if (
+        err &&
+        typeof err === 'object' &&
+        'msg' in err &&
+        typeof (err as Record<string, unknown>).msg === 'string'
+      ) {
+        detail = (err as Record<string, unknown>).msg as string;
+      }
+      setLoadError(detail || t('common.loginLoadError'));
+      setLoading(false);
+    }
+  }
+
+  async function handleRetry() {
+    setRetrying(true);
+    setLoading(true);
+    setLoadError(null);
+    await checkAccountInfo();
+    setRetrying(false);
+  }
+
+  function checkIfAlreadyLoggedIn() {
+    httpClient
+      .checkUserToken()
+      .then(async (res) => {
+        if (res.token) {
+          await finishLogin(res.token);
+        }
+      })
+      .catch(() => {});
+  }
+
+  async function finishLogin(
+    token: string,
+    username?: string,
+  ): Promise<boolean> {
+    beginAuthenticatedSession(token, username);
+
+    const invitationToken = getPendingInvitationToken();
+    let preferredWorkspaceUuid: string | undefined;
+    if (invitationToken) {
+      try {
+        const response =
+          await httpClient.acceptWorkspaceInvitation(invitationToken);
+        beginAuthenticatedSession(response.token, username);
+        preferredWorkspaceUuid = response.workspace_uuid;
+        clearPendingInvitationToken();
+      } catch (error) {
+        const apiError = error as { code?: string };
+        const errorCode =
+          typeof apiError.code === 'string'
+            ? apiError.code
+            : 'invitation_accept_failed';
+        const invitationPath = TERMINAL_INVITATION_ERROR_CODES.has(errorCode)
+          ? `/invitations/accept?error=${encodeURIComponent(errorCode)}`
+          : '/invitations/accept';
+        navigate(invitationPath, { replace: true });
+        toast.error(
+          t(
+            errorCode === 'invitation_email_mismatch'
+              ? 'workspace.invitationEmailMismatch'
+              : 'workspace.invitationAcceptFailed',
+          ),
+        );
+        return false;
+      }
+    }
+
+    const result = await bootstrapWorkspaceSession({
+      preferredWorkspaceUuid,
+    });
+    if (result.status === 'selection-required') {
+      navigate('/workspaces/select?returnTo=%2Fhome', { replace: true });
+      return true;
+    }
+    if (result.status === 'unavailable') {
+      throw new Error('No Workspace is available for this Account');
+    }
+    navigate('/home');
+    return true;
+  }
+
+  function onSubmit(values: z.infer<ReturnType<typeof formSchema>>) {
+    handleLogin(values.email, values.password);
+  }
+
+  async function handlePasskeyLogin() {
+    setPasskeyLoading(true);
+    try {
+      const { options, challenge_token } =
+        await httpClient.getPasskeyAuthOptions(undefined);
+      const authResp = await startAuthentication({ optionsJSON: options });
+      const res = await httpClient.verifyPasskeyAuth(challenge_token, authResp);
+      // A rejected assertion answers with an error payload and no session, so a
+      // missing token means the login failed rather than that the user cancelled.
+      if (!res?.token) {
+        toast.error(t('common.passkeyLoginFailed'));
+        return;
+      }
+      if (await finishLogin(res.token, res.user)) {
+        toast.success(t('common.passkeyLoginSuccess'));
+      }
+    } catch (error: any) {
+      if (error?.name === 'NotAllowedError') {
+        // User cancelled the biometric prompt
+      } else {
+        toast.error(error?.message || t('common.passkeyLoginFailed'));
+      }
+    } finally {
+      setPasskeyLoading(false);
+    }
+  }
+
+  function handleLogin(username: string, password: string) {
+    httpClient
+      .authUser(username, password)
+      .then(async (res) => {
+        if (await finishLogin(res.token, username)) {
+          toast.success(t('common.loginSuccess'));
+        }
+      })
+      .catch(
+        (error: {
+          code?: string;
+          msg?: string;
+          data?: { challenge_token?: string };
+        }) => {
+          // The backend answers `totp_required` when the password was correct but
+          // a second factor is still outstanding. It also hands back the
+          // challenge token that must accompany the code.
+          if (error?.code === 'totp_required') {
+            setPendingEmail(username);
+            setTotpChallengeToken(error?.data?.challenge_token || '');
+            setTotpStep(true);
+            setUseRecoveryCode(false);
+            setTotpCode('');
+            return;
+          }
+          if (error?.code === 'totp_invalid_code') {
+            toast.error(t('common.totpInvalidCode'));
+            return;
+          }
+          toast.error(t('common.loginFailed'));
+        },
+      );
+  }
+
+  async function handleTotpSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    const code = totpCode.trim();
+    if (!code) {
+      return;
+    }
+    if (!totpChallengeToken) {
+      toast.error(t('common.totpVerifyFailed'));
+      return;
+    }
+    setTotpLoading(true);
+    try {
+      // The same endpoint accepts both authenticator codes and recovery codes.
+      const res = await httpClient.verifyTotpLogin(
+        pendingEmail,
+        code,
+        totpChallengeToken,
+      );
+      if (await finishLogin(res.token, res.user || pendingEmail)) {
+        toast.success(t('common.loginSuccess'));
+      }
+    } catch (error) {
+      const apiError = error as { code?: string };
+      toast.error(
+        apiError?.code === 'totp_invalid_code'
+          ? t('common.totpInvalidCode')
+          : t('common.totpVerifyFailed'),
+      );
+    } finally {
+      setTotpLoading(false);
+    }
+  }
+
+  function handleBackToPassword() {
+    setTotpStep(false);
+    setTotpChallengeToken('');
+    setTotpCode('');
+    setUseRecoveryCode(false);
+  }
+
+  const handleSpaceLoginClick = useCallback(async () => {
+    setSpaceLoading(true);
+    try {
+      const currentOrigin = window.location.origin;
+      const redirectUri = `${currentOrigin}/auth/space/callback`;
+      const response = await httpClient.getSpaceAuthorizeUrl(redirectUri);
+      window.location.href = response.authorize_url;
+    } catch {
+      toast.error(t('common.spaceLoginFailed'));
+      setSpaceLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    if (
+      loading ||
+      !showSpaceLogin ||
+      autoSpaceLoginStarted.current ||
+      new URLSearchParams(window.location.search).get('auto') !== 'space'
+    ) {
+      return;
+    }
+    autoSpaceLoginStarted.current = true;
+    void handleSpaceLoginClick();
+  }, [handleSpaceLoginClick, loading, showSpaceLogin]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-900">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  // Show error state when account info failed to load
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-900">
+        <Card className="w-[400px] shadow-lg dark:shadow-white/10">
+          <CardHeader className="pb-2">
+            <div className="flex justify-between items-center mb-6">
+              <ThemeToggle />
+              <LanguageSelector />
+            </div>
+            <img
+              src={langbotIcon}
+              alt="LangBot"
+              className="w-16 h-16 mb-4 mx-auto"
+            />
+            <CardTitle className="text-2xl text-center">
+              {t('common.welcome')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col items-center gap-4 rounded-lg border border-destructive/20 bg-destructive/5 p-5">
+              <div className="flex items-center gap-2 text-destructive">
+                <AlertCircle className="h-5 w-5 shrink-0" />
+                <span className="text-sm font-medium">
+                  {t('common.loginLoadError')}
+                </span>
+              </div>
+              <p className="text-sm text-center text-muted-foreground leading-relaxed">
+                {t('common.loginLoadErrorDesc')}
+              </p>
+              <code className="text-xs bg-muted/80 px-3 py-2 rounded-md max-w-full overflow-x-auto block text-center text-muted-foreground/80 break-all">
+                {loadError}
+              </code>
+              <Button
+                onClick={handleRetry}
+                disabled={retrying}
+                variant="outline"
+                className="w-full cursor-pointer"
+              >
+                {retrying ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                {t('common.retry')}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:dark:bg-neutral-900">
+      <Card className="w-[375px] shadow-lg dark:shadow-white/10">
+        <CardHeader>
+          <div className="flex justify-between items-center mb-6">
+            <ThemeToggle />
+            <LanguageSelector />
+          </div>
+          <img
+            src={langbotIcon}
+            alt="LangBot"
+            className="w-16 h-16 mb-4 mx-auto"
+          />
+          <CardTitle className="text-2xl text-center">
+            {t('common.welcome')}
+          </CardTitle>
+          <CardDescription className="text-center">
+            {t('common.continueToLogin')}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Second-factor challenge: shown once the password has been accepted. */}
+          {totpStep ? (
+            <form onSubmit={handleTotpSubmit} className="space-y-4">
+              <div className="flex items-start gap-2">
+                <ShieldCheck className="h-5 w-5 mt-0.5 text-primary" />
+                <div>
+                  <p className="text-sm font-medium">
+                    {t('common.totpChallengeTitle')}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {useRecoveryCode
+                      ? t('common.totpUseRecoveryCode')
+                      : t('common.totpChallengeDesc')}
+                  </p>
+                </div>
+              </div>
+
+              <div className="relative">
+                {useRecoveryCode ? (
+                  <KeyRound className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                ) : (
+                  <ShieldCheck className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                )}
+                <Input
+                  autoFocus
+                  inputMode={useRecoveryCode ? 'text' : 'numeric'}
+                  autoComplete="one-time-code"
+                  spellCheck={false}
+                  placeholder={
+                    useRecoveryCode
+                      ? t('common.enterRecoveryCode')
+                      : t('common.enterTotpCode')
+                  }
+                  className={`pl-10 ${useRecoveryCode ? 'font-mono' : 'tracking-widest'}`}
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value)}
+                />
+              </div>
+
+              <Button
+                type="submit"
+                className="w-full cursor-pointer"
+                disabled={totpLoading || !totpCode.trim()}
+              >
+                {totpLoading && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                {t('common.verify')}
+              </Button>
+
+              <div className="flex items-center justify-between text-xs">
+                <button
+                  type="button"
+                  className="text-blue-500 cursor-pointer"
+                  onClick={() => {
+                    setUseRecoveryCode((prev) => !prev);
+                    setTotpCode('');
+                  }}
+                >
+                  {useRecoveryCode
+                    ? t('common.useTotpCode')
+                    : t('common.useRecoveryCode')}
+                </button>
+                <button
+                  type="button"
+                  className="flex items-center text-muted-foreground cursor-pointer"
+                  onClick={handleBackToPassword}
+                >
+                  <ArrowLeft className="mr-1 h-3 w-3" />
+                  {t('common.back')}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <>
+              {/* Space and password login are per-account capabilities. */}
+              {showSpaceLogin && (
+                <div className="space-y-3">
+                  <Button
+                    type="button"
+                    className="w-full cursor-pointer"
+                    onClick={handleSpaceLoginClick}
+                    disabled={spaceLoading}
+                  >
+                    {spaceLoading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Layers className="mr-2 h-4 w-4" />
+                    )}
+                    {t('common.loginWithSpace')}
+                  </Button>
+                </div>
+              )}
+
+              {showPasskeyLogin && (
+                <div className="space-y-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full cursor-pointer"
+                    onClick={handlePasskeyLogin}
+                    disabled={passkeyLoading}
+                  >
+                    {passkeyLoading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Fingerprint className="mr-2 h-4 w-4" />
+                    )}
+                    {t('common.loginWithPasskey')}
+                  </Button>
+                </div>
+              )}
+
+              {/* Divider - only show if both login methods are available */}
+              {(showSpaceLogin || showPasskeyLogin) && showLocalLogin && (
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-white dark:bg-card px-2 text-muted-foreground">
+                      {t('common.or')}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Password login remains available to every account with a password. */}
+              {showLocalLogin && (
+                <Form {...form}>
+                  <form
+                    onSubmit={form.handleSubmit(onSubmit)}
+                    className="space-y-6"
+                  >
+                    <FormField
+                      control={form.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('common.email')}</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                              <Input
+                                placeholder={t('common.enterEmail')}
+                                className="pl-10"
+                                {...field}
+                              />
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <div className="flex justify-between">
+                            <FormLabel>{t('common.password')}</FormLabel>
+                            <Link
+                              to="/reset-password"
+                              className="text-sm text-blue-500"
+                            >
+                              {t('common.forgotPassword')}
+                            </Link>
+                          </div>
+
+                          <FormControl>
+                            <div className="relative">
+                              <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                              <Input
+                                type="password"
+                                placeholder={t('common.enterPassword')}
+                                className="pl-10"
+                                {...field}
+                              />
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <Button
+                      type="submit"
+                      variant={showSpaceLogin ? 'outline' : 'default'}
+                      className="w-full cursor-pointer"
+                    >
+                      {t('common.loginWithPassword')}
+                    </Button>
+                  </form>
+                </Form>
+              )}
+
+              <p className="text-xs text-center text-muted-foreground">
+                {t('common.agreementNotice')}{' '}
+                <a
+                  href="https://langbot.app/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-foreground transition-colors"
+                >
+                  {t('common.termsOfService')}
+                </a>
+                {'、'}
+                <a
+                  href="https://langbot.app/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-foreground transition-colors"
+                >
+                  {t('common.privacyPolicy')}
+                </a>{' '}
+                {t('common.and')}{' '}
+                <a
+                  href={t('common.dataCollectionPolicyUrl')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-foreground transition-colors"
+                >
+                  {t('common.dataCollectionPolicy')}
+                </a>
+              </p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

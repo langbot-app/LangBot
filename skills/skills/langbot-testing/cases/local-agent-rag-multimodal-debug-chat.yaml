@@ -1,0 +1,74 @@
+id: local-agent-rag-multimodal-debug-chat
+title: "Local Agent preserves image input while using RAG context"
+mode: agent-browser
+area: pipeline
+type: regression
+priority: p2
+risk: high
+ci_eligible: false
+tags:
+  - local-agent
+  - rag
+  - multimodal
+  - pipeline
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation: scripts/e2e/pipeline-debug-chat.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+  - LANGBOT_LOCAL_AGENT_RAG_KB_UUID
+automation_pipeline_url_env: LANGBOT_LOCAL_AGENT_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+automation_runner_config_patch_json: '{"knowledge-bases":["${LANGBOT_LOCAL_AGENT_RAG_KB_UUID}"]}'
+automation_restore_runner_config: "1"
+automation_reset_debug_chat: "1"
+automation_prompt: "I attached an image. Using the knowledge base, what is the local agent runner retrieval sentinel? Return only the sentinel."
+automation_expected_text: "azalea-cobalt-7421"
+automation_image_base64_fixture: "skills/langbot-testing/fixtures/multimodal/red-square.png.base64"
+setup_automation:
+  - "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
+  - "node:scripts/e2e/ensure-langrag-sentinel-kb.mjs --write-env"
+setup_provides_env:
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL
+  - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+  - LANGBOT_LOCAL_AGENT_RAG_KB_UUID
+preconditions:
+  - "The selected model route accepts image input, or the case is intentionally checking graceful provider rejection."
+steps:
+  - "Ensure case langrag-kb-retrieve has produced a knowledge base containing sentinel azalea-cobalt-7421."
+  - "Prepare a PNG file for upload. Prefer the bundled fixture at skills/langbot-testing/fixtures/multimodal/red-square.png.base64."
+  - "Open LANGBOT_FRONTEND_URL."
+  - "Navigate to Pipelines and open the target local-agent pipeline."
+  - "Open Debug Chat."
+  - "Attach the PNG through the image/file upload control."
+  - "Send: I attached an image. Use the knowledge base and reply only the unique sentinel from the knowledge base."
+checks:
+  - "UI: The sent User message shows an image attachment."
+  - "UI: The Bot message contains the expected KB sentinel."
+  - "Logs: The same backend request line contains [Image], and the request completes without runner.llm_error."
+  - "Console: No unexpected frontend runtime errors appear during upload or Debug Chat."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - backend_log
+diagnostics:
+  - "This case does not require the model to identify image content; provider vision quality is not the local-agent runner contract."
+  - "If the provider rejects the image, retest with the 64x64 red-square fixture and a known multimodal-capable model route."
+  - "If the image is visible but the sentinel is absent, first verify the KB is bound and retrievable in local-agent-rag-debug-chat."
+troubleshooting:
+  - plugin-runtime-timeout
+  - proxy-env-mismatch
+  - provider-image-parse-error
+  - survey-widget-blocks-debug-chat

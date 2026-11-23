@@ -1,0 +1,1295 @@
+import re
+import time
+import asyncio
+from quart import request
+import httpx
+from quart import Quart
+from typing import Callable, Dict, Any, Optional
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+from .qqofficialevent import QQOfficialEvent
+import json
+import traceback
+from contextlib import asynccontextmanager
+from cryptography.hazmat.primitives.asymmetric import ed25519
+from langbot.pkg.utils import httpclient
+
+
+QQ_SELECT_ACTION_PREFIX = '__langbot_select__:'
+_MAX_CALLBACK_BODY_BYTES = 1024 * 1024
+
+
+def get_select_field_options(form_data: dict) -> tuple[str, list[str]]:
+    """Return the active select field name and its display/submission values."""
+    field_name = str(form_data.get('_current_input_field') or '').strip()
+    if not field_name:
+        return '', []
+
+    field = next(
+        (
+            item
+            for item in form_data.get('input_defs') or []
+            if str(item.get('output_variable_name') or '').strip() == field_name
+        ),
+        None,
+    )
+    if not field or str(field.get('type') or '').strip().lower() != 'select':
+        return '', []
+
+    source = field.get('option_source') or {}
+    source_value = source.get('value') if isinstance(source, dict) else None
+    if isinstance(source_value, list):
+        return field_name, [str(item) for item in source_value]
+    if isinstance(source_value, str):
+        return field_name, [part.strip() for part in source_value.splitlines() if part.strip()]
+
+    options = field.get('options')
+    if not isinstance(options, list):
+        return field_name, []
+    values = []
+    for item in options:
+        if isinstance(item, dict):
+            values.append(str(item.get('label') or item.get('value') or ''))
+        else:
+            values.append(str(item))
+    return field_name, [value for value in values if value]
+
+
+def build_keyboard_from_select_field(form_data: dict, *, buttons_per_row: int | None = None) -> dict:
+    """Build callback buttons for the currently active Dify select field."""
+    _, options = get_select_field_options(form_data)
+    visible_options = options[:25]
+    if buttons_per_row is None:
+        # Keep small choices readable while fitting up to QQ's 5x5 limit.
+        buttons_per_row = min(5, max(2, (len(visible_options) + 4) // 5))
+    selection_actions = [
+        {
+            'id': f'{QQ_SELECT_ACTION_PREFIX}{idx}',
+            'title': option,
+            'button_style': 'secondary',
+        }
+        for idx, option in enumerate(visible_options)
+    ]
+    return build_keyboard_from_form({'actions': selection_actions}, buttons_per_row=buttons_per_row)
+
+
+def resolve_select_button_action(form_data: dict, action_id: str) -> tuple[str, str] | None:
+    """Resolve a select-button callback to ``(field_name, option_value)``."""
+    if not action_id.startswith(QQ_SELECT_ACTION_PREFIX):
+        return None
+    try:
+        option_index = int(action_id[len(QQ_SELECT_ACTION_PREFIX) :])
+    except ValueError:
+        return None
+
+    field_name, options = get_select_field_options(form_data)
+    if not field_name or option_index < 0 or option_index >= len(options) or option_index >= 25:
+        return None
+    return field_name, options[option_index]
+
+
+def build_keyboard_from_form(form_data: dict, *, buttons_per_row: int = 2) -> dict:
+    """Build a QQ keyboard JSON payload from a Dify human-input form_data.
+
+    Each Dify ``action`` becomes a callback button (``action.type=1``)
+    whose ``data`` is set directly to the Dify ``action_id``. The
+    INTERACTION_CREATE event carries this back as
+    ``data.resolved.button_data`` so the adapter can match the click to
+    the originating form.
+
+    Layout limits per spec: max 5 rows, max 5 buttons per row. We default
+    to 2 buttons per row for legibility; oversized button lists wrap
+    onto additional rows and overflow gets dropped (max 25 visible).
+
+    Args:
+        form_data: Dify ``{"actions": [{"id", "title", "button_style"}, ...]}``.
+        buttons_per_row: 1..5. Mobile UI looks best at 2.
+
+    Returns:
+        ``{"content": {"rows": [{"buttons": [...]}]}}``.
+    """
+    actions = list(form_data.get('actions') or [])[:25]  # 5×5 hard cap
+    buttons_per_row = max(1, min(5, buttons_per_row))
+
+    def _button(idx: int, action: dict) -> dict:
+        action_id = str(action.get('id') or '')
+        label = str(action.get('title') or action_id or f'选项 {idx + 1}')
+        style_raw = (action.get('button_style') or '').lower()
+        # QQ: 0 灰色线框, 1 蓝色线框. Highlight the primary / first action.
+        if style_raw == 'primary' or (style_raw == '' and idx == 0):
+            style = 1
+        else:
+            style = 0
+        return {
+            'id': str(idx + 1),
+            'render_data': {
+                'label': label,
+                # Shown after the user clicks — gives local "已选择" feedback
+                # without a follow-up message. Style mimics DingTalk/Lark's
+                # in-card selection state.
+                'visited_label': f'✓ {label}',
+                'style': style,
+            },
+            'action': {
+                'type': 1,  # callback button
+                'permission': {'type': 2},  # everyone can click
+                'data': action_id,
+                'unsupport_tips': '当前客户端版本不支持此按钮，请升级 QQ',
+            },
+        }
+
+    rows = []
+    for row_start in range(0, len(actions), buttons_per_row):
+        row_actions = actions[row_start : row_start + buttons_per_row]
+        rows.append(
+            {
+                'buttons': [_button(row_start + j, a) for j, a in enumerate(row_actions)],
+            }
+        )
+        if len(rows) >= 5:
+            break
+
+    return {'content': {'rows': rows}}
+
+
+class QQOfficialClient:
+    def __init__(self, secret: str, token: str, app_id: str, logger: None, unified_mode: bool = False):
+        self.unified_mode = unified_mode
+        self.app = Quart(__name__)
+        self.app.config['MAX_CONTENT_LENGTH'] = _MAX_CALLBACK_BODY_BYTES
+
+        # 只有在非统一模式下才注册独立路由
+        if not self.unified_mode:
+            self.app.add_url_rule(
+                '/callback/command',
+                'handle_callback',
+                self.handle_callback_request,
+                methods=['GET', 'POST'],
+            )
+
+        self.secret = secret
+        self.token = token
+        self.app_id = app_id
+        self._message_handlers = {}
+        # Single optional handler for INTERACTION_CREATE (button click). We
+        # don't multiplex like message handlers — only the adapter cares,
+        # and the click<->resume path needs a single source of truth.
+        self._interaction_handler: Optional[Callable[[Dict[str, Any], Optional[str]], Any]] = None
+        self.base_url = 'https://api.sgroup.qq.com'
+        self.access_token = ''
+        self.access_token_expiry_time = None
+        self.logger = logger
+        self._msg_seq_counter = 0
+        self._token_refresh_task: Optional[asyncio.Task] = None
+        self._http_clients: dict[float | None, httpx.AsyncClient] = {}
+
+    @asynccontextmanager
+    async def _http_client_context(self, timeout: float | None = None):
+        client = self._http_clients.get(timeout)
+        if client is None or client.is_closed:
+            response_hooks = httpclient.httpx_response_limit_hooks()
+            client = (
+                httpx.AsyncClient(event_hooks=response_hooks)
+                if timeout is None
+                else httpx.AsyncClient(timeout=timeout, event_hooks=response_hooks)
+            )
+            self._http_clients[timeout] = client
+        yield client
+
+    async def close(self) -> None:
+        """Stop client-owned background work."""
+
+        if self._token_refresh_task and not self._token_refresh_task.done():
+            self._token_refresh_task.cancel()
+            await asyncio.gather(self._token_refresh_task, return_exceptions=True)
+        self._token_refresh_task = None
+        clients = list(self._http_clients.values())
+        self._http_clients.clear()
+        if clients:
+            await asyncio.gather(*(client.aclose() for client in clients), return_exceptions=True)
+
+    async def check_access_token(self):
+        """检查access_token是否存在"""
+        if not self.access_token or await self.is_token_expired():
+            return False
+        return bool(self.access_token and self.access_token.strip())
+
+    async def get_access_token(self):
+        """获取access_token"""
+        url = 'https://bots.qq.com/app/getAppAccessToken'
+        async with self._http_client_context() as client:
+            params = {
+                'appId': self.app_id,
+                'clientSecret': self.secret,
+            }
+            headers = {
+                'content-type': 'application/json',
+            }
+            response = await client.post(url, json=params, headers=headers)
+            if response.status_code != 200:
+                body = await httpclient.response_text(response)
+                raise Exception(f'Failed to get access_token: HTTP {response.status_code} {body}')
+            response_data = await httpclient.parse_json_response(response)
+            access_token = response_data.get('access_token')
+            expires_in = int(response_data.get('expires_in', 7200))
+            self.access_token_expiry_time = time.time() + expires_in - 60
+            if access_token:
+                self.access_token = access_token
+                await self.logger.info(f'access_token obtained, expires_in={expires_in}s')
+            else:
+                raise Exception('Failed to get access_token: no access_token in response')
+
+    async def handle_callback_request(self):
+        """处理回调请求（独立端口模式，使用全局 request）"""
+        return await self._handle_callback_internal(request)
+
+    async def handle_unified_webhook(self, req):
+        """处理回调请求（统一 webhook 模式，显式传递 request）。
+
+        Args:
+            req: Quart Request 对象
+
+        Returns:
+            响应数据
+        """
+        return await self._handle_callback_internal(req)
+
+    async def _handle_callback_internal(self, req):
+        """处理回调请求的内部实现。
+
+        Args:
+            req: Quart Request 对象
+        """
+        try:
+            body = await req.get_data()
+
+            await self.logger.info(f'Received request, body length: {len(body)}')
+
+            if not body or len(body) == 0:
+                await self.logger.info('Received empty body, might be health check or GET request')
+                return {'code': 0, 'message': 'ok'}, 200
+            if len(body) > _MAX_CALLBACK_BODY_BYTES:
+                return {'error': 'callback body exceeds the size limit'}, 413
+
+            payload = await asyncio.to_thread(json.loads, body)
+
+            if payload.get('op') == 13:
+                validation_data = payload.get('d')
+                if not validation_data:
+                    return {'error': "missing 'd' field"}, 400
+                response = await self.verify(validation_data)
+                return response, 200
+
+            if payload.get('op') == 0:
+                # INTERACTION_CREATE (button click) skips ``get_message`` —
+                # that helper only flattens message-event fields and would
+                # drop ``data.resolved.button_data`` / ``data.button_id``.
+                if payload.get('t') == 'INTERACTION_CREATE':
+                    if self._interaction_handler:
+                        try:
+                            d = payload.get('d') or {}
+                            # Top-level ``id`` is the ws/event id used as
+                            # ``event_id`` for passive replies. ``d.id``
+                            # is the interaction id used for ACK. Do not
+                            # confuse the two — QQ rejects misuse with
+                            # 40034025.
+                            ws_event_id = payload.get('id')
+                            await self._interaction_handler(d, ws_event_id)
+                        except Exception:
+                            await self.logger.error(f'Error in interaction handler: {traceback.format_exc()}')
+                    return {'code': 0, 'message': 'success'}
+                message_data = await self.get_message(payload)
+                if message_data:
+                    event = QQOfficialEvent.from_payload(message_data)
+                    await self._handle_message(event)
+
+            return {'code': 0, 'message': 'success'}
+
+        except Exception as e:
+            await self.logger.error(f'Error in handle_callback_request: {traceback.format_exc()}')
+            return {'error': str(e)}, 400
+
+    async def run_task(self, host: str, port: int, *args, **kwargs):
+        """启动 Quart 应用"""
+        await self.app.run_task(host=host, port=port, *args, **kwargs)
+
+    def on_message(self, msg_type: str):
+        """注册消息类型处理器"""
+
+        def decorator(func: Callable[[platform_events.Event], None]):
+            if msg_type not in self._message_handlers:
+                self._message_handlers[msg_type] = []
+            self._message_handlers[msg_type].append(func)
+            return func
+
+        return decorator
+
+    def on_interaction(self):
+        """Register a single handler for INTERACTION_CREATE events.
+
+        The handler receives ``(data_dict, interaction_id)`` — the raw
+        ``d`` payload plus the top-level ``id`` field (the interaction
+        id, needed for the PUT /interactions/{id} ack and for reuse as
+        an ``event_id`` on the resumed reply within 30 minutes).
+        """
+
+        def decorator(func: Callable[[Dict[str, Any], Optional[str]], Any]):
+            self._interaction_handler = func
+            return func
+
+        return decorator
+
+    async def _handle_message(self, event: QQOfficialEvent):
+        """处理消息事件"""
+        msg_type = event.t
+        if msg_type in self._message_handlers:
+            for handler in self._message_handlers[msg_type]:
+                await handler(event)
+
+    async def get_message(self, msg: dict) -> Dict[str, Any]:
+        """获取消息"""
+        d = msg.get('d', {})
+        if not isinstance(d, dict):
+            return {}
+        message_data = {
+            't': msg.get('t', {}),
+            'bot_account_id': self.app_id,
+            'user_openid': d.get('author', {}).get('user_openid', {}),
+            'timestamp': d.get('timestamp', {}),
+            'd_author_id': d.get('author', {}).get('id', {}),
+            'content': d.get('content', {}),
+            'd_id': d.get('id', {}),
+            'id': msg.get('id', {}),
+            'channel_id': d.get('channel_id', {}),
+            'username': d.get('author', {}).get('username', {}),
+            'guild_id': d.get('guild_id', {}),
+            'member_openid': d.get('author', {}).get('member_openid') or d.get('author', {}).get('openid') or '',
+            'group_openid': d.get('group_openid', {}),
+        }
+        # Full-group mode delivers native bot mentions through this event too.
+        # Only QQ's explicit self marker and a matching token authorize an At.
+        if msg.get('t') == 'GROUP_MESSAGE_CREATE':
+            content = d.get('content')
+            mentions = d.get('mentions')
+            if isinstance(content, str) and isinstance(mentions, list):
+                for mention in mentions:
+                    if not isinstance(mention, dict) or mention.get('is_you') is not True:
+                        continue
+                    for key in ('id', 'member_openid', 'openid'):
+                        bot_id = mention.get(key)
+                        if not isinstance(bot_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', bot_id):
+                            continue
+                        for token in (f'<@{bot_id}>', f'<@!{bot_id}>'):
+                            if token in content:
+                                content = content.replace(token, '')
+                                message_data['is_at_bot'] = True
+                message_data['content'] = content
+        attachments = d.get('attachments', [])
+        image_attachments = [attachment['url'] for attachment in attachments if await self.is_image(attachment)]
+        image_attachments_type = [
+            attachment['content_type'] for attachment in attachments if await self.is_image(attachment)
+        ]
+        if image_attachments:
+            message_data['image_attachments'] = image_attachments[0]
+            message_data['content_type'] = image_attachments_type[0]
+        else:
+            message_data['image_attachments'] = None
+
+        return message_data
+
+    async def is_image(self, attachment: dict) -> bool:
+        """判断是否为图片附件"""
+        content_type = attachment.get('content_type', '')
+        return content_type.startswith('image/')
+
+    def allocate_msg_seq(self) -> int:
+        """Reserve a sequence for a new outgoing message, including a stream."""
+        self._msg_seq_counter += 1
+        return self._msg_seq_counter
+
+    def _resolve_msg_seq(self, msg_seq: Optional[int] = None) -> int:
+        """Allocate automatic sequences across message types, preserving explicit stream sequences."""
+        if msg_seq is None:
+            return self.allocate_msg_seq()
+        self._msg_seq_counter = max(self._msg_seq_counter, msg_seq)
+        return msg_seq
+
+    async def send_private_text_msg(
+        self,
+        user_openid: str,
+        content: str,
+        msg_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+        msg_seq: Optional[int] = None,
+    ):
+        """Send a c2c text message.
+
+        Either ``msg_id`` (inbound user msg, free passive reply) or
+        ``event_id`` (e.g. INTERACTION_CREATE id, valid 30 min) is
+        required. Without either, the call costs the proactive-send quota.
+        """
+        if not await self.check_access_token():
+            await self.get_access_token()
+
+        url = self.base_url + '/v2/users/' + user_openid + '/messages'
+        async with self._http_client_context() as client:
+            headers = {
+                'Authorization': f'QQBot {self.access_token}',
+                'Content-Type': 'application/json',
+            }
+            data: dict[str, Any] = {
+                'content': content,
+                'msg_type': 0,
+                'msg_seq': self._resolve_msg_seq(msg_seq),
+            }
+            if msg_id:
+                data['msg_id'] = msg_id
+            if event_id:
+                data['event_id'] = event_id
+            response = await client.post(url, headers=headers, json=data)
+            response_data = await httpclient.parse_json_response(response)
+            if response.status_code == 200:
+                return
+            else:
+                await self.logger.error(f'Failed to send private message: {response_data}')
+                raise ValueError(response)
+
+    async def _send_markdown_msg(
+        self,
+        target_type: str,
+        target_id: str,
+        content: str,
+        msg_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+        msg_seq: Optional[int] = None,
+    ) -> None:
+        """Send a Markdown message to a C2C user or QQ group."""
+        if not await self.check_access_token():
+            await self.get_access_token()
+
+        if target_type == 'c2c':
+            url = f'{self.base_url}/v2/users/{target_id}/messages'
+        elif target_type == 'group':
+            url = f'{self.base_url}/v2/groups/{target_id}/messages'
+        else:
+            raise ValueError(f'Unsupported Markdown target type: {target_type}')
+
+        data: dict[str, Any] = {
+            'msg_type': 2,
+            'markdown': {'content': content},
+            'msg_seq': self._resolve_msg_seq(msg_seq),
+        }
+        if msg_id:
+            data['msg_id'] = msg_id
+        if event_id:
+            data['event_id'] = event_id
+
+        async with self._http_client_context() as client:
+            headers = {
+                'Authorization': f'QQBot {self.access_token}',
+                'Content-Type': 'application/json',
+            }
+            response = await client.post(url, headers=headers, json=data)
+            if response.status_code != 200:
+                response_data = await httpclient.parse_json_response(response)
+                await self.logger.error(f'Failed to send Markdown message: {response_data}')
+                raise ValueError(response)
+
+    async def send_private_markdown_msg(
+        self,
+        user_openid: str,
+        content: str,
+        msg_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+        msg_seq: Optional[int] = None,
+    ) -> None:
+        """Send a Markdown C2C message."""
+        await self._send_markdown_msg('c2c', user_openid, content, msg_id, event_id, msg_seq)
+
+    async def send_group_markdown_msg(
+        self,
+        group_openid: str,
+        content: str,
+        msg_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+        msg_seq: Optional[int] = None,
+    ) -> None:
+        """Send a Markdown QQ group message."""
+        await self._send_markdown_msg('group', group_openid, content, msg_id, event_id, msg_seq)
+
+    async def send_group_text_msg(
+        self,
+        group_openid: str,
+        content: str,
+        msg_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+        msg_seq: Optional[int] = None,
+    ):
+        """Send a group text message.
+
+        Either ``msg_id`` or ``event_id`` is required (see
+        :meth:`send_private_text_msg` for the distinction).
+        """
+        if not await self.check_access_token():
+            await self.get_access_token()
+
+        url = self.base_url + '/v2/groups/' + group_openid + '/messages'
+        async with self._http_client_context() as client:
+            headers = {
+                'Authorization': f'QQBot {self.access_token}',
+                'Content-Type': 'application/json',
+            }
+            data: dict[str, Any] = {
+                'content': content,
+                'msg_type': 0,
+                'msg_seq': self._resolve_msg_seq(msg_seq),
+            }
+            if msg_id:
+                data['msg_id'] = msg_id
+            if event_id:
+                data['event_id'] = event_id
+            response = await client.post(url, headers=headers, json=data)
+            if response.status_code == 200:
+                return
+            else:
+                error_payload = await httpclient.parse_json_response(response)
+                await self.logger.error(f'Failed to send group message: {error_payload}')
+                raise Exception(str(error_payload))
+
+    async def send_channle_group_text_msg(self, channel_id: str, content: str, msg_id: str):
+        """发送频道群聊消息"""
+        if not await self.check_access_token():
+            await self.get_access_token()
+
+        url = self.base_url + '/channels/' + channel_id + '/messages'
+        async with self._http_client_context() as client:
+            headers = {
+                'Authorization': f'QQBot {self.access_token}',
+                'Content-Type': 'application/json',
+            }
+            params = {
+                'content': content,
+                'msg_type': 0,
+                'msg_id': msg_id,
+            }
+            response = await client.post(url, headers=headers, json=params)
+            if response.status_code == 200:
+                return True
+            else:
+                error_payload = await httpclient.parse_json_response(response)
+                await self.logger.error(f'Failed to send channel group message: {error_payload}')
+                raise Exception(response)
+
+    async def send_channle_private_text_msg(self, guild_id: str, content: str, msg_id: str):
+        """发送频道私聊消息"""
+        if not await self.check_access_token():
+            await self.get_access_token()
+
+        url = self.base_url + '/dms/' + guild_id + '/messages'
+        async with self._http_client_context() as client:
+            headers = {
+                'Authorization': f'QQBot {self.access_token}',
+                'Content-Type': 'application/json',
+            }
+            params = {
+                'content': content,
+                'msg_type': 0,
+                'msg_id': msg_id,
+            }
+            response = await client.post(url, headers=headers, json=params)
+            if response.status_code == 200:
+                return True
+            else:
+                error_payload = await httpclient.parse_json_response(response)
+                await self.logger.error(f'Failed to send channel private message: {error_payload}')
+                raise Exception(response)
+
+    # ---- 富媒体消息 ----
+
+    # 媒体文件类型
+    MEDIA_TYPE_IMAGE = 1
+    MEDIA_TYPE_VIDEO = 2
+    MEDIA_TYPE_VOICE = 3
+    MEDIA_TYPE_FILE = 4
+
+    async def upload_media(
+        self,
+        target_type: str,
+        target_id: str,
+        file_type: int,
+        file_url: str = None,
+        file_data: str = None,
+        file_name: str = None,
+    ) -> str:
+        """上传媒体文件，返回 file_info。
+
+        Args:
+            target_type: 'c2c' | 'group'
+            target_id: 用户 openid 或群 openid
+            file_type: 1=图片, 2=视频, 3=语音, 4=文件
+            file_url: 在线 URL（与 file_data 二选一）
+            file_data: base64 编码的文件数据或 data URL（与 file_url 二选一）
+            file_name: 文件名（file_type=4 时必填）
+        """
+        if not await self.check_access_token():
+            await self.get_access_token()
+
+        if target_type == 'c2c':
+            url = f'{self.base_url}/v2/users/{target_id}/files'
+        elif target_type == 'group':
+            url = f'{self.base_url}/v2/groups/{target_id}/files'
+        else:
+            raise ValueError(f'Unsupported target_type: {target_type}')
+
+        body = {
+            'file_type': file_type,
+            'srv_send_msg': False,
+        }
+        if file_url:
+            body['url'] = file_url
+        elif file_data:
+            # 处理 data URL 格式: data:image/png;base64,xxxxx
+            if file_data.startswith('data:'):
+                match = re.match(r'^data:[^;]+;base64,(.+)$', file_data, re.DOTALL)
+                if match:
+                    body['file_data'] = match.group(1)
+                else:
+                    body['file_data'] = file_data
+            else:
+                body['file_data'] = file_data
+        else:
+            raise ValueError('file_url or file_data is required')
+
+        if file_type == self.MEDIA_TYPE_FILE and file_name:
+            body['file_name'] = file_name
+
+        async with self._http_client_context(timeout=120) as client:
+            headers = {
+                'Authorization': f'QQBot {self.access_token}',
+                'Content-Type': 'application/json',
+            }
+            response = await client.post(url, headers=headers, json=body)
+            if response.status_code == 200:
+                data = await httpclient.parse_json_response(response)
+                file_info = data.get('file_info', '')
+                preview = file_info[:80] + '...' if len(file_info) > 80 else file_info
+                await self.logger.info(f'Upload media success, file_info={preview}')
+                return file_info
+            else:
+                body = await httpclient.response_text(response)
+                raise Exception(f'Failed to upload media: HTTP {response.status_code} {body}')
+
+    async def _send_media_msg(
+        self,
+        target_type: str,
+        target_id: str,
+        file_info: str,
+        msg_id: str = None,
+        content: str = None,
+    ):
+        """发送富媒体消息（msg_type=7）"""
+        if not await self.check_access_token():
+            await self.get_access_token()
+
+        if target_type == 'c2c':
+            url = f'{self.base_url}/v2/users/{target_id}/messages'
+        elif target_type == 'group':
+            url = f'{self.base_url}/v2/groups/{target_id}/messages'
+        else:
+            raise ValueError(f'Unsupported target_type: {target_type}')
+
+        body = {
+            'msg_type': 7,
+            'media': {'file_info': file_info},
+            'msg_seq': self._resolve_msg_seq(),
+        }
+        if content:
+            body['content'] = content
+        if msg_id:
+            body['msg_id'] = msg_id
+
+        async with self._http_client_context(timeout=120) as client:
+            headers = {
+                'Authorization': f'QQBot {self.access_token}',
+                'Content-Type': 'application/json',
+            }
+            await self.logger.info(f'Sending rich media: {json.dumps(body, ensure_ascii=False)[:200]}')
+            response = await client.post(url, headers=headers, json=body)
+            if response.status_code != 200:
+                response_body = await httpclient.response_text(response)
+                raise Exception(f'Failed to send rich media message: HTTP {response.status_code} {response_body}')
+
+    async def send_image_msg(
+        self,
+        target_type: str,
+        target_id: str,
+        file_url: str = None,
+        file_data: str = None,
+        msg_id: str = None,
+        content: str = None,
+    ):
+        """发送图片消息"""
+        file_info = await self.upload_media(
+            target_type,
+            target_id,
+            self.MEDIA_TYPE_IMAGE,
+            file_url=file_url,
+            file_data=file_data,
+        )
+        await self._send_media_msg(target_type, target_id, file_info, msg_id, content)
+
+    async def send_voice_msg(
+        self,
+        target_type: str,
+        target_id: str,
+        file_url: str = None,
+        file_data: str = None,
+        msg_id: str = None,
+    ):
+        """发送语音消息"""
+        file_info = await self.upload_media(
+            target_type,
+            target_id,
+            self.MEDIA_TYPE_VOICE,
+            file_url=file_url,
+            file_data=file_data,
+        )
+        await self._send_media_msg(target_type, target_id, file_info, msg_id)
+
+    async def send_file_msg(
+        self,
+        target_type: str,
+        target_id: str,
+        file_url: str = None,
+        file_data: str = None,
+        file_name: str = None,
+        msg_id: str = None,
+    ):
+        """发送文件消息（含视频）"""
+        file_info = await self.upload_media(
+            target_type,
+            target_id,
+            self.MEDIA_TYPE_FILE,
+            file_url=file_url,
+            file_data=file_data,
+            file_name=file_name,
+        )
+        await self._send_media_msg(target_type, target_id, file_info, msg_id)
+
+    async def send_stream_msg(
+        self,
+        user_openid: str,
+        content: str,
+        event_id: str,
+        msg_id: str,
+        msg_seq: int = 1,
+        index: int = 0,
+        stream_msg_id: str = None,
+        input_state: int = 1,
+    ):
+        """发送流式消息（C2C 私聊）。
+
+        Args:
+            input_state: 1=生成中, 10=生成结束
+        """
+        if not await self.check_access_token():
+            await self.get_access_token()
+
+        url = f'{self.base_url}/v2/users/{user_openid}/stream_messages'
+        body = {
+            'input_mode': 'replace',
+            'input_state': input_state,
+            'content_type': 'markdown',
+            'content_raw': content,
+            'event_id': event_id,
+            'msg_id': msg_id,
+            'msg_seq': self._resolve_msg_seq(msg_seq),
+            'index': index,
+        }
+        if stream_msg_id:
+            body['stream_msg_id'] = stream_msg_id
+
+        async with self._http_client_context(timeout=120) as client:
+            headers = {
+                'Authorization': f'QQBot {self.access_token}',
+                'Content-Type': 'application/json',
+            }
+            response = await client.post(url, headers=headers, json=body)
+            if response.status_code != 200:
+                response_body = await httpclient.response_text(response)
+                raise Exception(f'Failed to send stream message: HTTP {response.status_code} {response_body}')
+            return await httpclient.parse_json_response(response)
+
+    async def send_markdown_keyboard(
+        self,
+        target_type: str,
+        target_id: str,
+        markdown_content: str,
+        keyboard: Optional[dict] = None,
+        msg_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+        msg_seq: Optional[int] = None,
+    ) -> dict:
+        """Send a ``msg_type=2`` (markdown) message carrying a keyboard.
+
+        The keyboard ride-along is the only documented way to attach
+        buttons in QQ official; pure keyboard-only messages are not
+        accepted by the server (markdown content is required).
+
+        Args:
+            target_type: 'c2c' (single chat), 'group', 'channel' (text
+                channel — uses POST /channels/{id}/messages instead of v2).
+            target_id: openid for c2c/group, channel_id for channel.
+            markdown_content: Plain markdown text shown above the buttons.
+            keyboard: ``{'content': {'rows': [{'buttons': [...]}]}}`` per
+                the official spec. Use :func:`build_keyboard_from_form`
+                to construct from Dify form_data.
+            msg_id: Inbound user message id; turns this into a passive
+                reply (preferred — no monthly quota cost).
+            event_id: Use ``INTERACTION_CREATE`` event id from a prior
+                button click to keep within the 30-minute passive window
+                without an inbound msg_id.
+            msg_seq: Explicit de-dup counter, or None to allocate automatically.
+        """
+        if not await self.check_access_token():
+            await self.get_access_token()
+        if target_type == 'c2c':
+            url = f'{self.base_url}/v2/users/{target_id}/messages'
+        elif target_type == 'group':
+            url = f'{self.base_url}/v2/groups/{target_id}/messages'
+        elif target_type == 'channel':
+            url = f'{self.base_url}/channels/{target_id}/messages'
+        else:
+            raise ValueError(f'Unsupported target_type for markdown+keyboard: {target_type}')
+        body: dict[str, Any] = {
+            'msg_type': 2,
+            'markdown': {'content': markdown_content},
+            'msg_seq': self._resolve_msg_seq(msg_seq),
+        }
+        if keyboard and keyboard.get('content', {}).get('rows'):
+            body['keyboard'] = keyboard
+        if msg_id:
+            body['msg_id'] = msg_id
+        if event_id:
+            body['event_id'] = event_id
+
+        async with self._http_client_context(timeout=30) as client:
+            headers = {
+                'Authorization': f'QQBot {self.access_token}',
+                'Content-Type': 'application/json',
+            }
+            response = await client.post(url, headers=headers, json=body)
+            if response.status_code != 200:
+                response_body = await httpclient.response_text(response)
+                await self.logger.error(
+                    f'Failed to send markdown+keyboard: HTTP {response.status_code} {response_body}'
+                )
+                raise Exception(f'Failed to send markdown+keyboard: HTTP {response.status_code} {response_body}')
+            return await httpclient.parse_json_response(response)
+
+    async def ack_interaction(self, interaction_id: str, code: int = 0) -> None:
+        """Acknowledge a button-click INTERACTION_CREATE event.
+
+        QQ keeps the client in a loading spinner until this ack is
+        received. Should be called as soon as the click is parsed, before
+        any heavier downstream work (the actual workflow resume can run
+        async).
+
+        Args:
+            interaction_id: The ``id`` field from the INTERACTION_CREATE event.
+            code: 0=success, 1=fail, 2=rate-limited, 3=duplicate, 4=no
+                permission, 5=admin only. Default 0.
+        """
+        if not interaction_id:
+            return
+        if not await self.check_access_token():
+            await self.get_access_token()
+
+        url = f'{self.base_url}/interactions/{interaction_id}'
+        async with self._http_client_context(timeout=10) as client:
+            headers = {
+                'Authorization': f'QQBot {self.access_token}',
+                'Content-Type': 'application/json',
+            }
+            try:
+                response = await client.put(url, headers=headers, json={'code': code})
+                if response.status_code >= 400:
+                    response_body = await httpclient.response_text(response)
+                    await self.logger.warning(
+                        f'ack_interaction non-success: HTTP {response.status_code} {response_body}'
+                    )
+            except Exception as e:
+                await self.logger.warning(f'ack_interaction error (non-fatal): {e}')
+
+    async def is_token_expired(self):
+        """检查token是否过期"""
+        if self.access_token_expiry_time is None:
+            return True
+        return time.time() > self.access_token_expiry_time
+
+    async def repeat_seed(self, bot_secret: str, target_size: int = 32) -> bytes:
+        if not bot_secret:
+            raise ValueError('QQ bot secret must not be empty')
+        target_size = max(int(target_size), 1)
+        repeats = (target_size + len(bot_secret) - 1) // len(bot_secret)
+        return (bot_secret * repeats)[:target_size].encode('utf-8')
+
+    async def verify(self, validation_payload: dict):
+        seed = await self.repeat_seed(self.secret)
+        private_key = ed25519.Ed25519PrivateKey.from_private_bytes(seed)
+
+        event_ts = validation_payload.get('event_ts', '')
+        plain_token = validation_payload.get('plain_token', '')
+        msg = event_ts + plain_token
+
+        # sign
+        signature = private_key.sign(msg.encode()).hex()
+
+        response = {
+            'plain_token': plain_token,
+            'signature': signature,
+        }
+        return response
+
+    # ---- WebSocket Gateway ----
+    # Reference: https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/interface-framework/event-emit.html
+
+    INTENT_GUILDS = 1 << 0
+    INTENT_GUILD_MEMBERS = 1 << 1
+    INTENT_PUBLIC_GUILD_MESSAGES = 1 << 30
+    INTENT_DIRECT_MESSAGE = 1 << 12
+    INTENT_GROUP_AND_C2C = 1 << 25
+    INTENT_INTERACTION = 1 << 26
+
+    FULL_INTENTS = (
+        INTENT_GUILDS
+        | INTENT_GUILD_MEMBERS
+        | INTENT_PUBLIC_GUILD_MESSAGES
+        | INTENT_DIRECT_MESSAGE
+        | INTENT_GROUP_AND_C2C
+        | INTENT_INTERACTION
+    )
+
+    async def get_gateway_url(self) -> str:
+        """获取 WebSocket 网关地址"""
+        if not await self.check_access_token():
+            await self.get_access_token()
+
+        url = f'{self.base_url}/gateway'
+        async with self._http_client_context() as client:
+            headers = {
+                'Authorization': f'QQBot {self.access_token}',
+            }
+            response = await client.get(url, headers=headers)
+            if response.status_code == 200:
+                data = await httpclient.parse_json_response(response)
+                ws_url = data.get('url', '')
+                if not ws_url:
+                    raise Exception('Gateway URL is empty')
+                return ws_url
+            else:
+                body = await httpclient.response_text(response)
+                raise Exception(f'Failed to get Gateway URL: HTTP {response.status_code} {body}')
+
+    async def _background_token_refresh(self):
+        """在 token 到期前主动刷新"""
+        try:
+            while True:
+                if self.access_token_expiry_time:
+                    remain = self.access_token_expiry_time - time.time()
+                    if remain > 120:
+                        await asyncio.sleep(remain - 60)
+                        continue
+                self.access_token = ''
+                self.access_token_expiry_time = None
+                if await self.check_access_token():
+                    await asyncio.sleep(60)
+                else:
+                    await self.get_access_token()
+                    await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            pass
+
+    async def connect_gateway(
+        self,
+        on_event: Callable[[str, dict], Any],
+        on_ready: Optional[Callable[[], Any]] = None,
+        on_error: Optional[Callable[[Exception], Any]] = None,
+    ):
+        """WebSocket 网关连接，含重连逻辑。持续重连直到达到最大次数或被取消。
+
+        Args:
+            on_event: 收到 op=0 Dispatch 事件时的回调，参数为 (event_type, event_data)
+            on_ready: 连接就绪 (收到 READY) 时的回调
+            on_error: 发生错误时的回调
+        """
+        import websockets
+
+        session_id = ''
+        last_seq = 0
+        reconnect_attempts = 0
+        max_reconnect_attempts = 100
+        backoff_delays = [1, 2, 5, 10, 30, 60]
+        rate_limit_delay = 60
+
+        # Cancel previous token refresh task if any
+        if self._token_refresh_task and not self._token_refresh_task.done():
+            self._token_refresh_task.cancel()
+            try:
+                await self._token_refresh_task
+            except asyncio.CancelledError:
+                pass
+            self._token_refresh_task = None
+
+        while reconnect_attempts <= max_reconnect_attempts:
+            heartbeat_interval = 45000
+            should_refresh_token = False
+            ws = None
+            heartbeat_task = None
+
+            # Refresh token if needed
+            if should_refresh_token:
+                self.access_token = ''
+                self.access_token_expiry_time = None
+
+            try:
+                ws_url = await self.get_gateway_url()
+                await self.logger.info(f'Gateway URL obtained: {ws_url[:60]}...')
+            except Exception as e:
+                error_msg = str(e)
+                await self.logger.error(f'Failed to get gateway URL: {e}')
+                reconnect_attempts += 1
+                if '100017' in error_msg or '频率' in error_msg or 'Too many' in error_msg:
+                    delay = rate_limit_delay
+                else:
+                    delay = backoff_delays[min(reconnect_attempts - 1, len(backoff_delays) - 1)]
+                await self.logger.info(f'Reconnecting in {delay}s (attempt {reconnect_attempts})')
+                await asyncio.sleep(delay)
+                continue
+
+            try:
+                await self.logger.info('Connecting to WebSocket gateway...')
+                ws = await websockets.connect(ws_url, max_size=_MAX_CALLBACK_BODY_BYTES)
+                await self.logger.info('WebSocket connected')
+            except Exception as e:
+                await self.logger.error(f'WebSocket connection failed: {e}')
+                reconnect_attempts += 1
+                delay = backoff_delays[min(reconnect_attempts - 1, len(backoff_delays) - 1)]
+                await self.logger.info(f'Reconnecting in {delay}s (attempt {reconnect_attempts})')
+                await asyncio.sleep(delay)
+                continue
+
+            try:
+                async for raw_msg in ws:
+                    try:
+                        payload = await asyncio.to_thread(json.loads, raw_msg)
+                    except json.JSONDecodeError:
+                        await self.logger.error(f'Failed to parse message: {raw_msg}')
+                        continue
+
+                    op = payload.get('op')
+                    d = payload.get('d', {})
+                    s = payload.get('s')
+                    t = payload.get('t')
+                    # Top-level event id, distinct from `d.id`. Per QQ
+                    # spec this is the only value accepted as ``event_id``
+                    # in subsequent passive-reply send-message calls
+                    # (``d.id`` for INTERACTION_CREATE is the interaction
+                    # id, used solely for PUT /interactions/{id} ack).
+                    ws_event_id = payload.get('id')
+
+                    if not isinstance(d, dict):
+                        d = {}
+
+                    if op == 10:  # Hello
+                        heartbeat_interval = d.get('heartbeat_interval', 45000)
+                        await self.logger.info(f'Received Hello, heartbeat_interval={heartbeat_interval}ms')
+
+                        # Send Identify or Resume
+                        if session_id and last_seq > 0:
+                            resume_payload = {
+                                'op': 6,
+                                'd': {
+                                    'token': f'QQBot {self.access_token}',
+                                    'session_id': session_id,
+                                    'seq': last_seq,
+                                },
+                            }
+                            await ws.send(json.dumps(resume_payload))
+                            await self.logger.info(f'Sent Resume, session_id={session_id}, seq={last_seq}')
+                        else:
+                            identify_payload = {
+                                'op': 2,
+                                'd': {
+                                    'token': f'QQBot {self.access_token}',
+                                    'intents': self.FULL_INTENTS,
+                                    'shard': [0, 1],
+                                },
+                            }
+                            await ws.send(json.dumps(identify_payload))
+                            await self.logger.info(f'Sent Identify, intents={self.FULL_INTENTS}')
+
+                        # Start heartbeat
+                        async def _heartbeat_loop(conn, interval_ms):
+                            interval_sec = interval_ms / 1000.0
+                            try:
+                                while True:
+                                    await asyncio.sleep(interval_sec)
+                                    try:
+                                        hb_payload = {'op': 1, 'd': last_seq}
+                                        await conn.send(json.dumps(hb_payload))
+                                    except Exception:
+                                        break
+                            except asyncio.CancelledError:
+                                pass
+
+                        heartbeat_task = asyncio.create_task(_heartbeat_loop(ws, heartbeat_interval))
+
+                    elif op == 0:  # Dispatch
+                        if s is not None:
+                            last_seq = s
+
+                        if t == 'READY':
+                            session_id = d.get('session_id', '')
+                            reconnect_attempts = 0
+                            await self.logger.info(f'READY, session_id={session_id}')
+                            if on_ready:
+                                try:
+                                    result = on_ready()
+                                    if asyncio.iscoroutine(result):
+                                        await result
+                                except Exception:
+                                    pass
+                            # Track token refresh task to avoid leaks
+                            if self._token_refresh_task and not self._token_refresh_task.done():
+                                self._token_refresh_task.cancel()
+                                try:
+                                    await self._token_refresh_task
+                                except asyncio.CancelledError:
+                                    pass
+                            self._token_refresh_task = asyncio.create_task(self._background_token_refresh())
+
+                        elif t == 'RESUMED':
+                            reconnect_attempts = 0
+                            await self.logger.info('RESUMED')
+
+                        else:
+                            await self.logger.debug(f'Received event: {t}, seq={s}')
+                            # INTERACTION_CREATE bypasses the regular
+                            # on_event dispatcher so the adapter sees the
+                            # top-level ws_event_id (needed as event_id
+                            # for the resumed reply) — same shape as the
+                            # webhook handler.
+                            if t == 'INTERACTION_CREATE':
+                                if self._interaction_handler:
+                                    try:
+                                        result = self._interaction_handler(d, ws_event_id)
+                                        if asyncio.iscoroutine(result):
+                                            await result
+                                    except Exception:
+                                        await self.logger.error(
+                                            f'Error in interaction handler (ws): {traceback.format_exc()}'
+                                        )
+                            elif on_event:
+                                try:
+                                    result = on_event(t, d)
+                                    if asyncio.iscoroutine(result):
+                                        await result
+                                except Exception:
+                                    await self.logger.error(f'Error handling event {t}: {traceback.format_exc()}')
+
+                    elif op == 11:  # Heartbeat ACK
+                        pass
+
+                    elif op == 7:  # Reconnect
+                        await self.logger.info('Received Reconnect directive')
+                        break
+
+                    elif op == 9:  # Invalid Session
+                        can_resume = d.get('can_resume', False)
+                        await self.logger.warning(f'Invalid Session, can_resume={can_resume}')
+                        if not can_resume:
+                            session_id = ''
+                            last_seq = 0
+                            should_refresh_token = True
+                        break
+
+                # Connection closed normally (end of async for)
+                try:
+                    close_code = ws.close_code
+                    close_reason = ws.close_reason or ''
+                except Exception:
+                    close_code = None
+                    close_reason = ''
+                await self.logger.info(f'Connection closed, code={close_code}, reason={close_reason}')
+
+                if close_code == 4004:
+                    should_refresh_token = True
+                elif close_code in (4006, 4007, 4009):
+                    session_id = ''
+                    last_seq = 0
+                    should_refresh_token = True
+                elif close_code == 4008:
+                    reconnect_attempts += 1
+                    delay = rate_limit_delay
+                    await self.logger.info(
+                        f'Rate limited, waiting {delay}s before reconnect (attempt {reconnect_attempts})'
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                elif close_code in (4914, 4915):
+                    err = Exception(f'Bot disconnected/banned (close_code={close_code})')
+                    if on_error:
+                        await self._safe_callback(on_error, err)
+                    return
+                elif close_code in (4900, 4901, 4902, 4903, 4904, 4905, 4906, 4907, 4908, 4909, 4910, 4911, 4912, 4913):
+                    session_id = ''
+                    last_seq = 0
+
+                if close_code == 1000:
+                    return
+
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                await self.logger.error(f'Unexpected error in WebSocket loop: {traceback.format_exc()}')
+            finally:
+                if heartbeat_task:
+                    heartbeat_task.cancel()
+                    try:
+                        await heartbeat_task
+                    except asyncio.CancelledError:
+                        pass
+                if ws:
+                    try:
+                        await ws.close()
+                    except Exception:
+                        pass
+
+            # If we reach here, we need to reconnect
+            reconnect_attempts += 1
+            if reconnect_attempts > max_reconnect_attempts:
+                await self.logger.error(f'Max reconnect attempts ({max_reconnect_attempts}) reached, stopping')
+                if on_error:
+                    await self._safe_callback(on_error, Exception('Max reconnect attempts reached'))
+                return
+            delay = backoff_delays[min(reconnect_attempts - 1, len(backoff_delays) - 1)]
+            await self.logger.info(f'Reconnecting in {delay}s (attempt {reconnect_attempts})')
+            await asyncio.sleep(delay)
+
+    async def _safe_callback(self, callback, *args):
+        """Safely invoke a callback, handling both sync and async functions."""
+        try:
+            result = callback(*args)
+            if asyncio.iscoroutine(result):
+                await result
+        except Exception:
+            pass
+
+    async def connect_gateway_loop(
+        self,
+        on_event: Callable[[str, dict], Any],
+        on_ready: Optional[Callable[[], Any]] = None,
+        on_error: Optional[Callable[[Exception], Any]] = None,
+    ):
+        """持续重连的网关循环。"""
+        await self.connect_gateway(on_event, on_ready, on_error)

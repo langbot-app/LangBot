@@ -1,0 +1,69 @@
+id: langrag-parser-golden-e2e
+title: "LangRAG and GeneralParsers retrieve a structured golden document"
+mode: agent-browser
+area: knowledge
+type: regression
+priority: p1
+risk: high
+ci_eligible: false
+tags:
+  - golden
+  - e2e
+  - langrag
+  - parser
+  - knowledge
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_REPO
+  - LANGBOT_WEB_REPO
+  - LANGBOT_RAG_PLUGIN_REPO
+  - LANGBOT_PARSER_PLUGIN_REPO
+preconditions:
+  - "LANGBOT_REPO and plugin repo env values point to the worktrees intended for this golden parser/RAG run."
+  - "The active LangBot environment can build and install local LangRAG and GeneralParsers plugin packages."
+  - "A working embedding model is available before the Knowledge UI path starts."
+steps:
+  - "Use LANGBOT_REPO as the active LangBot worktree and confirm it is the current master worktree for this run."
+  - "Start or verify the LangBot backend and frontend from LANGBOT_REPO and LANGBOT_WEB_REPO."
+  - "Build local plugin zips from LANGBOT_RAG_PLUGIN_REPO and LANGBOT_PARSER_PLUGIN_REPO using LANGBOT_REPO/.venv/bin/lbp build."
+  - "Open LANGBOT_FRONTEND_URL."
+  - "Navigate to Plugins and install or update the local LangRAG zip and GeneralParsers zip."
+  - "Wait until both plugins are initialized: langbot-team/LangRAG and langbot-team/GeneralParsers."
+  - "Navigate to Knowledge."
+  - "Create a knowledge base with engine LangRAG and a working embedding model, preferably chroma-all-MiniLM-L6-v2."
+  - "Keep index type Chunk for this golden case."
+  - "Upload skills/langbot-testing/fixtures/rag/parser-golden.html."
+  - "When the upload UI asks for a parser, select GeneralParsers for text/html."
+  - "Wait until the document row status is Completed."
+  - "Open Retrieve Test and query: What is the parser-rag golden sentinel and which parser/engine pair is documented? Return the exact sentinel and pair."
+checks:
+  - "UI: Plugins shows langbot-team/LangRAG initialized."
+  - "UI: Plugins shows langbot-team/GeneralParsers initialized."
+  - "UI: The upload flow selects GeneralParsers for the HTML fixture, or the parser selector clearly defaults to GeneralParsers."
+  - "UI: The uploaded parser-golden.html document status becomes Completed."
+  - "UI: Retrieve Test result contains aurora-parser-rag-9137."
+  - "UI: Retrieve Test result contains GeneralParsers and LangRAG."
+  - "UI: Retrieve Test result preserves the table as Markdown, including '| Parser field | Golden value |'."
+  - "Console: No unexpected frontend errors appear during plugin install, KB creation, upload, or retrieve."
+  - "Logs: Backend/plugin logs show GeneralParsers parsed parser-golden.html and LangRAG used pre-parsed external parser content."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - backend_log
+diagnostics:
+  - "If LangRAG is missing, check /api/v1/knowledge/engines for plugin id langbot-team/LangRAG."
+  - "If GeneralParsers is missing, check /api/v1/knowledge/parsers?mime_type=text/html for plugin id langbot-team/GeneralParsers."
+  - "If GeneralParsers local install fails on PyMuPDF, confirm the active LangBot master venv can import fitz and retry Upload Local."
+  - "If the document completes but table pipes are missing, inspect logs for LangRAG fallback to the internal FileParser instead of external parser content."
+  - "If embedding selection is empty, confirm the test embedding model exists under embedding_models, not llm_models."
+troubleshooting:
+  - plugin-runtime-timeout
+  - plugin-dependency-install-offline
+  - marketplace-network-flaky
+  - dynamic-form-missing-config-id
+  - proxy-env-mismatch

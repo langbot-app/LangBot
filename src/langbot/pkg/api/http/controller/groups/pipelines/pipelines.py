@@ -1,0 +1,253 @@
+from __future__ import annotations
+
+import quart
+
+from .....application.contracts import ApplicationAPIException
+from ....authz import Permission, has_permission
+from ....context import RequestContext
+from ......operation_trace import service as settings_service
+from ....service.pipeline_run import run_pipeline
+from ... import group
+from ......pipeline.extension_preferences import (
+    normalize_extension_preferences,
+    validate_extension_preferences,
+)
+
+
+@group.group_class('pipelines', '/api/v1/pipelines')
+class PipelinesRouterGroup(group.RouterGroup):
+    async def initialize(self) -> None:
+        @self.route(
+            '',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            sort_by = quart.request.args.get('sort_by', 'created_at')
+            sort_order = quart.request.args.get('sort_order', 'DESC')
+            include_secret = has_permission(request_context, Permission.RESOURCE_MANAGE)
+            return self.success(
+                data={
+                    'pipelines': await self.ap.pipeline_service.get_pipelines(
+                        request_context,
+                        sort_by,
+                        sort_order,
+                        include_secret=include_secret,
+                    )
+                }
+            )
+
+        @self.route(
+            '',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(request_context: RequestContext) -> str:
+            pipeline_data = await quart.request.json
+            create_as_default = pipeline_data.get('is_default') is True
+            try:
+                pipeline_uuid = await self.ap.pipeline_service.create_pipeline(
+                    request_context,
+                    pipeline_data,
+                    default=create_as_default,
+                )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            return self.success(data={'uuid': pipeline_uuid})
+
+        @self.route(
+            '/_/metadata',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            return self.success(data={'configs': await self.ap.pipeline_service.get_pipeline_metadata(request_context)})
+
+        @self.route(
+            '/<pipeline_uuid>',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
+            pipeline = await self.ap.pipeline_service.get_pipeline(
+                request_context,
+                pipeline_uuid,
+                include_secret=has_permission(request_context, Permission.RESOURCE_MANAGE),
+            )
+            if pipeline is None:
+                return self.http_status(404, -1, 'pipeline not found')
+            return self.success(data={'pipeline': pipeline})
+
+        @self.route(
+            '/<pipeline_uuid>',
+            methods=['PUT', 'DELETE'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
+            quart.g.operation_log_resource_id = pipeline_uuid
+            if quart.request.method == 'PUT':
+                json_data = await quart.request.json
+                try:
+                    previous = await self.ap.pipeline_service.get_pipeline(request_context, pipeline_uuid)
+                except Exception:
+                    previous = None
+                try:
+                    await self.ap.pipeline_service.update_pipeline(
+                        request_context,
+                        pipeline_uuid,
+                        json_data,
+                    )
+                except ApplicationAPIException as exc:
+                    return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+                except ValueError as exc:
+                    return self.http_status(400, -1, str(exc))
+                changes = settings_service.changed_fields(
+                    previous if isinstance(previous, dict) else {},
+                    json_data if isinstance(json_data, dict) else {},
+                    ignore=('uuid', 'created_at', 'updated_at'),
+                )
+                rule = settings_service.ACTION_RULES_BY_ACTION.get('update')
+                quart.g.operation_log_changes = changes
+                if rule is not None and changes:
+                    quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
+            else:
+                try:
+                    await self.ap.pipeline_service.delete_pipeline(request_context, pipeline_uuid)
+                except ApplicationAPIException as exc:
+                    return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+            return self.success()
+
+        @self.route(
+            '/<pipeline_uuid>/copy',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
+            try:
+                new_uuid = await self.ap.pipeline_service.copy_pipeline(request_context, pipeline_uuid)
+                return self.success(data={'uuid': new_uuid})
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+            except ValueError as e:
+                return self.http_status(400, -1, str(e))
+
+        @self.route(
+            '/<pipeline_uuid>/extensions',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
+            return self.success(
+                data=await self.ap.pipeline_service.get_pipeline_extensions(request_context, pipeline_uuid)
+            )
+
+        @self.route(
+            '/<pipeline_uuid>/extensions',
+            methods=['PUT'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
+            quart.g.operation_log_resource_id = pipeline_uuid
+            json_data = await quart.request.json
+            # Capture "what was bound before" so the trace answers "what changed
+            # into what": without this the log could only say an extension was
+            # configured, never which binding was added or removed.
+            try:
+                previous = await self.ap.pipeline_service.get_pipeline(request_context, pipeline_uuid)
+            except Exception:
+                previous = None
+            # The request uses ``bound_*`` keys while the stored preferences use
+            # the canonical names, so both sides are normalized before diffing.
+            requested = {
+                canonical: json_data[field]
+                for field, canonical in {
+                    'bound_plugins': 'plugins',
+                    'bound_mcp_servers': 'mcp_servers',
+                    'bound_skills': 'skills',
+                    'bound_mcp_resources': 'mcp_resources',
+                    'enable_all_plugins': 'enable_all_plugins',
+                    'enable_all_mcp_servers': 'enable_all_mcp_servers',
+                    'enable_all_skills': 'enable_all_skills',
+                    'mcp_resource_agent_read_enabled': 'mcp_resource_agent_read_enabled',
+                }.items()
+                if field in json_data
+            }
+            if isinstance(previous, dict):
+                current = {
+                    **normalize_extension_preferences(previous.get('extensions_preferences')),
+                    **requested,
+                }
+            else:
+                current = requested
+            changes = settings_service.changed_fields(current, requested)
+            if changes:
+                quart.g.operation_log_changes = changes
+            try:
+                validate_extension_preferences(
+                    {
+                        canonical: json_data[field]
+                        for field, canonical in {
+                            'bound_plugins': 'plugins',
+                            'bound_mcp_servers': 'mcp_servers',
+                            'bound_skills': 'skills',
+                            'bound_mcp_resources': 'mcp_resources',
+                            'enable_all_plugins': 'enable_all_plugins',
+                            'enable_all_mcp_servers': 'enable_all_mcp_servers',
+                            'enable_all_skills': 'enable_all_skills',
+                            'mcp_resource_agent_read_enabled': 'mcp_resource_agent_read_enabled',
+                            'workspace_operations': 'workspace_operations',
+                        }.items()
+                        if field in json_data
+                    },
+                    context='Pipeline extension',
+                    field_aliases={
+                        'plugins': 'bound_plugins',
+                        'mcp_servers': 'bound_mcp_servers',
+                        'skills': 'bound_skills',
+                        'mcp_resources': 'bound_mcp_resources',
+                    },
+                )
+                await self.ap.pipeline_service.update_pipeline_extensions(
+                    request_context,
+                    pipeline_uuid,
+                    json_data.get('bound_plugins', []),
+                    json_data.get('bound_mcp_servers', []),
+                    json_data.get('enable_all_plugins', True),
+                    json_data.get('enable_all_mcp_servers', True),
+                    bound_skills=json_data.get('bound_skills', []),
+                    enable_all_skills=json_data.get('enable_all_skills', True),
+                    bound_mcp_resources=json_data.get('bound_mcp_resources'),
+                    mcp_resource_agent_read_enabled=json_data.get('mcp_resource_agent_read_enabled'),
+                    workspace_operations=json_data.get('workspace_operations'),
+                    allowed_platform_tools=json_data.get('allowed_platform_tools'),
+                )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            return self.success()
+
+        @self.route(
+            '/<pipeline_uuid>/run',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RUNTIME_OPERATE,
+        )
+        async def run(pipeline_uuid: str, request_context: RequestContext):
+            body = await quart.request.get_json()
+            if not isinstance(body, dict) or set(body) != {'message'}:
+                return self.http_status(400, -1, 'Expected an object containing message')
+            text = body['message']
+            if not isinstance(text, str) or not text.strip() or len(text) > 100_000:
+                return self.http_status(400, -1, 'message must contain 1..100000 characters')
+            return self.success(data=await run_pipeline(self.ap, request_context, pipeline_uuid, text))

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://langbot.app/schemas/langbot-skills/suite.schema.json",
+  "title": "LangBot Skill Test Suite",
+  "type": "object",
+  "required": ["id", "title", "description", "type", "priority", "tags", "cases"],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "smoke",
+        "regression",
+        "release_gate",
+        "exploratory",
+        "contract",
+        "performance",
+        "reliability",
+        "chaos",
+        "security"
+      ]
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["p0", "p1", "p2"]
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "cases": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    }
+  }
+}

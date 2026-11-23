@@ -1,0 +1,440 @@
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import {
+  FilterState,
+  MonitoringData,
+  ModelCall,
+  LLMCall,
+  EmbeddingCall,
+} from '../types/monitoring';
+import { backendClient, useCurrentWorkspace } from '@/app/infra/http';
+import { getCurrentWorkspaceSnapshot } from '@/app/infra/http/currentWorkspaceStore';
+import { parseUTCTimestamp, resolveMonitoringWindow } from '../utils/dateUtils';
+
+/**
+ * Custom hook for fetching and managing monitoring data
+ */
+export function useMonitoringData(filterState: FilterState) {
+  const [data, setData] = useState<MonitoringData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const workspaceUuid = useCurrentWorkspace()?.workspace.uuid;
+  const requestIdRef = useRef(0);
+  const scope = JSON.stringify([workspaceUuid, filterState]);
+  const [requestScope, setRequestScope] = useState<string | null>(null);
+
+  // Memoize filter parameters to prevent unnecessary re-renders
+  const selectedBotsStr = useMemo(
+    () => JSON.stringify(filterState.selectedBots),
+    [filterState.selectedBots],
+  );
+  const selectedPipelinesStr = useMemo(
+    () => JSON.stringify(filterState.selectedPipelines),
+    [filterState.selectedPipelines],
+  );
+  const customDateRangeStr = useMemo(
+    () => JSON.stringify(filterState.customDateRange),
+    [filterState.customDateRange],
+  );
+
+  // Fetch data based on filters
+  const fetchData = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    const isCurrent = () =>
+      requestId === requestIdRef.current &&
+      getCurrentWorkspaceSnapshot()?.workspace.uuid === workspaceUuid;
+    setLoading(true);
+    // Keep the failure view during retries; restore the dashboard only after
+    // a successful response, without briefly restarting its polling timer.
+
+    try {
+      const { startTime, endTime } = resolveMonitoringWindow(
+        filterState.timeRange,
+        filterState.customDateRange,
+      );
+
+      const response = await backendClient.getMonitoringData({
+        mode: filterState.mode,
+        status:
+          filterState.statusGroup && filterState.statusGroup !== 'all'
+            ? [filterState.statusGroup]
+            : undefined,
+        botId:
+          filterState.selectedBots.length > 0
+            ? filterState.selectedBots
+            : undefined,
+        pipelineId:
+          filterState.selectedPipelines.length > 0
+            ? filterState.selectedPipelines
+            : undefined,
+        startTime,
+        endTime,
+        limit: 50,
+      });
+      if (!isCurrent()) return;
+
+      const overview = response?.overview ?? {
+        total_messages: 0,
+        llm_calls: 0,
+        embedding_calls: 0,
+        model_calls: 0,
+        success_rate: 100,
+        active_sessions: 0,
+      };
+      const messages = Array.isArray(response?.messages)
+        ? response.messages
+        : [];
+      const llmCalls = Array.isArray(response?.llmCalls)
+        ? response.llmCalls
+        : [];
+      const toolCalls = Array.isArray(response?.toolCalls)
+        ? response.toolCalls
+        : [];
+      const embeddingCalls = Array.isArray(response?.embeddingCalls)
+        ? response.embeddingCalls
+        : [];
+      const sessions = Array.isArray(response?.sessions)
+        ? response.sessions
+        : [];
+      const errors = Array.isArray(response?.errors) ? response.errors : [];
+      const totalCount = response?.totalCount ?? {
+        messages: messages.length,
+        llmCalls: llmCalls.length,
+        toolCalls: toolCalls.length,
+        embeddingCalls: embeddingCalls.length,
+        sessions: sessions.length,
+        errors: errors.length,
+      };
+
+      // Transform the response to match MonitoringData interface
+      const transformedData: MonitoringData = {
+        traffic: response.traffic
+          ? {
+              bucket: response.traffic.bucket,
+              truncated: response.traffic.truncated,
+              points: response.traffic.points.map((point) => ({
+                timestamp: parseUTCTimestamp(point.timestamp),
+                messages: point.messages,
+                llmCalls: point.llm_calls,
+              })),
+            }
+          : undefined,
+        overview: {
+          totalMessages: overview.total_messages,
+          llmCalls: overview.llm_calls,
+          embeddingCalls: overview.embedding_calls || 0,
+          modelCalls: overview.model_calls || overview.llm_calls,
+          successRate: overview.success_rate,
+          activeSessions: overview.active_sessions,
+        },
+        messages: messages.map(
+          (msg: {
+            id: string;
+            timestamp: string;
+            bot_id: string;
+            bot_name: string;
+            pipeline_id: string;
+            pipeline_name: string;
+            message_content: string;
+            session_id: string;
+            status: string;
+            level: string;
+            platform?: string;
+            user_id?: string;
+            user_name?: string;
+            runner_name?: string;
+            variables?: string;
+            role?: string;
+          }) => ({
+            id: msg.id,
+            timestamp: parseUTCTimestamp(msg.timestamp),
+            botId: msg.bot_id,
+            botName: msg.bot_name,
+            pipelineId: msg.pipeline_id,
+            pipelineName: msg.pipeline_name,
+            messageContent: msg.message_content,
+            sessionId: msg.session_id,
+            status: msg.status as 'success' | 'error' | 'pending',
+            level: msg.level as 'info' | 'warning' | 'error' | 'debug',
+            platform: msg.platform,
+            userId: msg.user_id,
+            userName: msg.user_name,
+            runnerName: msg.runner_name,
+            variables: msg.variables,
+            role: msg.role,
+          }),
+        ),
+        llmCalls: llmCalls.map(
+          (call: {
+            id: string;
+            timestamp: string;
+            model_name: string;
+            input_tokens: number;
+            output_tokens: number;
+            total_tokens: number;
+            duration: number;
+            cost?: number;
+            status: string;
+            bot_id: string;
+            bot_name: string;
+            pipeline_id: string;
+            pipeline_name: string;
+            session_id?: string;
+            error_message?: string;
+            message_id?: string;
+          }) => ({
+            id: call.id,
+            timestamp: parseUTCTimestamp(call.timestamp),
+            modelName: call.model_name,
+            tokens: {
+              input: call.input_tokens,
+              output: call.output_tokens,
+              total: call.total_tokens,
+            },
+            duration: call.duration,
+            cost: call.cost,
+            status: call.status as 'success' | 'error',
+            botId: call.bot_id,
+            botName: call.bot_name,
+            pipelineId: call.pipeline_id,
+            pipelineName: call.pipeline_name,
+            sessionId: call.session_id,
+            errorMessage: call.error_message,
+            messageId: call.message_id,
+          }),
+        ),
+        toolCalls: toolCalls.map(
+          (call: {
+            id: string;
+            timestamp: string;
+            tool_name: string;
+            tool_source: string;
+            duration: number;
+            status: string;
+            bot_id: string;
+            bot_name: string;
+            pipeline_id: string;
+            pipeline_name: string;
+            session_id?: string;
+            message_id?: string;
+            arguments?: string;
+            result?: string;
+            error_message?: string;
+          }) => ({
+            id: call.id,
+            timestamp: parseUTCTimestamp(call.timestamp),
+            toolName: call.tool_name,
+            toolSource: call.tool_source,
+            duration: call.duration,
+            status: call.status as 'success' | 'error',
+            botId: call.bot_id,
+            botName: call.bot_name,
+            pipelineId: call.pipeline_id,
+            pipelineName: call.pipeline_name,
+            sessionId: call.session_id,
+            messageId: call.message_id,
+            arguments: call.arguments,
+            result: call.result,
+            errorMessage: call.error_message,
+          }),
+        ),
+        embeddingCalls: embeddingCalls.map(
+          (call: {
+            id: string;
+            timestamp: string;
+            model_name: string;
+            prompt_tokens: number;
+            total_tokens: number;
+            duration: number;
+            input_count: number;
+            status: string;
+            error_message?: string;
+            knowledge_base_id?: string;
+            query_text?: string;
+            session_id?: string;
+            message_id?: string;
+            call_type?: string;
+          }) => ({
+            id: call.id,
+            timestamp: parseUTCTimestamp(call.timestamp),
+            modelName: call.model_name,
+            promptTokens: call.prompt_tokens,
+            totalTokens: call.total_tokens,
+            duration: call.duration,
+            inputCount: call.input_count,
+            status: call.status as 'success' | 'error',
+            errorMessage: call.error_message,
+            knowledgeBaseId: call.knowledge_base_id,
+            queryText: call.query_text,
+            sessionId: call.session_id,
+            messageId: call.message_id,
+            callType: call.call_type as 'embedding' | 'retrieve' | undefined,
+          }),
+        ),
+        // Create merged modelCalls array from llmCalls and embeddingCalls
+        modelCalls: [] as ModelCall[], // Will be populated after transform
+        sessions: sessions.map(
+          (session: {
+            session_id: string;
+            bot_id: string;
+            bot_name: string;
+            pipeline_id: string;
+            pipeline_name: string;
+            message_count: number;
+            last_activity: string;
+            start_time: string;
+            platform?: string;
+            user_id?: string;
+          }) => ({
+            sessionId: session.session_id,
+            botId: session.bot_id,
+            botName: session.bot_name,
+            pipelineId: session.pipeline_id,
+            pipelineName: session.pipeline_name,
+            messageCount: session.message_count,
+            duration:
+              parseUTCTimestamp(session.last_activity).getTime() -
+              parseUTCTimestamp(session.start_time).getTime(),
+            lastActivity: parseUTCTimestamp(session.last_activity),
+            startTime: parseUTCTimestamp(session.start_time),
+            platform: session.platform,
+            userId: session.user_id,
+          }),
+        ),
+        errors: errors.map(
+          (error: {
+            id: string;
+            timestamp: string;
+            error_type: string;
+            error_message: string;
+            bot_id: string;
+            bot_name: string;
+            pipeline_id: string;
+            pipeline_name: string;
+            session_id?: string;
+            stack_trace?: string;
+            message_id?: string;
+          }) => ({
+            id: error.id,
+            timestamp: parseUTCTimestamp(error.timestamp),
+            errorType: error.error_type,
+            errorMessage: error.error_message,
+            botId: error.bot_id,
+            botName: error.bot_name,
+            pipelineId: error.pipeline_id,
+            pipelineName: error.pipeline_name,
+            sessionId: error.session_id,
+            stackTrace: error.stack_trace,
+            messageId: error.message_id,
+          }),
+        ),
+        totalCount: {
+          messages: totalCount.messages,
+          llmCalls: totalCount.llmCalls,
+          toolCalls: totalCount.toolCalls ?? toolCalls.length,
+          embeddingCalls: totalCount.embeddingCalls || 0,
+          sessions: totalCount.sessions,
+          errors: totalCount.errors,
+        },
+      };
+
+      // Merge LLM calls and embedding calls into modelCalls
+      const llmModelCalls: ModelCall[] = transformedData.llmCalls.map(
+        (call: LLMCall): ModelCall => ({
+          id: call.id,
+          timestamp: call.timestamp,
+          modelName: call.modelName,
+          modelType: 'llm',
+          status: call.status,
+          duration: call.duration,
+          errorMessage: call.errorMessage,
+          messageId: call.messageId,
+          tokens: call.tokens,
+          cost: call.cost,
+          botId: call.botId,
+          botName: call.botName,
+          pipelineId: call.pipelineId,
+          pipelineName: call.pipelineName,
+          sessionId: call.sessionId,
+        }),
+      );
+
+      const embeddingModelCalls: ModelCall[] =
+        transformedData.embeddingCalls.map(
+          (call: EmbeddingCall): ModelCall => ({
+            id: call.id,
+            timestamp: call.timestamp,
+            modelName: call.modelName,
+            modelType: 'embedding',
+            status: call.status,
+            duration: call.duration,
+            errorMessage: call.errorMessage,
+            messageId: call.messageId,
+            callType: call.callType,
+            promptTokens: call.promptTokens,
+            totalTokens: call.totalTokens,
+            inputCount: call.inputCount,
+            knowledgeBaseId: call.knowledgeBaseId,
+            queryText: call.queryText,
+            sessionId: call.sessionId,
+          }),
+        );
+
+      // Combine and sort by timestamp (newest first)
+      transformedData.modelCalls = [
+        ...llmModelCalls,
+        ...embeddingModelCalls,
+      ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+      setData(transformedData);
+      setError(null);
+      setRequestScope(scope);
+    } catch (err) {
+      if (!isCurrent()) return;
+      setRequestScope(scope);
+      setData((current) => (requestScope === scope ? current : null));
+      setError(err as Error);
+      console.error('Failed to fetch monitoring data:', err);
+    } finally {
+      if (isCurrent()) setLoading(false);
+    }
+  }, [
+    filterState.mode,
+    filterState.statusGroup,
+    filterState.timeRange,
+    filterState.customDateRange,
+    filterState.selectedBots,
+    filterState.selectedPipelines,
+    scope,
+    requestScope,
+    workspaceUuid,
+  ]);
+
+  // Fetch data when filter state changes
+  useEffect(() => {
+    fetchData();
+    return () => {
+      requestIdRef.current += 1;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedBotsStr,
+    selectedPipelinesStr,
+    filterState.mode,
+    filterState.statusGroup,
+    filterState.timeRange,
+    customDateRangeStr,
+    workspaceUuid,
+  ]);
+
+  // Manual refetch function
+  const refetch = () => {
+    fetchData();
+  };
+
+  return {
+    data: requestScope === scope ? data : null,
+    loading: requestScope !== scope || loading,
+    error: requestScope === scope ? error : null,
+    refetch,
+  };
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "LangBot",
+  "description": "Open-source platform for building AI agents and instant-messaging bots.",
+  "branch": "master",
+  "folders": ["docs/en"]
+}

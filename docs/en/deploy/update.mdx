@@ -1,0 +1,56 @@
+---
+title: "Update LangBot"
+description: "Update LangBot to the latest version. Upgrade your self-hosted AI chatbot platform safely with these steps."
+---
+
+## Using the one-line install (lbctl)
+
+```bash
+lbctl upgrade --yes
+```
+
+This backs up your data, upgrades to the latest stable release and restarts LangBot. If the upgrade fails, native deployments are restored automatically and Docker deployments keep the backup for recovery. If you are already on the latest version, lbctl only tells you so and changes nothing.
+
+- Preview the plan: `lbctl upgrade --dry-run`
+- Upgrade to a specific release: `lbctl upgrade --version v4.11.8 --yes`
+- Update lbctl itself: `lbctl update`, or run the one-line installer again
+
+See [Manage LangBot with lbctl](/en/deploy/lbctl#upgrade-langbot) for details.
+
+## Using Package Manager (uvx)
+
+Please execute in the directory you deployed LangBot again:
+
+```bash
+uvx langbot@latest
+```
+
+This command will download and start the latest version of LangBot.
+
+## Using Docker (or one-click deployment based on Docker)
+
+<Tip>
+Deployments started with `docker compose` can be [brought under lbctl](/en/deploy/lbctl#bring-an-existing-docker-compose-deployment-under-lbctl). After that, `lbctl upgrade --yes` is all you need, and your data is backed up before every upgrade. The steps below are the manual way without lbctl.
+</Tip>
+
+Please execute in the directory you cloned LangBot:
+
+```bash
+git pull
+```
+
+Please execute in the `docker/` directory:
+
+```bash
+docker compose up --force-recreate --pull always -d
+```
+
+This command will pull the latest LangBot image and rebuild the container.
+
+<Info>
+4.3.0 version changed the content and location of the `docker-compose.yaml` file, if you updated from a previous version, please [redploy according to the documentation](/en/deploy/langbot/docker).
+</Info>
+
+## Manual Deployment
+
+Download the latest release's `langbot-<version>-all.zip` from the Assets section on the [Releases](https://github.com/langbot-app/LangBot/releases) page, extract it to the original deployment directory, and restart.

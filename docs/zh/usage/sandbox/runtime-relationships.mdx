@@ -1,0 +1,52 @@
+---
+title: "运行时与扩展关系"
+description: "理解 LangBot 运行时与扩展：Box Runtime、沙箱后端与 MCP 服务器如何协同工作。"
+---
+
+LangBot 里同时存在**插件、MCP、Skills、沙箱**四种扩展机制，容易混淆。本页帮你区分它们的职责和适用场景。
+
+## 一句话区分
+
+- **Box 执行环境**：让 Agent 跑命令、读写文件；是否隔离取决于所选后端
+- **Skills**：按需激活的指令包，给 Agent 临时增加一段专业工作流
+- **MCP Server**：接入外部工具服务
+- **插件**：长期运行的扩展进程，可带配置页、事件监听、知识库
+
+## 对照表
+
+| 能力 | 提供方 | 给 Agent 的形式 | 何时使用 |
+|------|--------|----------------|---------|
+| Box 执行环境 | Box Runtime | 直接挂上 `exec/read/write/edit/glob/grep` 六件套 | Agent 要执行代码、读写文件 |
+| Skills | Box Runtime skill store | Agent 调 `activate` 后，指令通过 Tool Result 注入 | 想给 Agent 加一段流程/模板/脚本，按需触发 |
+| MCP Server | LangBot MCP Loader（stdio 模式由 Box 托管） | 工具直接进入可用工具列表 | 接入已有的 MCP 服务 |
+| 插件 | Plugin Runtime | 由插件系统暴露能力 | 长期能力、需要配置页/事件监听/知识库组件 |
+
+## 流水线绑定
+
+Skills、MCP Server、插件都属于**流水线扩展**。在 WebUI 安装/创建后，还要在流水线扩展配置里决定启用范围：
+
+- 启用全部扩展，或
+- 只绑定指定的扩展
+
+Skills 的绑定决定 Agent **能看到哪些技能**（影响 `<available_skills>` 列表）。具体技能内容只有 Agent 调用 `activate` 后才会注入。
+
+## 后端与隔离边界
+
+Box API、Agent 工具、会话作用域、生命周期、Skills 和 stdio MCP 托管在各后端上的使用方式一致，但安全属性不同：Docker、nsjail 和 E2B 提供各自的沙箱边界；Host 直接使用 Box Runtime 主机进程，只用于可信本地开发。选择 Host 不会改变 WebUI，也不会让不同会话获得主机级隔离。
+
+## 排障入口
+
+| 现象 | 优先检查 |
+|------|---------|
+| Agent 没有 `exec/read/write` 工具 | `box.enabled`、后端是否可用、流水线是否用内置 Agent |
+| Skill 列表为空 | Box Runtime 状态、`box.local.skills_root`、流水线绑定 |
+| stdio MCP 启动失败 | Box Runtime 状态、MCP 命令和环境变量、启动超时 |
+| Docker 部署沙箱启不来 | `langbot_box` 是否挂载 `docker.sock`、Box 根目录路径是否一致 |
+| 文件读写失败 | `box.local.host_root`、`box.local.allowed_mount_roots` |
+| 后端选择不生效 | 确认 `BOX__BACKEND` 设在 `langbot` 服务上，不是 `langbot_box` |
+| Host 后端不可用 | 确认系统为 POSIX 且 `PATH` 中存在 `sh`；Windows 使用 WSL |
+| 外部 Host Box 连接被拒绝 | LangBot 与 Box Runtime 两侧设置相同的 `LANGBOT_BOX_CONTROL_TOKEN` |
+
+<Note>
+沙箱内置工具和 Skills 当前面向内置 Agent。外部运行器（Dify、n8n、Langflow、Coze 等）应使用各自平台的工具和执行机制。
+</Note>

@@ -1,0 +1,95 @@
+id: langbot-fake-provider-debug-chat-fault-recovery
+title: "LangBot Debug Chat fake-provider fault recovery probe"
+mode: probe
+area: reliability
+type: chaos
+priority: p1
+risk: high
+ci_eligible: false
+tags:
+  - reliability
+  - chaos
+  - debug-chat
+  - websocket
+  - fake-provider
+  - fault-injection
+  - metrics
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_E2E_LOGIN_USER
+automation: skills/langbot-testing/probes/langbot-debug-chat-concurrency.mjs
+automation_env:
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_E2E_LOGIN_USER
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
+automation_debug_chat_load_requests: "6"
+automation_debug_chat_load_concurrency: "1"
+automation_debug_chat_load_timeout_ms: "15000"
+automation_debug_chat_load_response_p95_ms: "5000"
+automation_debug_chat_load_max_error_rate: "0"
+automation_debug_chat_load_min_ok_count: "6"
+automation_debug_chat_load_min_provider_fault_count: "2"
+automation_debug_chat_load_expected_prefix: "FAULTQA"
+automation_debug_chat_load_prompt_template: '请只回复 "{expected}"，不要解释，不要添加其他字符。'
+automation_debug_chat_load_stream: "true"
+automation_debug_chat_load_reset: "true"
+automation_debug_chat_load_fail_on_final_mismatch: "true"
+automation_fake_provider_first_token_delay_ms: "25"
+automation_fake_provider_chunk_delay_ms: "10"
+automation_fake_provider_chunk_count: "0"
+automation_fake_provider_fail_first_n: "2"
+automation_fake_provider_fail_every_n: "0"
+automation_fake_provider_fault_status: "503"
+metrics_thresholds_json: '{"response_p95_ms":{"max":5000},"error_rate":{"max":0},"ok_count_min":{"min":6},"fake_provider_fault_count_min":{"min":2}}'
+fault_model_json: '{"provider_fault":"HTTP 503 for first 2 fake-provider chat completions after reset","expected_behavior":"LangBot retries or otherwise recovers from bounded provider failures so every Debug Chat request receives its expected response without backend crash."}'
+load_profile_json: '{"requests":6,"concurrency":1,"path":"Pipeline Debug Chat WebSocket","provider":"controlled fake OpenAI-compatible provider","classification":"fault-recovery-not-throughput-benchmark"}'
+setup_automation:
+  - "node:scripts/e2e/ensure-fake-provider-pipeline.mjs --write-env"
+setup_provides_env:
+  - LANGBOT_FAKE_PROVIDER_URL
+  - LANGBOT_FAKE_PROVIDER_BASE_URL
+  - LANGBOT_FAKE_PROVIDER_PID
+  - LANGBOT_FAKE_PROVIDER_PROVIDER_UUID
+  - LANGBOT_FAKE_PROVIDER_MODEL_UUID
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
+steps:
+  - "Configure the local fake provider to return HTTP 503 for the first two chat completions after reset."
+  - "Create or update the LangBot provider, model, and local-agent pipeline that points at the fake provider."
+  - "Reset the target Debug Chat session and fake-provider request counter."
+  - "Send a sequential Debug Chat batch and verify later requests recover after the injected provider faults."
+checks:
+  - "automation-result.json status is pass when the fake provider records at least two injected faults, every Debug Chat request succeeds, and total user-visible error rate stays at zero."
+  - "metrics_summary includes fake_provider_fault_count and status_counts for the same run window."
+  - "backend logs show request handling for the same run window without unexpected Traceback or task-leak findings."
+evidence_required:
+  - metrics
+  - network
+  - api_diagnostic
+  - filesystem
+diagnostics:
+  - "This is a fault-recovery probe, not a throughput benchmark."
+  - "Provider faults may be retried inside the provider/requester path; judge this case by fake_provider_fault_count plus user-visible success/error metrics."
+  - "The profile uses concurrency 1 because Debug Chat broadcasts assistant responses to every connection in a session, and failed responses do not carry the unique success token needed for concurrent attribution."
+success_patterns:
+  - "Debug Chat WebSocket concurrency probe passed"
+  - "Streaming completed"
+failure_patterns:
+  - "fake_provider_fault"
+  - "HTTP 503"
+  - "Timed out after"
+  - "All models failed during streaming setup"
+expected_failures:
+  - "fake_provider_fault"
+  - "HTTP 503"
+troubleshooting:
+  - backend-not-listening
+  - debug-chat-history-contaminates-automation
+  - local-agent-model-route-unavailable

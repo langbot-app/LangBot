@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: EventListener
+metadata:
+  name: prompt_probe
+  label:
+    en_US: Prompt Probe
+    zh_Hans: Prompt 探针
+spec:
+execution:
+  python:
+    path: prompt_probe.py
+    attr: PromptProbeEventListener

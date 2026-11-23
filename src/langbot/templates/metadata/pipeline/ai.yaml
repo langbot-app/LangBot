@@ -1,0 +1,110 @@
+name: ai
+label:
+  en_US: AI Feature
+  zh_Hans: AI 能力
+stages:
+  - name: runner
+    label:
+      en_US: Runner
+      zh_Hans: 运行方式
+    description:
+      en_US: Strategy to call AI to process messages
+      zh_Hans: 调用 AI 处理消息的方式
+    config:
+      - name: id
+        label:
+          en_US: Runner
+          zh_Hans: 运行器
+        type: select
+        required: true
+        # Options and default are dynamically populated from RunnerRegistry
+      - name: group-context
+        label:
+          en_US: Group chat context
+          zh_Hans: 群聊上下文
+          zh_Hant: 群聊上下文
+          ja_JP: グループチャットのコンテキスト
+          es_ES: Contexto de chats grupales
+          ru_RU: Контекст групповых чатов
+          th_TH: บริบทแชทกลุ่ม
+          vi_VN: Ngữ cảnh trò chuyện nhóm
+        description:
+          en_US: >-
+            How the conversation context is kept in group chats. "Separate for
+            each member" gives every member their own conversation history, so
+            members do not see each other's context. "Shared by the group" keeps
+            one conversation for the whole group. Private chats are not affected.
+          zh_Hans: >-
+            群聊中如何保存对话上下文。「每个成员独立」时，群里每个人有自己的对话记录，互不影响；
+            「整个群共享」时，全群使用同一段对话。私聊不受此设置影响。
+          zh_Hant: >-
+            群聊中如何保存對話上下文。「每個成員獨立」時，群裡每個人有自己的對話記錄，互不影響；
+            「整個群共享」時，全群使用同一段對話。私聊不受此設定影響。
+          ja_JP: >-
+            グループチャットでの会話コンテキストの保持方法です。「メンバーごとに独立」では各メンバーが
+            自分の会話履歴を持ち、互いに影響しません。「グループで共有」ではグループ全体で
+            1 つの会話を使います。個人チャットには影響しません。
+          es_ES: >-
+            Cómo se guarda el contexto de la conversación en los chats grupales.
+            "Independiente por miembro" da a cada miembro su propio historial;
+            "Compartido por el grupo" usa una sola conversación para todo el
+            grupo. Los chats privados no se ven afectados.
+          ru_RU: >-
+            Как хранится контекст беседы в групповых чатах. «Отдельно для каждого
+            участника» — у каждого участника своя история диалога. «Общий для
+            группы» — одна беседа на всю группу. Личные чаты не затрагиваются.
+          th_TH: >-
+            วิธีเก็บบริบทการสนทนาในแชทกลุ่ม "แยกตามสมาชิก" ให้สมาชิกแต่ละคนมีประวัติการสนทนาของตัวเอง
+            "ใช้ร่วมกันทั้งกลุ่ม" ใช้การสนทนาเดียวทั้งกลุ่ม ไม่มีผลกับแชทส่วนตัว
+          vi_VN: >-
+            Cách lưu ngữ cảnh hội thoại trong trò chuyện nhóm. "Riêng cho từng
+            thành viên" cho mỗi thành viên một lịch sử hội thoại riêng; "Dùng
+            chung cho cả nhóm" dùng một cuộc hội thoại cho cả nhóm. Không ảnh
+            hưởng đến trò chuyện riêng.
+        type: select
+        required: true
+        default: member
+        options:
+          - name: member
+            label:
+              en_US: Separate for each member
+              zh_Hans: 每个成员独立
+              zh_Hant: 每個成員獨立
+              ja_JP: メンバーごとに独立
+              es_ES: Independiente por miembro
+              ru_RU: Отдельно для каждого участника
+              th_TH: แยกตามสมาชิก
+              vi_VN: Riêng cho từng thành viên
+          - name: group
+            label:
+              en_US: Shared by the group
+              zh_Hans: 整个群共享
+              zh_Hant: 整個群共享
+              ja_JP: グループで共有
+              es_ES: Compartido por el grupo
+              ru_RU: Общий для группы
+              th_TH: ใช้ร่วมกันทั้งกลุ่ม
+              vi_VN: Dùng chung cho cả nhóm
+      - name: expire-time
+        label:
+          en_US: Conversation expire time (seconds)
+          zh_Hans: 单个对话过期时间（秒）
+        description:
+          en_US: >-
+            Maximum idle time of a single conversation, measured from the last
+            message/preprocess update time. When a new message arrives and the
+            current conversation has been idle for longer than this value, the
+            existing external conversation id is discarded and a new one is
+            started automatically — the user does not need to trigger a reset
+            manually. Set to 0 to disable expiry (conversations live until the
+            user or another mechanism resets them).
+          zh_Hans: >-
+            单个对话的最长空闲时间，从最后一条消息/preprocess 更新时间开始计算。
+            当新消息到达且当前对话空闲时间已超过该值时，旧的外部对话 ID 会被自动丢弃并开启新对话，
+            用户无需手动重置。设置为 0 表示不限制过期时间（对话会一直保留，直到用户或其他机制主动重置）。
+        type: integer
+        required: true
+        default: 0
+  # Runner config stages are dynamically added from RunnerRegistry
+  # Each plugin runner's config schema is added as a separate stage
+  # The stage name matches the runner id for frontend matching

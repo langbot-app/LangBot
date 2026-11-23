@@ -1,0 +1,408 @@
+"""Unit tests for survey manager.
+
+Tests cover:
+- SurveyManager initialization
+- Event triggering and tracking
+- Pending survey fetching
+- Survey response submission
+- Survey dismissal
+"""
+
+from __future__ import annotations
+
+import httpx
+import pytest
+import json
+from unittest.mock import Mock, AsyncMock
+from importlib import import_module
+
+
+def get_survey_module():
+    """Lazy import to avoid circular import issues."""
+    return import_module('langbot.pkg.survey.manager')
+
+
+def create_mock_app():
+    """Create mock Application for testing."""
+    mock_app = Mock()
+    mock_app.logger = Mock()
+    mock_app.instance_config = Mock()
+    mock_app.instance_config.data = {'space': {'url': 'https://space.example.com'}}
+    mock_app.persistence_mgr = AsyncMock()
+    mock_app.persistence_mgr.execute_async = AsyncMock()
+    mock_app.workspace_service.instance_uuid = 'instance-test'
+
+    def close_scheduled_coroutine(coro, **kwargs):
+        coro.close()
+        return Mock()
+
+    mock_app.task_mgr.create_task = Mock(side_effect=close_scheduled_coroutine)
+    return mock_app
+
+
+def scalar_result(value=None):
+    """Return the scalar-only shape used by Connection column selects."""
+
+    return Mock(scalar_one_or_none=Mock(return_value=value))
+
+
+class TestSurveyManagerInit:
+    """Tests for SurveyManager initialization."""
+
+    @pytest.mark.asyncio
+    async def test_initialize_loads_space_url(self):
+        """Test that initialize loads space URL from config."""
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=scalar_result())
+
+        manager = survey_module.SurveyManager(mock_app)
+        await manager.initialize()
+
+        assert manager._space_url == 'https://space.example.com'
+
+    @pytest.mark.asyncio
+    async def test_initialize_strips_trailing_slash_from_url(self):
+        """Test that trailing slash is stripped from URL."""
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+        mock_app.instance_config.data = {'space': {'url': 'https://space.example.com/'}}
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=scalar_result())
+
+        manager = survey_module.SurveyManager(mock_app)
+        await manager.initialize()
+
+        assert manager._space_url == 'https://space.example.com'
+
+    @pytest.mark.asyncio
+    async def test_initialize_handles_empty_space_config(self):
+        """Test that initialize handles empty space config."""
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+        mock_app.instance_config.data = {}
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=scalar_result())
+
+        manager = survey_module.SurveyManager(mock_app)
+        await manager.initialize()
+
+        assert manager._space_url == ''
+
+
+class TestLoadTriggeredEvents:
+    """Tests for _load_triggered_events method."""
+
+    @pytest.mark.asyncio
+    async def test_loads_events_from_metadata(self):
+        """Test that events are loaded from metadata table."""
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=scalar_result(json.dumps(['event1', 'event2'])))
+
+        manager = survey_module.SurveyManager(mock_app)
+        await manager._load_triggered_events()
+
+        assert 'event1' in manager._triggered_events
+        assert 'event2' in manager._triggered_events
+
+    @pytest.mark.asyncio
+    async def test_handles_no_existing_events(self):
+        """Test that empty set is used when no events stored."""
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=scalar_result())
+
+        manager = survey_module.SurveyManager(mock_app)
+        await manager._load_triggered_events()
+
+        assert manager._triggered_events == set()
+
+    @pytest.mark.asyncio
+    async def test_handles_exception(self):
+        """Test that exception results in empty set."""
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+        mock_app.persistence_mgr.execute_async = AsyncMock(side_effect=Exception('DB error'))
+
+        manager = survey_module.SurveyManager(mock_app)
+        await manager._load_triggered_events()
+
+        assert manager._triggered_events == set()
+
+
+class TestIsSpaceConfigured:
+    """Tests for _is_space_configured method."""
+
+    def test_returns_true_when_url_set(self):
+        """Test returns True when space URL is configured."""
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+
+        manager = survey_module.SurveyManager(mock_app)
+        manager._space_url = 'https://space.example.com'
+
+        assert manager._is_space_configured() is True
+
+    def test_returns_false_when_url_empty(self):
+        """Test returns False when space URL is empty."""
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+
+        manager = survey_module.SurveyManager(mock_app)
+        manager._space_url = ''
+
+        assert manager._is_space_configured() is False
+
+    def test_returns_false_when_telemetry_disabled(self):
+        """Test returns False when disable_telemetry is True."""
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+        mock_app.instance_config.data = {'space': {'url': 'https://space.example.com', 'disable_telemetry': True}}
+
+        manager = survey_module.SurveyManager(mock_app)
+        manager._space_url = 'https://space.example.com'
+
+        assert manager._is_space_configured() is False
+
+
+class TestTriggerEvent:
+    """Tests for trigger_event method."""
+
+    @pytest.mark.asyncio
+    async def test_skips_already_triggered_event(self):
+        """Test that already triggered events are skipped."""
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+
+        manager = survey_module.SurveyManager(mock_app)
+        manager._triggered_events.add('event1')
+
+        await manager.trigger_event('event1')
+
+        # Should not call save
+        mock_app.persistence_mgr.execute_async.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skips_when_space_not_configured(self):
+        """Without Space, an event is not persisted or scheduled."""
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+        mock_app.instance_config.data = {}
+        mock_app.persistence_mgr.execute_async.return_value = scalar_result()
+        manager = survey_module.SurveyManager(mock_app)
+        await manager.initialize()
+        mock_app.persistence_mgr.execute_async.reset_mock()
+
+        await manager.trigger_event('new_event')
+
+        mock_app.persistence_mgr.execute_async.assert_not_awaited()
+        mock_app.task_mgr.create_task.assert_not_called()
+        assert manager.get_pending_survey() is None
+
+    @pytest.mark.asyncio
+    async def test_adds_new_event_and_saves(self):
+        """Test that new event is added and saved."""
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=scalar_result())
+
+        manager = survey_module.SurveyManager(mock_app)
+        manager._space_url = 'https://space.example.com'
+
+        await manager.trigger_event('new_event')
+
+        assert 'new_event' in manager._triggered_events
+        statements = mock_app.persistence_mgr.execute_async.await_args_list
+        assert len(statements) == 2
+        assert statements[-1].args[0].compile().params == {
+            'key': 'survey_triggered_events',
+            'value': '["new_event"]',
+        }
+
+
+class TestRecordBotResponseSuccess:
+    """Tests for the bot_response_success_100 milestone counter."""
+
+    def _make_manager(self, survey_module, mock_app):
+        manager = survey_module.SurveyManager(mock_app)
+        manager._space_url = 'https://space.example.com'
+        # No existing metadata rows: select returns no row
+        mock_app.persistence_mgr.execute_async = AsyncMock(return_value=scalar_result())
+        return manager
+
+    @pytest.mark.asyncio
+    async def test_increments_and_persists_count(self):
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+        manager = self._make_manager(survey_module, mock_app)
+
+        await manager.record_bot_response_success()
+
+        assert manager._bot_response_count == 1
+        statements = mock_app.persistence_mgr.execute_async.await_args_list
+        assert len(statements) == 2
+        assert statements[-1].args[0].compile().params == {'key': 'survey_bot_response_count', 'value': '1'}
+
+    @pytest.mark.asyncio
+    async def test_fires_milestone_event_at_threshold(self):
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+        manager = self._make_manager(survey_module, mock_app)
+        manager._bot_response_count = survey_module.BOT_RESPONSE_MILESTONE - 1
+
+        await manager.record_bot_response_success()
+
+        assert manager._bot_response_count == survey_module.BOT_RESPONSE_MILESTONE
+        assert survey_module.BOT_RESPONSE_MILESTONE_EVENT in manager._triggered_events
+
+    @pytest.mark.asyncio
+    async def test_does_not_fire_below_threshold(self):
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+        manager = self._make_manager(survey_module, mock_app)
+        manager._bot_response_count = 5
+
+        await manager.record_bot_response_success()
+
+        assert survey_module.BOT_RESPONSE_MILESTONE_EVENT not in manager._triggered_events
+
+    @pytest.mark.asyncio
+    async def test_stops_counting_after_milestone_triggered(self):
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+        manager = self._make_manager(survey_module, mock_app)
+        manager._triggered_events.add(survey_module.BOT_RESPONSE_MILESTONE_EVENT)
+        manager._bot_response_count = survey_module.BOT_RESPONSE_MILESTONE
+
+        await manager.record_bot_response_success()
+
+        # No persistence write, count unchanged
+        mock_app.persistence_mgr.execute_async.assert_not_called()
+        assert manager._bot_response_count == survey_module.BOT_RESPONSE_MILESTONE
+
+    @pytest.mark.asyncio
+    async def test_skips_when_space_not_configured(self):
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+        manager = self._make_manager(survey_module, mock_app)
+        manager._space_url = ''
+
+        await manager.record_bot_response_success()
+
+        assert manager._bot_response_count == 0
+        mock_app.persistence_mgr.execute_async.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_count_loaded_on_initialize(self):
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+
+        def execute_side_effect(stmt):
+            # Both _load_triggered_events and _load_bot_response_count select
+            # Metadata.value; return the count only for the count key.
+            stmt_str = str(stmt.compile(compile_kwargs={'literal_binds': True}))
+            if survey_module.BOT_RESPONSE_COUNT_KEY in stmt_str:
+                return scalar_result('42')
+            return scalar_result()
+
+        mock_app.persistence_mgr.execute_async = AsyncMock(side_effect=execute_side_effect)
+
+        manager = survey_module.SurveyManager(mock_app)
+        await manager.initialize()
+
+        assert manager._bot_response_count == 42
+
+
+class TestPendingSurvey:
+    """Tests for get_pending_survey and clear_pending_survey."""
+
+    def test_returns_none_when_no_pending(self):
+        """Test returns None when no pending survey."""
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+
+        manager = survey_module.SurveyManager(mock_app)
+
+        assert manager.get_pending_survey() is None
+
+    def test_returns_pending_survey(self):
+        """Test returns the pending survey."""
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+
+        manager = survey_module.SurveyManager(mock_app)
+        manager._pending_survey = {'survey_id': '123', 'questions': []}
+
+        result = manager.get_pending_survey()
+
+        assert result['survey_id'] == '123'
+
+    def test_clear_pending_survey(self):
+        """Test that clear_pending_survey sets to None."""
+        survey_module = get_survey_module()
+        mock_app = create_mock_app()
+
+        manager = survey_module.SurveyManager(mock_app)
+        manager._pending_survey = {'survey_id': '123'}
+
+        manager.clear_pending_survey()
+
+        assert manager._pending_survey is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('operation', ['respond', 'dismiss'])
+@pytest.mark.parametrize(
+    'status',
+    [
+        pytest.param(None, id='no-space'),
+        pytest.param(200, id='success'),
+        pytest.param(503, id='retryable-failure'),
+    ],
+)
+async def test_survey_write_checks_actual_transport_and_pending_state(monkeypatch, operation, status):
+    survey_module = get_survey_module()
+    app = create_mock_app()
+    app.instance_config.data = {} if status is None else {'space': {'url': 'https://space.example.invalid/'}}
+    app.persistence_mgr.execute_async.return_value = scalar_result()
+    manager = survey_module.SurveyManager(app)
+    await manager.initialize()
+    pending = {'survey_id': 'survey-123'}
+    manager._pending_survey = pending
+    requests = []
+
+    def record(request):
+        requests.append(request)
+        return httpx.Response(status or 500)
+
+    real_async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        'AsyncClient',
+        lambda **kwargs: real_async_client(transport=httpx.MockTransport(record), **kwargs),
+    )
+
+    body = {'survey_id': pending['survey_id'], 'instance_id': survey_module.constants.instance_id}
+    if operation == 'respond':
+        answers = {'q1': 'answer-1'}
+        result = await manager.submit_response(pending['survey_id'], answers, completed=False)
+        body.update(
+            answers=answers,
+            completed=False,
+            metadata={
+                'version': survey_module.constants.semantic_version,
+                'instance_id': survey_module.constants.instance_id,
+            },
+        )
+    else:
+        result = await manager.dismiss_survey(pending['survey_id'])
+
+    assert result is (status == 200)
+    assert manager.get_pending_survey() == (None if status == 200 else pending)
+    if status is None:
+        assert requests == []
+    else:
+        assert [(request.method, str(request.url)) for request in requests] == [
+            ('POST', f'https://space.example.invalid/api/v1/survey/{operation}')
+        ]
+        assert json.loads(requests[0].content) == body

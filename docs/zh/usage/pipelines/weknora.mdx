@@ -1,0 +1,78 @@
+---
+title: "在 LangBot 上使用 WeKnora"
+description: "在 LangBot 中使用 WeKnora，为 AI 消息机器人加入基于知识库的问答能力。"
+---
+
+[WeKnora](https://weknora.weixin.qq.com/)（维娜拉）是腾讯开源的基于大语言模型（LLM）的文档理解与语义检索框架，专为结构复杂、内容异构的文档场景而打造。  
+框架采用模块化架构，融合多模态预处理、语义向量索引、智能召回与大模型生成推理，构建起高效、可控的文档问答流程。核心检索流程基于 RAG（Retrieval-Augmented Generation）机制，将上下文相关片段与语言模型结合，实现高质量的答案生成。
+
+LangBot 目前支持 WeKnora 的 `知识库问答（chat）` 和 `Agent 智能对话（agent）` 两种应用类型。
+
+## 在 WeKnora 上获取 API Key
+
+请根据 [WeKnora 官方文档](https://github.com/Tencent/WeKnora) 部署 WeKnora 服务并完成知识库的创建与文档上传。
+
+![weknora](/images/zh/deploy/pipelines/weknora/weknora_api_lead.png)
+
+部署完成后，访问 WeKnora 的 WebUI（默认 `http://localhost:80`），在 `设置` -> `API 密钥` 页面，点击`生成 API Key`并复制保存。
+
+<Info title="API Key 与知识库 ID">
+- `API Key`：用于鉴权，请妥善保管，不要泄露。
+- `知识库 ID`：在知识库管理页面查看每个知识库对应的 ID（形如 `kb-00000001`），可在 LangBot 中指定调用的知识库。
+</Info>
+
+点击后可以获取到基础的Url与key信息
+
+![weknora](/images/zh/deploy/pipelines/weknora/weknora_api_information.png)
+
+<Info title="部署提示">
+
+- 若 LangBot 与 WeKnora 部署在同一台主机，并且都是使用 Docker 部署的，可以参考文章：[网络配置详解](/zh/workshop/network-details.html#langbot-%E5%92%8C%E6%B6%88%E6%81%AF%E5%B9%B3%E5%8F%B0%E5%9D%87%E8%BF%90%E8%A1%8C%E5%9C%A8-docker-%E5%AE%B9%E5%99%A8%E4%B8%AD)。请在启动 WeKnora 时将其容器加入 `langbot-network`，并在 LangBot 配置中将 `API 基础 URL` 设置为容器互通地址，例如 `http://weknora-app:8080/api/v1`。
+- 其他情况请咨询贵司运维人员。
+</Info>
+
+## 获取 Weknora Agent 信息
+
+![weknora](/images/zh/deploy/pipelines/weknora/weknora_agent_lead.png)
+
+在 '智能体' 页面，点击要选择的 Agent，进入其详情页，在 `Agent 配置` 中可以查看到 `Agent ID`（形如 `builtin-smart-reasoning`），在 `工具列表` 中可以查看到该 Agent 可调用的工具名称（如 `web-search`、`file-search` 等）。在配置 LangBot 时需要用到这些信息。
+
+![weknora](/images/zh/deploy/pipelines/weknora/weknora_other_information.png)
+
+此时你已经准备好了接入 WeKnora API 的必要信息，接下来请按照下文步骤在 LangBot 上完成配置。
+
+## 配置 LangBot
+
+打开 LangBot WebUI 页面，添加一个新的流水线或在已有流水线中切换到 `AI 能力` 配置页面。
+
+![weknora](/images/zh/deploy/pipelines/weknora/creat_langbot_pipeline.png)
+
+1. 在 `运行器` 中选择 `WeKnora API`。
+2. 在运行器的配置项中，填写：
+   - `API 基础 URL`：WeKnora 服务的 API 地址，默认 `http://localhost:8080/api/v1`。
+   - `API 密钥`：粘贴在 WeKnora 上生成的 API Key。
+   - `应用类型`：选择 `agent`（Agent 智能对话，支持工具调用、联网搜索、思维链）或 `chat`（知识库 RAG 问答）。
+   - `Agent ID`：内置 Agent 标识，常用值：
+     - `builtin-smart-reasoning`：智能推理 Agent（推荐用于 `agent` 模式）
+     - `builtin-quick-answer`：快速问答 Agent（推荐用于 `chat` 模式）
+   - `知识库 ID 列表`：填入需要检索的知识库 ID（形如 `kb-00000001`），可填写多个。
+   - `启用联网搜索`：仅在 `agent` 模式下生效，开启后允许 Agent 调用 Web 搜索工具。
+   - `超时时间（秒）`：请求超时时间，默认 `120`。
+   - `默认提示词`：当用户未发送文本内容时使用的默认问句。
+3. 点击 `保存` 完成配置。
+
+完成后，你即可在该流水线中调用 WeKnora 完成基于知识库的智能对话。
+
+## 输出处理
+
+- 使用 `agent` 应用时，如果开启了 LangBot 流水线 `输出处理` 中的 `track-function-calls`，将会在 WeKnora 执行每个工具调用时，输出一个 `调用函数 xxx` 的消息给用户。
+- WeKnora 返回的 `thinking`（思维链）内容会以 `<think>` 标签包裹后发送，可在前端进行折叠展示。
+- WeKnora 返回的 `references`（知识库引用来源）会作为参考来源消息附在回答之后。
+
+## 常见问题
+
+- **保存失败或调用报错**：请确认 `API 密钥` 与 `API 基础 URL` 是否正确，URL 末尾需包含 `/api/v1`。
+- **未返回知识库内容**：请确认填写的 `知识库 ID` 是否正确，且该知识库下已成功上传并解析了文档。
+- **无法选择 `WeKnora API`**：请确认当前 LangBot 版本是否已支持该运行器；若尚未支持，请升级到包含 WeKnora 运行器的版本。
+
+更多流水线通用配置说明，请参考[修改对话流水线配置](/zh/usage/pipelines/readme)。

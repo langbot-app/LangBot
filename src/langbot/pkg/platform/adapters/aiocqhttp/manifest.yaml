@@ -1,0 +1,149 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+
+metadata:
+  name: onebot-v11
+  label:
+    en_US: OneBot v11
+    zh_Hans: OneBot v11
+    zh_Hant: OneBot v11
+  description:
+    en_US: OneBot v11 adapter for QQ-compatible protocol endpoints with event-driven orchestration support
+    zh_Hans: OneBot v11 适配器，用于接入 QQ 兼容协议端，支持事件驱动编排
+    zh_Hant: OneBot v11 適配器，用於接入 QQ 相容協定端，支援事件驅動編排
+  icon: onebot.png
+
+spec:
+  categories:
+    - popular
+    - protocol
+  help_links:
+    zh: https://langbot.app/docs/zh/usage/platforms/qq/aiocqhttp/napcat
+    en: https://langbot.app/docs/en/usage/platforms/qq/aiocqhttp/napcat
+    ja: https://langbot.app/docs/ja/usage/platforms/qq/aiocqhttp/napcat
+  config:
+    - name: connection_mode
+      label: {en_US: Connection mode, zh_Hans: 连接模式, zh_Hant: 連線模式, ja_JP: 接続方式}
+      type: select
+      required: true
+      default: reverse_ws
+      options:
+        - name: reverse_ws
+          label: {en_US: 'Reverse WS — protocol endpoint connects to LangBot', zh_Hans: '反向 WS — 协议端连接 LangBot', zh_Hant: '反向 WS — 協定端連接 LangBot', ja_JP: '逆方向 WS — プロトコル側から LangBot に接続'}
+        - name: forward_ws
+          label: {en_US: 'Forward WS — LangBot connects to protocol endpoint', zh_Hans: '正向 WS — LangBot 连接协议端', zh_Hant: '正向 WS — LangBot 連接協定端', ja_JP: '順方向 WS — LangBot からプロトコル側に接続'}
+      description:
+        en_US: Reverse WS uses LangBot's main service port. Forward WS requires a protocol endpoint reachable from LangBot. HTTP is not supported.
+        zh_Hans: 反向 WS 由协议端连接 LangBot 主服务端口，无需额外监听端口；正向 WS 由 LangBot 连接可访问的协议端。不支持 HTTP。
+        zh_Hant: 反向 WS 由協定端連接 LangBot 主服務連接埠；正向 WS 由 LangBot 連接可存取的協定端。不支援 HTTP。
+        ja_JP: 逆方向 WS は LangBot のメインポートを使用。順方向 WS は LangBot から到達可能なプロトコル側に接続します。HTTP は非対応です。
+    - name: __system.onebot_ws_url
+      label: {en_US: Protocol endpoint connection URL, zh_Hans: 协议端连接地址, zh_Hant: 協定端連線位址, ja_JP: プロトコル側の接続先 URL}
+      description:
+        en_US: Save the bot, then copy this URL into the protocol endpoint's WebSocket client (Universal). Old host/port settings are ignored; update the protocol endpoint URL.
+        zh_Hans: 保存机器人后，将此地址填入协议端的 WebSocket 客户端（Universal）配置。旧 host/port 配置不再生效，请同步修改协议端地址。
+        zh_Hant: 儲存後將此位址填入協定端 WebSocket 用戶端（Universal）。舊 host/port 不再生效，請同步更新協定端位址。
+        ja_JP: 保存後、この URL をプロトコル側の WebSocket クライアント（Universal）に設定。旧 host/port は無効です。接続先を更新してください。
+      type: string
+      required: false
+      default: ''
+      show_if: {field: connection_mode, operator: eq, value: reverse_ws}
+    - name: ws_url
+      label: {en_US: Protocol endpoint WebSocket URL, zh_Hans: 协议端 WebSocket 地址, zh_Hant: 協定端 WebSocket 位址, ja_JP: プロトコル側 WebSocket URL}
+      description:
+        en_US: LangBot connects to this ws:// or wss:// Universal endpoint. It must be reachable from LangBot.
+        zh_Hans: LangBot 将主动连接此 ws:// 或 wss:// 地址，使用协议端同时提供事件和 API 的 Universal 端点。请确保 LangBot 能访问它。
+        zh_Hant: LangBot 主動連接此 ws:// 或 wss:// Universal 位址，請確保可存取。
+        ja_JP: LangBot がこの ws:// または wss:// Universal URL に接続します。到達可能な URL を指定してください。
+      type: string
+      required: true
+      default: ''
+      show_if: {field: connection_mode, operator: eq, value: forward_ws}
+    - name: access-token
+      label: {en_US: Access token, zh_Hans: 访问令牌, zh_Hant: 存取權杖, ja_JP: アクセストークン}
+      description:
+        en_US: Required in both modes. Configure the same secret token on LangBot and the protocol endpoint. Sent using Authorization Bearer.
+        zh_Hans: 两种模式均必填。在 LangBot 与协议端设置相同的保密令牌，连接时使用 Authorization Bearer 验证。
+        zh_Hant: 兩種模式皆必填。在 LangBot 與協定端設定相同的保密權杖。
+        ja_JP: 両方式で必須。LangBot とプロトコル側に同じ秘密トークンを設定してください。
+      type: string
+      required: true
+      default: ''
+    - name: self_id
+      label: {en_US: Expected bot account (optional), zh_Hans: 预期机器人账号（可选）, zh_Hant: 預期機器人帳號（選填）, ja_JP: ボットアカウント（任意）}
+      description: {en_US: Reject connections or events from a different account., zh_Hans: 拒绝其他账号的连接或事件。, zh_Hant: 拒絕其他帳號的連線或事件。, ja_JP: 異なるアカウントの接続やイベントを拒否します。}
+      type: string
+      required: false
+      default: ''
+
+  supported_events:
+    - message.received
+    - message.deleted
+    - group.member_joined
+    - group.member_left
+    - group.member_banned
+    - friend.request_received
+    - friend.added
+    - bot.invited_to_group
+    - bot.removed_from_group
+    - bot.muted
+    - bot.unmuted
+    - platform.specific
+
+  supported_apis:
+    required:
+      - send_message
+      - reply_message
+    optional:
+      - delete_message
+      - forward_message
+      - get_message
+      - get_group_info
+      - get_group_list
+      - get_group_member_list
+      - get_group_member_info
+      - set_group_name
+      - get_user_info
+      - get_friend_list
+      - approve_friend_request
+      - approve_group_invite
+      - mute_member
+      - unmute_member
+      - kick_member
+      - leave_group
+      - call_platform_api
+
+  platform_specific_apis:
+    - action: get_login_info
+      description: { en_US: "Get current bot account information", zh_Hans: "获取当前机器人账号信息" }
+    - action: get_status
+      description: { en_US: "Get endpoint status", zh_Hans: "获取协议端状态" }
+    - action: get_version_info
+      description: { en_US: "Get endpoint version information", zh_Hans: "获取协议端版本信息" }
+    - action: get_group_honor_info
+      description: { en_US: "Get group honor information", zh_Hans: "获取群荣誉信息" }
+    - action: set_group_card
+      description: { en_US: "Set a member group card", zh_Hans: "设置群名片" }
+    - action: set_group_special_title
+      description: { en_US: "Set a member special title", zh_Hans: "设置群专属头衔" }
+    - action: set_group_admin
+      description: { en_US: "Set group administrator status", zh_Hans: "设置群管理员" }
+    - action: set_group_whole_ban
+      description: { en_US: "Enable or disable whole-group mute", zh_Hans: "设置全员禁言" }
+    - action: send_group_forward_msg
+      description: { en_US: "Send a merged forward message", zh_Hans: "发送合并转发消息" }
+    - action: get_forward_msg
+      description: { en_US: "Get merged forward message content", zh_Hans: "获取合并转发消息内容" }
+    - action: get_record
+      description: { en_US: "Get voice file", zh_Hans: "获取语音文件" }
+    - action: get_image
+      description: { en_US: "Get image file", zh_Hans: "获取图片文件" }
+    - action: can_send_image
+      description: { en_US: "Check whether images can be sent", zh_Hans: "检查是否可以发送图片" }
+    - action: can_send_record
+      description: { en_US: "Check whether voice messages can be sent", zh_Hans: "检查是否可以发送语音" }
+
+execution:
+  python:
+    path: ./adapter.py
+    attr: AiocqhttpAdapter

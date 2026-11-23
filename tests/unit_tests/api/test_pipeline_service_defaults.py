@@ -1,0 +1,105 @@
+"""Tests for dynamic default pipeline config rendering."""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pytest
+
+from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
+from langbot.pkg.api.http.service.pipeline import PipelineService
+from langbot.pkg.api.http.service.model import LLMModelsService
+
+
+class FakeLogger:
+    def warning(self, msg):
+        pass
+
+
+class FakeRegistry:
+    def __init__(self, runners):
+        self.runners = runners
+
+    async def list_runners(self, context, bound_plugins=None):
+        return self.runners
+
+    async def get(self, context, runner_id):
+        return next(runner for runner in self.runners if runner.id == runner_id)
+
+
+def make_runner(runner_id: str, config_schema: list[dict]):
+    parts = runner_id.removeprefix('plugin:').split('/')
+    return RunnerDescriptor(
+        usages=['agent'],
+        id=runner_id,
+        source='plugin',
+        label={'en_US': runner_id},
+        plugin_author=parts[0],
+        plugin_name=parts[1],
+        runner_name=parts[2],
+        config_schema=config_schema,
+    )
+
+
+@pytest.mark.asyncio
+async def test_default_pipeline_config_uses_first_installed_runner_schema():
+    local_agent = make_runner(
+        'plugin:langbot-team/LocalAgent/default',
+        [
+            {'name': 'model', 'type': 'model-fallback-selector', 'default': {'primary': '', 'fallbacks': []}},
+            {'name': 'prompt', 'type': 'prompt-editor', 'default': [{'role': 'system', 'content': 'Hello'}]},
+        ],
+    )
+    custom_agent = make_runner(
+        'plugin:alice/custom-agent/default',
+        [{'name': 'api-key', 'type': 'string', 'default': ''}],
+    )
+    ap = SimpleNamespace(
+        logger=FakeLogger(),
+        runner_registry=FakeRegistry([custom_agent, local_agent]),
+    )
+    ap.llm_model_service = LLMModelsService(ap)
+
+    config = await PipelineService(ap).get_default_pipeline_config('workspace-test')
+
+    assert config['ai']['runner']['id'] == 'plugin:alice/custom-agent/default'
+    assert config['ai']['runner_config'] == {
+        'plugin:alice/custom-agent/default': {
+            'api-key': '',
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_default_pipeline_config_uses_requested_runner_schema():
+    first = make_runner(
+        'plugin:alice/custom-agent/default',
+        [{'name': 'api-key', 'type': 'string', 'default': ''}],
+    )
+    selected = make_runner(
+        'plugin:langbot-team/LocalAgent/default',
+        [{'name': 'temperature', 'type': 'number', 'default': 0.2}],
+    )
+    ap = SimpleNamespace(
+        logger=FakeLogger(),
+        runner_registry=FakeRegistry([first, selected]),
+    )
+    ap.llm_model_service = LLMModelsService(ap)
+
+    config = await PipelineService(ap).get_default_pipeline_config('workspace-test', selected.id)
+
+    assert config['ai']['runner']['id'] == selected.id
+    assert config['ai']['runner_config'] == {selected.id: {'temperature': 0.2}}
+
+
+@pytest.mark.asyncio
+async def test_default_pipeline_config_stays_neutral_without_installed_runners():
+    ap = SimpleNamespace(
+        logger=FakeLogger(),
+        runner_registry=FakeRegistry([]),
+    )
+
+    config = await PipelineService(ap).get_default_pipeline_config('workspace-test')
+
+    assert config['ai']['runner']['id'] == ''
+    assert config['ai']['runner_config'] == {}

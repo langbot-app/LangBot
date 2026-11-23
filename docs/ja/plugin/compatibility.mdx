@@ -1,0 +1,32 @@
+---
+title: "システム互換性"
+---
+
+LangBotのプラグインシステムは、LangBot本体、Plugin Runtime、プラグインごとのworkerプロセスという3層のプロセスで構成されています。このページでは、各OSでこれらの層がどの方式で通信するかを説明します。
+
+## LangBotとPlugin Runtime
+
+LangBotとPlugin Runtimeの間の通信方式は、Runtimeを誰が起動するかだけで決まり、OSには依存しません。
+
+| デプロイ方法 | 通信方式 |
+|---|---|
+| LangBotを直接実行(Windows / Linux / macOS) | LangBotがPlugin Runtimeをサブプロセスとして起動し、サブプロセスのstdioで通信します |
+| Docker | `plugin.runtime_ws_url`(デフォルトはComposeサービス `langbot_plugin_runtime:5400`)へWebSocketで接続します |
+| `--standalone-runtime` で起動 | `plugin.runtime_ws_url` へWebSocketで接続します。Runtimeはご自身で起動してください |
+
+Box Runtimeも同じルールに従います。LangBotを直接実行する場合はstdio、Docker、`--standalone-box`、または `box.runtime.endpoint` を設定した場合はWebSocketを使用します。
+
+<Note>
+Windowsのasyncio `ProactorEventLoop` は、サブプロセスが継承した匿名パイプをIOCPに登録できないため、`connect_read_pipe` / `connect_write_pipe` を使うと `WinError 6` が発生します。`langbot-plugin` 0.6.0以降、RuntimeはWindows上でバックグラウンドスレッドからstdioをブロッキングで読み書きするため、LangBotはWindowsでもLinux / macOSと同様にstdioを直接使用します。追加の設定は不要です。
+</Note>
+
+## Plugin Runtimeとプラグインworker
+
+Plugin Runtimeはインストール済みのプラグインごとにworkerサブプロセスを起動します。
+
+- **Linux / macOS**:workerサブプロセスのstdioで通信します。
+- **Windows**:Runtimeがworkerをサブプロセスとして起動し、workerはWebSocketでRuntimeのプラグインデバッグポート(`ws://localhost:<ポート>/plugin/ws`)に接続します。
+
+デバッグポートのデフォルトは `5401` で、`plugin.display_plugin_debug_url` のポート設定に従います。Windowsでは、このポートが使用中でないこと、およびループバック接続がファイアウォールでブロックされていないことを確認してください。同じマシンで複数のLangBotインスタンスを実行する場合は、インスタンスごとに異なる `display_plugin_debug_url` のポートを設定してください。
+
+これらはすべてデプロイ方法とOSに応じてLangBotが自動的に選択するため、通信方式を手動で設定する必要はありません。

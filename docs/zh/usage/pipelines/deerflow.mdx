@@ -1,0 +1,63 @@
+---
+title: "在 LangBot 上使用 DeerFlow"
+description: "在 LangBot 中使用 DeerFlow，为 AI 机器人的对话管线提供支持。"
+---
+
+[DeerFlow](https://github.com/bytedance/deer-flow) 是字节跳动开源的基于大语言模型（LLM）的 AI Agent 框架，专注于深度研究、信息检索与多智能体协作编排。  
+框架基于 LangGraph 构建，采用可配置的工作流引擎，支持规划模式、子智能体并发、思维链等高级特性，适用于需要深度信息搜集和结构化分析的场景。
+
+当前适配面向 DeerFlow **2.0 `main` 分支**。DeerFlow 官方已将原始 Deep Research 框架迁移到 `main-1.x` 分支持续维护，因此如果你使用的是 2.0 版本，请以 `main` 分支的官方文档和后端 API 为准。
+
+LangBot 目前支持将 DeerFlow 作为 `AI 能力` 运行器接入对话流水线，为你的 Bot 带来深度研究和智能体编排能力。
+
+## 部署 DeerFlow
+
+请根据 [DeerFlow 官方文档](https://github.com/bytedance/deer-flow) 完成服务的安装、配置与启动：
+
+- [DeerFlow GitHub 仓库](https://github.com/bytedance/deer-flow)
+- [DeerFlow 官方网站](https://deerflow.tech/)
+- [DeerFlow 配置文档](https://github.com/bytedance/deer-flow/blob/main/backend/docs/CONFIGURATION.md)
+
+部署完成后，请确认 DeerFlow 已正常启动，并记下其网关地址。默认情况下，DeerFlow 网关地址为 `http://127.0.0.1:2026`。
+
+<Info title="网络配置提示">
+
+- 若 LangBot 与 DeerFlow 部署在同一台主机且都使用 Docker 部署，可以参考文章：[网络配置详解](/zh/workshop/network-details.html#langbot-%E5%92%8C%E6%B6%88%E6%81%AF%E5%B9%B3%E5%8F%B0%E5%9D%87%E8%BF%90%E8%A1%8C%E5%9C%A8-docker-%E5%AE%B9%E5%99%A8%E4%B8%AD)。请在启动 DeerFlow 时将其容器加入 `langbot-network`，并在 LangBot 配置中将 `API 基础 URL` 设置为容器互通地址，例如 `http://deerflow-app:2026`。
+- 若部署在不同主机或容器上，请将 `127.0.0.1` 替换为 DeerFlow 实际可访问的内网地址、主机名或域名。
+
+</Info>
+
+## 配置 LangBot
+
+打开 LangBot WebUI 页面，添加一个新的流水线或在已有流水线中切换到 `AI 能力` 配置页面。
+
+![deerflow](/images/zh/deploy/pipelines/deerflow/creat_langbot_pipeline.png)
+
+1. 在 `运行器` 中选择 `DeerFlow API`。
+2. 在运行器的配置项中，填写：
+   - `API 基础 URL`：DeerFlow 服务的 API 网关地址，默认 `http://127.0.0.1:2026`。
+   - `API 密钥`：可选。若你的 DeerFlow 网关使用 Bearer Token 鉴权，可在此填写 API Key。
+   - `Assistant ID`：对应 DeerFlow 2.0 LangGraph 的 `assistant_id`，默认为 `lead_agent`。
+   - `模型名称覆盖`：可选。用于覆盖 DeerFlow 侧配置的默认模型。若 DeerFlow 已配置好模型，可留空。
+   - `启用思考模式`：开启后 DeerFlow 将返回思维链内容，可用于展示推理过程。
+   - `启用计划模式`：对应 DeerFlow 2.0 运行时参数 `config.configurable.is_plan_mode`，开启后 Agent 会先制定研究计划再执行。
+   - `启用子智能体`：对应 DeerFlow 2.0 运行时参数 `config.configurable.subagent_enabled`，开启后允许 Agent 调度子智能体并行完成任务。
+   - `子智能体最大并发数`：对应 DeerFlow 2.0 运行时参数 `config.configurable.max_concurrent_subagents`，仅在启用子智能体时生效，默认 `3`。
+   - `递归深度上限`：对应 LangGraph 的 `recursion_limit`，控制工作流的最大递归层数，默认 `1000`。
+3. 点击 `保存` 完成配置。
+
+<Info title="配置建议">
+
+- 只有在 DeerFlow 侧已启用相应能力时，才建议开启 `计划模式` 或 `子智能体` 相关选项，否则可能不会产生预期效果。
+- LangBot 会同时发送 DeerFlow 2.0 推荐的 `config.configurable` 运行时参数，并保留向后兼容的旧字段，便于对接上游近期版本。
+
+</Info>
+
+完成后，你即可在该流水线中使用 DeerFlow 完成深度研究和智能问答。
+
+## 常见问题
+
+- **保存失败或调用报错**：请确认 `API 密钥` 与 `API 基础 URL` 是否正确，并确保 DeerFlow 服务已正常启动。
+- **未返回预期内容**：请确认 `Assistant ID` 是否与 DeerFlow 中实际可用的 assistant 一致。
+- **无法选择 `DeerFlow API`**：请确认当前 LangBot 版本是否已支持该运行器；若尚未支持，请升级到包含 DeerFlow 运行器的版本。
+- **DeerFlow 相关配置项含义**：请参考 DeerFlow 官方文档中关于运行时参数和能力的说明，或咨询 DeerFlow 社区获取建议配置。

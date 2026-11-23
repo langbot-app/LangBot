@@ -1,0 +1,319 @@
+---
+title: "コンテキスト API"
+---
+
+コンテキストには、1 回のコンポーネント呼び出しに関するデータが含まれます。コンポーネントごとに受け取るコンテキストが異なるため、まず対象コンポーネントの入口を確認してください。
+
+| コンポーネント | ハンドラーの入口 | コンテキスト型 |
+| --- | --- | --- |
+| EventListener | `handler(event_context)` | `EventContext` |
+| Command | `subcommand(context)` | `ExecuteContext` |
+| Tool | `call(params, session, query_id)` | 独立したコンテキストオブジェクトなし |
+| Runner | `run(ctx)` または `handler(ctx)` | `RunnerContext` |
+| KnowledgeEngine | `ingest(context)`、`retrieve(context)` | `IngestionContext`、`RetrievalContext` |
+| KnowledgeRetriever | `retrieve(context)` | `RetrievalContext` |
+| Parser | `parse(context)` | `ParseContext` |
+| Page | `handle_api(request)` | `PageRequest` |
+
+このページでは、コンテキストのデータとメソッドのみを説明します。モデル、ナレッジベース、ストレージなどの LangBot 機能には `self.plugin` を使用します。詳細は [LangBot API](/ja/plugin/dev/apis/common) を参照してください。プラットフォーム操作は[プラットフォーム API](/ja/plugin/dev/apis/platform)に記載しています。
+
+`EventContext`、`ExecuteContext`、`Session` には `instance_uuid`、`workspace_uuid`、`placement_generation` も含まれます。これらは現在の実行に対応するインスタンスとワークスペースを示すためのもので、プラグイン側の認可情報として使用しないでください。
+
+リトライ、タイムアウト、数値思考予算、prompt caching、ヘッダー、ストリーム終了は [LLM リクエスト設定](/ja/plugin/dev/apis/llm-requests)を参照してください。
+
+## EventListener
+
+EventListener はパイプラインイベントを処理します。イベントハンドラーは `EventContext` を受け取ります。
+
+```python
+event = event_context.event
+sender_id = event.sender_id
+```
+
+### コンテキストデータ
+
+| プロパティ | 型 | 説明 |
+| --- | --- | --- |
+| `event` | `BaseEventModel` | 現在のイベントオブジェクト。実際の型は登録したイベント型と一致します |
+| `event_name` | `str` | 現在のイベントクラス名 |
+| `query_id` | `int` | 現在のパイプラインリクエスト ID |
+| `query_uuid` | `str \| None` | 現在のパイプラインリクエストの安定した識別子 |
+| `eid` | `int` | Plugin Runtime 内の一時的なイベント番号。永続化しないでください |
+| `is_prevent_default` | `bool` | デフォルト処理を停止済みか。変更には `prevent_default()` を使用します |
+| `is_prevent_postorder` | `bool` | 後続プラグインを停止済みか。変更には `prevent_postorder()` を使用します |
+
+イベントのフィールドと購読可能なイベントは[パイプラインイベント](/ja/plugin/dev/apis/pipeline-events)を参照してください。
+
+### コンテキストメソッド
+
+| メソッド | 戻り値 | 説明 |
+| --- | --- | --- |
+| `await event_context.reply(message_chain, quote_origin=False)` | - | 現在のリクエストの会話に返信 |
+| `await event_context.get_bot_uuid()` | `str` | 送信元 Bot の UUID を取得 |
+| `await event_context.set_query_var(key, value)` | - | 現在のリクエストに変数を設定 |
+| `await event_context.get_query_var(key)` | `Any` | リクエスト変数を 1 つ取得 |
+| `await event_context.get_query_vars()` | `dict[str, Any]` | すべてのリクエスト変数を取得 |
+| `await event_context.create_new_conversation()` | `dict[str, Any]` | 現在のパイプライン会話をクリアし、後続リクエストで新しい会話を作成 |
+| `await event_context.list_pipeline_knowledge_bases()` | `list[dict[str, Any]]` | 現在のパイプラインの Local Agent に設定されたナレッジベースを取得 |
+| `await event_context.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)` | `list[dict[str, Any]]` | 現在のパイプラインに設定されたナレッジベースを検索 |
+| `event_context.prevent_default()` | - | 現在のイベントのデフォルト処理を停止 |
+| `event_context.prevent_postorder()` | - | 後続プラグインによる現在のイベント処理を停止 |
+
+`reply()` は [MessageChain](/ja/plugin/dev/apis/messages) を受け取ります。リクエスト変数、返信、パイプラインのナレッジベース API には、関連付けられたパイプラインリクエストが必要です。`retrieve_knowledge()` の `kb_id` は `list_pipeline_knowledge_bases()` の結果から指定します。
+
+`prevent_default()` はデフォルトフローを停止できるイベントにのみ作用します。詳細は[パイプラインイベント](/ja/plugin/dev/apis/pipeline-events#デフォルト動作を阻止)を参照してください。
+
+## Command
+
+Command のサブコマンドハンドラーは `ExecuteContext` を受け取ります。
+
+```python
+query = " ".join(context.crt_params)
+session = context.session
+```
+
+### コンテキストデータ
+
+| プロパティ | 型 | 説明 |
+| --- | --- | --- |
+| `session` | `Session` | 現在のメッセージが属するセッション |
+| `command_text` | `str` | コマンド接頭辞を除いた完全なコマンド文字列 |
+| `full_command_text` | `str` | 接頭辞を含む完全なコマンド文字列 |
+| `command` | `str` | ルートコマンド名 |
+| `crt_command` | `str` | 現在実行中のサブコマンド名 |
+| `params` | `list[str]` | ルートコマンド以降のすべての引数 |
+| `crt_params` | `list[str]` | 現在のサブコマンドで未処理の引数 |
+| `privilege` | `int` | 現在のユーザーのコマンド権限レベル |
+| `query_id` | `int` | 現在のパイプラインリクエスト ID |
+| `query_uuid` | `str \| None` | 現在のパイプラインリクエストの安定した識別子 |
+
+SDK は現在のサブコマンドに入る前に `context.shift()` を呼び出します。コンポーネントから直接呼び出す必要はありません。
+
+### コンテキストメソッド
+
+| メソッド | 戻り値 | 説明 |
+| --- | --- | --- |
+| `await context.reply(message_chain, quote_origin=False)` | - | 現在のリクエストの会話に返信 |
+| `await context.get_bot_uuid()` | `str` | 送信元 Bot の UUID を取得 |
+| `await context.set_query_var(key, value)` | - | 現在のリクエストに変数を設定 |
+| `await context.get_query_var(key)` | `Any` | リクエスト変数を 1 つ取得 |
+| `await context.get_query_vars()` | `dict[str, Any]` | すべてのリクエスト変数を取得 |
+| `await context.create_new_conversation()` | `dict[str, Any]` | 現在のパイプライン会話をクリアし、後続リクエストで新しい会話を作成 |
+| `await context.list_pipeline_knowledge_bases()` | `list[dict[str, Any]]` | 現在のパイプラインの Local Agent に設定されたナレッジベースを取得 |
+| `await context.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)` | `list[dict[str, Any]]` | 現在のパイプラインに設定されたナレッジベースを検索 |
+
+これらのリクエストメソッドは EventListener と同じ動作です。登録方法と戻り値は [Command コンポーネント](/ja/plugin/dev/components/command)を参照してください。
+
+## Tool
+
+Tool には独立したコンテキストオブジェクトがありません。`call()` の引数として呼び出し情報を受け取ります。
+
+```python
+conversation_type = session.launcher_type.value
+conversation_id = session.launcher_id
+sender_id = session.sender_id
+```
+
+| 引数 | 説明 |
+| --- | --- |
+| `params` | ツールの JSON Schema に基づいてモデルまたは呼び出し元が生成した引数 |
+| `session` | 現在のセッションデータ |
+| `query_id` | 現在のパイプラインリクエスト ID。リクエストコンテキストが必要な LangBot API にそのまま渡します |
+
+`Session` の主なプロパティは次のとおりです。
+
+| プロパティ | 説明 |
+| --- | --- |
+| `launcher_type` | 会話種別：`person` または `group` |
+| `launcher_id` | 個人チャットのユーザー ID またはグループ ID |
+| `sender_id` | 現在のメッセージ送信者 ID |
+| `bot_uuid` | 現在の Bot UUID |
+| `using_conversation` | 現在のパイプライン会話 |
+| `conversations` | この Session に保存されたパイプライン会話 |
+| `use_prompt_name` | 使用中のプロンプト名 |
+| `create_time`、`update_time` | Session の作成時刻と更新時刻 |
+
+`session` はデータオブジェクトであり、`reply()` などのコンテキストメソッドはありません。ツールの戻り値は呼び出し元へ返され、チャットプラットフォームには自動送信されません。LangBot とプラットフォームの機能には `self.plugin` を使用します。API が `session` と `query_id` を要求する場合は、現在の呼び出しで受け取った値を渡してください。
+
+## Runner
+
+独自の `run(ctx)` と Runner のイベントハンドラーは、どちらも `RunnerContext` を受け取ります。このコンテキストは現在の実行中だけ有効です。
+
+```python
+text = ctx.input.to_text()
+event_type = ctx.event.event_type
+```
+
+### コンテキストデータ
+
+| プロパティ | 型 | 説明 |
+| --- | --- | --- |
+| `run_id` | `str` | 現在の実行 ID |
+| `trigger` | `AgentTrigger` | トリガーの種類、発生元、時刻 |
+| `event` | `AgentEventContext` | イベント ID、種類、発生元、時刻、元データを含む標準イベントエンベロープ |
+| `platform_event` | プラットフォームイベント型 | イベント型に応じて解析されたプラットフォームイベント |
+| `conversation` | `ConversationContext \| None` | 現在の会話、スレッド、Bot、ワークスペースの識別子 |
+| `actor` | `ActorContext \| None` | イベントを発生させた主体 |
+| `subject` | `SubjectContext \| None` | イベントの対象となるメッセージやグループなど |
+| `input` | `AgentInput` | 現在のテキスト、構造化コンテンツ、添付ファイル |
+| `delivery` | `DeliveryContext` | 出力先とストリーミング、編集、リアクションの対応状況 |
+| `resources` | `AgentResources` | 今回の実行で許可されたモデル、ツール、ナレッジベース、スキル、ストレージ |
+| `context` | `ContextAccess` | 会話カーソル、インライン方針、利用可能なコンテキスト API |
+| `state` | `AgentRunState` | 実行開始時に読み込まれたスコープ別状態のスナップショット |
+| `runtime` | `AgentRuntimeContext` | LangBot バージョン、トレース ID、期限 |
+| `config` | `dict[str, Any]` | 現在の Agent またはプラグインプロセッサーの設定 |
+| `adapter` | `AdapterContext \| None` | エントリーアダプターの追加データ |
+| `variables` | `dict[str, Any]` | Runner テンプレートで使える公開リクエスト変数 |
+| `metadata` | `dict[str, Any]` | ホストが提供するその他のメタデータ |
+
+上表の安定したプロパティを優先してください。`event.data` と `adapter.extra` には、安定したフィールドに含まれない追加データが入ります。
+
+### 返信とログ
+
+| メソッド | 戻り値 | 説明 |
+| --- | --- | --- |
+| `await ctx.get_bot_uuid()` | `str` | 送信元 Bot UUID を取得。関連する Bot がなければエラー |
+| `await ctx.reply(message_chain, quote_origin=False)` | `Any` | 文字列または `MessageChain` で現在のイベントに返信 |
+| `ctx.reply_stream()` | 非同期コンテキストマネージャー | 1 件の返信を完全なテキストで逐次更新 |
+| `await ctx.log(text, level="info")` | - | 今回の実行ログへ記録。レベルは `debug`、`info`、`warning`、`error` |
+
+`reply_stream().update(text)` には、その時点の完全なテキストを渡します。プラットフォームがストリーミングに対応しない場合、終了時に完全なメッセージを 1 件送信します。デバッグモードでは送信をシミュレートします。
+
+### 利用可能なツール
+
+| メソッド | 戻り値 | 説明 |
+| --- | --- | --- |
+| `await ctx.get_available_tools()` | `list[dict[str, Any]]` | 今回呼び出せるコンテキスト操作、プラットフォーム API、プラグインツール、MCP ツールを取得 |
+| `await ctx.call_tool(tool_name, parameters=None)` | `dict[str, Any]` | 上記一覧のツールを呼び出す |
+
+`get_available_tools()` の各項目には `name`、`description`、`parameters`、`type`、`operations` が含まれます。結果は現在の Agent またはプラグインプロセッサーの設定とイベント機能で絞り込まれています。一覧にないツールは `ctx.call_tool()` で呼び出せません。
+
+### 入力添付ファイル
+
+`ctx.input.attachments` は、現在のメッセージに含まれる画像・音声・ファイルを出現順に 1 件ずつメタデータとして表します：`ref`（例：`att-1`）、`type`、`source`（現在のメッセージは `message`、引用されたメッセージは `quote`）、`name`、`mime_type`、`size`、プラットフォームの `id`。元URLはHostだけが保持します。添付ファイルは内容を含みません。`content` フィールドは非推奨で、現行バージョンでは常に空です。
+
+`ctx.input.text` と `ctx.input.contents` には、各メディアの位置に `[attachment att-1: image photo.jpg]` のようなマーカーが入ります。引用されたメッセージは `[quoted message from <送信者>]` と `[/quoted message]` で囲まれます。画像やファイルは初期モデル入力には含まれず、必要なときに明示的に読み取ります。
+
+| メソッド | 戻り値 | 説明 |
+| --- | --- | --- |
+| `await ctx.read_input_attachment(attachment)` | `InputAttachmentData \| None` | `ref` で添付ファイルのバイト列を読み取り、`data`、`name`、`mime_type`、`size` を返します。引数には `ref` 文字列も指定できます。LangBot がこの API を提供しない場合は `None` を返します |
+
+添付ファイル 1 件あたりの上限は 10 MiB、1 回の実行で読み取れる合計は 50 MiB です。内容読み取りAPIは初回に元データをrun専用の一時Artifactとして保存します。バイナリは会話履歴やツールイベントに保存しません。この API が使えるかどうかは `ctx.context.available_apis.input_attachments` で確認できます。steering で現在の実行に取り込まれた後続メッセージの添付ファイルはメタデータのみで、`ref` を持ちません。
+
+このメソッドには `langbot-plugin` 0.7.23 以降が必要です。古い LangBot や SDK にも対応する場合は、メソッドの有無を確認してから従来の処理にフォールバックします：
+
+```python
+data = None
+if hasattr(ctx, "read_input_attachment"):
+    data = await ctx.read_input_attachment(attachment)
+if data is None:
+    ...  # 古い LangBot：attachment.content、attachment.url、ctx.input.contents を使用
+```
+
+`await ctx.read_input_attachment_content(ref, mode="auto", offset=0, max_chars=8192, page_start=1, page_end=None)` は同じrun権限で、制限付きテキストまたは構造化メディアを返します。モードと制限は [Artifactの読み取り](/ja/develop/artifacts) を参照してください。新メソッドには対応するCore、SDK、Runtimeが必要です。LocalAgentと一緒に更新してください。
+
+### Box と添付ファイル
+
+Box の有効化、取得、再利用方針は Runner が決めます。リソースの取得には [LangBot API](/ja/plugin/dev/apis/common#box-サンドボックス)、実行中の操作には以下を使います。
+
+| メソッド | 戻り値 | 説明 |
+| --- | --- | --- |
+| `await ctx.bind_box(box_id)` | `BoxBinding` | Box を現在の実行にバインドし、`box_id`、`outbox` を返す。同じ実行内では変更不可 |
+| `await ctx.import_box_attachments(attachment_ids=None)` | `list[BoxFile]` | 入力の `ref` を指定してインポート。省略時は全件。サンドボックスの `path` を返す |
+| `await ctx.export_box_files(paths)` | `list[BoxFile]` | 指定したサンドボックスの絶対パスを一時 Artifact として登録。メッセージは送信しない |
+| `await ctx.read_run_file(file_id, **options)` | `list[dict]` | 出力ファイルを制限付きテキストまたは構造化画像・PDF として読み取る |
+| `await ctx.commit_run_files(file_ids)` | `list[BoxFile]` | 実行対象のポリシーで許可された受取人へ出力を公開する |
+| `await ctx.reply_files(file_ids)` | `Any` | エクスポートした ID で返信。返信ツールの権限制限が適用される |
+
+`BoxFile` は `id`、`name`、`type`、`size`、任意の `path` を含みます。出力ファイルには `artifact_id`、`mime_type`、`digest`、`lifecycle`、`expires_at` も含まれます。`id` は従来どおり run 内の UUID ハンドルで、読み取り、commit、返信にはこの値を使います。`artifact_id` はアカウントの Artifact API の権限を与えません。入力添付ファイルのメタデータは変わらず、明示的にインポートして初めてサンドボックスのパスが生成されます。出力ハンドルは今回の run に属し、重複送信できません。
+
+`read_run_file` は [Artifact の読み取り](/ja/develop/artifacts) と同じモード、文字範囲、ページ範囲を使用し、実行中は送信後も読み取れます。commit には明示的な公開ポリシーが必要で、開始時に固定し、提出時に再確認します。受取人は終了後もアカウント Artifact API で管理できますが、ほかのアカウント、キー、run に権限は付与されません。初回公開では `lifecycle="persistent"`、`expires_at=None` となり、再試行は後からの release を維持します。エクスポート、読み取り、返信は自動 commit しません。未公開出力には時間制限付きクリーンアップを行い、失敗時は元の 24 時間の期限が適用されます。設定は [公開と解放](/ja/develop/artifacts#runner-の出力ファイル) を参照してください。
+
+元ファイルの削除は一括登録が完了してから行います。登録失敗時はサンドボックスの元ファイルを保持します。登録後の削除失敗では、返された ID は受理済みのままで warning が付きます。その ID を保持し、重複送信しないでください。プラットフォームへのファイル返信は登録済み Artifact のバイト列を読み取ります。汎用の run ファイル用 HTTP API はありません。
+
+ネイティブツールやファイル操作の前に Box をバインドします。Box を共有しても添付ディレクトリは実行ごとに分かれます。`ctx.variables` の公開リクエスト変数で再利用キーを計算できます。
+
+Pipeline では `ctx.delivery.automatic_reply` が `True` になり、`RunnerResult.message_completed(ctx.run_id, message, file_ids=[...])` で添付を返せます。Agent とプラグインプロセッサーは `ctx.reply_files()` で明示的に送信します。
+
+自動返信では、`RunnerResult.message_completed` はそれぞれ独立したメッセージとして送信されるため、Runner は回答の前に進捗メッセージを送れます。`RunnerResult.message_delta` はストリーミング対応プラットフォームでは 1 つのストリーミングメッセージを更新します。それ以外では完了したメッセージだけが送信され、delta だけで終わる実行は最後の結果を 1 回送信します。
+
+外部ランナーも `AgentRunExternalTools` で同じ手順を使用できます：`langbot_get_box_status`、`langbot_list_boxes`、`langbot_acquire_box`、`langbot_bind_box`、`langbot_import_box_attachments`、`langbot_export_box_files`、`langbot_read_run_file`。入力添付ファイルを読み取れる場合は `langbot_read_input_attachment` も利用できます。イベントへの返信権限がある場合は `langbot_reply_files` も利用できます。すべての呼び出しに現在の実行の権限が適用されます。commit は明示的な Runner API 呼び出しであり、既定のモデルツールには含まれません。
+
+### プロンプト、履歴、イベント
+
+| メソッド | 戻り値 | 利用可否フィールド |
+| --- | --- | --- |
+| `await ctx.get_prompt()` | `list[dict[str, Any]]` | `prompt_get` |
+| `await ctx.history_page(conversation_id=None, before_cursor=None, after_cursor=None, limit=50, direction="backward", include_attachments=False)` | `HistoryPage` | `history_page` |
+| `await ctx.history_search(query, filters=None, top_k=10)` | `HistorySearchResult` | `history_search` |
+| `await ctx.event_get(event_id)` | `AgentEventRecord` | `event_get` |
+| `await ctx.event_page(conversation_id=None, event_types=None, before_cursor=None, limit=50)` | `EventPage` | `event_page` |
+| `await ctx.steering_pull(mode="all", limit=None, claim=False)` | `SteeringPullResult` | `steering_pull` |
+| `await ctx.steering_ack(delivery_ids)` | `SteeringAckResult` | `steering_ack` |
+
+### 状態
+
+| メソッド | 戻り値 | 説明 |
+| --- | --- | --- |
+| `await ctx.state_get(scope, key)` | `dict[str, Any]` | 状態値を取得 |
+| `await ctx.state_set(scope, key, value)` | `dict[str, Any]` | JSON シリアライズ可能な状態値を保存 |
+| `await ctx.state_delete(scope, key)` | `dict[str, Any]` | 状態値を削除 |
+| `await ctx.state_list(scope, prefix=None, limit=100)` | `dict[str, Any]` | 指定スコープの状態キーを一覧表示 |
+
+`scope` は `conversation`、`actor`、`subject`、`runner` のいずれかです。これらのメソッドには `ctx.context.available_apis.state` が `true` である必要があります。
+
+### 実行記録
+
+| メソッド | 戻り値 | 利用可否フィールド |
+| --- | --- | --- |
+| `await ctx.run_get(run_id=None)` | `AgentRun` | `run_get` |
+| `await ctx.run_list(conversation_id=None, statuses=None, before_cursor=None, limit=50)` | `RunPage` | `run_list` |
+| `await ctx.run_events_page(run_id=None, before_cursor=None, after_cursor=None, limit=50, direction="forward")` | `RunEventPage` | `run_events_page` |
+| `await ctx.run_cancel(run_id=None, reason=None)` | `AgentRun` | `run_cancel` |
+| `await ctx.run_retry(run_id=None, reason=None)` | `AgentRun` | `run_retry` |
+| `await ctx.run_resume(run_id=None, from_sequence=None, reason=None)` | `AgentRun` | `run_resume` |
+| `await ctx.run_cancel_ack(run_id=None, reason=None, cleanup_confirmed=True, *, expected_retry_count=None)` | `AgentRun` | `run_cancel_ack` |
+| `await ctx.run_append_result(result)` | `AgentRunEvent` | `run_append_result` |
+| `await ctx.run_finalize(run_id=None, status=None, reason=None)` | `AgentRun` | `run_finalize` |
+
+キャンセル要求は先に実行台帳に記録されます。Runner は後処理を終えたら `ctx.run_cancel_ack()` を呼び出します。後処理が未確認の状態（`cleanup_confirmed=False`）は確認済みに更新できます。同じ実行を再通知しても各状態の最初の確認日時と理由は維持され、確認済みの状態は元に戻りません。
+
+外部キューは再試行時に実行 ID を再利用します。キャンセルを処理するときに、返された実行の `run.metadata.get("retry_count", 0)` を保存してください。後処理の確認にはこの値を `expected_retry_count` として渡し、再送時も保存した値を使います。最初の再キュー後は、回数の省略や不一致があれば Host は実行を変更せずに拒否します。それ以外の実行では省略できます。終了時にメタデータを追加できます。すべての実行の `cancel_ack` と、外部キューの `retry_count` は Host が管理します。
+
+アップグレード時、再キュー済みの実行に試行番号のない古い確認が残っていても、履歴は保持されます。現在の回数を指定した最初の ACK で、この試行の確認日時と理由が記録されます。
+
+`claim=False` は取得時に入力を消費します。`claim=True` では、受け付けた delivery ID を `steering_ack` で確認します。未確認のリースは再配信される場合があります。元の Run が終了した後も ACK と復旧操作は認可を検証します。Host の retry/resume は新しい期限と現在の権限で新しい Run を作成します。resume は確定済みチェックポイントを必要とし、外部の副作用を巻き戻しません。
+
+`run_id=None` は現在の実行を指します。通常のイベントハンドラーは SDK が自動的に完了します。独自の `run(ctx)` が `RunnerResult` を yield する場合、同じ結果を `run_append_result()` で重複登録しないでください。
+
+Pipeline の retry と resume は現在の出力フィルター、応答ラッパー、返信設定を適用します。記録された返信先と元のメッセージ ID を使用し、必要な情報がない場合や復旧時の送信に対応していない場合は明示的なエラーを返します。
+
+### 利用可否と権限
+
+プロンプト、履歴、イベント、状態、実行記録の API が利用可能かどうかは `ctx.context.available_apis` で確認します。許可されたモデル、ツール、ナレッジベースはそれぞれ `ctx.resources.models`、`ctx.resources.tools`、`ctx.resources.knowledge_bases` にあります。
+
+Runner の実行中に `self.plugin` から呼び出すモデル、ツール、ナレッジベース、ストレージ、プラットフォーム API は、自動的に現在の実行へ関連付けられ、`ctx.resources` に基づいて再検証されます。`run_id` を渡す必要はありません。ハンドラー終了後にバックグラウンドタスクからこのコンテキストや実行に紐づく呼び出しを使用しないでください。
+
+`ctx.api` は低レベルの実行スコーププロキシです。通常のコンポーネントコードでは、このページに記載した `ctx` メソッドと、LangBot API 用の `self.plugin` を使用してください。
+
+## データ専用コンテキスト
+
+以下のコンポーネントが受け取るものはタスク入力であり、EventListener や Runner の実行コンテキストメソッドはありません。フィールド、戻り値、完全な例は各コンポーネントガイドに記載しています。
+
+| コンポーネントの入口 | 主なデータ | コンポーネントガイド |
+| --- | --- | --- |
+| `KnowledgeEngine.ingest(context: IngestionContext)` | ファイル、対象ナレッジベース、作成設定、解析結果 | [KnowledgeEngine](/ja/plugin/dev/components/knowledge-engine#ドキュメント取り込み) |
+| `KnowledgeEngine.retrieve(context: RetrievalContext)` | クエリ、対象ナレッジベース、検索設定、フィルター | [KnowledgeEngine](/ja/plugin/dev/components/knowledge-engine#ナレッジ検索) |
+| `KnowledgeRetriever.retrieve(context: RetrievalContext)` | クエリと外部ナレッジベース設定 | [KnowledgeRetriever](/ja/plugin/dev/components/knowledge-retriever#検索コンテキスト) |
+| `Parser.parse(context: ParseContext)` | ファイル内容、ファイル名、MIME タイプ、メタデータ | [Parser](/ja/plugin/dev/components/parser#解析メソッド) |
+| `Page.handle_api(request: PageRequest)` | エンドポイント、HTTP メソッド、本文、ヘッダー | [Page](/ja/plugin/dev/components/page#pagerequest-フィールド) |
+
+## ACP daemon のファイル返信
+
+ACP daemon は LangBot の既存の run-scoped MCP ブリッジを使用します。Box が利用可能で `event_reply` が許可されている場合、Box をバインドしてファイルを生成し、`langbot_export_box_files` で選択した絶対パスをエクスポートしてから、返された ID を `langbot_reply_files` に渡します。メディアのアップロードと配信はプラットフォームアダプターが担当し、ACP Agent にプラットフォーム認証情報は不要です。
+
+ファイル ID はエクスポート元の run の中でのみ有効です。Pipeline フィルターが処理中のテキストを書き換えても、返信先は元の受信メッセージのままです。
+
+## run 内のインストール所有 Artifact
+
+`ctx.api.artifacts` は[型付き Artifact ヘルパー](/ja/plugin/dev/apis/common)を提供します。これはインストール所有の Workspace 資産であり、run ローカルの添付や Box ファイルハンドルの代替ではありません。呼び出しは実行中 run と固定済み Workspace 許可にも結び付きます。アカウント、Skill、別 run の参照をアクセス権に変換しません。既存のエクスポート、読み取り、コミット、返信の `file_id` 動作は変わりません。

@@ -1,0 +1,4 @@
+{
+  "*.{js,jsx,ts,tsx}": ["eslint --fix"],
+  "**/*": ["bash -c 'cd \"$(pwd)\" && next build"]
+}

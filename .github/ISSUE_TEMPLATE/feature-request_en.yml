@@ -1,0 +1,21 @@
+name: Feature request
+title: "[Feature]: "
+labels: []
+description: "New features or existing feature improvements should use this template; issues that do not match will be closed directly"
+body:
+  - type: dropdown
+    attributes:
+      label: This is a?
+      description: New feature request or existing feature improvement
+      options:
+        - New feature
+        - Existing feature improvement
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Detailed description
+      description: Detailed description, the more detailed the better
+    validations:
+      required: true
+      

@@ -1,0 +1,24 @@
+id: plugin-dependency-install-offline
+title: "Local plugin dependency install fails in an offline or proxy-limited runtime"
+date: 2026-05-17
+symptoms:
+  - "Installing a local .lbpkg starts but fails during Installing Dependencies."
+  - "The plugin files may appear under data/plugins, but the plugin is not initialized or listed as active."
+patterns:
+  - "Failed to install dependency: PyMuPDF>=1.24.0"
+  - "ERROR: Could not find a version that satisfies the requirement PyMuPDF"
+  - "ERROR: No matching distribution found for PyMuPDF"
+  - "Installing langbot-team-GeneralParsers"
+likely_causes:
+  - "The LangBot plugin runtime is started without a working network path to PyPI or the configured package index."
+  - "The backend was started with proxy variables unset to avoid SOCKS-related HTTP client errors, so plugin dependency installation cannot download uncached packages."
+  - "The dependency is available in another local venv or cache, but not in the active LangBot master venv used by the plugin runtime."
+fix_steps:
+  - "Confirm the active runtime venv: use the same LangBot master .venv that starts the backend."
+  - "Before retrying local plugin install, verify required dependencies with python -m pip install --dry-run '<requirement>'."
+  - "If the environment is offline, install from an existing local wheel/cache or another trusted local venv into the active LangBot master venv."
+  - "Retry the UI Upload Local install and wait for Plugin installed successfully."
+  - "For GeneralParsers, confirm import fitz works in the active LangBot master venv before retrying."
+verification: "Installed Plugins shows the local plugin initialized, and backend logs include Plugin langbot-team/GeneralParsers initialized."
+related_cases:
+  - langrag-parser-golden-e2e

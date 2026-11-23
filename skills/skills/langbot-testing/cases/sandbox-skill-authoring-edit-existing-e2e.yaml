@@ -1,0 +1,46 @@
+id: sandbox-skill-authoring-edit-existing-e2e
+title: "Local Agent publishes a new Skill revision without changing an active run"
+mode: agent-browser
+area: sandbox
+type: regression
+priority: p2
+risk: high
+ci_eligible: false
+tags:
+  - sandbox
+  - skills
+  - local-agent
+  - tools
+  - edit
+  - nsjail
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+env_any:
+  - LANGBOT_LOCAL_AGENT_PIPELINE_URL|LANGBOT_LOCAL_AGENT_PIPELINE_NAME
+preconditions:
+  - "The selected Local Agent uses a function-calling model and an available Box backend."
+  - "A unique test Skill v1 has a deterministic script and reference output."
+steps:
+  - "Follow Update an existing Skill in references/sandbox-skill-authoring.md."
+  - "Keep one run active on v1; edit a writable draft and publish v2 using base_revision=v1."
+  - "Read and execute again in the existing run, then activate and execute in a new run in the same conversation."
+  - "Attempt a conflicting update using the stale base_revision and verify rejection."
+  - "Follow Shared Box and recovery to check retained temporary state and a managed process."
+checks:
+  - "The existing run continues to read and execute v1; the new run reads and executes v2."
+  - "Published revisions remain immutable, and stale publication is rejected."
+  - "Alternating activated revisions do not recreate the shared Box or stop the managed process."
+  - "An unbound Skill is not restored into a subsequent run."
+evidence_required:
+  - ui
+  - backend_log
+  - api_diagnostic
+  - filesystem
+diagnostics:
+  - "An output marker in the user prompt alone is not execution evidence."
+  - "Do not edit files in the published path; publish a writable draft explicitly."
+  - "Expired run tool sessions must fail explicitly, never silently select the latest Skill."

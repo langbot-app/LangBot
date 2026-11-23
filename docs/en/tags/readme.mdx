@@ -1,0 +1,95 @@
+---
+title: "Service API Overview"
+---
+
+LangBot provides a set of RESTful APIs for external services to integrate and automate management. These APIs are authenticated with API keys, which are a subset of the HTTP API.
+
+<Warning>
+Service API is currently in Beta and some APIs may change frequently.
+</Warning>
+
+## Get API Key
+
+Click the `API Keys` button in the sidebar of the WebUI to create an API Key.
+
+![create_api_key](/images/zh/api/create_api_key.png)
+
+After creation, copy the API Key and save it.
+
+![copy_api_key](/images/zh/api/copy_api_key.png)
+
+## Authentication
+
+All Service APIs support two authentication methods:
+
+- **API Key**: Via `X-API-Key: <your-key>` or `Authorization: Bearer <your-key>` header
+- **User Token**: Via `Authorization: Bearer <user-token>` header (obtained after login)
+
+## Use API
+
+### Application operations
+
+`GET /api/v1/operations` returns `{"operations": [...]}` containing operations your API key or user token can execute. Filter with `?domain=agent&q=list`. Each description includes `id`, `label`, `summary`, `description`, `domain`, `risk`, `side_effect`, `streaming`, `permission`, `version`, `input_schema`, and `output_schema`. `GET /api/v1/operations/<operation_id>` returns one description, or 404 if hidden, unknown, or unauthorized. Operations with `exposure: none` are omitted from discovery; explicit calls to known IDs still use Application API authorization.
+
+```bash
+curl "$LANGBOT_URL/api/v1/operations" -H "X-API-Key: $LANGBOT_API_KEY"
+curl "$LANGBOT_URL/api/v1/operations/agent.list" \
+  -H "X-API-Key: $LANGBOT_API_KEY" -H 'Content-Type: application/json' -d '{}'
+curl -N "$LANGBOT_URL/api/v1/operations/agent.debug.stream/stream" \
+  -H "X-API-Key: $LANGBOT_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"agent_uuid":"YOUR_AGENT_UUID","payload":{"text":"hello"}}'
+```
+
+`POST /api/v1/operations/<operation_id>` accepts the operation input as a JSON object; an empty body means `{}`. Success returns `{"code":0,"msg":"ok","data":<output>}`. Errors return their HTTP status and `{"code":<error_code>,"msg":<message>,"data":<details_or_null>}`: invalid input is 400, missing permissions 403, and unknown operations 404. Calling a streaming operation here, or a non-streaming operation through `/stream`, returns 400 `invalid_execution_mode`.
+
+`POST /api/v1/operations/<operation_id>/stream` returns `text/event-stream`, with each event encoded as `data: <json>` followed by a blank line:
+
+```text
+data: {"kind":"result","data":{}}
+
+event: done
+data: {}
+
+```
+
+Failure terminates with `event: error` and `data: {"code":"permission_denied","msg":"..."}` instead of `done`. Once streaming starts, errors are SSE events, not HTTP status changes; check both.
+
+Workspace identity comes only from the authenticated request context. Top-level `workspace` and `workspace_uuid` input fields are ignored. Binary/multipart uploads retain dedicated routes.
+
+With capability `operation.binary_base64`, binary output fields at any depth, including SSE events, are standard RFC 4648 base64 strings with padding (not URL-safe); `output_schema` marks these fields with `"contentEncoding": "base64"` for client decoding.
+
+API keys can confirm plugin permissions through `plugin.permissions.update` or the existing permissions route. They need `resource.manage` and every permission required by the requested capabilities and Workspace operations, including retained grants. Compatibility mode still requires confirming all listed permission IDs together. Operation logs identify the confirming API key. Check `/api/v1/system/capabilities` for `operation.invoke`, `operation.stream`, and `plugin.permissions.confirm_api_key` before using these features.
+
+The left sidebar lists all available APIs. You can fill in your instance address (the port address exposed by the backend, default is `http://localhost:5300`) and API Key, then click the `Try it out` button to call the API.
+
+## Core Concepts
+
+### Provider + Model Architecture
+
+LangBot uses a **Provider + Model** two-layer architecture for AI model management:
+
+- **Provider**: Defines the API endpoint (`base_url`), requester type, and API keys. A single provider can be associated with multiple models.
+- **Model**: Associated with a provider (via `provider_uuid`), defining the specific model name and parameters. Models inherit the provider's API endpoint and keys.
+
+```
+Provider (OpenAI)
+├── base_url: https://api.openai.com/v1
+├── api_keys: [sk-xxx]
+├── LLM: gpt-4o
+├── LLM: gpt-4o-mini
+└── Embedding: text-embedding-3-small
+```
+
+This architecture allows you to manage multiple models under a single provider, sharing API configuration and avoiding redundant key entries.
+
+### Requester
+
+A requester defines the communication protocol with AI services. Use `GET /api/v1/provider/requesters` to list available requesters. Common requesters include:
+
+- `openai-chat-completions` — OpenAI-compatible chat completions API (also works with SiliconFlow, DeepSeek, etc.)
+- `anthropic-messages` — Anthropic Claude API
+- `openai-embeddings` — OpenAI-compatible embeddings API
+
+### Async Tasks
+
+Some operations (plugin install/delete/upgrade) run asynchronously and return a `task_id`. You can track progress in the WebUI.

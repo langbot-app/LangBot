@@ -1,0 +1,25 @@
+id: box-runtime-silent-action-timeout
+title: "Box runtime process stays alive while all action RPC calls time out"
+date: 2026-07-19
+symptoms:
+  - "The Box child process and Docker backend are still running, but native exec/read/write actions never return."
+  - "The backend repeatedly falls back to an empty skill list while Box status previously reported available."
+  - "A LocalAgent run records tool.call.started followed by run.failed with runner.timeout and no tool.call.completed."
+patterns:
+  - "Action box_list_skills call timed out"
+  - "Action call_tool call timed out"
+  - "Action box_get_managed_process call timed out"
+  - "Heartbeat to Box runtime failed; reconnecting"
+likely_causes:
+  - "The local stdio Box action channel became silently unresponsive without closing its child process or pipe."
+  - "Before the heartbeat recovery fix, ping failures were only logged at debug level and BoxService remained falsely available."
+fix_steps:
+  - "Use a LangBot build where Box heartbeat failures call the runtime disconnect callback."
+  - "Restart LangBot once to replace an already-stale connector created by an older process."
+  - "Wait for Box runtime disconnected followed by Box runtime reconnected, sandbox features restored."
+  - "Do not attribute the failure to the model until a direct native exec path succeeds."
+verification: "Run a complex LocalAgent task, then agent-run-ledger-audit. The run must complete with every tool.call.started paired with tool.call.completed and no timeout signal."
+related_cases:
+  - local-agent-complex-coding-task-debug-chat
+  - agent-run-ledger-audit
+  - mcp-stdio-tool-call

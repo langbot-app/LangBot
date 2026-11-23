@@ -1,0 +1,95 @@
+---
+title: "Service API 概述"
+---
+
+LangBot 提供了一套供外部服务使用的 RESTful API 接口，便于集成和自动化管理。这些接口以 API Key 鉴权，是目前 HTTP API 的子集。
+
+<Warning>
+Service API 目前处于 Beta 阶段，部分接口可能会频繁变动。
+</Warning>
+
+## 通用操作入口
+
+`GET /api/v1/operations` 返回 `{"operations": [...]}`，仅包含当前 API Key 或用户令牌可执行的操作，支持 `?domain=agent&q=list` 过滤。描述字段为 `id`、`label`、`summary`、`description`、`domain`、`risk`、`side_effect`、`streaming`、`permission`、`version`、`input_schema` 和 `output_schema`。`GET /api/v1/operations/<operation_id>` 返回单个描述；隐藏、不存在或无权访问时返回 404。`exposure: none` 的操作不出现在目录中，但已知 ID 仍可在 Application API 授权后调用。
+
+```bash
+curl "$LANGBOT_URL/api/v1/operations" -H "X-API-Key: $LANGBOT_API_KEY"
+curl "$LANGBOT_URL/api/v1/operations/agent.list" \
+  -H "X-API-Key: $LANGBOT_API_KEY" -H 'Content-Type: application/json' -d '{}'
+curl -N "$LANGBOT_URL/api/v1/operations/agent.debug.stream/stream" \
+  -H "X-API-Key: $LANGBOT_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"agent_uuid":"YOUR_AGENT_UUID","payload":{"text":"hello"}}'
+```
+
+`POST /api/v1/operations/<operation_id>` 的 JSON 对象就是操作输入，空 body 等价于 `{}`。成功返回 `{"code":0,"msg":"ok","data":<output>}`。错误使用相应 HTTP 状态码及 `{"code":<error_code>,"msg":<message>,"data":<details_or_null>}`：输入不合法为 400，缺少权限为 403，未知操作为 404。流式操作误用普通入口，或普通操作误用 `/stream`，均返回 400 `invalid_execution_mode`。
+
+`POST /api/v1/operations/<operation_id>/stream` 返回 `text/event-stream`，每条消息为 `data: <json>` 加空行：
+
+```text
+data: {"kind":"result","data":{}}
+
+event: done
+data: {}
+
+```
+
+失败则以 `event: error` 和 `data: {"code":"permission_denied","msg":"..."}` 结束，不再发送 `done`。流开始后的错误通过 SSE 事件传递，不修改 HTTP 状态码，客户端必须同时检查两者。
+
+Workspace 身份只来自认证后的请求上下文，输入顶层的 `workspace`、`workspace_uuid` 会被忽略。二进制和 multipart 上传继续使用专用路由。
+
+支持 `operation.binary_base64` 时，输出任意深度的二进制字段（包括 SSE 事件）均转换为带 padding 的标准 RFC 4648 base64 字符串（非 URL-safe）；`output_schema` 用 `"contentEncoding": "base64"` 标记这些字段，供客户端解码。
+
+API Key 可通过 `plugin.permissions.update` 或现有插件权限路由确认权限，但必须具备 `resource.manage` 以及每项 capability、Workspace 操作要求的全部权限，包括保留的授权，不能授予自己没有的权限。兼容模式仍须一次确认全部列出的权限 ID。操作日志记录确认者的 API Key。调用前可检查 `/api/v1/system/capabilities` 的 `operation.invoke`、`operation.stream`、`plugin.permissions.confirm_api_key` 标识。
+
+## 获取 API Key
+
+点击 WebUI 侧栏的 `API Keys` 按钮，创建一个 API Key。
+
+![create_api_key](/images/zh/api/create_api_key.png)
+
+创建后，复制 API Key 并保存。
+
+![copy_api_key](/images/zh/api/copy_api_key.png)
+
+## 认证方式
+
+所有 Service API 都支持以下两种认证方式：
+
+- **API Key**：通过请求头 `X-API-Key: <your-key>` 或 `Authorization: Bearer <your-key>` 传递
+- **用户令牌**：通过请求头 `Authorization: Bearer <user-token>` 传递（登录后获取）
+
+## 使用 API
+
+左侧列出了所有可用的 API，您可以填入您的实例地址（后端开放的端口地址，默认为 `http://localhost:5300`）和 API Key，然后点击 `Try it out` 按钮即可调用 API。
+
+## 核心概念
+
+### Provider + Model 架构
+
+LangBot 采用 **供应商（Provider）+ 模型（Model）** 的两层架构来管理 AI 模型：
+
+- **供应商（Provider）**：定义 API 地址（base_url）、请求器类型（requester）和 API 密钥（api_keys）。一个供应商可以关联多个模型。
+- **模型（Model）**：关联到一个供应商（通过 `provider_uuid`），定义具体的模型名称和参数。模型继承供应商的 API 地址和密钥。
+
+```
+Provider (OpenAI)
+├── base_url: https://api.openai.com/v1
+├── api_keys: [sk-xxx]
+├── LLM: gpt-4o
+├── LLM: gpt-4o-mini
+└── Embedding: text-embedding-3-small
+```
+
+这种架构允许您在同一供应商下管理多个模型，共享 API 配置，避免重复填写密钥。
+
+### 请求器（Requester）
+
+请求器定义了与 AI 服务通信的协议。可通过 `GET /api/v1/provider/requesters` 获取可用请求器列表。常见的请求器包括：
+
+- `openai-chat-completions` — OpenAI 兼容的聊天补全 API（也适用于国内服务商如硅基流动、DeepSeek 等）
+- `anthropic-messages` — Anthropic Claude API
+- `openai-embeddings` — OpenAI 兼容的向量嵌入 API
+
+### 异步任务
+
+部分操作（插件安装/删除/升级）为异步执行，接口返回 `task_id`。可通过 WebUI 查看任务进度。

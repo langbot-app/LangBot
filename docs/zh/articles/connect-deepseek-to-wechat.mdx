@@ -1,0 +1,101 @@
+---
+title: "5分钟将 DeepSeek R1 接入微信、企业微信与 Discord (免费教程)"
+description: "手把手教你使用 LangBot 将 DeepSeek R1/V3 (官方/硅基流动 API) 接入个人微信、企业微信、钉钉和飞书。无需写代码，支持联网搜索与知识库。"
+---
+
+本文同步自 LangBot Blog。 [阅读 Blog 原文](https://langbot.app/zh/blog/connect-deepseek-to-wechat).
+
+发布于 2026-02-21 · 作者：LangBot Team
+
+![DeepSeek x WeChat Integration](/images/articles/source/images/covers/deepseek-wechat.png)
+
+DeepSeek 已经引爆了 AI 圈。其 R1 推理模型在逻辑能力上媲美 OpenAI o1，但它是开源的，而且 API 价格极低（甚至免费）。
+
+然而，DeepSeek 官方目前仅宣布与微信搜索整合，我们在微信群聊、私聊中依然无法直接使用 DeepSeek R1 进行即时问答或协作。
+
+**想在你的微信群、企业微信、钉钉或 Discord 频道里直接拥有一个满血版的 DeepSeek R1 机器人吗？**
+
+使用 **LangBot**，你只需要 5 分钟就能搞定。
+
+## 为什么选择 LangBot？
+
+LangBot 是一个开源的、生产级的即时通信机器人平台。与 GitHub 上零散的 Python 脚本不同，LangBot 提供：
+
+*   **统一平台：** 一次配置，同时部署到微信、QQ、Discord、Telegram、钉钉、飞书等 10+ 个平台。
+*   **模型聚合：** 支持 DeepSeek (R1/V3), Claude, GPT-4, Gemini, 以及本地 Ollama 模型。
+*   **零代码：** 全图形化 WebUI 配置，无需懂编程。
+*   **企业级功能：** 内置知识库 (RAG)、插件系统（联网搜索、绘图）和多用户管理。
+
+## 准备工作
+
+1.  **一台服务器或电脑：** 安装好 Docker (VPS, 本地电脑, 或群晖 NAS 均可)。
+2.  **DeepSeek API Key：**
+    *   **官方平台：** [platform.deepseek.com](https://platform.deepseek.com)
+    *   **硅基流动 (推荐):** [cloud.siliconflow.cn](https://cloud.siliconflow.cn) (国内访问更快，并发更高)。
+
+## 第一步：部署 LangBot
+
+如果你还没有部署 LangBot，只需一行命令：
+
+```bash
+git clone https://github.com/langbot-app/LangBot
+cd LangBot/docker
+docker compose up -d
+```
+
+部署完成后，浏览器访问 `http://localhost:5300` (或服务器 IP:5300)。
+
+## 第二步：配置 DeepSeek 模型
+
+1.  进入 **模型 (Models)** -> **提供商列表 (Provider List)**。
+2.  找到 **DeepSeek** (或 **SiliconFlow** / **OpenAI Compatible**)。
+3.  填入你的 API Key。
+4.  点击 **保存**。
+
+接着创建一个 **模型实例 (Model Instance)**:
+*   **名称：** `DeepSeek-R1-Bot`
+*   **模型 ID：** `deepseek-reasoner` (R1 推理版) 或 `deepseek-chat` (V3 通用版)。
+
+## 第三步：创建对话流 (Pipeline)
+
+LangBot 使用 "Pipeline" 来管理机器人的逻辑。
+
+1.  进入 **业务流 (Pipelines)** -> **新建 Pipeline**。
+2.  选择 **对话流 (Chat Pipeline)**。
+3.  选择刚才创建的 `DeepSeek-R1-Bot` 模型。
+4.  (可选) 添加系统提示词：
+    > "你是由 DeepSeek R1 驱动的智能助手。在回答问题前，请先进行深度思考。"
+
+## 第四步：接入微信 (或任意平台)
+
+### 接入微信 (个人号 / Wechaty)
+*注意：个人号接入存在风险，企业用户建议使用企业微信 (WeCom)。*
+
+1.  进入 **机器人 (Bots)** -> **新建机器人**。
+2.  选择 **WeChat**。
+3.  选择 **GeweChat** 或 **Wechaty** 适配器。
+4.  点击 **保存**。
+5.  查看日志或界面上的二维码，使用微信扫码登录。
+
+### 接入企业微信 / 钉钉 / 飞书
+*   直接在对应平台后台获取 `AppID` 和 `Secret`，填入 LangBot 即可。
+
+## 第五步：测试效果！
+
+打开微信，给机器人发一条消息。你应该能看到 DeepSeek R1 正在“思考”（如果开启了思维链输出），并给出高质量的回答。
+
+## 进阶玩法：联网搜索与工具调用
+
+DeepSeek 很强，但**带联网搜索的 DeepSeek** 更强。
+
+在 LangBot 中：
+1.  进入 **插件市场 (Plugins)**。
+2.  安装 **Tavily Search** 或 **Google Search**。
+3.  将插件添加到你的 DeepSeek Pipeline 中。
+
+现在，你的机器人可以在回答问题前，先去 Google 搜索最新的实时信息，再结合 DeepSeek R1 的推理能力给出答案！
+
+---
+
+**立即开始构建？**
+[GitHub 点个 Star](https://github.com/langbot-app/LangBot) 或 [阅读官方文档](https://langbot.app/docs)。

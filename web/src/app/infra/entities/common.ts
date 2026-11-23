@@ -1,0 +1,29 @@
+export interface I18nObject {
+  en_US: string;
+  zh_Hans: string;
+  zh_Hant?: string;
+  ja_JP?: string;
+  th_TH?: string;
+  vi_VN?: string;
+  es_ES?: string;
+  ru_RU?: string;
+}
+
+export interface ComponentManifest {
+  apiVersion: string;
+  kind: string;
+  metadata: {
+    name: string;
+    label: I18nObject;
+    description?: I18nObject;
+    icon?: string;
+    repository?: string;
+    version?: string;
+    author?: string;
+  };
+  spec: Record<string, any>;
+}
+
+export interface CustomApiError {
+  msg?: string;
+}

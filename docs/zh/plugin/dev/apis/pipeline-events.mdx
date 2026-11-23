@@ -1,0 +1,296 @@
+---
+title: "流水线事件和 API"
+---
+
+LangBot 插件可注册并处理流水线事件。使用方法见[组件：事件监听器](/zh/plugin/dev/components/event-listener)。
+
+## 可监听的事件列表
+
+某些事件具有`可设置的属性`，这些属性可以被插件代码修改，并在之后被用在 LangBot 后续的处理中。
+
+### \*MessageReceived
+
+接收到群聊或私聊任何消息时触发。
+
+```python
+class PersonMessageReceived(BaseEventModel):
+    """收到任何私聊消息时"""
+
+    event_name: str = "PersonMessageReceived"
+
+    launcher_type: str
+    """发起对象类型(person)"""
+
+    launcher_id: typing.Union[int, str]
+    """发送者ID"""
+
+    sender_id: typing.Union[int, str]
+    """发送者ID，私聊情况下与 launcher_id 相同"""
+
+    message_event: platform_events.PersonMessage
+    """原消息事件对象。包含发送者的信息。"""
+
+    message_chain: platform_message.MessageChain = pydantic.Field(
+        serialization_alias="message_chain"
+    )
+    """消息链"""
+
+
+class GroupMessageReceived(BaseEventModel):
+    """收到任何群聊消息时"""
+
+    event_name: str = "GroupMessageReceived"
+
+    launcher_type: str
+    """发起对象类型(group)"""
+
+    launcher_id: typing.Union[int, str]
+    """群号"""
+
+    sender_id: typing.Union[int, str]
+    """发送者ID"""
+
+    message_event: platform_events.GroupMessage
+    """原消息事件对象。包含群聊和发送者的信息。"""
+
+    message_chain: platform_message.MessageChain = pydantic.Field(
+        serialization_alias="message_chain"
+    )
+    """消息链"""
+```
+
+### \*NormalMessageReceived
+
+接收到群聊或私聊消息，并判断为需要由 LLM 处理的消息（非命令消息）时触发。
+
+```python
+class PersonNormalMessageReceived(BaseEventModel):
+    """判断为应该处理的私聊普通消息时触发"""
+
+    event_name: str = "PersonNormalMessageReceived"
+
+    launcher_type: str
+    """发起对象类型(person)"""
+
+    launcher_id: typing.Union[int, str]
+    """发起对象ID"""
+
+    sender_id: typing.Union[int, str]
+    """发送者ID，私聊情况下与 launcher_id 相同"""
+
+    text_message: str
+    """消息文本"""
+
+    message_event: platform_events.PersonMessage
+    """原消息事件对象。包含发送者的信息。"""
+
+    message_chain: platform_message.MessageChain = pydantic.Field(
+        serialization_alias="message_chain"
+    )
+    """消息链"""
+
+    # ========== 可设置的属性 ==========
+
+    user_message_alter: typing.Optional[provider_message.ContentElement] = None
+    """修改后的消息文本，langbot_plugin.api.entities.builtin.provider.message.ContentElement 类型"""
+
+    reply_message_chain: typing.Optional[platform_message.MessageChain] = None
+    """直接回复消息链，仅在阻止默认行为时生效"""
+
+
+class GroupNormalMessageReceived(BaseEventModel):
+    """判断为应该处理的群聊普通消息时触发"""
+
+    event_name: str = "GroupNormalMessageReceived"
+
+    launcher_type: str
+    """发起对象类型(group)"""
+
+    launcher_id: typing.Union[int, str]
+    """群号"""
+
+    sender_id: typing.Union[int, str]
+    """发送者ID"""
+
+    text_message: str
+    """消息文本"""
+
+    message_event: platform_events.GroupMessage
+    """原消息事件对象。包含群聊和发送者的信息。"""
+
+    message_chain: platform_message.MessageChain = pydantic.Field(
+        serialization_alias="message_chain"
+    )
+    """消息链"""
+
+    # ========== 可设置的属性 ==========
+
+    user_message_alter: typing.Optional[provider_message.ContentElement] = None
+    """修改后的消息文本，langbot_plugin.api.entities.builtin.provider.message.ContentElement 类型"""
+
+    reply_message_chain: typing.Optional[platform_message.MessageChain] = None
+    """直接回复消息链，仅在阻止默认行为时生效"""
+```
+
+### \*CommandSent
+
+<Warning>
+  不再推荐使用，请改为使用[组件：命令](/zh/plugin/dev/components/command)。
+</Warning>
+
+接收到群聊或私聊命令时触发。
+
+```python
+class PersonCommandSent(BaseEventModel):
+    """判断为应该处理的私聊命令时触发"""
+
+    event_name: str = "PersonCommandSent"
+
+    launcher_type: str
+    """发起对象类型(person)"""
+
+    launcher_id: typing.Union[int, str]
+    """发起对象ID"""
+
+    sender_id: typing.Union[int, str]
+    """发送者ID，私聊情况下与 launcher_id 相同"""
+
+    command: str
+    """命令文本"""
+
+    params: list[str]
+    """命令参数"""
+
+    text_message: str
+    """消息文本"""
+
+    is_admin: bool
+    """是否为管理员"""
+
+
+class GroupCommandSent(BaseEventModel):
+    """判断为应该处理的群聊命令时触发"""
+
+    event_name: str = "GroupCommandSent"
+
+    launcher_type: str
+    """发起对象类型(group)"""
+
+    launcher_id: typing.Union[int, str]
+    """群号"""
+
+    sender_id: typing.Union[int, str]
+    """发送者ID"""
+
+    command: str
+    """命令文本"""
+
+    params: list[str]
+    """命令参数"""
+
+    text_message: str
+    """消息文本"""
+
+    is_admin: bool
+    """是否为管理员"""
+```
+
+### NormalMessageResponded
+
+消息得到 LLM 响应时触发。
+
+```python
+class NormalMessageResponded(BaseEventModel):
+    """收到对普通消息的响应时触发"""
+
+    event_name: str = "NormalMessageResponded"
+
+    launcher_type: str
+    """发起对象类型(person)"""
+
+    launcher_id: typing.Union[int, str]
+    """发起对象ID"""
+
+    sender_id: typing.Union[int, str]
+    """发送者ID，私聊情况下与 launcher_id 相同"""
+
+    session: provider_session.Session
+    """会话对象"""
+
+    prefix: str
+    """回复消息的前缀"""
+
+    response_text: str
+    """回复消息的文本"""
+
+    finish_reason: str
+    """响应结束原因"""
+
+    funcs_called: list[str]
+    """调用的函数列表"""
+
+    # ========== 可设置的属性 ==========
+
+    reply_message_chain: typing.Optional[platform_message.MessageChain] = None
+    """直接回复消息链，仅在阻止默认行为时生效"""
+```
+
+### PromptPreProcessing
+
+在构建 LLM 响应的上下文（prompt）时触发。
+
+```python
+class PromptPreProcessing(BaseEventModel):
+    """会话中的Prompt预处理时触发"""
+
+    event_name: str = "PromptPreProcessing"
+
+    session_name: str
+    """会话名称，格式为 person_1234567890 或 group_1234567890"""
+
+    # ========== 可设置的属性 ==========
+
+    default_prompt: list[
+        typing.Union[provider_message.Message, provider_message.MessageChunk]
+    ]
+    """此对话的情景预设（系统提示词），可修改，langbot_plugin.api.entities.builtin.provider.message.Message 或 langbot_plugin.api.entities.builtin.provider.message.MessageChunk 类型"""
+
+    prompt: list[typing.Union[provider_message.Message, provider_message.MessageChunk]]
+    """此对话现有消息记录，可修改，langbot_plugin.api.entities.builtin.provider.message.Message 或 langbot_plugin.api.entities.builtin.provider.message.MessageChunk 类型"""
+```
+
+注入本轮检索证据时，可向 `prompt` 或 `default_prompt` 追加 `Message(role="system", content=...)`。Host 会把 `prompt` 中新增或修改的系统消息通过 Runner 的 `get_prompt()` API 传递，排在生效的 `default_prompt` 之后，保留最终事件处理顺序，并在每一轮重新构建。Runner 在调用模型前应用上下文预算。对话历史继续通过 Runner 的历史 API 获取。提示词预处理上下文的作用域为当前运行。
+
+事件处理后的 `_knowledge_base_uuids` 查询变量决定本次运行的自动检索范围。空列表会关闭自动检索，未设置时沿用配置中的选择。显式检索 API 继续校验运行时冻结的资源授权。记忆插件应先完成自身的查询级检索，再从自动检索范围中移除其知识库。
+
+## EventListener 上下文
+
+事件处理函数通过 `event_context.event` 读取当前事件。`EventContext` 的完整属性和方法见[上下文 API](/zh/plugin/dev/apis/agent-run#eventlistener)。
+
+### 阻止默认行为
+
+调用 `event_context.prevent_default()` 后，当前事件的默认处理将停止。仅以下事件支持此操作：
+
+<Info>
+仅以下事件可阻止默认行为：
+
+  - PersonMessageReceived
+  - GroupMessageReceived
+  - PersonNormalMessageReceived
+  - GroupNormalMessageReceived
+  - PersonCommandSent
+  - GroupCommandSent
+  - NormalMessageResponded
+</Info>
+
+调用 `event_context.prevent_postorder()` 可阻止后续插件继续处理当前事件。
+
+#### 在监控中的显示
+
+插件对消息类事件调用 `prevent_default()` 接管消息后，LangBot 的监控页会把这条消息标记为「插件处理 · 作者/插件名」，流水线配置的 Runner 不会再显示为处理者。插件在处理事件时发出的内容也会记入监控：
+
+- `event_context.reply()` 发出的回复，记为这条消息的回复；发送失败会记一条 `PluginReplyError` 错误。
+- `self.plugin.send_message()` 发出的消息，记为插件发送的消息；发送失败会记一条 `PluginSendError` 错误。
+- `self.plugin.invoke_llm()` / `invoke_llm_stream()` 的调用，记入 LLM 调用记录。
+
+需要插件运行时（`langbot-plugin`）支持事件来源归因，才能把插件发出的消息和 LLM 调用关联到触发它的那条消息；较旧的运行时仍会记录这些内容，但不会关联。在处理函数返回后才执行的后台任务不会关联到原消息。

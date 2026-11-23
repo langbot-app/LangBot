@@ -1,0 +1,525 @@
+from __future__ import annotations
+
+from ....i18n import t
+from ....telemetry import usage
+
+import sqlalchemy
+
+from ....api.http.authz import WorkspaceRequiredError
+from ....api.http.context import ExecutionContext, RequestContext
+from ....core import app
+from ....entity.persistence import rag as persistence_rag
+from ....workspace.errors import WorkspaceNotFoundError
+from .secrets import redact_secrets, restore_secret_placeholders
+from .tenant import TenantContext, require_workspace_uuid
+
+
+class KnowledgeService:
+    """知识库服务"""
+
+    ap: app.Application
+
+    def __init__(self, ap: app.Application) -> None:
+        self.ap = ap
+
+    @staticmethod
+    def _execution_context(context: RequestContext | ExecutionContext) -> ExecutionContext:
+        if isinstance(context, RequestContext):
+            return ExecutionContext.from_request(context)
+        if isinstance(context, ExecutionContext):
+            return context
+        raise WorkspaceRequiredError('RequestContext or ExecutionContext is required')
+
+    async def get_knowledge_bases(self, context: TenantContext, *, include_secret: bool = False) -> list[dict]:
+        """获取所有知识库"""
+        require_workspace_uuid(context)
+        knowledge_bases = await self.ap.rag_mgr.get_all_knowledge_base_details(context)
+        return knowledge_bases if include_secret else [redact_secrets(base) for base in knowledge_bases]
+
+    async def get_knowledge_base(
+        self,
+        context: TenantContext,
+        kb_uuid: str,
+        *,
+        include_secret: bool = False,
+    ) -> dict | None:
+        """获取知识库"""
+        require_workspace_uuid(context)
+        knowledge_base = await self.ap.rag_mgr.get_knowledge_base_details(context, kb_uuid)
+        if knowledge_base is None or include_secret:
+            return knowledge_base
+        return redact_secrets(knowledge_base)
+
+    async def create_knowledge_base(
+        self,
+        context: RequestContext | ExecutionContext,
+        kb_data: dict,
+    ) -> str:
+        """创建知识库"""
+        require_workspace_uuid(context)
+        # In new architecture, we delegate entirely to RAGManager which uses plugins.
+        # Legacy internal KB creation is removed.
+        from .workspace_limits import workspace_limits
+
+        limitation = await workspace_limits(self.ap, require_workspace_uuid(context))
+        max_knowledge_bases = limitation.get('max_knowledge_bases', -1)
+        if max_knowledge_bases >= 0:
+            knowledge_bases = await self.ap.rag_mgr.get_all_knowledge_base_details(context)
+            if len(knowledge_bases) >= max_knowledge_bases:
+                raise ValueError(
+                    t(
+                        'Maximum number of {resource} ({limit}) reached',
+                        resource=t('knowledge bases'),
+                        limit=max_knowledge_bases,
+                    )
+                )
+
+        knowledge_engine_plugin_id = kb_data.get('knowledge_engine_plugin_id')
+        if not knowledge_engine_plugin_id:
+            raise ValueError('knowledge_engine_plugin_id is required')
+
+        creation_settings = restore_secret_placeholders(kb_data.get('creation_settings', {}))
+        retrieval_settings = kb_data.get('retrieval_settings', {})
+        defer_initialization = kb_data.get('defer_initialization') is True
+
+        if not defer_initialization:
+            await self._validate_schema_required_fields(
+                context,
+                knowledge_engine_plugin_id,
+                creation_settings,
+                retrieval_settings,
+            )
+
+        create_kwargs = {
+            'name': kb_data.get('name', 'Untitled'),
+            'knowledge_engine_plugin_id': knowledge_engine_plugin_id,
+            'creation_settings': creation_settings,
+            'retrieval_settings': retrieval_settings,
+            'description': kb_data.get('description', ''),
+        }
+        if defer_initialization:
+            create_kwargs['initialize'] = False
+        kb = await self.ap.rag_mgr.create_knowledge_base(context, **create_kwargs)
+        return kb.uuid
+
+    async def _validate_schema_required_fields(
+        self,
+        context: RequestContext | ExecutionContext,
+        plugin_id: str,
+        creation_settings: dict,
+        retrieval_settings: dict,
+    ) -> None:
+        """Validate required fields based on plugin's creation_schema and retrieval_schema.
+
+        This is a business-agnostic validation that checks all fields marked as
+        required in the plugin's schema, regardless of field type.
+
+        Args:
+            plugin_id: Knowledge Engine plugin ID.
+            creation_settings: User-provided creation settings.
+            retrieval_settings: User-provided retrieval settings.
+
+        Raises:
+            ValueError: If any required field is missing or empty.
+        """
+        if not self.ap.plugin_connector.is_enable_plugin:
+            return
+
+        # Validate creation_schema
+        await self.ap.plugin_connector.require_workspace_context(context)
+        try:
+            creation_schema = await self.ap.plugin_connector.get_rag_creation_schema(plugin_id)
+            self._check_required_fields(creation_schema, creation_settings, 'creation_settings')
+        except ValueError:
+            raise
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to get creation_schema for validation: {e}')
+
+        # Validate retrieval_schema
+        await self.ap.plugin_connector.require_workspace_context(context)
+        try:
+            retrieval_schema = await self.ap.plugin_connector.get_rag_retrieval_schema(plugin_id)
+            self._check_required_fields(retrieval_schema, retrieval_settings, 'retrieval_settings')
+        except ValueError:
+            raise
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to get retrieval_schema for validation: {e}')
+
+    def _check_required_fields(
+        self,
+        schema: dict | list,
+        settings: dict,
+        context: str,
+    ) -> None:
+        """Check required fields in schema against provided settings.
+
+        Args:
+            schema: Plugin-defined schema (can be list or dict with 'schema' key).
+            settings: User-provided settings values.
+            context: Context name for error messages (e.g., 'creation_settings').
+
+        Raises:
+            ValueError: If a required field is missing or empty.
+        """
+        if not schema:
+            return
+
+        # schema can be a list directly, or a dict with 'schema' key
+        items = schema if isinstance(schema, list) else schema.get('schema', [])
+        if not items:
+            return
+
+        for item in items:
+            field_name = item.get('name')
+            if not field_name:
+                continue
+
+            is_required = item.get('required', False)
+            if not is_required:
+                continue
+
+            # Check show_if condition - if field is conditionally shown, only validate when condition is met
+            show_if = item.get('show_if')
+            if show_if:
+                depend_field = show_if.get('field')
+                operator = show_if.get('operator')
+                expected_value = show_if.get('value')
+
+                if depend_field and operator:
+                    depend_value = settings.get(depend_field)
+                    # If show_if condition is not met, skip validation for this field
+                    if operator == 'eq' and depend_value != expected_value:
+                        continue
+                    if operator == 'neq' and depend_value == expected_value:
+                        continue
+                    if operator == 'in' and isinstance(expected_value, list) and depend_value not in expected_value:
+                        continue
+
+            value = settings.get(field_name)
+
+            # Validate required field has a non-empty value
+            if value is None or (isinstance(value, str) and value.strip() == ''):
+                # Get field label for friendly error message
+                label = item.get('label', {})
+                field_label = (
+                    label.get('en_US', field_name)
+                    or label.get('zh_Hans', field_name)
+                    or label.get('zh_Hant', field_name)
+                    or field_name
+                )
+                raise ValueError(f'{field_label} is required ({context}.{field_name})')
+
+    async def update_knowledge_base(
+        self,
+        context: RequestContext | ExecutionContext,
+        kb_uuid: str,
+        kb_data: dict,
+    ) -> None:
+        """更新知识库"""
+        workspace_uuid = require_workspace_uuid(context)
+        current = await self.get_knowledge_base(context, kb_uuid, include_secret=True)
+        if current is None:
+            raise WorkspaceNotFoundError('Knowledge base not found')
+
+        should_initialize = current.get('initialized', True) is False and kb_data.get('initialize_engine') is True
+        if should_initialize:
+            plugin_id = current.get('knowledge_engine_plugin_id')
+            if not plugin_id:
+                raise ValueError('knowledge_engine_plugin_id is required')
+            creation_settings = restore_secret_placeholders(kb_data.get('creation_settings', {}))
+            retrieval_settings = kb_data.get('retrieval_settings', {})
+            await self._validate_schema_required_fields(
+                context,
+                plugin_id,
+                creation_settings,
+                retrieval_settings,
+            )
+            filtered_data = {
+                'name': kb_data.get('name', current.get('name', 'Untitled')),
+                'description': kb_data.get('description', current.get('description', '')),
+                'creation_settings': creation_settings,
+                'retrieval_settings': retrieval_settings,
+                'initialized': True,
+            }
+        else:
+            filtered_data = {k: v for k, v in kb_data.items() if k in persistence_rag.KnowledgeBase.MUTABLE_FIELDS}
+
+        if not filtered_data:
+            return
+
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.update(persistence_rag.KnowledgeBase)
+            .values(filtered_data)
+            .where(persistence_rag.KnowledgeBase.workspace_uuid == workspace_uuid)
+            .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+        )
+        await self.ap.rag_mgr.remove_knowledge_base_from_runtime(context, kb_uuid)
+
+        kb = await self.get_knowledge_base(context, kb_uuid, include_secret=True)
+        if kb is None:
+            raise WorkspaceNotFoundError('Knowledge base not found')
+        if kb.get('initialized', True) is False:
+            usage.inc(self.ap, workspace_uuid, 'kb.update', engine=current.get('knowledge_engine_plugin_id'))
+            return
+
+        runtime_kb = await self.ap.rag_mgr.load_knowledge_base(context, kb)
+        if should_initialize:
+            try:
+                await runtime_kb._on_kb_create(self._execution_context(context))
+            except Exception:
+                await self.ap.rag_mgr.remove_knowledge_base_from_runtime(context, kb_uuid)
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.update(persistence_rag.KnowledgeBase)
+                    .values(
+                        name=current.get('name', 'Untitled'),
+                        description=current.get('description', ''),
+                        creation_settings=current.get('creation_settings', {}),
+                        retrieval_settings=current.get('retrieval_settings', {}),
+                        initialized=False,
+                    )
+                    .where(persistence_rag.KnowledgeBase.workspace_uuid == workspace_uuid)
+                    .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+                )
+                raise
+
+        usage.inc(self.ap, workspace_uuid, 'kb.update', engine=current.get('knowledge_engine_plugin_id'))
+
+    async def _check_doc_capability(self, context: TenantContext, kb_uuid: str, operation: str) -> None:
+        """Check if the KB's Knowledge Engine supports document operations.
+
+        Args:
+            kb_uuid: Knowledge base UUID.
+            operation: Human-readable operation name for error messages.
+
+        Raises:
+            Exception: If the KB does not support doc_ingestion.
+        """
+        kb_info = await self.ap.rag_mgr.get_knowledge_base_details(context, kb_uuid)
+        if not kb_info:
+            raise WorkspaceNotFoundError('Knowledge base not found')
+        capabilities = kb_info.get('knowledge_engine', {}).get('capabilities', [])
+        if 'doc_ingestion' not in capabilities:
+            raise Exception(f'This knowledge base does not support {operation}')
+
+    async def store_file(
+        self,
+        context: RequestContext | ExecutionContext,
+        kb_uuid: str,
+        file_id: str,
+        parser_plugin_id: str | None = None,
+    ) -> int:
+        """存储文件"""
+        execution_context = self._execution_context(context)
+        runtime_kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(execution_context, kb_uuid)
+        if runtime_kb is None:
+            raise WorkspaceNotFoundError('Knowledge base not found')
+
+        await self._check_doc_capability(context, kb_uuid, 'document upload')
+
+        result = await runtime_kb.store_file(execution_context, file_id, parser_plugin_id=parser_plugin_id)
+
+        # Update the KB's updated_at timestamp
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.update(persistence_rag.KnowledgeBase)
+            .values(updated_at=sqlalchemy.func.now())
+            .where(persistence_rag.KnowledgeBase.workspace_uuid == execution_context.workspace_uuid)
+            .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+        )
+
+        return result
+
+    async def store_artifact(
+        self, context: RequestContext, kb_uuid: str, artifact_id: str, parser_plugin_id: str | None = None
+    ) -> int:
+        """Explicitly delegate an owned Artifact to this knowledge base's ingestion."""
+        from ....api.authz import Permission, PermissionDeniedError, require_permission
+        from ....api.context import PrincipalType
+
+        if not isinstance(context, RequestContext) or context.principal.principal_type not in {
+            PrincipalType.ACCOUNT,
+            PrincipalType.API_KEY,
+        }:
+            raise PermissionDeniedError(t('Artifact knowledge ingestion requires an account or API key'))
+        require_permission(context, Permission.RESOURCE_MANAGE)
+        require_permission(context, Permission.RESOURCE_VIEW)
+        execution_context = self._execution_context(context)
+        runtime_kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(execution_context, kb_uuid)
+        if runtime_kb is None:
+            raise WorkspaceNotFoundError('Knowledge base not found')
+        await self._check_doc_capability(context, kb_uuid, 'document upload')
+        return await runtime_kb.store_artifact(context, artifact_id, parser_plugin_id=parser_plugin_id)
+
+    async def retrieve_knowledge_base(
+        self,
+        context: RequestContext | ExecutionContext,
+        kb_uuid: str,
+        query: str,
+        retrieval_settings: dict | None = None,
+    ) -> list[dict]:
+        """检索知识库"""
+        execution_context = self._execution_context(context)
+        runtime_kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(execution_context, kb_uuid)
+        if runtime_kb is None:
+            raise WorkspaceNotFoundError('Knowledge base not found')
+
+        from ....telemetry import features as telemetry_features
+
+        telemetry_features.increment(self.ap, 'kb', 'retrievals')
+        results = await runtime_kb.retrieve(execution_context, query, settings=retrieval_settings)
+
+        return [result.model_dump() for result in results]
+
+    async def get_files_by_knowledge_base(self, context: TenantContext, kb_uuid: str) -> list[dict]:
+        """获取知识库文件"""
+        workspace_uuid = require_workspace_uuid(context)
+        if await self.get_knowledge_base(context, kb_uuid) is None:
+            raise WorkspaceNotFoundError('Knowledge base not found')
+        if isinstance(context, (RequestContext, ExecutionContext)):
+            execution_context = self._execution_context(context)
+            runtime_kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(execution_context, kb_uuid)
+            if runtime_kb is not None:
+                await runtime_kb.reconcile_interrupted_ingestions(execution_context)
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_rag.File)
+            .where(persistence_rag.File.workspace_uuid == workspace_uuid)
+            .where(persistence_rag.File.kb_id == kb_uuid)
+        )
+        files = result.all()
+        return [self.ap.persistence_mgr.serialize_model(persistence_rag.File, file) for file in files]
+
+    async def delete_file(
+        self,
+        context: RequestContext | ExecutionContext,
+        kb_uuid: str,
+        file_id: str,
+    ) -> None:
+        """删除文件"""
+        execution_context = self._execution_context(context)
+        runtime_kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(execution_context, kb_uuid)
+        if runtime_kb is None:
+            raise WorkspaceNotFoundError('Knowledge base not found')
+
+        await self._check_doc_capability(context, kb_uuid, 'document deletion')
+
+        await runtime_kb.delete_file(execution_context, file_id)
+
+        # Update the KB's updated_at timestamp
+        await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.update(persistence_rag.KnowledgeBase)
+            .values(updated_at=sqlalchemy.func.now())
+            .where(persistence_rag.KnowledgeBase.workspace_uuid == execution_context.workspace_uuid)
+            .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+        )
+
+    async def delete_knowledge_base(
+        self,
+        context: RequestContext | ExecutionContext,
+        kb_uuid: str,
+    ) -> None:
+        """删除知识库"""
+        require_workspace_uuid(context)
+        knowledge_base = await self.get_knowledge_base(context, kb_uuid)
+        if knowledge_base is None:
+            raise WorkspaceNotFoundError('Knowledge base not found')
+
+        execution_context = self._execution_context(context)
+        runtime_kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(execution_context, kb_uuid)
+        if runtime_kb is not None:
+            async with runtime_kb.ingestion_admission_lock:
+                await self._delete_knowledge_base_records(context, kb_uuid)
+        else:
+            await self._delete_knowledge_base_records(context, kb_uuid)
+        usage.inc(self.ap, context.workspace_uuid, 'kb.delete', engine=knowledge_base.get('knowledge_engine_plugin_id'))
+
+    async def _delete_knowledge_base_records(self, context: RequestContext | ExecutionContext, kb_uuid: str) -> None:
+        workspace_uuid = require_workspace_uuid(context)
+        # Serialize the durable deletion fence against admission from every Core.
+        # Keep it after ambiguous failure/cancellation; explicit deletion retry is safe.
+        async with self.ap.persistence_mgr.tenant_uow(workspace_uuid) as uow:
+            locked = await uow.execute(
+                sqlalchemy.update(persistence_rag.KnowledgeBase)
+                .where(persistence_rag.KnowledgeBase.workspace_uuid == workspace_uuid)
+                .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+                .values(uuid=persistence_rag.KnowledgeBase.uuid)
+            )
+            if locked.rowcount != 1:
+                raise WorkspaceNotFoundError('Knowledge base not found')
+            files = (
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(persistence_rag.File)
+                    .where(persistence_rag.File.workspace_uuid == workspace_uuid)
+                    .where(persistence_rag.File.kb_id == kb_uuid)
+                )
+            ).all()
+            if any(file.status in {'pending', 'processing', 'interrupted'} for file in files):
+                raise RuntimeError(
+                    'Knowledge base has active or interrupted ingestion; retain its files and reconcile '
+                    'plugin/upstream state before deleting the knowledge base.'
+                )
+            await uow.execute(
+                sqlalchemy.update(persistence_rag.KnowledgeBase)
+                .where(persistence_rag.KnowledgeBase.workspace_uuid == workspace_uuid)
+                .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+                .values(deleting=True)
+            )
+        # Confirm upstream deletion before releasing recovery material or business pins.
+        await self.ap.rag_mgr.delete_knowledge_base(context, kb_uuid)
+        async with self.ap.persistence_mgr.tenant_uow(workspace_uuid):
+            for file in files:
+                if file.artifact_id:
+                    await self.ap.artifact_service.release_business(
+                        context,
+                        file.artifact_id,
+                        holder_type='knowledge_file',
+                        holder_id=file.uuid,
+                    )
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.delete(persistence_rag.Chunk)
+                    .where(persistence_rag.Chunk.workspace_uuid == workspace_uuid)
+                    .where(persistence_rag.Chunk.file_id == file.uuid)
+                )
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.delete(persistence_rag.File)
+                    .where(persistence_rag.File.workspace_uuid == workspace_uuid)
+                    .where(persistence_rag.File.uuid == file.uuid)
+                )
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.delete(persistence_rag.KnowledgeBase)
+                .where(persistence_rag.KnowledgeBase.workspace_uuid == workspace_uuid)
+                .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+            )
+
+    # ================= Knowledge Engine Discovery =================
+
+    async def list_knowledge_engines(self, context: TenantContext) -> list[dict]:
+        """List engines; unavailable runtimes must not look like empty catalogs."""
+        require_workspace_uuid(context)
+        if not self.ap.plugin_connector.is_enable_plugin:
+            return []
+        await self.ap.plugin_connector.require_workspace_context(context)
+        return await self.ap.plugin_connector.list_knowledge_engines()
+
+    async def list_parsers(self, context: TenantContext, mime_type: str | None = None) -> list[dict]:
+        """List parsers, optionally filtered by MIME type."""
+        require_workspace_uuid(context)
+        if not self.ap.plugin_connector.is_enable_plugin:
+            return []
+        await self.ap.plugin_connector.require_workspace_context(context)
+        parsers = await self.ap.plugin_connector.list_parsers()
+        return [p for p in parsers if mime_type in p.get('supported_mime_types', [])] if mime_type else parsers
+
+    async def _require_knowledge_engine(self, context: TenantContext, plugin_id: str) -> None:
+        engines = await self.list_knowledge_engines(context)
+        if not any(engine.get('plugin_id') == plugin_id for engine in engines):
+            raise WorkspaceNotFoundError('Knowledge engine not found')
+        await self.ap.plugin_connector.require_workspace_context(context)
+
+    async def get_engine_creation_schema(self, context: TenantContext, plugin_id: str) -> dict:
+        """Get an existing engine's creation schema in this Workspace."""
+        await self._require_knowledge_engine(context, plugin_id)
+        return await self.ap.plugin_connector.get_rag_creation_schema(plugin_id)
+
+    async def get_engine_retrieval_schema(self, context: TenantContext, plugin_id: str) -> dict:
+        """Get an existing engine's retrieval schema in this Workspace."""
+        await self._require_knowledge_engine(context, plugin_id)
+        return await self.ap.plugin_connector.get_rag_retrieval_schema(plugin_id)

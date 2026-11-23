@@ -1,0 +1,36 @@
+id: mcp-stdio-args-not-applied
+title: "MCP Stdio test runs only the command without arguments"
+date: 2026-05-17
+symptoms:
+  - "The MCP server Test button fails even though the same command works in a terminal."
+  - "Backend logs show uv help text or another bare command output instead of starting the MCP server."
+  - "Backend logs show uv: not found after the fixture path is accepted by Box."
+  - "Backend logs show host_path is outside allowed_mount_roots before the stdio process starts."
+  - "The task exception is Connection failed, please check URL or Connection closed."
+  - "Backend startup logs say qa_mcp_echo_server.py cannot be opened from the LangBot repo root."
+patterns:
+  - "An extremely fast Python package manager."
+  - "Usage: uv [OPTIONS] <COMMAND>"
+  - "/bin/sh: 1: uv: not found"
+  - "host_path is outside allowed_mount_roots"
+  - "McpError: Connection closed"
+  - "mcp-test-_"
+  - "can't open file '.../LangBot/qa_mcp_echo_server.py'"
+likely_causes:
+  - "Box refuses to mount the bundled fixture directory because it is not listed in box.local.allowed_mount_roots."
+  - "The saved MCP server command uses uv, but uv is not available inside the Box runtime PATH."
+  - "The WebUI did not pass the current stdio args to the test request."
+  - "The MCP form exposed a stale imperative test handler from an old render."
+  - "The user entered the whole command line into the command field instead of splitting command and args."
+  - "An old qa-local-stdio database record still points at a temporary LangBot root script instead of the bundled skills fixture."
+fix_steps:
+  - "Confirm the fixture directory is listed in box.local.allowed_mount_roots for the local LangBot data config."
+  - "Confirm command is only the executable, normally python for this fixture."
+  - "Confirm args are separate entries; for this fixture use the server script path as the single arg."
+  - "Confirm the fixture script is the current dependency-free qa_mcp_echo_server.py."
+  - "For qa-local-stdio, set the server script path to the absolute skills fixture path: skills/langbot-testing/fixtures/mcp/qa_mcp_echo_server.py."
+  - "If the UI still sends empty args, fix the MCP form test handler so it reads the latest state."
+  - "Retest with the bundled qa_mcp_echo_server.py fixture."
+verification: "The MCP test task completes without exception, the saved server shows connected, and /api/v1/tools contains qa_mcp_echo."
+related_cases:
+  - mcp-stdio-tool-call

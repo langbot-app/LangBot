@@ -1,0 +1,155 @@
+---
+title: "技能 (Skills)"
+description: "在 LangBot 中使用技能（Skills），按需加载专业知识，扩展 AI Agent 而不撑爆上下文。"
+---
+
+Skill 是一个**按需激活**的指令包：用户描述匹配时，Agent 调用 `activate` 工具把这个技能的指令拉进上下文，然后按指令完成任务。未激活的技能不占用上下文。
+
+适合给 Agent 加一段**专业流程、模板或脚本**——比如"分析 Python 项目"、"PDF 表单填充"、"代码评审"——而不必每个对话都把指令塞进 System Prompt。
+
+## 与插件、MCP 的区别
+
+| 你想做的事 | 用这个 |
+|------------|--------|
+| 按需触发的一段工作流（可带脚本、模板） | Skill |
+| 接入已有的 MCP 工具服务 | MCP Server |
+| 长期能力，需要配置页、事件、知识库 | 插件 |
+
+详见[运行时与扩展关系](../sandbox/runtime-relationships)。
+
+## 使用 lbctl 更新本地完整包
+
+编辑本地目录前读取已有 Skill 的修订，发布时显式使用该修订。
+
+```bash
+lbctl skill get demo -o json
+lbctl skill push demo --dir ./demo --base-revision <revision> --dry-run
+lbctl skill push demo --dir ./demo --base-revision <revision>
+```
+
+预览会校验 `SKILL.md`，列出新增、修改、删除的文件，并显示当前身份是否具备发布权限。包内名称必须与 `demo` 一致。发布以修订号校验并原子替换完整包，包含二进制资源和可执行权限，本地目录中缺少的文件会从新版本移除。发布需要 `resource.manage` 和 `resource.view`，CLI 会读取并验证发布后的修订。修订冲突时，请下载最新包、合并修改，再使用已查看的修订重试。已有执行继续使用绑定的旧版本。
+
+## 安装技能
+
+<Note>
+技能的管理、激活和只读资源访问由 Core 提供，不要求 Box。执行脚本、操作沙箱草稿和 `register_skill` 需要可用的 Box。详见[沙箱配置](../sandbox/config)。
+</Note>
+
+### 从 LangBot Space（首选）
+
+[LangBot Space](https://space.langbot.app) 是 LangBot 的官方市场，已上架多种技能。在 WebUI 的 Skills 页面浏览并一键安装，无需自己编写 `SKILL.md` 或准备资源文件。
+
+适合大多数场景。需要自定义流程再走下面的方式。
+
+### 自己创建技能
+
+**WebUI** — Skills 页面新建、上传 zip 包、从 GitHub 导入。
+
+**沙箱 + `register_skill`**：
+1. 在沙箱 `/workspace` 下准备好目录和 `SKILL.md`
+2. 让 Agent 调用 `register_skill(path="/workspace/my-skill")`
+
+两种方式都会发布到 Core 管理的技能仓库。
+
+### 数据库存储与升级
+
+新安装默认使用数据库存储和网络传输，对象存储可选。已有配置保持原来的选择，缺少新字段的旧配置仍使用本地存储和 `legacy`；改为下列配置后，Core 在开放服务前自动迁入可读取的旧 Skill 和本地资产。注册信息、不可变版本包和持久附件内容均使用该存储层。源码安装通过 `uv sync` 自动使用同仓 SDK；独立部署的 Runtime 仍需配套源码或兼容的已发布 SDK，见[运行时开发说明](../../develop/plugin-runtime)。多个 Core 应连接同一个外部 PostgreSQL，并使用一致的逻辑实例标识和鉴权配置。修改 `data/config.yaml` 后重启 Core：
+
+```yaml
+skills:
+    persistence: database
+    root: './data/skills'  # 新安装示例；升级请保留原路径
+storage:
+    use: persistent
+    content:
+        backend: database
+```
+
+使用配套的 Core 和 Box Runtime 时，可显式设置 `box.file_transfer_mode: network`：Core 按运行固定版本传输技能包，Box 校验后缓存并只读挂载；Core 与 Box 无需共享技能或工作目录。数据库与网络模式下，激活和执行不再创建 `skills.root/.database-cache`。Agent 列资源目录只校验数据库中的权威不可变清单，不读取包内容；实际读取可复用进程内已验证的版本包，每次仍检查数据库权限及版本记录并完整校验字节，不创建本地持久缓存。列表、激活和缓存命中的读取都不是源存储健康检查：源包离线或损坏时可能继续成功，冷读、重启或淘汰后须重新取包校验；Runtime 执行仍校验全部字节。`register_skill` 通过网络取回完整草稿，校验后一次发布，无需读取旧版本包；历史版本保留，新版本不会改变已开始运行的版本。运行结束清理该运行的输入、输出和临时快照，草稿保留到 Box 会话结束。Box 会话过期或删除后，其工作目录也会删除；需要保留的文件请先导出。已有显式 `legacy` 配置继续使用共享挂载和缓存。独立部署的 Runtime 也需使用配套 SDK，旧 Runtime 会拒绝网络工作区配置。
+
+使用对象存储时，在 `storage.content.backends.<名称>` 下配置 `type: s3`、`endpoint_url`、`bucket`、`region`、`access_key_id` 和 `secret_access_key`，再将 `storage.content.backend` 设置为该名称。保留历史名称及其 endpoint/bucket/region；切换新写入后端不会移动历史内容，删除或改指向旧配置会使相应历史内容无法重新取回。修改凭据后重启 Core。
+
+数据库模式的版本包上限为 64 MiB。网络模式的 `register_skill` 草稿使用未压缩 ZIP，上限为 20 MiB、512 个条目、单文件 16 MiB、目录深度 16；较低的 Box 文件传输配置限额仍会生效，超限会保留原草稿。并发更新会拒绝冲突覆盖，已激活任务继续使用固定版本。
+
+Runtime 在内存中归档草稿，不在工作目录创建快照。Docker 回收异 UID 的私有目录需要 Docker 25+，镜像中提供 Python 3 且不声明 `VOLUME`。如果用户命名空间的 UID/GID 映射或隔离策略阻止安全清理，该 Box 会保持不可复用并报告错误，等待重试或管理员维护。
+
+
+### 迁移已有部署
+
+旧本地资产迁移当前需要支持安全文件访问的 Linux/POSIX 环境；Windows 旧部署可继续使用原模式，或在 Linux 迁移后连接数据库。网络执行需要 POSIX Box Runtime，Windows Core 可以连接远程 Runtime。
+
+停止所有旧 Core 写入进程后再升级；一次只启动一个迁移实例。把 `skills.root` 保持为**原来的 Skill 根目录**，在该实例设置 `skills.migration.require_source: true` 和 `storage.migration.require_source: true`，并保留旧 Skill 卷及 `data/storage`。这两个检查可分别设置；没有旧本地资产时不启用对应检查。新副本默认不要求旧卷，因此不能仅凭一个空目录判断历史数据是否完整。
+
+迁移保留当前注册、历史版本（包括已删除注册留下的版本）、版本 digest、原媒体链接和私有附件键。数据库进度与每批内容一起提交；中断后重启会续传，源数据变化、同名冲突、损坏包和指定旧卷缺失会阻止服务启动。数据库迁移租约防止多个新实例同时导入，但不能冻结旧版进程，维护窗口必须先停止它们。校验完成后才开放业务；完成记录存数据库，后续副本不再依赖旧卷。Runtime 不兼容会停止网络模式启动；Box 不需要时可显式设 `box.enabled: false`。
+
+网络部署不需要 Core 挂载 Box 的目录。现有 Compose/Kubernetes 清单为兼容旧 `legacy` 部署仍保留该挂载；迁移验收后可移除 Core 的专用 Box 挂载及对应同节点亲和。新部署应使用分开的 Core 数据卷和 Box 卷。Box 使用 Docker daemon 时，仍须保留 Box 与 daemon 之间相同绝对路径的卷；清单通过 `LANGBOT_BOX_CONFIG` 单独设置 Runtime 的工作根目录。不要在升级时直接换掉旧 Box 卷或实例身份。
+
+自动资产迁移仅覆盖当前实例可验证归属的本地文件。没有 Workspace 标识的旧媒体仅由 OSS 单 Workspace 接管；多 Workspace 不猜归属。旧显式 S3 配置继续生效，不能直接改 `storage.use` 期待自动搬迁旧 S3 对象。
+
+保留旧目录及维护窗口的数据库恢复点。新模式产生写入后，旧目录不会同步更新；回退旧版必须同时恢复该恢复点和旧配置，或先将全部新版本与资产导出恢复。仅改回 `filesystem` / `local` 会丢失新写入的可见性。此步骤只解耦 Box 相关文件，配置、插件私有数据及其他 Core 子系统的持久化仍按各自部署要求管理。
+
+
+## 在流水线启用
+
+技能装好之后，还要在流水线扩展配置里决定 Agent 能看到哪些：
+
+- 开启"启用所有技能"，或
+- 只绑定指定技能
+
+绑定只影响 `<available_skills>` 列表（即 Agent 能从哪些技能里挑），完整指令永远等 `activate` 被调用后才注入。
+
+## 编写 SKILL.md
+
+技能就是一个目录加一个 `SKILL.md`。frontmatter 写元数据，正文是 Agent 激活后会收到的指令：
+
+```markdown
+---
+name: code-reviewer
+display_name: 代码评审助手
+description: 审查代码并给出改进建议；用户提到 review、评审、代码改进时触发
+---
+
+## 执行步骤
+
+1. 用 `read` 浏览相关文件
+2. 检查可读性、潜在 bug、安全问题
+3. 给出按优先级排序的改进建议
+```
+
+LangBot 当前读取以下三个字段：
+
+| 字段 | 必需 | 说明 |
+|------|------|------|
+| `name` | 创建/注册时 | 唯一标识，1–64 字符 |
+| `description` | 强烈建议 | Agent 用它判断何时激活——越具体越能选中 |
+| `display_name` | 否 | UI 显示名 |
+
+`description` 是 Agent 挑技能的唯一依据，要写清楚**功能、适用场景、可能的触发关键词**。
+
+完整规范见 [agentskills.io](https://agentskills.io/home)。其它字段（`license`、`metadata` 等）可保留供未来兼容，当前不会被读取。
+
+**带资源的技能**在 `SKILL.md` 同级放 `scripts/`、`templates/` 等目录，执行时使用激活结果返回的固定版本路径。
+
+### Agent 可用的工具
+
+| 工具 | 用途 |
+|------|------|
+| `activate` | Agent 判断匹配时自动调用，把 SKILL.md 拉进上下文 |
+| `register_skill` | 把沙箱里准备好的目录注册为新技能 |
+
+## 分享到 LangBot Space
+
+在技能详情页点击「分享到 Space」，可以把当前版本的 Skill 包投稿到扩展市场。弹窗会列出将要提交的文件；文件中包含 API Key、令牌等凭据时无法提交。投稿会以你的 LangBot Space 创作者身份发布，审核会检查脚本与外部请求，通过后公开。同一作者再次分享同名 Skill 会发布为新版本。
+
+## 常见问题
+
+| 现象 | 检查项 |
+|------|--------|
+| 技能列表为空 | Workspace、技能绑定、`skills.persistence` 和 `skills.root` |
+| Agent 不激活技能 | `description` 是否具体、流水线是否绑定、模型是否支持函数调用 |
+| 激活后找不到文件 | 文件需在 Skill 包内，使用激活结果返回的版本路径 |
+| `register_skill` 报错 | 路径必须在 `/workspace` 下，目录或两层内子目录需含 `SKILL.md` |
+
+<Note>
+自动激活需要 Runner 支持技能和工具调用，脚本执行需要 Box。外部运行器（Dify、n8n、Langflow、Coze 等）请使用各自平台支持的机制。
+</Note>

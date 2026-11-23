@@ -1,0 +1,2364 @@
+"""Integration-style tests for AgentRunOrchestrator with a fake plugin runner."""
+
+from __future__ import annotations
+
+import contextlib
+import asyncio
+import datetime
+import types
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
+
+from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
+from langbot.pkg.agent.runner.errors import RunnerExecutionError
+from langbot.pkg.agent.runner.orchestrator import AgentRunOrchestrator
+from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
+from langbot.pkg.agent.runner.binding_resolver import AgentBindingResolver
+from langbot.pkg.agent.runner.session_registry import get_session_registry
+from langbot.pkg.agent.runner.run_ledger_store import RunLedgerStore
+from langbot.pkg.agent.runner.persistent_state_store import reset_persistent_state_store
+from langbot.pkg.api.http.context import ExecutionContext
+from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
+from langbot_plugin.api.entities.builtin.platform import events as platform_events
+from langbot_plugin.api.entities.builtin.platform import message as platform_message
+from langbot_plugin.api.entities.builtin.provider import message as provider_message
+from langbot_plugin.api.entities.builtin.provider import session as provider_session
+from langbot_plugin.api.entities.builtin.resource import tool as resource_tool
+
+
+RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
+TEST_CONTEXT = ExecutionContext(
+    instance_uuid='instance-test',
+    workspace_uuid='workspace-test',
+    placement_generation=1,
+)
+
+
+class FakeLogger:
+    def __init__(self):
+        self.warnings: list[str] = []
+
+    def debug(self, msg):
+        pass
+
+    def info(self, msg):
+        pass
+
+    def warning(self, msg, *args, **kwargs):
+        self.warnings.append(str(msg))
+
+    def error(self, msg):
+        pass
+
+
+class FakeVersionManager:
+    def get_current_version(self):
+        return 'test-version'
+
+
+class FakeModel:
+    def __init__(self, model_type: str = 'chat'):
+        self.model_entity = types.SimpleNamespace(model_type=model_type)
+        self.provider_entity = types.SimpleNamespace(name='fake-provider')
+
+
+class FakeKnowledgeBase:
+    def __init__(self, kb_id: str):
+        self.kb_id = kb_id
+        self.knowledge_base_entity = types.SimpleNamespace(kb_type='fake')
+
+    def get_name(self):
+        return f'KB {self.kb_id}'
+
+
+class FakePluginConnector:
+    is_enable_plugin = True
+
+    def __init__(self, results=None, error: Exception | None = None, delay: float = 0):
+        self.results = results or []
+        self.error = error
+        self.delay = delay
+        self.delay_entered = asyncio.Event()
+        self.calls: list[dict] = []
+        self.contexts: list[dict] = []
+        self.sessions_during_run: list[dict | None] = []
+
+    async def run_runner(self, plugin_author, plugin_name, runner_name, context):
+        self.calls.append(
+            {
+                'plugin_author': plugin_author,
+                'plugin_name': plugin_name,
+                'runner_name': runner_name,
+            }
+        )
+        self.contexts.append(context)
+        self.sessions_during_run.append(await get_session_registry().get(context['run_id']))
+
+        if self.error:
+            raise self.error
+
+        for result in self.results:
+            if self.delay:
+                self.delay_entered.set()
+                await asyncio.sleep(self.delay)
+            yield result
+
+
+class FakeRegistry:
+    def __init__(self, descriptor: RunnerDescriptor):
+        self.descriptor = descriptor
+        self.calls: list[dict] = []
+
+    async def get(self, context, runner_id, bound_plugins=None):
+        self.calls.append(
+            {
+                'context': context,
+                'runner_id': runner_id,
+                'bound_plugins': bound_plugins,
+            }
+        )
+        assert context.workspace_uuid == TEST_CONTEXT.workspace_uuid
+        assert runner_id == self.descriptor.id
+        return self.descriptor
+
+
+class FakePersistenceManager:
+    def __init__(self, db_engine: AsyncEngine):
+        self._db_engine = db_engine
+
+    def get_db_engine(self):
+        return self._db_engine
+
+
+class FakeApplication:
+    def __init__(self, plugin_connector: FakePluginConnector, db_engine: AsyncEngine):
+        self.logger = FakeLogger()
+        self.ver_mgr = FakeVersionManager()
+        self.box_service = types.SimpleNamespace(
+            resolve_workspace_backend=AsyncMock(return_value=None),
+            resolve_workspace_selection=AsyncMock(return_value={'backend': None, 'e2b': {}}),
+        )
+        self.plugin_connector = plugin_connector
+        self.persistence_mgr = FakePersistenceManager(db_engine)
+
+        self.model_mgr = types.SimpleNamespace(get_model_by_uuid=AsyncMock(return_value=FakeModel()))
+        self.rag_mgr = types.SimpleNamespace(
+            get_knowledge_base_by_uuid=AsyncMock(return_value=FakeKnowledgeBase('kb_001'))
+        )
+        self.skill_mgr = types.SimpleNamespace(
+            reload_skills=AsyncMock(),
+            get_skills=lambda context: {
+                'demo': {
+                    'name': 'demo',
+                    'display_name': 'Demo Skill',
+                    'description': 'Helps with demo tasks.',
+                },
+                'hidden': {
+                    'name': 'hidden',
+                    'display_name': 'Hidden Skill',
+                    'description': 'Not bound to this pipeline.',
+                },
+            },
+        )
+
+
+class FakeConversation:
+    uuid = 'conv_existing'
+    create_time = datetime.datetime(2026, 5, 15, 12, 0, 0)
+
+
+def make_descriptor() -> RunnerDescriptor:
+    return RunnerDescriptor(
+        usages=['agent'],
+        id=RUNNER_ID,
+        source='plugin',
+        label={'en_US': 'Local Agent'},
+        plugin_author='langbot-team',
+        plugin_name='LocalAgent',
+        runner_name='default',
+        capabilities={
+            'streaming': True,
+            'tool_calling': True,
+            'knowledge_retrieval': True,
+            'skill_authoring': True,
+        },
+        permissions={
+            'models': ['invoke', 'stream'],
+            'tools': ['detail', 'call'],
+            'knowledge_bases': ['list', 'retrieve'],
+            'history': ['page', 'search'],
+            'events': ['get', 'page'],
+            'storage': ['plugin'],
+        },
+        config_schema=[
+            {'name': 'model', 'type': 'model-fallback-selector'},
+            {'name': 'knowledge-bases', 'type': 'knowledge-base-multi-selector', 'default': []},
+        ],
+    )
+
+
+def make_query():
+    async def fake_func(**kwargs):
+        return kwargs
+
+    message_chain = platform_message.MessageChain(
+        [
+            platform_message.Source(
+                id='msg_001',
+                time=datetime.datetime(2026, 5, 15, 12, 0, 0),
+            ),
+            platform_message.Plain(text='hello'),
+            platform_message.File(name='spec.txt', url='https://example.com/spec.txt'),
+        ]
+    )
+    sender = platform_entities.Friend(id='user_001', nickname='Alice', remark=None)
+    message_event = platform_events.FriendMessage(sender=sender, message_chain=message_chain, time=1_784_098_800.0)
+    session = types.SimpleNamespace(
+        launcher_type=provider_session.LauncherTypes.PERSON,
+        launcher_id='user_001',
+        sender_id='user_001',
+        using_conversation=FakeConversation(),
+    )
+
+    query = types.SimpleNamespace(
+        query_id=1001,
+        launcher_type=provider_session.LauncherTypes.PERSON,
+        launcher_id='user_001',
+        sender_id='user_001',
+        message_event=message_event,
+        message_chain=message_chain,
+        bot_uuid='bot_001',
+        pipeline_uuid='pipeline_001',
+        pipeline_config={
+            'ai': {
+                'runner': {'id': RUNNER_ID},
+                'runner_config': {
+                    RUNNER_ID: {
+                        'model': {'primary': 'model_primary', 'fallbacks': ['model_fallback']},
+                        'knowledge-bases': ['kb_001'],
+                        'timeout': 30,
+                    },
+                },
+            },
+        },
+        session=session,
+        messages=[],
+        user_message=provider_message.Message(
+            role='user',
+            content=[
+                provider_message.ContentElement.from_text('hello'),
+                provider_message.ContentElement.from_file_url('https://example.com/spec.txt', 'spec.txt'),
+            ],
+        ),
+        variables={
+            '_pipeline_bound_plugins': ['langbot-team/LocalAgent'],
+            '_fallback_model_uuids': ['model_fallback'],
+            '_pipeline_bound_skills': ['demo'],
+            '_host_tool_source_refs': {
+                'langbot/test-tool/search': {
+                    'source': 'plugin',
+                    'source_id': 'langbot/test-tool',
+                },
+            },
+            'public_param': 'visible',
+        },
+        use_llm_model_uuid='model_primary',
+        use_funcs=[
+            resource_tool.LLMTool(
+                name='langbot/test-tool/search',
+                human_desc='Search',
+                description='Search test data',
+                parameters={'type': 'object', 'properties': {'q': {'type': 'string'}}},
+                func=fake_func,
+            )
+        ],
+    )
+    query._execution_context = TEST_CONTEXT
+    return query
+
+
+def test_context_builder_attachments_follow_platform_media_only():
+    query = make_query()
+    # Contents altered by a plugin keep their media for the model, but only the
+    # platform message's own media become attachments.
+    query.user_message = provider_message.Message(
+        role='user',
+        content=[
+            provider_message.ContentElement.from_text('see attached'),
+            provider_message.ContentElement.from_image_base64('data:image/png;base64,aGVsbG8='),
+            provider_message.ContentElement.from_file_base64('data:text/plain;base64,aGVsbG8=', 'hello.txt'),
+        ],
+    )
+    query.message_chain = platform_message.MessageChain(
+        [platform_message.Image(base64='data:image/jpeg;base64,aGVsbG8=')]
+    )
+
+    input_data = QueryEntryAdapter._build_input(query)
+
+    assert input_data.contents[0].text == 'see attached'
+    assert input_data.contents[1].image_base64 == 'data:image/png;base64,aGVsbG8='
+    assert input_data.contents[2].file_base64 == 'data:text/plain;base64,aGVsbG8='
+    assert [(item.ref, item.type, item.mime_type, item.content) for item in input_data.attachments] == [
+        ('att-1', 'image', 'image/jpeg', None)
+    ]
+
+
+def test_context_builder_renders_message_chain_without_preprocessing():
+    query = make_query()
+    query.user_message = None
+    query.message_chain = platform_message.MessageChain(
+        [platform_message.Image(base64='data:image/jpeg;base64,aGVsbG8=')]
+    )
+
+    input_data = QueryEntryAdapter._build_input(query)
+
+    assert [content.type for content in input_data.contents] == ['text']
+    assert input_data.text == '[attachment att-1: image]'
+    assert len(input_data.attachments) == 1
+    assert input_data.attachments[0].type == 'image'
+    assert input_data.attachments[0].content is None
+
+
+def test_context_builder_keeps_repeated_platform_media():
+    query = make_query()
+    query.user_message = None
+    query.message_chain = platform_message.MessageChain(
+        [
+            platform_message.Image(base64='data:image/png;base64,aGVsbG8='),
+            platform_message.Image(base64='data:image/png;base64,aGVsbG8='),
+        ]
+    )
+
+    input_data = QueryEntryAdapter._build_input(query)
+
+    assert [(attachment.ref, attachment.type) for attachment in input_data.attachments] == [
+        ('att-1', 'image'),
+        ('att-2', 'image'),
+    ]
+
+
+@pytest.fixture(autouse=True)
+async def clean_agent_state():
+    """Reset all singleton stores and create a test database engine."""
+    from langbot.pkg.entity.persistence.base import Base
+
+    reset_persistent_state_store()
+    registry = get_session_registry()
+    for session in await registry.list_active_runs():
+        await registry.unregister(session['run_id'])
+
+    # Create in-memory SQLite engine for tests
+    test_engine = create_async_engine('sqlite+aiosqlite:///:memory:')
+
+    # Create tables
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    yield test_engine
+
+    # Cleanup
+    for session in await registry.list_active_runs():
+        await registry.unregister(session['run_id'])
+    reset_persistent_state_store()
+    await test_engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_runs_fake_plugin_with_authorized_context(clean_agent_state):
+    """Test that orchestrator properly builds and passes authorized context to runner."""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': 'fake response'}},
+            }
+        ]
+    )
+    ap = FakeApplication(plugin_connector, db_engine)
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+    query = make_query()
+
+    messages = [message async for message in orchestrator.run_from_query(query)]
+
+    assert len(messages) == 1
+    assert messages[0].content == 'fake response'
+    assert plugin_connector.calls == [
+        {
+            'plugin_author': 'langbot-team',
+            'plugin_name': 'LocalAgent',
+            'runner_name': 'default',
+        }
+    ]
+
+    context = plugin_connector.contexts[0]
+    assert context['config']['timeout'] == 30
+    assert context['runtime']['deadline_at'] is not None
+    # Protocol v1: params is in adapter.extra
+    assert context['adapter']['extra']['params'] == {'public_param': 'visible'}
+    assert context['event']['event_type'] == 'message.received'
+    # Note: source_event_type is in event.source_event_type, not event.data
+    # (event.data contains the raw event payload, not metadata)
+    assert context['actor']['actor_id'] == 'user_001'
+    assert context['actor']['actor_name'] == 'Alice'
+    assert context['subject']['subject_id'] == 'msg_001'
+    assert context['input']['attachments']
+    assert context['context']['available_apis']['run_get'] is True
+    assert context['context']['available_apis']['run_list'] is True
+    assert context['context']['available_apis']['run_events_page'] is True
+    assert context['context']['available_apis']['run_cancel'] is True
+    assert context['context']['available_apis']['run_append_result'] is False
+    assert context['context']['available_apis']['run_finalize'] is False
+    assert context['context']['available_apis']['run_claim'] is False
+    assert context['context']['available_apis']['run_renew_claim'] is False
+    assert context['context']['available_apis']['run_release_claim'] is False
+
+    assert context['context']['available_apis']['runtime_register'] is False
+    assert context['context']['available_apis']['runtime_heartbeat'] is False
+    assert context['context']['available_apis']['runtime_list'] is False
+
+    resources = context['resources']
+    assert {m['model_id'] for m in resources['models']} == {'model_primary', 'model_fallback'}
+    assert resources['tools'][0]['tool_name'] == 'langbot/test-tool/search'
+    assert resources['knowledge_bases'][0]['kb_id'] == 'kb_001'
+    assert resources['skills'] == [
+        {
+            'skill_name': 'demo',
+            'display_name': 'Demo Skill',
+            'description': 'Helps with demo tasks.',
+        }
+    ]
+    assert resources['storage']['plugin_storage'] is True
+
+    session_during_run = plugin_connector.sessions_during_run[0]
+    assert session_during_run is not None
+    assert session_during_run['plugin_identity'] == 'langbot-team/LocalAgent'
+    assert session_during_run['authorization']['authorized_ids']['tool'] == {'langbot/test-tool/search'}
+    assert session_during_run['authorization']['authorized_ids']['skill'] == {'demo'}
+    assert await get_session_registry().get(context['run_id']) is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_active_from_query_rejects_non_message_event(clean_agent_state):
+    orchestrator = AgentRunOrchestrator(
+        FakeApplication(FakePluginConnector(), clean_agent_state),
+        FakeRegistry(make_descriptor()),
+    )
+    orchestrator.query_bridge = types.SimpleNamespace(
+        build_plan=Mock(
+            return_value=types.SimpleNamespace(
+                event=types.SimpleNamespace(event_type='timer', conversation_id='conv'),
+                binding=types.SimpleNamespace(runner_id=RUNNER_ID),
+                bound_plugins=[],
+            )
+        )
+    )
+
+    assert await orchestrator.cancel_active_from_query(make_query()) is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_active_from_query_returns_none_without_active_run(clean_agent_state):
+    orchestrator = AgentRunOrchestrator(
+        FakeApplication(FakePluginConnector(), clean_agent_state),
+        FakeRegistry(make_descriptor()),
+    )
+    orchestrator.query_bridge = types.SimpleNamespace(
+        build_plan=Mock(
+            return_value=types.SimpleNamespace(
+                event=types.SimpleNamespace(
+                    event_type='message.received',
+                    conversation_id='conv',
+                    bot_id='bot',
+                    workspace_id='workspace',
+                    thread_id=None,
+                    actor=types.SimpleNamespace(actor_id='actor'),
+                ),
+                binding=types.SimpleNamespace(runner_id=RUNNER_ID),
+                bound_plugins=[],
+            )
+        )
+    )
+    orchestrator._session_registry = types.SimpleNamespace(
+        find_active_target=AsyncMock(return_value=None),
+        cancel_task=AsyncMock(),
+    )
+
+    assert await orchestrator.cancel_active_from_query(make_query()) is None
+    orchestrator._session_registry.cancel_task.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cancel_active_from_query_records_and_cancels_run(clean_agent_state):
+    orchestrator = AgentRunOrchestrator(
+        FakeApplication(FakePluginConnector(), clean_agent_state),
+        FakeRegistry(make_descriptor()),
+    )
+    orchestrator.query_bridge = types.SimpleNamespace(
+        build_plan=Mock(
+            return_value=types.SimpleNamespace(
+                event=types.SimpleNamespace(
+                    event_type='message.received',
+                    conversation_id='conv',
+                    bot_id='bot',
+                    workspace_id='workspace',
+                    thread_id='thread',
+                    actor=types.SimpleNamespace(actor_id='actor'),
+                ),
+                binding=types.SimpleNamespace(runner_id=RUNNER_ID),
+                bound_plugins=['langbot-team/LocalAgent'],
+            )
+        )
+    )
+    orchestrator._session_registry = types.SimpleNamespace(
+        find_active_target=AsyncMock(return_value='run-active'),
+        cancel_task=AsyncMock(return_value=True),
+    )
+    store = types.SimpleNamespace(request_cancel=AsyncMock())
+
+    with patch('langbot.pkg.agent.runner.run_ledger_store.RunLedgerStore', return_value=store):
+        result = await orchestrator.cancel_active_from_query(make_query())
+
+    assert result == 'run-active'
+    store.request_cancel.assert_awaited_once_with(
+        run_id='run-active',
+        status_reason='cancelled by stop command',
+    )
+    orchestrator._session_registry.cancel_task.assert_awaited_once_with('run-active', reason='stop_command')
+
+
+@pytest.mark.asyncio
+async def test_cancel_active_from_query_returns_none_when_run_finishes_before_cancel(clean_agent_state):
+    orchestrator = AgentRunOrchestrator(
+        FakeApplication(FakePluginConnector(), clean_agent_state),
+        FakeRegistry(make_descriptor()),
+    )
+    orchestrator.query_bridge = types.SimpleNamespace(
+        build_plan=Mock(
+            return_value=types.SimpleNamespace(
+                event=types.SimpleNamespace(
+                    event_type='message.received',
+                    conversation_id='conv',
+                    bot_id='bot',
+                    workspace_id='workspace',
+                    thread_id=None,
+                    actor=types.SimpleNamespace(actor_id='actor'),
+                ),
+                binding=types.SimpleNamespace(runner_id=RUNNER_ID),
+                bound_plugins=[],
+            )
+        )
+    )
+    orchestrator._session_registry = types.SimpleNamespace(
+        find_active_target=AsyncMock(return_value='run-finished'),
+        cancel_task=AsyncMock(return_value=False),
+    )
+    store = types.SimpleNamespace(request_cancel=AsyncMock())
+
+    with patch('langbot.pkg.agent.runner.run_ledger_store.RunLedgerStore', return_value=store):
+        result = await orchestrator.cancel_active_from_query(make_query())
+
+    assert result is None
+    store.request_cancel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cancel_active_from_query_marks_other_actor_run_as_denied(clean_agent_state):
+    orchestrator = AgentRunOrchestrator(
+        FakeApplication(FakePluginConnector(), clean_agent_state),
+        FakeRegistry(make_descriptor()),
+    )
+    orchestrator.query_bridge = types.SimpleNamespace(
+        build_plan=Mock(
+            return_value=types.SimpleNamespace(
+                event=types.SimpleNamespace(
+                    event_type='message.received',
+                    conversation_id='group',
+                    bot_id='bot',
+                    workspace_id='workspace',
+                    thread_id=None,
+                    actor=types.SimpleNamespace(actor_id='member-2'),
+                ),
+                binding=types.SimpleNamespace(runner_id=RUNNER_ID),
+                bound_plugins=[],
+            )
+        )
+    )
+    orchestrator._session_registry = types.SimpleNamespace(
+        find_active_target=AsyncMock(side_effect=[None, 'run-member-1']),
+        cancel_task=AsyncMock(),
+    )
+    query = make_query()
+
+    result = await orchestrator.cancel_active_from_query(query)
+
+    assert result is None
+    assert query.variables['_stop_command_denied'] is True
+    orchestrator._session_registry.cancel_task.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_persists_run_ledger(clean_agent_state):
+    """AgentRunOrchestrator records Host-owned run and result events."""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': 'fake response'}},
+                'usage': {'prompt_tokens': 1, 'completion_tokens': 1, 'total_tokens': 2},
+            },
+            {
+                'type': 'run.completed',
+                'data': {'finish_reason': 'stop'},
+            },
+        ]
+    )
+    ap = FakeApplication(plugin_connector, db_engine)
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+
+    messages = [message async for message in orchestrator.run_from_query(make_query())]
+
+    assert len(messages) == 1
+    run_id = plugin_connector.contexts[0]['run_id']
+    store = RunLedgerStore(db_engine)
+
+    run = await store.get_run(run_id)
+    assert run is not None
+    assert run['status'] == 'completed'
+    assert run['event_id'] == plugin_connector.contexts[0]['event']['event_id']
+    assert run['runner_id'] == RUNNER_ID
+    assert run['usage'] == {
+        'prompt_tokens': 1,
+        'completion_tokens': 1,
+        'total_tokens': 2,
+    }
+
+    events, next_cursor, prev_cursor, has_more = await store.page_run_events(
+        run_id=run_id,
+        limit=10,
+    )
+    assert [event['sequence'] for event in events] == [1, 2]
+    assert [event['type'] for event in events] == ['message.completed', 'run.completed']
+    assert next_cursor is None
+    assert prev_cursor == 1
+    assert has_more is False
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_stops_after_cancel_request(clean_agent_state):
+    """A persisted cancel request stops further synchronous runner consumption."""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': 'first'}},
+            },
+            {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': 'second'}},
+            },
+        ]
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(descriptor))
+    original_append_run_result = orchestrator.journal.append_run_result
+    cancel_requested = False
+
+    async def append_and_cancel_once(*args, **kwargs):
+        nonlocal cancel_requested
+        event = await original_append_run_result(*args, **kwargs)
+        if not cancel_requested:
+            cancel_requested = True
+            await RunLedgerStore(db_engine).request_cancel(
+                run_id=kwargs['run_id'],
+                status_reason='user stopped',
+            )
+        return event
+
+    orchestrator.journal.append_run_result = append_and_cancel_once
+
+    messages = []
+    with pytest.raises(RunnerExecutionError) as caught:
+        async for message in orchestrator.run_from_query(make_query()):
+            messages.append(message)
+
+    assert caught.value.error_code == 'cancelled'
+    assert [message.content for message in messages] == ['first']
+    run_id = plugin_connector.contexts[0]['run_id']
+    run = await RunLedgerStore(db_engine).get_run(run_id)
+    assert run is not None
+    assert run['status'] == 'cancelled'
+    assert run['status_reason'] == 'user stopped'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('result_type', ['tool.call.started', 'run.failed', 'run.completed'])
+@pytest.mark.parametrize('locale', ['en_US', 'zh_Hans'])
+@pytest.mark.parametrize('admin_audit', [False, True])
+async def test_cancel_request_preserves_one_terminal_event(clean_agent_state, result_type, locale, admin_audit):
+    """Cancellation must reach both observers and the journal regardless of event timing."""
+    from collections import OrderedDict
+
+    from langbot.pkg.i18n import t, language_scope
+
+    store = RunLedgerStore(clean_agent_state)
+    cleaned_up = []
+    resumed = []
+
+    class CancellingConnector(FakePluginConnector):
+        async def run_runner(self, **kwargs):
+            context = kwargs['context']
+            self.contexts.append(context)
+            await store.request_cancel(run_id=context['run_id'], status_reason='cancel during export recovery')
+            data = {
+                'tool.call.started': {'tool_name': 'export_box_files', 'tool_call_id': 'export-2', 'parameters': {}},
+                'run.failed': {'code': 'cancelled', 'error': 'Runner cancellation diagnostic', 'retryable': False},
+                'run.completed': {'finish_reason': 'stop'},
+            }[result_type]
+            try:
+                yield {'type': result_type, 'sequence': 7, 'data': data}
+                resumed.append(True)
+                yield {
+                    'type': 'message.completed',
+                    'sequence': 8,
+                    'data': {'message': {'role': 'assistant', 'content': 'must not be delivered'}},
+                }
+            finally:
+                cleaned_up.append(True)
+
+    connector = CancellingConnector()
+    ap = FakeApplication(connector, clean_agent_state)
+    ap._message_language_cache = OrderedDict({TEST_CONTEXT.workspace_uuid: (locale, float('inf'))})
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(make_descriptor()))
+    plan = orchestrator.query_bridge.build_plan(make_query())
+    observed = []
+
+    async def observe(result):
+        observed.append(result)
+        if admin_audit and result['type'] == 'tool.call.started':
+            await store.append_audit_event(run_id=connector.contexts[0]['run_id'], event_type='admin.run_cancel')
+
+    failure = None
+    # The trusted Workspace language must take precedence over the caller's language.
+    with language_scope('ja_JP'):
+        try:
+            async for _ in orchestrator.run(
+                plan.event,
+                plan.binding,
+                adapter_context={'_execution_context': TEST_CONTEXT, '_result_observer': observe},
+            ):
+                pass
+        except RunnerExecutionError as exc:
+            failure = exc
+
+    run_id = connector.contexts[0]['run_id']
+    run = await store.get_run(run_id)
+    events, *_ = await store.page_run_events(run_id=run_id, limit=10)
+    assert cleaned_up == [True]
+    assert not any(event['type'] == 'message.completed' for event in events)
+    terminals = [event for event in observed if event['type'] in {'run.completed', 'run.failed'}]
+    assert len(terminals) == 1
+    assert [event['type'] for event in events if event['type'] != 'admin.run_cancel'] == [
+        event['type'] for event in observed
+    ]
+    if result_type == 'run.completed':
+        assert failure is None
+        assert run['status'] == 'completed'
+    else:
+        assert failure is not None and failure.error_code == 'cancelled'
+        assert run['status'] == 'cancelled'
+        assert terminals[0]['data']['code'] == 'cancelled'
+    if result_type == 'tool.call.started':
+        assert run['status_reason'] == 'cancel during export recovery'
+        assert [event['sequence'] for event in events] == ([7, 8, 9] if admin_audit else [7, 8])
+        assert terminals[0]['sequence'] == events[-1]['sequence']
+        assert events[-1]['source'] == 'host'
+        assert terminals[0]['data']['error'] == t('Task was cancelled', locale=locale)
+    else:
+        assert not resumed
+        assert len(events) == 1
+        assert events[0]['source'] == 'runner'
+        if result_type == 'run.failed':
+            assert terminals[0]['data']['error'] == 'Runner cancellation diagnostic'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('result_type', 'data', 'status'),
+    [
+        (
+            'run.completed',
+            {'finish_reason': 'stop', 'message': {'role': 'assistant', 'content': 'done'}},
+            'completed',
+        ),
+        ('run.failed', {'error': 'boom', 'code': 'fake.error', 'retryable': False}, 'failed'),
+        ('run.failed', {'error': 'stopped', 'code': 'cancelled', 'retryable': False}, 'cancelled'),
+        ('run.cancelled', {'reason': 'stopped', 'cleanup_confirmed': True}, 'cancelled'),
+    ],
+)
+async def test_terminal_is_persisted_before_runner_stream_cleanup(
+    clean_agent_state, monkeypatch, result_type, data, status
+):
+    """Transport cleanup must not hold a validated terminal run open."""
+    cleanup_started = asyncio.Event()
+    release_cleanup = asyncio.Event()
+    usage = {'prompt_tokens': 2, 'completion_tokens': 1, 'total_tokens': 3}
+    record_execution = Mock()
+    monkeypatch.setattr('langbot.pkg.agent.runner.orchestrator.record_execution', record_execution)
+
+    class SlowCleanupConnector(FakePluginConnector):
+        async def run_runner(self, **kwargs):
+            self.contexts.append(kwargs['context'])
+            try:
+                yield {'type': result_type, 'data': data, 'usage': usage}
+            finally:
+                cleanup_started.set()
+                await release_cleanup.wait()
+
+    connector = SlowCleanupConnector()
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
+
+    async def consume():
+        return [message async for message in orchestrator.run_from_query(make_query())]
+
+    task = asyncio.create_task(consume())
+    try:
+        await asyncio.wait_for(cleanup_started.wait(), timeout=2)
+        run = await RunLedgerStore(clean_agent_state).get_run(connector.contexts[0]['run_id'])
+        assert run['status'] == status
+        assert run['finished_at'] is not None
+        assert run['usage'] == usage
+        assert not task.done()
+        # Cleanup crossing the deadline must not change an already-finalized outcome.
+        connector.contexts[0]['runtime']['deadline_at'] = 0
+    finally:
+        release_cleanup.set()
+        outcomes = await asyncio.wait_for(asyncio.gather(task, return_exceptions=True), timeout=2)
+
+    if result_type == 'run.failed':
+        assert isinstance(outcomes[0], RunnerExecutionError)
+        assert outcomes[0].error_code == data['code']
+    else:
+        assert not isinstance(outcomes[0], BaseException)
+    assert record_execution.call_args.kwargs['outcome'] == ('success' if status == 'completed' else status)
+    assert await get_session_registry().list_active_runs() == []
+
+
+@pytest.mark.asyncio
+async def test_completed_run_message_is_terminal_before_consumer_resumes(clean_agent_state, monkeypatch):
+    record_execution = Mock()
+    monkeypatch.setattr('langbot.pkg.agent.runner.orchestrator.record_execution', record_execution)
+    connector = FakePluginConnector(
+        results=[
+            {
+                'type': 'run.completed',
+                'data': {'finish_reason': 'stop', 'message': {'role': 'assistant', 'content': 'done'}},
+            }
+        ]
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
+    stream = orchestrator.run_from_query(make_query())
+    try:
+        assert (await anext(stream)).content == 'done'
+        run = await RunLedgerStore(clean_agent_state).get_run(connector.contexts[0]['run_id'])
+        assert run['status'] == 'completed'
+    finally:
+        await stream.aclose()
+    run = await RunLedgerStore(clean_agent_state).get_run(connector.contexts[0]['run_id'])
+    assert run['status'] == 'completed'
+    assert record_execution.call_args.kwargs['outcome'] == 'success'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('cancel_while_waiting', [False, True])
+@pytest.mark.parametrize('message_type', ['message.delta', 'message.completed'])
+async def test_consumer_exit_finalizes_cancelled_ledger(clean_agent_state, cancel_while_waiting, message_type):
+    class WaitingConnector(FakePluginConnector):
+        async def run_runner(self, **kwargs):
+            self.contexts.append(kwargs['context'])
+            payload_key = 'chunk' if message_type == 'message.delta' else 'message'
+            yield {'type': message_type, 'data': {payload_key: {'role': 'assistant', 'content': 'first'}}}
+            self.delay_entered.set()
+            await asyncio.Event().wait()
+
+    connector = WaitingConnector()
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
+    plan = orchestrator.query_bridge.build_plan(make_query())
+    stream = orchestrator.run(plan.event, plan.binding, adapter_context={'_execution_context': TEST_CONTEXT})
+    await anext(stream)
+    if cancel_while_waiting:
+        snapshot_read = asyncio.Event()
+        get_run = orchestrator.journal.get_run
+
+        async def get_run_then_signal(*args, **kwargs):
+            snapshot = await get_run(*args, **kwargs)
+            snapshot_read.set()
+            return snapshot
+
+        orchestrator.journal.get_run = get_run_then_signal
+        pending = asyncio.create_task(anext(stream))
+        # Prefetch can start before the Host finishes its post-message ledger read.
+        await asyncio.wait_for(connector.delay_entered.wait(), timeout=2)
+        await asyncio.wait_for(snapshot_read.wait(), timeout=2)
+        pending.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+    else:
+        await stream.aclose()
+    run = await RunLedgerStore(clean_agent_state).get_run(connector.contexts[0]['run_id'])
+    assert run['status'] == 'cancelled'
+    assert run['status_reason'] == 'consumer_cancelled'
+    assert await get_session_registry().list_active_runs() == []
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_does_not_package_query_messages_into_context(clean_agent_state):
+    """Host should not build an agent working-context window from query.messages."""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': 'fake response'}},
+            }
+        ]
+    )
+    ap = FakeApplication(plugin_connector, db_engine)
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+    query = make_query()
+    query.pipeline_config['ai']['runner_config'][RUNNER_ID]['custom-option'] = 2
+    query.messages = [
+        provider_message.Message(role='user', content='message 1'),
+        provider_message.Message(role='assistant', content='response 1'),
+        provider_message.Message(role='user', content='message 2'),
+        provider_message.Message(role='assistant', content='response 2'),
+        provider_message.Message(role='user', content='message 3'),
+        provider_message.Message(role='assistant', content='response 3'),
+    ]
+
+    messages = [message async for message in orchestrator.run_from_query(query)]
+
+    assert len(messages) == 1
+    context = plugin_connector.contexts[0]
+    assert context['config']['custom-option'] == 2
+    assert 'bootstrap' not in context
+    assert set(context['adapter']) == {'extra'}
+    assert 'context_packaging' not in context['runtime']['metadata']
+    assert [message.content for message in query.messages] == [
+        'message 1',
+        'response 1',
+        'message 2',
+        'response 2',
+        'message 3',
+        'response 3',
+    ]
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_streams_fake_plugin_deltas(clean_agent_state):
+    """Test that orchestrator properly streams message chunks."""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {'type': 'message.delta', 'data': {'chunk': {'role': 'assistant', 'content': 'hel'}}},
+            {'type': 'message.delta', 'data': {'chunk': {'role': 'assistant', 'content': 'hello'}}},
+            {'type': 'run.completed', 'data': {'finish_reason': 'stop'}},
+        ]
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(descriptor))
+
+    chunks = [message async for message in orchestrator.run_from_query(make_query())]
+
+    assert [chunk.content for chunk in chunks] == ['hel', 'hello']
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_persists_run_completed_message_transcript(clean_agent_state):
+    """run.completed(message=...) should be treated as the final assistant transcript."""
+    from langbot.pkg.agent.runner.transcript_store import TranscriptStore
+
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                'type': 'run.completed',
+                'data': {
+                    'finish_reason': 'stop',
+                    'message': {'role': 'assistant', 'content': 'final response'},
+                },
+            },
+        ]
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(descriptor))
+    query = make_query()
+
+    messages = [message async for message in orchestrator.run_from_query(query)]
+
+    assert [message.content for message in messages] == ['final response']
+    transcript_store = TranscriptStore(db_engine)
+    transcripts, _, _, _ = await transcript_store.page_transcript(query.session.using_conversation.uuid, limit=10)
+    assistant_items = [item for item in transcripts if item['role'] == 'assistant']
+    assert len(assistant_items) == 1
+    assert assistant_items[0]['content'] == 'final response'
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_drops_duplicate_result_sequence(clean_agent_state):
+    """Duplicate runner result sequences are idempotently ignored."""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                'type': 'message.delta',
+                'sequence': 1,
+                'data': {'chunk': {'role': 'assistant', 'content': 'first'}},
+            },
+            {
+                'type': 'message.delta',
+                'sequence': 1,
+                'data': {'chunk': {'role': 'assistant', 'content': 'duplicate'}},
+            },
+            {
+                'type': 'message.delta',
+                'sequence': 3,
+                'data': {'chunk': {'role': 'assistant', 'content': 'after-gap'}},
+            },
+            {'type': 'run.completed', 'sequence': 4, 'data': {'finish_reason': 'stop'}},
+        ]
+    )
+    ap = FakeApplication(plugin_connector, db_engine)
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+
+    chunks = [message async for message in orchestrator.run_from_query(make_query())]
+
+    assert [chunk.content for chunk in chunks] == ['first', 'after-gap']
+    assert any('duplicate result sequence 1' in warning for warning in ap.logger.warnings)
+    assert any('result sequence gap or out-of-order' in warning for warning in ap.logger.warnings)
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_applies_state_updates_and_suppresses_protocol_event(clean_agent_state):
+    """Test that state.updated events are applied and not yielded to pipeline."""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                'type': 'state.updated',
+                'data': {
+                    'scope': 'conversation',
+                    'key': 'external.conversation_id',
+                    'value': 'external_conv_123',
+                },
+            },
+            {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': 'state saved'}},
+            },
+        ]
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(descriptor))
+    query = make_query()
+
+    messages = [message async for message in orchestrator.run_from_query(query)]
+
+    assert [message.content for message in messages] == ['state saved']
+    # State is persisted to the database via PersistentStateStore.
+    from langbot.pkg.agent.runner.persistent_state_store import get_persistent_state_store
+
+    event = QueryEntryAdapter.query_to_event(query)
+    config = QueryEntryAdapter.config_to_agent_config(query, RUNNER_ID)
+    binding = AgentBindingResolver().resolve_one(event, [config])
+    snapshot = await get_persistent_state_store(db_engine).build_snapshot_from_event(event, binding, descriptor)
+    assert snapshot['conversation'].get('external.conversation_id') == 'external_conv_123'
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_unregisters_session_after_runner_failure(clean_agent_state):
+    """Test that session is unregistered even when runner fails."""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                'type': 'run.failed',
+                'data': {'error': 'boom', 'code': 'fake.error', 'retryable': False},
+            }
+        ]
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(descriptor))
+
+    with pytest.raises(RunnerExecutionError):
+        [message async for message in orchestrator.run_from_query(make_query())]
+
+    context = plugin_connector.contexts[0]
+    assert plugin_connector.sessions_during_run[0] is not None
+    assert await get_session_registry().get(context['run_id']) is None
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_unregisters_session_after_event_log_failure(clean_agent_state):
+    """Journal failures before runner invocation must not leave steerable sessions."""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': 'unused'}},
+            }
+        ]
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(descriptor))
+    orchestrator.journal.write_event_log = AsyncMock(side_effect=RuntimeError('journal unavailable'))
+
+    with pytest.raises(RuntimeError, match='journal unavailable'):
+        [message async for message in orchestrator.run_from_query(make_query())]
+
+    assert plugin_connector.contexts == []
+    assert await get_session_registry().list_active_runs() == []
+
+
+@pytest.mark.asyncio
+async def test_unconsumed_steering_audit_does_not_persist_pinned_context(clean_agent_state):
+    """Dropped steering audits retain routing metadata but never execution-only context."""
+    from langbot.pkg.agent.runner.event_log_store import EventLogStore
+
+    class BlockingPluginConnector(FakePluginConnector):
+        def __init__(self):
+            super().__init__()
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def run_runner(self, plugin_author, plugin_name, runner_name, context):
+            self.calls.append(
+                {
+                    'plugin_author': plugin_author,
+                    'plugin_name': plugin_name,
+                    'runner_name': runner_name,
+                }
+            )
+            self.contexts.append(context)
+            self.sessions_during_run.append(await get_session_registry().get(context['run_id']))
+            self.started.set()
+            await self.release.wait()
+            yield {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': 'response'}},
+            }
+
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    descriptor.capabilities.steering = True
+    plugin_connector = BlockingPluginConnector()
+    ap = FakeApplication(plugin_connector, db_engine)
+    pinned_context = 'PINNED_CONTEXT_MUST_NOT_BE_PERSISTED'
+
+    async def build_resource_context(query):
+        attachments = query.variables.get('_pipeline_mcp_resource_attachments', [])
+        return pinned_context if attachments else ''
+
+    mcp_loader = types.SimpleNamespace(
+        task_sandbox_scope=lambda *_, **__: contextlib.nullcontext(),
+        build_resource_context_for_query=AsyncMock(side_effect=build_resource_context),
+    )
+    ap.tool_mgr = types.SimpleNamespace(mcp_tool_loader=mcp_loader)
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+
+    active_query = make_query()
+
+    async def consume_active_run():
+        return [message async for message in orchestrator.run_from_query(active_query)]
+
+    active_task = asyncio.create_task(consume_active_run())
+    await asyncio.wait_for(plugin_connector.started.wait(), timeout=1)
+
+    steering_query = make_query()
+    steering_query.query_id = 1002
+    steering_query.message_chain[0].id = 'msg_002'
+    steering_query.variables['_pipeline_mcp_resource_attachments'] = [
+        {
+            'server_uuid': 'srv-1',
+            'server_name': 'docs',
+            'uri': 'file:///README.md',
+            'mode': 'pinned',
+        }
+    ]
+    steering_query.variables['_pipeline_mcp_resource_agent_read_enabled'] = True
+
+    try:
+        claimed = await orchestrator.try_claim_steering_from_query(steering_query)
+    finally:
+        plugin_connector.release.set()
+
+    messages = await asyncio.wait_for(active_task, timeout=1)
+    assert claimed is True
+    assert len(messages) == 1
+
+    event_store = EventLogStore(db_engine)
+    event_logs, _, _ = await event_store.page_events(
+        conversation_id=steering_query.session.using_conversation.uuid,
+        limit=10,
+    )
+    dropped = next(event for event in event_logs if event['event_type'] == 'steering.dropped')
+    queued = next(
+        event
+        for event in event_logs
+        if event['event_type'] == 'message.received'
+        and event.get('metadata', {}).get('steering', {}).get('status') == 'dropped'
+    )
+
+    assert dropped['input_summary'] == 'Unconsumed steering input dropped'
+    assert dropped['input_json'] is None
+    assert dropped['metadata']['steering']['original_event_id'] == queued['event_id']
+    assert pinned_context not in str(event_logs)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('waiting', 'supports_steering', 'target_run_id', 'expected'),
+    [
+        ({'run-1'}, True, 'run-1', True),
+        (set(), True, 'run-1', False),
+        ({'run-1'}, False, 'run-1', False),
+        ({'run-1'}, True, None, False),
+    ],
+)
+async def test_platform_event_steering_requires_waiting_run_and_matching_binding(
+    waiting,
+    supports_steering,
+    target_run_id,
+    expected,
+):
+    event = types.SimpleNamespace(
+        event_type='message.received',
+        event_id='event-1',
+        conversation_id='person-user-1',
+        bot_id='bot-1',
+        workspace_id='workspace-test',
+        thread_id=None,
+    )
+    binding = types.SimpleNamespace(runner_id=RUNNER_ID, binding_id='binding-1')
+    descriptor = types.SimpleNamespace(id=RUNNER_ID, supports_steering=lambda: supports_steering)
+    sessions = types.SimpleNamespace(
+        find_steering_target=AsyncMock(return_value=target_run_id),
+        enqueue_steering=AsyncMock(return_value=True),
+        complete_steering_enqueue=AsyncMock(return_value=True),
+    )
+    journal = types.SimpleNamespace(write_event_log=AsyncMock(return_value='log-1'), write_user_transcript=AsyncMock())
+    orchestrator = types.SimpleNamespace(
+        interaction_manager=types.SimpleNamespace(waiting_run_ids=lambda: waiting),
+        registry=types.SimpleNamespace(get=AsyncMock(return_value=descriptor)),
+        _session_registry=sessions,
+        _build_steering_item=Mock(return_value={'claimed_at': 1}),
+        journal=journal,
+        ap=types.SimpleNamespace(logger=FakeLogger()),
+    )
+    orchestrator._enqueue_steering = lambda *args: AgentRunOrchestrator._enqueue_steering(orchestrator, *args)
+
+    claimed = await AgentRunOrchestrator.try_claim_steering_from_event(
+        orchestrator,
+        event,
+        binding,
+        TEST_CONTEXT,
+    )
+
+    assert claimed is expected
+    if waiting and supports_steering:
+        sessions.find_steering_target.assert_awaited_once_with(
+            conversation_id='person-user-1',
+            runner_id=RUNNER_ID,
+            bot_id='bot-1',
+            workspace_id='workspace-test',
+            thread_id=None,
+            binding_id='binding-1',
+            eligible_run_ids=waiting,
+        )
+    else:
+        sessions.find_steering_target.assert_not_awaited()
+    assert sessions.enqueue_steering.await_count == int(expected)
+    assert journal.write_event_log.await_count == int(expected)
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_enforces_total_runner_deadline(clean_agent_state):
+    """Test that orchestrator enforces total runner timeout."""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': 'too late'}},
+            }
+        ],
+        delay=0.05,
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(descriptor))
+    query = make_query()
+    query.pipeline_config['ai']['runner_config'][RUNNER_ID]['timeout'] = 0.01
+
+    with pytest.raises(RunnerExecutionError) as exc_info:
+        [message async for message in orchestrator.run_from_query(query)]
+
+    assert exc_info.value.retryable is True
+    assert exc_info.value.error_code == 'runner.timeout'
+    assert await get_session_registry().list_active_runs() == []
+
+
+class TestQueryEntrySessionQueryId:
+    """Tests for internal query_id entering session registry."""
+
+    @pytest.mark.asyncio
+    async def test_query_entry_does_not_select_box_or_materialize_attachments(self, clean_agent_state):
+        """Inbound staging and later runner tools resolve to the same Box session."""
+        from langbot.pkg.box.service import BoxService
+
+        class CapturingBoxService:
+            resolve_workspace_backend = AsyncMock(return_value=None)
+            resolve_workspace_selection = AsyncMock(return_value={'backend': None, 'e2b': {}})
+            available = True
+
+            def __init__(self):
+                self.resolver = object.__new__(BoxService)
+                self.resolver._cloud_managed = False
+                self.materialize_session_id = None
+
+            async def materialize_inbound_attachments(self, query):
+                self.materialize_session_id = self.resolver.resolve_box_session_id(query)
+                return []
+
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    'type': 'message.completed',
+                    'data': {'message': {'role': 'assistant', 'content': 'response'}},
+                }
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        box_service = CapturingBoxService()
+        ap.box_service = box_service
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+
+        messages = [message async for message in orchestrator.run_from_query(query)]
+
+        assert len(messages) == 1
+        session = plugin_connector.sessions_during_run[0]
+        assert session is not None
+        assert session['execution_query'] is query
+        assert box_service.materialize_session_id is None
+        assert '_host_box_scope' not in query.variables
+        assert getattr(query, '_box_binding', None) is None
+
+    @pytest.mark.asyncio
+    async def test_query_id_registered_in_session_for_query_entry_flow(self, clean_agent_state):
+        """query_id from Query entry flow is registered internally in session."""
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    'type': 'message.completed',
+                    'data': {'message': {'role': 'assistant', 'content': 'response'}},
+                }
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+        query.user_message = provider_message.Message(
+            role='user',
+            content=[
+                provider_message.ContentElement.from_text('hello'),
+                provider_message.ContentElement.from_image_base64('data:image/png;base64,aGVsbG8='),
+                provider_message.ContentElement.from_file_base64('data:text/plain;base64,aGVsbG8=', 'hello.txt'),
+            ],
+        )
+
+        messages = [message async for message in orchestrator.run_from_query(query)]
+
+        assert len(messages) == 1
+        # Verify session during run had query_id
+        session_during_run = plugin_connector.sessions_during_run[0]
+        assert session_during_run is not None
+        assert session_during_run['query_id'] == query.query_id
+        assert session_during_run['execution_query'] is query
+        assert query.pipeline_uuid == 'pipeline_001'
+        assert query.pipeline_config is not None
+
+    @pytest.mark.asyncio
+    async def test_no_query_id_for_pure_event_first_flow(self, clean_agent_state):
+        """Pure event-first flow ignores the previous run's conversation pins."""
+        from langbot.pkg.agent.runner.host_models import (
+            AgentEventEnvelope,
+            AgentBinding,
+            BindingScope,
+            StatePolicy,
+            DeliveryPolicy,
+            ResourcePolicy,
+        )
+        from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+        from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
+        from langbot.pkg.agent.runner.persistent_state_store import get_persistent_state_store
+        from langbot.pkg.provider.tools.loaders.skill import ACTIVATED_SKILL_NAMES_STATE_KEY, ACTIVATED_SKILLS_KEY
+
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    'type': 'message.completed',
+                    'data': {'message': {'role': 'assistant', 'content': 'response'}},
+                }
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        revision = 'sha256:' + '1' * 64
+        ap.skill_repository = types.SimpleNamespace(
+            get_skill=AsyncMock(return_value={'name': 'demo', 'revision': revision})
+        )
+
+        async def build_resource_context(execution_query):
+            from langbot.pkg.provider.tools.loaders.mcp import (
+                _execution_context_from_query,
+            )
+
+            context = _execution_context_from_query(execution_query)
+            assert context.instance_uuid == TEST_CONTEXT.instance_uuid
+            assert context.workspace_uuid == TEST_CONTEXT.workspace_uuid
+            assert context.placement_generation == TEST_CONTEXT.placement_generation
+            assert context.bot_uuid == 'bot_001'
+            return 'Pinned documentation'
+
+        mcp_loader = types.SimpleNamespace(
+            task_sandbox_scope=lambda *_, **__: contextlib.nullcontext(),
+            build_resource_context_for_query=AsyncMock(side_effect=build_resource_context),
+        )
+        ap.tool_mgr = types.SimpleNamespace(mcp_tool_loader=mcp_loader)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+
+        # Create event and binding directly (not from Query)
+        event = AgentEventEnvelope(
+            event_id='evt_001',
+            event_type='message.received',
+            event_time=1234567890,
+            source='test',
+            bot_id='bot_001',
+            workspace_id=None,
+            conversation_id='conv_001',
+            thread_id=None,
+            actor=None,
+            subject=None,
+            input=AgentInput(
+                text='hello',
+                contents=[provider_message.ContentElement.from_text('hello')],
+                attachments=[],
+            ),
+            delivery=DeliveryContext(surface='test', supports_streaming=True),
+        )
+        binding = AgentBinding(
+            binding_id='binding_001',
+            scope=BindingScope(scope_type='agent', scope_id='pipeline_001'),
+            event_types=['message.received'],
+            runner_id=RUNNER_ID,
+            runner_config={
+                'mcp-resources': [
+                    {
+                        'server_uuid': 'srv-1',
+                        'server_name': 'docs',
+                        'uri': 'file:///README.md',
+                        'mode': 'pinned',
+                    }
+                ],
+                'mcp-resource-agent-read-enabled': True,
+            },
+            resource_policy=ResourcePolicy(),
+            state_policy=StatePolicy(enable_state=True, state_scopes=['conversation']),
+            delivery_policy=DeliveryPolicy(enable_streaming=True, enable_reply=True),
+        )
+
+        success, error = await get_persistent_state_store(db_engine).apply_update_from_event(
+            event.model_copy(update={'workspace_id': TEST_CONTEXT.workspace_uuid}),
+            binding,
+            descriptor,
+            'conversation',
+            ACTIVATED_SKILL_NAMES_STATE_KEY,
+            [{'name': 'demo', 'revision': revision}],
+            None,
+        )
+        assert success is True and error is None
+
+        messages = [
+            message
+            async for message in orchestrator.run(
+                event,
+                binding,
+                adapter_context={'_execution_context': TEST_CONTEXT},
+            )
+        ]
+
+        assert len(messages) == 1
+        # Verify session during run has query_id=None
+        session_during_run = plugin_connector.sessions_during_run[0]
+        assert session_during_run is not None
+        assert session_during_run['query_id'] is None
+        execution_query = session_during_run['execution_query']
+        assert execution_query is not None
+        assert execution_query.pipeline_uuid is None
+        assert execution_query.pipeline_config is None
+        assert execution_query.bot_uuid == event.bot_id
+        assert execution_query.launcher_id == event.conversation_id
+        assert execution_query.sender_id == event.conversation_id
+        assert execution_query.session.launcher_id == event.conversation_id
+        assert execution_query.message_event.type == event.event_type
+        assert '_host_box_scope' not in execution_query.variables
+        assert execution_query.variables['_pipeline_bound_skills'] == ['demo', 'hidden']
+        assert ACTIVATED_SKILLS_KEY not in execution_query.variables
+        ap.skill_repository.get_skill.assert_not_awaited()
+        assert execution_query.variables['_pipeline_mcp_resource_attachments'][0]['server_uuid'] == 'srv-1'
+        assert execution_query.variables['_pipeline_mcp_resource_agent_read_enabled'] is True
+        assert 'MCP resource context selected by LangBot host:' in plugin_connector.contexts[0]['input']['text']
+        assert 'Pinned documentation' in plugin_connector.contexts[0]['input']['text']
+        assert 'Pinned documentation' in plugin_connector.contexts[0]['input']['contents'][0]['text']
+        assert event.input.text == 'hello'
+        assert event.input.contents[0].text == 'hello'
+        assert plugin_connector.contexts[0]['conversation']['workspace_id'] == TEST_CONTEXT.workspace_uuid
+        assert plugin_connector.contexts[0]['runtime']['metadata']['workspace_id'] == TEST_CONTEXT.workspace_uuid
+        assert 'Pinned documentation' not in str(execution_query.user_message.content)
+        mcp_loader.build_resource_context_for_query.assert_awaited_once_with(execution_query)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('event_type', ['message.received'])
+@pytest.mark.parametrize('completed_message', [False, True])
+@pytest.mark.parametrize('reasoning', [False, True])
+async def test_direct_agent_streams_output_to_the_originating_platform(
+    clean_agent_state, event_type, completed_message, reasoning
+):
+    from langbot.pkg.agent.runner.host_models import (
+        AgentBinding,
+        AgentEventEnvelope,
+        BindingScope,
+        DeliveryPolicy,
+        ResourcePolicy,
+        StatePolicy,
+    )
+    from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
+    from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+
+    first_content = '<think>Checking the request</think>hello' if reasoning else 'hello'
+    final_content = '<think>Checking the request</think>hello world' if reasoning else 'hello world'
+    runner_results = [
+        {
+            'type': 'message.delta',
+            'data': {
+                'chunk': {
+                    'role': 'assistant',
+                    'content': first_content,
+                    'all_content': first_content,
+                }
+            },
+        },
+    ]
+    if completed_message:
+        runner_results.append(
+            {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': final_content}},
+            }
+        )
+    runner_results.append({'type': 'run.completed', 'data': {'finish_reason': 'stop'}})
+    connector = FakePluginConnector(results=runner_results)
+    ap = FakeApplication(connector, clean_agent_state)
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(make_descriptor()))
+    adapter = types.SimpleNamespace(
+        is_stream_output_supported=AsyncMock(return_value=True),
+        create_message_card=AsyncMock(return_value=True),
+        reply_message_chunk=AsyncMock(),
+        reply_message=AsyncMock(),
+        send_message=AsyncMock(),
+    )
+    incoming = platform_events.MessageReceivedEvent(
+        message_id='message-1',
+        sender=platform_entities.User(id='user-1'),
+        chat_type=platform_entities.ChatType.PRIVATE,
+        chat_id='user-1',
+        message_chain=platform_message.MessageChain([platform_message.Plain(text='hi')]),
+        source_platform_object=object(),
+    )
+    event = AgentEventEnvelope(
+        event_id='event-1',
+        event_type=event_type,
+        source='platform',
+        bot_id='bot_001',
+        workspace_id=TEST_CONTEXT.workspace_uuid,
+        conversation_id='person_user-1',
+        input=AgentInput(text='hi'),
+        delivery=DeliveryContext(
+            surface='platform',
+            reply_target={'target_type': 'person', 'target_id': 'user-1', 'message_id': 'message-1'},
+            supports_streaming=event_type == 'message.received',
+        ),
+    )
+    binding = AgentBinding(
+        binding_id='binding-1',
+        scope=BindingScope(scope_type='bot', scope_id='bot_001'),
+        event_types=[event_type],
+        runner_id=RUNNER_ID,
+        resource_policy=ResourcePolicy(),
+        state_policy=StatePolicy(),
+        delivery_policy=DeliveryPolicy(enable_streaming=event_type == 'message.received', enable_reply=True),
+        processor_type='agent',
+        processor_id='agent-1',
+    )
+
+    results = [
+        item
+        async for item in orchestrator.run(
+            event,
+            binding,
+            adapter_context={
+                '_delivery_adapter': adapter,
+                '_platform_event': incoming if event_type == 'message.received' else None,
+                '_execution_context': TEST_CONTEXT,
+            },
+        )
+    ]
+
+    assert [item.content for item in results] == (
+        [first_content, final_content] if completed_message else [first_content]
+    )
+    if event_type == 'message.received':
+        adapter.create_message_card.assert_awaited_once()
+        chunks = adapter.reply_message_chunk.await_args_list
+        assert [call.kwargs['bot_message'].all_content for call in chunks] == (
+            ['hello', 'hello world'] if completed_message else ['hello', 'hello']
+        )
+        assert [call.kwargs['is_final'] for call in chunks] == [False, True]
+        adapter.reply_message.assert_not_awaited()
+        adapter.send_message.assert_not_awaited()
+    else:
+        adapter.create_message_card.assert_not_awaited()
+        adapter.reply_message_chunk.assert_not_awaited()
+        adapter.reply_message.assert_not_awaited()
+        adapter.send_message.assert_awaited_once()
+        assert adapter.send_message.await_args.args[2][0].text == ('hello world' if completed_message else 'hello')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('tool_name', ['present_interactive_card', 'event_reply'])
+async def test_direct_agent_delivers_text_after_card_without_repeating_explicit_reply(clean_agent_state, tool_name):
+    from langbot.pkg.agent.runner.host_models import (
+        AgentBinding,
+        AgentEventEnvelope,
+        BindingScope,
+        DeliveryPolicy,
+        ResourcePolicy,
+        StatePolicy,
+    )
+    from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
+    from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+
+    results = []
+    if tool_name == 'present_interactive_card':
+        results.append({'type': 'message.delta', 'data': {'chunk': {'role': 'assistant', 'content': 'Before'}}})
+    else:
+        results.extend(
+            [
+                {
+                    'type': 'message.delta',
+                    'data': {'chunk': {'role': 'assistant', 'content': '<thi'}},
+                },
+                {
+                    'type': 'message.delta',
+                    'data': {'chunk': {'role': 'assistant', 'content': '<think>Checking available tools'}},
+                },
+                {
+                    'type': 'tool.call.completed',
+                    'data': {'tool_call_id': 'skill-1', 'tool_name': 'list_skills', 'result': {'skills': []}},
+                },
+                {
+                    'type': 'message.delta',
+                    'data': {'chunk': {'role': 'assistant', 'content': '<think>Checking available tools</think>'}},
+                },
+            ]
+        )
+    results.extend(
+        [
+            {
+                'type': 'tool.call.started',
+                'data': {'tool_call_id': 'call-1', 'tool_name': tool_name, 'parameters': {'text': 'After'}},
+            },
+            {
+                'type': 'tool.call.completed',
+                'data': {'tool_call_id': 'call-1', 'tool_name': tool_name, 'result': {'ok': True}, 'error': None},
+            },
+        ]
+    )
+    if tool_name == 'present_interactive_card':
+        results.append({'type': 'message.delta', 'data': {'chunk': {'role': 'assistant', 'content': 'BeforeAfter'}}})
+    else:
+        results.append(
+            {
+                'type': 'message.delta',
+                'data': {'chunk': {'role': 'assistant', 'content': '<think>Checking available tools</think>After'}},
+            }
+        )
+    results.extend(
+        [
+            {'type': 'message.completed', 'data': {'message': {'role': 'assistant', 'content': 'After'}}},
+            {'type': 'run.completed', 'data': {'finish_reason': 'stop'}},
+        ]
+    )
+    connector = FakePluginConnector(results=results)
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
+    adapter = types.SimpleNamespace(
+        is_stream_output_supported=AsyncMock(return_value=True),
+        create_message_card=AsyncMock(return_value=True),
+        reply_message_chunk=AsyncMock(),
+        reply_message=AsyncMock(),
+        send_message=AsyncMock(),
+    )
+    incoming = platform_events.MessageReceivedEvent(
+        message_id='message-1',
+        sender=platform_entities.User(id='user-1'),
+        chat_type=platform_entities.ChatType.PRIVATE,
+        chat_id='user-1',
+        message_chain=platform_message.MessageChain([platform_message.Plain(text='hi')]),
+        source_platform_object=object(),
+    )
+    event = AgentEventEnvelope(
+        event_id='event-1',
+        event_type='message.received',
+        source='platform',
+        bot_id='bot_001',
+        workspace_id=TEST_CONTEXT.workspace_uuid,
+        conversation_id='person_user-1',
+        input=AgentInput(text='hi'),
+        delivery=DeliveryContext(
+            surface='platform',
+            reply_target={'target_type': 'person', 'target_id': 'user-1', 'message_id': 'message-1'},
+            supports_streaming=True,
+        ),
+    )
+    binding = AgentBinding(
+        binding_id='binding-1',
+        scope=BindingScope(scope_type='bot', scope_id='bot_001'),
+        event_types=['message.received'],
+        runner_id=RUNNER_ID,
+        resource_policy=ResourcePolicy(),
+        state_policy=StatePolicy(),
+        delivery_policy=DeliveryPolicy(enable_streaming=True, enable_reply=True),
+        processor_type='agent',
+        processor_id='agent-1',
+    )
+
+    _ = [
+        item
+        async for item in orchestrator.run(
+            event,
+            binding,
+            adapter_context={
+                '_delivery_adapter': adapter,
+                '_platform_event': incoming,
+                '_execution_context': TEST_CONTEXT,
+            },
+        )
+    ]
+
+    if tool_name == 'present_interactive_card':
+        assert adapter.create_message_card.await_count == 2
+        chunks = adapter.reply_message_chunk.await_args_list
+        assert [call.kwargs['bot_message'].all_content for call in chunks] == [
+            'Before',
+            'Before',
+            'After',
+            'After',
+        ]
+        assert [call.kwargs['is_final'] for call in chunks] == [False, True, False, True]
+        assert chunks[0].kwargs['bot_message'].resp_message_id != chunks[2].kwargs['bot_message'].resp_message_id
+    else:
+        adapter.create_message_card.assert_not_awaited()
+        adapter.reply_message_chunk.assert_not_awaited()
+
+
+class TestQueryEntryAdapterParams:
+    """Tests for params handling in Query entry adapter."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('automatic_kbs', [['kb_001'], []], ids=['documents-only', 'disabled'])
+    async def test_preprocessed_auto_retrieval_keeps_explicit_resource_grants(self, clean_agent_state, automatic_kbs):
+        connector = FakePluginConnector(results=[{'type': 'run.completed', 'data': {'finish_reason': 'stop'}}])
+        ap = FakeApplication(connector, clean_agent_state)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(make_descriptor()))
+        query = make_query()
+        stored_config = query.pipeline_config['ai']['runner_config'][RUNNER_ID]
+        stored_config['knowledge-bases'] = ['kb_001', 'memory-kb']
+        query.variables['_knowledge_base_uuids'] = automatic_kbs
+
+        _ = [message async for message in orchestrator.run_from_query(query)]
+
+        context = connector.contexts[0]
+        assert context['config']['knowledge-bases'] == automatic_kbs
+        assert [kb['kb_id'] for kb in context['resources']['knowledge_bases']] == ['kb_001', 'memory-kb']
+        assert stored_config['knowledge-bases'] == ['kb_001', 'memory-kb']
+        authorization = connector.sessions_during_run[0]['authorization']
+        assert authorization['resources']['knowledge_bases'] == context['resources']['knowledge_bases']
+
+    @pytest.mark.asyncio
+    async def test_prompt_not_pushed_into_adapter_extra(self, clean_agent_state):
+        """Pipeline prompt is not pushed into adapter.extra; runners pull it through prompt_get."""
+        from langbot_plugin.api.entities.builtin.provider import prompt as provider_prompt
+
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    'type': 'message.completed',
+                    'data': {'message': {'role': 'assistant', 'content': 'response'}},
+                }
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+
+        # Add prompt to query
+        query.prompt = provider_prompt.Prompt(
+            name='test_prompt',
+            messages=[
+                provider_message.Message(role='system', content='You are a helpful assistant.'),
+            ],
+        )
+
+        _messages = [message async for message in orchestrator.run_from_query(query)]
+
+        context = plugin_connector.contexts[0]
+        assert 'prompt' not in context
+        assert 'prompt' not in context['adapter']['extra']
+        assert context['context']['available_apis']['prompt_get'] is True
+
+    @pytest.mark.asyncio
+    async def test_params_filtering_keeps_public_param(self, clean_agent_state):
+        """Public params are kept."""
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    'type': 'message.completed',
+                    'data': {'message': {'role': 'assistant', 'content': 'response'}},
+                }
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+        query.variables = {
+            'public_param': 'visible',
+            'another_param': 123,
+        }
+
+        _messages = [message async for message in orchestrator.run_from_query(query)]
+
+        context = plugin_connector.contexts[0]
+        assert context['adapter']['extra']['params'] == {
+            'public_param': 'visible',
+            'another_param': 123,
+        }
+
+    @pytest.mark.asyncio
+    async def test_params_filtering_removes_internal_vars(self, clean_agent_state):
+        """Internal variables (starting with _) are filtered."""
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    'type': 'message.completed',
+                    'data': {'message': {'role': 'assistant', 'content': 'response'}},
+                }
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+        query.variables = {
+            'public_param': 'visible',
+            '_internal_var': 'should_be_filtered',
+            '_pipeline_bound_plugins': ['plugin1'],
+        }
+
+        _messages = [message async for message in orchestrator.run_from_query(query)]
+
+        context = plugin_connector.contexts[0]
+        params = context['adapter']['extra']['params']
+        assert 'public_param' in params
+        assert '_internal_var' not in params
+        assert '_pipeline_bound_plugins' not in params
+
+    @pytest.mark.asyncio
+    async def test_params_filtering_removes_sensitive_patterns(self, clean_agent_state):
+        """Sensitive naming patterns are filtered."""
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    'type': 'message.completed',
+                    'data': {'message': {'role': 'assistant', 'content': 'response'}},
+                }
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+        query.variables = {
+            'public_param': 'visible',
+            'api_token': 'secret123',
+            'secret_key': 'secret456',
+            'password': 'secret789',
+            'credential': 'secret000',
+        }
+
+        _messages = [message async for message in orchestrator.run_from_query(query)]
+
+        context = plugin_connector.contexts[0]
+        params = context['adapter']['extra']['params']
+        assert 'public_param' in params
+        assert 'api_token' not in params
+        assert 'secret_key' not in params
+        assert 'password' not in params
+        assert 'credential' not in params
+
+    @pytest.mark.asyncio
+    async def test_params_filtering_removes_non_json_serializable(self, clean_agent_state):
+        """Non-JSON-serializable values are filtered."""
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    'type': 'message.completed',
+                    'data': {'message': {'role': 'assistant', 'content': 'response'}},
+                }
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+        query.variables = {
+            'public_param': 'visible',
+            'a_set': {1, 2, 3},  # set is not JSON-serializable
+            'a_lambda': lambda x: x,  # function is not JSON-serializable
+        }
+
+        _messages = [message async for message in orchestrator.run_from_query(query)]
+
+        context = plugin_connector.contexts[0]
+        params = context['adapter']['extra']['params']
+        assert 'public_param' in params
+        assert 'a_set' not in params
+        assert 'a_lambda' not in params
+
+
+class TestQueryEntryAdapterHostCapabilities:
+    """Tests for event-first host capabilities via Query entry adapter path."""
+
+    @pytest.mark.asyncio
+    async def test_state_updated_writes_to_persistent_store(self, clean_agent_state):
+        """state.updated via Pipeline path writes to PersistentStateStore."""
+        from langbot.pkg.agent.runner.persistent_state_store import get_persistent_state_store
+
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    'type': 'state.updated',
+                    'data': {
+                        'scope': 'conversation',
+                        'key': 'external.test_key',
+                        'value': 'test_value',
+                    },
+                },
+                {
+                    'type': 'message.completed',
+                    'data': {'message': {'role': 'assistant', 'content': 'state saved'}},
+                },
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+        query.user_message = provider_message.Message(
+            role='user',
+            content=[
+                provider_message.ContentElement.from_text('hello'),
+                provider_message.ContentElement.from_image_base64('data:image/png;base64,aGVsbG8='),
+            ],
+        )
+
+        messages = [message async for message in orchestrator.run_from_query(query)]
+
+        assert len(messages) == 1
+        assert messages[0].content == 'state saved'
+
+        # Verify state was written to PersistentStateStore
+        persistent_store = get_persistent_state_store(db_engine)
+        # Build snapshot to check if state was written
+        # Note: We need to rebuild the event and binding to query the store
+        from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
+
+        event = QueryEntryAdapter.query_to_event(query)
+        agent_config = QueryEntryAdapter.config_to_agent_config(query, RUNNER_ID)
+        binding = AgentBindingResolver().resolve_one(event, [agent_config])
+
+        snapshot = await persistent_store.build_snapshot_from_event(event, binding, descriptor)
+        assert snapshot['conversation']['external.test_key'] == 'test_value'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('legacy_state', [False, True])
+    async def test_new_query_does_not_restore_conversation_skill_pins(self, clean_agent_state, legacy_state):
+        """New runs ignore both revision and legacy name-only conversation pins."""
+        from langbot.pkg.agent.runner.persistent_state_store import get_persistent_state_store
+        from langbot.pkg.provider.tools.loaders.skill import (
+            ACTIVATED_SKILL_NAMES_STATE_KEY,
+            ACTIVATED_SKILLS_KEY,
+        )
+
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    'type': 'message.completed',
+                    'data': {'message': {'role': 'assistant', 'content': 'restored'}},
+                }
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        revision = 'sha256:' + '1' * 64
+        ap.skill_repository = types.SimpleNamespace(
+            get_skill=AsyncMock(return_value={'name': 'demo', 'revision': revision})
+        )
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+
+        persistent_store = get_persistent_state_store(db_engine)
+        event = QueryEntryAdapter.query_to_event(query)
+        agent_config = QueryEntryAdapter.config_to_agent_config(query, RUNNER_ID)
+        binding = AgentBindingResolver().resolve_one(event, [agent_config])
+        success, error = await persistent_store.apply_update_from_event(
+            event,
+            binding,
+            descriptor,
+            'conversation',
+            ACTIVATED_SKILL_NAMES_STATE_KEY,
+            ['demo'] if legacy_state else [{'name': 'demo', 'revision': revision}],
+            None,
+        )
+        assert success is True
+        assert error is None
+
+        messages = [message async for message in orchestrator.run_from_query(query)]
+
+        assert len(messages) == 1
+        assert ACTIVATED_SKILLS_KEY not in query.variables
+        ap.skill_repository.get_skill.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_event_log_and_transcript_written(self, clean_agent_state):
+        """EventLog and Transcript are written via Pipeline path."""
+        from langbot.pkg.agent.runner.event_log_store import EventLogStore
+        from langbot.pkg.agent.runner.transcript_store import TranscriptStore
+
+        db_engine = clean_agent_state
+        descriptor = make_descriptor()
+        plugin_connector = FakePluginConnector(
+            results=[
+                {
+                    'type': 'message.completed',
+                    'data': {'message': {'role': 'assistant', 'content': 'assistant response'}},
+                },
+            ]
+        )
+        ap = FakeApplication(plugin_connector, db_engine)
+        mcp_loader = types.SimpleNamespace(
+            task_sandbox_scope=lambda *_, **__: contextlib.nullcontext(),
+            build_resource_context_for_query=AsyncMock(return_value='Pinned documentation'),
+        )
+        ap.tool_mgr = types.SimpleNamespace(mcp_tool_loader=mcp_loader)
+        orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+        query = make_query()
+        query.variables['_pipeline_mcp_resource_attachments'] = [
+            {
+                'server_uuid': 'srv-1',
+                'server_name': 'docs',
+                'uri': 'file:///README.md',
+                'mode': 'pinned',
+            }
+        ]
+        query.variables['_pipeline_mcp_resource_agent_read_enabled'] = True
+        query.user_message = provider_message.Message(
+            role='user',
+            content=[
+                provider_message.ContentElement.from_text('hello'),
+                provider_message.ContentElement.from_image_base64('data:image/png;base64,aGVsbG8='),
+            ],
+        )
+
+        messages = [message async for message in orchestrator.run_from_query(query)]
+
+        assert len(messages) == 1
+        assert 'Pinned documentation' in plugin_connector.contexts[0]['input']['text']
+
+        # Check EventLog has incoming event
+        event_log_store = EventLogStore(db_engine)
+        event_logs, _, _ = await event_log_store.page_events(
+            conversation_id=query.session.using_conversation.uuid,
+            limit=10,
+        )
+        assert len(event_logs) >= 1
+        # First event should be the incoming message.received
+        assert event_logs[0]['event_type'] == 'message.received'
+        assert event_logs[0]['input_json']['contents'][1]['type'] == 'text'
+        assert event_logs[0]['input_json']['contents'][1]['text'] == '[attachment att-2: image]'
+        assert 'aGVsbG8=' not in str(event_logs[0]['input_json'])
+        assert 'Pinned documentation' not in str(event_logs[0]['input_json'])
+
+        # Check Transcript has user and assistant messages
+        transcript_store = TranscriptStore(db_engine)
+        transcripts, _, _, _ = await transcript_store.page_transcript(
+            conversation_id=query.session.using_conversation.uuid,
+            limit=10,
+            include_attachments=True,
+        )
+        assert len(transcripts) >= 2
+        # Find user and assistant messages
+        roles = [t['role'] for t in transcripts]
+        assert 'user' in roles
+        assert 'assistant' in roles
+        user_item = next(t for t in transcripts if t['role'] == 'user')
+        assert user_item['content_json']['content'][1]['type'] == 'text'
+        assert user_item['content_json']['content'][1]['text'] == '[attachment att-2: image]'
+        assert user_item['attachment_refs'][0]['content'] is None
+        assert 'aGVsbG8=' not in str(user_item)
+        assert 'Pinned documentation' not in str(user_item)
+
+
+@pytest.mark.asyncio
+async def test_synthetic_event_query_exposes_trusted_workspace_to_tools(clean_agent_state):
+    from langbot.pkg.provider.tools.loaders.skill import get_visible_skills
+    from langbot.pkg.pipeline.pool import get_query_execution_context
+
+    plugin = FakePluginConnector(results=[{'type': 'run.completed', 'data': {'finish_reason': 'stop'}}])
+    app = FakeApplication(plugin, clean_agent_state)
+    orchestrator = AgentRunOrchestrator(app, FakeRegistry(make_descriptor()))
+    query = make_query()
+    plan = orchestrator.query_bridge.build_plan(query)
+    context = get_query_execution_context(query)
+    outputs = [
+        item
+        async for item in orchestrator.run(plan.event, plan.binding, adapter_context={'_execution_context': context})
+    ]
+    assert outputs == []
+    synthetic = plugin.sessions_during_run[0]['execution_query']
+    assert synthetic.workspace_uuid == context.workspace_uuid
+    assert synthetic.instance_uuid == context.instance_uuid
+    assert synthetic.placement_generation == context.placement_generation
+    assert synthetic.query_uuid
+    assert synthetic._execution_context.query_uuid == synthetic.query_uuid
+    received = []
+    app.skill_mgr.get_skills = lambda scope: received.append(scope) or {}
+    get_visible_skills(app, synthetic)
+    assert received[0].workspace_uuid == context.workspace_uuid
+
+
+@pytest.mark.asyncio
+async def test_agent_cannot_deliver_exported_files_without_reply_api(clean_agent_state):
+    """Returning file handles must not bypass the Agent's reply authorization."""
+    connector = FakePluginConnector(
+        results=[
+            {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': 'file'}, 'file_ids': ['exported-file']},
+            }
+        ]
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
+    query = make_query()
+    plan = orchestrator.query_bridge.build_plan(query)
+    plan.binding.processor_type = 'agent'
+    with pytest.raises(ValueError, match='sent explicitly'):
+        [
+            m
+            async for m in orchestrator.run(
+                plan.event, plan.binding, adapter_context={'_execution_context': TEST_CONTEXT, '_query': query}
+            )
+        ]
+    assert await get_session_registry().list_active_runs() == []
+
+
+class SelfFinalizingPluginConnector(FakePluginConnector):
+    """A Runner that finalizes its own run through the ledger mid-stream."""
+
+    def __init__(self, db_engine, ledger_status: str, results=None, error: Exception | None = None):
+        super().__init__(results=results)
+        self.db_engine = db_engine
+        self.ledger_status = ledger_status
+        self.after_finalize_error = error
+
+    async def run_runner(self, plugin_author, plugin_name, runner_name, context):
+        self.contexts.append(context)
+        await RunLedgerStore(self.db_engine).finalize_run(
+            run_id=context['run_id'], status=self.ledger_status, status_reason='runner_finalized'
+        )
+        for result in self.results:
+            yield result
+        if self.after_finalize_error is not None:
+            raise self.after_finalize_error
+
+
+@pytest.mark.asyncio
+async def test_stream_end_after_runner_finalized_run_keeps_its_terminal_status(clean_agent_state):
+    """Closing the stream of an already-terminal run must not raise a second failure."""
+    db_engine = clean_agent_state
+    plugin_connector = SelfFinalizingPluginConnector(
+        db_engine,
+        'failed',
+        results=[{'type': 'message.completed', 'data': {'message': {'role': 'assistant', 'content': 'partial'}}}],
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(make_descriptor()))
+
+    # Previously: ValueError: Cannot transition terminal run ... from failed to completed
+    messages = [message async for message in orchestrator.run_from_query(make_query())]
+
+    assert len(messages) == 1
+    run = await RunLedgerStore(db_engine).get_run(plugin_connector.contexts[0]['run_id'])
+    assert run['status'] == 'failed'
+    assert run['status_reason'] == 'runner_finalized'
+
+
+@pytest.mark.asyncio
+async def test_runner_error_after_runner_finalized_run_surfaces_the_real_error(clean_agent_state):
+    """The Runner's own error propagates instead of a terminal-transition ValueError."""
+    db_engine = clean_agent_state
+    plugin_connector = SelfFinalizingPluginConnector(db_engine, 'completed', error=RuntimeError('upstream broke'))
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(make_descriptor()))
+
+    with pytest.raises(RunnerExecutionError, match='upstream broke'):
+        [message async for message in orchestrator.run_from_query(make_query())]
+
+    run = await RunLedgerStore(db_engine).get_run(plugin_connector.contexts[0]['run_id'])
+    assert run['status'] == 'completed'
+
+
+@pytest.mark.asyncio
+async def test_event_without_query_identity_gets_a_task_scoped_identity(clean_agent_state, monkeypatch):
+    from dataclasses import replace
+
+    app = FakeApplication(FakePluginConnector(), clean_agent_state)
+    orchestrator = AgentRunOrchestrator(app, FakeRegistry(make_descriptor()))
+    plan = orchestrator.query_bridge.build_plan(make_query())
+    context = replace(TEST_CONTEXT, query_uuid=None)
+    contexts = []
+
+    async def capture(event, binding, bound_plugins, adapter_context):
+        contexts.append(adapter_context['_execution_context'])
+        if False:
+            yield None
+
+    monkeypatch.setattr(orchestrator, '_run', capture)
+    for _ in range(2):
+        assert [
+            item
+            async for item in orchestrator.run(
+                plan.event, plan.binding, adapter_context={'_execution_context': context}
+            )
+        ] == []
+    assert all(item.query_uuid for item in contexts)
+    assert contexts[0].query_uuid != contexts[1].query_uuid
+    assert context.query_uuid is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('runner_failure', [False, True])
+async def test_repeated_cancel_during_box_cleanup_expires_outputs_and_unregisters(clean_agent_state, runner_failure):
+    from langbot.pkg.box.runner import RunBoxBinding
+
+    query = make_query()
+    cleanup_entered = asyncio.Event()
+    cleanup_release = asyncio.Event()
+    expired = []
+
+    class OutputConnector(FakePluginConnector):
+        async def run_runner(self, **kwargs):
+            self.contexts.append(kwargs['context'])
+            run_id = kwargs['context']['run_id']
+            object.__setattr__(query, '_box_binding', RunBoxBinding(run_id, 'cleanup-box', {}, run_id))
+            if runner_failure:
+                raise RuntimeError('original runner failure')
+            yield {
+                'type': 'run.completed',
+                'data': {'finish_reason': 'stop', 'message': {'role': 'assistant', 'content': 'done'}},
+            }
+
+    connector = OutputConnector()
+    application = FakeApplication(connector, clean_agent_state)
+
+    async def delayed_cleanup(execution_query):
+        assert execution_query is query
+        cleanup_entered.set()
+        await cleanup_release.wait()
+
+    async def expire_outputs(context):
+        expired.append(context.trigger_principal.run_id)
+        return 0
+
+    application.box_service.cleanup_run_files = delayed_cleanup
+    application.artifact_service = types.SimpleNamespace(expire_run_outputs=expire_outputs)
+    orchestrator = AgentRunOrchestrator(application, FakeRegistry(make_descriptor()))
+
+    async def consume():
+        return [result async for result in orchestrator.run_from_query(query)]
+
+    task = asyncio.create_task(consume())
+    try:
+        await asyncio.wait_for(cleanup_entered.wait(), timeout=2)
+        task.cancel('first cancellation during Box cleanup')
+        await asyncio.sleep(0)
+        task.cancel('second cancellation during Box cleanup')
+        await asyncio.sleep(0)
+        assert not task.done()
+        cleanup_release.set()
+        if runner_failure:
+            with pytest.raises(RunnerExecutionError, match='original runner failure'):
+                await asyncio.wait_for(task, timeout=2)
+        else:
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(task, timeout=2)
+    finally:
+        cleanup_release.set()
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+    run_id = connector.contexts[0]['run_id']
+    assert expired == [run_id]
+    assert not hasattr(query, '_box_binding')
+    assert await get_session_registry().get(run_id) is None

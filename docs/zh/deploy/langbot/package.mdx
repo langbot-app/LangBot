@@ -1,0 +1,62 @@
+---
+title: "使用包管理器部署"
+description: "使用包管理器（uv/uvx）部署 LangBot，快速安装开源大模型聊天机器人平台。"
+---
+
+<Warning>
+日常部署请使用[一行命令安装](/zh/deploy/langbot/one-line)：自动准备环境、开机自启、一键升级。本页的 uvx 方式仅适合开发调试或临时体验。
+</Warning>
+
+LangBot 已打包发布至 PyPI。请安装[uv](https://docs.astral.sh/uv/getting-started/installation/)，然后在空目录下运行以下命令：
+
+```bash
+uvx langbot@latest
+```
+
+这将把该目录作为工作目录，访问 `http://localhost:5300` 即可开始使用。
+
+## Beta 版本（可选）
+
+如需试用 Beta 3，改用以下命令。`--prerelease=allow` 同时允许依赖包的预发布版本，`--refresh` 刷新缓存的包数据。
+
+```bash
+uvx --prerelease=allow --refresh langbot==4.11.0b3
+```
+
+## 可选的 SeekDB 支持
+
+默认安装使用 Chroma，不包含 SeekDB 的 Python SDK 和原生组件。只有在需要将
+SeekDB 用作向量数据库或使用其内置嵌入模型时，才用 `seekdb` extra 启动：
+
+```bash
+uvx --from 'langbot[seekdb]@latest' langbot
+```
+
+SeekDB 嵌入式模式还要求当前平台存在兼容的 `pylibseekdb` wheel。Apple Silicon
+目前要求 macOS 15 或更高版本；macOS 14 ARM64 的支持计划见
+[oceanbase/seekdb#1324](https://github.com/oceanbase/seekdb/issues/1324)。受当前
+`pyseekdb` 包元数据影响，macOS 14 ARM64 即使只连接远程 SeekDB，也无法解析该
+extra。不使用 SeekDB 时，这些平台限制不影响 LangBot。
+
+## 可选的 Milvus / Valkey Search 支持
+
+Milvus 与 Valkey Search 向量数据库同样是可选依赖，默认安装不包含。使用前分别带上对应的 extra 启动（可与其他 extra 组合，如 `langbot[milvus,audio]`）：
+
+```bash
+uvx --from 'langbot[milvus]@latest' langbot
+uvx --from 'langbot[valkey]@latest' langbot
+```
+
+`valkey` extra 依赖的 `valkey-glide` 没有 Windows 版本，Windows 上无法使用 Valkey Search。
+
+## 可选的语音转码支持（SILK / 微信原生语音）
+
+如果需要在微信等平台发送原生语音条（SILK 格式）或进行音频格式转换，需要系统已安装 `ffmpeg`，并使用 `audio` extra 启动：
+
+```bash
+uvx --from 'langbot[audio]@latest' langbot
+# 或同时启用 seekdb 与 audio
+uvx --from 'langbot[seekdb,audio]@latest' langbot
+```
+
+若当前环境未安装 `ffmpeg` 或 `pilk`，LangBot 会自动**优雅降级**，将语音作为音频文件发送，保证用户端仍可正常接收播放。

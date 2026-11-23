@@ -1,0 +1,123 @@
+---
+name: langbot-space-ops
+description: Browse and search the LangBot Space marketplaces (plugins, MCP servers, skills) through the Space MCP server. Use when an AI agent needs to discover LangBot extensions on space.langbot.app over MCP. Covers the /mcp endpoint, Personal Access Token (PAT) auth, the tool surface, and client configuration. Triggers on "langbot space mcp", "search langbot plugins", "langbot marketplace mcp", "space.langbot.app mcp".
+---
+
+# LangBot Space MCP Operations
+
+LangBot Space (space.langbot.app) exposes an **MCP server** so user-facing AI
+agents can browse and search the marketplaces (plugins, MCP servers, skills) and
+rank live models for automated setup.
+
+## Endpoint
+
+```
+https://space.langbot.app/mcp
+```
+
+Transport: **streamable HTTP** (stateless, JSON responses). For a self-hosted
+Space instance: `http://<host>:8383/mcp`.
+
+## Authentication
+
+Reuses the existing **Personal Access Token (PAT)** — the same token the `lbp`
+CLI uses. Create one in your Space account (Profile → Personal Access Tokens),
+then send it as a Bearer token:
+
+```
+Authorization: Bearer <your-pat>
+```
+
+Requests without a valid PAT get `401 Unauthorized`.
+
+## Client configuration
+
+```json
+{
+  "mcpServers": {
+    "langbot-space": {
+      "url": "https://space.langbot.app/mcp",
+      "headers": { "Authorization": "Bearer <your-pat>" }
+    }
+  }
+}
+```
+
+## Tool surface
+
+| Tool | Purpose |
+| --- | --- |
+| `list_plugins` / `search_plugins` / `get_plugin` | Plugin marketplace |
+| `list_mcp_servers` / `search_mcp_servers` / `get_mcp_server` | MCP-server marketplace |
+| `list_skills` / `search_skills` / `get_skill` | Skill marketplace |
+| `select_models` | Live best-first model list for setup wizards; optional `category` filter |
+
+`list_*` and `search_*` are paged (`page`, `page_size`). `get_*` takes
+`author` + `name`. The tool surface mirrors the REST endpoints under
+`/api/v1/marketplace/*`; `select_models` mirrors `/api/v1/models/selection`.
+All tools are read-only.
+
+`select_models.category` accepts `chat`, `embedding`, `rerank`, `tts`, or `asr`.
+TTS entries include `model.default_voice`; pass it as `extra_args.voice` when
+creating a TTS model. Some providers require a model-qualified voice name.
+
+## How to use
+
+1. Create a PAT in your Space account settings.
+2. Point your MCP client at `https://space.langbot.app/mcp` with the Bearer PAT.
+3. Use `search_plugins` / `search_mcp_servers` / `search_skills` to find items,
+   then `get_*` for details (e.g. to obtain author/name for installation in
+   LangBot itself).
+4. For automatic local-agent setup, call `select_models` (optionally with
+   `category`) and choose the first compatible item. Ordering is latest probe
+   state (available, unprobed, unavailable), then Space recommendation. Each
+   item includes `availability.up`, `last_probed_at`, latency, and HTTP status.
+
+## Runner usage recommendations
+
+Use `search_plugins` with `runner_usage: "agent"` for Agent, pipeline, and
+setup-wizard recommendations, or `runner_usage: "event"` for event processors.
+The component kind remains `Runner`. Only these two exact values are accepted;
+omit the optional field to preserve unfiltered browsing.
+
+```json
+{"query":"", "runner_usage":"agent", "page":1, "page_size":100}
+```
+
+Plugin results include `latest_version` and `runner_usages: string[]`, the
+explicit union of usages in that latest installable version. Only recommend a
+plugin when this array explicitly contains the target usage. Missing, empty,
+malformed, or unknown usages must never mean agent-compatible. Event-only
+plugins must never enter Agent recommendations. Empty filtered results are
+valid while legacy packages await corrected releases; never remove the filter
+to fill a recommendation list.
+
+REST callers use `runner_usage` on both
+`POST /api/v1/marketplace/extensions/search` and the compatibility
+`POST /api/v1/marketplace/plugins/search`; preserve it during fallback. Add
+`"type_filter":"plugin", "component_filter":"Runner"` on the unified endpoint.
+Usage is ANDed with other filters before pagination and `total`; MCP/Skill items
+do not match. Invalid REST values return HTTP 400.
+
+Open the same filter in the webpage:
+`https://space.langbot.app/market?type=plugin&component=Runner&runner_usage=agent`
+(or `runner_usage=event`). Switch All / Agent / Event in the Runner usage row.
+
+## Implementation & maintenance (for Space developers)
+
+- Server: `internal/controller/mcp/server.go` (official Go MCP SDK
+  `github.com/modelcontextprotocol/go-sdk`). Tools call the service layer
+  (`PluginService`, `MCPService`, `SkillService`, `ModelStatusService`) directly.
+- Mount: `internal/controller/api.go` at `/mcp` and `/mcp/*any`.
+- Auth: PAT via `AccountService.ValidatePersonalAccessToken`.
+- Docs: `docs/MCP_SERVER.md`.
+
+> When you add, remove, or change a marketplace API endpoint that should be
+> agent-accessible, update the corresponding MCP tool **and** this skill. The
+> MCP tool surface and the API must stay aligned (see `AGENTS.md`).
+
+## Pitfalls
+
+- The PAT prefix is `lbpat_` (Space), distinct from LangBot's `lbk_` API keys.
+- This server is read/browse only; it does not publish or modify marketplace
+  items. Use the web UI or REST API (with appropriate auth) for that.

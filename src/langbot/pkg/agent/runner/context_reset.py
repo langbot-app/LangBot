@@ -1,0 +1,74 @@
+"""Scoped context reset markers, independent of retained monitoring history."""
+
+import hashlib
+import json
+import datetime
+import uuid
+
+import sqlalchemy as sa
+
+from ...entity.persistence.runner_state import RunnerState
+
+HOST_RESET_RUNNER = '__langbot_context_reset__'
+
+
+def reset_scope(workspace, bot, conversation):
+    return 'host-reset:' + hashlib.sha256(json.dumps([workspace, bot, conversation]).encode()).hexdigest()
+
+
+async def reset_runner_context(persistence, workspace, bot, conversation):
+    """Reset scoped Runner state and history visibility within the caller's transaction."""
+    await persistence.execute_async(
+        sa.delete(RunnerState).where(
+            RunnerState.workspace_id == workspace,
+            RunnerState.bot_id == bot,
+            RunnerState.conversation_id == conversation,
+            RunnerState.scope == 'conversation',
+        )
+    )
+    await persistence.execute_async(
+        sa.insert(RunnerState).values(
+            runner_id=HOST_RESET_RUNNER,
+            binding_identity=HOST_RESET_RUNNER,
+            scope='conversation',
+            scope_key=reset_scope(workspace, bot, conversation),
+            state_key='generation',
+            value_json=json.dumps(str(uuid.uuid4())),
+            workspace_id=workspace,
+            bot_id=bot,
+            conversation_id=conversation,
+            created_at=datetime.datetime.utcnow(),
+        )
+    )
+
+
+async def get_reset_generation(engine, workspace, bot, conversation):
+    if not all((workspace, bot, conversation)):
+        return None
+    async with engine.connect() as connection:
+        value = (
+            await connection.execute(
+                sa.select(RunnerState.value_json).where(
+                    RunnerState.scope_key == reset_scope(workspace, bot, conversation),
+                    RunnerState.state_key == 'generation',
+                    RunnerState.runner_id == HOST_RESET_RUNNER,
+                )
+            )
+        ).scalar_one_or_none()
+    return json.loads(value) if value else None
+
+
+def active_history_condition(transcript):
+    cutoff = (
+        sa.select(sa.func.max(RunnerState.created_at))
+        .where(
+            RunnerState.runner_id == HOST_RESET_RUNNER,
+            RunnerState.state_key == 'generation',
+            RunnerState.workspace_id == transcript.workspace_id,
+            RunnerState.bot_id == transcript.bot_id,
+            RunnerState.conversation_id == transcript.conversation_id,
+        )
+        .correlate(transcript)
+        .scalar_subquery()
+    )
+    return sa.or_(cutoff.is_(None), transcript.created_at > cutoff)

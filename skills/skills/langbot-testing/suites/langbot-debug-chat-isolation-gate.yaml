@@ -1,0 +1,13 @@
+id: langbot-debug-chat-isolation-gate
+title: "LangBot Debug Chat isolation gate"
+description: "Manual/non-required cross-pipeline Debug Chat isolation gate. Current releases may fail this gate because of product bug #2286; use it as regression evidence after the routing fix lands."
+type: reliability
+priority: p1
+tags:
+  - reliability
+  - debug-chat
+  - websocket
+  - isolation
+  - concurrency
+cases:
+  - langbot-fake-provider-debug-chat-cross-pipeline-isolation

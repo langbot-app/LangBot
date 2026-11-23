@@ -1,0 +1,1236 @@
+"""Tests for MCP Box integration: path rewriting, host_path inference, config model, payloads.
+
+Uses importlib.util.spec_from_file_location to load mcp.py directly without
+triggering the circular import chain through the app module.
+"""
+
+from __future__ import annotations
+
+import importlib
+import importlib.util
+import os
+import sys
+import tempfile
+import types
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
+
+import pytest
+
+
+# ---------------------------------------------------------------------------
+# Load mcp.py directly from file path, with stub dependencies
+# ---------------------------------------------------------------------------
+
+
+def _stub_module(fqn: str, attrs: dict | None = None, is_package: bool = False):
+    """Create or return a stub module and register it in sys.modules."""
+    if fqn in sys.modules:
+        mod = sys.modules[fqn]
+    else:
+        mod = types.ModuleType(fqn)
+        mod.__spec__ = importlib.machinery.ModuleSpec(fqn, None, is_package=is_package)
+        if is_package:
+            mod.__path__ = []
+        sys.modules[fqn] = mod
+    parts = fqn.rsplit('.', 1)
+    if len(parts) == 2 and parts[0] in sys.modules:
+        setattr(sys.modules[parts[0]], parts[1], mod)
+    if attrs:
+        for k, v in attrs.items():
+            setattr(mod, k, v)
+    return mod
+
+
+@pytest.fixture(scope='module', autouse=True)
+def mcp_module():
+    """Load mcp.py with minimal stubs to avoid circular imports."""
+    saved = {}
+
+    def _save_and_stub(name, attrs=None, is_package=False):
+        saved[name] = sys.modules.get(name)
+        # Don't overwrite modules that already exist (from other test modules)
+        if name in sys.modules:
+            return
+        _stub_module(name, attrs, is_package)
+
+    # Stub entire dependency chains as packages / modules
+    _save_and_stub('langbot_plugin', is_package=True)
+    _save_and_stub('langbot_plugin.api', is_package=True)
+    _save_and_stub('langbot_plugin.api.entities', is_package=True)
+    _save_and_stub('langbot_plugin.api.entities.events', is_package=True)
+    _save_and_stub('langbot_plugin.api.entities.events.pipeline_query', {})
+    _save_and_stub('langbot_plugin.api.entities.builtin', is_package=True)
+    _save_and_stub('langbot_plugin.api.entities.builtin.resource', is_package=True)
+    _save_and_stub(
+        'langbot_plugin.api.entities.builtin.resource.tool',
+        {
+            'LLMTool': type('LLMTool', (), {}),
+        },
+    )
+    _save_and_stub('langbot_plugin.api.entities.builtin.provider', is_package=True)
+    _save_and_stub('langbot_plugin.api.entities.builtin.provider.message', {})
+    _save_and_stub('sqlalchemy', {'select': Mock()})
+    _save_and_stub('httpx', {'AsyncClient': Mock()})
+    _save_and_stub('mcp', {'ClientSession': Mock, 'StdioServerParameters': Mock}, is_package=True)
+    _save_and_stub('mcp.client', is_package=True)
+    _save_and_stub('mcp.client.stdio', {'stdio_client': Mock()})
+    _save_and_stub('mcp.client.sse', {'sse_client': Mock()})
+    _save_and_stub('mcp.client.streamable_http', {'streamable_http_client': Mock()})
+    _save_and_stub('mcp.client.websocket', {'websocket_client': Mock()})
+
+    # Stub the provider.tools.loader (source of circular import)
+    _save_and_stub('langbot', is_package=True)
+    _save_and_stub('langbot.pkg', is_package=True)
+    _save_and_stub('langbot.pkg.provider', is_package=True)
+    _save_and_stub('langbot.pkg.provider.tools', is_package=True)
+    _save_and_stub(
+        'langbot.pkg.provider.tools.loader',
+        {
+            'ToolLoader': type('ToolLoader', (), {'__init__': lambda self, ap: None}),
+        },
+    )
+    _save_and_stub('langbot.pkg.provider.tools.loaders', is_package=True)
+    _save_and_stub('langbot.pkg.core', is_package=True)
+    _save_and_stub('langbot.pkg.core.app', {'Application': type('Application', (), {})})
+    _save_and_stub('langbot.pkg.entity', is_package=True)
+    _save_and_stub('langbot.pkg.entity.persistence', is_package=True)
+    _save_and_stub('langbot.pkg.entity.persistence.mcp', {})
+
+    # box models
+    import enum as _enum
+
+    class _BPS(str, _enum.Enum):
+        RUNNING = 'running'
+        EXITED = 'exited'
+
+    _save_and_stub('langbot_plugin.box', is_package=True)
+    _save_and_stub('langbot_plugin.box.models', {'BoxManagedProcessStatus': _BPS})
+
+    # Now load mcp.py via spec_from_file_location
+    mod_fqn = 'langbot.pkg.provider.tools.loaders.mcp'
+    sys.modules.pop(mod_fqn, None)
+    mcp_path = os.path.join(
+        os.path.dirname(__file__),
+        '..',
+        '..',
+        '..',
+        'src',
+        'langbot',
+        'pkg',
+        'provider',
+        'tools',
+        'loaders',
+        'mcp.py',
+    )
+    mcp_path = os.path.normpath(mcp_path)
+    pkg_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(mcp_path))))
+    sys.modules['langbot.pkg'].__path__ = [pkg_root]
+    sys.modules['langbot.pkg.provider.tools.loaders'].__path__ = [os.path.dirname(mcp_path)]
+    spec = importlib.util.spec_from_file_location(mod_fqn, mcp_path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[mod_fqn] = mod
+    spec.loader.exec_module(mod)
+
+    yield mod
+
+    # Cleanup
+    sys.modules.pop(mod_fqn, None)
+    sys.modules.pop('langbot.pkg.provider.tools.loaders.mcp_stdio', None)
+    sys.modules.pop('langbot.pkg.box.workspace', None)
+    for name in reversed(list(saved)):
+        if saved[name] is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = saved[name]
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_ap():
+    ap = Mock()
+    ap.logger = Mock()
+    ap.instance_config = SimpleNamespace(data={'mcp': {'stdio': {'enabled': True}}})
+    ap.workspace_service = Mock()
+    ap.workspace_service.get_execution_binding = AsyncMock(
+        return_value=SimpleNamespace(
+            instance_uuid='instance-a',
+            workspace_uuid='workspace-a',
+            placement_generation=1,
+        )
+    )
+    ap.box_service = Mock()
+    ap.box_service.resolve_workspace_backend = AsyncMock(return_value=None)
+    ap.box_service.resolve_workspace_selection = AsyncMock(return_value={'backend': None, 'e2b': {}})
+    ap.box_service.get_managed_process_websocket_connection = AsyncMock(return_value=('ws://box.example/process', {}))
+    return ap
+
+
+def _make_session(mcp_module, server_config: dict, ap=None):
+    if ap is None:
+        ap = _make_ap()
+    return mcp_module.RuntimeMCPSession(
+        server_name=server_config.get('name', 'test-server'),
+        server_config=server_config,
+        enable=True,
+        ap=ap,
+        execution_context=mcp_module.ExecutionContext(
+            instance_uuid='instance-a',
+            workspace_uuid='workspace-a',
+            placement_generation=1,
+        ),
+    )
+
+
+# ── MCPServerBoxConfig ──────────────────────────────────────────────
+
+
+class TestMCPServerBoxConfig:
+    def test_default_values(self, mcp_module):
+        cfg = mcp_module.MCPServerBoxConfig.model_validate({})
+        assert cfg.image is None
+        assert cfg.network == 'on'
+        assert cfg.host_path is None
+        assert cfg.host_path_mode == 'ro'
+        assert cfg.env == {}
+        assert cfg.startup_timeout_sec == 300
+        assert cfg.cpus is None
+        assert cfg.memory_mb is None
+        assert cfg.pids_limit is None
+        assert cfg.read_only_rootfs is None
+
+    def test_custom_values(self, mcp_module):
+        cfg = mcp_module.MCPServerBoxConfig.model_validate(
+            {
+                'image': 'node:20',
+                'network': 'on',
+                'host_path': '/home/user/mcp',
+                'host_path_mode': 'rw',
+                'env': {'FOO': 'bar'},
+                'startup_timeout_sec': 60,
+                'cpus': 2.0,
+                'memory_mb': 1024,
+                'pids_limit': 256,
+                'read_only_rootfs': False,
+            }
+        )
+        assert cfg.image == 'node:20'
+        assert cfg.network == 'on'
+        assert cfg.cpus == 2.0
+        assert cfg.memory_mb == 1024
+
+    def test_extra_fields_ignored(self, mcp_module):
+        cfg = mcp_module.MCPServerBoxConfig.model_validate(
+            {
+                'image': 'node:20',
+                'unknown_field': 'whatever',
+            }
+        )
+        assert cfg.image == 'node:20'
+        assert not hasattr(cfg, 'unknown_field')
+
+
+# ── Path Rewriting ──────────────────────────────────────────────────
+
+
+class TestRewritePath:
+    def test_no_host_path_returns_unchanged(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
+        assert s._rewrite_path('/some/path', None) == '/some/path'
+
+    def test_empty_path_returns_empty(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
+        assert s._rewrite_path('', '/home/user/mcp') == ''
+
+    def test_prefix_match_rewrites(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
+        result = s._rewrite_path('/home/user/mcp/server.py', '/home/user/mcp')
+        assert result == '/workspace/server.py'
+
+    def test_exact_match_rewrites_to_workspace(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
+        result = s._rewrite_path('/home/user/mcp', '/home/user/mcp')
+        assert result == '/workspace'
+
+    def test_non_matching_path_unchanged(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
+        result = s._rewrite_path('/opt/other/server.py', '/home/user/mcp')
+        assert result == '/opt/other/server.py'
+
+    def test_similar_prefix_not_rewritten(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
+        result = s._rewrite_path('/home/user/mcp-other/file.py', '/home/user/mcp')
+        assert result == '/home/user/mcp-other/file.py'
+
+    def test_nested_subpath_rewrites(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
+        result = s._rewrite_path('/home/user/mcp/src/lib/main.py', '/home/user/mcp')
+        assert result == '/workspace/src/lib/main.py'
+
+
+# ── host_path Inference ─────────────────────────────────────────────
+
+
+class TestInferHostPath:
+    def test_no_absolute_paths_returns_none(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': ['server.py'],
+            },
+        )
+        assert s._infer_host_path() is None
+
+    def test_nonexistent_path_returns_none(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': '/nonexistent/path/to/python',
+                'args': [],
+            },
+        )
+        assert s._infer_host_path() is None
+
+    def test_existing_absolute_path_infers_directory(self, mcp_module):
+        with tempfile.NamedTemporaryFile(suffix='.py') as f:
+            s = _make_session(
+                mcp_module,
+                {
+                    'name': 'test',
+                    'uuid': 'u1',
+                    'mode': 'sse',
+                    'command': 'python',
+                    'args': [f.name],
+                },
+            )
+            result = s._infer_host_path()
+            assert result is not None
+            assert result == os.path.dirname(os.path.realpath(f.name))
+
+
+# ── Build Box Session Payload ───────────────────────────────────────
+
+
+class TestBuildBoxSessionPayload:
+    def test_minimal_config(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
+        payload = s._build_box_session_payload('session-123')
+        assert payload['session_id'] == 'session-123'
+        assert payload['workdir'] == '/workspace'
+        assert payload['env'] == {}
+        assert 'host_path' not in payload
+
+    def test_with_host_path(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+                'box': {'host_path': '/home/user/mcp', 'host_path_mode': 'ro'},
+            },
+        )
+        payload = s._build_box_session_payload('session-123')
+        assert payload['host_path'] == '/home/user/mcp'
+        assert payload['host_path_mode'] == 'ro'
+
+    def test_optional_fields_included_when_set(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+                'box': {'image': 'node:20', 'cpus': 2.0, 'memory_mb': 1024, 'pids_limit': 256},
+            },
+        )
+        payload = s._build_box_session_payload('session-123')
+        assert payload['image'] == 'node:20'
+        assert payload['cpus'] == 2.0
+        assert payload['memory_mb'] == 1024
+        assert payload['pids_limit'] == 256
+
+    def test_none_fields_excluded(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
+        payload = s._build_box_session_payload('session-123')
+        assert 'image' not in payload
+        assert 'cpus' not in payload
+
+
+# ── Build Box Process Payload ───────────────────────────────────────
+
+
+class TestBuildBoxProcessPayload:
+    def test_basic_payload(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': ['server.py'],
+                'env': {'KEY': 'val'},
+            },
+        )
+        payload = s._build_box_process_payload()
+        assert payload['command'] == 'python'
+        assert payload['args'] == ['server.py']
+        assert payload['env'] == {'KEY': 'val'}
+        assert payload['cwd'] == '/workspace'
+
+    def test_path_rewriting_applied(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': '/home/user/mcp/venv/bin/python',
+                'args': ['/home/user/mcp/server.py', '--config', '/home/user/mcp/config.json'],
+                'env': {},
+                'box': {'host_path': '/home/user/mcp'},
+            },
+        )
+        payload = s._build_box_process_payload()
+        # venv python is replaced with plain 'python' (deps installed in-container)
+        assert payload['command'] == 'python'
+        assert payload['args'] == ['/workspace/server.py', '--config', '/workspace/config.json']
+
+    def test_non_matching_args_not_rewritten(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': ['/opt/other/server.py', '--flag'],
+                'env': {},
+                'box': {'host_path': '/home/user/mcp'},
+            },
+        )
+        payload = s._build_box_process_payload()
+        assert payload['command'] == 'python'
+        assert payload['args'] == ['/opt/other/server.py', '--flag']
+
+
+# ── Python Workspace Preparation ────────────────────────────────────
+
+
+class TestPythonWorkspacePreparation:
+    def test_requirements_workspace_uses_venv_bootstrap(self, mcp_module, tmp_path):
+        host_path = tmp_path / 'mcp-source'
+        host_path.mkdir()
+        (host_path / 'requirements.txt').write_text('mcp==1.26.0\n', encoding='utf-8')
+
+        command = mcp_module.BoxStdioSessionRuntime.detect_install_command(
+            str(host_path),
+            '/workspace/.mcp/u1/workspace',
+        )
+
+        assert command is not None
+        assert '_LB_SYSTEM_PYTHON="$(command -v python3 || command -v python || true)"' in command
+        assert '"$_LB_SYSTEM_PYTHON" -m venv "$_LB_VENV_DIR"' in command
+        assert 'python -m pip install -r "/workspace/.mcp/u1/workspace/requirements.txt"' in command
+        assert 'pip install --no-cache-dir -r' not in command
+
+    def test_staging_refresh_removes_stale_source_files_but_preserves_runtime_dirs(self, mcp_module, tmp_path):
+        source = tmp_path / 'source'
+        source.mkdir()
+        (source / 'server.py').write_text('print("new")\n', encoding='utf-8')
+        (source / 'requirements.txt').write_text('mcp==1.26.0\n', encoding='utf-8')
+        (source / '.env').write_text('TOKEN=new\n', encoding='utf-8')
+
+        process_root = tmp_path / 'shared' / '.mcp' / 'u1'
+        workspace = process_root / 'workspace'
+        (workspace / '.venv' / 'bin').mkdir(parents=True)
+        (workspace / '.venv' / 'bin' / 'python').write_text('', encoding='utf-8')
+        (workspace / '.langbot').mkdir()
+        (workspace / '.langbot' / 'python-env.lock').mkdir()
+        (workspace / '.env').write_text('TOKEN=old\n', encoding='utf-8')
+        (workspace / 'server.py').write_text('print("old")\n', encoding='utf-8')
+        (workspace / 'removed.py').write_text('stale\n', encoding='utf-8')
+        (workspace / 'removed_dir').mkdir()
+        (workspace / 'removed_dir' / 'old.txt').write_text('stale\n', encoding='utf-8')
+
+        mcp_module.BoxStdioSessionRuntime._copy_workspace_tree(str(source), str(process_root), str(workspace))
+
+        assert (workspace / 'server.py').read_text(encoding='utf-8') == 'print("new")\n'
+        assert (workspace / 'requirements.txt').read_text(encoding='utf-8') == 'mcp==1.26.0\n'
+        assert (workspace / '.env').read_text(encoding='utf-8') == 'TOKEN=new\n'
+        assert not (workspace / 'removed.py').exists()
+        assert not (workspace / 'removed_dir').exists()
+        assert (workspace / '.venv' / 'bin' / 'python').exists()
+        assert (workspace / '.langbot' / 'python-env.lock').is_dir()
+
+    def test_staging_refresh_ignores_unlink_race(self, mcp_module, tmp_path, monkeypatch):
+        mcp_stdio_module = sys.modules['langbot.pkg.provider.tools.loaders.mcp_stdio']
+
+        source = tmp_path / 'source'
+        source.mkdir()
+        (source / 'server.py').write_text('print("new")\n', encoding='utf-8')
+
+        process_root = tmp_path / 'shared' / '.mcp' / 'u1'
+        workspace = process_root / 'workspace'
+        workspace.mkdir(parents=True)
+        stale_file = workspace / 'removed.py'
+        stale_file.write_text('stale\n', encoding='utf-8')
+
+        real_unlink = os.unlink
+
+        def unlink_with_race(path):
+            if os.fspath(path) == str(stale_file):
+                real_unlink(path)
+                raise FileNotFoundError(path)
+            real_unlink(path)
+
+        monkeypatch.setattr(mcp_stdio_module.os, 'unlink', unlink_with_race)
+
+        mcp_module.BoxStdioSessionRuntime._copy_workspace_tree(str(source), str(process_root), str(workspace))
+
+        assert not stale_file.exists()
+        assert (workspace / 'server.py').read_text(encoding='utf-8') == 'print("new")\n'
+
+
+# ── get_runtime_info_dict ───────────────────────────────────────────
+
+
+class TestGetRuntimeInfoDict:
+    def test_non_stdio_session(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'test-uuid',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
+        info = s.get_runtime_info_dict()
+        assert info['status'] == 'connecting'
+        assert 'box_session_id' not in info
+
+    def test_runtime_error_detail_never_echoes_secret_config(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'test-uuid',
+                'mode': 'invalid',
+                'headers': {'Authorization': 'Bearer TOPSECRET'},
+                'env': {'API_KEY': 'TOPSECRET'},
+            },
+        )
+        s.status = mcp_module.MCPSessionStatus.ERROR
+        s.error_message = f'Unknown MCP server mode: {s.server_config}'
+
+        info = s.get_runtime_info_dict()
+
+        assert info['error_message'] == 'MCP runtime failed'
+        assert info['error_code'] == 'runtime_error'
+        assert 'TOPSECRET' not in str(info)
+
+    def test_runtime_tools_include_parameters(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'test-uuid',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
+        s.functions = [
+            SimpleNamespace(
+                name='create-service',
+                description='Create a service',
+                parameters={
+                    'type': 'object',
+                    'properties': {
+                        'project_id': {'type': 'string'},
+                    },
+                    'required': ['project_id'],
+                },
+            )
+        ]
+
+        info = s.get_runtime_info_dict()
+
+        assert info['tools'][0]['parameters']['properties']['project_id']['type'] == 'string'
+        assert info['tools'][0]['parameters']['required'] == ['project_id']
+
+    def test_stdio_session_includes_box_info(self, mcp_module):
+        ap = _make_ap()
+        ap.box_service.available = True
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'test-uuid',
+                'mode': 'stdio',
+                'command': 'python',
+                'args': [],
+            },
+            ap=ap,
+        )
+        info = s.get_runtime_info_dict()
+        assert info['box_session_id'] == 'mcp-shared'
+        assert info['box_enabled'] is True
+
+    def test_transient_test_shares_session_but_isolated_by_process(self, mcp_module):
+        """A transient config-page "test" now shares the same 'mcp-shared' Box
+        session as live servers (so a test reuses the running container / live
+        process instead of a cold per-test session bootstrap). Isolation is at
+        the PROCESS level: the test runs under its own process_id and only ever
+        stops that process_id, so it cannot disturb another server's live
+        process or the shared session itself."""
+        ap = _make_ap()
+        ap.box_service.available = True
+        transient = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'gen-uuid-123',
+                'mode': 'stdio',
+                'command': 'uvx',
+                'args': ['mcp-server-time'],
+                '_transient': True,
+            },
+            ap=ap,
+        )
+        live = _make_session(
+            mcp_module,
+            {
+                'name': 'time',
+                'uuid': 'real-uuid',
+                'mode': 'stdio',
+                'command': 'uvx',
+                'args': ['mcp-server-time'],
+            },
+            ap=ap,
+        )
+        assert transient.is_transient is True
+        assert live.is_transient is False
+        # Both share ONE Box session ...
+        assert transient._build_box_session_id() == 'mcp-shared'
+        assert live._build_box_session_id() == 'mcp-shared'
+        assert transient._build_box_session_id() == live._build_box_session_id()
+        # ... but are isolated by distinct process_ids within that session.
+        assert transient._box_stdio_runtime.process_id != live._box_stdio_runtime.process_id
+
+    def test_different_resource_profiles_use_different_box_sessions(self, mcp_module):
+        ap = _make_ap()
+        ap.box_service.available = True
+        default = _make_session(
+            mcp_module,
+            {
+                'name': 'default',
+                'uuid': 'default-uuid',
+                'mode': 'stdio',
+                'command': 'uvx',
+                'args': ['mcp-server-time'],
+            },
+            ap=ap,
+        )
+        constrained = _make_session(
+            mcp_module,
+            {
+                'name': 'constrained',
+                'uuid': 'constrained-uuid',
+                'mode': 'stdio',
+                'command': 'uvx',
+                'args': ['mcp-server-time'],
+                'box': {'memory_mb': 2048},
+            },
+            ap=ap,
+        )
+
+        assert default._build_box_session_id() == 'mcp-shared'
+        assert constrained._build_box_session_id().startswith('mcp-shared-')
+        assert constrained._build_box_session_id() != default._build_box_session_id()
+
+        writable = _make_session(
+            mcp_module,
+            {
+                'name': 'writable',
+                'uuid': 'writable-uuid',
+                'mode': 'stdio',
+                'command': 'uvx',
+                'args': ['mcp-server-time'],
+                'box': {'host_path_mode': 'rw'},
+            },
+            ap=ap,
+        )
+        assert writable._build_box_session_id() != default._build_box_session_id()
+
+    def test_stdio_session_waits_for_enabled_box_when_temporarily_unavailable(self, mcp_module):
+        ap = _make_ap()
+        ap.box_service.available = False
+        ap.box_service.enabled = True
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'test-uuid',
+                'mode': 'stdio',
+                'command': 'python',
+                'args': [],
+            },
+            ap=ap,
+        )
+        info = s.get_runtime_info_dict()
+        assert info['box_session_id'] == 'mcp-shared'
+        assert info['box_enabled'] is True
+
+    def test_stdio_session_refuses_when_box_is_disabled(self, mcp_module):
+        ap = _make_ap()
+        ap.box_service.available = False
+        ap.box_service.enabled = False
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'test-uuid',
+                'mode': 'stdio',
+                'command': 'python',
+                'args': [],
+            },
+            ap=ap,
+        )
+
+        info = s.get_runtime_info_dict()
+
+        assert 'box_session_id' not in info
+        assert 'box_enabled' not in info
+
+    @pytest.mark.asyncio
+    async def test_stdio_session_waits_until_box_reconnects(self, mcp_module, monkeypatch):
+        mcp_stdio_module = sys.modules['langbot.pkg.provider.tools.loaders.mcp_stdio']
+        ap = _make_ap()
+        ap.box_service.available = False
+        ap.box_service.enabled = True
+        session = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'test-uuid',
+                'mode': 'stdio',
+                'command': 'python',
+                'args': [],
+                'box': {'startup_timeout_sec': 1},
+            },
+            ap=ap,
+        )
+
+        async def reconnect_box(_delay):
+            ap.box_service.available = True
+
+        monkeypatch.setattr(mcp_stdio_module.asyncio, 'sleep', reconnect_box)
+
+        await session._box_stdio_runtime._wait_for_box_runtime()
+
+        assert ap.box_service.available is True
+
+    @pytest.mark.asyncio
+    async def test_enabled_box_timeout_does_not_exhaust_mcp_retry_budget(self, mcp_module):
+        ap = _make_ap()
+        ap.box_service.available = False
+        ap.box_service.enabled = True
+        session = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'test-uuid',
+                'mode': 'stdio',
+                'command': 'python',
+                'args': [],
+            },
+            ap=ap,
+        )
+        attempts = 0
+
+        async def lifecycle():
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                session.error_phase = mcp_module.MCPSessionErrorPhase.BOX_UNAVAILABLE
+                raise RuntimeError('Box runtime is not available after 1 seconds')
+            session._shutdown_event.set()
+
+        session._lifecycle_loop = lifecycle
+        session._sleep_with_execution_fence = AsyncMock()
+
+        await session._lifecycle_loop_with_retry()
+
+        assert attempts == 2
+        assert session.retry_count == 1
+        session._sleep_with_execution_fence.assert_awaited_once_with(1)
+
+    @pytest.mark.asyncio
+    async def test_disabled_box_still_stops_mcp_retry_loop(self, mcp_module):
+        ap = _make_ap()
+        ap.box_service.available = False
+        ap.box_service.enabled = False
+        session = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'test-uuid',
+                'mode': 'stdio',
+                'command': 'python',
+                'args': [],
+            },
+            ap=ap,
+        )
+        attempts = 0
+
+        async def lifecycle():
+            nonlocal attempts
+            attempts += 1
+            session.error_phase = mcp_module.MCPSessionErrorPhase.BOX_UNAVAILABLE
+            raise RuntimeError('box_disabled_in_config')
+
+        session._lifecycle_loop = lifecycle
+
+        await session._lifecycle_loop_with_retry()
+
+        assert attempts == 1
+        assert session.status == mcp_module.MCPSessionStatus.ERROR
+        assert session.retry_count == 1
+
+    def test_stdio_session_without_box_service_uses_local_stdio(self, mcp_module):
+        ap = _make_ap()
+        del ap.box_service
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'test-uuid',
+                'mode': 'stdio',
+                'command': 'python',
+                'args': [],
+            },
+            ap=ap,
+        )
+        info = s.get_runtime_info_dict()
+        assert 'box_session_id' not in info
+
+
+# ── Box config parsing ──────────────────────────────────────────────
+
+
+class TestBoxConfigParsing:
+    def test_box_config_parsed_from_server_config(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+                'box': {'image': 'node:20', 'host_path': '/home/user/mcp'},
+            },
+        )
+        assert isinstance(s.box_config, mcp_module.MCPServerBoxConfig)
+        assert s.box_config.image == 'node:20'
+        assert s.box_config.host_path == '/home/user/mcp'
+
+    def test_missing_box_key_uses_defaults(self, mcp_module):
+        s = _make_session(
+            mcp_module,
+            {
+                'name': 'test',
+                'uuid': 'u1',
+                'mode': 'sse',
+                'command': 'python',
+                'args': [],
+            },
+        )
+        assert isinstance(s.box_config, mcp_module.MCPServerBoxConfig)
+        assert s.box_config.image is None
+        assert s.box_config.host_path_mode == 'ro'
+
+
+@pytest.mark.asyncio
+async def test_stdio_instance_gate_runs_before_box_transport(mcp_module):
+    ap = _make_ap()
+    ap.instance_config.data['mcp']['stdio']['enabled'] = False
+    ap.box_service.available = True
+    session = _make_session(
+        mcp_module,
+        {
+            'name': 'blocked',
+            'uuid': 'blocked-uuid',
+            'mode': 'stdio',
+            'command': 'python',
+            'args': [],
+            'env': {},
+        },
+        ap=ap,
+    )
+    session._box_stdio_runtime.initialize = AsyncMock()
+
+    with pytest.raises(RuntimeError, match='disabled by instance policy'):
+        await session._init_stdio_python_server()
+
+    session._box_stdio_runtime.initialize.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_init_box_stdio_server_stages_host_path_in_shared_workspace(mcp_module, tmp_path):
+    mcp_stdio_module = sys.modules['langbot.pkg.provider.tools.loaders.mcp_stdio']
+
+    class FakeClientSession:
+        def __init__(self, *_args):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def initialize(self):
+            return None
+
+    captured_transport = {}
+
+    @asynccontextmanager
+    async def fake_authenticated_websocket_client(url: str, headers: dict[str, str]):
+        captured_transport['url'] = url
+        captured_transport['headers'] = headers
+        yield ('read-stream', 'write-stream')
+
+    mcp_stdio_module.ClientSession = FakeClientSession
+    mcp_stdio_module.authenticated_websocket_client = fake_authenticated_websocket_client
+
+    ap = _make_ap()
+    ap.box_service.available = True
+    shared_workspace = tmp_path / 'shared-box-workspace' / 'tenants' / 'workspace-a'
+    ap.box_service.default_workspace = str(tmp_path / 'shared-box-workspace')
+    ap.box_service.workspace_host_path = Mock(return_value=str(shared_workspace))
+    ap.box_service.create_session = AsyncMock(return_value={'session_id': 'mcp-shared', 'backend_name': None})
+    ap.box_service.build_spec = Mock(return_value='validated-spec')
+    ap.box_service.client = SimpleNamespace(
+        execute=AsyncMock(return_value=SimpleNamespace(ok=True, stderr='', exit_code=0))
+    )
+    ap.box_service.start_managed_process = AsyncMock(return_value={})
+    ap.box_service.get_managed_process_websocket_connection = AsyncMock(
+        return_value=(
+            'ws://box.example/process',
+            {
+                'X-LangBot-Box-Control-Token': 'secret-token',
+                'X-LangBot-Instance-Id': 'instance-a',
+                'X-LangBot-Workspace-Id': 'workspace-a',
+                'X-LangBot-Placement-Generation': '1',
+            },
+        )
+    )
+
+    host_path = tmp_path / 'mcp-source'
+    host_path.mkdir()
+    server_file = host_path / 'server.py'
+    server_file.write_text('print("hello")\n', encoding='utf-8')
+
+    session = _make_session(
+        mcp_module,
+        {
+            'name': 'test',
+            'uuid': 'u1',
+            'mode': 'stdio',
+            'command': str(host_path / '.venv' / 'bin' / 'python'),
+            'args': [str(server_file)],
+            'box': {'host_path': str(host_path)},
+        },
+        ap=ap,
+    )
+
+    await session._init_box_stdio_server()
+    await session.exit_stack.aclose()
+
+    assert ap.box_service.create_session.await_count == 1
+    assert ap.box_service.create_session.await_args.args[0] == session.execution_context
+    session_payload = ap.box_service.create_session.await_args.args[1]
+    assert session_payload['session_id'] == 'mcp-shared'
+    assert 'host_path' not in session_payload
+    assert ap.box_service.build_spec.call_count == 1
+    assert ap.box_service.build_spec.call_args.kwargs.get('skip_host_mount_validation', False) is False
+    assert ap.box_service.build_spec.call_args.args[0]['host_path'] == str(host_path)
+
+    staged_file = shared_workspace / '.mcp' / 'u1' / 'workspace' / 'server.py'
+    assert staged_file.read_text(encoding='utf-8') == 'print("hello")\n'
+    ap.box_service.workspace_host_path.assert_called_with(session.execution_context)
+
+    assert ap.box_service.start_managed_process.await_args.args[0] == session.execution_context
+    process_payload = ap.box_service.start_managed_process.await_args.args[2]
+    assert process_payload['process_id'] == 'u1'
+    assert process_payload['command'] == 'python'
+    assert process_payload['args'] == ['/workspace/.mcp/u1/workspace/server.py']
+    assert process_payload['cwd'] == '/workspace/.mcp/u1/workspace'
+    assert captured_transport == {
+        'url': 'ws://box.example/process',
+        'headers': {
+            'X-LangBot-Box-Control-Token': 'secret-token',
+            'X-LangBot-Instance-Id': 'instance-a',
+            'X-LangBot-Workspace-Id': 'workspace-a',
+            'X-LangBot-Placement-Generation': '1',
+        },
+    }
+    assert 'secret-token' not in captured_transport['url']
+
+
+@pytest.mark.asyncio
+async def test_stdio_handshake_raises_coldstart_retry_while_process_alive(mcp_module, tmp_path, monkeypatch):
+    """During a slow (npx) cold start the handshake fails while the managed
+    process is still alive. initialize() must raise _ColdStartRetry (so the
+    outer lifecycle loop reuses the live process and retries without stopping it
+    or consuming the fatal budget), NOT a fatal error."""
+    from contextlib import asynccontextmanager
+
+    mcp_stdio_module = sys.modules['langbot.pkg.provider.tools.loaders.mcp_stdio']
+
+    class ColdClientSession:
+        def __init__(self, *_args):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def initialize(self):
+            # Process still cold-starting: handshake fails.
+            raise Exception('Connection closed')
+
+    @asynccontextmanager
+    async def fake_websocket_client(_url: str):
+        yield ('read-stream', 'write-stream')
+
+    monkeypatch.setattr(mcp_stdio_module, 'ClientSession', ColdClientSession)
+    monkeypatch.setattr(mcp_stdio_module, 'websocket_client', fake_websocket_client)
+    monkeypatch.setattr(mcp_stdio_module, '_HANDSHAKE_ATTEMPT_TIMEOUT_SEC', 1.0, raising=False)
+
+    ap = _make_ap()
+    ap.box_service.available = True
+    ap.box_service.create_session = AsyncMock(return_value={'session_id': 'mcp-shared', 'backend_name': None})
+    ap.box_service.start_managed_process = AsyncMock(return_value={})
+    ap.box_service.get_managed_process_websocket_connection = AsyncMock(return_value=('ws://box/p', {}))
+
+    session = _make_session(
+        mcp_module,
+        {
+            'name': 'slow',
+            'uuid': 'slow-uuid',
+            'mode': 'stdio',
+            'command': 'npx',
+            'args': ['-y', 'some-mcp'],
+        },
+        ap=ap,
+    )
+
+    # Process is NOT exited (still cold-starting) and not yet running for reuse.
+    async def _not_exited():
+        return False
+
+    session._box_stdio_runtime._managed_process_has_exited = _not_exited
+
+    async def _not_running():
+        return False
+
+    session._box_stdio_runtime._managed_process_is_running = _not_running
+
+    with pytest.raises(mcp_stdio_module._ColdStartRetry):
+        await session._init_box_stdio_server()
+
+    # Process was started exactly once (the retry will reuse it, not rebuild).
+    assert ap.box_service.start_managed_process.await_count == 1
+    await session.exit_stack.aclose()
+
+
+@pytest.mark.asyncio
+async def test_stdio_handshake_raises_fatal_when_process_exited(mcp_module, tmp_path, monkeypatch):
+    """If the handshake fails AND the process has definitively exited, that is a
+    real failure — initialize() must NOT swallow it as a cold-start retry."""
+    from contextlib import asynccontextmanager
+
+    mcp_stdio_module = sys.modules['langbot.pkg.provider.tools.loaders.mcp_stdio']
+
+    class DeadClientSession:
+        def __init__(self, *_args):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def initialize(self):
+            raise Exception('Connection closed')
+
+    @asynccontextmanager
+    async def fake_websocket_client(_url: str):
+        yield ('read-stream', 'write-stream')
+
+    monkeypatch.setattr(mcp_stdio_module, 'ClientSession', DeadClientSession)
+    monkeypatch.setattr(mcp_stdio_module, 'websocket_client', fake_websocket_client)
+    monkeypatch.setattr(mcp_stdio_module, '_HANDSHAKE_ATTEMPT_TIMEOUT_SEC', 1.0, raising=False)
+
+    ap = _make_ap()
+    ap.box_service.available = True
+    ap.box_service.create_session = AsyncMock(return_value={'session_id': 'mcp-shared', 'backend_name': None})
+    ap.box_service.start_managed_process = AsyncMock(return_value={})
+    ap.box_service.get_managed_process_websocket_connection = AsyncMock(return_value=('ws://box/p', {}))
+
+    session = _make_session(
+        mcp_module,
+        {'name': 'dead', 'uuid': 'dead-uuid', 'mode': 'stdio', 'command': 'npx', 'args': ['-y', 'x']},
+        ap=ap,
+    )
+
+    async def _exited():
+        return True
+
+    session._box_stdio_runtime._managed_process_has_exited = _exited
+
+    async def _not_running():
+        return False
+
+    session._box_stdio_runtime._managed_process_is_running = _not_running
+
+    with pytest.raises(Exception) as ei:
+        await session._init_box_stdio_server()
+    assert not isinstance(ei.value, mcp_stdio_module._ColdStartRetry)
+    await session.exit_stack.aclose()
+
+
+def test_mcp_workspace_helpers_share_pinned_limit_revision_and_session_id(mcp_module):
+    ap = _make_ap()
+    session = _make_session(
+        mcp_module,
+        {
+            'uuid': 'limits-server',
+            'mode': 'stdio',
+            '_sandbox_backend': 'docker',
+            '_sandbox_limits': {'config': {'memory_mb': 64}, 'revision': 'first'},
+        },
+        ap,
+    )
+    first = session._build_box_session_id()
+    assert first.endswith('-limits-first-backend-docker')
+    one = session._box_stdio_runtime._build_workspace(host_path=None)
+    two = session._box_stdio_runtime._build_workspace(host_path=None)
+    assert one.session_id == two.session_id == first
+    assert one.selected_limits == two.selected_limits == session.sandbox_limits
+    changed = _make_session(
+        mcp_module,
+        {
+            'uuid': 'limits-server',
+            'mode': 'stdio',
+            '_sandbox_backend': 'docker',
+            '_sandbox_limits': {'config': {'memory_mb': 128}, 'revision': 'second'},
+        },
+        ap,
+    )
+    assert changed._build_box_session_id() != first

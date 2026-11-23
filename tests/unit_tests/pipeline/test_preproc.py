@@ -1,0 +1,655 @@
+"""
+Unit tests for PreProcessor pipeline stage.
+
+Tests cover preprocessing behavior including:
+- Normal text message processing
+- Empty message handling
+- Unsupported message segment handling
+- Image/file segment behavior
+- Model selection and fallback
+"""
+
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+from unittest.mock import AsyncMock, Mock
+from importlib import import_module
+
+from langbot_plugin.api.entities.builtin.provider import session as provider_session
+from langbot_plugin.api.entities.builtin.provider.prompt import Prompt
+
+from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
+from tests.factories import (
+    FakeApp,
+    text_query,
+    empty_query,
+    image_query,
+    group_text_query,
+)
+
+
+RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
+
+
+def attach_runner_descriptor(app):
+    descriptor = RunnerDescriptor(
+        usages=['agent'],
+        id=RUNNER_ID,
+        source='plugin',
+        label={'en_US': 'Local Agent'},
+        plugin_author='langbot-team',
+        plugin_name='LocalAgent',
+        runner_name='default',
+        config_schema=[
+            {'name': 'model', 'type': 'model-fallback-selector'},
+            {'name': 'prompt', 'type': 'prompt-editor', 'default': []},
+            {'name': 'knowledge-bases', 'type': 'knowledge-base-multi-selector'},
+        ],
+        capabilities={'tool_calling': True, 'multimodal_input': True, 'knowledge_retrieval': True},
+    )
+    app.runner_registry = Mock()
+    app.runner_registry.get = AsyncMock(return_value=descriptor)
+    app.tool_mgr.get_resolved_tool_catalog = AsyncMock(return_value=[])
+
+
+def get_preproc_module():
+    """Lazy import to avoid circular import issues."""
+    return import_module('langbot.pkg.pipeline.preproc.preproc')
+
+
+def get_entities_module():
+    """Lazy import for pipeline entities."""
+    return import_module('langbot.pkg.pipeline.entities')
+
+
+def make_session(
+    launcher_type: provider_session.LauncherTypes = provider_session.LauncherTypes.PERSON,
+    launcher_id: int = 12345,
+) -> provider_session.Session:
+    """Build a scope-aware Session that matches the shared Query factory."""
+
+    return provider_session.Session(
+        launcher_type=launcher_type,
+        launcher_id=launcher_id,
+        sender_id=12345,
+        bot_uuid='test-bot-uuid',
+    )
+
+
+class TestPreProcessorNormalText:
+    """Tests for normal text message preprocessing."""
+
+    @pytest.mark.asyncio
+    async def test_returned_plugin_prompt_edits_are_applied(self):
+        """Prompt hooks retain both edits across the serialized Runtime boundary."""
+        from langbot_plugin.api.entities.context import EventContext
+        from langbot_plugin.api.entities.builtin.provider.message import Message
+
+        app = FakeApp()
+        app.sess_mgr.get_session = AsyncMock(return_value=make_session())
+        conversation = Mock()
+        conversation.prompt = Mock(messages=[])
+        conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
+        conversation.messages = []
+        conversation.uuid = None
+        app.sess_mgr.get_conversation = AsyncMock(return_value=conversation)
+        model = Mock()
+        model.model_entity = Mock(uuid='test-model', abilities=['func_call'])
+        app.model_mgr.get_model_by_uuid = AsyncMock(return_value=model)
+        observed_hooks = []
+        attach_runner_descriptor(app)
+        query = text_query('hello')
+        query.pipeline_config['ai']['runner_config'][RUNNER_ID]['knowledge-bases'] = ['kb-memory', 'kb-docs']
+
+        async def edit_prompts(event, bound_plugins):
+            observed_hooks.append(event.event_name)
+            assert query.variables['_knowledge_base_uuids'] == ['kb-memory', 'kb-docs']
+            query.variables['_knowledge_base_uuids'].remove('kb-memory')
+            ctx = EventContext.model_validate(EventContext.from_event(event).model_dump())
+            ctx.event.default_prompt = [Message(role='system', content='plugin system prompt')]
+            ctx.event.prompt = [Message(role='assistant', content='plugin history')]
+            return ctx
+
+        app.plugin_connector.emit_event = AsyncMock(side_effect=edit_prompts)
+
+        await get_preproc_module().PreProcessor(app).process(query, 'PreProcessor')
+
+        assert observed_hooks == ['PromptPreProcessing']
+        assert query.variables['_knowledge_base_uuids'] == ['kb-docs']
+        assert query.variables['_host_configured_knowledge_base_uuids'] == ['kb-memory', 'kb-docs']
+        assert query.prompt.messages[0].content == 'plugin system prompt'
+        assert query.messages[0].content == 'plugin history'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('cross_workspace', [False, True])
+    async def test_normal_text_continues(self, cross_workspace):
+        """Normal text message should continue pipeline."""
+        preproc = get_preproc_module()
+        entities = get_entities_module()
+
+        app = FakeApp()
+        # Mock session manager to return a session
+        mock_session = make_session(provider_session.LauncherTypes.GROUP, 99999)
+        if cross_workspace:
+            mock_session.workspace_uuid = 'other-workspace'
+        mock_session._semaphore = asyncio.Semaphore(1)
+        app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
+
+        mock_conversation = provider_session.Conversation(
+            prompt=Prompt(name='default', messages=[]),
+            messages=[],
+            pipeline_uuid='test-pipeline-uuid',
+            bot_uuid='test-bot-uuid',
+        )
+        mock_session.using_conversation = mock_conversation
+        mock_session.conversations.append(mock_conversation)
+        app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
+
+        # Mock model manager
+        mock_model = Mock()
+        mock_model.model_entity = Mock()
+        mock_model.model_entity.uuid = 'test-model-uuid'
+        mock_model.model_entity.abilities = ['func_call', 'vision']
+        app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
+
+        # Mock tool manager
+        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+
+        # Mock plugin connector
+        mock_event_ctx = Mock()
+        mock_event_ctx.event = Mock()
+        mock_event_ctx.event.default_prompt = []
+        mock_event_ctx.event.prompt = []
+        app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+
+        stage = preproc.PreProcessor(app)
+        query = group_text_query('hello world', sender_id=67890)
+        if cross_workspace:
+            with pytest.raises(ValueError, match='Execution scope mismatch'):
+                await stage.process(query, 'PreProcessor')
+            app.plugin_connector.emit_event.assert_not_awaited()
+            return
+
+        result = await stage.process(query, 'PreProcessor')
+
+        assert result.result_type == entities.ResultType.CONTINUE
+        assert result.new_query is not None
+
+        assert query.session is not mock_session
+        assert query.session.sender_id == 67890
+        assert mock_session.sender_id == 12345
+        assert query.session.bot_uuid == query.bot_uuid
+        assert query.session.workspace_uuid == query.workspace_uuid
+        assert query.session.conversations is mock_session.conversations
+        assert query.session.using_conversation is mock_session.using_conversation
+        assert query.session._semaphore is mock_session._semaphore
+
+    @pytest.mark.asyncio
+    async def test_normal_text_sets_user_message(self):
+        """PreProcessor should set user_message from text content."""
+        preproc = get_preproc_module()
+
+        app = FakeApp()
+        mock_session = make_session()
+        app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
+
+        mock_conversation = Mock()
+        mock_conversation.prompt = Mock(messages=[])
+        mock_conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
+        mock_conversation.messages = []
+        mock_conversation.uuid = None
+        app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
+
+        mock_model = Mock()
+        mock_model.model_entity = Mock(uuid='test-model', abilities=['func_call'])
+        app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
+        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+
+        mock_event_ctx = Mock()
+        mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
+        app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+
+        stage = preproc.PreProcessor(app)
+        query = text_query('test message')
+
+        result = await stage.process(query, 'PreProcessor')
+
+        assert result.new_query.user_message is not None
+        assert result.new_query.user_message.role == 'user'
+        assert [(part.type, part.text) for part in result.new_query.user_message.content] == [('text', 'test message')]
+
+
+class TestPreProcessorEmptyMessage:
+    """Tests for empty message handling."""
+
+    @pytest.mark.asyncio
+    async def test_empty_message_continues(self):
+        """Empty message should follow expected behavior."""
+        preproc = get_preproc_module()
+        entities = get_entities_module()
+
+        app = FakeApp()
+        mock_session = make_session()
+        app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
+
+        mock_conversation = Mock()
+        mock_conversation.prompt = Mock(messages=[])
+        mock_conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
+        mock_conversation.messages = []
+        mock_conversation.uuid = None
+        app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
+
+        app.model_mgr.get_model_by_uuid = AsyncMock(return_value=None)
+        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+
+        mock_event_ctx = Mock()
+        mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
+        app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+
+        stage = preproc.PreProcessor(app)
+        query = empty_query()
+
+        result = await stage.process(query, 'PreProcessor')
+
+        # Empty message should still continue with an empty provider content list.
+        assert result.result_type == entities.ResultType.CONTINUE
+        assert result.new_query.user_message is not None
+        assert result.new_query.user_message.content == []
+
+
+class TestPreProcessorImageSegment:
+    """Tests for image segment handling."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('image_source', ['base64', 'url'])
+    async def test_image_with_vision_model(self, image_source):
+        """Image should be included when model supports vision."""
+        preproc = get_preproc_module()
+
+        app = FakeApp()
+        mock_session = make_session()
+        app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
+
+        mock_conversation = Mock()
+        mock_conversation.prompt = Mock(messages=[])
+        mock_conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
+        mock_conversation.messages = []
+        mock_conversation.uuid = None
+        app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
+
+        # Model with vision support
+        mock_model = Mock()
+        mock_model.model_entity = Mock(uuid='vision-model', abilities=['func_call', 'vision'])
+        app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
+        attach_runner_descriptor(app)
+        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+
+        mock_event_ctx = Mock()
+        mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
+        app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+
+        stage = preproc.PreProcessor(app)
+        # Exercise both supported image transports.
+        query = image_query(text='look at this', url=None)
+        import langbot_plugin.api.entities.builtin.platform.message as platform_message
+
+        chain = platform_message.MessageChain(
+            [
+                platform_message.Plain(text='look at this'),
+                platform_message.Image(
+                    **(
+                        {'base64': 'data:image/png;base64,abc123'}
+                        if image_source == 'base64'
+                        else {'url': 'https://cdn.example/image.png'}
+                    )
+                ),
+            ]
+        )
+        query.message_chain = chain
+
+        result = await stage.process(query, 'PreProcessor')
+
+        assert result.result_type == preproc.entities.ResultType.CONTINUE
+        assert result.new_query.use_llm_model_uuid == 'vision-model'
+        from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
+        from langbot_plugin.api.entities.builtin.provider.message import ContentElement
+
+        assert result.new_query.user_message.content == [
+            ContentElement.from_text('look at this'),
+            ContentElement.from_text('[attachment att-1: image]'),
+        ]
+        attachments = QueryEntryAdapter._build_input(result.new_query).attachments
+        assert len(attachments) == 1
+        assert attachments[0].ref == 'att-1'
+        assert attachments[0].content is None
+        if image_source == 'url':
+            assert attachments[0].url == 'https://cdn.example/image.png'
+        else:
+            assert attachments[0].mime_type == 'image/png'
+
+    @pytest.mark.asyncio
+    async def test_image_without_vision_model(self):
+        """Image should be excluded when model doesn't support vision."""
+        preproc = get_preproc_module()
+
+        app = FakeApp()
+        mock_session = make_session()
+        app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
+
+        mock_conversation = Mock()
+        mock_conversation.prompt = Mock(messages=[])
+        mock_conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
+        mock_conversation.messages = []
+        mock_conversation.uuid = None
+        app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
+
+        # Model WITHOUT vision support
+        mock_model = Mock()
+        mock_model.model_entity = Mock(uuid='text-only-model', abilities=['func_call'])
+        app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
+        attach_runner_descriptor(app)
+        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+
+        mock_event_ctx = Mock()
+        mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
+        app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+
+        stage = preproc.PreProcessor(app)
+        query = image_query(text='describe this')
+
+        result = await stage.process(query, 'PreProcessor')
+
+        assert result.result_type == preproc.entities.ResultType.CONTINUE
+        assert result.new_query.use_llm_model_uuid == 'text-only-model'
+        assert [(part.type, part.text) for part in result.new_query.user_message.content] == [
+            ('text', 'describe this'),
+            ('text', '[attachment att-1: image]'),
+        ]
+        assert result.new_query.variables['user_message_text'] == 'describe this[Image]'
+
+
+class TestPreProcessorModelSelection:
+    """Tests for model selection and fallback behavior."""
+
+    @pytest.mark.asyncio
+    async def test_primary_model_selected(self):
+        """Primary model UUID should be set in query."""
+        preproc = get_preproc_module()
+
+        app = FakeApp()
+        mock_session = make_session()
+        app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
+
+        mock_conversation = Mock()
+        mock_conversation.prompt = Mock(messages=[])
+        mock_conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
+        mock_conversation.messages = []
+        mock_conversation.uuid = None
+        app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
+
+        mock_model = Mock()
+        mock_model.model_entity = Mock(uuid='primary-model-uuid', abilities=['func_call'])
+        app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
+        attach_runner_descriptor(app)
+
+        mock_event_ctx = Mock()
+        mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
+        app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+
+        stage = preproc.PreProcessor(app)
+        query = text_query('hello')
+
+        # Set pipeline config with primary model
+        query.pipeline_config = {
+            'ai': {
+                'runner': {'id': RUNNER_ID},
+                'runner_config': {
+                    RUNNER_ID: {
+                        'model': {'primary': 'primary-model-uuid', 'fallbacks': []},
+                        'prompt': [],
+                    },
+                },
+            },
+            'output': {'misc': {'at-sender': False}},
+            'trigger': {'misc': {}},
+        }
+
+        result = await stage.process(query, 'PreProcessor')
+
+        assert result.new_query.use_llm_model_uuid == 'primary-model-uuid'
+
+    @pytest.mark.asyncio
+    async def test_fallback_models_resolved(self):
+        """Fallback model UUIDs should be resolved and stored."""
+        preproc = get_preproc_module()
+
+        app = FakeApp()
+        mock_session = make_session()
+        app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
+
+        mock_conversation = Mock()
+        mock_conversation.prompt = Mock(messages=[])
+        mock_conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
+        mock_conversation.messages = []
+        mock_conversation.uuid = None
+        app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
+
+        # Primary model
+        mock_primary = Mock()
+        mock_primary.model_entity = Mock(uuid='primary-uuid', abilities=['func_call'])
+        # Fallback model
+        mock_fallback = Mock()
+        mock_fallback.model_entity = Mock(uuid='fallback-uuid', abilities=['func_call'])
+
+        async def mock_get_model(_context, uuid):
+            if uuid == 'primary-uuid':
+                return mock_primary
+            elif uuid == 'fallback-uuid':
+                return mock_fallback
+            raise ValueError(f'Model {uuid} not found')
+
+        app.model_mgr.get_model_by_uuid = AsyncMock(side_effect=mock_get_model)
+        attach_runner_descriptor(app)
+
+        mock_event_ctx = Mock()
+        mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
+        app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+
+        stage = preproc.PreProcessor(app)
+        query = text_query('hello')
+
+        query.pipeline_config = {
+            'ai': {
+                'runner': {'id': RUNNER_ID},
+                'runner_config': {
+                    RUNNER_ID: {
+                        'model': {'primary': 'primary-uuid', 'fallbacks': ['fallback-uuid']},
+                        'prompt': [],
+                    },
+                },
+            },
+            'output': {'misc': {'at-sender': False}},
+            'trigger': {'misc': {}},
+        }
+
+        result = await stage.process(query, 'PreProcessor')
+
+        assert '_fallback_model_uuids' in result.new_query.variables
+        assert 'fallback-uuid' in result.new_query.variables['_fallback_model_uuids']
+
+
+class TestPreProcessorVariables:
+    """Tests for query variable extraction."""
+
+    @pytest.mark.asyncio
+    async def test_variables_set_from_query(self):
+        """PreProcessor should set variables from query context."""
+        preproc = get_preproc_module()
+
+        app = FakeApp()
+        mock_session = make_session()
+        app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
+
+        mock_conversation = Mock()
+        mock_conversation.prompt = Mock(messages=[])
+        mock_conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
+        mock_conversation.messages = []
+        mock_conversation.uuid = 'conv-123'
+        app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
+
+        app.model_mgr.get_model_by_uuid = AsyncMock(return_value=None)
+        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+
+        mock_event_ctx = Mock()
+        mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
+        app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+
+        stage = preproc.PreProcessor(app)
+        query = text_query('hello', sender_id=67890)
+
+        result = await stage.process(query, 'PreProcessor')
+
+        variables = result.new_query.variables
+        expected = {
+            'launcher_type': 'person',
+            'launcher_id': 12345,
+            'sender_id': 67890,
+            'session_id': 'person_12345',
+            'conversation_id': 'conv-123',
+            'msg_create_time': 1609459200,
+            'group_name': '',
+            'sender_name': 'TestUser',
+            'user_message_text': 'hello',
+        }
+        assert {key: variables[key] for key in expected} == expected
+
+    @pytest.mark.asyncio
+    async def test_group_variables_include_group_name(self):
+        """Group messages should include group_name variable."""
+        preproc = get_preproc_module()
+
+        app = FakeApp()
+        mock_session = make_session(
+            provider_session.LauncherTypes.GROUP,
+            99999,
+        )
+        app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
+
+        mock_conversation = Mock()
+        mock_conversation.prompt = Mock(messages=[])
+        mock_conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
+        mock_conversation.messages = []
+        mock_conversation.uuid = None
+        app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
+
+        app.model_mgr.get_model_by_uuid = AsyncMock(return_value=None)
+        app.tool_mgr.get_all_tools = AsyncMock(return_value=[])
+
+        mock_event_ctx = Mock()
+        mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
+        app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+
+        stage = preproc.PreProcessor(app)
+        query = group_text_query('hello', group_id=99999)
+
+        result = await stage.process(query, 'PreProcessor')
+
+        variables = result.new_query.variables
+        assert variables['group_name'] == 'TestGroup'
+        assert variables['sender_name'] == 'TestUser'
+
+
+class TestPreProcessorToolSelection:
+    """Tests for Local Agent tool selection."""
+
+    @pytest.mark.asyncio
+    async def test_local_agent_filters_selected_tools(self):
+        """Only selected tools should be exposed when all-tools mode is off."""
+        preproc = get_preproc_module()
+
+        app = FakeApp()
+        mock_session = make_session()
+        app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
+
+        mock_conversation = Mock()
+        mock_conversation.prompt = Mock(messages=[])
+        mock_conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
+        mock_conversation.messages = []
+        mock_conversation.uuid = None
+        app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
+
+        mock_model = Mock()
+        mock_model.model_entity = Mock(uuid='primary-model-uuid', abilities=['func_call'])
+        app.model_mgr.get_model_by_uuid = AsyncMock(return_value=mock_model)
+        attach_runner_descriptor(app)
+        app.tool_mgr.get_resolved_tool_catalog = AsyncMock(
+            return_value=[
+                {'name': 'exec', 'source': 'builtin'},
+                {'name': 'plugin_tool', 'source': 'plugin', 'source_id': 'test/plugin'},
+                {'name': 'mcp_tool', 'source': 'mcp', 'source_id': 'test-mcp'},
+            ]
+        )
+
+        mock_event_ctx = Mock()
+        mock_event_ctx.event = Mock(default_prompt=[], prompt=[])
+        app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+
+        stage = preproc.PreProcessor(app)
+        query = text_query('hello')
+        query.pipeline_config = {
+            'ai': {
+                'runner': {'id': RUNNER_ID},
+                'runner_config': {
+                    RUNNER_ID: {
+                        'model': {'primary': 'primary-model-uuid', 'fallbacks': []},
+                        'prompt': [],
+                        'enable-all-tools': False,
+                        'tools': ['plugin_tool'],
+                    },
+                },
+            },
+            'output': {'misc': {'at-sender': False}},
+            'trigger': {'misc': {}},
+        }
+
+        result = await stage.process(query, 'PreProcessor')
+
+        assert [tool.name for tool in result.new_query.use_funcs] == ['plugin_tool']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('face_kwargs', 'expected'),
+    [
+        ({'face_id': 300, 'face_name': '胖三斤'}, '[表情]胖三斤'),
+        # aiocqhttp emits rps with face_id=0 when the result is missing; SDK str() raises for it.
+        ({'face_type': 'rps', 'face_id': 0, 'face_name': '猜拳'}, '[表情]猜拳'),
+    ],
+)
+async def test_face_component_is_visible_to_preprocessor_model_text(face_kwargs, expected):
+    """Structured QQ/OneBot faces must not disappear from model context."""
+    from langbot_plugin.api.entities.builtin.platform import message as platform_message
+
+    app = FakeApp()
+    app.sess_mgr.get_session = AsyncMock(return_value=make_session())
+    conversation = Mock()
+    conversation.prompt = Mock(messages=[])
+    conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
+    conversation.messages = []
+    conversation.uuid = None
+    app.sess_mgr.get_conversation = AsyncMock(return_value=conversation)
+    model = Mock()
+    model.model_entity = Mock(uuid='test-model', abilities=['func_call'])
+    app.model_mgr.get_model_by_uuid = AsyncMock(return_value=model)
+    app.plugin_connector.emit_event = AsyncMock(return_value=Mock(event=Mock(default_prompt=[], prompt=[])))
+
+    query = text_query('hello')
+    query.message_chain.append(platform_message.Face(**face_kwargs))
+    await get_preproc_module().PreProcessor(app).process(query, 'PreProcessor')
+
+    assert [(part.type, part.text) for part in query.user_message.content] == [
+        ('text', 'hello'),
+        ('text', expected),
+    ]

@@ -1,0 +1,22 @@
+id: proxy-env-mismatch
+title: "Uppercase and lowercase proxy variables differ"
+date: 2026-05-16
+symptoms:
+  - "External model calls time out even though a proxy appears to be configured."
+  - "GitHub OAuth or provider tests fail intermittently from the agent environment."
+patterns:
+  - "HTTP_PROXY and http_proxy point to different hosts"
+  - "HTTPS_PROXY and https_proxy point to different hosts"
+  - "ALL_PROXY and all_proxy point to different hosts"
+  - "old WSL gateway proxy remains in lowercase variables"
+likely_causes:
+  - "Different HTTP clients read different proxy environment variable names."
+  - "The shell inherited stale lowercase proxy values from an older session."
+fix_steps:
+  - "Set HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, http_proxy, https_proxy, all_proxy, NO_PROXY, and no_proxy consistently."
+  - "Restart LangBot with the corrected proxy environment."
+verification: "Run env | rg -i '^(http|https|all|no)_?proxy=' and confirm uppercase/lowercase pairs are consistent, then run pipeline-debug-chat."
+related_cases:
+  - pipeline-debug-chat
+  - provider-deepseek
+  - webui-login-state

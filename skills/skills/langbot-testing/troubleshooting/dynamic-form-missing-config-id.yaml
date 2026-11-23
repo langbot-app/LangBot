@@ -1,0 +1,21 @@
+id: dynamic-form-missing-config-id
+title: "Dynamic form fields have no stable key"
+date: 2026-05-17
+symptoms:
+  - "Browser console shows a React warning about children in a list needing a unique key."
+  - "The warning appears when rendering plugin or runner dynamic form schemas."
+patterns:
+  - "Each child in a list should have a unique key prop"
+  - "DynamicFormComponent"
+  - "config schema"
+likely_causes:
+  - "A plugin component schema item has name but no id."
+  - "The frontend maps dynamic config items using config.id as the only key."
+fix_steps:
+  - "Prefer adding stable ids to backend metadata derived from component id and field name."
+  - "Keep a frontend fallback key using config.id, config.name, then list index for defensive rendering."
+  - "Reload the affected form and inspect console warnings."
+verification: "The dynamic form renders runner/plugin fields without React unique key warnings."
+related_cases:
+  - langrag-kb-retrieve
+  - local-agent-rag-debug-chat

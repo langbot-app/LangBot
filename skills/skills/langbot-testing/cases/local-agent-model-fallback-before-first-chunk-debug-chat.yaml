@@ -1,0 +1,79 @@
+id: local-agent-model-fallback-before-first-chunk-debug-chat
+title: "Local Agent falls back when the primary model fails before streaming starts"
+mode: probe
+area: pipeline
+type: chaos
+priority: p1
+risk: high
+ci_eligible: false
+tags:
+  - local-agent
+  - fallback
+  - streaming
+  - fake-provider
+  - fault-injection
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_E2E_LOGIN_USER
+automation: skills/langbot-testing/probes/langbot-debug-chat-concurrency.mjs
+automation_env:
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_E2E_LOGIN_USER
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
+automation_pipeline_url_env: LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+automation_pipeline_name_env: LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
+automation_debug_chat_load_requests: "1"
+automation_debug_chat_load_concurrency: "1"
+automation_debug_chat_load_timeout_ms: "30000"
+automation_debug_chat_load_response_p95_ms: "10000"
+automation_debug_chat_load_max_error_rate: "0"
+automation_debug_chat_load_min_ok_count: "1"
+automation_debug_chat_load_min_provider_fault_count: "1"
+automation_debug_chat_load_expected_prefix: "FALLBACKQA"
+automation_debug_chat_load_prompt_template: '请只回复 "{expected}"，不要解释，不要添加其他字符。'
+automation_debug_chat_load_stream: "true"
+automation_debug_chat_load_reset: "true"
+automation_debug_chat_load_fail_on_final_mismatch: "true"
+automation_debug_chat_load_provider_model_thresholds_json: '{"qa-fallback-primary":{"min":1},"qa-fallback-secondary":{"min":1}}'
+automation_fake_provider_pipeline_name: "LangBot QA Model Fallback Debug Chat"
+automation_fake_provider_model_name: "qa-fallback-primary"
+automation_fake_provider_fallback_model_names: "qa-fallback-secondary"
+automation_fake_provider_fail_models: "qa-fallback-primary"
+automation_fake_provider_fail_after_first_chunk_models: ""
+automation_fake_provider_first_token_delay_ms: "25"
+automation_fake_provider_chunk_delay_ms: "10"
+automation_fake_provider_fault_status: "503"
+metrics_thresholds_json: '{"response_p95_ms":{"max":10000},"error_rate":{"max":0},"fake_provider_fault_count_min":{"min":1},"primary_model_requests":{"min":1},"fallback_model_requests":{"min":1}}'
+fault_model_json: '{"provider_fault":"HTTP 503 for every qa-fallback-primary request before the first stream chunk","expected_behavior":"Local Agent invokes qa-fallback-secondary and returns the expected Debug Chat response."}'
+setup_automation:
+  - "node:scripts/e2e/ensure-fake-provider-pipeline.mjs --write-env"
+setup_provides_env:
+  - LANGBOT_FAKE_PROVIDER_URL
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_URL
+  - LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
+steps:
+  - "Create a QA pipeline with a failing primary model and a healthy fallback model on the controlled provider."
+  - "Send one streaming Debug Chat request with a unique response token."
+  - "Inspect provider request records and require both the failed primary request and the successful fallback request."
+checks:
+  - "The user-visible request succeeds with the unique expected response."
+  - "The fake provider records at least one qa-fallback-primary request and at least one qa-fallback-secondary request."
+  - "At least one provider fault is observed without a final Debug Chat error."
+evidence_required:
+  - metrics
+  - network
+  - api_diagnostic
+  - filesystem
+expected_failures:
+  - "fake_provider_fault"
+failure_patterns:
+  - "All models failed during streaming setup"
+  - "Timed out after"
+troubleshooting:
+  - backend-not-listening
+  - debug-chat-history-contaminates-automation

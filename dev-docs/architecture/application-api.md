@@ -1,0 +1,177 @@
+# Application API foundation
+
+The application package provides a callable business boundary inside Core. A
+consumer supplies a trusted identity and operation arguments, then receives a
+validated result or a stable application error. HTTP, MCP, the management
+assistant and `lbctl` share this boundary through protocol adapters.
+
+## HTTP operation transport
+
+`OperationsRouterGroup` exposes `/api/v1/operations` with `USER_TOKEN_OR_API_KEY`
+authentication. Catalog and individual-description GETs use `operation_catalog()`,
+filter principal constraints and effective permissions with `authz.has_permission`,
+and omit `exposure: none`. Discovery is not the authorization boundary: explicit
+POSTs may invoke known IDs, including streaming operations omitted from discovery.
+`execute()` and `stream()` enforce their existing principal, permission, input,
+placement and audit rules. No operation handlers are duplicated in the transport.
+
+POST input is a JSON object; empty bodies mean `{}`. Top-level `workspace` and
+`workspace_uuid` selectors are ignored; only the authenticated `RequestContext`
+selects the Workspace. Multipart/binary inputs retain dedicated HTTP routes.
+Application errors preserve status, code, message and details. Streams serialize
+each validated result as an SSE data frame, terminate with `done` on success or
+`error` with `{code,msg}` on failure, and close the application iterator on disconnect.
+Wrong execution modes fail with HTTP 400 before streaming starts.
+
+The `operation.binary_base64` capability advertises recursive binary output
+encoding: HTTP results and SSE events encode `bytes` and `bytearray` as standard
+RFC 4648 base64 with padding, not URL-safe base64. Transport descriptions mark
+binary output fields with `contentEncoding: base64`. Application handlers and
+internal Python consumers retain their original binary values.
+
+API keys can confirm plugin grants under the same `resource.manage` and per-grant
+permission ceiling. Every requested grant is revalidated on API-key confirmation,
+including retained grants; compatibility confirmation still requires the entire
+legacy declaration. This does not allow API keys to grant processor operations.
+Application audit records retain the confirming `api_key_uuid`.
+
+See the public Service API overview in `docs/en/tags/readme.mdx` for requests,
+response formats, SSE handling and capability negotiation.
+
+## Workspace operations
+
+Workspace sandbox reset is `workspace.sandbox.reset`, available to members, API keys and support administrators with `workspace.update` through `DELETE /api/v1/workspaces/current/sandbox`. It atomically removes this Workspace's backend, private E2B configuration and limit overrides. Repeated reset is supported. In-flight tasks retain their snapshots. The operation has `exposure='none'`, so MCP, Workspace assistant and plugin tools do not acquire it. The SDK proxy catalog is unchanged. `lbctl` requires `workspace.view` for its independent readback.
+
+The CLI capability response also advertises the existing `plugin.permissions.get` operation. Permission approval continues to use the existing account-only confirmation path. `lbctl` reads requested/effective permissions and directs the user to the WebUI extensions page in the selected Workspace.
+
+`ap.application_api.operation_catalog()` returns the explicit operation allowlist,
+with version, permission, principal constraints, side effects, execution mode,
+and JSON schemas for inputs and results. The catalog covers the existing
+Workspace management capabilities:
+
+| Area | Capabilities |
+| --- | --- |
+| Pipelines and agents | CRUD, metadata, extension configuration, migration preview/execute, diagnostic runs, run history and events |
+| Models and providers | LLM/embedding/rerank CRUD and tests, defaults, discovery, provider credential authorization |
+| Bots and platforms | CRUD, routes and dry runs, messages, administrators, adapter metadata and credential setup sessions |
+| Knowledge | Bases, ingestion tasks, files, retrieval, engine schemas and parser discovery |
+| Extensions | Plugin marketplace search, installation/configuration/assets/logs, MCP servers/resources, skills and files, tools |
+| Workspace | Current workspace, language, membership, invitations, API keys and webhooks |
+| Operations | Monitoring and exports, governance and audit, task status, Box visibility, setup wizard and storage statistics |
+| Conversations | Management-assistant conversations/runs and Pipeline chat history, reset, connections and broadcast |
+
+Service-backed operations reuse existing business signatures to build strict
+Pydantic inputs. Only methods explicitly listed in `service_operations.py` are
+exposed; adding a public service method does not publish an operation. Domain
+configuration objects remain dictionaries because their schemas are owned by
+providers, plugins or the existing resource services. Those services retain
+validation, quotas, secret placeholder restoration and runtime side effects.
+
+```python
+# context is established by a trusted authenticator, never from request JSON.
+result = await ap.application_api.execute(
+    'pipeline.get', context, {'pipeline_uuid': pipeline_uuid}
+)
+
+async for frame in ap.application_api.stream(
+    'agent.debug.stream', context,
+    {'agent_uuid': agent_uuid, 'payload': {'text': 'hello'}},
+):
+    consume(frame)
+```
+
+The Workspace comes only from `RequestContext`. Each invocation checks the
+operation permission and the current execution binding/generation, then carries
+that tenant and its message language through the business call. Additional
+identity constraints remain where required by the business service: membership,
+interactive provider authorization, assistant conversations and Pipeline
+migration require an account. API-key grants are not replaced by the creator's
+role. Authentication, key revocation/expiry and current account membership must
+be resolved by the trusted caller before constructing the context.
+
+Secret reads require the corresponding secret-management permission. Mutating
+operations preserve the domain's existing authorization and resource ownership
+checks. Audit recording uses the existing Workspace configuration and bounded
+writer, with operation identity and outcome; raw arguments are not copied into
+the generic trace. Queued tasks retain their Workspace/generation and revalidate
+runtime admission before accessing plugins.
+
+`ApplicationAPIException.error` carries `code`, `message`, `status_code` and
+optional structured `details`. Protocol adapters map that object to their own
+response shape. Invalid inputs and outputs fail explicitly. Cancellation is not
+converted into success, and writes are never automatically retried. Pipeline
+run timeouts retain the existing `unknown` outcome: a timeout does not establish
+that execution failed or was rolled back.
+
+Streaming scopes live in isolated producer tasks with bounded queues. Closing
+an Agent debug stream cancels its execution. Management-assistant streaming
+retains its existing detached-run behavior; use the explicit stop operation to
+cancel an assistant run. Consumers should close partially consumed iterators
+with `contextlib.aclosing`.
+
+## Execution-context operations
+
+`ExecutionAPI` publishes the existing Core business actions available to an
+installed plugin or a running processor. Its catalog describes each action's
+input/output schema, streaming mode and required plugin/run scope. It includes
+model and RAG access, tools, event replies and platform actions, state/history,
+run control and interactions, and Box/file operations.
+
+```python
+from langbot.pkg.api.application.execution import ExecutionAPI, ExecutionAPIContext
+
+api = ExecutionAPI(ap)
+catalog = api.catalog()
+context = ExecutionAPIContext(binding=trusted_installation_binding, run_id=run_id)
+result = await api.invoke(operation_id, context, arguments)
+```
+
+The caller must supply the trusted installation binding established by Core.
+The foundation invokes the existing secured action dispatcher, preserving
+installation revision/grant checks, active placement and frozen run resources.
+A run-bound context also verifies that the run belongs to that installation's
+Workspace and plugin. Arguments cannot override the run ID or fall back to the
+legacy plugin path by omitting it. Plugin-only operations remain explicit and
+cannot be called with a run-bound context. Stream isolation also prevents one
+consumer's context from escaping into another consumer's task.
+
+## Scope and adoption
+
+This foundation covers the Workspace and execution business capabilities listed
+in its explicit catalogs. Plugin publishing to Space and Git synchronization
+remain in their existing HTTP routes. Instance administration, account login/bootstrap, public ingress,
+OAuth callbacks, transport assets and internal Runtime handshake/chunk/ping
+messages remain with their owning boundaries. Composite HTTP response layouts
+(such as a combined monitoring page) are consumer projections of these
+operations. This does not add new platform APIs or new instance-level powers.
+
+Existing routes do not call the new application dispatcher. No SDK protocol or `lbctl` command is
+changed by this foundation.
+
+Consumer adoption should verify the same operation through each selected
+transport, including denied access, missing resources, invalid inputs,
+cancellation and secret handling. The existing Core smoke exercises current
+consumers; it does not by itself prove a new consumer integration.
+
+## Agent-initiated plugin installation
+
+`plugin.marketplace.search`, `plugin.install.marketplace` and `task.get` are exposed to plugins and processors
+(`exposure='all'`). Installing is `dangerous`, so processor tool pickers show the sensitive-tool warning and it is
+never part of a default tool set. `plugin.*` and `plugin.install.*` remain invalid wildcards because GitHub and local
+installs stay assistant-only or unexposed.
+
+For `PLUGIN` and `PROCESSOR` principals, `install_marketplace` additionally rejects `auto_confirm_permissions`, refuses
+targets that already have an installation in the Workspace (upgrades and reinstalls stay with members), and honours
+`plugin.enable_marketplace`. A new installation is persisted disabled until a member confirms its permissions.
+`task.get` returns the stable public projection, including `pending_permission_confirmation`, to every principal except
+accounts, support administrators and Core.
+
+## Workspace language for plugins and Agents
+
+`workspace.language.get` is exposed to plugins and processors (`exposure='all'`, risk `read`, permission
+`workspace.view`). It returns the Workspace `message_language` (the value Core uses for backend messages and default
+replies, default `en_US`) plus `supported_languages`, so plugins and Agent tools can localize their own output. It reads
+the Workspace from the trusted context and accepts no arguments. `workspace.language.update` stays member/API-key only,
+so `workspace.language.*` and `workspace.*` remain invalid wildcards. LocalAgent declares the operation; the SDK exposes it
+as `workspace.workspace.language.get()`. HTTP (`GET /api/v1/workspaces/current/language`) and the MCP
+`get_workspace_message_language` tool are unchanged.

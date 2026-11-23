@@ -1,0 +1,146 @@
+---
+title: "企业微信智能机器人"
+description: "用 LangBot 搭建企业微信智能机器人，将大模型对话引入你的组织。"
+---
+
+## 一键配置（推荐）
+
+LangBot 支持一键创建企业微信智能机器人并自动填写 BotId 和 Secret，无需手动复制粘贴。
+
+1. 打开 LangBot WebUI，进入**机器人 > 创建机器人**
+2. 填写机器人名称，平台/适配器选择 `企业微信智能机器人`
+3. 在下方出现的**一键创建机器人**区域，点击右侧的 **开始** 按钮
+
+![一键创建机器人](/images/zh/deploy/bots/wecom/wecombot/wecombot_oneclick.png)
+
+4. 使用企业微信扫描弹出的二维码，手机端会提示「请先创建智能机器人」，点击 **一键创建智能机器人**
+
+![手机端一键创建](/images/zh/deploy/bots/wecom/wecombot/wecombot_scan_create.png)
+
+5. 授权成功后，BotId 和 Secret 会**自动填入**配置表单
+6. **手动填写机器人名称**，名称需与企业微信中创建的机器人名称一致
+
+![手动填写机器人名称](/images/zh/deploy/bots/wecom/wecombot/wecombot_fill_name.png)
+
+7. 点击**提交**，完成创建
+
+<Warning>
+企业微信智能机器人**不能选择已有的机器人**进行一键配置，只能新建。如果需要使用已有机器人，请参考下方手动配置。
+</Warning>
+
+---
+
+## 手动配置
+
+### 创建机器人
+
+首先登录[企业微信管理后台](https://work.weixin.qq.com/wework_admin/frame#/)。
+
+![主页](/images/zh/deploy/bots/wecom/wecombot/wecombot_1.png)
+
+点击左边栏的`安全与管理`，点击`管理工具`里面的`智能机器人`。
+
+如图:
+
+![智能机器人](/images/zh/deploy/bots/wecom/wecombot/wecombot_2.png)
+
+点击`创建机器人`并选择`手动创建`，拉至页面最底部，点击`API模式创建`，进入页面：
+
+![API模式创建](/images/zh/deploy/bots/wecom/wecombot/wecombot_3.png)
+
+### 长连接配置说明
+#### 开启长连接 API 模式
+在企业微信管理后台，进入智能机器人的配置页面，开启「API 模式」并选择「长连接」方式：
+
+![长连接方式创建](/images/zh/deploy/bots/wecom/wecombot/wecombot_9.png)
+
+#### 获取凭证
+开启长连接 API 模式后，需要获取以下凭证用于建立连接：
+
+
+| 凭证 | 说明 |
+|------|------|
+| BotID | 智能机器人的唯一标识，用于标识机器人身份 |
+| Secret | 长连接专用密钥，用于身份校验 |
+
+<Warning>
+注意：
+- Secret 是长连接专用的密钥，与设置接收消息回调地址模式的 Token/EncodingAESKey 不同
+- 请妥善保管 Secret，避免泄露
+- 模式切换影响：API 模式只能选择一种方式（长连接或设置接收消息回调地址），切换到「设置接收消息回调地址」模式会导致现有长连接失效；反之，从「设置接收消息回调地址」切换到「长连接」模式后，原有的回调地址将不再生效
+</Warning>
+
+#### 配置机器人
+启动 LangBot 主程序，适配器选择 `企业微信智能机器人`，填写配置项，
+将长连接中的botid和secret以及机器人名称填入，点击保存并使用
+> 其中机器人名称要与新建的机器人名称一样，不然群聊会不回复
+
+![长连接配置](/images/zh/deploy/bots/wecom/wecombot/wecombot_10.png)
+
+
+### 使用url回调配置说明
+
+点击随机获取 Token 和 EncodingAESKey，然后填写上方的机器人基本信息，**注意设置可见范围**。
+
+![参数获取](/images/zh/deploy/bots/wecom/wecombot/wecombot_11.png)
+
+点击左边栏的`我的企业`，保存最下方的企业ID。
+
+#### 配置回调地址
+
+启动 LangBot 主程序，适配器选择 `企业微信智能机器人`，填写配置项，
+其中，令牌为 Token，消息加解密密钥为 EncodingAESKey，机器人ID填写入xxx（或者随便填写，后续会改），填写之后点击
+`保存`，并`启用`机器人。
+
+![企业微信智能机器人适配器](/images/zh/deploy/bots/wecom/wecombot/wecombot_4.png)
+
+在 LangBot 主页中，启用并选择对应的机器人，点击进入配置页面，复制其中的 Webhook 回调地址
+
+<Info>
+推荐您先参照[配置 HTTP 反向代理](/zh/workshop/production/proxy-and-ssl)来配置 LangBot 回调地址。
+</Info>
+
+![Webhook 回调地址](/images/zh/deploy/bots/wecom/wecombot/wecombot_8.png)
+
+返回企业微信机器人配置页面将复制的webhook地址填写到`URL回调`中。若创建成功，则会跳转至详情页面，若出现`请求URL失败`字样，请再三检查上述操作是否一一完成。
+
+创建成功之后的详情页：
+![创建成功](/images/zh/deploy/bots/wecom/wecombot/wecombot_5.png)
+
+复制企业微信机器人详情页的`Bot ID`和机器人的名称，回到LangBot管理页面，将部署的智能机器人的机器人Id改为复制的ID，并填入机器人名称，重新启动机器人。
+
+### 开启流式
+
+针对部分本地搭建或者不支持流式的模型新增流式开关
+
+![流式开关](/images/zh/deploy/bots/wecom/wecombot/wecombot_12.png)
+
+
+### 开始使用
+
+进入企业微信，点击 `➕`,如图：
+
+![添加机器人](/images/zh/deploy/bots/wecom/wecombot/wecombot_6.png)
+
+点击`企业创建的`,选择创建的机器人，进入聊天界面。
+
+同理，若想邀请机器人进入群聊，那么点击群聊的添加人员，在其中添加机器人。
+
+### 编排事件
+
+新版企业微信智能机器人适配器在长连接和 Webhook 模式下均提供以下业务事件，可在机器人的事件路由中分别选择处理器：
+
+| 事件 | 使用场景与数据 |
+| --- | --- |
+| `message.received` | 收到用户消息，进入日常问答或任务处理流程。 |
+| `wecombot.enter_chat` | 用户进入机器人会话，可触发欢迎和使用引导。包含用户、会话 ID 和原始事件数据。 |
+| `wecombot.template_card_event` | 用户点击或提交模板卡片，可按 `task_id`、`event_key` 或 `selected_items` 分支处理。包含卡片类型、用户、会话和原始事件数据。 |
+| `feedback.received` | 用户对机器人回复提交反馈，可用于评价收集。 |
+
+进入会话事件由企业微信推送，不代表添加好友。欢迎语必须在平台的 5 秒窗口内完成，建议使用快速、固定的文本；通过事件回复发送文本时，LangBot 会使用专用欢迎语接口，超时会明确报错。不要依赖耗时的模型调用生成欢迎语。
+
+LangBot 交互表单和 Dify 表单的卡片回调继续由原有交互流程处理，不会同时触发模板卡片业务事件。连接、鉴权和重连等底层状态不作为编排事件。
+
+### 效果图
+
+![效果图1](/images/zh/deploy/bots/wecom/wecombot/wecombot_7.png)

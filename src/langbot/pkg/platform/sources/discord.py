@@ -1,0 +1,1720 @@
+from __future__ import annotations
+
+from langbot.pkg.i18n import t
+from langbot.pkg.i18n.adapters import adapter_t, localized_adapter
+
+import discord
+from discord import ui as discord_ui
+
+import typing
+import re
+import base64
+import uuid
+import os
+import datetime
+import time
+import traceback
+
+# 使用BytesIO创建文件对象，避免路径问题
+import io
+import asyncio
+from enum import Enum
+
+from langbot.pkg.utils import httpclient
+import pydantic
+
+import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
+import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
+from langbot_plugin.api.definition.abstract.platform.event_logger import AbstractEventLogger as EventLogger
+
+
+_MAX_DISCORD_MEDIA_BYTES = 10 * 1024 * 1024
+
+
+def _decode_discord_base64_limited(value: str) -> bytes:
+    if ',' in value:
+        value = value.split(',', 1)[1]
+    max_encoded_bytes = 4 * ((_MAX_DISCORD_MEDIA_BYTES + 2) // 3)
+    if len(value) > max_encoded_bytes:
+        raise ValueError('Discord media exceeds the size limit')
+    decoded = base64.b64decode(value)
+    if len(decoded) > _MAX_DISCORD_MEDIA_BYTES:
+        raise ValueError('Discord media exceeds the size limit')
+    return decoded
+
+
+# 语音功能相关异常定义
+class VoiceConnectionError(Exception):
+    """语音连接基础异常"""
+
+    def __init__(self, message: str, error_code: str = None, guild_id: int = None):
+        super().__init__(message)
+        self.error_code = error_code
+        self.guild_id = guild_id
+        self.timestamp = datetime.datetime.now()
+
+
+class VoicePermissionError(VoiceConnectionError):
+    """语音权限异常"""
+
+    def __init__(self, message: str, missing_permissions: list = None, user_id: int = None, channel_id: int = None):
+        super().__init__(message, 'PERMISSION_ERROR')
+        self.missing_permissions = missing_permissions or []
+        self.user_id = user_id
+        self.channel_id = channel_id
+
+
+class VoiceNetworkError(VoiceConnectionError):
+    """语音网络异常"""
+
+    def __init__(self, message: str, retry_count: int = 0):
+        super().__init__(message, 'NETWORK_ERROR')
+        self.retry_count = retry_count
+        self.last_attempt = datetime.datetime.now()
+
+
+class VoiceConnectionStatus(Enum):
+    """语音连接状态枚举"""
+
+    IDLE = 'idle'
+    CONNECTING = 'connecting'
+    CONNECTED = 'connected'
+    PLAYING = 'playing'
+    RECONNECTING = 'reconnecting'
+    FAILED = 'failed'
+
+
+class VoiceConnectionInfo:
+    """
+    语音连接信息类
+
+    用于存储和管理单个语音连接的详细信息，包括连接状态、时间戳、
+    频道信息等。提供连接信息的标准化数据结构。
+
+    @author: @ydzat
+    @version: 1.0
+    @since: 2025-07-04
+    """
+
+    def __init__(self, guild_id: int, channel_id: int, channel_name: str = None):
+        """
+        初始化语音连接信息
+
+        @author: @ydzat
+
+        Args:
+            guild_id (int): 服务器ID
+            channel_id (int): 语音频道ID
+            channel_name (str, optional): 语音频道名称
+        """
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+        self.channel_name = channel_name or f'Channel-{channel_id}'
+        self.connected = False
+        self.connection_time: datetime.datetime = None
+        self.last_activity = datetime.datetime.now()
+        self.status = VoiceConnectionStatus.IDLE
+        self.user_count = 0
+        self.latency = 0.0
+        self.connection_health = 'unknown'
+        self.voice_client = None
+
+    def update_status(self, status: VoiceConnectionStatus):
+        """
+        更新连接状态
+
+        @author: @ydzat
+
+        Args:
+            status (VoiceConnectionStatus): 新的连接状态
+        """
+        self.status = status
+        self.last_activity = datetime.datetime.now()
+
+        if status == VoiceConnectionStatus.CONNECTED:
+            self.connected = True
+            if self.connection_time is None:
+                self.connection_time = datetime.datetime.now()
+        elif status in [VoiceConnectionStatus.IDLE, VoiceConnectionStatus.FAILED]:
+            self.connected = False
+            self.connection_time = None
+            self.voice_client = None
+
+    def to_dict(self) -> dict:
+        """
+        转换为字典格式
+
+        @author: @ydzat
+
+        Returns:
+            dict: 连接信息的字典表示
+        """
+        return {
+            'guild_id': self.guild_id,
+            'channel_id': self.channel_id,
+            'channel_name': self.channel_name,
+            'connected': self.connected,
+            'connection_time': self.connection_time.isoformat() if self.connection_time else None,
+            'last_activity': self.last_activity.isoformat(),
+            'status': self.status.value,
+            'user_count': self.user_count,
+            'latency': self.latency,
+            'connection_health': self.connection_health,
+        }
+
+
+class VoiceConnectionManager:
+    """
+    语音连接管理器
+
+    负责管理多个服务器的语音连接，提供连接建立、断开、状态查询等功能。
+    采用单例模式确保全局只有一个连接管理器实例。
+
+    @author: @ydzat
+    @version: 1.0
+    @since: 2025-07-04
+    """
+
+    def __init__(self, bot: discord.Client, logger: EventLogger):
+        """
+        初始化语音连接管理器
+
+        @author: @ydzat
+
+        Args:
+            bot (discord.Client): Discord 客户端实例
+            logger (EventLogger): 事件日志记录器
+        """
+        self.bot = bot
+        self.logger = logger
+        self.connections: typing.Dict[int, VoiceConnectionInfo] = {}
+        self._connection_lock = asyncio.Lock()
+        self._cleanup_task = None
+        self._monitoring_enabled = True
+
+    async def join_voice_channel(self, guild_id: int, channel_id: int, user_id: int = None) -> discord.VoiceClient:
+        """
+        加入语音频道
+
+        验证用户权限和频道状态后，建立到指定语音频道的连接。
+        支持连接复用和自动重连机制。
+
+        @author: @ydzat
+
+        Args:
+            guild_id (int): 服务器ID
+            channel_id (int): 语音频道ID
+            user_id (int, optional): 请求用户ID，用于权限验证
+
+        Returns:
+            discord.VoiceClient: 语音客户端实例
+
+        Raises:
+            VoicePermissionError: 权限不足时抛出
+            VoiceNetworkError: 网络连接失败时抛出
+            VoiceConnectionError: 其他连接错误时抛出
+        """
+        async with self._connection_lock:
+            try:
+                # 获取服务器和频道对象
+                guild = self.bot.get_guild(guild_id)
+                if not guild:
+                    raise VoiceConnectionError(t('Resource not found') + f': {guild_id}', 'GUILD_NOT_FOUND', guild_id)
+
+                channel = guild.get_channel(channel_id)
+                if not channel or not isinstance(channel, discord.VoiceChannel):
+                    raise VoiceConnectionError(
+                        t('Resource not found') + f': {channel_id}', 'CHANNEL_NOT_FOUND', guild_id
+                    )
+
+                # 验证用户是否在语音频道中（如果提供了用户ID）
+                if user_id:
+                    await self._validate_user_in_channel(guild, channel, user_id)
+
+                # 验证机器人权限
+                await self._validate_bot_permissions(channel)
+
+                # 检查是否已有连接
+                if guild_id in self.connections:
+                    existing_conn = self.connections[guild_id]
+                    if existing_conn.connected and existing_conn.voice_client:
+                        if existing_conn.channel_id == channel_id:
+                            # 已连接到相同频道，返回现有连接
+                            await self.logger.info(f'复用现有语音连接: {guild.name} -> {channel.name}')
+                            return existing_conn.voice_client
+                        else:
+                            # 连接到不同频道，先断开旧连接
+                            await self._disconnect_internal(guild_id)
+
+                # 建立新连接
+                voice_client = await channel.connect()
+
+                # 更新连接信息
+                conn_info = VoiceConnectionInfo(guild_id, channel_id, channel.name)
+                conn_info.voice_client = voice_client
+                conn_info.update_status(VoiceConnectionStatus.CONNECTED)
+                conn_info.user_count = len(channel.members)
+                self.connections[guild_id] = conn_info
+
+                await self.logger.info(f'成功连接到语音频道: {guild.name} -> {channel.name}')
+                return voice_client
+
+            except discord.ClientException as e:
+                raise VoiceNetworkError(t('Voice connection failed') + f': {e}')
+            except discord.opus.OpusNotLoaded as e:
+                raise VoiceConnectionError(
+                    t('Voice service is unavailable') + f': Opus: {e}', 'OPUS_NOT_LOADED', guild_id
+                )
+            except Exception as e:
+                await self.logger.error(f'连接语音频道时发生未知错误: {str(e)}')
+                raise VoiceConnectionError(t('Voice connection failed') + f': {e}', 'UNKNOWN_ERROR', guild_id)
+
+    async def leave_voice_channel(self, guild_id: int) -> bool:
+        """
+        离开语音频道
+
+        断开指定服务器的语音连接，清理相关资源和状态信息。
+        确保音频播放停止后再断开连接。
+
+        @author: @ydzat
+
+        Args:
+            guild_id (int): 服务器ID
+
+        Returns:
+            bool: 断开是否成功
+        """
+        async with self._connection_lock:
+            return await self._disconnect_internal(guild_id)
+
+    async def _disconnect_internal(self, guild_id: int) -> bool:
+        """
+        内部断开连接方法
+
+        @author: @ydzat
+
+        Args:
+            guild_id (int): 服务器ID
+
+        Returns:
+            bool: 断开是否成功
+        """
+        if guild_id not in self.connections:
+            return True
+
+        conn_info = self.connections[guild_id]
+
+        try:
+            if conn_info.voice_client and conn_info.voice_client.is_connected():
+                # 停止当前播放
+                if conn_info.voice_client.is_playing():
+                    conn_info.voice_client.stop()
+
+                # 等待播放完全停止
+                await asyncio.sleep(0.1)
+
+                # 断开连接
+                await conn_info.voice_client.disconnect()
+
+            conn_info.update_status(VoiceConnectionStatus.IDLE)
+            del self.connections[guild_id]
+
+            await self.logger.info(f'已断开语音连接: Guild {guild_id}')
+            return True
+
+        except Exception as e:
+            await self.logger.error(f'断开语音连接时发生错误: {str(e)}')
+            # 即使出错也要清理连接记录
+            conn_info.update_status(VoiceConnectionStatus.FAILED)
+            if guild_id in self.connections:
+                del self.connections[guild_id]
+            return False
+
+    async def get_voice_client(self, guild_id: int) -> typing.Optional[discord.VoiceClient]:
+        """
+        获取语音客户端
+
+        返回指定服务器的语音客户端实例，如果未连接则返回 None。
+        会验证连接的有效性，自动清理无效连接。
+
+        @author: @ydzat
+
+        Args:
+            guild_id (int): 服务器ID
+
+        Returns:
+            Optional[discord.VoiceClient]: 语音客户端实例或 None
+        """
+        if guild_id not in self.connections:
+            return None
+
+        conn_info = self.connections[guild_id]
+
+        # 验证连接是否仍然有效
+        if conn_info.voice_client and not conn_info.voice_client.is_connected():
+            # 连接已失效，清理状态
+            await self._disconnect_internal(guild_id)
+            return None
+
+        return conn_info.voice_client if conn_info.connected else None
+
+    async def is_connected_to_voice(self, guild_id: int) -> bool:
+        """
+        检查是否连接到语音频道
+
+        @author: @ydzat
+
+        Args:
+            guild_id (int): 服务器ID
+
+        Returns:
+            bool: 是否已连接
+        """
+        if guild_id not in self.connections:
+            return False
+
+        conn_info = self.connections[guild_id]
+
+        # 检查实际连接状态
+        if conn_info.voice_client and not conn_info.voice_client.is_connected():
+            # 连接已失效，清理状态
+            await self._disconnect_internal(guild_id)
+            return False
+
+        return conn_info.connected
+
+    async def get_connection_status(self, guild_id: int) -> typing.Optional[dict]:
+        """
+        获取连接状态信息
+
+        @author: @ydzat
+
+        Args:
+            guild_id (int): 服务器ID
+
+        Returns:
+            Optional[dict]: 连接状态信息字典或 None
+        """
+        if guild_id not in self.connections:
+            return None
+
+        conn_info = self.connections[guild_id]
+
+        # 更新实时信息
+        if conn_info.voice_client and conn_info.voice_client.is_connected():
+            conn_info.latency = conn_info.voice_client.latency * 1000  # 转换为毫秒
+            conn_info.connection_health = 'good' if conn_info.latency < 100 else 'poor'
+
+            # 更新频道用户数
+            guild = self.bot.get_guild(guild_id)
+            if guild:
+                channel = guild.get_channel(conn_info.channel_id)
+                if channel and isinstance(channel, discord.VoiceChannel):
+                    conn_info.user_count = len(channel.members)
+
+        return conn_info.to_dict()
+
+    async def list_active_connections(self) -> typing.List[dict]:
+        """
+        列出所有活跃连接
+
+        @author: @ydzat
+
+        Returns:
+            List[dict]: 活跃连接列表
+        """
+        active_connections = []
+
+        for guild_id, conn_info in self.connections.items():
+            if conn_info.connected:
+                status = await self.get_connection_status(guild_id)
+                if status:
+                    active_connections.append(status)
+
+        return active_connections
+
+    async def get_voice_channel_info(self, guild_id: int, channel_id: int) -> typing.Optional[dict]:
+        """
+        获取语音频道信息
+
+        @author: @ydzat
+
+        Args:
+            guild_id (int): 服务器ID
+            channel_id (int): 频道ID
+
+        Returns:
+            Optional[dict]: 频道信息字典或 None
+        """
+        guild = self.bot.get_guild(guild_id)
+        if not guild:
+            return None
+
+        channel = guild.get_channel(channel_id)
+        if not channel or not isinstance(channel, discord.VoiceChannel):
+            return None
+
+        # 获取用户信息
+        users = []
+        for member in channel.members:
+            users.append(
+                {'id': member.id, 'name': member.display_name, 'status': str(member.status), 'is_bot': member.bot}
+            )
+
+        # 获取权限信息
+        bot_member = guild.me
+        permissions = channel.permissions_for(bot_member)
+
+        return {
+            'channel_id': channel_id,
+            'channel_name': channel.name,
+            'guild_id': guild_id,
+            'guild_name': guild.name,
+            'user_limit': channel.user_limit,
+            'current_users': users,
+            'user_count': len(users),
+            'bitrate': channel.bitrate,
+            'permissions': {
+                'connect': permissions.connect,
+                'speak': permissions.speak,
+                'use_voice_activation': permissions.use_voice_activation,
+                'priority_speaker': permissions.priority_speaker,
+            },
+        }
+
+    async def _validate_user_in_channel(self, guild: discord.Guild, channel: discord.VoiceChannel, user_id: int):
+        """
+        验证用户是否在语音频道中
+
+        @author: @ydzat
+
+        Args:
+            guild: Discord 服务器对象
+            channel: 语音频道对象
+            user_id: 用户ID
+
+        Raises:
+            VoicePermissionError: 用户不在频道中时抛出
+        """
+        member = guild.get_member(user_id)
+        if not member:
+            raise VoicePermissionError(
+                t('Resource not found') + f': {user_id}', ['member_not_found'], user_id, channel.id
+            )
+
+        if not member.voice or member.voice.channel != channel:
+            raise VoicePermissionError(
+                t('User is not in the voice channel') + f': {member.display_name}, {channel.name}',
+                ['user_not_in_channel'],
+                user_id,
+                channel.id,
+            )
+
+    async def _validate_bot_permissions(self, channel: discord.VoiceChannel):
+        """
+        验证机器人权限
+
+        @author: @ydzat
+
+        Args:
+            channel: 语音频道对象
+
+        Raises:
+            VoicePermissionError: 权限不足时抛出
+        """
+        bot_member = channel.guild.me
+        permissions = channel.permissions_for(bot_member)
+
+        missing_permissions = []
+
+        if not permissions.connect:
+            missing_permissions.append('connect')
+        if not permissions.speak:
+            missing_permissions.append('speak')
+
+        if missing_permissions:
+            raise VoicePermissionError(
+                t('Permission denied') + f': {channel.name}: {", ".join(missing_permissions)}',
+                missing_permissions,
+                channel_id=channel.id,
+            )
+
+    async def cleanup_inactive_connections(self):
+        """
+        清理无效连接
+
+        定期检查并清理已断开或无效的语音连接，释放资源。
+
+        @author: @ydzat
+        """
+        cleanup_guilds = []
+
+        for guild_id, conn_info in self.connections.items():
+            if not conn_info.voice_client or not conn_info.voice_client.is_connected():
+                cleanup_guilds.append(guild_id)
+
+        for guild_id in cleanup_guilds:
+            await self._disconnect_internal(guild_id)
+
+        if cleanup_guilds:
+            await self.logger.info(f'清理了 {len(cleanup_guilds)} 个无效的语音连接')
+
+    async def start_monitoring(self):
+        """
+        开始连接监控
+
+        @author: @ydzat
+        """
+        if self._cleanup_task is None and self._monitoring_enabled:
+            self._cleanup_task = asyncio.create_task(self._monitoring_loop())
+
+    async def stop_monitoring(self):
+        """
+        停止连接监控
+
+        @author: @ydzat
+        """
+        self._monitoring_enabled = False
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+            self._cleanup_task = None
+
+    async def _monitoring_loop(self):
+        """
+        监控循环
+
+        @author: @ydzat
+        """
+        try:
+            while self._monitoring_enabled:
+                await asyncio.sleep(60)  # 每分钟检查一次
+                await self.cleanup_inactive_connections()
+        except asyncio.CancelledError:
+            pass
+
+    async def disconnect_all(self):
+        """
+        断开所有连接
+
+        @author: @ydzat
+        """
+        async with self._connection_lock:
+            guild_ids = list(self.connections.keys())
+            for guild_id in guild_ids:
+                await self._disconnect_internal(guild_id)
+
+        await self.stop_monitoring()
+
+
+class DiscordMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
+    @staticmethod
+    async def yiri2target(
+        message_chain: platform_message.MessageChain,
+    ) -> typing.Tuple[str, typing.List[discord.File]]:
+        for ele in message_chain:
+            if isinstance(ele, platform_message.At):
+                message_chain.remove(ele)
+                break
+
+        text_string = ''
+        files = []
+
+        for ele in message_chain:
+            if isinstance(ele, platform_message.Image):
+                filename = f'{uuid.uuid4()}.png'  # 默认文件名
+
+                if ele.base64:
+                    # 处理base64编码的图片
+                    if ele.base64.startswith('data:'):
+                        # 从data URL中提取文件类型
+                        data_header = ele.base64.split(',')[0]
+                        if 'jpeg' in data_header or 'jpg' in data_header:
+                            filename = f'{uuid.uuid4()}.jpg'
+                        elif 'gif' in data_header:
+                            filename = f'{uuid.uuid4()}.gif'
+                        elif 'webp' in data_header:
+                            filename = f'{uuid.uuid4()}.webp'
+                try:
+                    image_bytes, mime_type = await ele.get_bytes()
+                except Exception as exc:
+                    print(f'Error reading Discord image: {exc}')
+                    continue
+                if 'jpeg' in mime_type or 'jpg' in mime_type:
+                    filename = f'{uuid.uuid4()}.jpg'
+                elif 'gif' in mime_type:
+                    filename = f'{uuid.uuid4()}.gif'
+                elif 'webp' in mime_type:
+                    filename = f'{uuid.uuid4()}.webp'
+
+                if image_bytes:
+                    files.append(discord.File(fp=io.BytesIO(image_bytes), filename=filename))
+            elif isinstance(ele, platform_message.Plain):
+                text_string += ele.text
+            elif isinstance(ele, platform_message.Voice):
+                file_bytes = None
+                filename = getattr(ele, 'name', '') or ''
+                if ele.base64:
+                    file_bytes = await asyncio.to_thread(
+                        _decode_discord_base64_limited,
+                        ele.base64,
+                    )
+                elif getattr(ele, 'path', None):
+                    with open(ele.path, 'rb') as f:
+                        file_bytes = await asyncio.to_thread(f.read)
+                elif ele.url:
+                    session = httpclient.get_session()
+                    async with session.get(ele.url) as response:
+                        file_bytes = await httpclient.read_limited(
+                            response,
+                            max_bytes=_MAX_DISCORD_MEDIA_BYTES,
+                        )
+                if file_bytes:
+                    from langbot.pkg.utils import audio as audio_utils
+
+                    fmt = audio_utils.detect_audio_format(file_bytes)
+                    # If format is silk or amr, Discord client cannot decode it; transcode to mp3
+                    if fmt in ('silk', 'amr') and audio_utils.is_ffmpeg_available():
+                        try:
+                            file_bytes = await audio_utils.transcode_audio(file_bytes, 'mp3', fmt)
+                            fmt = 'mp3'
+                        except Exception:
+                            pass
+                    if not filename:
+                        ext = fmt if fmt != 'unknown' else 'mp3'
+                        filename = f'{uuid.uuid4()}.{ext}'
+                    files.append(discord.File(fp=io.BytesIO(file_bytes), filename=filename))
+            elif isinstance(ele, platform_message.File):
+                file_bytes = None
+                filename = f'{uuid.uuid4()}.{ele.name.split(".")[-1]}'
+                if ele.base64:
+                    file_bytes = await asyncio.to_thread(
+                        _decode_discord_base64_limited,
+                        ele.base64,
+                    )
+                elif ele.url:
+                    session = httpclient.get_session()
+                    async with session.get(ele.url) as response:
+                        file_bytes = await httpclient.read_limited(
+                            response,
+                            max_bytes=_MAX_DISCORD_MEDIA_BYTES,
+                        )
+                if file_bytes:
+                    files.append(discord.File(fp=io.BytesIO(file_bytes), filename=filename))
+            elif isinstance(ele, platform_message.Forward):
+                for node in ele.node_list:
+                    (
+                        node_text,
+                        node_files,
+                    ) = await DiscordMessageConverter.yiri2target(node.message_chain)
+                    text_string += node_text
+                    files.extend(node_files)
+
+        return text_string, files
+
+    @staticmethod
+    async def target2yiri(message: discord.Message) -> platform_message.MessageChain:
+        lb_msg_list = []
+
+        msg_create_time = datetime.datetime.fromtimestamp(int(message.created_at.timestamp()))
+
+        lb_msg_list.append(platform_message.Source(id=message.id, time=msg_create_time))
+
+        element_list = []
+
+        def text_element_recur(
+            text_ele: str,
+        ) -> list[platform_message.MessageComponent]:
+            if text_ele == '':
+                return []
+
+            # <@1234567890>
+            # @everyone
+            # @here
+            at_pattern = re.compile(r'(@everyone|@here|<@[\d]+>)')
+            at_matches = at_pattern.findall(text_ele)
+
+            if len(at_matches) > 0:
+                mid_at = at_matches[0]
+
+                text_split = text_ele.split(mid_at)
+
+                mid_at_component = []
+
+                if mid_at == '@everyone' or mid_at == '@here':
+                    mid_at_component.append(platform_message.AtAll())
+                else:
+                    mid_at_component.append(platform_message.At(target=mid_at[2:-1]))
+
+                return text_element_recur(text_split[0]) + mid_at_component + text_element_recur(text_split[1])
+            else:
+                return [platform_message.Plain(text=text_ele)]
+
+        element_list.extend(text_element_recur(message.content))
+
+        # attachments
+        for attachment in message.attachments:
+            session = httpclient.get_session(trust_env=True)
+            async with session.get(attachment.url) as response:
+                media_data = await httpclient.read_limited(
+                    response,
+                    max_bytes=_MAX_DISCORD_MEDIA_BYTES,
+                )
+                media_base64 = (await asyncio.to_thread(base64.b64encode, media_data)).decode('utf-8')
+                content_type = response.headers.get('Content-Type') or getattr(attachment, 'content_type', None) or ''
+                filename = (getattr(attachment, 'filename', '') or '').lower()
+                flags = getattr(attachment, 'flags', None)
+                is_voice_flag = getattr(flags, 'voice', False) if flags else False
+
+                from langbot.pkg.utils import audio as audio_utils
+
+                detected_fmt = audio_utils.detect_audio_format(media_data)
+                is_audio = (
+                    is_voice_flag
+                    or content_type.startswith('audio/')
+                    or any(
+                        filename.endswith(ext)
+                        for ext in ('.mp3', '.ogg', '.oga', '.opus', '.wav', '.m4a', '.aac', '.flac', '.weba')
+                    )
+                    or detected_fmt in ('wav', 'mp3', 'ogg', 'opus', 'flac', 'silk', 'amr')
+                )
+
+                if is_audio:
+                    mime = (
+                        content_type
+                        if content_type.startswith('audio/')
+                        else (
+                            'audio/ogg'
+                            if detected_fmt in ('ogg', 'opus')
+                            else f'audio/{detected_fmt if detected_fmt != "unknown" else "mpeg"}'
+                        )
+                    )
+                    duration = getattr(attachment, 'duration_secs', None)
+                    if duration is not None:
+                        duration = int(round(duration))
+                    elif media_data:
+                        duration = int(round(audio_utils.estimate_audio_duration(media_data, detected_fmt)))
+                    element_list.append(
+                        platform_message.Voice(
+                            url=attachment.url,
+                            base64=f'data:{mime};base64,{media_base64}',
+                            length=duration,
+                        )
+                    )
+                elif content_type.startswith('image/') or any(
+                    filename.endswith(ext) for ext in ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg')
+                ):
+                    mime = content_type if content_type.startswith('image/') else 'image/png'
+                    element_list.append(
+                        platform_message.Image(url=attachment.url, base64=f'data:{mime};base64,{media_base64}')
+                    )
+                else:
+                    mime = content_type or 'application/octet-stream'
+                    element_list.append(
+                        platform_message.File(
+                            url=attachment.url,
+                            base64=f'data:{mime};base64,{media_base64}',
+                            name=getattr(attachment, 'filename', 'file'),
+                        )
+                    )
+
+        return platform_message.MessageChain(element_list)
+
+
+class DiscordEventConverter(abstract_platform_adapter.AbstractEventConverter):
+    @staticmethod
+    async def yiri2target(event: platform_events.Event) -> discord.Message:
+        pass
+
+    @staticmethod
+    async def target2yiri(event: discord.Message) -> platform_events.Event:
+        message_chain = await DiscordMessageConverter.target2yiri(event)
+
+        if isinstance(event.channel, discord.DMChannel):
+            return platform_events.FriendMessage(
+                sender=platform_entities.Friend(
+                    id=event.author.id,
+                    nickname=event.author.name,
+                    remark=event.channel.id,
+                ),
+                message_chain=message_chain,
+                time=event.created_at.timestamp(),
+                source_platform_object=event,
+            )
+        elif isinstance(event.channel, discord.TextChannel):
+            return platform_events.GroupMessage(
+                sender=platform_entities.GroupMember(
+                    id=event.author.id,
+                    member_name=event.author.name,
+                    permission=platform_entities.Permission.Member,
+                    group=platform_entities.Group(
+                        id=event.channel.id,
+                        name=event.channel.name,
+                        permission=platform_entities.Permission.Member,
+                    ),
+                    special_title='',
+                ),
+                message_chain=message_chain,
+                time=event.created_at.timestamp(),
+                source_platform_object=event,
+            )
+
+
+class DiscordFormView(discord_ui.View):
+    """Discord ``ui.View`` that renders one button per Dify form action.
+
+    Each button's click triggers ``adapter._on_form_button_click`` which
+    acks the interaction, locks the buttons in place, and enqueues a
+    synthetic ``_dify_form_action`` query so the runner resumes the
+    workflow.
+    """
+
+    # Discord button style mapping for Dify ``button_style`` values.
+    _STYLE_MAP: typing.ClassVar[dict] = {
+        'primary': discord.ButtonStyle.primary,
+        'danger': discord.ButtonStyle.danger,
+        'warning': discord.ButtonStyle.danger,
+        'success': discord.ButtonStyle.success,
+        'default': discord.ButtonStyle.secondary,
+        '': discord.ButtonStyle.secondary,
+    }
+
+    def __init__(
+        self,
+        adapter: 'DiscordAdapter',
+        session_key: str,
+        actions: list,
+        timeout: float = 1800,
+    ):
+        super().__init__(timeout=timeout)
+        self._adapter = adapter
+        self._session_key = session_key
+        # Discord caps a view at 25 children (5 rows × 5 buttons). Trim
+        # silently — most Dify forms have ≤10 actions in practice.
+        for idx, action in enumerate(actions[:25]):
+            action_id = str(action.get('id') or '')
+            label = str(action.get('title') or action_id or adapter_t(adapter, 'Option {number}', number=idx + 1))
+            style = self._STYLE_MAP.get(
+                str(action.get('button_style') or '').lower(),
+                discord.ButtonStyle.secondary,
+            )
+            # custom_id must be unique within the view and ≤100 chars.
+            # Encode (session, idx) so we can recover the action even
+            # if Dify ids contain unsafe characters.
+            custom_id = f'lb_form:{idx}:{action_id[:80]}'[:100]
+            button = discord_ui.Button(
+                label=label[:80],  # Discord label limit
+                style=style,
+                custom_id=custom_id,
+            )
+            button.callback = self._make_callback(action_id, label)
+            self.add_item(button)
+
+    def _make_callback(self, action_id: str, action_title: str):
+        async def _cb(interaction: discord.Interaction):
+            await self._adapter._on_form_button_click(
+                interaction=interaction,
+                session_key=self._session_key,
+                action_id=action_id,
+                action_title=action_title,
+                view=self,
+            )
+
+        return _cb
+
+
+class DiscordAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
+    bot: discord.Client = pydantic.Field(exclude=True)
+
+    message_converter: DiscordMessageConverter = DiscordMessageConverter()
+    event_converter: DiscordEventConverter = DiscordEventConverter()
+
+    listeners: typing.Dict[
+        typing.Type[platform_events.Event],
+        typing.Callable[[platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None],
+    ] = {}
+
+    voice_manager: VoiceConnectionManager | None = pydantic.Field(exclude=True, default=None)
+
+    # Injected by botmgr at construction so the form-button callback can
+    # enqueue a synthetic resume query (`_dify_form_action`) on the pool.
+    ap: typing.Any = pydantic.Field(exclude=True, default=None)
+
+    def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
+        bot_account_id = config['client_id']
+
+        listeners = {}
+
+        # 初始化语音连接管理器
+        # self.voice_manager: VoiceConnectionManager = None
+
+        adapter_self = self
+
+        class MyClient(discord.Client):
+            async def on_message(self: discord.Client, message: discord.Message):
+                if message.author.id == self.user.id or message.author.bot:
+                    return
+
+                lb_event = await adapter_self.event_converter.target2yiri(message)
+                await adapter_self.listeners[type(lb_event)](lb_event, adapter_self)
+
+        intents = discord.Intents.default()
+        intents.message_content = True
+
+        args = {}
+
+        # Proxy: config > env var > auto-detect.
+        # discord.py uses aiohttp which does NOT respect http_proxy env
+        # vars by default — we must pass proxy= explicitly.
+        proxy = (
+            config.get('proxy')
+            or os.getenv('http_proxy')
+            or os.getenv('HTTP_PROXY')
+            or os.getenv('https_proxy')
+            or os.getenv('HTTPS_PROXY')
+        )
+        if proxy:
+            args['proxy'] = proxy
+
+        bot = MyClient(intents=intents, **args)
+
+        super().__init__(
+            config=config,
+            logger=logger,
+            bot_account_id=bot_account_id,
+            listeners=listeners,
+            bot=bot,
+            voice_manager=None,
+            **kwargs,
+        )
+
+        # Per-resp-message-id buffer for the accumulated text yielded by
+        # the runner. Discord's edit-message ratelimit (5/5s) makes true
+        # progressive streaming impractical, so we collect chunks and
+        # render once on is_final. ``_form_data`` on the final chunk
+        # diverts to the button-view path.
+        self._stream_buffer: dict[str, str] = {}
+        # session_key -> {form_data, channel_id, thread_id, sender_id,
+        #                 posted_at, view_message_id}
+        # Populated when we send a form view; consumed when the user
+        # clicks a button so we know which workflow_run / form_token to
+        # resume.
+        self._pending_forms: dict[str, dict] = {}
+
+    def _prune_transient_state(self) -> None:
+        now = time.time()
+        ttl_seconds = 1800
+        for message_id, state in tuple(self._stream_buffer.items()):
+            if now - float(state.get('updated_at', now)) > ttl_seconds:
+                self._stream_buffer.pop(message_id, None)
+        for session_key, state in tuple(self._pending_forms.items()):
+            if now - float(state.get('posted_at', now)) > ttl_seconds:
+                self._pending_forms.pop(session_key, None)
+        while len(self._stream_buffer) > 100:
+            self._stream_buffer.pop(next(iter(self._stream_buffer)), None)
+        while len(self._pending_forms) > 1000:
+            self._pending_forms.pop(next(iter(self._pending_forms)), None)
+
+    # Voice functionality methods
+    @localized_adapter
+    async def join_voice_channel(self, guild_id: int, channel_id: int, user_id: int = None) -> discord.VoiceClient:
+        """
+        加入语音频道
+
+        为指定服务器的语音频道建立连接，支持用户权限验证和连接复用。
+
+        @author: @ydzat
+        @version: 1.0
+        @since: 2025-07-04
+
+        Args:
+            guild_id (int): Discord 服务器ID
+            channel_id (int): 语音频道ID
+            user_id (int, optional): 请求用户ID，用于权限验证
+
+        Returns:
+            discord.VoiceClient: 语音客户端实例
+
+        Raises:
+            VoicePermissionError: 权限不足
+            VoiceNetworkError: 网络连接失败
+            VoiceConnectionError: 其他连接错误
+        """
+        if not self.voice_manager:
+            raise VoiceConnectionError(t('Voice service is unavailable'), 'MANAGER_NOT_READY')
+
+        return await self.voice_manager.join_voice_channel(guild_id, channel_id, user_id)
+
+    async def leave_voice_channel(self, guild_id: int) -> bool:
+        """
+        离开语音频道
+
+        断开指定服务器的语音连接，清理相关资源。
+
+        @author: @ydzat
+        @version: 1.0
+        @since: 2025-07-04
+
+        Args:
+            guild_id (int): Discord 服务器ID
+
+        Returns:
+            bool: 是否成功断开连接
+        """
+        if not self.voice_manager:
+            return False
+
+        return await self.voice_manager.leave_voice_channel(guild_id)
+
+    async def get_voice_client(self, guild_id: int) -> typing.Optional[discord.VoiceClient]:
+        """
+        获取语音客户端
+
+        返回指定服务器的语音客户端实例，用于音频播放控制。
+
+        @author: @ydzat
+        @version: 1.0
+        @since: 2025-07-04
+
+        Args:
+            guild_id (int): Discord 服务器ID
+
+        Returns:
+            Optional[discord.VoiceClient]: 语音客户端实例或 None
+        """
+        if not self.voice_manager:
+            return None
+
+        return await self.voice_manager.get_voice_client(guild_id)
+
+    async def is_connected_to_voice(self, guild_id: int) -> bool:
+        """
+        检查语音连接状态
+
+        @author: @ydzat
+        @version: 1.0
+        @since: 2025-07-04
+
+        Args:
+            guild_id (int): Discord 服务器ID
+
+        Returns:
+            bool: 是否已连接到语音频道
+        """
+        if not self.voice_manager:
+            return False
+
+        return await self.voice_manager.is_connected_to_voice(guild_id)
+
+    async def get_voice_connection_status(self, guild_id: int) -> typing.Optional[dict]:
+        """
+        获取语音连接详细状态
+
+        返回包含连接时间、延迟、用户数等详细信息的状态字典。
+
+        @author: @ydzat
+        @version: 1.0
+        @since: 2025-07-04
+
+        Args:
+            guild_id (int): Discord 服务器ID
+
+        Returns:
+            Optional[dict]: 连接状态信息或 None
+        """
+        if not self.voice_manager:
+            return None
+
+        return await self.voice_manager.get_connection_status(guild_id)
+
+    async def list_active_voice_connections(self) -> typing.List[dict]:
+        """
+        列出所有活跃的语音连接
+
+        @author: @ydzat
+        @version: 1.0
+        @since: 2025-07-04
+
+        Returns:
+            List[dict]: 活跃语音连接列表
+        """
+        if not self.voice_manager:
+            return []
+
+        return await self.voice_manager.list_active_connections()
+
+    async def get_voice_channel_info(self, guild_id: int, channel_id: int) -> typing.Optional[dict]:
+        """
+        获取语音频道详细信息
+
+        包括频道名称、用户列表、权限信息等。
+
+        @author: @ydzat
+        @version: 1.0
+        @since: 2025-07-04
+
+        Args:
+            guild_id (int): Discord 服务器ID
+            channel_id (int): 语音频道ID
+
+        Returns:
+            Optional[dict]: 频道信息字典或 None
+        """
+        if not self.voice_manager:
+            return None
+
+        return await self.voice_manager.get_voice_channel_info(guild_id, channel_id)
+
+    async def cleanup_voice_connections(self):
+        """
+        清理无效的语音连接
+
+        手动触发语音连接清理，移除已断开或无效的连接。
+
+        @author: @ydzat
+        @version: 1.0
+        @since: 2025-07-04
+        """
+        if self.voice_manager:
+            await self.voice_manager.cleanup_inactive_connections()
+
+    async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
+        msg_to_send, files = await self.message_converter.yiri2target(message)
+
+        try:
+            # 获取频道对象
+            channel = self.bot.get_channel(int(target_id))
+            if channel is None:
+                # 如果本地缓存中没有，尝试从API获取
+                channel = await self.bot.fetch_channel(int(target_id))
+
+            args = {
+                'content': msg_to_send,
+            }
+
+            if len(files) > 0:
+                args['files'] = files
+
+            await channel.send(**args)
+
+        except Exception as e:
+            await self.logger.error(f'Discord send_message failed: {e}')
+            raise e
+
+    async def reply_message(
+        self,
+        message_source: platform_events.MessageEvent,
+        message: platform_message.MessageChain,
+        quote_origin: bool = False,
+    ):
+        msg_to_send, files = await self.message_converter.yiri2target(message)
+
+        # Synthetic events (button-click resume) have no inbound discord
+        # Message. Route via the channel we cached when the user clicked.
+        source = message_source.source_platform_object
+        if not isinstance(source, discord.Message):
+            await self._reply_synthetic(message_source, msg_to_send, files)
+            return
+
+        args = {
+            'content': msg_to_send,
+        }
+
+        if len(files) > 0:
+            args['files'] = files
+
+        if quote_origin:
+            args['reference'] = source
+
+        has_at = False
+
+        for component in message.root:
+            if isinstance(component, platform_message.At):
+                has_at = True
+                break
+
+        if has_at:
+            args['mention_author'] = True
+
+        await source.channel.send(**args)
+
+    async def _reply_synthetic(
+        self,
+        message_source: platform_events.MessageEvent,
+        msg_to_send: str,
+        files: list,
+    ) -> None:
+        """Deliver a reply for a button-click-resumed (synthetic) event.
+
+        We don't have an inbound discord.Message to anchor to; instead
+        look up the channel cached in ``_pending_forms[session_key +
+        '__last_channel']`` from the most recent button click.
+        """
+        if isinstance(message_source, platform_events.GroupMessage):
+            # _handle_form_chunk uses channel_id alone as the session
+            # scope, and launcher_id was set to channel_id when
+            # synthesizing the event.
+            session_key = f'c:{message_source.group.id}'
+        else:
+            session_key = f'p:{message_source.sender.id}'
+
+        cached = self._pending_forms.get(session_key + '__last_channel') or {}
+        channel = cached.get('channel')
+        if channel is None:
+            if self.ap is not None:
+                self.ap.logger.warning(
+                    f'Discord: synthetic reply has no cached channel for '
+                    f'{session_key}; dropping content (len={len(msg_to_send)})'
+                )
+            return
+
+        args: dict[str, typing.Any] = {'content': msg_to_send}
+        if files:
+            args['files'] = files
+        try:
+            await channel.send(**args)
+        except Exception:
+            if self.ap is not None:
+                self.ap.logger.error(f'Discord: synthetic reply send failed: {traceback.format_exc()}')
+
+    # Discord allows 5 edits per 5 seconds per message. We throttle
+    # to one edit per 8 runner-chunks (runner already yields every 8
+    # text_chunks internally), which stays comfortably within limits.
+    _STREAM_EDIT_INTERVAL = 8
+
+    async def is_stream_output_supported(self) -> bool:
+        return True
+
+    async def create_message_card(self, message_id: str, event: platform_events.MessageEvent) -> bool:
+        """Set up a stream context for progressive editing.
+
+        The first non-empty reply_message_chunk will send the initial
+        message; subsequent chunks edit it in place.
+        """
+        source = event.source_platform_object
+        if not isinstance(source, discord.Message):
+            return False
+        self._prune_transient_state()
+        self._stream_buffer[message_id] = {
+            'channel': source.channel,
+            'sent_message': None,  # discord.Message set on first send
+            'last_content': '',
+            'chunk_count': 0,
+            'updated_at': time.time(),
+        }
+        return True
+
+    async def reply_message_chunk(
+        self,
+        message_source: platform_events.MessageEvent,
+        bot_message: typing.Any,
+        message: platform_message.MessageChain,
+        quote_origin: bool = False,
+        is_final: bool = False,
+    ):
+        msg_id = (
+            bot_message.get('resp_message_id')
+            if isinstance(bot_message, dict)
+            else getattr(bot_message, 'resp_message_id', None)
+        )
+
+        text_parts = [m.text for m in message if isinstance(m, platform_message.Plain)]
+        chunk_text = '\n\n'.join(t for t in text_parts if t)
+
+        form_data = getattr(bot_message, '_form_data', None) if not isinstance(bot_message, dict) else None
+
+        ctx = self._stream_buffer.get(msg_id) if msg_id else None
+        if ctx is not None:
+            ctx['updated_at'] = time.time()
+
+        # If the stream ctx was not set up (create_message_card wasn't
+        # called, e.g. synthetic event), or the final chunk carries a
+        # form, skip progressive editing entirely.
+        if ctx is None or form_data:
+            try:
+                if form_data and is_final:
+                    await self._handle_form_chunk(message_source, form_data)
+                elif is_final and chunk_text:
+                    await self.reply_message(
+                        message_source,
+                        platform_message.MessageChain([platform_message.Plain(text=chunk_text)]),
+                        quote_origin,
+                    )
+            finally:
+                self._stream_buffer.pop(msg_id, None)
+            return
+
+        # Progressive streaming path: send first chunk, edit subsequent.
+        ctx['chunk_count'] += 1
+
+        # Runner yields the full accumulated text on each chunk, so we
+        # always replace (not append).
+        if chunk_text:
+            ctx['last_content'] = chunk_text
+
+        sent = ctx['sent_message']
+
+        if sent is None:
+            # First non-empty chunk — send the initial message.
+            if not ctx['last_content']:
+                return  # No content yet, wait for next chunk.
+            try:
+                sent = await ctx['channel'].send(ctx['last_content'])
+                ctx['sent_message'] = sent
+            except Exception:
+                if self.ap is not None:
+                    self.ap.logger.error(f'Discord stream send failed: {traceback.format_exc()}')
+                self._stream_buffer.pop(msg_id, None)
+                return
+
+        if is_final:
+            # Final chunk — edit to the full content, then clean up.
+            if ctx['last_content'] and ctx['last_content'] != sent.content:
+                try:
+                    await sent.edit(content=ctx['last_content'][:2000])
+                except Exception:
+                    pass  # Best-effort
+            self._stream_buffer.pop(msg_id, None)
+        elif (ctx['chunk_count'] % self._STREAM_EDIT_INTERVAL) == 0:
+            # Intermediate edit — throttle to avoid rate limits.
+            if ctx['last_content'] and ctx['last_content'] != sent.content:
+                try:
+                    await sent.edit(content=ctx['last_content'][:2000])
+                except Exception:
+                    pass  # Rate-limited or deleted — ignore.
+
+    async def _handle_form_chunk(
+        self,
+        message_source: platform_events.MessageEvent,
+        form_data: dict,
+    ) -> None:
+        """Render a Dify form pause as a Discord embed + button View.
+
+        Mirrors the QQ / Telegram / Lark form path: the button's click
+        callback synthesizes a ``_dify_form_action`` query so the runner's
+        ``_merge_pending_form_action`` resumes the workflow.
+        """
+        self._prune_transient_state()
+        source = message_source.source_platform_object
+
+        actions = form_data.get('actions') or []
+        if not actions:
+            # Nothing clickable — fall back to plain text.
+            if source is not None:
+                await self.reply_message(
+                    message_source,
+                    platform_message.MessageChain(
+                        [platform_message.Plain(text=str(form_data.get('node_title') or ''))]
+                    ),
+                )
+            return
+
+        node_title = str(form_data.get('node_title') or adapter_t(self, 'Confirmation needed'))
+        form_content = str(form_data.get('form_content') or '').strip()
+
+        # Two paths:
+        #   (a) Real message — extract channel from source.
+        #   (b) Synthetic event (button-click resume) — no
+        #       source_platform_object; recover the channel we cached
+        #       when the user clicked.
+        if isinstance(source, discord.Message):
+            channel = source.channel
+            guild_id = str(source.guild.id) if source.guild else ''
+            sender_id = str(source.author.id)
+            channel_id = str(source.channel.id)
+            session_key = f'c:{channel_id}' if guild_id else f'p:{sender_id}'
+        else:
+            # Synthetic event — resolve session_key from event shape,
+            # then look up the cached channel from the click.
+            if isinstance(message_source, platform_events.GroupMessage):
+                # launcher_id was set to channel_id when we synthesized.
+                channel_id = str(message_source.group.id)
+                session_key = f'c:{channel_id}'
+            else:
+                session_key = f'p:{message_source.sender.id}'
+                channel_id = ''
+
+            cached = self._pending_forms.get(session_key + '__last_channel')
+            channel = cached.get('channel') if cached else None
+            guild_id = (cached or {}).get('guild_id', '')
+            sender_id = str(message_source.sender.id) if message_source.sender else ''
+            if channel is None:
+                if self.ap is not None:
+                    self.ap.logger.warning(
+                        f'Discord: synthetic form chunk has no cached channel for '
+                        f'{session_key}; cannot render form buttons'
+                    )
+                return
+
+        body_parts: list[str] = []
+        if form_content:
+            body_parts.append(form_content)
+        embed_body = '\n\n'.join(body_parts)
+        # Discord embed.description has a 4096 char limit — defensive trim.
+        if len(embed_body) > 4000:
+            embed_body = embed_body[:3990] + '\n\n…(truncated)'
+
+        embed = discord.Embed(
+            title=node_title[:256],
+            description=embed_body,
+            color=discord.Color.blurple(),
+        )
+
+        view = DiscordFormView(
+            adapter=self,
+            session_key=session_key,
+            actions=actions,
+            timeout=1800,  # 30 min — matches Dify form_token TTL
+        )
+
+        try:
+            sent_msg = await channel.send(embed=embed, view=view)
+        except Exception:
+            if self.ap is not None:
+                self.ap.logger.error(f'Discord: form view send failed: {traceback.format_exc()}')
+            return
+
+        self._pending_forms[session_key] = {
+            'form_data': form_data,
+            'channel_id': channel_id,
+            'guild_id': guild_id,
+            'sender_id': sender_id,
+            'view_message_id': str(sent_msg.id),
+            'posted_at': time.time(),
+        }
+
+        if self.ap is not None:
+            self.ap.logger.info(f'Discord: form view posted session={session_key} actions={len(actions)}')
+
+    async def _on_form_button_click(
+        self,
+        interaction: discord.Interaction,
+        session_key: str,
+        action_id: str,
+        action_title: str,
+        view: DiscordFormView,
+    ) -> None:
+        """Handle a click on a form button — ack, resume the workflow,
+        and disable the View buttons so the choice is visually locked in."""
+        import langbot_plugin.api.entities.builtin.provider.session as provider_session
+
+        self._prune_transient_state()
+
+        # ACK first (3-second deadline before Discord shows "interaction failed").
+        try:
+            await interaction.response.defer()
+        except discord.HTTPException:
+            # Already responded somehow — proceed regardless.
+            pass
+
+        pending = self._pending_forms.get(session_key)
+        if not pending:
+            if self.ap is not None:
+                self.ap.logger.warning(
+                    f'Discord: button click on stale session {session_key}; ignoring (action_id={action_id!r})'
+                )
+            await self._lock_view_message(interaction, view, action_title, stale=True)
+            return
+
+        form_data: dict = pending.get('form_data') or {}
+        guild_id = pending.get('guild_id', '')
+        channel_id = pending.get('channel_id', '')
+        initiator_id = str(pending.get('sender_id', '') or '')
+        actor_id = str(interaction.user.id) if interaction.user is not None else initiator_id
+        if not guild_id and initiator_id and actor_id != initiator_id:
+            if self.ap is not None:
+                self.ap.logger.warning(
+                    f'Discord: user {actor_id} cannot act on private form created for {initiator_id}'
+                )
+            await self._lock_view_message(interaction, view, action_title, stale=True)
+            return
+
+        self._pending_forms.pop(session_key, None)
+
+        # Lock the buttons in place: disable everything, mark chosen one.
+        await self._lock_view_message(interaction, view, action_title)
+
+        # In group context the launcher remains the channel so Dify resumes
+        # the original group session. The synthetic sender is still the real
+        # clicker, preserving actor identity for auditing and routing rules.
+        if guild_id:
+            launcher_type = provider_session.LauncherTypes.GROUP
+            launcher_id = channel_id
+        else:
+            launcher_type = provider_session.LauncherTypes.PERSON
+            launcher_id = initiator_id or actor_id
+
+        form_action_data = {
+            'form_token': form_data.get('form_token', ''),
+            'workflow_run_id': form_data.get('workflow_run_id', ''),
+            'action_id': action_id,
+            'action_title': action_title,
+            'node_title': form_data.get('node_title', ''),
+            'user': f'{launcher_type.value}_{launcher_id}',
+            'inputs': {},
+        }
+
+        message_chain = platform_message.MessageChain([platform_message.Plain(text=f'[Form Action: {action_title}]')])
+
+        # Synthesize a platform event so the pipeline can run the resume
+        # query. source_platform_object=None signals "no inbound discord
+        # message" — reply_message must tolerate this (it falls through
+        # to channel.send via the cached interaction.channel below).
+        if launcher_type == provider_session.LauncherTypes.GROUP:
+            synthetic_event: platform_events.MessageEvent = platform_events.GroupMessage(
+                sender=platform_entities.GroupMember(
+                    id=actor_id,
+                    member_name=interaction.user.display_name if interaction.user else '',
+                    permission='MEMBER',
+                    group=platform_entities.Group(
+                        id=launcher_id,
+                        name=channel_id,
+                        permission=platform_entities.Permission.Member,
+                    ),
+                    special_title='',
+                ),
+                message_chain=message_chain,
+                time=int(time.time()),
+                source_platform_object=None,
+            )
+        else:
+            synthetic_event = platform_events.FriendMessage(
+                sender=platform_entities.Friend(
+                    id=actor_id,
+                    nickname=interaction.user.display_name if interaction.user else '',
+                    remark='',
+                ),
+                message_chain=message_chain,
+                time=int(time.time()),
+                source_platform_object=None,
+            )
+
+        if self.ap is None:
+            if self.logger:
+                await self.logger.error('Discord: ap not injected; cannot enqueue button-click query')
+            return
+
+        bot_uuid = ''
+        pipeline_uuid = form_data.get('pipeline_uuid') or None
+        for bot in self.ap.platform_mgr.bots:
+            if bot.adapter is self:
+                bot_uuid = bot.bot_entity.uuid
+                pipeline_uuid = pipeline_uuid or bot.bot_entity.use_pipeline_uuid
+                break
+
+        # Remember the channel so _reply_synthetic and _handle_form_chunk
+        # (synthetic-event path) can find a target. guild_id is needed
+        # to reconstruct the launcher_type on subsequent form pauses.
+        self._pending_forms[session_key + '__last_channel'] = {
+            'channel': interaction.channel,
+            'guild_id': guild_id,
+            'posted_at': time.time(),
+        }
+
+        try:
+            await self.ap.query_pool.add_query(
+                bot_uuid=bot_uuid,
+                launcher_type=launcher_type,
+                launcher_id=launcher_id,
+                sender_id=actor_id,
+                message_event=synthetic_event,
+                message_chain=message_chain,
+                adapter=self,
+                pipeline_uuid=pipeline_uuid,
+                variables={
+                    '_dify_form_action': form_action_data,
+                    '_routed_by_rule': True,
+                },
+            )
+            if self.ap is not None:
+                self.ap.logger.info(
+                    f'Discord: button-click query enqueued action_id={action_id!r} '
+                    f'session={session_key} actor_id={actor_id}'
+                )
+        except Exception:
+            if self.ap is not None:
+                self.ap.logger.error(f'Discord: enqueue button-click query failed: {traceback.format_exc()}')
+
+    async def _lock_view_message(
+        self,
+        interaction: discord.Interaction,
+        view: DiscordFormView,
+        chosen_title: str,
+        stale: bool = False,
+    ) -> None:
+        """Disable all buttons on the form view and annotate the chosen
+        one — mirrors DingTalk/Lark's in-card selection feedback."""
+        try:
+            for child in view.children:
+                if not isinstance(child, discord_ui.Button):
+                    continue
+                child.disabled = True
+                if not stale and child.label == chosen_title:
+                    child.style = discord.ButtonStyle.success
+                    if not (child.label or '').startswith('✓ '):
+                        child.label = f'✓ {child.label}'
+            view.stop()
+            if interaction.message is not None:
+                await interaction.message.edit(view=view)
+        except Exception:
+            if self.ap is not None:
+                self.ap.logger.warning(f'Discord: lock-view-message failed (non-fatal): {traceback.format_exc()}')
+
+    async def is_muted(self, group_id: int) -> bool:
+        return False
+
+    def register_listener(
+        self,
+        event_type: typing.Type[platform_events.Event],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
+    ):
+        self.listeners[event_type] = callback
+
+    def unregister_listener(
+        self,
+        event_type: typing.Type[platform_events.Event],
+        callback: typing.Callable[
+            [platform_events.Event, abstract_platform_adapter.AbstractMessagePlatformAdapter], None
+        ],
+    ):
+        self.listeners.pop(event_type)
+
+    async def run_async(self):
+        """
+        启动 Discord 适配器
+
+        初始化语音管理器并启动 Discord 客户端连接。
+
+        @author: @ydzat (修改)
+        """
+        async with self.bot:
+            # 初始化语音管理器
+            self.voice_manager = VoiceConnectionManager(self.bot, self.logger)
+            await self.voice_manager.start_monitoring()
+
+            await self.logger.info('Discord 适配器语音功能已启用')
+            await self.bot.start(self.config['token'], reconnect=True)
+
+    async def kill(self) -> bool:
+        """
+        关闭 Discord 适配器
+
+        清理语音连接并关闭 Discord 客户端。
+
+        @author: @ydzat (修改)
+        """
+        if self.voice_manager:
+            await self.voice_manager.disconnect_all()
+
+        self._stream_buffer.clear()
+        self._pending_forms.clear()
+        await self.bot.close()
+        return True

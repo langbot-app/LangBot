@@ -1,0 +1,14 @@
+id: langbot-live-backend-gate
+title: "LangBot live backend reliability gate"
+description: "Live backend control-plane responsiveness and runtime log health checks for a locally running LangBot instance."
+type: reliability
+priority: p1
+tags:
+  - performance
+  - reliability
+  - live-backend
+  - metrics
+cases:
+  - langbot-live-backend-latency
+  - langbot-live-control-plane-api
+  - langbot-live-backend-log-health

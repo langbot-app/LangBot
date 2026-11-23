@@ -1,0 +1,25 @@
+id: debug-chat-history-contaminates-automation
+title: "Old Debug Chat messages contaminate automation assertions"
+date: 2026-05-21
+symptoms:
+  - "A browser automation run reports Agent runner temporarily unavailable even though the latest bot response contains the expected text."
+  - "The screenshot shows an old failure bubble above the latest successful exchange."
+  - "The automation scans the whole document body instead of comparing only new messages or new failure counts."
+patterns:
+  - "Agent runner temporarily unavailable"
+  - "Expected text appeared enough times"
+  - "Debug Chat displayed a known failure signal"
+likely_causes:
+  - "Debug Chat history persists across runs and old failed messages remain visible."
+  - "The automation checks failure text anywhere in document.body after the run."
+  - "The automation does not compare failure counts before and after sending the prompt."
+fix_steps:
+  - "Before sending the prompt, record counts for expected text and known failure text."
+  - "After sending the prompt, require the expected text count to increase enough for the user prompt plus bot response."
+  - "Treat known failure text as a new failure only if its count increased during this run."
+  - "For manual review, inspect the newest user/bot message pair rather than the whole chat transcript."
+verification: "A latest successful bot response is not failed by old failure bubbles already present in the Debug Chat history."
+related_cases:
+  - pipeline-debug-chat
+  - local-agent-plugin-tool-call-debug-chat
+  - mcp-stdio-tool-call

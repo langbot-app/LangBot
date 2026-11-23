@@ -1,0 +1,56 @@
+---
+title: "LangBotの更新"
+description: "LangBot を最新版へ更新。セルフホスト型 AI チャットボットを安全にアップグレードする手順。"
+---
+
+## ワンラインインストール（lbctl）を使用
+
+```bash
+lbctl upgrade --yes
+```
+
+データをバックアップし、最新の安定版へアップグレードして再起動します。アップグレードに失敗した場合、ネイティブデプロイは自動で元に戻り、Docker デプロイは復旧用にバックアップが残ります。すでに最新バージョンの場合は、その旨を表示するだけで何も変更しません。
+
+- 計画を確認：`lbctl upgrade --dry-run`
+- 指定したバージョンにアップグレード：`lbctl upgrade --version v4.11.8 --yes`
+- lbctl 自体の更新：`lbctl update`、またはワンラインインストールを再実行
+
+詳しくは [lbctl で LangBot を管理する](/ja/deploy/lbctl#langbot-のアップグレード)を参照してください。
+
+## パッケージマネージャー（uvx）を使用
+
+LangBotをデプロイしたディレクトリで再度実行してください:
+
+```bash
+uvx langbot@latest
+```
+
+このコマンドは最新バージョンのLangBotをダウンロードして起動します。
+
+## Dockerを使用(またはDockerベースのワンクリックデプロイ)
+
+<Tip>
+`docker compose` でデプロイしたインスタンスは [lbctl に移行](/ja/deploy/lbctl#既存の-docker-compose-デプロイを-lbctl-に移行する)できます。移行後は `lbctl upgrade --yes` だけでアップグレードでき、毎回事前にデータがバックアップされます。以下は lbctl を使わない場合の手動の手順です。
+</Tip>
+
+LangBotをクローンしたディレクトリで実行してください:
+
+```bash
+git pull
+```
+
+`docker/`ディレクトリで実行してください:
+
+```bash
+docker compose up --force-recreate --pull always -d
+```
+
+このコマンドは最新のLangBotイメージをプルしてコンテナを再構築します。
+
+<Info>
+4.3.0バージョンでは`docker-compose.yaml`ファイルの内容と場所が変更されました。以前のバージョンから更新した場合は、[ドキュメントに従って再デプロイ](/en/deploy/langbot/docker)してください。
+</Info>
+
+## 手動デプロイ
+
+[リリース](https://github.com/langbot-app/LangBot/releases)ページのAssetsセクションから最新リリースの`langbot-<version>-all.zip`をダウンロードし、元のデプロイディレクトリに展開して再起動してください。

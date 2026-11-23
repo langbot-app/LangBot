@@ -1,0 +1,78 @@
+---
+title: "LangBot で WeKnora を使用する"
+description: "WeKnora を LangBot と組み合わせ、AI メッセージングボットに知識ベース QA を追加。"
+---
+
+[WeKnora](https://weknora.weixin.qq.com/) は、Tencent がオープンソース化した大規模言語モデル（LLM）ベースの文書理解・意味検索フレームワークであり、複雑な構造と異種コンテンツを持つ文書シナリオ向けに設計されています。  
+フレームワークはモジュラーアーキテクチャを採用し、マルチモーダル前処理、意味ベクトルインデックス、インテリジェントリコール、大規模モデル推論を統合して、効率的で制御可能な文書 Q&A ワークフローを構築します。コア検索プロセスは RAG（Retrieval-Augmented Generation）メカニズムに基づいており、文脈に関連する段落と言語モデルを組み合わせることで、高品質な回答生成を実現します。
+
+LangBot は現在、WeKnora の `ナレッジベース Q&A（chat）` と `エージェント インテリジェント会話（agent）` の 2 つのアプリケーションタイプをサポートしています。
+
+## WeKnora で API キーを取得する
+
+[WeKnora 公式ドキュメント](https://github.com/Tencent/WeKnora) に従って WeKnora サービスをデプロイし、ナレッジベースの作成と文書のアップロードを完了してください。
+
+![weknora](/images/zh/deploy/pipelines/weknora/weknora_api_lead.png)
+
+デプロイ完了後、WeKnora の WebUI（デフォルト `http://localhost:80`）にアクセスし、`設定` -> `API キー` ページで `API キーを生成` をクリックし、コピーして保存してください。
+
+<Info title="API キーとナレッジベース ID">
+- `API キー`：認証に使用されます。安全に保管し、漏洩しないでください。
+- `ナレッジベース ID`：ナレッジベース管理ページで各ナレッジベースの ID（`kb-00000001` の形式）を確認でき、LangBot で呼び出すナレッジベースを指定できます。
+</Info>
+
+クリックすると、基本的な URL とキー情報を取得できます。
+
+![weknora](/images/zh/deploy/pipelines/weknora/weknora_api_information.png)
+
+<Info title="デプロイのヒント">
+
+- LangBot と WeKnora が同じホストにデプロイされ、どちらも Docker を使用してデプロイされている場合、次の記事を参照してください：[ネットワーク設定の詳細](/ja/workshop/network-details.html#langbot-およびメッセージプラットフォームが-docker-コンテナで実行されている場合)。WeKnora を起動する際に、コンテナを `langbot-network` に追加し、LangBot 設定の `API ベース URL` をコンテナ相互接続アドレス（例：`http://weknora-app:8080/api/v1`）に設定してください。
+- その他のシナリオについては、会社の運用チームにお問い合わせください。
+</Info>
+
+## WeKnora エージェント情報を取得する
+
+![weknora](/images/zh/deploy/pipelines/weknora/weknora_agent_lead.png)
+
+「エージェント」ページで、選択したいエージェントをクリックして詳細ページに移動します。`エージェント設定` で `エージェント ID`（`builtin-smart-reasoning` の形式）を確認でき、`ツールリスト` でエージェントが呼び出せるツール名（`web-search`、`file-search` など）を確認できます。LangBot の設定時にこれらの情報が必要になります。
+
+![weknora](/images/zh/deploy/pipelines/weknora/weknora_other_information.png)
+
+これで WeKnora API に接続するために必要な情報が揃いました。次に、以下の手順に従って LangBot での設定を完了してください。
+
+## LangBot の設定
+
+LangBot WebUI ページを開き、新しいパイプラインを追加するか、既存のパイプラインで `AI 機能` 設定ページに切り替えます。
+
+![weknora](/images/zh/deploy/pipelines/weknora/creat_langbot_pipeline.png)
+
+1. `ランナー` で `WeKnora API` を選択します。
+2. ランナーの設定項目に以下を入力します：
+   - `API ベース URL`：WeKnora サービスの API アドレス、デフォルト `http://localhost:8080/api/v1`。
+   - `API キー`：WeKnora で生成された API キーを貼り付けます。
+   - `アプリケーションタイプ`：`agent`（エージェント インテリジェント会話、ツール呼び出し、ウェブ検索、思考チェーンをサポート）または `chat`（ナレッジベース RAG Q&A）を選択します。
+   - `エージェント ID`：組み込みエージェント識別子、一般的な値：
+     - `builtin-smart-reasoning`：インテリジェント推論エージェント（`agent` モード推奨）
+     - `builtin-quick-answer`：クイック回答エージェント（`chat` モード推奨）
+   - `ナレッジベース ID リスト`：検索するナレッジベース ID（`kb-00000001` の形式）を入力します。複数入力可能です。
+   - `ウェブ検索を有効化`：`agent` モードでのみ有効になり、有効にするとエージェントがウェブ検索ツールを呼び出せるようになります。
+   - `タイムアウト（秒）`：リクエストのタイムアウト時間、デフォルト `120`。
+   - `デフォルトプロンプト`：ユーザーがテキストコンテンツを送信しない場合に使用されるデフォルトの質問文。
+3. `保存` をクリックして設定を完了します。
+
+完了後、パイプラインで WeKnora を呼び出して、ナレッジベースに基づくインテリジェント会話を完了できます。
+
+## 出力処理
+
+- `agent` アプリケーションを使用する場合、LangBot パイプラインの `出力処理` で `track-function-calls` を有効にしていると、WeKnora がツール呼び出しを実行するたびに `関数 xxx を呼び出し中` というメッセージがユーザーに出力されます。
+- WeKnora が返す `thinking`（思考チェーン）コンテンツは `<think>` タグで囲まれて送信され、フロントエンドで折りたたんで表示できます。
+- WeKnora が返す `references`（ナレッジベースの引用元）は、回答の後に参照元メッセージとして添付されます。
+
+## よくある質問
+
+- **保存に失敗するか、呼び出しでエラー**：`API キー` と `API ベース URL` が正しいか確認してください。URL の末尾に `/api/v1` が含まれている必要があります。
+- **ナレッジベースのコンテンツが返されない**：入力した `ナレッジベース ID` が正しいか、そのナレッジベースで文書が正常にアップロード・解析されているか確認してください。
+- **`WeKnora API` を選択できない**：現在の LangBot バージョンがこのランナーをサポートしているか確認してください。サポートされていない場合は、WeKnora ランナーを含むバージョンにアップグレードしてください。
+
+パイプラインの一般的な設定の詳細については、[会話パイプライン設定の変更](/ja/usage/pipelines/readme) を参照してください。

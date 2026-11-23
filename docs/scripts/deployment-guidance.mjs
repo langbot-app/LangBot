@@ -1,0 +1,1 @@
+export function deploymentGuidance() { return "## Canonical agent entry\n\nRead https://langbot.app/llms.txt first for deployment choices, optional managed hosting, CLI installation and operation, and end-to-end verification. This documentation index supplies the detailed guides referenced by that workflow.\n"; }

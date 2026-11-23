@@ -1,0 +1,25 @@
+# This repository holds documentation and generated content only.
+#
+# Everything is authored, reviewed and hashed as LF, and the test suite
+# depends on that:
+#   - tests/blog-articles.test.mjs compares checked-in image bytes and
+#     SHA-256 digests against scripts/blog-articles-manifest.json
+#   - tests/seo.test.mjs matches fenced code blocks with LF-only patterns
+#     (```yaml\n..., ```text\n...)
+# Without this file a Windows checkout with core.autocrlf=true rewrites
+# every text file to CRLF and those assertions fail for reasons that have
+# nothing to do with the content.
+* text=auto eol=lf
+
+# Explicit binary markers for assets; text=auto already detects these, but
+# stating them keeps the intent obvious and survives future rule changes.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.zip binary
+*.woff binary
+*.woff2 binary

@@ -1,0 +1,23 @@
+.routing-help-dot {
+  animation: route-travel 4.8s ease-in-out infinite;
+  animation-delay: var(--route-delay);
+  opacity: 0;
+}
+.routing-help-target {
+  animation: route-receive 4.8s ease-in-out infinite;
+  animation-delay: var(--route-delay);
+}
+.routing-help-paused * { animation-play-state: paused; }
+@keyframes route-travel {
+  0%, 4% { opacity: 0; transform: translateX(0); }
+  8% { opacity: 1; }
+  25% { opacity: 1; transform: translateX(40px); }
+  30%, 100% { opacity: 0; transform: translateX(40px); }
+}
+@keyframes route-receive {
+  0%, 24%, 45%, 100% { transform: translateY(0); }
+  30%, 36% { transform: translateY(-2px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .routing-help-dot, .routing-help-target { animation: none; }
+}

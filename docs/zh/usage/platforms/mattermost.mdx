@@ -1,0 +1,44 @@
+---
+title: "Mattermost"
+description: "用 LangBot 接入 Mattermost 机器人，几分钟内将 智能体/工作流 接入 Mattermost 服务器。"
+icon: "/images/platforms/mattermost.svg"
+---
+
+## 创建机器人账号
+
+登录Mattermost实例（自部署/官方皆可），点击左上角的`Mattermost图标`，在下拉菜单中选择`集成`。
+
+![](/images/zh/deploy/bots/mattermost/Mattermost_main_page.png)
+
+进入集成页面后，在左侧菜单中选择`机器人账号`，点击右上角的添加机器人账号。
+
+![](/images/zh/deploy/bots/mattermost/Mattermost_bot_account.png)
+
+为机器人起一个用户名。
+
+![](/images/zh/deploy/bots/mattermost/Mattermost_bot_add_new.png)
+
+身份选择`成员`即可（暂不支持管理员相关功能），需要私聊选`post:all`，仅需要公共频道就只勾选`post:channels`，然后点击右下角的`创建机器人账号`。
+
+![](/images/zh/deploy/bots/mattermost/Mattermost_bot_deploy.png)
+
+点击按钮复制令牌（只显示一次，记得保存），点右下角`完成`。
+
+![](/images/zh/deploy/bots/mattermost/Mattermost_bot_token.png)
+
+## 配置LangBot机器人
+
+进入LangBot官网或自部署实例，按下图中红箭头指示的顺序操作：
+
+- 光标移到左侧`机器人`选项卡上，会显示一个加号`+`，点击加号
+- 给机器人起一个名字，输进`机器人名称`的文本框
+- 点击平台适配器选择的选项框，在下拉菜单中选择`Mattermost`
+- 输入`Mattermost`实例的地址和刚才创建的机器人账号的令牌
+- （可选）如果你的流水线/AI供应商不支持流式输出，则关闭该选项
+- 点击右上角的提交后会进入编辑该机器人的界面
+
+![](/images/zh/deploy/bots/mattermost/Mattermost_langbot_add_new.png)
+
+绑定现有的流水线，以及配置路由（如果有需求的话），并点击右上角的保存。
+
+![](/images/zh/deploy/bots/mattermost/Mattermost_langbot_deploy.png)

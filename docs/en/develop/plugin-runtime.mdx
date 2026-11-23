@@ -1,0 +1,171 @@
+---
+title: "Debugging Plugin Runtime, CLI, SDK"
+---
+
+<Info>
+  Plugin Runtime, CLI and SDK are open source in the `sdk/` directory of the LangBot repository: https://github.com/langbot-app/LangBot/tree/master/sdk, published to PyPI as `langbot-plugin`.
+</Info>
+
+Cloning the LangBot repository gives you both the main program and the SDK sources; there is no separate SDK repository to clone:
+
+```bash
+git clone https://github.com/langbot-app/LangBot
+```
+
+```text
+LangBot
+├── src/langbot   # LangBot main program
+└── sdk           # Plugin SDK, CLI (lbp), Plugin Runtime, Box Runtime
+```
+
+Enter the LangBot directory and install dependencies:
+
+```bash
+cd LangBot
+uv sync --dev
+```
+
+At this point, uv will automatically create a virtual environment (.venv) for you. If your editor asks whether to use this virtual environment, please select `Yes`.
+
+<img
+  width="600"
+  src="/images/zh/develop/confirm_venv.png"
+/>
+
+If the prompt does not appear, please manually set the Python interpreter path to the interpreter in the venv from the bottom-right corner.
+
+Then open the terminal at the bottom of VS Code, which will automatically activate the venv.
+
+Or you can manually activate this virtual environment:
+
+```bash
+# Please modify the command according to your .venv path
+source .venv/bin/activate
+```
+
+## Start Plugin Runtime
+
+```bash
+python -m langbot_plugin.cli.__init__ rt
+```
+
+Plugin Runtime accepts the following parameters:
+
+- `--debug-only`: Do not start plugins in the `data/plugins` directory, only allow loading plugins through debug connections.
+- `--ws-debug-port`: Debug port to listen on, default is `5401`.
+- `--ws-control-port`: Control port to listen on (for LangBot main program connection), default is `5400`.
+- `-s`: Use `stdio` to accept control connections. **Use only in production environment**.
+- `--skip-deps-check`: To ensure that all plugin dependencies are installed, the Runtime will check and install all installed plugin dependencies on every startup. Use this parameter to disable this check.
+
+### Make LangBot Use Your Locally Modified SDK
+
+Run `uv sync` from the LangBot repository root to install the same checkout's `sdk/` in editable mode. Core uses changes to message entities or plugin data definitions directly, without another install or an SDK publication.
+
+```bash
+uv sync --dev
+uv run main.py --standalone-runtime
+```
+
+Separately deployed Runtimes need the matching checkout or a compatible published SDK; installing Core does not upgrade other Runtime environments. A standalone Core installation from PyPI still uses its declared published SDK version.
+
+### Make LangBot Connect to This Runtime
+
+Configure `plugin.runtime_ws_url` to `ws://localhost:5400/control/ws` in LangBot's `data/config.yaml`.
+
+```yaml
+plugin:
+  runtime_ws_url: ws://localhost:5400/control/ws
+```
+
+Run `uv run main.py --standalone-runtime` from the LangBot repository root. After restarting, LangBot connects to this Runtime using WebSocket.
+
+`LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN` is optional by default. When it is unset on both LangBot and Runtime, the local OSS control connection is established without a token. To protect an exposed port 5400, configure the same high-entropy value of at least 32 characters on both sides. Once the Runtime configures a token, it rejects LangBot clients without the same value; configuring only the LangBot side does not enable authentication on the Runtime.
+
+### Debug a plugin with `lbp run`
+
+Multi-Workspace versions no longer allow a debug plugin to join the Runtime merely by reaching port `5401`. Every Workspace has a separate expiring debug key:
+
+1. Make sure LangBot and Plugin Runtime are running and connected as described above.
+2. On the LangBot WebUI Plugins page, open “Debug Info” and copy the debug URL and debug key. This requires resource-management permission in the current Workspace.
+3. Add the values to the plugin project's `.env`:
+
+```bash
+DEBUG_RUNTIME_WS_URL=ws://localhost:5401/plugin/debug/ws
+PLUGIN_DEBUG_KEY=<debug key copied from the WebUI>
+```
+
+4. Start the plugin from its project directory:
+
+```bash
+python -m langbot_plugin.cli.__init__ run
+```
+
+Instead of storing the key in `.env`, you may run `python -m langbot_plugin.cli.__init__ run --plugin-debug-key '<debug key>'`. Keys are scoped to one Workspace and expire after two hours. Fetch a new key after it expires, the Runtime restarts, or you switch Workspaces. A client that configures only `DEBUG_RUNTIME_WS_URL` is rejected.
+
+## Start Box Runtime in standalone mode
+
+Box Runtime follows the same control-connection rules as Plugin Runtime: a token is optional for OSS standalone development, and the connection works when `LANGBOT_BOX_CONTROL_TOKEN` is unset on both sides:
+
+```bash
+# Terminal 1: LangBot directory (virtual environment activated)
+python -m langbot_plugin.cli.__init__ box
+```
+
+Point LangBot's `data/config.yaml` at the local Box Runtime:
+
+```yaml
+box:
+  enabled: true
+  backend: local
+  file_transfer_mode: network
+  runtime:
+    endpoint: ws://127.0.0.1:5410
+```
+
+```bash
+# Terminal 2: LangBot directory
+python main.py --standalone-runtime --standalone-box
+```
+
+To protect an exposed port 5410, set the same high-entropy, non-whitespace value of at least 32 characters before starting each process:
+
+```bash
+export LANGBOT_BOX_CONTROL_TOKEN='<the exact same high-entropy secret on both sides>'
+```
+
+Once Box Runtime configures a token, it rejects LangBot clients without the same value. Configuring only the LangBot side does not enable authentication on Box Runtime; an explicitly configured value shorter than 32 characters is still rejected by both sides. Do not commit the real value to configuration or Git.
+
+Set `box.file_transfer_mode: network` to transfer attachments through the authenticated Box connection without a shared Core/Runtime directory. Both sides need the SDK/Runtime file-transfer actions. The default `legacy` mode preserves existing transfer paths during rollout. In network mode, file bytes use chunked RPC. Small sandbox commands prepare output snapshots and acknowledge cleanup, including files outside `/workspace`. Temporary export snapshots require workspace disk space. Cloud startup also validates shared-workspace readiness, whose migration is tracked in stage 5 of #3010. Output export in network mode requires a writable workspace for temporary snapshots; use `legacy` for `offline_readonly` exports. In OSS network mode, writable E2B workspace files stay in the sandbox instead of being mirrored to the host.
+
+### Runtime package cache
+
+With matching Core and SDK sources, the Host can prepare immutable packages over the authenticated Box connection. Runtime verifies the archive and tree digest before making a read-only cache entry visible. Cache hits still require the current Workspace context; a digest alone grants no access. This prepares the network execution contract; existing Skill tools still use their current mount path during rollout.
+
+```yaml
+box:
+  limits:
+    max_artifact_cache_bytes: 268435456
+    artifact_cache_ttl_sec: 300
+```
+
+The defaults allow 256 MiB of reusable package content and metadata, with a 300-second idle lifetime. The maximum values are 256 MiB and 86,400 seconds. Packages mounted by a live session remain protected, including while a managed process runs. If protected packages fill the cache, preparing another package fails explicitly. Sandbox projections and writable workspaces have separate limits.
+
+Runtime owns this cache below `LANGBOT_BOX_DATA_DIR`; it does not use a Core package directory. Evicted packages are fetched and verified again. GC removes only disposable cache entries, never database publications. Each archive is limited to 64 MiB; backend limits such as E2B’s 10 MiB per file still apply. The separate attachment-transfer limit remains unchanged.
+
+This cache requires POSIX descriptor-relative file IO; Linux is the validated Runtime platform. Changing these limits after the cache has been used requires restarting Box Runtime. Entries left protected by a Runtime crash continue to occupy capacity. For maintenance, stop the affected Runtime and its callers, confirm that its old backend sessions and processes have retired, then clear only its disposable cache.
+
+## SDK (`sdk/`) Architecture
+
+`sdk/src/langbot_plugin` contains the following:
+
+- `langbot_plugin.api`: Plugin-related entities and API definitions.
+- `langbot_plugin.assets`: Plugin templates.
+- `langbot_plugin.cli`: Plugin development CLI tools.
+- `langbot_plugin.entities`: Plugin system-related entities not defined in API.
+- `langbot_plugin.runtime`: Plugin runtime and underlying communication (stdio and websocket) implementation.
+
+## `lbp` CLI Tool
+
+The CLI tool provides Runtime startup, plugin initialization, plugin component management, Marketplace interaction, and other functions.
+
+For detailed program entry points, please see [`langbot_plugin.cli.__init__`](https://github.com/langbot-app/LangBot/blob/master/sdk/src/langbot_plugin/cli/__init__.py).

@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+metadata:
+  name: qq-botpy
+  label:
+    en_US: QQBotPy
+    zh_Hans: QQBotPy
+  description:
+    en_US: QQ Official API (WebSocket)
+    zh_Hans: QQ 官方 API (WebSocket)，请查看文档了解使用方式
+  icon: qqbotpy.svg
+spec:
+  config:
+    - name: appid
+      label:
+        en_US: App ID
+        zh_Hans: 应用ID
+      type: string
+      required: true
+      default: ""
+    - name: secret
+      label:
+        en_US: Secret
+        zh_Hans: 密钥
+      type: string
+      required: true
+      default: ""
+    - name: intents
+      label:
+        en_US: Intents
+        zh_Hans: 权限
+      type: array
+      required: true
+      default: []
+      items:
+        type: string
+execution:
+  python:
+    path: ./qqbotpy.py
+    attr: OfficialAdapter

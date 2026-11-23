@@ -1,0 +1,175 @@
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import os
+import typing
+
+import httpx
+
+from ..core import app as core_app
+from ..utils import httpclient
+from .execution import ExecutionCounters
+
+
+class TelemetryManager:
+    """TelemetryManager handles sending telemetry for a given application instance.
+
+    Usage:
+        telemetry = TelemetryManager(ap)
+        await telemetry.send({ ... })
+    """
+
+    def __init__(self, ap: core_app.Application):
+        self.ap = ap
+
+        self.telemetry_config: dict[str, typing.Any] = {}
+        self._client: httpx.AsyncClient | None = None
+        self.execution = ExecutionCounters(self)
+
+    async def initialize(self):
+        self.telemetry_config = self.ap.instance_config.data.get('space', {})
+
+    def health(self) -> dict:
+        """Telemetry health for the instance liveness snapshot."""
+        return self.execution.health()
+
+    async def shutdown(self) -> None:
+        await self.execution.shutdown()
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
+    @contextlib.asynccontextmanager
+    async def _client_context(self):
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(10),
+                event_hooks=httpclient.httpx_response_limit_hooks(),
+            )
+        yield self._client
+
+    async def send(self, payload: dict):
+        """Send telemetry payload to configured telemetry server (non-blocking).
+
+        Reads ``space.url`` / ``space.disable_telemetry`` from the instance
+        config and posts to ``{url}/api/v1/telemetry`` as JSON. A payload that
+        names its ``workspace_uuid`` is authenticated as that Workspace's owner
+        when no ingest token is configured. Failures are logged, never raised.
+        """
+
+        try:
+            cfg = self.telemetry_config
+            if not cfg:
+                return
+            if cfg.get('disable_telemetry', False):
+                return
+            server = cfg.get('url', '')
+            if not server:
+                return
+
+            # Normalize URL
+            url = server.rstrip('/') + '/api/v1/telemetry'
+
+            try:
+                # Two payload shapes exist: a batch envelope of v2 execution
+                # records (``records`` plus the Workspace they all belong to)
+                # and a single instance heartbeat. Core no longer emits the
+                # legacy per-query record.
+                sanitized = dict(payload)
+                if isinstance(sanitized.get('records'), list):
+                    sanitized['records'] = [item for item in sanitized['records'] if isinstance(item, dict)]
+
+                async with self._client_context() as client:
+                    try:
+                        # Use asyncio.wait_for to ensure we always bound the total time
+                        telemetry_token = os.getenv('LANGBOT_TELEMETRY_INGEST_TOKEN', '').strip()
+                        headers: dict[str, str] = {}
+                        if telemetry_token:
+                            headers['X-LangBot-Telemetry-Token'] = telemetry_token
+                        else:
+                            workspace_uuid = str(sanitized.get('workspace_uuid', '')).strip()
+                            user_service = getattr(self.ap, 'user_service', None)
+                            if workspace_uuid and user_service is not None:
+                                try:
+                                    owner = await user_service.get_workspace_owner(workspace_uuid)
+                                    owner_email = str(getattr(owner, 'user', '') or '').strip()
+                                    space_service = getattr(self.ap, 'space_service', None)
+                                    access_token = (
+                                        await space_service.get_valid_access_token(owner_email)
+                                        if owner_email and space_service is not None
+                                        else None
+                                    )
+                                    access_token = str(access_token or '').strip()
+                                    if access_token:
+                                        headers['Authorization'] = f'Bearer {access_token}'
+                                except Exception:
+                                    self.ap.logger.debug(
+                                        'Could not resolve authenticated telemetry reporter', exc_info=True
+                                    )
+                        if headers:
+                            request = client.post(url, json=sanitized, headers=headers)
+                        else:
+                            request = client.post(url, json=sanitized)
+                        resp = await asyncio.wait_for(request, timeout=10 + 1)
+
+                        if resp.status_code >= 400:
+                            body = await httpclient.response_text(resp, max_chars=200)
+                            self.ap.logger.debug(f'Telemetry post to {url} returned status {resp.status_code} - {body}')
+                        else:
+                            # Detect application-level errors inside HTTP 200 responses
+                            app_err = False
+                            j = None
+                            try:
+                                j = await httpclient.parse_json_response(resp)
+                                app_code = j.get('code') if isinstance(j, dict) else None
+                                if app_code is not None and int(app_code) >= 400:
+                                    app_err = True
+                                    self.ap.logger.debug(
+                                        f'Telemetry post to {url} returned application error code {j.get("code")} - {j.get("msg")}'
+                                    )
+                            except Exception:
+                                pass
+
+                            if app_err:
+                                body = await httpclient.response_text(resp, max_chars=200)
+                                self.ap.logger.debug(
+                                    f'Telemetry post to {url} returned app-level error - response: {body}'
+                                )
+                            else:
+                                body = await httpclient.response_text(resp, max_chars=200)
+                                self.ap.logger.debug(
+                                    f'Telemetry posted to {url}, status {resp.status_code} - response: {body}'
+                                )
+                            if not app_err:
+                                if isinstance(sanitized.get('records'), list):
+                                    ack = j.get('data') if isinstance(j, dict) else None
+                                    if (
+                                        not isinstance(ack, dict)
+                                        or type(ack.get('stored')) is not int
+                                        or type(ack.get('rejected')) is not int
+                                        or ack['rejected'] != 0
+                                        or ack['stored'] != len(sanitized['records'])
+                                    ):
+                                        self.ap.logger.warning(
+                                            'Telemetry batch was not fully acknowledged; retaining records'
+                                        )
+                                        return False
+                                return True
+                    except asyncio.TimeoutError:
+                        self.ap.logger.debug(f'Telemetry post to {url} timed out')
+                    except Exception as e:
+                        self.ap.logger.debug(f'Failed to post telemetry to {url}: {e}', exc_info=True)
+            except Exception as e:
+                try:
+                    self.ap.logger.debug(
+                        f'Failed to create HTTP client for telemetry or sanitize payload: {e}', exc_info=True
+                    )
+                except Exception:
+                    pass
+        except Exception as e:
+            # Never raise from telemetry; diagnostics are debug-only.
+            try:
+                self.ap.logger.debug(f'Unexpected telemetry error: {e}', exc_info=True)
+            except Exception:
+                pass

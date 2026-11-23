@@ -1,0 +1,180 @@
+---
+title: "飞书"
+description: "用 LangBot 搭建飞书 AI 机器人，将 GPT、Claude、Dify 等接入飞书群组与消息。"
+icon: "/images/platforms/lark.svg"
+---
+
+## 选择平台域名
+
+创建机器人时，需要在**适配器配置**中选择**平台域名**：
+
+- **飞书 (open.feishu.cn)**：适用于国内飞书用户（默认选项）
+- **Lark (open.larksuite.com)**：适用于海外 Lark 用户
+- **自定义 (custom)**：适用于使用私有化部署的用户
+
+![选择平台域名](/images/zh/deploy/bots/lark/lark_platform_domain.png)
+
+<Warning>
+如果选择海外版 Lark，请确保使用 `open.larksuite.com` 域名，否则可能导致连接失败。私有化部署用户请根据实际部署地址选择自定义并填写对应域名。
+</Warning>
+
+## 一键配置（推荐）
+
+LangBot 支持一键创建飞书应用并自动填写凭证，无需手动复制粘贴。
+
+1. 打开 LangBot WebUI，进入**机器人 > 创建机器人**
+2. 填写机器人名称，平台/适配器选择 `飞书`
+3. 在下方出现的**一键创建应用**区域，点击右侧的 **开始** 按钮
+
+![一键创建飞书应用](/images/zh/deploy/bots/lark/lark_oneclick_qrcode.png)
+
+4. 使用飞书扫描弹出的二维码，手机端会进入飞书开放平台的创建智能体应用页面
+5. 可以选择**已有应用**或**立即创建**新应用：
+
+![手机端选择](/images/zh/deploy/bots/lark/lark_select_or_create_bot.png)
+
+如果选择已有应用，会展示应用列表供你选择：
+
+![选择已有应用](/images/zh/deploy/bots/lark/lark_select_existing.png)
+
+6. 授权成功后，手机端会显示「配置成功」，同时 LangBot WebUI 中的应用ID、应用密钥等凭证会**自动填入**
+
+![配置成功](/images/zh/deploy/bots/lark/lark_config_success.png)
+
+7. 新版适配器会自动获取机器人身份，无需填写用于识别群内 @ 的机器人名称。如果使用旧版适配器且仍显示该字段，请填写与飞书机器人一致的名称。
+
+![手动填写机器人名称](/images/zh/deploy/bots/lark/lark_fill_bot_name.png)
+
+8. 点击**提交**，完成创建
+
+### 补充权限和事件订阅
+
+<Note>
+扫码创建或授权应用后，应用权限和事件订阅可能尚未覆盖你要使用的全部功能。能正常收发消息，不代表已经订阅了成员进退群等事件。无需重新创建机器人，可以到开发者平台为现有应用补充配置。
+</Note>
+
+1. 打开[飞书开发者平台](https://open.feishu.cn/app)（海外版使用 [Lark 开发者平台](https://open.larksuite.com/app)），选择扫码时创建或授权的应用，可通过 App ID 核对。
+2. 在**权限管理**中，按需要添加功能所需的权限。应用权限决定机器人可以读取哪些数据、执行哪些操作。
+3. 在**事件与回调 > 事件配置**中，添加需要接收的事件。事件订阅决定飞书会向 LangBot 推送哪些通知；仅添加权限不会自动订阅事件。
+4. 按平台提示保存配置，并完成所需的版本发布或管理员审批。配置生效后，再触发一次事件验证，之前的操作不会因补充订阅而自动重放。
+
+<Warning>
+**添加事件后，别忘记发布应用新版本。** 在开发者平台的**版本管理与发布**中完成发布；如需管理员审批，还需等待审批通过。仅在配置页添加并保存事件，待发布的配置尚未生效，即使 LangBot 显示连接正常，也可能收不到这些事件。
+</Warning>
+
+如果添加订阅后仍收不到成员进退群等事件，先检查应用是否还有**待发布或待审批**的变更。确认新版本生效后，在机器人所在群内重新操作一次成员进群或退群，再查看 LangBot 的事件记录。
+
+例如，监听群成员变化需要订阅以下两个事件，且机器人需要在对应群聊中：
+
+| 功能 | 飞书事件 |
+| --- | --- |
+| 用户进群 | `im.chat.member.user.added_v1` |
+| 用户主动退群或被移出群聊 | `im.chat.member.user.deleted_v1` |
+
+“机器人进群”是另一个事件（`im.chat.member.bot.added_v1`），只订阅它不会收到其他成员的进退群通知。订阅生效后，还需要在 LangBot 的**事件路由**中将对应事件交给 Agent 或插件处理器；流水线只处理消息事件。
+
+---
+
+## 手动配置
+
+### 创建机器人
+
+前往[飞书开放平台](https://open.feishu.cn/app)，登录后，创建企业自建应用/商店应用 [(区别介绍)](https://open.feishu.cn/document/platform-overveiw/overview)。
+
+![alt text](/images/zh/deploy/bots/lark/lark_01.png)
+
+![alt text](/images/zh/deploy/bots/lark/lark_02.png)
+
+为应用添加机器人能力：
+![alt text](/images/zh/deploy/bots/lark/lark_03.png)
+
+在权限管理中添加图中所示权限：
+
+![alt text](/images/zh/deploy/bots/lark/lark_04.png)
+
+如需卡片流式权限则多添加如下图的创建与更新卡片：
+
+![img_1.png](../../../images/zh/deploy/bots/lark/lark_14.png)
+
+<Warning>
+默认卡片模板如需更换，需要自己去平台适配器的代码中修改卡片模板
+</Warning>
+
+### 对接 LangBot
+
+在`凭证与基础信息`页找到`app_id`和`app_secret`。
+
+![alt text](/images/zh/deploy/bots/lark/lark_05.png)
+
+
+
+打开LangBot 的 Webui 配置页面，创建一个新的机器人
+
+将相关信息填入表单
+
+![alt text](/images/zh/deploy/bots/lark/connect_to_langbot.png)
+
+流式相关：
+![流式相关](../../../images/zh/deploy/bots/lark/connect_to_langbot01.png)
+
+填写完成后启动 LangBot，若成功配置，日志中会出现`[01-29 23:42:56.796] manager.py (68) - [INFO] : 初始化平台适配器 1: lark`的字样，保持 LangBot 运行。
+
+<Warning title="">
+默认使用的是 WebSocket 长连接模式，对应下方的长连接订阅。但某些情况下（如国际版飞书）不具有长连接模式，此时需要使用 Webhook 模式，对应`将事件发送到开发者服务器`模式，请参考以下配置：
+
+- `enable-webhook`：设置为`true`
+- `encrypt-key`：设置为`事件与回调`页面的`加密策略`中的`Encrypt Key`
+
+注意，在Webhook模式中，LangBot 需要部署在具有公网 IP 的服务器上，并确保防火墙已开放上方配置的端口。
+
+</Warning>
+<Tip>
+**没有公网服务器？** [LangBot Cloud](https://space.langbot.app/cloud) 自带域名和 HTTPS，无需自行配置，开箱即用飞书机器人。
+</Tip>
+
+### 配置事件订阅
+
+前往`事件与回调`页，配置订阅方式为`长连接`：
+
+![alt text](/images/zh/deploy/bots/lark/lark_07.png)
+
+并添加事件：`接收消息`
+
+![alt text](/images/zh/deploy/bots/lark/lark_08.png)
+
+
+设置`回调配置`，选择使用长连接的回调(如果是webhook则使用webhook)
+
+![设置回调配置](/images/zh/deploy/bots/lark/lark_16.png)
+
+添加回调`卡片回传交互`
+
+![添加回调](/images/zh/deploy/bots/lark/lark_17.png)
+
+<Warning title="">
+Webhook 模式配置方式：
+
+![alt text](/images/zh/deploy/bots/lark/lark_13.png)
+
+请先启动 LangBot，在此处填写从 LangBot 获取的 Webhook 地址
+
+</Warning>
+
+### 发布机器人
+
+点击顶部`创建版本`，填写版本号等信息，点击下方`保存`。
+
+![alt text](/images/zh/deploy/bots/lark/lark_09.png)
+
+在飞书群中添加机器人，即可使用：
+
+![alt text](/images/zh/deploy/bots/lark/lark_10.png)
+
+![alt text](/images/zh/deploy/bots/lark/lark_11.png)
+
+私聊也可以直接使用
+
+![alt text](/images/zh/deploy/bots/lark/lark_12.png)
+
+## 常见问题
+- 商店应用机器人创建/保存后无法立刻响应聊天消息，由于[app_ticket事件](https://open.feishu.cn/document/server-docs/application-v6/event/app_ticket-events)延迟机制，需要等待2分钟左右才可以正常使用。
