@@ -461,8 +461,8 @@ class KnowledgeService:
             # here left knowledge bases with interrupted files undeletable.
             if any(file.status in {'pending', 'processing'} for file in files):
                 raise KnowledgeIngestionInProgressError(
-                    'Knowledge base has files that are still being ingested; wait for them to finish '
-                    'before deleting the knowledge base.'
+                    'Knowledge base has active ingestion (pending or processing files); wait for it to '
+                    'finish before deleting the knowledge base.'
                 )
             await uow.execute(
                 sqlalchemy.update(persistence_rag.KnowledgeBase)
