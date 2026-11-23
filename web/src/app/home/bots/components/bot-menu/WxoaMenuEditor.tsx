@@ -3,9 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   AlertTriangle,
+  ArrowDown,
   ArrowDownToLine,
+  ArrowUp,
   ChevronLeft,
-  ChevronRight,
   Copy,
   Globe,
   Keyboard,
@@ -71,6 +72,7 @@ import {
   createButton,
   isPublishedInSync,
   normalizeMenu,
+  restoreLangBotButtons,
   validateMenu,
 } from './wxoa-menu-model';
 
@@ -166,12 +168,8 @@ export default function WxoaMenuEditor({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openGroupId, setOpenGroupId] = useState<string | null>(null);
   const [published, setPublished] = useState<PublishedState>('loading');
-  const [busy, setBusy] = useState<
-    null | 'save' | 'publish' | 'import' | 'delete'
-  >(null);
-  const [confirm, setConfirm] = useState<
-    null | 'publish' | 'import' | 'delete'
-  >(null);
+  const [busy, setBusy] = useState<null | 'save' | 'import' | 'delete'>(null);
+  const [confirm, setConfirm] = useState<null | 'import' | 'delete'>(null);
   const [chat, setChat] = useState<ChatLine[]>([]);
 
   const dirty = JSON.stringify(menu) !== savedSnapshot;
@@ -249,6 +247,13 @@ export default function WxoaMenuEditor({
           ? 'published'
           : 'outOfSync';
 
+  // Saved but WeChat still serves something else (or we cannot tell).
+  const needsSync =
+    enabled &&
+    errorCount === 0 &&
+    syncState !== 'published' &&
+    !(syncState === 'unpublished' && !menu.buttons.length);
+
   // ---------- Mutations ----------
   function addTopButton() {
     if (menu.buttons.length >= MAX_TOP_BUTTONS) return;
@@ -299,28 +304,49 @@ export default function WxoaMenuEditor({
     }
   }
 
-  function deleteSelected() {
-    if (!selected) return;
-    const { button, parent } = selected;
+  /** Select a button and keep the preview showing it. */
+  function selectButton(id: string) {
+    setSelectedId(id);
+    const found = findButton(menu, id);
+    if (!found) return;
+    if (found.parent) setOpenGroupId(found.parent.id);
+    else setOpenGroupId(found.button.type === 'group' ? found.button.id : null);
+  }
+
+  function deleteButton(id: string) {
+    const found = findButton(menu, id);
+    if (!found) return;
+    const { button, parent, index } = found;
     if (parent) {
-      setMenu(
-        updateButton(menu, parent.id, (p) => ({
-          ...p,
-          sub_buttons: (p.sub_buttons || []).filter((s) => s.id !== button.id),
-        })),
+      const siblings = (parent.sub_buttons || []).filter(
+        (s) => s.id !== button.id,
       );
-      setSelectedId(parent.id);
+      setMenu(
+        updateButton(menu, parent.id, (p) => ({ ...p, sub_buttons: siblings })),
+      );
+      if (selectedId === button.id)
+        setSelectedId(
+          siblings[Math.min(index, siblings.length - 1)]?.id ?? parent.id,
+        );
     } else {
       const remaining = menu.buttons.filter((b) => b.id !== button.id);
       setMenu({ buttons: remaining });
-      setSelectedId(remaining[0]?.id ?? null);
-      setOpenGroupId(null);
+      if (
+        selectedId === button.id ||
+        (button.sub_buttons || []).some((s) => s.id === selectedId)
+      ) {
+        setSelectedId(
+          remaining[Math.min(index, remaining.length - 1)]?.id ?? null,
+        );
+        setOpenGroupId(null);
+      }
     }
   }
 
-  function moveSelected(delta: number) {
-    if (!selected) return;
-    const { parent, index } = selected;
+  function moveButton(id: string, delta: number) {
+    const found = findButton(menu, id);
+    if (!found) return;
+    const { parent, index } = found;
     if (parent) {
       setMenu(
         updateButton(menu, parent.id, (p) => ({
@@ -402,44 +428,64 @@ export default function WxoaMenuEditor({
   }
 
   // ---------- Remote actions ----------
-  async function save(): Promise<boolean> {
+  /** Store a menu in the bot's adapter config (LangBot side only). */
+  async function persist(next: CustomMenu): Promise<boolean> {
     if (!adapterConfig) return false;
-    setBusy('save');
     try {
-      const nextConfig = { ...adapterConfig, [MENU_CONFIG_KEY]: menu };
+      const nextConfig = { ...adapterConfig, [MENU_CONFIG_KEY]: next };
       await httpClient.updateBot(botId, { adapter_config: nextConfig });
       setAdapterConfig(nextConfig);
-      setSavedSnapshot(JSON.stringify(menu));
+      setSavedSnapshot(JSON.stringify(next));
       return true;
     } catch (error) {
       toast.error(t('wxoaMenu.toasts.saveFailed'), {
         description: describeError(error),
       });
       return false;
-    } finally {
-      setBusy(null);
     }
   }
 
-  async function saveOnly() {
-    if (await save()) toast.success(t('wxoaMenu.toasts.saved'));
+  function isNoMenuError(error: unknown): boolean {
+    return (error as PlatformApiError | null)?.data?.errcode === 46003;
   }
 
-  async function publish() {
-    setConfirm(null);
-    if (dirty && !(await save())) return;
-    setBusy('publish');
+  /** Save to LangBot, then push the saved menu to WeChat when possible. */
+  async function saveAndSync() {
+    setBusy('save');
     try {
-      const result = await httpClient.callBotPlatformApi<{
-        published: Record<string, unknown>;
-      }>(botId, 'menu.publish');
-      setPublished(result.published);
-      toast.success(t('wxoaMenu.toasts.published'));
-    } catch (error) {
-      toast.error(t('wxoaMenu.toasts.publishFailed'), {
-        description: describeError(error),
-        duration: 12000,
-      });
+      if (dirty && !(await persist(menu))) return;
+      if (!enabled) {
+        toast.success(t('wxoaMenu.toasts.savedBotDisabled'));
+        return;
+      }
+      if (errorCount > 0) {
+        toast.warning(t('wxoaMenu.toasts.savedNotSynced'), {
+          description: t('wxoaMenu.validationSummary', { count: errorCount }),
+        });
+        return;
+      }
+      try {
+        if (menu.buttons.length) {
+          const result = await httpClient.callBotPlatformApi<{
+            published: Record<string, unknown>;
+          }>(botId, 'menu.publish');
+          setPublished(result.published);
+        } else {
+          // An empty menu means "no menu" on WeChat too.
+          try {
+            await httpClient.callBotPlatformApi(botId, 'menu.delete');
+          } catch (error) {
+            if (!isNoMenuError(error)) throw error;
+          }
+          setPublished(null);
+        }
+        toast.success(t('wxoaMenu.toasts.synced'));
+      } catch (error) {
+        toast.error(t('wxoaMenu.toasts.syncFailed'), {
+          description: describeError(error),
+          duration: 12000,
+        });
+      }
     } finally {
       setBusy(null);
     }
@@ -453,7 +499,12 @@ export default function WxoaMenuEditor({
         menu: CustomMenu;
         warnings: string[];
       }>(botId, 'menu.import_console');
-      const imported = normalizeMenu(result.menu);
+      const imported = restoreLangBotButtons(
+        normalizeMenu(result.menu),
+        normalizeMenu(adapterConfig?.[MENU_CONFIG_KEY]),
+      );
+      // Keep the imported menu as LangBot's own snapshot right away.
+      if (!(await persist(imported))) return;
       setMenu(imported);
       setSelectedId(imported.buttons[0]?.id ?? null);
       setOpenGroupId(null);
@@ -552,35 +603,21 @@ export default function WxoaMenuEditor({
                 )}
               </Button>
               <Button
-                variant="outline"
-                onClick={saveOnly}
-                disabled={!dirty || busy !== null}
+                onClick={saveAndSync}
+                disabled={busy !== null || (!dirty && !needsSync)}
+                data-testid="wxoa-menu-save"
               >
-                {busy === 'save' && <Loader2 className="size-4 animate-spin" />}
+                {busy === 'save' ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : enabled ? (
+                  <Send className="size-4" />
+                ) : null}
                 {t(
                   busy === 'save'
                     ? 'wxoaMenu.actions.saving'
-                    : 'wxoaMenu.actions.save',
-                )}
-              </Button>
-              <Button
-                onClick={() => setConfirm('publish')}
-                disabled={
-                  !enabled ||
-                  busy !== null ||
-                  errorCount > 0 ||
-                  !menu.buttons.length
-                }
-              >
-                {busy === 'publish' ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Send className="size-4" />
-                )}
-                {t(
-                  busy === 'publish'
-                    ? 'wxoaMenu.actions.publishing'
-                    : 'wxoaMenu.actions.publish',
+                    : enabled
+                      ? 'wxoaMenu.actions.saveAndSync'
+                      : 'wxoaMenu.actions.save',
                 )}
               </Button>
               <DropdownMenu>
@@ -645,7 +682,7 @@ export default function WxoaMenuEditor({
         )}
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(320px,380px)_1fr]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(320px,360px)_1fr] 2xl:grid-cols-[minmax(320px,360px)_280px_1fr]">
         {/* Phone preview */}
         <Card className="h-fit">
           <CardHeader className="pb-2">
@@ -674,91 +711,90 @@ export default function WxoaMenuEditor({
           </CardContent>
         </Card>
 
-        {/* Button editor */}
-        <Card className="h-fit">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <CardTitle className="text-base">
-                  {t('wxoaMenu.editor.title')}
-                </CardTitle>
-                {selected && (
-                  <CardDescription>
-                    {selected.parent
-                      ? `${selected.parent.name} › ${t('wxoaMenu.editor.subLevel')}`
-                      : t('wxoaMenu.editor.topLevel')}
-                  </CardDescription>
-                )}
-              </div>
-              {selected && !readOnly && (
-                <div className="flex items-center gap-1">
+        <div className="grid h-fit gap-4 lg:col-span-1 2xl:contents">
+          {/* Menu structure */}
+          <Card className="h-fit">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">
+                {t('wxoaMenu.structure.title')}
+              </CardTitle>
+              <CardDescription>{t('wxoaMenu.structure.hint')}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <MenuStructure
+                menu={menu}
+                errors={errors}
+                selectedId={selectedId}
+                readOnly={readOnly}
+                onSelect={selectButton}
+                onMove={moveButton}
+                onDelete={deleteButton}
+                onAddTop={addTopButton}
+                onAddSub={addSubButton}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Button editor */}
+          <Card className="h-fit">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="text-base">
+                    {t('wxoaMenu.editor.title')}
+                  </CardTitle>
+                  {selected && (
+                    <CardDescription>
+                      {selected.parent
+                        ? `${selected.parent.name} › ${t('wxoaMenu.editor.subLevel')}`
+                        : t('wxoaMenu.editor.topLevel')}
+                    </CardDescription>
+                  )}
+                </div>
+                {selected && !readOnly && (
                   <Button
                     variant="ghost"
-                    size="icon"
-                    aria-label={t('wxoaMenu.actions.moveBefore')}
-                    title={t('wxoaMenu.actions.moveBefore')}
-                    disabled={selected.index === 0}
-                    onClick={() => moveSelected(-1)}
-                  >
-                    <ChevronLeft className="size-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={t('wxoaMenu.actions.moveAfter')}
-                    title={t('wxoaMenu.actions.moveAfter')}
-                    disabled={
-                      selected.index ===
-                      (selected.parent
-                        ? (selected.parent.sub_buttons?.length ?? 1)
-                        : menu.buttons.length) -
-                        1
-                    }
-                    onClick={() => moveSelected(1)}
-                  >
-                    <ChevronRight className="size-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
+                    size="sm"
                     className="text-destructive hover:text-destructive"
-                    aria-label={t('wxoaMenu.actions.deleteButton')}
-                    title={t('wxoaMenu.actions.deleteButton')}
-                    onClick={deleteSelected}
+                    onClick={() => deleteButton(selected.button.id)}
                   >
                     <Trash2 className="size-4" />
+                    {t(
+                      selected.parent
+                        ? 'wxoaMenu.actions.deleteSub'
+                        : 'wxoaMenu.actions.deleteTop',
+                    )}
                   </Button>
-                </div>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {!menu.buttons.length ? (
-              <EmptyState
-                readOnly={readOnly}
-                enabled={enabled}
-                onAdd={addTopButton}
-                onImport={importConsole}
-              />
-            ) : !selected ? (
-              <p className="py-10 text-center text-sm text-muted-foreground">
-                {t('wxoaMenu.editor.noSelection')}
-              </p>
-            ) : (
-              <fieldset disabled={readOnly} className="space-y-5">
-                <ButtonFields
-                  button={selected.button}
-                  isTop={!selected.parent}
-                  errors={errors[selected.button.id] || []}
-                  onPatch={patchSelected}
-                  onChangeType={changeType}
-                  onAddSub={() => addSubButton(selected.button.id)}
-                  onSelect={(id) => setSelectedId(id)}
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {!menu.buttons.length ? (
+                <EmptyState
+                  readOnly={readOnly}
+                  enabled={enabled}
+                  onAdd={addTopButton}
+                  onImport={importConsole}
                 />
-              </fieldset>
-            )}
-          </CardContent>
-        </Card>
+              ) : !selected ? (
+                <p className="py-10 text-center text-sm text-muted-foreground">
+                  {t('wxoaMenu.editor.noSelection')}
+                </p>
+              ) : (
+                <fieldset disabled={readOnly} className="space-y-5">
+                  <ButtonFields
+                    button={selected.button}
+                    isTop={!selected.parent}
+                    errors={errors[selected.button.id] || []}
+                    onPatch={patchSelected}
+                    onChangeType={changeType}
+                    onAddSub={() => addSubButton(selected.button.id)}
+                  />
+                </fieldset>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <AlertDialog
@@ -783,13 +819,7 @@ export default function WxoaMenuEditor({
                     confirm === 'delete' &&
                       'bg-destructive text-white hover:bg-destructive/90',
                   )}
-                  onClick={
-                    confirm === 'publish'
-                      ? publish
-                      : confirm === 'import'
-                        ? importConsole
-                        : deleteRemote
-                  }
+                  onClick={confirm === 'import' ? importConsole : deleteRemote}
                 >
                   {t(`wxoaMenu.${confirm}Confirm.confirm`)}
                 </AlertDialogAction>
@@ -903,7 +933,7 @@ function PhonePreview({
           {menu.buttons.map((button) => (
             <div key={button.id} className="relative flex min-w-0 flex-1">
               {button.type === 'group' && openGroupId === button.id && (
-                <div className="absolute bottom-full left-1/2 z-10 mb-2 w-[120%] min-w-[110px] -translate-x-1/2 rounded-md border border-black/10 bg-white shadow-md dark:border-white/10 dark:bg-zinc-800">
+                <div className="absolute bottom-full left-1/2 z-10 mb-2 w-[94%] -translate-x-1/2 rounded-md border border-black/10 bg-white shadow-md dark:border-white/10 dark:bg-zinc-800">
                   {(button.sub_buttons || []).map((sub) => (
                     <button
                       key={sub.id}
@@ -1036,7 +1066,6 @@ function ButtonFields({
   onPatch,
   onChangeType,
   onAddSub,
-  onSelect,
 }: {
   button: MenuButton;
   isTop: boolean;
@@ -1044,7 +1073,6 @@ function ButtonFields({
   onPatch: (patch: Partial<MenuButton>) => void;
   onChangeType: (type: MenuButtonType) => void;
   onAddSub: () => void;
-  onSelect: (id: string) => void;
 }) {
   const { t } = useTranslation();
   const maxBytes = isTop ? MAX_TOP_NAME_BYTES : MAX_SUB_NAME_BYTES;
@@ -1140,26 +1168,6 @@ function ButtonFields({
           <p className="text-xs text-muted-foreground">
             {t('wxoaMenu.editor.groupHint')}
           </p>
-          <div className="divide-y rounded-md border">
-            {(button.sub_buttons || []).map((sub) => {
-              const Icon = TYPE_ICONS[sub.type] || MessageSquareText;
-              return (
-                <button
-                  key={sub.id}
-                  type="button"
-                  onClick={() => onSelect(sub.id)}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                >
-                  <Icon className="size-4 text-muted-foreground" />
-                  <span className="flex-1 truncate">{sub.name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {t(`wxoaMenu.types.${sub.type}.label`)}
-                  </span>
-                  <ChevronRight className="size-4 text-muted-foreground" />
-                </button>
-              );
-            })}
-          </div>
           {(button.sub_buttons?.length ?? 0) < MAX_SUB_BUTTONS && (
             <Button variant="outline" size="sm" onClick={onAddSub}>
               <Plus className="size-4" />
@@ -1296,5 +1304,227 @@ function ButtonFields({
         </div>
       )}
     </>
+  );
+}
+
+function IconAction({
+  label,
+  icon: Icon,
+  onClick,
+  disabled,
+  destructive,
+}: {
+  label: string;
+  icon: LucideIcon;
+  onClick: () => void;
+  disabled?: boolean;
+  destructive?: boolean;
+}) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className={cn(
+        'size-7',
+        destructive && 'text-muted-foreground hover:text-destructive',
+      )}
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+    >
+      <Icon className="size-3.5" />
+    </Button>
+  );
+}
+
+function StructureRow({
+  button,
+  level,
+  index,
+  count,
+  selected,
+  hasError,
+  readOnly,
+  onSelect,
+  onMove,
+  onDelete,
+}: {
+  button: MenuButton;
+  level: 'top' | 'sub';
+  index: number;
+  count: number;
+  selected: boolean;
+  hasError: boolean;
+  readOnly: boolean;
+  onSelect: (id: string) => void;
+  onMove: (id: string, delta: number) => void;
+  onDelete: (id: string) => void;
+}) {
+  const { t } = useTranslation();
+  const Icon = TYPE_ICONS[button.type] || MessageSquareText;
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      data-testid={`wxoa-structure-${button.id}`}
+      onClick={() => onSelect(button.id)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onSelect(button.id);
+        }
+      }}
+      className={cn(
+        'group flex cursor-pointer items-center gap-2 rounded-md py-1.5 pr-1 text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
+        level === 'top' ? 'pl-2' : 'pl-7',
+        selected && 'bg-primary/10 text-primary hover:bg-primary/10',
+      )}
+    >
+      <Icon
+        className={cn(
+          'size-4 shrink-0',
+          selected ? 'text-primary' : 'text-muted-foreground',
+        )}
+      />
+      <span
+        className={cn(
+          'min-w-0 flex-1 truncate',
+          level === 'top' && 'font-medium',
+        )}
+      >
+        {button.name || t('wxoaMenu.preview.empty')}
+      </span>
+      {hasError && (
+        <span
+          className="size-1.5 shrink-0 rounded-full bg-red-500"
+          title={t('wxoaMenu.structure.needsFix')}
+        />
+      )}
+      {!readOnly && (
+        <span
+          className={cn(
+            'flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100',
+            selected && 'opacity-100',
+          )}
+        >
+          <IconAction
+            label={t('wxoaMenu.actions.moveUp')}
+            icon={ArrowUp}
+            disabled={index === 0}
+            onClick={() => onMove(button.id, -1)}
+          />
+          <IconAction
+            label={t('wxoaMenu.actions.moveDown')}
+            icon={ArrowDown}
+            disabled={index === count - 1}
+            onClick={() => onMove(button.id, 1)}
+          />
+          <IconAction
+            label={t(
+              level === 'top'
+                ? 'wxoaMenu.actions.deleteTop'
+                : 'wxoaMenu.actions.deleteSub',
+            )}
+            icon={Trash2}
+            destructive
+            onClick={() => onDelete(button.id)}
+          />
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Tree of all buttons: the place to switch, reorder, add and remove them. */
+function MenuStructure({
+  menu,
+  errors,
+  selectedId,
+  readOnly,
+  onSelect,
+  onMove,
+  onDelete,
+  onAddTop,
+  onAddSub,
+}: {
+  menu: CustomMenu;
+  errors: Record<string, ButtonError[]>;
+  selectedId: string | null;
+  readOnly: boolean;
+  onSelect: (id: string) => void;
+  onMove: (id: string, delta: number) => void;
+  onDelete: (id: string) => void;
+  onAddTop: () => void;
+  onAddSub: (parentId: string) => void;
+}) {
+  const { t } = useTranslation();
+  const rowProps = { readOnly, onSelect, onMove, onDelete };
+  return (
+    <div className="space-y-1" data-testid="wxoa-menu-structure">
+      {menu.buttons.map((button, index) => {
+        const subs = button.type === 'group' ? button.sub_buttons || [] : [];
+        return (
+          <div key={button.id} className="space-y-0.5">
+            <StructureRow
+              button={button}
+              level="top"
+              index={index}
+              count={menu.buttons.length}
+              selected={selectedId === button.id}
+              hasError={Boolean(errors[button.id])}
+              {...rowProps}
+            />
+            {subs.map((sub, subIndex) => (
+              <StructureRow
+                key={sub.id}
+                button={sub}
+                level="sub"
+                index={subIndex}
+                count={subs.length}
+                selected={selectedId === sub.id}
+                hasError={Boolean(errors[sub.id])}
+                {...rowProps}
+              />
+            ))}
+            {!readOnly && button.type === 'group' && (
+              <button
+                type="button"
+                disabled={subs.length >= MAX_SUB_BUTTONS}
+                onClick={() => onAddSub(button.id)}
+                className="flex w-full items-center gap-2 rounded-md py-1.5 pl-7 text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+              >
+                <Plus className="size-3.5" />
+                {subs.length >= MAX_SUB_BUTTONS
+                  ? t('wxoaMenu.structure.subFull', { max: MAX_SUB_BUTTONS })
+                  : t('wxoaMenu.actions.addSub')}
+              </button>
+            )}
+          </div>
+        );
+      })}
+      {!menu.buttons.length && (
+        <p className="py-4 text-center text-sm text-muted-foreground">
+          {t('wxoaMenu.empty.title')}
+        </p>
+      )}
+      {!readOnly && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-2 w-full"
+          disabled={menu.buttons.length >= MAX_TOP_BUTTONS}
+          onClick={onAddTop}
+        >
+          <Plus className="size-4" />
+          {menu.buttons.length >= MAX_TOP_BUTTONS
+            ? t('wxoaMenu.structure.topFull', { max: MAX_TOP_BUTTONS })
+            : t('wxoaMenu.actions.addTopFull')}
+        </Button>
+      )}
+    </div>
   );
 }

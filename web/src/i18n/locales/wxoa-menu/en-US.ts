@@ -5,8 +5,8 @@ export default {
     'Edit the buttons at the bottom of the Official Account chat. After the account is connected to LangBot, WeChat disables menus edited in its web console, so publish them from here.',
   status: {
     published: 'Published',
-    outOfSync: 'Unpublished changes',
-    unpublished: 'Not published',
+    outOfSync: 'Changes not synced',
+    unpublished: 'Not synced to WeChat',
     unknown: 'Publish status unknown',
   },
   actions: {
@@ -14,22 +14,30 @@ export default {
     importing: 'Importing…',
     save: 'Save',
     saving: 'Saving…',
-    publish: 'Publish to WeChat',
-    publishing: 'Publishing…',
     more: 'More actions',
     deleteRemote: 'Delete the menu on WeChat',
-    refresh: 'Refresh publish status',
+    refresh: 'Refresh sync status',
     addTop: 'Add menu',
     addSub: 'Add sub-button',
-    deleteButton: 'Delete this button',
-    moveBefore: 'Move earlier',
-    moveAfter: 'Move later',
+    saveAndSync: 'Save and sync to WeChat',
+    addTopFull: 'Add top-level menu',
+    deleteTop: 'Delete this menu',
+    deleteSub: 'Delete this sub-button',
+    moveUp: 'Move up',
+    moveDown: 'Move down',
   },
   unsaved: 'Unsaved changes',
   botDisabled:
-    'The bot is disabled. Enable it to import, publish or delete the menu; you can still edit and save it now.',
+    'The bot is disabled. Enable it to import, sync or delete the menu on WeChat; you can still edit and save here.',
   validationSummary:
-    '{{count}} button(s) still need attention before the menu can be published.',
+    '{{count}} button(s) still need attention before the menu can be synced to WeChat.',
+  structure: {
+    title: 'Menu structure',
+    hint: 'Click a button to edit it; use the arrows to reorder.',
+    needsFix: 'Needs attention',
+    subFull: 'Sub-buttons full (max {{max}})',
+    topFull: 'Top-level menus full (max {{max}})',
+  },
   empty: {
     title: 'No menu yet',
     description:
@@ -50,7 +58,8 @@ export default {
   },
   editor: {
     title: 'Button settings',
-    noSelection: 'Select a button in the preview to edit it.',
+    noSelection:
+      'Select a button in Menu structure or in the preview to edit it.',
     name: 'Button name',
     nameBytes: '{{used}}/{{max}} bytes (a Chinese character is about 3 bytes)',
     type: 'When tapped',
@@ -60,7 +69,7 @@ export default {
     defaultSubName: 'Item {{n}}',
     subButtons: 'Sub-buttons ({{count}}/{{max}})',
     groupHint:
-      'Tapping a top-level menu opens its sub-buttons; the menu itself has no action.',
+      'Tapping a top-level menu opens its sub-buttons and triggers nothing itself. Add, reorder and delete sub-buttons in Menu structure.',
   },
   types: {
     group: {
@@ -130,17 +139,11 @@ export default {
     groupEmpty: 'Add at least one sub-button',
     unsupported: 'Switch to a supported button type',
   },
-  publishConfirm: {
-    title: 'Publish to WeChat?',
-    description:
-      'This saves the menu and replaces the whole menu on the Official Account. Users may need a few minutes or to re-enter the account to see it.',
-    confirm: 'Save and publish',
-  },
   importConfirm: {
-    title: 'Replace the current draft with the WeChat menu?',
-    description:
-      "Reads the account's current menu, including one edited in the WeChat web console that is now disabled, and replaces the editor contents. Save or publish afterwards to apply it.",
+    title: 'Replace the current menu with the one from WeChat?',
     confirm: 'Import',
+    description:
+      'Reads the menu currently on the Official Account (including one edited in the web console and disabled by WeChat) and saves it to LangBot, replacing the menu here. It reaches WeChat only after you click Save and sync to WeChat.',
   },
   deleteConfirm: {
     title: 'Delete the menu on WeChat?',
@@ -150,15 +153,19 @@ export default {
   },
   toasts: {
     saved: 'Menu saved',
-    published: 'Menu published to WeChat',
-    imported: 'Imported the WeChat menu. Review it, then save or publish.',
+    imported:
+      'Imported and saved to LangBot. Review it, then click Save and sync to WeChat.',
     importedEmpty: 'The account has no menu right now',
     importWarnings: '{{count}} button(s) need changes',
     deleted: 'The menu on WeChat was deleted',
     saveFailed: 'Failed to save the menu',
-    publishFailed: 'Publishing failed',
     importFailed: 'Import failed',
     deleteFailed: 'Delete failed',
+    savedBotDisabled:
+      'Saved. Enable the bot and save again to sync it to WeChat.',
+    savedNotSynced: 'Saved to LangBot, but it cannot be synced to WeChat yet',
+    synced: 'Saved and synced to WeChat',
+    syncFailed: 'Saved to LangBot, but syncing to WeChat failed',
   },
   wechatErrors: {
     credentials:

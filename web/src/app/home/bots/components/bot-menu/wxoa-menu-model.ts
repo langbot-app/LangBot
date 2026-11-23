@@ -58,6 +58,37 @@ export function createButton(name: string): MenuButton {
   return { id: newButtonId(), name, type: 'reply', text: '' };
 }
 
+/**
+ * After importing from WeChat, buttons LangBot published earlier come back as
+ * plain click events with an `lb:r:<id>` / `lb:a:<id>` key because WeChat does
+ * not store their text. Restore them from the saved menu when it still has
+ * the matching button.
+ */
+export function restoreLangBotButtons(
+  imported: CustomMenu,
+  saved: CustomMenu,
+): CustomMenu {
+  const known = new Map<string, MenuButton>();
+  for (const button of saved.buttons) {
+    known.set(button.id, button);
+    for (const sub of button.sub_buttons || []) known.set(sub.id, sub);
+  }
+  const restore = (button: MenuButton): MenuButton => {
+    if (button.type === 'group')
+      return {
+        ...button,
+        sub_buttons: (button.sub_buttons || []).map(restore),
+      };
+    const match = /^lb:([ra]):(.+)$/.exec((button.key || '').trim());
+    if (button.type !== 'event' || !match) return button;
+    const type: MenuButtonType = match[1] === 'r' ? 'reply' : 'ai';
+    const original = known.get(match[2]);
+    if (!original || original.type !== type) return button;
+    return { id: original.id, name: button.name, type, text: original.text };
+  };
+  return { buttons: imported.buttons.map(restore) };
+}
+
 /** Error codes are i18n keys under wxoaMenu.errors. */
 export type ButtonError =
   | 'nameRequired'

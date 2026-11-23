@@ -5,8 +5,8 @@ export default {
     '公式アカウントのチャット画面下部にあるメニューボタンを編集します。LangBot に接続すると、WeChat の Web コンソールで編集したメニューは停止されるため、ここから公開してください。',
   status: {
     published: '公開済み',
-    outOfSync: '未公開の変更あり',
-    unpublished: '未公開',
+    outOfSync: '未同期の変更あり',
+    unpublished: 'WeChat に未同期',
     unknown: '公開状態不明',
   },
   actions: {
@@ -14,22 +14,30 @@ export default {
     importing: 'インポート中…',
     save: '保存',
     saving: '保存中…',
-    publish: 'WeChat に公開',
-    publishing: '公開中…',
     more: 'その他の操作',
     deleteRemote: 'WeChat 上のメニューを削除',
-    refresh: '公開状態を更新',
+    refresh: '同期状態を更新',
     addTop: 'メニューを追加',
     addSub: 'サブボタンを追加',
-    deleteButton: 'このボタンを削除',
-    moveBefore: '前へ移動',
-    moveAfter: '後ろへ移動',
+    saveAndSync: '保存して WeChat に同期',
+    addTopFull: 'トップメニューを追加',
+    deleteTop: 'このメニューを削除',
+    deleteSub: 'このサブボタンを削除',
+    moveUp: '上へ移動',
+    moveDown: '下へ移動',
   },
   unsaved: '未保存の変更あり',
   botDisabled:
-    'ボットが無効です。インポート・公開・削除にはボットを有効にしてください。編集と保存は今でもできます。',
+    'ボットが無効です。有効にするとインポート・同期・削除ができます。編集と保存は今すぐ行えます。',
   validationSummary:
-    '公開するには、あと {{count}} 個のボタンを修正する必要があります。',
+    'あと {{count}} 個のボタンを修正すると WeChat に同期できます。',
+  structure: {
+    title: 'メニュー構成',
+    hint: 'クリックで編集するボタンを切り替え、矢印で順序を変更します。',
+    needsFix: '要修正',
+    subFull: 'サブボタンは最大 {{max}} 個です',
+    topFull: 'トップメニューは最大 {{max}} 個です',
+  },
   empty: {
     title: 'メニューがまだありません',
     description:
@@ -51,7 +59,8 @@ export default {
   },
   editor: {
     title: 'ボタン設定',
-    noSelection: '左のプレビューでボタンを選択して編集します。',
+    noSelection:
+      '「メニュー構成」またはプレビューでボタンを選択して編集します。',
     name: 'ボタン名',
     nameBytes: '{{used}}/{{max}} バイト（漢字・かなは約 3 バイト）',
     type: 'タップ時の動作',
@@ -61,7 +70,7 @@ export default {
     defaultSubName: '項目{{n}}',
     subButtons: 'サブボタン（{{count}}/{{max}}）',
     groupHint:
-      'トップレベルのメニューをタップするとサブボタンが開きます。メニュー自体には動作がありません。',
+      'トップメニューをタップするとサブボタンが開き、それ自体は動作しません。サブボタンの追加・並べ替え・削除は「メニュー構成」で行えます。',
   },
   types: {
     group: {
@@ -134,16 +143,10 @@ export default {
     groupEmpty: 'サブボタンを 1 つ以上追加してください',
     unsupported: '対応しているボタンタイプに変更してください',
   },
-  publishConfirm: {
-    title: 'WeChat に公開しますか？',
-    description:
-      'メニューを保存してから、公式アカウントのメニュー全体を置き換えます。反映まで数分かかるか、アカウントに入り直す必要がある場合があります。',
-    confirm: '保存して公開',
-  },
   importConfirm: {
-    title: '現在の編集内容を WeChat のメニューで置き換えますか？',
+    title: 'WeChat のメニューで現在のメニューを置き換えますか？',
     description:
-      '公式アカウントの現在のメニュー（Web コンソールで編集して停止されたメニューを含む）を読み込み、エディターの内容を置き換えます。反映するには保存または公開してください。',
+      '公式アカウントの現在のメニュー（Web 管理画面で編集され、停止されたものを含む）を読み込み、LangBot に保存してここのメニューを置き換えます。WeChat に反映するには「保存して WeChat に同期」をクリックしてください。',
     confirm: 'インポート',
   },
   deleteConfirm: {
@@ -154,16 +157,19 @@ export default {
   },
   toasts: {
     saved: 'メニューを保存しました',
-    published: 'メニューを WeChat に公開しました',
     imported:
-      'WeChat のメニューをインポートしました。確認してから保存または公開してください',
+      'インポートして LangBot に保存しました。確認後「保存して WeChat に同期」をクリックしてください。',
     importedEmpty: '公式アカウントには現在メニューがありません',
     importWarnings: '{{count}} 個のボタンを調整する必要があります',
     deleted: 'WeChat 上のメニューを削除しました',
     saveFailed: 'メニューの保存に失敗しました',
-    publishFailed: '公開に失敗しました',
     importFailed: 'インポートに失敗しました',
     deleteFailed: '削除に失敗しました',
+    savedBotDisabled:
+      '保存しました。ボットを有効にしてから再度保存すると WeChat に同期されます。',
+    savedNotSynced: 'LangBot に保存しましたが、まだ WeChat に同期できません',
+    synced: '保存して WeChat に同期しました',
+    syncFailed: 'LangBot に保存しましたが、WeChat への同期に失敗しました',
   },
   wechatErrors: {
     credentials:
