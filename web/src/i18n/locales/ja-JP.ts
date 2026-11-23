@@ -1,4 +1,5 @@
 import slackSetup from './slack-setup/ja-JP';
+import wxoaMenu from './wxoa-menu/ja-JP';
 import pipelineMigration from './pipeline-migration/ja-JP';
 import pluginPermissions from './plugin-permissions/ja-JP';
 const jaJP = {
@@ -216,6 +217,7 @@ const jaJP = {
     saveFailed: '言語設定の保存に失敗しました',
   },
   slackSetup,
+  wxoaMenu,
   inflight: {
     autoCollapse: '自動折りたたみ',
     empty: '処理中のイベントはありません',

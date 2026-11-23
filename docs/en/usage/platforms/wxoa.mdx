@@ -86,3 +86,36 @@ Select `auto`, `passive`, or `drop` in `Mode` using the comparison above. The de
 The `LoadingMessage` option controls the loading message for `auto` and `passive`. Set `enable` to `true`.
 
 After filling in successfully, on the LangBot homepage, enable and select the corresponding bot, click to enter the configuration page, copy the Webhook callback address, return to the WeChat Official Account bot configuration page, and fill it into `URL`. For example, if the URL is filled as `https://your_domain_name/bots/xxxxx`, where `your_domain_name` is the domain name filled in Caddy. Click Save. If it can be saved successfully, it means the deployment is successful. If you see **System error, please try again later**, please recheck whether the above configuration content is filled in correctly.
+
+### Custom menu shows "Custom menu not enabled" after enabling the callback
+
+Once the server configuration (message push) is enabled, the Official Account runs in developer mode. WeChat then disables the custom menu edited in the web console and shows "Because the developer modified the menu configuration through the API, the current menu configuration has expired and been disabled" on the Custom Menu page. This is a WeChat platform rule; LangBot does not modify or delete your menu on its own.
+
+To keep using LangBot, publish the menu again from LangBot (see [Custom menu](#custom-menu) below). Disabling message push restores the web-edited menu, but LangBot will no longer receive messages from the account.
+
+## Custom menu
+
+Bots using the new Official Account adapter have a **Custom Menu** tab on the bot detail page for editing and publishing the menu at the bottom of the Official Account chat:
+
+1. Make sure the bot is enabled and the LangBot server's outbound IP is in the account's API IP whitelist (shown in the bot's **IP Whitelist** field).
+2. Open the **Custom Menu** tab on the bot detail page. If you had a menu in the WeChat web console, click **Import from WeChat** to read the disabled menu back as it was.
+3. Select a button in the phone preview on the left and change its name and tap action on the right. Click buttons in the preview to see what users get.
+4. Click **Publish to WeChat**. Publishing replaces the whole menu on the account; users usually see it after a few minutes or after re-entering the account.
+
+Up to 3 top-level buttons, each with up to 5 sub-buttons. Top-level names are limited to 16 bytes and sub-button names to 60 bytes (a Chinese character is about 3 bytes). Tap actions:
+
+| Action | Effect |
+| --- | --- |
+| Open web page | Goes to a URL. |
+| Open mini program | Opens a page of a linked mini program; older clients without mini program support open the fallback web page. |
+| Reply with fixed text | Replies with preset text right away, without calling the AI. |
+| Let the AI reply | Sends a preset message for the user; the current chat pipeline or Agent answers it. |
+| Trigger event (advanced) | Emits a `platform.specific` event (`officialaccount.CLICK`) whose `data.EventKey` is the button's event key. Add a binding in Event Routing filtered on `data.EventKey` to hand it to an Agent or plugin. |
+
+News, image, voice and video material buttons from the WeChat web console cannot be imported through the API. They are marked as an unsupported type after import and must be changed to another action before publishing.
+
+If publishing fails, the page shows the WeChat error code and an explanation. Common causes: the server outbound IP is not in the API IP whitelist (`40164`), the account has no custom menu API permission (`48001`, typical for unverified subscription accounts), or the mini program is not linked to the account (`85005`).
+
+<Note>
+Plugins and Agents can also manage the menu through `call_platform_api` with `menu.get`, `menu.import_console`, `menu.publish` and `menu.delete`. The legacy adapter has no menu editor; switch to the new adapter to use it.
+</Note>

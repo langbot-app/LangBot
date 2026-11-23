@@ -388,6 +388,7 @@ export interface Adapter {
     help_links?: Record<string, string>;
     supported_events?: string[];
     supported_apis?: string[];
+    platform_specific_apis?: { action: string }[];
     config: IDynamicFormItemSchema[];
   };
 }

@@ -146,6 +146,14 @@ spec:
       description: { en_US: "Return the configured Official Account reply mode", zh_Hans: "返回当前微信公众号回复模式" }
     - action: get_cached_response_status
       description: { en_US: "Inspect cached passive/drop reply state for diagnostics", zh_Hans: "查看被动回复缓存状态，用于诊断" }
+    - action: menu.get
+      description: { en_US: "Return the custom menu saved in LangBot and the one WeChat serves", zh_Hans: "返回 LangBot 中保存的自定义菜单和微信当前生效的菜单" }
+    - action: menu.import_console
+      description: { en_US: "Read the account's current menu, including one edited in the WeChat web console", zh_Hans: "读取公众号当前菜单，包括在公众平台网页中编辑的菜单" }
+    - action: menu.publish
+      description: { en_US: "Publish the saved custom menu, or a raw WeChat menu body passed as menu", zh_Hans: "发布已保存的自定义菜单，或通过 menu 参数发布原始微信菜单" }
+    - action: menu.delete
+      description: { en_US: "Delete the custom menu published through the API", zh_Hans: "删除通过接口发布的自定义菜单" }
 
 execution:
   python:

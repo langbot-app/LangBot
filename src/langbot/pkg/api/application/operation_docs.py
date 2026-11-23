@@ -405,6 +405,14 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         risk='write',
         exposure='all',
     ),
+    'bot.platform_api.call': OperationDoc(
+        domain='bot',
+        label={'zh_Hans': '调用平台专属接口', 'en_US': 'Call Platform Action'},
+        summary="Call a platform-specific action declared by the bot's adapter.",
+        description='Run one of the platform_specific_apis actions declared in the adapter manifest, for example menu.publish for WeChat Official Account. The bot must be enabled. Prerequisites: Call bot.list to obtain bot_uuid. Side effect: Changes platform-side state depending on the action.',
+        risk='dangerous',
+        exposure='none',
+    ),
     'bot.routes.bind': OperationDoc(
         domain='bot',
         label={'zh_Hans': '切换路由目标', 'en_US': 'Change Route Target'},

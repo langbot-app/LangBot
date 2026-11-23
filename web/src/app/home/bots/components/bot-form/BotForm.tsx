@@ -37,6 +37,7 @@ import {
   Search,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { MENU_CONFIG_KEY } from '@/app/home/bots/components/bot-menu/wxoa-menu-model';
 import EventBindingsEditor from './EventBindingsEditor';
 import EventRoutingHelp from './EventRoutingHelp';
 import LegacyAdapterHelp from './LegacyAdapterHelp';
@@ -195,6 +196,22 @@ const getFormSchema = (t: (key: string) => string) =>
       )
       .optional(),
   });
+
+// Adapter config keys edited outside the dynamic form (e.g. the WeChat
+// Official Account menu tab). The dynamic form only emits declared fields, so
+// keep these when it reports changes.
+const EDITOR_MANAGED_CONFIG_KEYS = [MENU_CONFIG_KEY];
+
+function preserveEditorManagedConfig(
+  current: Record<string, unknown> | undefined,
+  values: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...values };
+  for (const key of EDITOR_MANAGED_CONFIG_KEYS) {
+    if (current && key in current && !(key in next)) next[key] = current[key];
+  }
+  return next;
+}
 
 export interface BotFormHandle {
   syncBasicInfo: (values: { name: string; description: string }) => void;
@@ -1261,9 +1278,14 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                       hiddenItemNames={connectionModeControllerNames}
                       initialValues={currentAdapterConfig}
                       onSubmit={(values) => {
-                        form.setValue('adapter_config', values, {
-                          shouldDirty: !isInitializing.current,
-                        });
+                        form.setValue(
+                          'adapter_config',
+                          preserveEditorManagedConfig(
+                            form.getValues('adapter_config'),
+                            values as Record<string, unknown>,
+                          ),
+                          { shouldDirty: !isInitializing.current },
+                        );
                       }}
                       systemContext={dynamicFormSystemContext}
                     />
