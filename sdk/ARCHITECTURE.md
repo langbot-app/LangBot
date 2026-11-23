@@ -234,9 +234,11 @@ RPC carries an exact current `InstallationBinding` and cannot select or rebind
 tenant scope.
 
 Before any desired-state artifact worker is launched, the Runtime prepares an
-immutable dependency tree. The resulting `site-packages` tree is keyed by the
-verified artifact, requirements bytes, Python ABI, Runtime version, installer
-schema, and Runtime profile, then atomically published under
+immutable dependency tree. The shared profile binds it to the verified artifact,
+requirements bytes, Python ABI, Runtime version and installer schema. The OSS
+profile can reuse the same plugin's tree across code-only releases when the
+resolver and platform match. Each worker retains its exact artifact binding.
+The Runtime atomically publishes the tree under
 `environments/sha256/<environment-digest>`. Concurrent installations reuse the
 same ready tree. Failed or partial preparations are removed and reported as the
 stable `dependency_prepare_failed` desired-state failure. Pip control options in

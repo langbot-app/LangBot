@@ -561,6 +561,7 @@ async def test_windows_oss_worker_controller_reaps_process_when_cancelled(
 
 async def test_prepare_dependency_environment_selects_profile_installer(
     tmp_path,
+    monkeypatch,
 ):
     launcher = PluginWorkerLauncher(
         nsjail_path="/usr/bin/nsjail",
@@ -579,11 +580,13 @@ async def test_prepare_dependency_environment_selects_profile_installer(
             runtime_fingerprint,
             installer,
             execution_mode=None,
+            package_cache_scope=None,
         ):
             captured.update(
                 artifact=artifact,
                 runtime_fingerprint=runtime_fingerprint,
                 installer=installer,
+                scope=package_cache_scope,
             )
             return launch_spec.dependency_environment
 
@@ -597,6 +600,17 @@ async def test_prepare_dependency_environment_selects_profile_installer(
     assert len(captured["runtime_fingerprint"]) == 64
     assert captured["installer"] == launcher._install_dependency_environment
     shared_fingerprint = captured["runtime_fingerprint"]
+    assert captured["scope"] is None
+
+    windows_shared = PluginWorkerLauncher(platform="win32", cgroup_v2_available=False)
+    windows_shared.configure(_policy(require_hard_limits=False), "shared")
+    await windows_shared.prepare_dependency_environment(
+        FakeStore(), launch_spec.artifact
+    )
+    assert (
+        captured["installer"] == windows_shared._install_dependency_environment_direct
+    )
+    assert captured["scope"] is None
 
     oss = PluginWorkerLauncher(
         cgroup_v2_available=False,
@@ -611,6 +625,15 @@ async def test_prepare_dependency_environment_selects_profile_installer(
     assert oss_result is launch_spec.dependency_environment
     assert captured["installer"] == oss._install_dependency_environment_direct
     assert captured["runtime_fingerprint"] != shared_fingerprint
+    scope = captured["scope"]
+    assert len(scope) == 64
+    for field in ("plugin_author", "plugin_name"):
+        other = dataclasses.replace(launch_spec.artifact, **{field: "other"})
+        await oss.prepare_dependency_environment(FakeStore(), other)
+        assert captured["scope"] != scope
+    monkeypatch.setenv("LANGBOT_PLUGIN_PYPI_INDEX_URL", "https://mirror.invalid/simple")
+    await oss.prepare_dependency_environment(FakeStore(), launch_spec.artifact)
+    assert captured["scope"] != scope
 
 
 async def test_oss_dependency_installer_targets_environment_without_control_secrets(
@@ -680,6 +703,14 @@ async def test_oss_dependency_installer_targets_environment_without_control_secr
     assert kwargs["env"]["HTTPS_PROXY"] == "http://proxy.invalid"
     assert "LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN" not in kwargs["env"]
     assert kwargs["env"]["HOME"] == str(staging.tmp_path.absolute())
+    assert "--no-cache-dir" in args
+    cache_path = tmp_path / "persistent" / "pip-cache"
+    await launcher._install_dependency_environment_direct(
+        dataclasses.replace(staging, pip_cache_path=cache_path),
+        ["private-package==1.0.0"],
+    )
+    assert "--no-cache-dir" not in captured["args"]
+    assert captured["kwargs"]["env"]["PIP_CACHE_DIR"] == str(cache_path.absolute())
 
 
 @pytest.mark.parametrize("returncode", [0, 7])

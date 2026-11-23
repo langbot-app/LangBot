@@ -13,6 +13,9 @@ import sys
 from dataclasses import dataclass
 from typing import Any, Callable, Coroutine, Literal, Sequence
 
+from packaging.markers import default_environment
+from packaging.tags import sys_tags
+
 from langbot_plugin.entities.io.context import InstallationBinding, PluginWorkerPolicy
 from langbot_plugin.runtime import bounded_executor
 from langbot_plugin.runtime.helper import pkgmgr as pkgmgr_helper
@@ -325,11 +328,30 @@ class PluginWorkerLauncher:
             if profile == "shared"
             else self._install_dependency_environment_direct
         )
+        fingerprint = self.dependency_runtime_fingerprint()
+        cache_scope = None
+        if self.runtime_profile == "oss_dev":
+            # Scope writable pip data to one plugin, interpreter and resolver.
+            # Index arguments may contain credentials; persist only the hash.
+            inputs = {
+                "plugin": [artifact.plugin_author, artifact.plugin_name],
+                "runtime": fingerprint,
+                "markers": default_environment(),
+                "wheel_tag": str(next(sys_tags())),
+                "pip_version": importlib.metadata.version("pip"),
+                "index_args": pkgmgr_helper.get_pip_index_args(),
+            }
+            cache_scope = hashlib.sha256(
+                json.dumps(inputs, sort_keys=True, separators=(",", ":")).encode(
+                    "utf-8"
+                )
+            ).hexdigest()
         return await store.prepare(
             artifact,
-            runtime_fingerprint=self.dependency_runtime_fingerprint(),
+            runtime_fingerprint=fingerprint,
             installer=installer,
             execution_mode=execution_mode,
+            package_cache_scope=cache_scope,
         )
 
     def dependency_runtime_fingerprint(self) -> str:
@@ -405,7 +427,9 @@ class PluginWorkerLauncher:
                 *args,
                 stdout=log_file,
                 stderr=asyncio.subprocess.STDOUT,
-                env=self._direct_dependency_installer_environment(tmp_path),
+                env=self._direct_dependency_installer_environment(
+                    tmp_path, staging.pip_cache_path
+                ),
                 cwd=str(tmp_path),
             )
         # The OSS operator is the person reading the WebUI error, so surface
@@ -491,7 +515,7 @@ class PluginWorkerLauncher:
             "install",
             "--disable-pip-version-check",
             "--ignore-installed",
-            "--no-cache-dir",
+            *(["--no-cache-dir"] if staging.pip_cache_path is None else []),
             "--no-compile",
             "--no-input",
             "--no-warn-script-location",
@@ -875,6 +899,7 @@ class PluginWorkerLauncher:
     @staticmethod
     def _direct_dependency_installer_environment(
         tmp_path: pathlib.Path,
+        pip_cache_path: pathlib.Path | None = None,
     ) -> dict[str, str]:
         environment = {
             name: value
@@ -884,7 +909,11 @@ class PluginWorkerLauncher:
         environment.update(
             {
                 "HOME": str(tmp_path),
-                "PIP_CACHE_DIR": str(tmp_path / "pip-cache"),
+                "PIP_CACHE_DIR": str(
+                    pip_cache_path.absolute()
+                    if pip_cache_path is not None
+                    else tmp_path / "pip-cache"
+                ),
                 "PIP_DISABLE_PIP_VERSION_CHECK": "1",
                 "PYTHONDONTWRITEBYTECODE": "1",
                 "PYTHONNOUSERSITE": "1",

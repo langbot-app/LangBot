@@ -14,11 +14,10 @@ Runtime:
    `data/plugin-runtime/environments/sha256/<environment-digest>`.
 5. Adds that tree to the matching worker's Python import path.
 
-The environment digest includes the artifact and requirements digests, Python
-ABI, Runtime version, installer schema, and Runtime profile. Therefore the same
-verified artifact can reuse one immutable dependency tree across installations
-without sharing writable plugin state. Concurrent preparation is serialized,
-and a failure leaves no ready or half-published tree.
+The digest covers the requirements bytes, worker ABI, Runtime version,
+installer schema and profile. Shared runtimes also bind the tree to the exact
+artifact. OSS release reuse is described below. Concurrent preparation within
+a Runtime is serialized, and a failed install does not publish a ready tree.
 
 Apply and reconcile report `state=failed` with
 `error_code=dependency_prepare_failed` and do not launch the worker when
@@ -31,10 +30,18 @@ configuration is owned by the Runtime process through
 
 ## OSS development profile
 
-The `oss_dev` profile runs pip directly with the Runtime interpreter and an
-allowlisted subprocess environment. Pip writes only to the environment staging
-target, and the worker continues to use the trusted Runtime interpreter while
-loading the published dependency tree through `PYTHONPATH`.
+The `oss_dev` profile runs pip with the Runtime interpreter and an allowlisted
+subprocess environment. Releases by the same author with the same plugin name,
+requirements bytes, Python marker environment, wheel ABI, pip version and
+package source reuse one read-only tree. A code-only upload can start offline.
+Each worker still runs the code from its own verified artifact.
+
+Changing the requirements creates a fresh target. Pip can reuse cacheable
+downloads from `data/plugin-runtime/pip-cache/` for the same plugin and
+resolver. Index metadata may still need to be fetched. A direct URL requirement
+keeps the environment artifact-specific. Pre-existing schema-3 trees also
+remain available to their exact artifacts. Their markers lack package-source
+information, so the first new release using this cache may need one cold install.
 
 Because `data/plugin-runtime` is the normal persistent Runtime volume, prepared
 dependencies survive container recreation. Dependencies from different plugin
