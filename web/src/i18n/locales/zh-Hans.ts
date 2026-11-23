@@ -1402,8 +1402,16 @@ const zhHans = {
     conditionsDescription: '满足所有条件时才触发此绑定，不添加则无条件触发。',
     conditionsEmpty: '无条件，始终触发。',
     routeNote: {
+      templatePerson: '私聊消息',
+      templateGroup: '群聊中 @ 机器人的消息',
       label: '备注',
       placeholder: '选填，例如：客服群专用。会显示在路由列表和适用范围里。',
+    },
+    routeCard: {
+      noTarget: '未选择处理器',
+      edit: '编辑路由',
+      event: '事件',
+      target: '交给',
     },
     routeSummary: {
       always: '所有消息',

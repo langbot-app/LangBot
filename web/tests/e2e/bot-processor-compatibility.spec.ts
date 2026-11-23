@@ -87,6 +87,14 @@ async function setup(page: Page, events?: string[]) {
   );
   await page.goto('/home/bots?id=compatibility-bot');
   await expect(
+    page.getByRole('button', { name: 'Add behavior', exact: true }),
+  ).toBeVisible();
+}
+
+// Plugin processors live on the bot's Plugins tab.
+async function openPluginsTab(page: Page) {
+  await page.getByRole('tab', { name: 'Plugins' }).click();
+  await expect(
     page.getByRole('button', { name: 'Add plugin processor', exact: true }),
   ).toBeVisible();
 }
@@ -95,6 +103,7 @@ test('partial support warns in existing choices and saved bindings, and changes 
   page,
 }) => {
   await setup(page, ['message.received']);
+  await openPluginsTab(page);
   await page
     .getByRole('button', { name: 'Add plugin processor', exact: true })
     .click();
@@ -139,6 +148,7 @@ test('partial support warns in existing choices and saved bindings, and changes 
   ).toHaveCount(1);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.reload();
+  await openPluginsTab(page);
   await expect(
     page
       .getByRole('region', { name: 'Plugin processor', exact: true })
@@ -171,6 +181,7 @@ test('new component choices warn for missing and wildcard events but allow creat
   page,
 }, testInfo) => {
   await setup(page);
+  await openPluginsTab(page);
   await page
     .getByRole('button', { name: 'Add plugin processor', exact: true })
     .click();
@@ -219,6 +230,7 @@ test('new component choices warn for missing and wildcard events but allow creat
     .screenshot({ path: testInfo.outputPath('compatibility-bindings.png') });
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.reload();
+  await openPluginsTab(page);
   await expect(
     page.getByRole('status').filter({ hasText: warning }),
   ).toHaveCount(1);
@@ -232,6 +244,7 @@ test('fully supported processor choices have no compatibility warning', async ({
     'group.member_joined',
     'friend.request_received',
   ]);
+  await openPluginsTab(page);
   await page
     .getByRole('button', { name: 'Add plugin processor', exact: true })
     .click();

@@ -1510,9 +1510,17 @@ const jaJP = {
       'すべての条件に一致した場合のみこのバインディングが発火します。空の場合は常に発火します。',
     conditionsEmpty: '条件なし。常に発火します。',
     routeNote: {
+      templatePerson: '個別メッセージ',
+      templateGroup: 'グループでボットへの @ メッセージ',
       label: 'メモ',
       placeholder:
         '任意。例：サポートグループ用。ルート一覧と適用範囲に表示されます。',
+    },
+    routeCard: {
+      noTarget: '処理が未選択',
+      edit: 'ルートを編集',
+      event: 'イベント',
+      target: '送り先',
     },
     routeSummary: {
       always: 'すべてのメッセージ',

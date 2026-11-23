@@ -1519,9 +1519,17 @@ const esES = {
       'Deben cumplirse todas las condiciones. Déjalo vacío para activar siempre.',
     conditionsEmpty: 'Sin condiciones: siempre se activa.',
     routeNote: {
+      templatePerson: 'Mensajes privados',
+      templateGroup: 'Mensajes de grupo que mencionan al bot',
       label: 'Nota',
       placeholder:
         'Opcional, p. ej. "Grupo de soporte". Se muestra en las listas de rutas y en el selector de alcance.',
+    },
+    routeCard: {
+      noTarget: 'Sin procesador',
+      edit: 'Editar ruta',
+      event: 'Evento',
+      target: 'Enviar a',
     },
     routeSummary: {
       always: 'Todos los mensajes',

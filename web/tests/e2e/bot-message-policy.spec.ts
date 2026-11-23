@@ -484,12 +484,17 @@ test('route notes are optional and routes are told apart by their conditions', a
   await page.setViewportSize({ width: 1440, height: 1400 });
   await page.goto('/home/bots?id=policy-bot');
 
-  // Notes are edited inside a route's expanded panel.
+  // Saved routes collapse to a summary: the note as title, then when and where.
   const firstRoute = page.locator('[data-testid^="event-route-"]').first();
-  await expect(firstRoute.getByTestId('route-note')).toHaveText('Group chat', {
-    timeout: 15_000,
+  const summary = firstRoute.getByTestId('route-summary');
+  await expect(summary).toContainText('Group chat', { timeout: 15_000 });
+  await expect(summary).toContainText('Message received → Support chat');
+  await expect(firstRoute.getByTestId('route-note-input')).toHaveCount(0);
+  await page.screenshot({
+    path: 'test-results/bot-routes-collapsed.png',
+    fullPage: true,
   });
-  await firstRoute.getByRole('button', { name: /Conditions/ }).click();
+  await summary.click();
   const note = firstRoute.getByTestId('route-note-input');
   await expect(note).toHaveValue('Group chat');
   await note.fill('Support group');

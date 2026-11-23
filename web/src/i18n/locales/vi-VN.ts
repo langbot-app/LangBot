@@ -1487,9 +1487,17 @@ const viVN = {
       'Phải khớp mọi điều kiện để kích hoạt. Để trống để luôn kích hoạt.',
     conditionsEmpty: 'Không có điều kiện — luôn kích hoạt.',
     routeNote: {
+      templatePerson: 'Tin nhắn riêng',
+      templateGroup: 'Tin nhắn nhóm có @ bot',
       label: 'Ghi chú',
       placeholder:
         'Không bắt buộc, ví dụ "Nhóm hỗ trợ". Hiển thị trong danh sách tuyến và bộ chọn phạm vi.',
+    },
+    routeCard: {
+      noTarget: 'Chưa chọn bộ xử lý',
+      edit: 'Sửa tuyến',
+      event: 'Sự kiện',
+      target: 'Chuyển tới',
     },
     routeSummary: {
       always: 'Mọi tin nhắn',

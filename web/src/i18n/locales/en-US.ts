@@ -1501,9 +1501,17 @@ const enUS = {
       'All conditions must match to trigger this binding. Leave empty to always trigger.',
     conditionsEmpty: 'No conditions — always triggers.',
     routeNote: {
+      templatePerson: 'Private messages',
+      templateGroup: 'Group messages that @ the bot',
       label: 'Note',
       placeholder:
         'Optional, e.g. "Support group". Shown in route lists and the scope picker.',
+    },
+    routeCard: {
+      noTarget: 'No processor selected',
+      edit: 'Edit route',
+      event: 'Event',
+      target: 'Send to',
     },
     routeSummary: {
       always: 'All messages',

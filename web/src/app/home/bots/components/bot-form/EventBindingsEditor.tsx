@@ -13,13 +13,12 @@ import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import styles from './EventBindingsEditor.module.css';
 import { appendMessageRoutingTemplate } from './message-routing-template';
-import { policyAdmitsAll } from './message-policy';
+import { policyAdmitsAll, routeConditionSummary } from './message-policy';
 import type { TFunction } from 'i18next';
 import { UseFormReturn } from 'react-hook-form';
 import {
   Activity,
   AlertCircle,
-  ArrowRight,
   Ban,
   Bot,
   Check,
@@ -748,7 +747,7 @@ function FilterConditionsPanel({
   return (
     <div className="space-y-1.5">
       {filters.length === 0 && (
-        <p className="text-xs text-muted-foreground">
+        <p className="pt-2 text-xs text-muted-foreground">
           {t('bots.conditionsEmpty')}
         </p>
       )}
@@ -1299,9 +1298,29 @@ function BindingCardContent({
   const { t } = useTranslation();
   const isEnabled = binding.enabled ?? true;
   const id = String(binding.id ?? globalIndex);
-  const isExpanded = expandedIds.has(id);
-  const filterCount = (binding.filters as FilterRow[] | undefined)?.length ?? 0;
+  // Unsaved routes open for editing; saved ones start as a one-line summary.
+  // Toggling flips membership, so both states can be switched.
+  const isExpanded = binding.id ? expandedIds.has(id) : !expandedIds.has(id);
   const pipelineAllowed = isMessageEventPattern(binding.event_pattern);
+  const filters = (binding.filters as FilterRow[] | undefined) ?? [];
+
+  // Collapsed cards read as one sentence: what, when, and where it goes.
+  const target = agentOptions.find(
+    (agent) => agent.uuid === binding.target_uuid,
+  );
+  const targetName = target
+    ? `${target.emoji ? `${target.emoji} ` : ''}${target.name}`
+    : binding.target_type === 'discard'
+      ? t('bots.targetDiscard')
+      : '';
+  const note = binding.description?.trim();
+  const title = note || targetName || t('bots.routeCard.noTarget');
+  const when = [
+    eventLabel(binding.event_pattern, t),
+    ...(filters.length > 0 ? [routeConditionSummary(binding, t)] : []),
+  ].join(' · ');
+  const summary = note && targetName ? `${when} → ${targetName}` : when;
+  const missingTarget = !targetName;
 
   return (
     <div
@@ -1310,35 +1329,91 @@ function BindingCardContent({
       }`}
       data-drag-overlay={isOverlay ? 'true' : undefined}
     >
-      {/* main row: one line when wide; event + controls above route when narrow */}
-      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 p-2.5 [grid-template-areas:'handle_event_controls'_'._route_route'] @2xl:grid-cols-[auto_minmax(0,1fr)_auto_auto] @2xl:[grid-template-areas:'handle_event_route_controls']">
-        <div className="flex items-center gap-2 [grid-area:handle]">
-          {isEnabled && (
-            <button
-              type="button"
-              className="cursor-grab active:cursor-grabbing shrink-0 text-muted-foreground hover:text-foreground touch-none"
-              aria-label={t('bots.dragEventRoute', {
-                index: globalIndex + 1,
-              })}
-              {...dragHandleProps}
-            >
-              <GripVertical className="h-4 w-4" />
-            </button>
-          )}
-          {!isEnabled && (
-            <span className="h-4 w-4 shrink-0" aria-hidden="true" />
-          )}
-
-          <Badge
-            variant="secondary"
-            className="h-5 min-w-5 shrink-0 justify-center px-1 text-[10px]"
-            title={t('bots.dryRunRuleIndex', { index: globalIndex + 1 })}
+      <div className="flex items-center gap-2 p-2.5">
+        {isEnabled ? (
+          <button
+            type="button"
+            className="cursor-grab active:cursor-grabbing shrink-0 text-muted-foreground hover:text-foreground touch-none"
+            aria-label={t('bots.dragEventRoute', {
+              index: globalIndex + 1,
+            })}
+            {...dragHandleProps}
           >
-            {globalIndex + 1}
-          </Badge>
-        </div>
+            <GripVertical className="h-4 w-4" />
+          </button>
+        ) : (
+          <span className="h-4 w-4 shrink-0" aria-hidden="true" />
+        )}
 
-        <div className="min-w-0 [grid-area:event]">
+        <Badge
+          variant="secondary"
+          className="h-5 min-w-5 shrink-0 justify-center px-1 text-[10px]"
+          title={t('bots.dryRunRuleIndex', { index: globalIndex + 1 })}
+        >
+          {globalIndex + 1}
+        </Badge>
+
+        <button
+          type="button"
+          className="min-w-0 flex-1 rounded-md px-1 py-0.5 text-left hover:bg-muted/50"
+          onClick={() => onToggleExpand(id)}
+          aria-expanded={isExpanded}
+          data-testid="route-summary"
+        >
+          <span
+            className={`block truncate text-sm font-medium ${missingTarget ? 'text-destructive' : ''}`}
+          >
+            {title}
+          </span>
+          <span className="block truncate text-xs text-muted-foreground">
+            {summary}
+          </span>
+          {!pipelineAllowed && binding.target_type === 'pipeline' && (
+            <span className="block truncate text-xs text-destructive">
+              {t('bots.unsupportedPipelineEvent')}
+            </span>
+          )}
+        </button>
+
+        <div className="flex shrink-0 items-center gap-1">
+          <Switch
+            checked={isEnabled}
+            onCheckedChange={(enabled) => onUpdate(globalIndex, { enabled })}
+            aria-label={`${t('bots.enable')} · ${t('bots.dryRunRuleIndex', { index: globalIndex + 1 })}`}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => onToggleExpand(id)}
+            aria-label={t('bots.routeCard.edit')}
+            title={t('bots.routeCard.edit')}
+          >
+            {isExpanded ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => onRemove(globalIndex)}
+            aria-label={t('common.delete')}
+          >
+            <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+          </Button>
+        </div>
+      </div>
+
+      {isExpanded && (
+        <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-start gap-x-3 gap-y-3 border-t px-3 py-3 text-xs">
+          <span className="pt-2 text-muted-foreground">
+            {t('bots.routeCard.event')}
+          </span>
           <Select
             value={binding.event_pattern}
             onValueChange={(eventPattern) => {
@@ -1355,7 +1430,7 @@ function BindingCardContent({
               onUpdate(globalIndex, patch);
             }}
           >
-            <SelectTrigger className="h-auto min-h-9 w-full">
+            <SelectTrigger className="h-auto min-h-9 w-full max-w-md">
               <SelectValue placeholder={t('bots.eventPatternPlaceholder')} />
             </SelectTrigger>
             <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]">
@@ -1381,103 +1456,43 @@ function BindingCardContent({
               ))}
             </SelectContent>
           </Select>
-        </div>
 
-        <div className="flex min-w-0 items-center gap-2 [grid-area:route]">
-          {/* conditions toggle */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 px-2 text-xs text-muted-foreground shrink-0"
-            onClick={() => onToggleExpand(id)}
-          >
-            {isExpanded ? (
-              <ChevronDown className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5" />
-            )}
+          <span className="pt-2 text-muted-foreground">
             {t('bots.conditions')}
-            {filterCount > 0 && (
-              <Badge
-                variant="secondary"
-                className="h-4 px-1 text-[10px] ml-0.5"
-              >
-                {filterCount}
-              </Badge>
-            )}
-          </Button>
-
-          <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-
-          <TargetCombobox
-            binding={binding}
-            agentOptions={agentOptions}
-            onAgentCreated={onAgentCreated}
-            onUpdate={(patch) => onUpdate(globalIndex, patch)}
-          />
-
-          {!pipelineAllowed && binding.target_type === 'pipeline' && (
-            <span className="min-w-0 truncate text-xs text-destructive">
-              {t('bots.unsupportedPipelineEvent')}
-            </span>
-          )}
-        </div>
-
-        <div className="flex shrink-0 items-center gap-1 [grid-area:controls]">
-          <Switch
-            checked={isEnabled}
-            onCheckedChange={(enabled) => onUpdate(globalIndex, { enabled })}
-            aria-label={`${t('bots.enable')} · ${t('bots.dryRunRuleIndex', { index: globalIndex + 1 })}`}
-          />
-
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => onRemove(globalIndex)}
-          >
-            <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-          </Button>
-        </div>
-      </div>
-
-      {/* optional note, shown when the card is collapsed */}
-      {!isExpanded && binding.description?.trim() && (
-        <p
-          className="-mt-1 truncate px-3 pb-2 pl-[3.25rem] text-xs text-muted-foreground"
-          data-testid="route-note"
-        >
-          {binding.description}
-        </p>
-      )}
-
-      {/* conditions panel */}
-      {isExpanded && (
-        <div className="space-y-3 border-t px-3 py-2.5">
-          <label className="flex items-center gap-2 text-xs">
-            <span className="shrink-0 text-muted-foreground">
-              {t('bots.routeNote.label')}
-            </span>
-            <Input
-              className="h-8 max-w-sm text-xs"
-              value={binding.description ?? ''}
-              maxLength={60}
-              placeholder={t('bots.routeNote.placeholder')}
-              onChange={(event) =>
-                onUpdate(globalIndex, { description: event.target.value })
-              }
-              data-testid="route-note-input"
-            />
-          </label>
+          </span>
           <FilterConditionsPanel
-            filters={(binding.filters as unknown as FilterRow[]) || []}
-            onChange={(filters) =>
+            filters={filters}
+            onChange={(next) =>
               onUpdate(globalIndex, {
-                filters: filters as unknown as Record<string, unknown>[],
+                filters: next as unknown as Record<string, unknown>[],
               })
             }
+          />
+
+          <span className="pt-2 text-muted-foreground">
+            {t('bots.routeCard.target')}
+          </span>
+          <div className="max-w-md">
+            <TargetCombobox
+              binding={binding}
+              agentOptions={agentOptions}
+              onAgentCreated={onAgentCreated}
+              onUpdate={(patch) => onUpdate(globalIndex, patch)}
+            />
+          </div>
+
+          <span className="pt-2 text-muted-foreground">
+            {t('bots.routeNote.label')}
+          </span>
+          <Input
+            className="h-8 max-w-md text-xs"
+            value={binding.description ?? ''}
+            maxLength={60}
+            placeholder={t('bots.routeNote.placeholder')}
+            onChange={(event) =>
+              onUpdate(globalIndex, { description: event.target.value })
+            }
+            data-testid="route-note-input"
           />
         </div>
       )}
@@ -1635,10 +1650,17 @@ export default function EventBindingsEditor({
         agentOptions.find((agent) => agent.kind === 'pipeline') ??
         agentOptions.find((agent) => agent.kind === 'agent');
       updateBindings(
-        appendMessageRoutingTemplate(bindings, {
-          target_type: target?.kind === 'pipeline' ? 'pipeline' : 'agent',
-          target_uuid: target?.uuid ?? '',
-        }),
+        appendMessageRoutingTemplate(
+          bindings,
+          {
+            target_type: target?.kind === 'pipeline' ? 'pipeline' : 'agent',
+            target_uuid: target?.uuid ?? '',
+          },
+          {
+            person: t('bots.routeNote.templatePerson'),
+            group: t('bots.routeNote.templateGroup'),
+          },
+        ),
       );
       toast.info(
         policyAdmitsAll(form.getValues('message_policy'))

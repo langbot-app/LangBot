@@ -1399,8 +1399,16 @@ const zhHant = {
     conditionsDescription: '滿足所有條件時才觸發此綁定，不添加則無條件觸發。',
     conditionsEmpty: '無條件，始終觸發。',
     routeNote: {
+      templatePerson: '私聊訊息',
+      templateGroup: '群聊中 @ 機器人的訊息',
       label: '備註',
       placeholder: '選填，例如：客服群專用。會顯示在路由列表和適用範圍裡。',
+    },
+    routeCard: {
+      noTarget: '未選擇處理器',
+      edit: '編輯路由',
+      event: '事件',
+      target: '交給',
     },
     routeSummary: {
       always: '所有訊息',
