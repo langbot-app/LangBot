@@ -2486,6 +2486,12 @@ const viVN = {
     confirmInstall: 'Xác nhận cài đặt',
     installFromGithubDesc: 'Cài đặt plugin từ GitHub Release',
     goToMarketplace: 'Đi đến chợ ứng dụng',
+    notReady: {
+      awaitingTitle: 'Đang chờ xác nhận quyền',
+      awaitingDescription:
+        'Plugin chỉ khởi động sau khi bạn xác nhận quyền; cài đặt và tài liệu sẽ tải khi plugin chạy. Hãy xem và xác nhận trong mục Quyền của plugin.',
+      starting: 'Plugin đang khởi động và sẽ tải ngay…',
+    },
     nextStepsDialog: {
       title: '{{plugin}} đã sẵn sàng',
       description:

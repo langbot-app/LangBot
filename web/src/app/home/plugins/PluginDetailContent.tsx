@@ -31,7 +31,15 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useAsyncTask, AsyncTaskStatus } from '@/hooks/useAsyncTask';
-import { ArrowUp, Bug, Puzzle, Trash2, Upload } from 'lucide-react';
+import {
+  ArrowUp,
+  Bug,
+  Loader2,
+  Puzzle,
+  ShieldAlert,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { getCloudServiceClient } from '@/app/infra/http';
 import { isNewerVersion } from '@/app/utils/versionCompare';
 import {
@@ -47,6 +55,41 @@ import { toast } from 'sonner';
  * Plugin detail page content.
  * The `id` prop is the composite key "author/name".
  */
+/**
+ * Settings and docs come from the running plugin. Until its permissions are
+ * confirmed (or while it is starting) say so instead of a generic load error.
+ */
+function PluginNotReady({
+  awaitingPermission,
+}: {
+  awaitingPermission: boolean;
+}) {
+  const { t } = useTranslation();
+  return awaitingPermission ? (
+    <div
+      role="status"
+      data-testid="plugin-awaiting-permission"
+      className="flex items-start gap-3 rounded-lg border border-amber-300/60 bg-amber-50 p-4 text-sm dark:border-amber-500/40 dark:bg-amber-950/30"
+    >
+      <ShieldAlert className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-400" />
+      <div className="space-y-1">
+        <p className="font-medium">{t('plugins.notReady.awaitingTitle')}</p>
+        <p className="text-muted-foreground">
+          {t('plugins.notReady.awaitingDescription')}
+        </p>
+      </div>
+    </div>
+  ) : (
+    <div
+      role="status"
+      className="flex items-center gap-2 rounded-lg border p-4 text-sm text-muted-foreground"
+    >
+      <Loader2 className="size-4 animate-spin" />
+      {t('plugins.notReady.starting')}
+    </div>
+  );
+}
+
 export default function PluginDetailContent({ id }: { id: string }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -343,6 +386,10 @@ export default function PluginDetailContent({ id }: { id: string }) {
       <EntityLoadState error onRetry={() => setLoadAttempt((n) => n + 1)} />
     );
   if (!pluginInfo) return <EntityLoadState />;
+  const awaitingPermission = Boolean(
+    pluginInfo.permission_status?.pending_confirmation,
+  );
+  const pluginReady = !awaitingPermission && pluginInfo.status === 'mounted';
 
   return (
     <>
@@ -400,12 +447,16 @@ export default function PluginDetailContent({ id }: { id: string }) {
 
         <div className="flex min-h-0 max-w-full flex-1 flex-col gap-6 overflow-y-auto overscroll-none md:flex-row md:overflow-hidden">
           <div className="min-w-0 max-w-full space-y-4 pb-6 md:min-h-0 md:w-[380px] md:flex-shrink-0 md:overflow-y-auto md:overflow-x-hidden md:overscroll-none xl:w-[420px]">
-            <PluginForm
-              key={`form-${panelsKey}`}
-              pluginAuthor={pluginAuthor}
-              pluginName={pluginName}
-              onFormSubmit={handleFormSubmit}
-            />
+            {pluginReady ? (
+              <PluginForm
+                key={`form-${panelsKey}`}
+                pluginAuthor={pluginAuthor}
+                pluginName={pluginName}
+                onFormSubmit={handleFormSubmit}
+              />
+            ) : (
+              <PluginNotReady awaitingPermission={awaitingPermission} />
+            )}
             <PluginPermissions
               author={pluginAuthor}
               name={pluginName}
@@ -428,11 +479,15 @@ export default function PluginDetailContent({ id }: { id: string }) {
                 value="docs"
                 className="min-h-0 flex-1 md:overflow-y-auto md:overflow-x-hidden md:overscroll-none"
               >
-                <PluginReadme
-                  key={`readme-${panelsKey}`}
-                  pluginAuthor={pluginAuthor}
-                  pluginName={pluginName}
-                />
+                {pluginReady ? (
+                  <PluginReadme
+                    key={`readme-${panelsKey}`}
+                    pluginAuthor={pluginAuthor}
+                    pluginName={pluginName}
+                  />
+                ) : (
+                  <PluginNotReady awaitingPermission={awaitingPermission} />
+                )}
               </TabsContent>
               <TabsContent
                 value="logs"

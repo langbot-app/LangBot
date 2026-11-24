@@ -2505,6 +2505,12 @@ const enUS = {
     confirmInstall: 'Confirm Install',
     installFromGithubDesc: 'Install plugin from GitHub Release',
     goToMarketplace: 'Go to Extension Market',
+    notReady: {
+      awaitingTitle: 'Waiting for permission confirmation',
+      awaitingDescription:
+        'This plugin starts only after you confirm its permissions; its settings and docs load once it runs. Review and confirm them under Plugin permissions.',
+      starting: 'The plugin is starting and will load shortly…',
+    },
     nextStepsDialog: {
       title: '{{plugin}} is ready',
       description: 'Based on what this plugin includes, set it up here next:',

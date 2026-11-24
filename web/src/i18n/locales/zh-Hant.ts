@@ -2336,6 +2336,12 @@ const zhHant = {
     confirmInstall: '確認安裝',
     installFromGithubDesc: '從 GitHub Release 安裝插件',
     goToMarketplace: '前往外掛市場',
+    notReady: {
+      awaitingTitle: '等待確認權限',
+      awaitingDescription:
+        '這個外掛需要你先確認權限才會啟動，啟動後才能載入它的設定和文件。請在左側「外掛權限」中查看並確認。',
+      starting: '外掛正在啟動，稍後會自動載入…',
+    },
     nextStepsDialog: {
       title: '{{plugin}} 可以開始用了',
       description: '依外掛包含的元件，下一步可以到這些地方設定：',

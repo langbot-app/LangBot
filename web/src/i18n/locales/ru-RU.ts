@@ -2532,6 +2532,12 @@ const ruRU = {
     confirmInstall: 'Подтвердить установку',
     installFromGithubDesc: 'Установить плагин из GitHub Release',
     goToMarketplace: 'Перейти в маркетплейс',
+    notReady: {
+      awaitingTitle: 'Ожидается подтверждение разрешений',
+      awaitingDescription:
+        'Плагин запустится только после подтверждения разрешений; его настройки и документация загрузятся после запуска. Проверьте и подтвердите их в разделе «Разрешения плагина».',
+      starting: 'Плагин запускается и скоро загрузится…',
+    },
     nextStepsDialog: {
       title: '{{plugin}} готов к работе',
       description:
