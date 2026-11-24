@@ -5,6 +5,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from ..utils.bounded_executor import BlockingWorkCapacityError
 from .management import parse_github_repo_url
 
 
@@ -92,13 +93,21 @@ class GitHubSources:
         async with httpx.AsyncClient(trust_env=False, timeout=self.timeout) as client:
 
             async def probe(prefix):
-                started = monotonic()
-                try:
-                    async with asyncio.timeout(self.timeout):
-                        refs = parse_refs(await fetch(client, source_url(prefix, url), self.hosts, 2 << 20))
-                    return prefix, round((monotonic() - started) * 1000), refs
-                except (httpx.HTTPError, ValueError, TimeoutError):
-                    return None
+                deadline = monotonic() + self.timeout
+                while True:
+                    started = monotonic()
+                    try:
+                        async with asyncio.timeout(max(deadline - started, 0.001)):
+                            refs = parse_refs(await fetch(client, source_url(prefix, url), self.hosts, 2 << 20))
+                        return prefix, round((monotonic() - started) * 1000), refs
+                    except BlockingWorkCapacityError:
+                        # The per-workspace DNS pool admits fewer lookups than we
+                        # have sources; wait for a slot instead of failing the probe.
+                        if monotonic() >= deadline:
+                            return None
+                        await asyncio.sleep(0.05)
+                    except (httpx.HTTPError, ValueError, TimeoutError):
+                        return None
 
             results = [result for result in await asyncio.gather(*(probe(p) for p in self.prefixes)) if result]
         if not results:

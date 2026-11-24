@@ -149,3 +149,24 @@ async def test_release_mirror_digest(monkeypatch, valid):
     else:
         with pytest.raises(ValueError, match='No mirror'):
             await operation
+
+
+async def test_probe_waits_for_workspace_dns_slot(monkeypatch):
+    from langbot.pkg.plugin import github_mirror
+    from langbot.pkg.utils.bounded_executor import BlockingWorkCapacityError
+
+    real_fetch = github_mirror.fetch
+    rejected = []
+
+    async def fetch(client, url, hosts, limit):
+        # Simulate the per-workspace DNS pool rejecting concurrent lookups.
+        if not rejected:
+            rejected.append(url)
+            raise BlockingWorkCapacityError('Workspace blocking executor capacity reached', scope='ws')
+        return await real_fetch(client, url, hosts, limit)
+
+    _patch_client(monkeypatch, lambda request: httpx.Response(200, content=advertisement()))
+    monkeypatch.setattr(github_mirror, 'fetch', fetch)
+    sources = GitHubSources(SimpleNamespace(instance_config=SimpleNamespace(data=CONFIG), logger=logging.getLogger()))
+    ranked = await sources.ranked('o', 'r')
+    assert rejected and len(ranked) == 2
