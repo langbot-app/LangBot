@@ -373,6 +373,7 @@ const ASSISTANT_OPEN_STORAGE_KEY = 'langbot-assistant-panel-open';
 
 const ADAPTER_TO_QR_PLATFORM: Record<string, QrLoginPlatform> = {
   qqofficial: 'qqofficial',
+  'qqofficial-omni': 'qqofficial',
   feishu: 'feishu',
   lark: 'feishu',
   dingtalk: 'dingtalk',
@@ -380,6 +381,18 @@ const ADAPTER_TO_QR_PLATFORM: Record<string, QrLoginPlatform> = {
   openclaw_weixin: 'weixin',
   wecombot: 'wecombot',
 };
+
+function resolveQrPlatform(adapter?: string): QrLoginPlatform | undefined {
+  if (!adapter) return undefined;
+  if (adapter in ADAPTER_TO_QR_PLATFORM) return ADAPTER_TO_QR_PLATFORM[adapter];
+  const lower = adapter.toLowerCase();
+  if (lower.includes('qqofficial') || lower.includes('qq')) return 'qqofficial';
+  if (lower.includes('feishu') || lower.includes('lark')) return 'feishu';
+  if (lower.includes('dingtalk') || lower.includes('ding')) return 'dingtalk';
+  if (lower.includes('weixin') || lower.includes('wechat')) return 'weixin';
+  if (lower.includes('wecom')) return 'wecombot';
+  return undefined;
+}
 
 function AssistantPanel({
   storageKey,
@@ -420,12 +433,17 @@ function AssistantPanel({
       setQrLoadingBotId(botId);
       const res = await backendClient.getBot(botId);
       const adapter = res?.bot?.adapter;
-      const platform = adapter ? ADAPTER_TO_QR_PLATFORM[adapter] : undefined;
+      const platform = resolveQrPlatform(adapter);
       if (platform) {
         setQrDialogPlatform(platform);
         setQrTargetBotId(botId);
         setQrDialogOpen(true);
       } else {
+        toast.info(
+          t('assistant.openBotConfig', {
+            defaultValue: '该机器人类型暂不支持直接扫码，正在打开配置页...',
+          }),
+        );
         window.open(`/home/bots?id=${botId}`, '_blank');
       }
     } catch {
