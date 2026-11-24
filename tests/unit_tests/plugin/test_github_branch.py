@@ -45,6 +45,16 @@ def test_archive_subdirectory():
         assert package.namelist() == ['manifest.yaml']
 
 
+def test_archive_under_symlinked_temp_dir(tmp_path, monkeypatch):
+    # macOS /var -> /private/var and Windows 8.3 temp paths resolve elsewhere.
+    real = tmp_path / 'real'
+    real.mkdir()
+    (tmp_path / 'link').symlink_to(real)
+    monkeypatch.setattr('tempfile.tempdir', str(tmp_path / 'link'))
+    with ZipFile(io.BytesIO(package_archive(archive(), SHA, 'sub'))) as package:
+        assert package.namelist() == ['manifest.yaml']
+
+
 @pytest.mark.parametrize(
     'name,link,sha', [('sub/../other', False, SHA), ('link', True, SHA), ('plain', False, 'b' * 40)]
 )
@@ -95,7 +105,10 @@ async def test_ranked_cache_truncation_and_download_fallback(monkeypatch):
     info = {'owner': 'o', 'repo': 'r', 'ref': '0', 'source_subdir': 'sub'}
     assert await sources.branch_package(info)
     assert info['download_source'] == 'mirror.test' and info['commit_sha'] == SHA
-    assert len(calls) == 4
+    # Install re-probes both sources so a push after listing is not missed.
+    assert len(calls) == 6
+    await sources.list_refs('https://github.com/o/r')
+    assert len(calls) == 6
 
 
 @pytest.mark.parametrize('valid', [True, False])

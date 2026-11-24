@@ -77,7 +77,7 @@ class GitHubSources:
         self.cache = getattr(ap, '_github_ref_cache', {})
         ap._github_ref_cache = self.cache
 
-    async def ranked(self, owner, repo):
+    async def ranked(self, owner, repo, fresh=False):
         if (
             not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]{0,38}', owner)
             or not re.fullmatch(r'[A-Za-z0-9._-]{1,100}', repo)
@@ -87,7 +87,7 @@ class GitHubSources:
         url = f'https://github.com/{owner}/{repo}.git/info/refs?service=git-upload-pack'
         key = (url, tuple(self.prefixes))
         cached = self.cache.get(key)
-        if cached and monotonic() < cached[0]:
+        if cached and not fresh and monotonic() < cached[0]:
             return cached[1]
         async with httpx.AsyncClient(trust_env=False, timeout=self.timeout) as client:
 
@@ -141,7 +141,8 @@ class GitHubSources:
         from .github_archive import package_archive
         import zipfile
 
-        ranked = await self.ranked(info['owner'], info['repo'])
+        # Resolve the branch head now; a cached advertisement may predate a push.
+        ranked = await self.ranked(info['owner'], info['repo'], fresh=True)
         sha = ranked[0][2][1].get(info['ref'])
         if not sha:
             raise ValueError('Unknown GitHub branch')

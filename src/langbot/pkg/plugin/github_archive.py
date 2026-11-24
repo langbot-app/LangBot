@@ -31,8 +31,9 @@ def package_archive(data, sha, subdir):
             if stat.S_ISLNK(entry.external_attr >> 16):
                 raise ValueError('Unsafe GitHub archive entry')
             archive.extract(entry, temp)
-        root = Path(temp, top, subdir).resolve()
-        if not root.is_relative_to(Path(temp, top)) or not (root / 'manifest.yaml').is_file():
+        top_dir = Path(temp, top).resolve()
+        root = (top_dir / subdir).resolve()
+        if not root.is_relative_to(top_dir) or not (root / 'manifest.yaml').is_file():
             raise ValueError('No manifest.yaml in requested plugin directory')
         manifest_path = root / 'manifest.yaml'
         manifest = yaml.safe_load(manifest_path.read_bytes())
