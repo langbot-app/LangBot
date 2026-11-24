@@ -2492,11 +2492,6 @@ const viVN = {
         'Plugin chỉ khởi động sau khi bạn xác nhận quyền; cài đặt và tài liệu sẽ tải khi plugin chạy. Hãy xem và xác nhận trong mục Quyền của plugin.',
       starting: 'Plugin đang khởi động và sẽ tải ngay…',
     },
-    nextStepsDialog: {
-      title: '{{plugin}} đã sẵn sàng',
-      description:
-        'Dựa trên thành phần của plugin, hãy thiết lập tiếp tại đây:',
-    },
     installProgress: {
       title: 'Đang cài đặt {{name}}',
       updateTitle: 'Đang cập nhật {{name}}',

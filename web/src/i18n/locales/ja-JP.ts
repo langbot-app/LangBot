@@ -2524,11 +2524,6 @@ const jaJP = {
         'このプラグインは権限を確認すると起動し、起動後に設定とドキュメントを読み込みます。「プラグイン権限」で確認してください。',
       starting: 'プラグインを起動中です。まもなく読み込みます…',
     },
-    nextStepsDialog: {
-      title: '{{plugin}} を使い始められます',
-      description:
-        'このプラグインに含まれるコンポーネントに応じて、次はここで設定します：',
-    },
     installProgress: {
       title: '{{name}} をインストール中',
       updateTitle: '{{name}} を更新中',

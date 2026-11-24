@@ -2547,10 +2547,6 @@ const esES = {
         'Este plugin se inicia solo después de confirmar sus permisos; su configuración y documentación se cargan cuando está en marcha. Revísalos y confírmalos en Permisos del complemento.',
       starting: 'El plugin se está iniciando y se cargará en breve…',
     },
-    nextStepsDialog: {
-      title: '{{plugin}} está listo',
-      description: 'Según lo que incluye este plugin, configúralo aquí:',
-    },
     installProgress: {
       title: 'Instalando {{name}}',
       updateTitle: 'Actualizando {{name}}',

@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ShieldAlert, ShieldCheck } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import {
@@ -23,11 +23,8 @@ import {
   InstallStage,
   PluginInstallTask,
 } from './PluginInstallTaskContext';
-import PluginInstallFollowUp, {
-  NextStepBanner,
-  NextStepLink,
-  NextStepList,
-} from './PluginInstallFollowUp';
+import PluginPermissions from '@/app/home/plugins/components/PluginPermissions';
+import PluginInstallFollowUp, { NextStepBanner } from './PluginInstallFollowUp';
 
 type StageConfig = {
   key: InstallStage;
@@ -106,6 +103,8 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
     boolean | null
   >(task.pendingConfirmation ?? null);
   const [installedPlugin, setInstalledPlugin] = useState<Plugin | null>(null);
+  // Bumped after permissions are confirmed in place, to re-read the plugin.
+  const [recheck, setRecheck] = useState(0);
   useEffect(() => {
     if (!isDone || !isPlugin) return;
     let cancelled = false;
@@ -129,7 +128,7 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
     return () => {
       cancelled = true;
     };
-  }, [isDone, isPlugin, task.pluginName, task.pendingConfirmation]);
+  }, [isDone, isPlugin, task.pluginName, task.pendingConfirmation, recheck]);
   const needsReview = isDone && isPlugin && pendingConfirmation !== false;
   const simpleInstallingLabel =
     task.extensionType === 'mcp'
@@ -176,21 +175,17 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
         icon={needsReview ? ShieldAlert : CheckCircle2}
         title={title}
       >
+        {/* Confirm permissions right here; the next steps follow once done. */}
         {needsReview && task.pluginName.includes('/') && (
-          <NextStepList tone="attention">
-            <NextStepLink
-              to={`/home/extensions?id=${encodeURIComponent(task.pluginName)}`}
-              icon={ShieldCheck}
-              tone="attention"
-              label={t('pluginPermissions.reviewLabel')}
-              onNavigate={() => setSelectedTaskId(null)}
-            >
-              {t('pluginPermissions.review')}
-            </NextStepLink>
-          </NextStepList>
+          <div className="border-t p-2" data-testid="install-permission-review">
+            <PluginPermissions
+              author={task.pluginName.split('/')[0]}
+              name={task.pluginName.split('/')[1]}
+              onChange={() => setRecheck((n) => n + 1)}
+            />
+          </div>
         )}
-        {/* Next steps still apply once permissions are confirmed. */}
-        {isPlugin && (
+        {isPlugin && !needsReview && (
           <PluginInstallFollowUp
             plugin={installedPlugin}
             onNavigate={() => setSelectedTaskId(null)}

@@ -2511,10 +2511,6 @@ const enUS = {
         'This plugin starts only after you confirm its permissions; its settings and docs load once it runs. Review and confirm them under Plugin permissions.',
       starting: 'The plugin is starting and will load shortly…',
     },
-    nextStepsDialog: {
-      title: '{{plugin}} is ready',
-      description: 'Based on what this plugin includes, set it up here next:',
-    },
     installProgress: {
       title: 'Installing {{name}}',
       updateTitle: 'Updating {{name}}',

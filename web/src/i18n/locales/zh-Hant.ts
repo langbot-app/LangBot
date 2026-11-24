@@ -2342,10 +2342,6 @@ const zhHant = {
         '這個外掛需要你先確認權限才會啟動，啟動後才能載入它的設定和文件。請在左側「外掛權限」中查看並確認。',
       starting: '外掛正在啟動，稍後會自動載入…',
     },
-    nextStepsDialog: {
-      title: '{{plugin}} 可以開始用了',
-      description: '依外掛包含的元件，下一步可以到這些地方設定：',
-    },
     installProgress: {
       title: '正在安裝 {{name}}',
       updateTitle: '正在更新 {{name}}',

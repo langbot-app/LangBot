@@ -2345,10 +2345,6 @@ const zhHans = {
         '这个插件需要你先确认权限才会启动，启动后才能加载它的设置和文档。请在左侧「插件权限」中查看并确认。',
       starting: '插件正在启动，稍后会自动加载…',
     },
-    nextStepsDialog: {
-      title: '{{plugin}} 可以开始用了',
-      description: '根据插件包含的组件，下一步可以去这些地方配置：',
-    },
     installProgress: {
       title: '正在安装 {{name}}',
       updateTitle: '正在更新 {{name}}',
