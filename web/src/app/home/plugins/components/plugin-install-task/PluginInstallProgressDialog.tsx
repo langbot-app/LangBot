@@ -113,18 +113,31 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
     setInstalledPlugin(null);
     const [author, name] = task.pluginName.split('/');
     if (author && name) {
-      void backendClient
-        .getPlugin(author, name)
-        .then(({ plugin }) => {
-          if (cancelled) return;
-          setPendingConfirmation(
-            plugin.permission_status?.pending_confirmation ?? false,
-          );
-          // The post-install follow-up steps depend on the components that
-          // actually shipped, so they come from the installed manifest.
-          setInstalledPlugin(plugin);
-        })
-        .catch(() => {});
+      // The post-install follow-up steps depend on the components that
+      // actually shipped, so they come from the installed plugin. It may
+      // still be starting, so re-read until it lists its components (or
+      // turns out to wait for a permission review).
+      void (async () => {
+        for (let attempt = 0; attempt < 30 && !cancelled; attempt += 1) {
+          try {
+            const { plugin } = await backendClient.getPlugin(author, name);
+            if (cancelled) return;
+            const pending =
+              plugin.permission_status?.pending_confirmation ?? false;
+            setPendingConfirmation(pending);
+            setInstalledPlugin(plugin);
+            if (
+              pending ||
+              (plugin.status === 'initialized' && plugin.components?.length)
+            ) {
+              return;
+            }
+          } catch {
+            // Not readable yet; keep trying.
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      })();
     }
     return () => {
       cancelled = true;
@@ -132,28 +145,33 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
   }, [isDone, isPlugin, task.pluginName, task.pendingConfirmation]);
   const needsReview =
     isDone && isPlugin && !grantedHere && pendingConfirmation !== false;
-  // The next steps come from the installed manifest; if it was not loaded yet,
-  // keep trying for a while as the plugin restarts after the grant.
+  // The next steps come from the installed manifest. A plugin awaiting
+  // permissions is not started yet and reports no components, so after the
+  // grant re-read it until the restarted plugin is up and lists them.
   useEffect(() => {
-    if (!grantedHere || installedPlugin) return;
+    if (!grantedHere) return;
     const [author, name] = task.pluginName.split('/');
     if (!author || !name) return;
     let cancelled = false;
     void (async () => {
-      for (let attempt = 0; attempt < 10 && !cancelled; attempt += 1) {
+      for (let attempt = 0; attempt < 30 && !cancelled; attempt += 1) {
         try {
           const { plugin } = await backendClient.getPlugin(author, name);
-          if (!cancelled) setInstalledPlugin(plugin);
-          return;
+          if (cancelled) return;
+          setInstalledPlugin(plugin);
+          if (plugin.status === 'initialized' && plugin.components?.length) {
+            return;
+          }
         } catch {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          // The plugin restarts right after the grant; keep trying.
         }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [grantedHere, installedPlugin, task.pluginName]);
+  }, [grantedHere, task.pluginName]);
   const simpleInstallingLabel =
     task.extensionType === 'mcp'
       ? t('addExtension.installStage.mcpInstalling')
