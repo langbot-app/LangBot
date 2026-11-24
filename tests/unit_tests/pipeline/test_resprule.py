@@ -320,6 +320,49 @@ async def test_group_response_rule_configuration(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'make_parts,expected_text',
+    [
+        pytest.param(
+            lambda: [
+                platform_message.Plain(text='!bot describe '),
+                platform_message.Image(url='https://example.com/a.png'),
+                platform_message.Plain(text=' and then summarize'),
+            ],
+            'describe [Image] and then summarize',
+            id='image-between-text',
+        ),
+        pytest.param(
+            lambda: [
+                platform_message.Source(id=1, time=0),
+                platform_message.Plain(text='!bot ask '),
+                platform_message.At(target='123'),
+                platform_message.Plain(text=' how are you'),
+            ],
+            'ask @123 how are you',
+            id='mention-between-text',
+        ),
+    ],
+)
+async def test_prefix_is_removed_only_from_the_first_text_component(mock_app, sample_query, make_parts, expected_text):
+    resprule, entities, _, _ = get_modules()
+    sample_query.launcher_type = provider_session.LauncherTypes.GROUP
+    sample_query.adapter.bot_account_id = '999'
+    sample_query.variables = {}
+    sample_query.pipeline_config = {
+        'trigger': {'group-respond-rules': {'at': False, 'prefix': ['!bot '], 'regexp': [], 'random': 0}}
+    }
+    sample_query.message_chain = platform_message.MessageChain(make_parts())
+    stage = resprule.GroupRespondRuleCheckStage(mock_app)
+    await stage.initialize(sample_query.pipeline_config)
+
+    result = await stage.process(sample_query, 'GroupRespondRuleCheckStage')
+
+    assert result.result_type == entities.ResultType.CONTINUE
+    assert str(result.new_query.message_chain) == expected_text
+
+
+@pytest.mark.asyncio
 async def test_dify_form_action_does_not_require_another_mention(mock_app, sample_query):
     resprule, entities, _, _ = get_modules()
     sample_query.launcher_type = provider_session.LauncherTypes.GROUP
