@@ -609,7 +609,18 @@ function AddExtensionContent() {
       releasesResult.status === 'fulfilled'
         ? releasesResult.value.releases
         : [];
-    const refs = refsResult.status === 'fulfilled' ? refsResult.value : null;
+    // Treat a refs payload without a branch list as unavailable instead of
+    // letting a partial response crash the whole page.
+    const refs =
+      refsResult.status === 'fulfilled' &&
+      Array.isArray(refsResult.value?.branches)
+        ? {
+            ...refsResult.value,
+            tags: Array.isArray(refsResult.value.tags)
+              ? refsResult.value.tags
+              : [],
+          }
+        : null;
     setGithubReleases(releases);
     setGithubReleasesError(
       releasesResult.status === 'rejected'
