@@ -353,6 +353,13 @@ async def execute_tool(ap, context, name: str, arguments: dict):
         }
         reader = readers.get(args['kind'])
         resources = await reader(context) if reader else []
+        if args['kind'] in ('models', 'embedding_models'):
+            for item in resources:
+                provider = item.get('provider')
+                if isinstance(provider, dict):
+                    item['provider_name'] = provider.get('name')
+                    item['provider_uuid'] = provider.get('uuid')
+                    item['provider_requester'] = provider.get('requester')
         if args['kind'] != 'knowledge_engines':
             # Lists discover resources; get_pipeline / get_knowledge_schema supply configuration details.
             fields = (
@@ -363,6 +370,9 @@ async def execute_tool(ap, context, name: str, arguments: dict):
                 'knowledge_engine_plugin_id',
                 'initialized',
                 'adapter',
+                'provider_name',
+                'provider_uuid',
+                'provider_requester',
             )
             resources = [{key: item[key] for key in fields if key in item} for item in resources]
         return {'total': len(resources), 'items': redact_secrets(resources)}

@@ -91,7 +91,7 @@ class PlanField(Arguments):
     key: str = Field(min_length=1, max_length=64)
     label: str = Field(min_length=1, max_length=100)
     control: Literal['radio', 'select']
-    options: list[PlanOption] = Field(min_length=2, max_length=12)
+    options: list[PlanOption] = Field(min_length=2, max_length=100)
     selected: str
 
     @model_validator(mode='after')
@@ -104,7 +104,7 @@ class PlanField(Arguments):
 
 class PresentSetupPlan(Arguments):
     summary: str = Field(min_length=1, max_length=400)
-    fields: list[PlanField] = Field(min_length=1, max_length=6)
+    fields: list[PlanField] = Field(min_length=1, max_length=10)
 
     @model_validator(mode='after')
     def validate_fields(self):
@@ -411,7 +411,10 @@ do not repeat a write automatically; explain the result and ask the user to insp
 For a request to build an IM assistant from one sentence, carry the setup through to a usable bot:
 - Identify the target IM platform, intended behavior, and any required event triggers. Choose sensible
   defaults from discovered resources. The target bot's model is separate from this management chat's
-  model; include viable models in a select field so the user can review the recommended default.
+  model; discover existing LLM models via list_resources(kind="models"). Do NOT arbitrarily omit user-configured
+  models; include all available workspace models in the selection plan, and clearly annotate each model's channel/provider
+  (渠道) in label and description (e.g. label: "{name} ({provider_name})", description: "渠道: {provider_name}").
+  If there are multiple channels with many models, you can also offer a provider/channel selection first, then list that channel's models.
 - Inspect existing bots, Agents/Pipelines, adapters, knowledge bases and installed plugins first.
   list_resources(kind="plugins") reports stored installations even while Plugin Runtime is starting;
   plugin.list supplies live component details when available. Use adapter.get for the chosen
@@ -471,7 +474,13 @@ For a request to build an IM assistant from one sentence, carry the setup throug
   add source documents if none were provided; an empty base cannot answer from their content.
 - For message conversations choose an Agent or Pipeline; for an event-only Runner choose an
   event_processor. Configure the selected processor with the user's model and minimum required
-  tools/Workspace operations. Bind message routes and group event routes (such as group.member_joined and
+  tools/Workspace operations.
+  Support both direct-model Agents and external workflow processors (such as Dify / dify-service-api or workflow pipelines).
+  When the user asks to connect or test an external workflow/Dify processor ("一句话链接 Dify 之类的工作流"),
+  guide or configure a Pipeline targeting the Dify runner/processor (configuring base-url, api-key, app-type)
+  or discover existing Dify plugins/connectors (such as DifyAgent or langbot-team/DifyDatasetsConnector),
+  and bind the bot's event routes directly to that Pipeline or processor.
+  Bind message routes and group event routes (such as group.member_joined and
   group.member_left) through bot.event_bindings (target_type agent or pipeline); attach event_processor instances
   through bot.plugin_processors. Use real returned IDs.
 - Verify the result with bot.routes.preview, bot.runtime.get and Agent/Pipeline debug where

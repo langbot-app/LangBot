@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, useId, type ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  useId,
+  Fragment,
+  type ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 import {
   Plus,
@@ -96,6 +103,69 @@ type Conversation = {
     tool?: Omit<AssistantTool, 'result'>;
   };
 };
+
+function HumanReadableArgs({ args }: { args: unknown }) {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    return null;
+  }
+  const ignoredKeys = new Set([
+    'auto_confirm_permissions',
+    'confirm',
+    'operation_id',
+  ]);
+  const entries = Object.entries(args as Record<string, unknown>).filter(
+    ([key, value]) =>
+      !ignoredKeys.has(key) &&
+      value !== null &&
+      value !== undefined &&
+      value !== '',
+  );
+  if (entries.length === 0) return null;
+
+  const keyLabels: Record<string, string> = {
+    plugin_name: '插件名称',
+    plugin_author: '插件作者',
+    plugin_version: '版本',
+    name: '名称',
+    description: '描述',
+    adapter: '平台适配器',
+    model_uuid: '模型',
+    pipeline_uuid: '流水线',
+    bot_uuid: '机器人',
+    target_type: '目标类型',
+    system_prompt: '人设提示词',
+    plugin_id: '插件标识',
+    enable: '是否启用',
+    enabled: '是否启用',
+  };
+
+  const formatVal = (val: unknown): string => {
+    if (typeof val === 'boolean') return val ? '是' : '否';
+    if (typeof val === 'object') {
+      try {
+        return JSON.stringify(val);
+      } catch {
+        return String(val);
+      }
+    }
+    return String(val);
+  };
+
+  return (
+    <div className="space-y-1 rounded-md bg-background/80 p-2.5 text-xs border border-border/50">
+      <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
+        {entries.map(([key, val]) => (
+          <Fragment key={key}>
+            <span className="text-muted-foreground font-medium shrink-0">
+              {keyLabels[key] || key.replace(/_/g, ' ')}:
+            </span>
+            <span className="text-foreground break-all">{formatVal(val)}</span>
+          </Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function SetupPlanPanel({
   plan,
@@ -1355,9 +1425,11 @@ function AssistantPanel({
                                 <span className="text-sm font-semibold">
                                   {opLabel}
                                 </span>
-                                <span className="text-xs text-muted-foreground font-mono">
-                                  ({opId})
-                                </span>
+                                {opLabel === opId && (
+                                  <span className="text-xs text-muted-foreground font-mono">
+                                    ({opId})
+                                  </span>
+                                )}
                               </div>
                             ) : (
                               <p className="text-sm font-medium">{call.name}</p>
@@ -1388,16 +1460,7 @@ function AssistantPanel({
                             </span>
                           </div>
                         )}
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1">
-                            {t('assistant.parameters', {
-                              defaultValue: '参数：',
-                            })}
-                          </p>
-                          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded bg-background p-2 text-xs font-mono border">
-                            {JSON.stringify(opArgs, null, 2)}
-                          </pre>
-                        </div>
+                        <HumanReadableArgs args={opArgs} />
                       </div>
                     );
                   })}
