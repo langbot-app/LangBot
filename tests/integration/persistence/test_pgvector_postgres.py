@@ -495,6 +495,15 @@ async def test_pgvector_shared_database_is_scoped_indexed_and_ddl_free_at_runtim
         assert result_a['metadatas'][0][0]['text'] == 'workspace-a'
         assert result_b['metadatas'][0][0]['text'] == 'workspace-b'
 
+        # Hybrid retrieval (offered by LangRAG) degrades to the vector half on
+        # pgvector instead of failing; full-text has no vector to serve.
+        hybrid_a = await adapter.search(
+            'opaque-a', [0.1] * 384, search_type='hybrid', query_text='workspace', scope=scope_a
+        )
+        assert hybrid_a == result_a
+        with pytest.raises(ValueError, match="retrieval type to 'vector'"):
+            await adapter.search('opaque-a', [], search_type='full_text', query_text='workspace', scope=scope_a)
+
         # Guessing another knowledge-base UUID while retaining A's Workspace
         # cannot escape either the explicit conditions or PostgreSQL RLS.
         guessed = await adapter.search(
