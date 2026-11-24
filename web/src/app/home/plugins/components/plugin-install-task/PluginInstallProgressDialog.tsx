@@ -103,8 +103,9 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
     boolean | null
   >(task.pendingConfirmation ?? null);
   const [installedPlugin, setInstalledPlugin] = useState<Plugin | null>(null);
-  // Bumped after permissions are confirmed in place, to re-read the plugin.
-  const [recheck, setRecheck] = useState(0);
+  // Set once permissions are granted in this dialog. The plugin restarts
+  // right after, so re-reading it can briefly fail or lag; trust the grant.
+  const [grantedHere, setGrantedHere] = useState(false);
   useEffect(() => {
     if (!isDone || !isPlugin) return;
     let cancelled = false;
@@ -128,8 +129,31 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
     return () => {
       cancelled = true;
     };
-  }, [isDone, isPlugin, task.pluginName, task.pendingConfirmation, recheck]);
-  const needsReview = isDone && isPlugin && pendingConfirmation !== false;
+  }, [isDone, isPlugin, task.pluginName, task.pendingConfirmation]);
+  const needsReview =
+    isDone && isPlugin && !grantedHere && pendingConfirmation !== false;
+  // The next steps come from the installed manifest; if it was not loaded yet,
+  // keep trying for a while as the plugin restarts after the grant.
+  useEffect(() => {
+    if (!grantedHere || installedPlugin) return;
+    const [author, name] = task.pluginName.split('/');
+    if (!author || !name) return;
+    let cancelled = false;
+    void (async () => {
+      for (let attempt = 0; attempt < 10 && !cancelled; attempt += 1) {
+        try {
+          const { plugin } = await backendClient.getPlugin(author, name);
+          if (!cancelled) setInstalledPlugin(plugin);
+          return;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [grantedHere, installedPlugin, task.pluginName]);
   const simpleInstallingLabel =
     task.extensionType === 'mcp'
       ? t('addExtension.installStage.mcpInstalling')
@@ -181,7 +205,7 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
             <PluginPermissions
               author={task.pluginName.split('/')[0]}
               name={task.pluginName.split('/')[1]}
-              onChange={() => setRecheck((n) => n + 1)}
+              onChange={() => setGrantedHere(true)}
             />
           </div>
         )}
