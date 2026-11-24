@@ -5,7 +5,8 @@ export interface Plugin {
     compatibility_mode: boolean;
     pending_confirmation: boolean;
   };
-  status: 'intialized' | 'mounted' | 'unmounted';
+  // The runtime moves unmounted → mounted → initialized; initialized is ready.
+  status: 'initialized' | 'mounted' | 'unmounted';
   priority: number;
   plugin_config: object;
   manifest: {

@@ -165,7 +165,7 @@ export default function PluginDetailContent({ id }: { id: string }) {
   }, [pluginAuthor, pluginName, loadAttempt]);
 
   // Confirming permissions starts the plugin in the background; poll until it
-  // is mounted instead of showing a half-loaded page until a manual refresh.
+  // is initialized instead of showing a half-loaded page until a manual refresh.
   async function reloadUntilMounted() {
     void refreshPlugins();
     for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -176,7 +176,7 @@ export default function PluginDetailContent({ id }: { id: string }) {
         );
         setPluginInfo(latest);
         if (
-          latest.status === 'mounted' &&
+          latest.status === 'initialized' &&
           !latest.permission_status?.pending_confirmation
         )
           break;
@@ -371,7 +371,9 @@ export default function PluginDetailContent({ id }: { id: string }) {
   const awaitingPermission = Boolean(
     pluginInfo.permission_status?.pending_confirmation,
   );
-  const pluginReady = !awaitingPermission && pluginInfo.status === 'mounted';
+  // Only a plugin that is not loaded at all is "starting"; once mounted its
+  // own panels report their state (runtime: unmounted → mounted → initialized).
+  const pluginReady = !awaitingPermission && pluginInfo.status !== 'unmounted';
 
   return (
     <>
