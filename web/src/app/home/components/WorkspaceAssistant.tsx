@@ -7,7 +7,11 @@ import {
   LoaderCircle,
   Square,
   CircleAlert,
+  QrCode,
 } from 'lucide-react';
+import QrCodeLoginDialog, {
+  QrLoginPlatform,
+} from './qrcode-login/QrCodeLoginDialog';
 import {
   RiSparkling2Line,
   RiArrowUpSLine,
@@ -367,6 +371,16 @@ const ASSISTANT_HEIGHT_STORAGE_KEY = 'langbot-assistant-panel-height';
 const ASSISTANT_POSITION_STORAGE_KEY = 'langbot-assistant-panel-position';
 const ASSISTANT_OPEN_STORAGE_KEY = 'langbot-assistant-panel-open';
 
+const ADAPTER_TO_QR_PLATFORM: Record<string, QrLoginPlatform> = {
+  qqofficial: 'qqofficial',
+  feishu: 'feishu',
+  lark: 'feishu',
+  dingtalk: 'dingtalk',
+  weixin: 'weixin',
+  openclaw_weixin: 'weixin',
+  wecombot: 'wecombot',
+};
+
 function AssistantPanel({
   storageKey,
   canUseModels,
@@ -394,6 +408,57 @@ function AssistantPanel({
     }
   }, [open]);
   const [closing, setClosing] = useState(false);
+
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [qrDialogPlatform, setQrDialogPlatform] =
+    useState<QrLoginPlatform>('qqofficial');
+  const [qrTargetBotId, setQrTargetBotId] = useState<string | null>(null);
+  const [qrLoadingBotId, setQrLoadingBotId] = useState<string | null>(null);
+
+  const handleStartQrLogin = async (botId: string) => {
+    try {
+      setQrLoadingBotId(botId);
+      const res = await backendClient.getBot(botId);
+      const adapter = res?.bot?.adapter;
+      const platform = adapter ? ADAPTER_TO_QR_PLATFORM[adapter] : undefined;
+      if (platform) {
+        setQrDialogPlatform(platform);
+        setQrTargetBotId(botId);
+        setQrDialogOpen(true);
+      } else {
+        window.open(`/home/bots?id=${botId}`, '_blank');
+      }
+    } catch {
+      window.open(`/home/bots?id=${botId}`, '_blank');
+    } finally {
+      setQrLoadingBotId(null);
+    }
+  };
+
+  const handleQrLoginSuccess = async (credentials: Record<string, string>) => {
+    if (!qrTargetBotId) return;
+    try {
+      const res = await backendClient.getBot(qrTargetBotId);
+      const existing =
+        (res?.bot?.adapter_config as Record<string, unknown>) || {};
+      await backendClient.updateBot(qrTargetBotId, {
+        adapter_config: { ...existing, ...credentials },
+        enable: true,
+      });
+      toast.success(
+        t('assistant.botBindSuccess', {
+          defaultValue: '机器人已成功扫码绑定并启用！',
+        }),
+      );
+    } catch (err) {
+      console.error('Failed to update bot config after QR login', err);
+      toast.error(
+        t('assistant.botBindFailed', {
+          defaultValue: '更新机器人配置失败，请在机器人页面手动确认。',
+        }),
+      );
+    }
+  };
   const [horizontalPosition, setHorizontalPosition] = useState(() => {
     try {
       const saved = Number(
@@ -1176,15 +1241,43 @@ function AssistantPanel({
                                 <ol className="list-decimal">{children}</ol>
                               ),
                               img: () => null,
-                              a: ({ href, children }) => (
-                                <a
-                                  href={href}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
-                                  {children}
-                                </a>
-                              ),
+                              a: ({ href, children }) => {
+                                const match = href?.match(
+                                  /\/home\/bots\?id=([a-f0-9-]+)/i,
+                                );
+                                const botId = match ? match[1] : null;
+                                return (
+                                  <span className="inline-flex items-center gap-1.5 flex-wrap my-0.5 align-middle">
+                                    <a
+                                      href={href}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                    >
+                                      {children}
+                                    </a>
+                                    {botId && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          void handleStartQrLogin(botId);
+                                        }}
+                                        disabled={qrLoadingBotId === botId}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-normal rounded-md border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+                                        title="在工作助手页面直接扫码授权"
+                                      >
+                                        <QrCode className="size-3" />
+                                        <span>
+                                          {qrLoadingBotId === botId
+                                            ? '正在唤起...'
+                                            : '在此扫码授权'}
+                                        </span>
+                                      </button>
+                                    )}
+                                  </span>
+                                );
+                              },
                             }}
                           >
                             {message.content}
@@ -1512,6 +1605,12 @@ function AssistantPanel({
           </section>
         )}
       </div>
+      <QrCodeLoginDialog
+        open={qrDialogOpen}
+        onOpenChange={setQrDialogOpen}
+        platform={qrDialogPlatform}
+        onSuccess={handleQrLoginSuccess}
+      />
     </div>,
     document.body,
   );
