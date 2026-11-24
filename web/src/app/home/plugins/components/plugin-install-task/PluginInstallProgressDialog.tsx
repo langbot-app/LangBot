@@ -189,7 +189,8 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
             </NextStepLink>
           </NextStepList>
         )}
-        {isPlugin && !needsReview && (
+        {/* Next steps still apply once permissions are confirmed. */}
+        {isPlugin && (
           <PluginInstallFollowUp
             plugin={installedPlugin}
             onNavigate={() => setSelectedTaskId(null)}

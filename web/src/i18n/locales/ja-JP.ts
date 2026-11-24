@@ -2518,6 +2518,11 @@ const jaJP = {
     confirmInstall: 'インストールを確認',
     installFromGithubDesc: 'GitHubリリースからプラグインをインストール',
     goToMarketplace: 'マーケットプレイスへ',
+    nextStepsDialog: {
+      title: '{{plugin}} を使い始められます',
+      description:
+        'このプラグインに含まれるコンポーネントに応じて、次はここで設定します：',
+    },
     installProgress: {
       title: '{{name}} をインストール中',
       updateTitle: '{{name}} を更新中',

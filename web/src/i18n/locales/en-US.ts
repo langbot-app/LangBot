@@ -2505,6 +2505,10 @@ const enUS = {
     confirmInstall: 'Confirm Install',
     installFromGithubDesc: 'Install plugin from GitHub Release',
     goToMarketplace: 'Go to Extension Market',
+    nextStepsDialog: {
+      title: '{{plugin}} is ready',
+      description: 'Based on what this plugin includes, set it up here next:',
+    },
     installProgress: {
       title: 'Installing {{name}}',
       updateTitle: 'Updating {{name}}',

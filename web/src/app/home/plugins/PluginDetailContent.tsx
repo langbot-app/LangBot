@@ -39,6 +39,8 @@ import {
   usePluginInstallTasks,
 } from '@/app/home/plugins/components/plugin-install-task';
 import PluginSpaceUploadDialog from './components/plugin-installed/PluginSpaceUploadDialog';
+import PluginInstallFollowUp from '@/app/home/plugins/components/plugin-install-task/PluginInstallFollowUp';
+import { followUpKindsForPlugin } from '@/app/home/plugins/components/plugin-install-task/plugin-follow-up';
 import { toast } from 'sonner';
 
 /**
@@ -58,6 +60,10 @@ export default function PluginDetailContent({ id }: { id: string }) {
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const [showUpdateConfirm, setShowUpdateConfirm] = useState(false);
   const [updateSubmitting, setUpdateSubmitting] = useState(false);
+  // Bumped once a freshly confirmed plugin is running, so panels that load
+  // their own data (settings form, readme, logs) fetch again.
+  const [panelsKey, setPanelsKey] = useState(0);
+  const [showNextSteps, setShowNextSteps] = useState(false);
   const {
     addTask,
     setSelectedTaskId,
@@ -117,6 +123,46 @@ export default function PluginDetailContent({ id }: { id: string }) {
       cancelled = true;
     };
   }, [pluginAuthor, pluginName, loadAttempt]);
+
+  // First visit to a ready plugin: suggest where to use it, once per plugin.
+  useEffect(() => {
+    if (!pluginInfo || pluginInfo.status !== 'mounted') return;
+    if (pluginInfo.permission_status?.pending_confirmation) return;
+    if (followUpKindsForPlugin(pluginInfo).length === 0) return;
+    const key = `langbot_plugin_next_steps_seen:${pluginAuthor}/${pluginName}`;
+    try {
+      if (localStorage.getItem(key)) return;
+      localStorage.setItem(key, '1');
+    } catch {
+      return;
+    }
+    setShowNextSteps(true);
+  }, [pluginInfo, pluginAuthor, pluginName]);
+
+  // Confirming permissions starts the plugin in the background; poll until it
+  // is mounted instead of showing a half-loaded page until a manual refresh.
+  async function reloadUntilMounted() {
+    void refreshPlugins();
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      try {
+        const { plugin: latest } = await httpClient.getPlugin(
+          pluginAuthor,
+          pluginName,
+        );
+        setPluginInfo(latest);
+        if (
+          latest.status === 'mounted' &&
+          !latest.permission_status?.pending_confirmation
+        )
+          break;
+      } catch {
+        // Transient while the runtime restarts the plugin; keep polling.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    void refreshPlugins();
+    setPanelsKey((key) => key + 1);
+  }
 
   const installedVersion = pluginInfo?.manifest.manifest.metadata.version ?? '';
   const installSource = pluginInfo?.install_source ?? plugin?.installSource;
@@ -355,6 +401,7 @@ export default function PluginDetailContent({ id }: { id: string }) {
         <div className="flex min-h-0 max-w-full flex-1 flex-col gap-6 overflow-y-auto overscroll-none md:flex-row md:overflow-hidden">
           <div className="min-w-0 max-w-full space-y-4 pb-6 md:min-h-0 md:w-[380px] md:flex-shrink-0 md:overflow-y-auto md:overflow-x-hidden md:overscroll-none xl:w-[420px]">
             <PluginForm
+              key={`form-${panelsKey}`}
               pluginAuthor={pluginAuthor}
               pluginName={pluginName}
               onFormSubmit={handleFormSubmit}
@@ -362,10 +409,7 @@ export default function PluginDetailContent({ id }: { id: string }) {
             <PluginPermissions
               author={pluginAuthor}
               name={pluginName}
-              onChange={() => {
-                void refreshPlugins();
-                setLoadAttempt((attempt) => attempt + 1);
-              }}
+              onChange={() => void reloadUntilMounted()}
             />
             {dangerZone}
           </div>
@@ -385,6 +429,7 @@ export default function PluginDetailContent({ id }: { id: string }) {
                 className="min-h-0 flex-1 md:overflow-y-auto md:overflow-x-hidden md:overscroll-none"
               >
                 <PluginReadme
+                  key={`readme-${panelsKey}`}
                   pluginAuthor={pluginAuthor}
                   pluginName={pluginName}
                 />
@@ -394,6 +439,7 @@ export default function PluginDetailContent({ id }: { id: string }) {
                 className="min-h-0 flex-1 md:overflow-hidden"
               >
                 <PluginLogs
+                  key={`logs-${panelsKey}`}
                   pluginAuthor={pluginAuthor}
                   pluginName={pluginName}
                 />
@@ -402,6 +448,23 @@ export default function PluginDetailContent({ id }: { id: string }) {
           </div>
         </div>
       </div>
+
+      <Dialog open={showNextSteps} onOpenChange={setShowNextSteps}>
+        <DialogContent className="sm:max-w-md" data-testid="plugin-next-steps">
+          <DialogHeader>
+            <DialogTitle>
+              {t('plugins.nextStepsDialog.title', { plugin: title })}
+            </DialogTitle>
+            <DialogDescription>
+              {t('plugins.nextStepsDialog.description')}
+            </DialogDescription>
+          </DialogHeader>
+          <PluginInstallFollowUp
+            plugin={pluginInfo}
+            onNavigate={() => setShowNextSteps(false)}
+          />
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <DialogContent>

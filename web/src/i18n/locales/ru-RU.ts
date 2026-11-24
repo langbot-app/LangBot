@@ -2532,6 +2532,11 @@ const ruRU = {
     confirmInstall: 'Подтвердить установку',
     installFromGithubDesc: 'Установить плагин из GitHub Release',
     goToMarketplace: 'Перейти в маркетплейс',
+    nextStepsDialog: {
+      title: '{{plugin}} готов к работе',
+      description:
+        'В зависимости от состава плагина, дальше настройте его здесь:',
+    },
     installProgress: {
       title: 'Установка {{name}}',
       updateTitle: 'Обновление {{name}}',

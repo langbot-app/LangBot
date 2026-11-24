@@ -2447,6 +2447,10 @@ const thTH = {
     confirmInstall: 'ยืนยันการติดตั้ง',
     installFromGithubDesc: 'ติดตั้งปลั๊กอินจาก GitHub Release',
     goToMarketplace: 'ไปที่ตลาดปลั๊กอิน',
+    nextStepsDialog: {
+      title: '{{plugin}} พร้อมใช้งานแล้ว',
+      description: 'ตามคอมโพเนนต์ของปลั๊กอินนี้ ขั้นต่อไปให้ไปตั้งค่าที่นี่:',
+    },
     installProgress: {
       title: 'กำลังติดตั้ง {{name}}',
       updateTitle: 'กำลังอัปเดต {{name}}',

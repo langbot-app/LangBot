@@ -2339,6 +2339,10 @@ const zhHans = {
     confirmInstall: '确认安装',
     installFromGithubDesc: '从 GitHub Release 安装插件',
     goToMarketplace: '前往扩展市场',
+    nextStepsDialog: {
+      title: '{{plugin}} 可以开始用了',
+      description: '根据插件包含的组件，下一步可以去这些地方配置：',
+    },
     installProgress: {
       title: '正在安装 {{name}}',
       updateTitle: '正在更新 {{name}}',

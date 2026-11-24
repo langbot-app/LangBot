@@ -2336,6 +2336,10 @@ const zhHant = {
     confirmInstall: '確認安裝',
     installFromGithubDesc: '從 GitHub Release 安裝插件',
     goToMarketplace: '前往外掛市場',
+    nextStepsDialog: {
+      title: '{{plugin}} 可以開始用了',
+      description: '依外掛包含的元件，下一步可以到這些地方設定：',
+    },
     installProgress: {
       title: '正在安裝 {{name}}',
       updateTitle: '正在更新 {{name}}',

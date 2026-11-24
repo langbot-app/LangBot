@@ -2486,6 +2486,11 @@ const viVN = {
     confirmInstall: 'Xác nhận cài đặt',
     installFromGithubDesc: 'Cài đặt plugin từ GitHub Release',
     goToMarketplace: 'Đi đến chợ ứng dụng',
+    nextStepsDialog: {
+      title: '{{plugin}} đã sẵn sàng',
+      description:
+        'Dựa trên thành phần của plugin, hãy thiết lập tiếp tại đây:',
+    },
     installProgress: {
       title: 'Đang cài đặt {{name}}',
       updateTitle: 'Đang cập nhật {{name}}',

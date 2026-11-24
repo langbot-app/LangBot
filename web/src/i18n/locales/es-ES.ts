@@ -2541,6 +2541,10 @@ const esES = {
     confirmInstall: 'Confirmar instalación',
     installFromGithubDesc: 'Instalar plugin desde GitHub Release',
     goToMarketplace: 'Ir a la tienda',
+    nextStepsDialog: {
+      title: '{{plugin}} está listo',
+      description: 'Según lo que incluye este plugin, configúralo aquí:',
+    },
     installProgress: {
       title: 'Instalando {{name}}',
       updateTitle: 'Actualizando {{name}}',
