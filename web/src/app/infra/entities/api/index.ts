@@ -14,6 +14,27 @@ export interface AsyncTaskCreatedResp {
   task_id: number;
 }
 
+export interface GithubRefEntry {
+  name: string;
+  commit_sha: string;
+}
+
+export interface GithubRefsResp {
+  owner: string;
+  repo: string;
+  default_branch: string;
+  requested_ref: string;
+  source_subdir: string;
+  branches: GithubRefEntry[];
+  tags: GithubRefEntry[];
+  truncated: boolean;
+  source: {
+    kind: 'direct' | 'mirror';
+    host: string;
+    latency_ms: number;
+  };
+}
+
 export interface ApiRespProviderRequesters {
   requesters: Requester[];
 }

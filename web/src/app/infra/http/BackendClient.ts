@@ -63,6 +63,7 @@ import {
   ApiRespPluginConfig,
   ApiRespExtensions,
   AsyncTaskCreatedResp,
+  GithubRefsResp,
   ApiRespSystemInfo,
   ApiRespAsyncTasks,
   ApiRespUserToken,
@@ -1345,6 +1346,25 @@ export class BackendClient extends BaseHttpClient {
       repo,
       release_tag: releaseTag,
     });
+  }
+
+  public installPluginFromGithubBranch(
+    owner: string,
+    repo: string,
+    ref: string,
+    sourceSubdir: string,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.post('/api/v1/plugins/install/github', {
+      source_type: 'branch',
+      owner,
+      repo,
+      ref,
+      source_subdir: sourceSubdir,
+    });
+  }
+
+  public getGithubRefs(repoUrl: string): Promise<GithubRefsResp> {
+    return this.post('/api/v1/plugins/github/refs', { repo_url: repoUrl });
   }
 
   public getGithubReleases(repoUrl: string): Promise<{

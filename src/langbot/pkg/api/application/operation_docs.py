@@ -1189,6 +1189,14 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         risk='read',
         exposure='all',
     ),
+    'plugin.github.refs': OperationDoc(
+        domain='plugin',
+        label={'zh_Hans': 'GitHub 分支', 'en_US': 'Plugin GitHub Branches'},
+        summary='List branches and tags of a plugin repository.',
+        description='List GitHub branches, tags and the default branch for a plugin repository URL.',
+        risk='read',
+        exposure='all',
+    ),
     'plugin.github.releases': OperationDoc(
         domain='plugin',
         label={'zh_Hans': 'GitHub发布版本', 'en_US': 'Plugin GitHub Releases'},
@@ -1208,8 +1216,8 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
     'plugin.install.github': OperationDoc(
         domain='plugin',
         label={'zh_Hans': '从GitHub安装插件', 'en_US': 'Install Plugin from GitHub'},
-        summary='Install a plugin package directly from a GitHub release.',
-        description='Download and install a plugin release asset directly from a GitHub repository. Restricted to assistant. Side effect: Installs executable code and starts container.',
+        summary='Install a plugin from a GitHub release or branch.',
+        description='Install a release asset or package a plugin directory from a branch. Restricted to assistant. Side effect: Installs executable code and starts container.',
         risk='write',
         exposure='assistant',
     ),
