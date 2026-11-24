@@ -270,8 +270,13 @@ test('plugins tab shows lifecycle, hook applicability and bot-level enablement',
   await page.getByRole('combobox', { name: 'Applies to' }).click();
   await page.getByRole('option', { name: 'Bot default' }).click();
   await page.getByLabel('Enable All Plugins').click();
-  await draw.getByRole('switch').click();
-  await expect(listener.getByRole('switch')).not.toBeChecked();
+  await expect(draw).toHaveCount(0);
+  await page.getByTestId('add-bot-plugin').click();
+  const addDialog = page.getByTestId('add-bot-plugin-dialog');
+  await addDialog.locator('[data-addable-plugin="qa/draw"]').click();
+  await addDialog.getByRole('button', { name: 'Add 1 plugin(s)' }).click();
+  await expect(draw).toBeVisible();
+  await expect(listener).toHaveCount(0);
   await expect(
     lifecycle.locator('[data-step="received"] [data-lifecycle-plugin]'),
   ).toHaveCount(0);
@@ -321,7 +326,11 @@ test('custom route plugin selection is saved as a route override', async ({
   await expect(page.getByLabel('Enable All Plugins')).toBeDisabled();
   await page.getByRole('radio', { name: 'Custom' }).click();
   await page.getByLabel('Enable All Plugins').click();
-  await page.locator('[data-plugin="qa/listener"]').getByRole('switch').click();
+  await page.getByTestId('add-bot-plugin').click();
+  const addDialog = page.getByTestId('add-bot-plugin-dialog');
+  await addDialog.locator('[data-addable-plugin="qa/listener"]').click();
+  await addDialog.getByRole('button', { name: 'Add 1 plugin(s)' }).click();
+  await expect(page.locator('[data-plugin="qa/listener"]')).toBeVisible();
 
   await page.getByRole('tab', { name: 'Message policy' }).click();
   await expect(page.getByText('Plugins: Custom')).toHaveCount(0); // route scope shows editor

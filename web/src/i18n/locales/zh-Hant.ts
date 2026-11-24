@@ -988,22 +988,49 @@ const zhHant = {
     },
     pluginHooks: {
       tabDescription:
-        '使用下方設定的外掛處理訊息生命週期中對應的環節。具體處理邏輯取決於外掛實作，請參照外掛文件進行調整。',
+        '在這裡新增插件，使用它們的指令和聊天事件鉤子。具體效果請參照插件文件。',
       routeMode: '此路由的插件啟用',
       lifecycleTitle: '訊息生命週期',
       lifecycleHint: '圖示表示在這一步起作用的已啟用插件',
       policyCaption: '訊息策略',
-      enableTitle: '啟用插件',
-      enableHint: '啟用一個插件即啟用它的指令和全部事件監聽器。',
+      enableTitle: '插件',
+      enableHint:
+        '指令：使用者傳送「前綴 + 指令名」時執行。聊天事件鉤子：在收到訊息、回覆前後等環節自動執行。',
       inheritHint:
         '此路由沿用機器人預設的插件啟用設定。切換為「自訂」後可單獨選擇。',
       loadFailed: '插件資訊載入失敗',
-      empty: '尚未安裝帶指令或事件監聽器的插件。',
+      empty: '尚未新增插件。',
       browseMarket: '去安裝插件',
       registrationsUnknown: '插件執行環境版本較舊，無法讀取各插件註冊的鉤子。',
       globallyDisabled: '插件已停用',
       hooksUnknown: '鉤子未知',
       enablePlugin: '在此機器人上啟用 {{plugin}}',
+      allEnabledHint: '已啟用所有插件，之後安裝的插件也會自動啟用。',
+      notInstalled: '未安裝',
+      remove: '移除 {{plugin}}',
+      kinds: {
+        command: '指令',
+        hook: '聊天事件鉤子',
+      },
+      add: {
+        button: '新增插件',
+        title: '新增插件',
+        description: '選擇提供指令或聊天事件鉤子的插件，儲存機器人後生效。',
+        installed: '已安裝',
+        marketplace: '從市場安裝',
+        noInstalled: '已安裝的指令和鉤子插件都已新增。',
+        search: '搜尋插件',
+        all: '全部',
+        loading: '正在載入插件市場…',
+        unavailable: '無法連線插件市場',
+        noMarketplace: '市場中沒有找到對應的插件。',
+        viewMarketplace: '在市場中查看',
+        confirm: '新增 {{count}} 個插件',
+        installAndAdd: '安裝並新增 {{plugin}}',
+        installedAdded: '已安裝並新增 {{plugin}}，儲存機器人後生效。',
+        installFailed: '安裝失敗',
+        alreadyAdded: '已新增',
+      },
       commands: {
         botWide:
           '指令開關、前綴和指令設定對整個機器人生效，請在「機器人預設」中修改。',
@@ -1957,7 +1984,8 @@ const zhHant = {
   },
   plugins: {
     enabledOnBots: '插件已在 {{count}} 個機器人上啟用',
-    notEnabledOnBots: '插件尚未在任何機器人上啟用，指令和事件監聽器暫不生效。',
+    notEnabledOnBots:
+      '插件尚未在任何機器人上啟用，指令和聊天事件鉤子暫不生效。',
     goEnable: '去啟用',
     title: '外掛擴展',
     description: '安裝和設定用於擴展功能的外掛，請在聊天配置中選用',
@@ -2043,7 +2071,7 @@ const zhHant = {
     modifyFailed: '修改失敗：',
     componentName: {
       Tool: '工具',
-      EventListener: '事件監聽器',
+      EventListener: '聊天事件鉤子',
       Command: '命令',
       KnowledgeEngine: '知識引擎',
       Parser: '解析器',
@@ -2367,7 +2395,7 @@ const zhHant = {
       followUp: {
         nextSteps: '下一步',
         agents: '建立 Agent 或插件處理器',
-        bots: '到機器人的「外掛」頁籤啟用指令和事件監聽',
+        bots: '到機器人的「外掛」頁籤新增，使用它的指令和聊天事件鉤子',
         pipelines: '建立聊天',
         knowledge: '建立知識庫',
       },
@@ -2455,11 +2483,11 @@ const zhHant = {
     markAsReadFailed: '標記為已讀失敗',
     filterByComponent: '插件組件',
     filterByComponentHint:
-      '插件提供的能力類型，如工具（Tool）、命令（Command）、事件監聽器（EventListener）等，用於擴展 LangBot 的各項能力。按組件篩選可只看提供對應能力的插件。',
+      '插件提供的能力類型，如工具（Tool）、命令（Command）、聊天事件鉤子（EventListener）等，用於擴展 LangBot 的各項能力。按組件篩選可只看提供對應能力的插件。',
     allComponents: '全部組件',
     componentName: {
       Tool: '工具',
-      EventListener: '事件監聽器',
+      EventListener: '聊天事件鉤子',
       Command: '命令',
       KnowledgeEngine: '知識引擎',
       Parser: '解析器',
@@ -2686,7 +2714,7 @@ const zhHant = {
       selectPlugins: '選擇插件',
       pluginsTitle: 'AI 可呼叫的工具',
       pluginScopeHint:
-        '這裡只控制此聊天中 AI 可以呼叫哪些插件工具。插件的指令和事件監聽器在機器人的「插件」頁籤啟用。',
+        '這裡只控制此聊天中 AI 可以呼叫哪些插件工具。插件的指令和聊天事件鉤子在機器人的「插件」頁籤新增。',
       runnerScopeHint:
         '執行器在此獨立選擇，不受擴充整合中的外掛開關控制；其所屬外掛仍須已安裝且可用。',
       mcpServersTitle: 'MCP 伺服器',

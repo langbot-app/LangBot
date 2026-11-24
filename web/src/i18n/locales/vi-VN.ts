@@ -1044,24 +1044,51 @@ const viVN = {
     },
     pluginHooks: {
       tabDescription:
-        'Các plugin bên dưới xử lý những bước tương ứng trong vòng đời tin nhắn. Cách xử lý cụ thể tùy vào từng plugin; hãy xem tài liệu của plugin để điều chỉnh.',
+        'Thêm plugin tại đây để dùng lệnh và hook sự kiện chat của chúng. Xem tài liệu của từng plugin để biết nó làm gì.',
       routeMode: 'Plugin của tuyến này',
       lifecycleTitle: 'Vòng đời tin nhắn',
       lifecycleHint: 'Biểu tượng là các plugin đã bật hoạt động ở mỗi bước',
       policyCaption: 'Chính sách tin nhắn',
-      enableTitle: 'Plugin đã bật',
+      enableTitle: 'Plugin',
       enableHint:
-        'Bật một plugin sẽ bật các lệnh và toàn bộ trình lắng nghe sự kiện của nó.',
+        'Lệnh: chạy khi người dùng gửi tiền tố kèm tên lệnh. Hook sự kiện chat: tự chạy ở các bước như nhận tin nhắn hoặc trước/sau khi trả lời.',
       inheritHint:
         'Tuyến này dùng lựa chọn plugin mặc định của bot. Chuyển sang Tùy chỉnh để chọn plugin riêng.',
       loadFailed: 'Không tải được plugin',
-      empty: 'Chưa có plugin nào có lệnh hoặc trình lắng nghe sự kiện.',
+      empty: 'Chưa thêm plugin nào.',
       browseMarket: 'Cài plugin',
       registrationsUnknown:
         'Plugin Runtime quá cũ nên không báo được các hook mà mỗi plugin đăng ký.',
       globallyDisabled: 'Plugin đã tắt',
       hooksUnknown: 'Không rõ hook',
       enablePlugin: 'Bật {{plugin}} trên bot này',
+      allEnabledHint: 'Đã bật mọi plugin, kể cả plugin cài sau này.',
+      notInstalled: 'Chưa cài',
+      remove: 'Gỡ {{plugin}}',
+      kinds: {
+        command: 'Lệnh',
+        hook: 'Hook sự kiện chat',
+      },
+      add: {
+        button: 'Thêm plugin',
+        title: 'Thêm plugin',
+        description:
+          'Chọn plugin có lệnh hoặc hook sự kiện chat. Có hiệu lực sau khi lưu bot.',
+        installed: 'Đã cài',
+        marketplace: 'Từ Marketplace',
+        noInstalled: 'Đã thêm hết các plugin lệnh và hook đã cài.',
+        search: 'Tìm plugin',
+        all: 'Tất cả',
+        loading: 'Đang tải Marketplace…',
+        unavailable: 'Không kết nối được Marketplace',
+        noMarketplace: 'Không có plugin phù hợp trên Marketplace.',
+        viewMarketplace: 'Xem trên Marketplace',
+        confirm: 'Thêm {{count}} plugin',
+        installAndAdd: 'Cài và thêm {{plugin}}',
+        installedAdded: 'Đã cài và thêm {{plugin}}. Lưu bot để áp dụng.',
+        installFailed: 'Cài đặt thất bại',
+        alreadyAdded: 'Đã thêm',
+      },
       commands: {
         botWide:
           'Công tắc lệnh, tiền tố và cài đặt lệnh áp dụng cho toàn bộ bot. Hãy thay đổi trong Mặc định của bot.',
@@ -2084,7 +2111,7 @@ const viVN = {
   plugins: {
     enabledOnBots: 'Plugin đã bật trên {{count}} bot',
     notEnabledOnBots:
-      'Plugin chưa được bật trên bot nào nên lệnh và trình lắng nghe chưa hoạt động.',
+      'Plugin chưa được bật trên bot nào nên lệnh và hook sự kiện chat chưa hoạt động.',
     goEnable: 'Bật',
     title: 'Tiện ích mở rộng',
     description:
@@ -2175,7 +2202,7 @@ const viVN = {
     modifyFailed: 'Sửa đổi thất bại: ',
     componentName: {
       Tool: 'Công cụ',
-      EventListener: 'Trình lắng nghe sự kiện',
+      EventListener: 'Hook sự kiện chat',
       Command: 'Lệnh',
       KnowledgeEngine: 'Công cụ tri thức',
       Parser: 'Trình phân tích',
@@ -2517,7 +2544,7 @@ const viVN = {
       followUp: {
         nextSteps: 'Bước tiếp theo',
         agents: 'Tạo Agent hoặc bộ xử lý plugin',
-        bots: 'Bật lệnh và trình lắng nghe trên bot (thẻ Plugin)',
+        bots: 'Thêm vào bot (thẻ Plugin) để dùng lệnh và hook',
         pipelines: 'Tạo chat',
         knowledge: 'Tạo cơ sở tri thức',
       },
@@ -2607,11 +2634,11 @@ const viVN = {
     markAsReadFailed: 'Đánh dấu đã đọc thất bại',
     filterByComponent: 'Thành phần plugin',
     filterByComponentHint:
-      'Các loại năng lực mà plugin cung cấp — Công cụ (Tool), Lệnh (Command), Trình lắng nghe sự kiện (EventListener), v.v. — dùng để mở rộng các khả năng của LangBot. Lọc theo thành phần để chỉ xem những plugin cung cấp năng lực đó.',
+      'Các loại năng lực mà plugin cung cấp — Công cụ (Tool), Lệnh (Command), Hook sự kiện chat (EventListener), v.v. — dùng để mở rộng các khả năng của LangBot. Lọc theo thành phần để chỉ xem những plugin cung cấp năng lực đó.',
     allComponents: 'Tất cả thành phần',
     componentName: {
       Tool: 'Công cụ',
-      EventListener: 'Trình lắng nghe sự kiện',
+      EventListener: 'Hook sự kiện chat',
       Command: 'Lệnh',
       KnowledgeEngine: 'Công cụ tri thức',
       Parser: 'Trình phân tích',
@@ -2847,7 +2874,7 @@ const viVN = {
       selectPlugins: 'Chọn Plugin',
       pluginsTitle: 'Công cụ AI có thể gọi',
       pluginScopeHint:
-        'Chỉ kiểm soát những công cụ plugin mà AI trong chat này có thể gọi. Lệnh và trình lắng nghe sự kiện của plugin được bật trong tab Plugin của bot.',
+        'Chỉ kiểm soát những công cụ plugin mà AI trong chat này có thể gọi. Lệnh và hook sự kiện chat của plugin được thêm trong tab Plugin của bot.',
       runnerScopeHint:
         'Chọn Runner độc lập tại đây, không phụ thuộc vào công tắc plugin tiện ích. Plugin của Runner vẫn phải được cài đặt và khả dụng.',
       mcpServersTitle: 'Máy chủ MCP',

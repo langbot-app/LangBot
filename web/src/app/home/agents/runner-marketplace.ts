@@ -455,3 +455,75 @@ async function finishCommandProcessorInstall(
   clearPendingRunnerInstall(pending.scope, pending.taskId);
   throw new RunnerMarketplaceError('registration-timeout');
 }
+
+/** Component kinds a bot enables per plugin: commands and chat event hooks. */
+export const BOT_PLUGIN_COMPONENT_FILTERS = ['Command', 'EventListener'];
+
+async function searchAllMarketplacePlugins(componentFilter: string) {
+  const cloudClient = await getCloudServiceClient();
+  const search = (page: number) =>
+    cloudClient.searchMarketplaceExtensions({
+      query: '',
+      page,
+      page_size: RUNNER_CATALOG_PAGE_SIZE,
+      type_filter: 'plugin',
+      component_filter: componentFilter,
+    });
+  const first = await search(1);
+  const pageCount = Math.ceil((first.total || 0) / RUNNER_CATALOG_PAGE_SIZE);
+  const rest = await Promise.all(
+    Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) =>
+      search(index + 2),
+    ),
+  );
+  return [first, ...rest].flatMap((result) => result.plugins || []);
+}
+
+/**
+ * Marketplace plugins that provide commands or chat event hooks, most
+ * installed first.
+ */
+export async function loadBotPluginCatalog(): Promise<PluginV4[]> {
+  const results = await Promise.all(
+    BOT_PLUGIN_COMPONENT_FILTERS.map(searchAllMarketplacePlugins),
+  );
+  const byId = new Map<string, PluginV4>();
+  for (const plugin of results.flat()) {
+    if (!BOT_PLUGIN_COMPONENT_FILTERS.some((kind) => plugin.components?.[kind]))
+      continue;
+    byId.set(marketplacePluginId(plugin), plugin);
+  }
+  return [...byId.values()].sort(
+    (left, right) => right.install_count - left.install_count,
+  );
+}
+
+/**
+ * Install a marketplace plugin and wait until it is running, so its commands
+ * and hooks are registered when the caller enables it.
+ */
+export async function installMarketplaceBotPlugin(
+  plugin: PluginV4,
+  options: InstallRunnerOptions,
+): Promise<void> {
+  const pending = await startRunnerInstall(plugin, options);
+  await waitForRunnerInstall(pending, options.onProgress);
+  const deadline = Date.now() + RUNNER_REGISTRATION_TIMEOUT_MS;
+  try {
+    while (Date.now() < deadline) {
+      try {
+        const { plugin: installed } = await httpClient.getPlugin(
+          pending.pluginAuthor,
+          pending.pluginName,
+        );
+        if (installed.status === 'initialized') return;
+      } catch {
+        // Restarting after install; keep polling.
+      }
+      await wait(1000);
+    }
+    throw new RunnerMarketplaceError('registration-timeout');
+  } finally {
+    clearPendingRunnerInstall(pending.scope, pending.taskId);
+  }
+}

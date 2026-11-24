@@ -992,22 +992,49 @@ const zhHans = {
     },
     pluginHooks: {
       tabDescription:
-        '使用下方配置的插件处理消息生命周期中对应的环节。具体处理逻辑取决于插件实现，请参照插件文档进行调整。',
+        '在这里添加插件，使用它们的命令和聊天事件钩子。具体效果请参照插件文档。',
       routeMode: '此路由的插件启用',
       lifecycleTitle: '消息生命周期',
       lifecycleHint: '图标表示在这一步起作用的已启用插件',
       policyCaption: '消息策略',
-      enableTitle: '启用插件',
-      enableHint: '启用一个插件即启用它的命令和全部事件监听器。',
+      enableTitle: '插件',
+      enableHint:
+        '命令：用户发送「前缀 + 命令名」时执行。聊天事件钩子：在收到消息、回复前后等环节自动运行。',
       inheritHint:
         '此路由沿用机器人默认的插件启用设置。切换为「自定义」后可单独选择。',
       loadFailed: '插件信息加载失败',
-      empty: '还没有安装带命令或事件监听器的插件。',
+      empty: '还没有添加插件。',
       browseMarket: '去安装插件',
       registrationsUnknown: '插件运行时版本较旧，无法读取各插件注册的钩子。',
       globallyDisabled: '插件已停用',
       hooksUnknown: '钩子未知',
       enablePlugin: '在此机器人上启用 {{plugin}}',
+      allEnabledHint: '已启用所有插件，以后安装的插件也会自动启用。',
+      notInstalled: '未安装',
+      remove: '移除 {{plugin}}',
+      kinds: {
+        command: '命令',
+        hook: '聊天事件钩子',
+      },
+      add: {
+        button: '添加插件',
+        title: '添加插件',
+        description: '选择提供命令或聊天事件钩子的插件，保存机器人后生效。',
+        installed: '已安装',
+        marketplace: '从市场安装',
+        noInstalled: '已安装的命令和钩子插件都已添加。',
+        search: '搜索插件',
+        all: '全部',
+        loading: '正在加载插件市场…',
+        unavailable: '无法连接插件市场',
+        noMarketplace: '市场里没有找到对应的插件。',
+        viewMarketplace: '在市场中查看',
+        confirm: '添加 {{count}} 个插件',
+        installAndAdd: '安装并添加 {{plugin}}',
+        installedAdded: '已安装并添加 {{plugin}}，保存机器人后生效。',
+        installFailed: '安装失败',
+        alreadyAdded: '已添加',
+      },
       commands: {
         botWide:
           '命令开关、前缀和命令配置对整个机器人生效，请在「机器人默认」中修改。',
@@ -1960,7 +1987,8 @@ const zhHans = {
   },
   plugins: {
     enabledOnBots: '插件已在 {{count}} 个机器人上启用',
-    notEnabledOnBots: '插件尚未在任何机器人上启用，命令和事件监听器暂不生效。',
+    notEnabledOnBots:
+      '插件尚未在任何机器人上启用，命令和聊天事件钩子暂不生效。',
     goEnable: '去启用',
     title: '插件扩展',
     description: '安装和配置用于扩展功能的插件，请在聊天配置中选用',
@@ -2046,7 +2074,7 @@ const zhHans = {
     modifyFailed: '修改失败：',
     componentName: {
       Tool: '工具',
-      EventListener: '事件监听器',
+      EventListener: '聊天事件钩子',
       Command: '命令',
       KnowledgeEngine: '知识引擎',
       Parser: '解析器',
@@ -2370,7 +2398,7 @@ const zhHans = {
       followUp: {
         nextSteps: '下一步',
         agents: '新建 Agent 或插件处理器',
-        bots: '到机器人的「插件」页签启用命令和事件监听',
+        bots: '到机器人的「插件」页签添加，使用它的命令和聊天事件钩子',
         pipelines: '创建聊天',
         knowledge: '创建知识库',
       },
@@ -2458,11 +2486,11 @@ const zhHans = {
     markAsReadFailed: '标记为已读失败',
     filterByComponent: '插件组件',
     filterByComponentHint:
-      '插件提供的能力类型，如工具（Tool）、命令（Command）、事件监听器（EventListener）等，用于扩展 LangBot 的各项能力。按组件筛选可只看提供对应能力的插件。',
+      '插件提供的能力类型，如工具（Tool）、命令（Command）、聊天事件钩子（EventListener）等，用于扩展 LangBot 的各项能力。按组件筛选可只看提供对应能力的插件。',
     allComponents: '全部组件',
     componentName: {
       Tool: '工具',
-      EventListener: '事件监听器',
+      EventListener: '聊天事件钩子',
       Command: '命令',
       KnowledgeEngine: '知识引擎',
       Parser: '解析器',
@@ -2690,7 +2718,7 @@ const zhHans = {
       selectPlugins: '选择插件',
       pluginsTitle: 'AI 可调用的工具',
       pluginScopeHint:
-        '这里只控制此聊天中 AI 可以调用哪些插件工具。插件的命令和事件监听器在机器人的「插件」页签启用。',
+        '这里只控制此聊天中 AI 可以调用哪些插件工具。插件的命令和聊天事件钩子在机器人的「插件」页签添加。',
       runnerScopeHint:
         '运行器在此独立选择，不受扩展集成中的插件开关控制；其所属插件仍需已安装且可用。',
       mcpServersTitle: 'MCP 服务器',

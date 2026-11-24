@@ -1,8 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
 import {
-  ArrowRight,
   Inbox,
   MessageSquareReply,
   Send,
@@ -13,6 +11,9 @@ import {
   Eye,
   Settings2,
   AlertCircle,
+  Blocks,
+  Plus,
+  X,
 } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import type {
@@ -31,6 +32,7 @@ import { extractI18nObject } from '@/i18n/I18nProvider';
 import { AuthenticatedPluginIcon } from '@/components/AuthenticatedPluginIcon';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -43,8 +45,10 @@ import {
 import { cn } from '@/lib/utils';
 import { pluginComponentIconMap } from '@/app/home/plugins/components/plugin-market/PluginComponentIcons';
 import PolicyScopeSelect, { BOT_SCOPE } from './PolicyScopeSelect';
+import RoutingLayer from './RoutingLayer';
 import CommandPrefixPopover from './CommandPrefixPopover';
 import CommandConfigDialog from './CommandConfigDialog';
+import AddBotPluginDialog, { PluginKindBadges } from './AddBotPluginDialog';
 import PlatformCommandRegistration from './PlatformCommandRegistration';
 import {
   DEFAULT_COMMAND_SETTINGS,
@@ -79,6 +83,8 @@ interface PluginRow {
   author: string;
   name: string;
   label: string;
+  description: string;
+  installed: boolean;
   globallyEnabled: boolean;
   registration?: PluginRegistration;
   hasCommands: boolean;
@@ -125,6 +131,10 @@ function pluginRows(
       author,
       name: metadata.name,
       label: extractI18nObject(metadata.label) || metadata.name,
+      description: metadata.description
+        ? extractI18nObject(metadata.description)
+        : '',
+      installed: true,
       globallyEnabled: plugin.enabled !== false,
       registration,
       hasCommands,
@@ -196,14 +206,19 @@ export default function BotPluginsPanel({
     };
   }, []);
 
+  const loadPlugins = useCallback(
+    () =>
+      Promise.all([
+        httpClient.getPlugins(),
+        httpClient
+          .getBotPluginRegistrations(botId, { includeDisabled: true })
+          .catch(() => ({ plugins: null })),
+      ]),
+    [botId],
+  );
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      httpClient.getPlugins(),
-      httpClient
-        .getBotPluginRegistrations(botId, { includeDisabled: true })
-        .catch(() => ({ plugins: null })),
-    ])
+    loadPlugins()
       .then(([pluginResp, registrationResp]) => {
         if (cancelled) return;
         setPlugins(pluginResp.plugins ?? []);
@@ -215,7 +230,8 @@ export default function BotPluginsPanel({
     return () => {
       cancelled = true;
     };
-  }, [botId]);
+  }, [loadPlugins]);
+  const [adding, setAdding] = useState(false);
 
   const routeIndex = bindings.findIndex(
     (binding, index) =>
@@ -282,16 +298,9 @@ export default function BotPluginsPanel({
     });
   }
 
-  function writeSelection(selected: PluginSelection) {
-    // Keep enabled plugins in list order: duplicate command names and hooks
-    // resolve in this order, so it must match what the user sees.
-    const order = new Map(rows.map((row, index) => [row.id, index]));
-    const position = (item: { author: string; name: string }) =>
-      order.get(`${item.author}/${item.name}`) ?? Number.MAX_SAFE_INTEGER;
-    const next = {
-      ...selected,
-      plugins: [...selected.plugins].sort((a, b) => position(a) - position(b)),
-    };
+  function writeSelection(next: PluginSelection) {
+    // The list order is the order plugins were added; duplicate command names
+    // and hooks resolve in this order, matching what the user sees.
     if (!route) {
       onBotPolicyChange({ ...(botPolicy ?? {}), plugins: next });
       return;
@@ -317,9 +326,52 @@ export default function BotPluginsPanel({
     onBindingsChange(nextBindings);
   }
 
-  const enabledRows = rows.filter((row) =>
-    selectionIncludes(selection, row.id),
-  );
+  // With "enable all" every command / hook plugin is listed; otherwise only
+  // the added ones, in the order they were added. Added plugins that are no
+  // longer installed stay visible so they can be removed.
+  const listedRows: PluginRow[] = selection.enable_all
+    ? rows
+    : selection.plugins.map((item) => {
+        const id = `${item.author}/${item.name}`;
+        return (
+          rows.find((row) => row.id === id) ?? {
+            id,
+            author: item.author,
+            name: item.name,
+            label: item.name,
+            description: '',
+            installed: false,
+            globallyEnabled: true,
+            hasCommands: false,
+            hasListeners: false,
+          }
+        );
+      });
+  const enabledRows = listedRows.filter((row) => row.installed);
+  const addable = rows
+    .filter((row) => !selectionIncludes(selection, row.id))
+    .map((row) => ({
+      id: row.id,
+      author: row.author,
+      name: row.name,
+      label: row.label,
+      description: row.description,
+      hasCommands: row.hasCommands,
+      hasHooks: row.hasListeners,
+    }));
+  function addPlugins(ids: string[]) {
+    let next = selection;
+    for (const id of ids) {
+      if (!selectionIncludes(next, id)) next = toggleSelection(next, id, true);
+    }
+    writeSelection(next);
+  }
+  async function pluginInstalled(id: string) {
+    const [pluginResp, registrationResp] = await loadPlugins();
+    setPlugins(pluginResp.plugins ?? []);
+    setRegistrations(registrationResp.plugins);
+    if (editable) addPlugins([id]);
+  }
 
   const descriptorMap = useMemo(
     () => new Map(descriptors.map((item) => [item.plugin_id, item])),
@@ -519,24 +571,19 @@ export default function BotPluginsPanel({
         </ol>
       </section>
 
-      {/* Plugin enablement */}
-      <section
-        aria-label={t('bots.pluginHooks.enableTitle')}
-        className="flex flex-col gap-3"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 className="text-sm font-semibold">
-              {t('bots.pluginHooks.enableTitle')}
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              {route && !routeCustom
-                ? t('bots.pluginHooks.inheritHint')
-                : t('bots.pluginHooks.enableHint')}
-            </p>
-          </div>
+      {/* Plugins added to the bot: commands and chat event hooks */}
+      <RoutingLayer
+        icon={Blocks}
+        title={t('bots.pluginHooks.enableTitle')}
+        description={
+          route && !routeCustom
+            ? t('bots.pluginHooks.inheritHint')
+            : t('bots.pluginHooks.enableHint')
+        }
+        count={enabledRows.length}
+        action={
           <div className="flex items-center gap-2">
-            <Label htmlFor="bot-enable-all-plugins" className="text-sm">
+            <Label htmlFor="bot-enable-all-plugins" className="text-xs">
               {t('pipelines.extensions.enableAllPlugins')}
             </Label>
             <Switch
@@ -548,252 +595,317 @@ export default function BotPluginsPanel({
               }
             />
           </div>
-        </div>
-
-        <div
-          data-testid="bot-command-settings"
-          className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border bg-muted/30 px-3 py-2"
-        >
-          <TerminalSquare
-            className="size-4 text-muted-foreground"
-            strokeWidth={1.5}
-          />
-          <Label htmlFor="bot-commands-enabled" className="text-sm">
-            {t('bots.pluginHooks.commands.label')}
-          </Label>
-          <Switch
-            id="bot-commands-enabled"
-            checked={commands.enabled}
-            disabled={Boolean(route)}
-            onCheckedChange={(enabled) => updateCommands({ enabled })}
-          />
-          <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-            {t('bots.pluginCommands.prefixes')}
-            <CommandPrefixPopover
-              prefixes={prefixes}
-              disabled={!commands.enabled || Boolean(route)}
-              onChange={(next) => updateCommands({ prefixes: next })}
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <div
+            data-testid="bot-command-settings"
+            className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border bg-muted/30 px-3 py-2"
+          >
+            <TerminalSquare
+              className="size-4 text-muted-foreground"
+              strokeWidth={1.5}
             />
-          </span>
-          <p className="basis-full text-xs text-muted-foreground">
-            {route
-              ? t('bots.pluginHooks.commands.botWide')
-              : commands.enabled
-                ? t('bots.pluginHooks.commands.hint')
-                : t('bots.routingLayers.commandsDisabled')}
-          </p>
-        </div>
+            <Label htmlFor="bot-commands-enabled" className="text-sm">
+              {t('bots.pluginHooks.commands.label')}
+            </Label>
+            <Switch
+              id="bot-commands-enabled"
+              checked={commands.enabled}
+              disabled={Boolean(route)}
+              onCheckedChange={(enabled) => updateCommands({ enabled })}
+            />
+            <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+              {t('bots.pluginCommands.prefixes')}
+              <CommandPrefixPopover
+                prefixes={prefixes}
+                disabled={!commands.enabled || Boolean(route)}
+                onChange={(next) => updateCommands({ prefixes: next })}
+              />
+            </span>
+            <p className="basis-full text-xs text-muted-foreground">
+              {route
+                ? t('bots.pluginHooks.commands.botWide')
+                : commands.enabled
+                  ? t('bots.pluginHooks.commands.hint')
+                  : t('bots.routingLayers.commandsDisabled')}
+            </p>
+          </div>
 
-        {loadFailed ? (
-          <p className="text-sm text-destructive">
-            {t('bots.pluginHooks.loadFailed')}
-          </p>
-        ) : plugins === null ? (
-          <div className="flex flex-col gap-2">
-            <Skeleton className="h-14 w-full" />
-            <Skeleton className="h-14 w-full" />
-          </div>
-        ) : rows.length === 0 ? (
-          <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
-            {t('bots.pluginHooks.empty')}{' '}
-            <Link
-              to="/home/add-extension"
-              className="text-primary hover:underline"
-            >
-              {t('bots.pluginHooks.browseMarket')}
-              <ArrowRight className="ml-0.5 inline size-3.5" />
-            </Link>
-          </div>
-        ) : (
-          <ul className="flex flex-col gap-2" data-testid="bot-plugin-rows">
-            {registrations === null && (
-              <li className="text-xs text-muted-foreground">
-                {t('bots.pluginHooks.registrationsUnknown')}
-              </li>
-            )}
-            {rows.map((row) => {
-              const enabled = selectionIncludes(selection, row.id);
-              const hooks = hookStates(row);
-              const rowCommands = commandsOf(row);
-              const descriptor = descriptorMap.get(row.id);
-              const binding = instanceBinding(row.id);
-              return (
-                <li
-                  key={row.id}
-                  data-plugin={row.id}
-                  className={cn(
-                    'flex items-start gap-3 rounded-lg border p-3',
-                    enabled ? 'bg-card' : 'border-dashed bg-muted/30',
-                  )}
-                >
-                  <span className="mt-0.5 size-8 shrink-0 overflow-hidden rounded">
-                    <AuthenticatedPluginIcon
-                      author={row.author}
-                      name={row.name}
-                      alt={row.label}
-                      className="size-8"
-                    />
-                  </span>
-                  <div className="min-w-0 flex-1 space-y-1.5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="truncate text-sm font-medium">
-                        {row.label}
-                      </span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        {row.id}
-                      </span>
-                      {binding && (
-                        <Badge
-                          variant="outline"
-                          className="text-[11px]"
-                          data-testid="command-config-custom"
-                        >
-                          {binding.enabled === false
-                            ? t('bots.pluginHooks.commandConfig.commandsOff')
-                            : t('bots.pluginHooks.commandConfig.custom')}
-                        </Badge>
-                      )}
-                      {!row.globallyEnabled && (
-                        <Badge variant="outline" className="text-[11px]">
-                          {t('bots.pluginHooks.globallyDisabled')}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {rowCommands.map((command) => {
-                        // A duplicate-name warning is moot while commands are off.
-                        const owner = commands.enabled
-                          ? overriddenBy.get(`${row.id}:${command}`)
-                          : undefined;
-                        const chip = (
-                          <Badge
-                            key={`cmd-${command}`}
-                            variant="secondary"
-                            data-command={command}
-                            data-overridden={Boolean(owner)}
-                            className={cn(
-                              'gap-1 font-mono text-[11px]',
-                              !enabled && 'text-muted-foreground',
-                              // Commands switched off for the bot: every badge is crossed out.
-                              !commands.enabled &&
-                                'text-muted-foreground line-through decoration-foreground/80 decoration-2',
-                              owner &&
-                                'bg-amber-50 text-amber-700 line-through dark:bg-amber-950/30 dark:text-amber-400',
-                            )}
-                          >
-                            {owner && <AlertCircle className="size-3" />}
-                            {commandPrefix}
-                            {command}
-                          </Badge>
-                        );
-                        return owner ? (
-                          <Tooltip key={`cmd-${command}`}>
-                            <TooltipTrigger asChild>{chip}</TooltipTrigger>
-                            <TooltipContent>
-                              {t('bots.pluginCommands.overriddenBy', {
-                                plugin: owner,
-                              })}
-                            </TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          chip
-                        );
-                      })}
-                      {hooks.map((hook) => (
-                        <Tooltip key={`hook-${hook.event}`}>
-                          <TooltipTrigger asChild>
+          {loadFailed ? (
+            <p className="text-sm text-destructive">
+              {t('bots.pluginHooks.loadFailed')}
+            </p>
+          ) : plugins === null ? (
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2" data-testid="bot-plugin-rows">
+              {selection.enable_all && (
+                <p className="text-xs text-muted-foreground">
+                  {t('bots.pluginHooks.allEnabledHint')}
+                </p>
+              )}
+              {registrations === null && (
+                <p className="text-xs text-muted-foreground">
+                  {t('bots.pluginHooks.registrationsUnknown')}
+                </p>
+              )}
+              {listedRows.length === 0 && (
+                <div className="rounded-lg border border-dashed p-5 text-center">
+                  <p className="text-xs text-muted-foreground">
+                    {t('bots.pluginHooks.empty')}
+                  </p>
+                </div>
+              )}
+              {listedRows.map((row) => {
+                const hooks = hookStates(row);
+                const rowCommands = commandsOf(row);
+                const descriptor = descriptorMap.get(row.id);
+                const binding = instanceBinding(row.id);
+                return (
+                  <Card
+                    key={row.id}
+                    data-plugin={row.id}
+                    className="gap-0 rounded-lg py-0 shadow-none"
+                  >
+                    <CardContent className="flex items-start gap-3 p-3">
+                      <AuthenticatedPluginIcon
+                        author={row.author}
+                        name={row.name}
+                        alt={row.label}
+                        className="size-10 shrink-0 rounded-lg border bg-muted object-cover"
+                      />
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="truncate font-medium">
+                            {row.label}
+                          </span>
+                          {binding && (
                             <Badge
                               variant="outline"
-                              data-hook={hook.event}
-                              data-active={hook.active}
-                              className={cn(
-                                'gap-1 text-[11px]',
-                                !hook.active &&
-                                  'text-muted-foreground line-through decoration-muted-foreground/60',
-                              )}
+                              className="text-[11px]"
+                              data-testid="command-config-custom"
                             >
-                              {hook.step === null ? (
-                                <Eye className="size-3" aria-hidden="true" />
-                              ) : (
-                                <EventListenerIcon
-                                  className="size-3"
-                                  aria-hidden="true"
-                                />
-                              )}
-                              {t(`bots.pluginHooks.events.${hook.event}`, {
-                                defaultValue: hook.event,
-                              })}
+                              {binding.enabled === false
+                                ? t(
+                                    'bots.pluginHooks.commandConfig.commandsOff',
+                                  )
+                                : t('bots.pluginHooks.commandConfig.custom')}
                             </Badge>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs">
-                            <span className="font-mono">{hook.event}</span>
-                            {hook.reason && <> · {hook.reason}</>}
-                          </TooltipContent>
-                        </Tooltip>
-                      ))}
-                      {registrations === null &&
-                        row.hasListeners &&
-                        hooks.length === 0 && (
-                          <Badge
-                            variant="outline"
-                            className="text-[11px] text-muted-foreground"
-                          >
-                            {t('bots.pluginHooks.hooksUnknown')}
-                          </Badge>
-                        )}
-                    </div>
-                    {hooks
-                      .filter((hook) => !hook.active && hook.reason)
-                      .map((hook) => (
-                        <p
-                          key={`reason-${hook.event}`}
-                          className="text-xs text-muted-foreground"
-                        >
-                          {hook.reason}
+                          )}
+                          {!row.installed && (
+                            <Badge
+                              variant="outline"
+                              className="text-[11px] text-amber-700 dark:text-amber-400"
+                            >
+                              {t('bots.pluginHooks.notInstalled')}
+                            </Badge>
+                          )}
+                          {row.installed && !row.globallyEnabled && (
+                            <Badge variant="outline" className="text-[11px]">
+                              {t('bots.pluginHooks.globallyDisabled')}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="truncate text-sm text-muted-foreground">
+                          {row.id}
                         </p>
-                      ))}
-                  </div>
-                  {commands.enabled &&
-                    !route &&
-                    hasCommandSettings(descriptor) && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 shrink-0 gap-1 px-2 text-xs"
-                        onClick={() => setConfiguring(row.id)}
-                        data-testid="command-config-button"
-                      >
-                        <Settings2 className="size-3.5" />
-                        {t('bots.pluginHooks.commandConfig.button')}
-                      </Button>
-                    )}
-                  <Switch
-                    checked={enabled}
-                    disabled={!editable || selection.enable_all}
-                    onCheckedChange={(next) =>
-                      writeSelection(toggleSelection(selection, row.id, next))
-                    }
-                    aria-label={t('bots.pluginHooks.enablePlugin', {
-                      plugin: row.label,
-                    })}
-                  />
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {registrationCapability && commands.enabled && (
-          <PlatformCommandRegistration
-            value={commands}
-            onChange={onCommandSettingsChange}
-            capability={registrationCapability}
-            botId={botId}
-            dirty={dirty}
-            names={[...commandOwners.keys()]}
-          />
-        )}
-      </section>
+                        <div className="flex flex-wrap gap-1">
+                          {rowCommands.map((command) => {
+                            // A duplicate-name warning is moot while commands are off.
+                            const owner = commands.enabled
+                              ? overriddenBy.get(`${row.id}:${command}`)
+                              : undefined;
+                            const chip = (
+                              <Badge
+                                key={`cmd-${command}`}
+                                variant="secondary"
+                                data-command={command}
+                                data-overridden={Boolean(owner)}
+                                className={cn(
+                                  'gap-1 font-mono text-[11px]',
+                                  // Commands switched off for the bot: every badge is crossed out.
+                                  !commands.enabled &&
+                                    'text-muted-foreground line-through decoration-foreground/80 decoration-2',
+                                  owner &&
+                                    'bg-amber-50 text-amber-700 line-through dark:bg-amber-950/30 dark:text-amber-400',
+                                )}
+                              >
+                                {owner ? (
+                                  <AlertCircle className="size-3" />
+                                ) : (
+                                  <TerminalSquare
+                                    className="size-3"
+                                    aria-hidden="true"
+                                  />
+                                )}
+                                {commandPrefix}
+                                {command}
+                              </Badge>
+                            );
+                            return owner ? (
+                              <Tooltip key={`cmd-${command}`}>
+                                <TooltipTrigger asChild>{chip}</TooltipTrigger>
+                                <TooltipContent>
+                                  {t('bots.pluginCommands.overriddenBy', {
+                                    plugin: owner,
+                                  })}
+                                </TooltipContent>
+                              </Tooltip>
+                            ) : (
+                              chip
+                            );
+                          })}
+                          {hooks.map((hook) => (
+                            <Tooltip key={`hook-${hook.event}`}>
+                              <TooltipTrigger asChild>
+                                <Badge
+                                  variant="outline"
+                                  data-hook={hook.event}
+                                  data-active={hook.active}
+                                  className={cn(
+                                    'gap-1 text-[11px]',
+                                    !hook.active &&
+                                      'text-muted-foreground line-through decoration-muted-foreground/60',
+                                  )}
+                                >
+                                  {hook.step === null ? (
+                                    <Eye
+                                      className="size-3"
+                                      aria-hidden="true"
+                                    />
+                                  ) : (
+                                    <EventListenerIcon
+                                      className="size-3"
+                                      aria-hidden="true"
+                                    />
+                                  )}
+                                  {t(`bots.pluginHooks.events.${hook.event}`, {
+                                    defaultValue: hook.event,
+                                  })}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <span className="font-mono">{hook.event}</span>
+                                {hook.reason && <> · {hook.reason}</>}
+                              </TooltipContent>
+                            </Tooltip>
+                          ))}
+                          {registrations === null &&
+                            (row.hasCommands || row.hasListeners) &&
+                            hooks.length === 0 &&
+                            rowCommands.length === 0 && (
+                              <PluginKindBadges
+                                commands={row.hasCommands}
+                                hooks={row.hasListeners}
+                              />
+                            )}
+                        </div>
+                        {hooks
+                          .filter((hook) => !hook.active && hook.reason)
+                          .map((hook) => (
+                            <p
+                              key={`reason-${hook.event}`}
+                              className="text-xs text-muted-foreground"
+                            >
+                              {hook.reason}
+                            </p>
+                          ))}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {commands.enabled &&
+                          !route &&
+                          row.installed &&
+                          hasCommandSettings(descriptor) && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8"
+                                  onClick={() => setConfiguring(row.id)}
+                                  data-testid="command-config-button"
+                                  aria-label={t(
+                                    'bots.pluginHooks.commandConfig.button',
+                                  )}
+                                >
+                                  <Settings2 className="size-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {t('bots.pluginHooks.commandConfig.button')}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        {editable && !selection.enable_all && (
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="size-8"
+                            aria-label={t('bots.pluginHooks.remove', {
+                              plugin: row.label,
+                            })}
+                            onClick={() =>
+                              writeSelection(
+                                toggleSelection(selection, row.id, false),
+                              )
+                            }
+                          >
+                            <X className="size-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+              {editable && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setAdding(true)}
+                  data-testid="add-bot-plugin"
+                >
+                  <Plus className="size-4" />
+                  {t('bots.pluginHooks.add.button')}
+                </Button>
+              )}
+            </div>
+          )}
+          {registrationCapability && commands.enabled && (
+            <PlatformCommandRegistration
+              value={commands}
+              onChange={onCommandSettingsChange}
+              capability={registrationCapability}
+              botId={botId}
+              dirty={dirty}
+              names={[...commandOwners.keys()]}
+            />
+          )}
+        </div>
+      </RoutingLayer>
+
+      <AddBotPluginDialog
+        open={adding}
+        onOpenChange={setAdding}
+        addable={addable}
+        installedIds={new Set(rows.map((row) => row.id))}
+        addedIds={
+          new Set(
+            rows
+              .filter((row) => selectionIncludes(selection, row.id))
+              .map((row) => row.id),
+          )
+        }
+        onAdd={addPlugins}
+        onInstalled={pluginInstalled}
+      />
 
       {configuringRow && configuringDescriptor && (
         <CommandConfigDialog

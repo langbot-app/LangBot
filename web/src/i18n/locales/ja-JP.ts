@@ -1056,25 +1056,54 @@ const jaJP = {
     },
     pluginHooks: {
       tabDescription:
-        '下のプラグインが、メッセージライフサイクルの各ステップを処理します。具体的な処理はプラグインの実装によるため、プラグインのドキュメントを参照して調整してください。',
+        'ここでプラグインを追加すると、そのコマンドとチャットイベントフックを使えます。具体的な動作はプラグインのドキュメントを参照してください。',
       routeMode: 'このルートのプラグイン',
       lifecycleTitle: 'メッセージのライフサイクル',
       lifecycleHint: 'アイコンは各ステップで動作する有効なプラグインです',
       policyCaption: 'メッセージポリシー',
-      enableTitle: '有効なプラグイン',
+      enableTitle: 'プラグイン',
       enableHint:
-        'プラグインを有効にすると、そのコマンドとすべてのイベントリスナーが有効になります。',
+        'コマンド：ユーザーが「プレフィックス + コマンド名」を送ると実行されます。チャットイベントフック：メッセージ受信や返信の前後などで自動的に動きます。',
       inheritHint:
         'このルートはボットの既定のプラグイン設定を使用しています。「カスタム」に切り替えると個別に選択できます。',
       loadFailed: 'プラグインを読み込めませんでした',
-      empty:
-        'コマンドやイベントリスナーを持つプラグインはまだインストールされていません。',
+      empty: 'まだプラグインが追加されていません。',
       browseMarket: 'プラグインをインストール',
       registrationsUnknown:
         'Plugin Runtime が古いため、各プラグインが登録したフックを取得できません。',
       globallyDisabled: 'プラグイン無効',
       hooksUnknown: 'フック不明',
       enablePlugin: 'このボットで {{plugin}} を有効にする',
+      allEnabledHint:
+        'すべてのプラグインが有効です。今後インストールするプラグインも自動で有効になります。',
+      notInstalled: '未インストール',
+      remove: '{{plugin}} を削除',
+      kinds: {
+        command: 'コマンド',
+        hook: 'チャットイベントフック',
+      },
+      add: {
+        button: 'プラグインを追加',
+        title: 'プラグインを追加',
+        description:
+          'コマンドまたはチャットイベントフックを提供するプラグインを選びます。ボットを保存すると反映されます。',
+        installed: 'インストール済み',
+        marketplace: 'マーケットから',
+        noInstalled:
+          'インストール済みのコマンド・フックプラグインはすべて追加済みです。',
+        search: 'プラグインを検索',
+        all: 'すべて',
+        loading: 'マーケットを読み込み中…',
+        unavailable: 'マーケットに接続できません',
+        noMarketplace: '該当するプラグインがマーケットにありません。',
+        viewMarketplace: 'マーケットで見る',
+        confirm: '{{count}} 個のプラグインを追加',
+        installAndAdd: '{{plugin}} をインストールして追加',
+        installedAdded:
+          '{{plugin}} をインストールして追加しました。ボットを保存すると反映されます。',
+        installFailed: 'インストールに失敗しました',
+        alreadyAdded: '追加済み',
+      },
       commands: {
         botWide:
           'コマンドのオン/オフ、プレフィックス、コマンド設定はボット全体に適用されます。「ボットの既定」で変更してください。',
@@ -2115,7 +2144,7 @@ const jaJP = {
   plugins: {
     enabledOnBots: '{{count}} 個のボットで有効です',
     notEnabledOnBots:
-      'このプラグインはまだどのボットでも有効ではないため、コマンドとリスナーは動作しません。',
+      'このプラグインはまだどのボットでも有効ではないため、コマンドとチャットイベントフックは動作しません。',
     goEnable: '有効にする',
     title: '拡張機能',
     description:
@@ -2207,7 +2236,7 @@ const jaJP = {
     modifyFailed: '変更に失敗しました：',
     componentName: {
       Tool: 'ツール',
-      EventListener: 'イベント監視器',
+      EventListener: 'チャットイベントフック',
       Command: 'コマンド',
       KnowledgeEngine: '知識エンジン',
       Parser: 'パーサー',
@@ -2550,7 +2579,7 @@ const jaJP = {
       followUp: {
         nextSteps: '次のステップ',
         agents: 'Agent またはプラグインプロセッサを作成',
-        bots: 'ボットの「プラグイン」タブでコマンドとリスナーを有効化',
+        bots: 'ボットの「プラグイン」タブで追加して、コマンドとフックを使う',
         pipelines: 'チャットを作成',
         knowledge: 'ナレッジベースを作成',
       },
@@ -2641,11 +2670,11 @@ const jaJP = {
     markAsReadFailed: '既読に設定に失敗しました',
     filterByComponent: 'プラグインコンポーネント',
     filterByComponentHint:
-      'プラグインが提供する機能の種類です（ツール、コマンド、イベントリスナーなど）。LangBot のさまざまな機能を拡張するために使われます。コンポーネントで絞り込むと、その機能を提供するプラグインのみを表示できます。',
+      'プラグインが提供する機能の種類です（ツール、コマンド、チャットイベントフック（EventListener）など）。LangBot のさまざまな機能を拡張するために使われます。コンポーネントで絞り込むと、その機能を提供するプラグインのみを表示できます。',
     allComponents: '全部コンポーネント',
     componentName: {
       Tool: 'ツール',
-      EventListener: 'イベント監視器',
+      EventListener: 'チャットイベントフック',
       Command: 'コマンド',
       KnowledgeEngine: '知識エンジン',
       Parser: 'パーサー',
@@ -2881,7 +2910,7 @@ const jaJP = {
       selectPlugins: 'プラグインを選択',
       pluginsTitle: 'AI が呼び出せるツール',
       pluginScopeHint:
-        'このチャットの AI が呼び出せるプラグインツールのみを制御します。プラグインのコマンドとイベントリスナーはボットの「プラグイン」タブで有効にします。',
+        'このチャットの AI が呼び出せるプラグインツールのみを制御します。プラグインのコマンドとチャットイベントフックはボットの「プラグイン」タブで追加します。',
       runnerScopeHint:
         'Runner は拡張機能のプラグインスイッチと独立して選択します。対応するプラグインはインストール済みで利用可能である必要があります。',
       mcpServersTitle: 'MCPサーバー',

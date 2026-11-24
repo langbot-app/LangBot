@@ -1065,25 +1065,54 @@ const esES = {
     },
     pluginHooks: {
       tabDescription:
-        'Los plugins de abajo gestionan sus pasos del ciclo de vida del mensaje. Lo que hacen depende de cada plugin; consulta su documentación para ajustarlo.',
+        'Añade aquí plugins para usar sus comandos y hooks de eventos de chat. Consulta la documentación de cada plugin para saber qué hace.',
       routeMode: 'Plugins de esta ruta',
       lifecycleTitle: 'Ciclo de vida del mensaje',
       lifecycleHint: 'Los iconos muestran los plugins activos en cada paso',
       policyCaption: 'Política de mensajes',
-      enableTitle: 'Plugins habilitados',
+      enableTitle: 'Plugins',
       enableHint:
-        'Habilitar un plugin habilita sus comandos y todos sus listeners de eventos.',
+        'Comandos: se ejecutan cuando un usuario envía el prefijo más el nombre del comando. Hooks de eventos de chat: se ejecutan solos en pasos como recibir un mensaje o antes/después de responder.',
       inheritHint:
         'Esta ruta usa la selección de plugins predeterminada del bot. Cambia a Personalizado para elegir plugins para esta ruta.',
       loadFailed: 'No se pudieron cargar los plugins',
-      empty:
-        'Aún no hay plugins instalados con comandos o listeners de eventos.',
+      empty: 'Aún no has añadido plugins.',
       browseMarket: 'Instalar plugins',
       registrationsUnknown:
         'El Plugin Runtime es demasiado antiguo para informar qué hooks registra cada plugin.',
       globallyDisabled: 'Plugin deshabilitado',
       hooksUnknown: 'Hooks desconocidos',
       enablePlugin: 'Habilitar {{plugin}} en este bot',
+      allEnabledHint:
+        'Todos los plugins están habilitados, incluidos los que instales más adelante.',
+      notInstalled: 'No instalado',
+      remove: 'Quitar {{plugin}}',
+      kinds: {
+        command: 'Comandos',
+        hook: 'Hooks de eventos de chat',
+      },
+      add: {
+        button: 'Añadir plugin',
+        title: 'Añadir plugins',
+        description:
+          'Elige plugins que ofrezcan comandos o hooks de eventos de chat. Se aplica al guardar el bot.',
+        installed: 'Instalados',
+        marketplace: 'Del Marketplace',
+        noInstalled:
+          'Ya has añadido todos los plugins instalados con comandos o hooks.',
+        search: 'Buscar plugins',
+        all: 'Todos',
+        loading: 'Cargando el Marketplace…',
+        unavailable: 'No se puede conectar con el Marketplace',
+        noMarketplace: 'No hay plugins que coincidan en el Marketplace.',
+        viewMarketplace: 'Ver en el Marketplace',
+        confirm: 'Añadir {{count}} plugin(s)',
+        installAndAdd: 'Instalar y añadir {{plugin}}',
+        installedAdded:
+          '{{plugin}} instalado y añadido. Guarda el bot para aplicarlo.',
+        installFailed: 'Error al instalar',
+        alreadyAdded: 'Añadido',
+      },
       commands: {
         botWide:
           'El interruptor de comandos, los prefijos y los ajustes de comandos se aplican a todo el bot. Cámbialos en Predeterminado del bot.',
@@ -2133,7 +2162,7 @@ const esES = {
   plugins: {
     enabledOnBots: 'Plugin habilitado en {{count}} bot(s)',
     notEnabledOnBots:
-      'El plugin aún no está habilitado en ningún bot, así que sus comandos y listeners están inactivos.',
+      'El plugin aún no está habilitado en ningún bot, así que sus comandos y hooks de eventos de chat están inactivos.',
     goEnable: 'Habilitar',
     title: 'Extensiones',
     description:
@@ -2227,7 +2256,7 @@ const esES = {
     modifyFailed: 'Error al modificar: ',
     componentName: {
       Tool: 'Herramienta',
-      EventListener: 'Listener de eventos',
+      EventListener: 'Hook de eventos de chat',
       Command: 'Comando',
       KnowledgeEngine: 'Motor de conocimiento',
       Parser: 'Analizador',
@@ -2573,7 +2602,7 @@ const esES = {
       followUp: {
         nextSteps: 'Próximos pasos',
         agents: 'Crea un Agent o un procesador de plugin',
-        bots: 'Activa sus comandos y escuchas en un bot (pestaña Plugins)',
+        bots: 'Añádelo a un bot (pestaña Plugins) para usar sus comandos y hooks',
         pipelines: 'Crea un Chat',
         knowledge: 'Crea una base de conocimiento',
       },
@@ -2664,11 +2693,11 @@ const esES = {
     markAsReadFailed: 'Error al marcar como leído',
     filterByComponent: 'Componente del plugin',
     filterByComponentHint:
-      'Los tipos de capacidad que ofrece un plugin: herramienta (Tool), comando (Command), escucha de eventos (EventListener), etc., usados para ampliar las capacidades de LangBot. Filtra por componente para ver solo los plugins que ofrecen esa capacidad.',
+      'Los tipos de capacidad que ofrece un plugin: herramienta (Tool), comando (Command), hook de eventos de chat (EventListener), etc., usados para ampliar las capacidades de LangBot. Filtra por componente para ver solo los plugins que ofrecen esa capacidad.',
     allComponents: 'Todos los componentes',
     componentName: {
       Tool: 'Herramienta',
-      EventListener: 'Listener de eventos',
+      EventListener: 'Hook de eventos de chat',
       Command: 'Comando',
       KnowledgeEngine: 'Motor de conocimiento',
       Parser: 'Analizador',
@@ -2909,7 +2938,7 @@ const esES = {
       selectPlugins: 'Seleccionar plugins',
       pluginsTitle: 'Herramientas que la IA puede usar',
       pluginScopeHint:
-        'Solo controla qué herramientas de plugins puede llamar la IA de este chat. Los comandos y listeners de eventos se habilitan en la pestaña Plugins del bot.',
+        'Solo controla qué herramientas de plugins puede llamar la IA de este chat. Los comandos y hooks de eventos de chat se añaden en la pestaña Plugins del bot.',
       runnerScopeHint:
         'El Runner se elige aquí independientemente de los interruptores de plugins de extensiones. Su plugin debe estar instalado y disponible.',
       mcpServersTitle: 'Servidores MCP',
