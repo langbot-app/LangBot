@@ -2367,6 +2367,7 @@ const zhHans = {
       followUp: {
         nextSteps: '下一步',
         agents: '新建 Agent 或插件处理器',
+        bots: '到机器人的「插件」页签启用命令和事件监听',
         pipelines: '创建聊天',
         knowledge: '创建知识库',
       },

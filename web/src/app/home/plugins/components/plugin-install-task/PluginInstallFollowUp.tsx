@@ -139,6 +139,11 @@ const FOLLOW_UP_PRESENTATION: Record<
     icon: Bot,
     i18nKey: 'plugins.installProgress.followUp.agents',
   },
+  bots: {
+    to: '/home/bots',
+    icon: Bot,
+    i18nKey: 'plugins.installProgress.followUp.bots',
+  },
   pipelines: {
     to: '/home/pipelines?id=new',
     icon: Blocks,

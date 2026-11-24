@@ -2547,6 +2547,7 @@ const jaJP = {
       followUp: {
         nextSteps: '次のステップ',
         agents: 'Agent またはプラグインプロセッサを作成',
+        bots: 'ボットの「プラグイン」タブでコマンドとリスナーを有効化',
         pipelines: 'チャットを作成',
         knowledge: 'ナレッジベースを作成',
       },

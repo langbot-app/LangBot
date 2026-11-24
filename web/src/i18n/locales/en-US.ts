@@ -2534,6 +2534,7 @@ const enUS = {
       followUp: {
         nextSteps: 'Next steps',
         agents: 'Create an Agent or plugin processor',
+        bots: 'Enable its commands and listeners on a bot (Plugins tab)',
         pipelines: 'Create a chat',
         knowledge: 'Create a knowledge base',
       },

@@ -2514,6 +2514,7 @@ const viVN = {
       followUp: {
         nextSteps: 'Bước tiếp theo',
         agents: 'Tạo Agent hoặc bộ xử lý plugin',
+        bots: 'Bật lệnh và trình lắng nghe trên bot (thẻ Plugin)',
         pipelines: 'Tạo chat',
         knowledge: 'Tạo cơ sở tri thức',
       },

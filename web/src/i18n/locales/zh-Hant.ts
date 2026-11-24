@@ -2364,6 +2364,7 @@ const zhHant = {
       followUp: {
         nextSteps: '下一步',
         agents: '建立 Agent 或插件處理器',
+        bots: '到機器人的「外掛」頁籤啟用指令和事件監聽',
         pipelines: '建立聊天',
         knowledge: '建立知識庫',
       },

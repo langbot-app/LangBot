@@ -2570,6 +2570,7 @@ const esES = {
       followUp: {
         nextSteps: 'Próximos pasos',
         agents: 'Crea un Agent o un procesador de plugin',
+        bots: 'Activa sus comandos y escuchas en un bot (pestaña Plugins)',
         pipelines: 'Crea un Chat',
         knowledge: 'Crea una base de conocimiento',
       },
