@@ -1164,9 +1164,6 @@ const esES = {
       overriddenBy: 'Sobrescrito por {{plugin}} (mayor prioridad)',
     },
     pluginSubscriptions: {
-      marketplace: 'Instalar desde el marketplace',
-      marketplaceHint:
-        'Busca plugins que declaran soporte como procesador de plugins. Al instalarlos aparecen arriba y quedan seleccionados.',
       incompleteEvents:
         'Este bot solo admite algunos de los eventos suscritos ({{events}}). El procesador podría no comportarse como se espera en todos los casos.',
       description:

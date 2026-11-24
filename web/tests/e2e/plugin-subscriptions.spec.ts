@@ -70,7 +70,8 @@ test('creates a configured processor, persists subscriptions separately and reus
   });
   await section.getByRole('button', { name: 'Add plugin processor' }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByRole('button', { name: /Welcome members/ }).click();
+  await dialog.getByRole('combobox', { name: 'Plugin processor' }).click();
+  await page.getByRole('option', { name: /Welcome members/ }).click();
   await dialog.getByLabel('Name', { exact: true }).fill('Customer welcome');
   await dialog.locator('input[name="greeting"]').fill('Welcome aboard');
   await dialog.getByRole('button', { name: 'Create and bind' }).click();

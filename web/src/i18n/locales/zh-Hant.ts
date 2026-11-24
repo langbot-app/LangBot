@@ -1080,9 +1080,6 @@ const zhHant = {
       overriddenBy: '被 {{plugin}} 覆蓋（優先級更高）',
     },
     pluginSubscriptions: {
-      marketplace: '從外掛市場安裝',
-      marketplaceHint:
-        '在市場中尋找宣告支援作為外掛處理器的外掛，安裝後會出現在上方並自動選中。',
       incompleteEvents:
         '目前機器人僅支援部分事件（{{events}}），處理器表現可能不完整。',
       description: '自動接收外掛宣告的事件，與路由規則獨立執行。',

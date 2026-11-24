@@ -1148,9 +1148,6 @@ const enUS = {
       overriddenBy: 'Overridden by {{plugin}} (higher priority)',
     },
     pluginSubscriptions: {
-      marketplace: 'Install from the marketplace',
-      marketplaceHint:
-        'Find plugins that declare plugin processor support. Once installed, they appear above and are selected.',
       incompleteEvents:
         'This bot only supports some of the subscribed events ({{events}}). The processor may not behave as intended in all cases.',
       description:

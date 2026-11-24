@@ -1084,9 +1084,6 @@ const zhHans = {
       overriddenBy: '被 {{plugin}} 覆盖（优先级更高）',
     },
     pluginSubscriptions: {
-      marketplace: '从插件市场安装',
-      marketplaceHint:
-        '在市场中查找声明支持作为插件处理器的插件，安装后会出现在上方并自动选中。',
       incompleteEvents:
         '当前机器人仅支持部分事件（{{events}}），处理器表现可能不完整。',
       description: '自动接收插件声明的事件，与路由规则独立执行。',

@@ -1156,9 +1156,6 @@ const jaJP = {
       overriddenBy: '{{plugin}} により上書き（優先度高）',
     },
     pluginSubscriptions: {
-      marketplace: 'マーケットプレイスからインストール',
-      marketplaceHint:
-        'プラグイン処理に対応すると宣言したプラグインを探せます。インストールすると上に表示され、自動で選択されます。',
       incompleteEvents:
         'このボットは監視対象の一部のイベント（{{events}}）にのみ対応しています。プロセッサーが完全には動作しない可能性があります。',
       description:

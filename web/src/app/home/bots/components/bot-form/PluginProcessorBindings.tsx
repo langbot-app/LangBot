@@ -1,14 +1,7 @@
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import {
-  Check,
-  Plus,
-  Settings2,
-  ScrollText,
-  TriangleAlert,
-  X,
-} from 'lucide-react';
+import { Plus, Settings2, ScrollText, TriangleAlert, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import type {
@@ -431,64 +424,10 @@ export default function PluginProcessorBindings({
             </TabsContent>
             <TabsContent value="new">
               <fieldset disabled={busy} className="space-y-4">
-                <div
-                  className="max-h-60 space-y-2 overflow-y-auto"
-                  role="group"
-                  aria-label={t('agents.eventProcessor.component')}
-                >
-                  {components.map((descriptor) => {
-                    const label = extractI18nObject({
-                      en_US: descriptor.id,
-                      zh_Hans: descriptor.id,
-                      ...descriptor.label,
-                    });
-                    return (
-                      <Button
-                        key={descriptor.id}
-                        type="button"
-                        variant="outline"
-                        aria-pressed={componentRef === descriptor.id}
-                        className="h-auto w-full justify-start gap-3 whitespace-normal p-3 text-left font-normal shadow-none aria-pressed:bg-accent"
-                        onClick={() => pickComponent(descriptor.id)}
-                      >
-                        <AuthenticatedPluginIcon
-                          author={descriptor.plugin_author}
-                          name={descriptor.plugin_name}
-                          className="size-10 shrink-0 rounded-lg border bg-muted object-cover"
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">
-                            {label}
-                          </span>
-                          <span className="block truncate text-sm text-muted-foreground">
-                            {descriptor.plugin_author}/{descriptor.plugin_name}
-                          </span>
-                          <ProcessorEvents
-                            patterns={descriptor.supported_event_patterns}
-                            supportedEvents={supportedEvents}
-                          />
-                        </span>
-                        {componentRef === descriptor.id && (
-                          <Check className="size-4 shrink-0" />
-                        )}
-                      </Button>
-                    );
-                  })}
-                  {components.length === 0 && (
-                    <p className="py-6 text-center text-sm text-muted-foreground">
-                      {t('agents.eventProcessor.noComponents')}
-                    </p>
-                  )}
-                </div>
-                {/* Marketplace plugins that declare processor support,
-                    installable in place; installing selects it above. */}
-                <div className="space-y-2 rounded-lg border border-dashed p-3">
-                  <Label className="text-sm">
-                    {t('bots.pluginSubscriptions.marketplace')}
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    {t('bots.pluginSubscriptions.marketplaceHint')}
-                  </p>
+                {/* One picker: installed processors plus marketplace plugins
+                    that declare processor support, installable in place. */}
+                <div className="space-y-2">
+                  <Label>{t('agents.eventProcessor.component')}</Label>
                   <RunnerSelect
                     usage="event"
                     options={components.map((descriptor) => ({
@@ -499,7 +438,7 @@ export default function PluginProcessorBindings({
                         ...descriptor.label,
                       },
                     }))}
-                    label={t('bots.pluginSubscriptions.marketplace')}
+                    label={t('agents.eventProcessor.component')}
                     value={componentRef}
                     onValueChange={(id) => pickComponent(id)}
                     disabled={busy}
@@ -512,6 +451,14 @@ export default function PluginProcessorBindings({
                       pickComponent(installed.id, installed);
                     }}
                   />
+                  {component && (
+                    <div data-testid="selected-processor-events">
+                      <ProcessorEvents
+                        patterns={component.supported_event_patterns}
+                        supportedEvents={supportedEvents}
+                      />
+                    </div>
+                  )}
                 </div>
                 {component && (
                   <div className="space-y-2">
