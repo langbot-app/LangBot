@@ -12,6 +12,16 @@ from ...entity.persistence.runner_state import RunnerState
 HOST_RESET_RUNNER = '__langbot_context_reset__'
 
 
+async def reset_conversation(ap, query, conversation_id=None):
+    from .query_entry_adapter import QueryEntryAdapter
+
+    conversation_id = conversation_id or QueryEntryAdapter._build_conversation_context(query).conversation_id
+    async with ap.persistence_mgr.tenant_uow(query.workspace_uuid):
+        await reset_runner_context(ap.persistence_mgr, query.workspace_uuid, query.bot_uuid, conversation_id)
+    query.session.using_conversation = None
+    query.session._command_model_uuid = None
+
+
 def reset_scope(workspace, bot, conversation):
     return 'host-reset:' + hashlib.sha256(json.dumps([workspace, bot, conversation]).encode()).hexdigest()
 

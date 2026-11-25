@@ -1,0 +1,24 @@
+---
+title: "系统命令"
+---
+
+使用机器人的命令前缀（默认 `/`）。`/reset` 是 `/new` 的别名。启用的系统命令优先于同名插件命令。
+
+`/undo` 从使用 LocalAgent 的聊天历史中删除最后一轮完整问答。`/retry` 重新生成文本回复，不会撤回平台已经展示的消息。其他处理器会提示不支持。`/model` 只切换当前聊天会话的模型，`/new` 恢复默认模型。
+
+系统和插件命令都可设为 `everyone`（所有人）或 `admins`（仅管理员）。用 `/whoami` 查看发送者 ID，例如 `person_10001`，将其加入机器人的管理员名单。名单为空时没有管理员。无权限时，`silent` 让消息照常路由，`notice` 回复无权限提示。
+
+| 命令 | 系统命令 | 默认开启 | 权限 |
+|---|---|---|---|
+| `/help` | 列出可用命令 | ✓ | everyone |
+| `/new` | 开始新会话 | ✓ | everyone |
+| `/stop` | 停止当前回复 | ✓ | everyone |
+| `/retry` | 重新生成上一条回复 | ✓ | everyone |
+| `/undo` | 删除最后一轮问答 | ✓ | everyone |
+| `/whoami` | 查看发送者和会话 ID | ✓ | everyone |
+| `/status` | 查看会话状态 | ✓ | admins |
+| `/usage` | 查看会话用量 | ✓ | admins |
+| `/model` | 查看或更改会话模型 | — | admins |
+| `/tools` | 列出可用工具 | ✓ | admins |
+| `/plugins` | 列出启用的插件 | ✓ | admins |
+| `/version` | 查看 LangBot 版本 | ✓ | admins |

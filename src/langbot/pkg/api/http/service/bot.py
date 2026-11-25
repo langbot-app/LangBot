@@ -10,6 +10,7 @@ import sqlalchemy
 from ....core import app
 from ....discover import engine
 from ....command import processor as command_processor
+from ....command.permissions import PERMISSION_FIELDS, normalize_permissions
 from ....entity.persistence import agent as persistence_agent
 from ....entity.persistence import bot as persistence_bot
 from ....entity.persistence import pipeline as persistence_pipeline
@@ -798,6 +799,7 @@ class BotService:
             normalized_processors.append({'processor_uuid': processor_uuid, 'enabled': processor_enabled})
 
         normalized = {'enabled': enabled, 'prefixes': normalized_prefixes, 'processors': normalized_processors}
+        normalized.update(normalize_permissions(settings))
         if 'platform_commands' in settings:
             registration = settings['platform_commands']
             if not isinstance(registration, dict) or not isinstance(registration.get('enabled'), bool):
@@ -1191,10 +1193,16 @@ class BotService:
         workspace_uuid = require_workspace_uuid(context)
         current_bindings = None
         if isinstance(bot_data, dict) and (
-            bot_data.get('event_bindings') or isinstance(bot_data.get('message_policy'), dict)
+            bot_data.get('event_bindings')
+            or isinstance(bot_data.get('message_policy'), dict)
+            or isinstance(bot_data.get('command_settings'), dict)
         ):
             stored = await self.get_bot(context, bot_uuid, include_secret=False)
             current_bindings = (stored or {}).get('event_bindings')
+            if isinstance(bot_data.get('command_settings'), dict):
+                existing = (stored or {}).get('command_settings') or {}
+                retained = {key: existing[key] for key in PERMISSION_FIELDS if key in existing}
+                bot_data = {**bot_data, 'command_settings': retained | bot_data['command_settings']}
             if 'message_policy' in bot_data:
                 bot_data = {
                     **bot_data,

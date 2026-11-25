@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from ..cloud.plan_policy import require_workspace_platform
 
-from ..i18n import language_scope
+from ..i18n import language_scope, t
+from ..command.permissions import builtin_settings, can_run
+from ..command.catalog import DESCRIPTIONS
 from ..i18n.workspace import get_workspace_language
 
 import asyncio
@@ -1130,10 +1132,28 @@ class RuntimeBot:
             return None
 
         command_name = command_text.split()[0]
+        canonical = 'new' if command_name == 'reset' else command_name
+        if canonical in DESCRIPTIONS and builtin_settings(command_settings, canonical)['enabled']:
+            return '', canonical, command_text, full_command_text, {}, ''
+
+        for plugin_id, agent, manifest in await self._effective_plugin_commands(event, processors):
+            if command_name == command_processor.command_name(manifest):
+                return (
+                    plugin_id,
+                    command_name,
+                    command_text,
+                    full_command_text,
+                    command_processor.instance_command_config(agent, command_name),
+                    str(agent.get('uuid') or ''),
+                )
+        return None
+
+    async def _effective_plugin_commands(self, event, processors):
+        from ..command import processor as command_processor
 
         plugin_connector = getattr(self.ap, 'plugin_connector', None)
         if plugin_connector is None:
-            return None
+            return []
 
         resolved = await self._resolve_command_processors(processors)
         query = getattr(event, '_entry_query', None)
@@ -1141,7 +1161,7 @@ class RuntimeBot:
         if allowed is not None:
             resolved = [(name, instance) for name, instance in resolved if name in allowed]
         if not resolved and query is None:
-            return None
+            return []
 
         try:
             available_commands = await plugin_connector.list_commands(
@@ -1149,14 +1169,14 @@ class RuntimeBot:
             )
         except Exception as exc:
             await self.logger.warning(f'Failed to list plugin commands: {exc}')
-            return None
+            return []
 
-        commands_by_plugin: dict[str, set[str]] = {}
+        commands_by_plugin = {}
         for cmd in available_commands:
             owner = str(getattr(cmd, 'owner', '') or '').strip()
             name = command_processor.command_name(cmd)
             if owner and name:
-                commands_by_plugin.setdefault(owner, set()).add(name)
+                commands_by_plugin.setdefault(owner, {})[name] = cmd
 
         # Registered names only, in binding priority order.
         if query is not None:
@@ -1175,18 +1195,7 @@ class RuntimeBot:
                 # the same order lifecycle hooks are dispatched in.
                 position = {name: index for index, name in enumerate(allowed)}
                 resolved.sort(key=lambda item: position.get(item[0], len(position)))
-        for plugin_id, agent in resolved:
-            if command_name in commands_by_plugin.get(plugin_id, set()):
-                return (
-                    plugin_id,
-                    command_name,
-                    command_text,
-                    full_command_text,
-                    command_processor.instance_command_config(agent, command_name),
-                    str(agent.get('uuid') or ''),
-                )
-
-        return None
+        return [(owner, agent, cmd) for owner, agent in resolved for cmd in commands_by_plugin.get(owner, {}).values()]
 
     async def _try_handle_plugin_command(
         self,
@@ -1202,6 +1211,21 @@ class RuntimeBot:
         plugin_id, cmd_name, cmd_text, full_cmd_text, cmd_config, processor_uuid = matched
         query = getattr(event, '_entry_query', None)
         runtime = getattr(query, '_message_policy', None)
+        settings = getattr(self.bot_entity, 'command_settings', None) or {}
+        permission = (
+            settings.get('plugin_permissions', {}).get(f'{plugin_id}/{cmd_name}', 'everyone')
+            if plugin_id
+            else builtin_settings(settings, cmd_name)['permission']
+        )
+        if not can_run(settings, permission, event.sender.id):
+            if settings.get('denied_reply', 'silent') == 'silent':
+                return False
+            chain = platform_message.MessageChain([platform_message.Plain(text=t('Permission denied'))])
+            if runtime is not None:
+                await runtime.send_command_reply(query, chain)
+            else:
+                await adapter.reply_message(message_source=event.to_legacy_event(), message=chain, quote_origin=False)
+            return True
         async with runtime.admit(query, cmd_text) if runtime is not None else contextlib.nullcontext() as item:
             if item:
                 binding = dict(
@@ -1309,13 +1333,16 @@ class RuntimeBot:
                 if ctx.event.reply_message_chain is not None:
                     await query._message_policy.send_command_reply(query, ctx.event.reply_message_chain)
                 return
-            if command_name.lower() == 'stop' and query.pipeline_uuid:
-                query.variables['_stop_command_attempted'] = True
-                run_id = await self.ap.agent_run_orchestrator.cancel_active_from_query(
-                    query, allow_other_actors=is_group_message and cmd_ctx.privilege == 2
-                )
-                if run_id:
-                    query.variables['_stop_command_run_id'] = run_id
+        if not plugin_id:
+            from ..command.builtin import execute_builtin
+
+            text = await execute_builtin(self, event, adapter, command_name, command_text, query, session)
+            chain = platform_message.MessageChain([platform_message.Plain(text=text)])
+            if query is not None:
+                await query._message_policy.send_command_reply(query, chain)
+            else:
+                await adapter.reply_message(message_source=legacy_event, message=chain, quote_origin=False)
+            return
 
         event_type = getattr(event, 'type', None) or 'message.received'
         route_ref = f'plugin_command:{plugin_id}/{command_name}'

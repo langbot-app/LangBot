@@ -1,5 +1,6 @@
 import quart
 from sqlalchemy.exc import IntegrityError
+from langbot.pkg.command.catalog import builtin_commands
 
 from ....authz import Permission, has_permission
 from ....context import RequestContext
@@ -18,6 +19,15 @@ class BotsRouterGroup(group.RouterGroup):
         ), 400
 
     async def initialize(self) -> None:
+        @self.route(
+            '/_/builtin-commands',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def list_builtin_commands(request_context: RequestContext):
+            return self.success(data={'commands': builtin_commands()})
+
         @self.route(
             '',
             methods=['GET'],

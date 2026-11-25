@@ -101,7 +101,7 @@ def test_unselected_invalid_commands_are_not_reported_as_rejected():
         settings(['draw']), [command('Bad'), command('draw')], ['author/first'], TELEGRAM_COMMANDS, 'en-US'
     )
     assert plan['rejected'] == []
-    assert plan['available'][0]['reason'] == 'invalid_name'
+    assert next(item for item in plan['available'] if item['name'] == 'Bad')['reason'] == 'invalid_name'
 
 
 def test_hash_is_stable_and_tracks_description_changes():

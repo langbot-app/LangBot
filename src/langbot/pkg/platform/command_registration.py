@@ -6,6 +6,8 @@ import json
 import typing
 
 import regex
+from ..command.catalog import builtin_commands
+from ..command.permissions import builtin_settings
 from langbot_plugin.api.entities.builtin.platform.events import MessageReceivedEvent
 
 
@@ -76,15 +78,25 @@ def build_command_plan(
     language = language.replace('-', '_')
     selected = set(settings.get('platform_commands', {}).get('selected', []))
     effective = {}
+    reserved = set()
+    for command in builtin_commands():
+        name = command['name']
+        config = builtin_settings(settings, name)
+        if config['enabled']:
+            reserved.update([name, *command['aliases']])
+            if config['permission'] == 'everyone':
+                effective[name] = command['description']
     for plugin_id in plugin_ids:
         for manifest in manifests:
-            if manifest.owner == plugin_id:
-                effective.setdefault(manifest.metadata.name, manifest)
+            name = manifest.metadata.name
+            if manifest.owner == plugin_id and name not in reserved:
+                reserved.add(name)
+                if settings.get('plugin_permissions', {}).get(f'{plugin_id}/{name}', 'everyone') == 'everyone':
+                    effective[name] = descriptions(manifest)
     commands = []
     rejected = []
     available = []
-    for name, manifest in effective.items():
-        localized = descriptions(manifest)
+    for name, localized in effective.items():
         description = localized.get(language) or localized.get('en_US') or next(iter(localized.values()), '')
         reason = None
         if not regex.fullmatch(capability.name_pattern, name) or (capability.lowercase and name.lower() != name):

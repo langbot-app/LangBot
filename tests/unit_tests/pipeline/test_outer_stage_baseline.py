@@ -103,7 +103,7 @@ async def test_group_respond_rules(app, sample_query, rules, components, expecte
 
 
 @pytest.mark.asyncio
-async def test_group_stop_command_bypasses_group_rules(app, sample_query):
+async def test_unhandled_stop_obeys_group_rules(app, sample_query):
     harness.as_group(sample_query)
     harness.set_text(sample_query, '/stop')
     config = harness.legacy_config(
@@ -112,7 +112,7 @@ async def test_group_stop_command_bypasses_group_rules(app, sample_query):
 
     result = await harness.run_stage(app, sample_query, 'GroupRespondRuleCheckStage', config)
 
-    assert result.result_type == CONTINUE
+    assert result.result_type == INTERRUPT
 
 
 @pytest.mark.asyncio

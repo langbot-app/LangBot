@@ -113,7 +113,7 @@ async def test_busy_command_is_not_claimed_as_steering():
 
 
 @pytest.mark.asyncio
-async def test_busy_stop_requests_active_run_cancellation():
+async def test_busy_stop_cannot_cancel_from_chat():
     from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
 
     app = make_app()
@@ -125,11 +125,7 @@ async def test_busy_stop_requests_active_run_cancellation():
     claimed = await Controller(app)._try_claim_steering_before_session_slot(query)
 
     assert claimed is False
-    app.agent_run_orchestrator.cancel_active_from_query.assert_awaited_once_with(
-        query,
-        allow_other_actors=False,
-    )
-    assert query.variables['_stop_command_run_id'] == 'run-stop'
+    app.agent_run_orchestrator.cancel_active_from_query.assert_not_awaited()
     app.agent_run_orchestrator.try_claim_steering_from_query.assert_not_awaited()
 
 
@@ -172,7 +168,7 @@ async def test_busy_group_steering_obeys_response_rules(sample_query, text, expe
 
 
 @pytest.mark.asyncio
-async def test_busy_group_stop_bypasses_response_rule_gate(sample_query):
+async def test_busy_group_stop_obeys_group_rules(sample_query):
     from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes, Session
     from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
 
@@ -197,17 +193,13 @@ async def test_busy_group_stop_bypasses_response_rule_gate(sample_query):
     claimed = await Controller(app)._try_claim_steering_before_session_slot(sample_query)
 
     assert claimed is False
-    app.cmd_mgr.resolve_privilege.assert_awaited_once_with(sample_query)
-    app.agent_run_orchestrator.cancel_active_from_query.assert_awaited_once_with(
-        sample_query,
-        allow_other_actors=False,
-    )
-    assert sample_query.variables['_stop_command_run_id'] == 'run-group-stop'
+    app.cmd_mgr.resolve_privilege.assert_not_awaited()
+    app.agent_run_orchestrator.cancel_active_from_query.assert_not_awaited()
     app.agent_run_orchestrator.try_claim_steering_from_query.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_busy_group_admin_can_stop_another_members_run(sample_query):
+async def test_busy_group_stop_cannot_cancel_as_legacy_admin(sample_query):
     from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes, Session
     from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
 
@@ -228,15 +220,11 @@ async def test_busy_group_admin_can_stop_another_members_run(sample_query):
     claimed = await Controller(app)._try_claim_steering_before_session_slot(sample_query)
 
     assert claimed is False
-    app.agent_run_orchestrator.cancel_active_from_query.assert_awaited_once_with(
-        sample_query,
-        allow_other_actors=True,
-    )
-    assert sample_query.variables['_stop_command_run_id'] == 'run-admin-stop'
+    app.agent_run_orchestrator.cancel_active_from_query.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_busy_group_mention_stop_still_requests_cancellation():
+async def test_busy_group_mention_stop_does_not_cancel():
     from langbot_plugin.api.entities.builtin.platform.message import At, MessageChain, Plain
 
     app = make_app()
@@ -251,11 +239,7 @@ async def test_busy_group_mention_stop_still_requests_cancellation():
     claimed = await Controller(app)._try_claim_steering_before_session_slot(query)
 
     assert claimed is False
-    app.agent_run_orchestrator.cancel_active_from_query.assert_awaited_once_with(
-        query,
-        allow_other_actors=False,
-    )
-    assert query.variables['_stop_command_run_id'] == 'run-mention-stop'
+    app.agent_run_orchestrator.cancel_active_from_query.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -291,7 +275,7 @@ async def test_busy_group_command_is_recognized_after_trigger_prefix_is_removed(
 
 
 @pytest.mark.asyncio
-async def test_stop_is_handled_before_an_available_second_session_slot():
+async def test_unhandled_stop_uses_an_available_second_session_slot():
     from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
 
     app = make_app()
@@ -309,7 +293,7 @@ async def test_stop_is_handled_before_an_available_second_session_slot():
         )
     )
     runtime_pipeline = SimpleNamespace(run=AsyncMock())
-    app.pipeline_mgr.get_pipeline_by_uuid = AsyncMock(side_effect=[make_pipeline(), runtime_pipeline])
+    app.pipeline_mgr.get_pipeline_by_uuid = AsyncMock(return_value=runtime_pipeline)
     app.agent_run_orchestrator.cancel_active_from_query.return_value = 'run-already-active'
 
     worker_tasks = []
@@ -358,11 +342,7 @@ async def test_stop_is_handled_before_an_available_second_session_slot():
         with pytest.raises(asyncio.CancelledError):
             await consumer_task
 
-    app.agent_run_orchestrator.cancel_active_from_query.assert_awaited_once_with(
-        query,
-        allow_other_actors=False,
-    )
-    assert query.variables['_stop_command_run_id'] == 'run-already-active'
+    app.agent_run_orchestrator.cancel_active_from_query.assert_not_awaited()
     runtime_pipeline.run.assert_awaited_once_with(query)
     assert session._semaphore._value == 2
 

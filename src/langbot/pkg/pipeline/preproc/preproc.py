@@ -227,6 +227,7 @@ class PreProcessor(stage.PipelineStage):
         llm_model = None
         if uses_host_models:
             primary_uuid, fallback_uuids = config_schema.extract_model_selection(descriptor, runner_config)
+            primary_uuid = getattr(session, '_command_model_uuid', None) or primary_uuid
             llm_model = await self._resolve_llm_model(query, primary_uuid)
             valid_fallbacks = await self._resolve_fallback_models(query, fallback_uuids)
             if valid_fallbacks:

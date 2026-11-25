@@ -61,4 +61,4 @@ For member join/leave events, there is no originating channel. Replies use the s
 - **Restricted network**: the LangBot environment needs access to Discord Gateway, API, and attachment CDN. Configure a proxy appropriate to your deployment if required.
 - **Screenshots**: exclude tokens and real users' private conversations.
 
-- **Attachment 404 errors in an old conversation**: Discord attachment URLs expire, and an old image can also break later text-only requests. Upload the attachment again and reset the conversation context. With EssentialCommands installed, send `!reset` (use your configured command prefix). Resetting context preserves monitoring records.
+- **Attachment 404 errors in an old conversation**: Discord attachment URLs expire, and an old image can also break later text-only requests. Upload the attachment again and reset the conversation context. Send `/new` to [start a new conversation](/en/deploy/system-commands) using your configured prefix. Resetting context preserves monitoring records.

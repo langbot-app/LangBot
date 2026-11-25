@@ -33,12 +33,13 @@ RuntimeBot._begin_message
   message_policy_mgr.bind_query
   platform notifications (MessageReceived, observe only)
   *MessageReceived                            prevent_default ends the message
-  plugin command?  admit → *CommandSent → execute → outbound
+  permitted system or plugin command?  admit → *CommandSent → execute → outbound
   else             admit → Chat stage chain | Agent → outbound
 ```
 
 - `*MessageReceived` fires once, at the bot entry, before group response rules, including for messages a route rule discards and for every raw message when aggregation is on. Queries that enter a pipeline directly (`pipeline.run`, adapter-enqueued queries) fire it in the pipeline fallback; `_message_received_dispatched` prevents a second dispatch.
 - Commands match "prefix + registered command name" before route rules, use the policy of the route the message would otherwise match (bot default when none), and do not aggregate. Hooks and commands share the entry Query, so `reply()`, `get_bot_uuid()` and query variables work.
+- Enabled system names and aliases take precedence over plugin names. Permission is checked against the sender (`person_<id>`), including in groups. A silent denial resumes normal routing, never a lower-priority command. Notice mode replies without executing the command. `/help` uses the same winner and permission checks.
 - `*NormalMessageReceived` and `NormalMessageResponded` run in the Chat stage chain as before and around Agent dispatch. `PromptPreProcessing` is Chat-only. On streaming replies `NormalMessageResponded` is a notification only.
 - Platform notifications (`MessageDeleted`, `GroupMemberJoined`, ... via `_eba_event_to_plugin_event`) go to enabled plugins, observe only. Producing adapters: `dev-docs/event-based-agents/adapters/00-index.md`.
 

@@ -70,8 +70,8 @@ async def test_group_message_no_match(mock_app, sample_query):
 
 
 @pytest.mark.asyncio
-async def test_group_stop_command_bypasses_response_rules(mock_app, sample_query):
-    resprule, entities, rule, _ = get_modules()
+async def test_unhandled_group_stop_obeys_response_rules(mock_app, sample_query):
+    resprule, entities, rule, rule_entities = get_modules()
     mock_app.platform_mgr = None
     mock_app.bot_service = Mock(
         get_bot=AsyncMock(return_value={'command_settings': {'enabled': True, 'prefixes': ['!', '！']}})
@@ -83,7 +83,9 @@ async def test_group_stop_command_bypasses_response_rules(mock_app, sample_query
         'trigger': {'group-respond-rules': {'at': True, 'prefix': [], 'regexp': [], 'random': 0}}
     }
     mock_rule = Mock(spec=rule.GroupRespondRule)
-    mock_rule.match = AsyncMock()
+    mock_rule.match = AsyncMock(
+        return_value=rule_entities.RuleJudgeResult(matching=False, replacement=sample_query.message_chain)
+    )
     stage = resprule.GroupRespondRuleCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
     policy = await bind_policy(mock_app, sample_query)
@@ -91,8 +93,8 @@ async def test_group_stop_command_bypasses_response_rules(mock_app, sample_query
 
     result = await stage.process(sample_query, 'GroupRespondRuleCheckStage')
 
-    assert result.result_type == entities.ResultType.CONTINUE
-    mock_rule.match.assert_not_awaited()
+    assert result.result_type == entities.ResultType.INTERRUPT
+    mock_rule.match.assert_awaited_once()
 
 
 @pytest.mark.asyncio

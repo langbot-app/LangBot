@@ -37,30 +37,6 @@ class Controller:
             sorted(cmd_prefixes, key=len, reverse=True),
         )
 
-    async def _handle_stop_command(
-        self,
-        query: pipeline_query.Query,
-        original_query: pipeline_query.Query,
-    ) -> None:
-        """Cancel an authorized active run and retain the result for CommandHandler."""
-
-        if original_query.variables.get('_stop_command_attempted'):
-            return
-        query.variables['_stop_command_attempted'] = True
-        original_query.variables['_stop_command_attempted'] = True
-        allow_other_actors = False
-        if getattr(getattr(query, 'launcher_type', None), 'value', None) == 'group':
-            allow_other_actors = await self.ap.cmd_mgr.resolve_privilege(original_query) >= 2
-        run_id = await self.ap.agent_run_orchestrator.cancel_active_from_query(
-            query,
-            allow_other_actors=allow_other_actors,
-        )
-        if query.variables.get('_stop_command_denied'):
-            original_query.variables['_stop_command_denied'] = True
-        if run_id:
-            query.variables['_stop_command_run_id'] = run_id
-            original_query.variables['_stop_command_run_id'] = run_id
-
     async def _assert_query_execution_active(
         self,
         query: pipeline_query.Query,
@@ -83,7 +59,6 @@ class Controller:
         """Offer follow-up input to an active Runner before it queues."""
 
         try:
-            original_query = query
             pipeline_uuid = query.pipeline_uuid
             if not pipeline_uuid:
                 return False
@@ -103,11 +78,6 @@ class Controller:
             query.variables['_pipeline_workspace_operations'] = getattr(pipeline, 'workspace_operations', [])
             query.variables['_pipeline_allowed_platform_tools'] = getattr(pipeline, 'allowed_platform_tools', [])
             command = await self._command_name(query)
-            if command == 'stop':
-                await self._handle_stop_command(query, original_query)
-                # Control commands bypass ordinary group response rules while a
-                # run owns the session slot, then reach CommandHandler normally.
-                return False
             if getattr(getattr(query, 'launcher_type', None), 'value', None) == 'group':
                 from .resprule.resprule import GroupRespondRuleCheckStage
                 from .entities import ResultType
@@ -125,9 +95,6 @@ class Controller:
                     return False
                 query = candidate
                 command = await self._command_name(query)
-                if command == 'stop':
-                    await self._handle_stop_command(query, original_query)
-                    return False
             if command:
                 # Commands must reach CommandHandler after the active run releases
                 # the session slot. They must never become Runner steering input.
@@ -247,15 +214,6 @@ class Controller:
                                 claimed_steering_query = query
                                 break
                             continue
-
-                        # A stop command must cancel an active run even when the
-                        # session has spare capacity (for example, concurrency=2).
-                        # Otherwise it would occupy the second slot as a normal
-                        # Pipeline query and never reach the cancellation branch.
-                        if await self._command_name(query) == 'stop' and not query.variables.get(
-                            '_stop_command_attempted'
-                        ):
-                            await self._try_claim_steering_before_session_slot(query)
 
                         if not session._semaphore.locked():
                             selected_query = query

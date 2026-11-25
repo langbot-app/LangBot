@@ -774,6 +774,67 @@ def test_http_bot_plugin_lifecycle(runner_client, runner_e2e_tmpdir):
     assert 'no mention' not in counts['ran']
 
 
+def test_http_bot_builtin_commands(runner_client, runner_e2e_tmpdir):
+    client = runner_client
+    token = _init_and_auth(client)
+    headers = {'Authorization': f'Bearer {token}'}
+
+    def data(response):
+        body = response.json()
+        assert body['code'] == 0, body
+        return body['data']
+
+    data(client.put('/api/v1/workspaces/current/language', headers=headers, json={'language': 'zh_Hans'}))
+    pipeline = data(client.post('/api/v1/pipelines', headers=headers, json={'name': 'QA Chat'}))['uuid']
+    catalog = data(client.get('/api/v1/platform/bots/_/builtin-commands', headers=headers))['commands']
+    assert len(catalog) == 12
+    print('catalog:', catalog[0])
+    settings = {'admins': ['person_admin'], 'denied_reply': 'silent', 'builtin': {}, 'plugin_permissions': {}}
+    bot = data(
+        client.post(
+            '/api/v1/platform/bots',
+            headers=headers,
+            json={
+                'adapter': 'http_bot',
+                'name': 'QA Bot',
+                'enable': True,
+                'command_settings': settings,
+                'adapter_config': {'signature_required': False, 'callback_timeout': 2},
+                'event_bindings': [
+                    {
+                        'event_pattern': 'message.received',
+                        'target_type': 'pipeline',
+                        'target_uuid': pipeline,
+                        'filters': [{'field': 'message_text', 'operator': 'contains', 'value': '/new'}],
+                    }
+                ],
+            },
+        )
+    )['uuid']
+    url = f'/api/v1/platform/bots/{bot}'
+    stored = data(client.get(url, headers=headers))['bot']['command_settings']
+    print('command_settings:', stored)
+
+    def send(command, sender):
+        response = data(
+            client.post(
+                f'/bots/{bot}/sync',
+                json={'session_id': sender, 'session_type': 'person', 'message': [{'type': 'Plain', 'text': command}]},
+            )
+        )
+        text = '\n'.join(part['text'] for part in response['message'] if part.get('type') == 'Plain')
+        print(sender, command, repr(text))
+        return text
+
+    assert '/help — 列出可用命令' in send('/help', 'user')
+    assert 'person_user' in send('/whoami', 'user')
+    assert '已开始新会话' in send('/new', 'user')
+    assert '机器人：QA Bot' in send('/status', 'admin')
+    assert send('/status', 'user') == ''
+    data(client.put(url, headers=headers, json={'command_settings': {'denied_reply': 'notice'}}))
+    assert send('/status', 'user') == '没有执行此操作的权限'
+
+
 def test_http_agent_message_policy(runner_client, runner_e2e_tmpdir):
     client = runner_client
     token = _init_and_auth(client)

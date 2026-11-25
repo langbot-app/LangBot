@@ -78,6 +78,20 @@ async def context_service(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_pop_last_turn_preserves_other_bot_and_previous_turn(context_service):
+    _, engine = context_service
+    store = TranscriptStore(engine)
+    for bot in ('b', 'other'):
+        for role, text in [('user', 'first'), ('assistant', 'one'), ('user', 'second'), ('assistant', 'two')]:
+            await store.append_transcript(None, 'event', 'person_u', role, bot_id=bot, workspace_id='w', content=text)
+    previous = await store.pop_last_turn('person_u', 'b', 'w', None, require_text=True)
+    assert previous.content == 'second'
+    for bot, expected in [('b', ['first', 'one']), ('other', ['first', 'one', 'second', 'two'])]:
+        messages = await store.get_legacy_provider_messages('person_u', bot_id=bot, workspace_id='w')
+        assert [message.content for message in messages] == expected
+
+
+@pytest.mark.asyncio
 async def test_reset_preserves_logs_and_isolates_context(context_service):
     service, engine = context_service
     store = TranscriptStore(engine)

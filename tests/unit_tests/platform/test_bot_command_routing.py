@@ -148,6 +148,49 @@ async def test_onebot_recall_notifies_selected_plugins_without_consuming_event()
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('permission', ['everyone', 'admins'])
+@pytest.mark.parametrize('admin', [True, False])
+@pytest.mark.parametrize('denied', ['silent', 'notice'])
+async def test_plugin_command_permissions(permission, admin, denied):
+    event = make_message_event('/draw', chat_type='group')
+    bot = make_bot(
+        {
+            'processors': [{'plugin_id': 'author/draw'}],
+            'plugin_permissions': {'author/draw/draw': permission},
+            'admins': [f'person_{event.sender.id}'] if admin else [],
+            'denied_reply': denied,
+        }
+    )
+    bot.ap.plugin_connector.list_commands.return_value = [FakeCommandManifest('author/draw', 'draw')]
+    bot._execute_matched_plugin_command = AsyncMock()
+    adapter = SimpleNamespace(reply_message=AsyncMock())
+    result = await bot._try_handle_plugin_command(event, adapter)
+    allowed = permission == 'everyone' or admin
+    assert result is (allowed or denied == 'notice')
+    assert bot._execute_matched_plugin_command.await_count == int(allowed)
+    assert adapter.reply_message.await_count == int(not allowed and denied == 'notice')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'text,builtin,enabled,expected',
+    [
+        ('/new', True, True, ('', 'new')),
+        ('/reset', True, True, ('', 'new')),
+        ('/new', False, True, ('author/example', 'new')),
+        ('/new', True, False, None),
+    ],
+)
+async def test_system_command_resolution(text, builtin, enabled, expected):
+    bot = make_bot(
+        {'enabled': enabled, 'builtin': {'new': {'enabled': builtin}}, 'processors': [{'plugin_id': 'author/example'}]}
+    )
+    bot.ap.plugin_connector.list_commands.return_value = [FakeCommandManifest('author/example', 'new')]
+    match = await bot._match_plugin_command(make_message_event(text))
+    assert (match[:2] if match else None) == expected
+
+
+@pytest.mark.asyncio
 async def test_non_message_received_event_does_not_hit():
     """Non message.received event (e.g. MemberJoinedEvent) does not match plugin command."""
     bot = make_bot(

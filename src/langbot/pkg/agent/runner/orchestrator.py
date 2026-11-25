@@ -985,13 +985,16 @@ class AgentRunOrchestrator:
             binding.runner_id,
             plan.bound_plugins,
         )
+        return await self.cancel_active_from_event(event, descriptor.id, allow_other_actors, query)
+
+    async def cancel_active_from_event(self, event, runner_id, allow_other_actors=False, query=None):
         actor = getattr(event, 'actor', None)
         actor_id = getattr(actor, 'actor_id', None)
         if not allow_other_actors and not actor_id:
             return None
         target_run_id = await self._session_registry.find_active_target(
             conversation_id=event.conversation_id,
-            runner_id=descriptor.id,
+            runner_id=runner_id,
             bot_id=event.bot_id,
             workspace_id=event.workspace_id,
             thread_id=event.thread_id,
@@ -1000,12 +1003,12 @@ class AgentRunOrchestrator:
         if target_run_id is None and not allow_other_actors:
             other_actor_run_id = await self._session_registry.find_active_target(
                 conversation_id=event.conversation_id,
-                runner_id=descriptor.id,
+                runner_id=runner_id,
                 bot_id=event.bot_id,
                 workspace_id=event.workspace_id,
                 thread_id=event.thread_id,
             )
-            if other_actor_run_id is not None:
+            if other_actor_run_id is not None and query is not None:
                 query.variables['_stop_command_denied'] = True
         if target_run_id is None:
             return None
