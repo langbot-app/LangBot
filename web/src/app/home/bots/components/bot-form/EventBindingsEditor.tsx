@@ -1353,9 +1353,10 @@ function BindingCardContent({
           {globalIndex + 1}
         </Badge>
 
-        <button
+        <Button
           type="button"
-          className="min-w-0 flex-1 rounded-md px-1 py-0.5 text-left hover:bg-muted/50"
+          variant="ghost"
+          className="h-auto min-w-0 flex-1 flex-col items-stretch gap-0 rounded-md px-1 py-0.5 text-left font-normal hover:bg-muted/50"
           onClick={() => onToggleExpand(id)}
           aria-expanded={isExpanded}
           data-testid="route-summary"
@@ -1373,7 +1374,7 @@ function BindingCardContent({
               {t('bots.unsupportedPipelineEvent')}
             </span>
           )}
-        </button>
+        </Button>
 
         <div className="flex shrink-0 items-center gap-1">
           <Switch

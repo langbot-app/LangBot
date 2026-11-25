@@ -291,9 +291,10 @@ export default function AgentCreateContent({
             : 'hover:bg-muted/40'
         }`}
       >
-        <button
+        <Button
           type="button"
-          className="flex w-full items-start gap-3 text-left"
+          variant="ghost"
+          className="h-auto w-full items-start justify-start gap-3 whitespace-normal p-0 text-left font-normal hover:bg-transparent"
           data-processor-kind={
             pluginOptions.length === 1 ? pluginOptions[0].kind : undefined
           }
@@ -316,7 +317,7 @@ export default function AgentCreateContent({
               {t('agents.fromPluginDescription')}
             </span>
           </span>
-        </button>
+        </Button>
         {/* A single plugin kind needs no second choice. */}
         {pluginOptions.length > 1 && (
           <div className="mt-3 flex flex-wrap gap-2 pl-12">

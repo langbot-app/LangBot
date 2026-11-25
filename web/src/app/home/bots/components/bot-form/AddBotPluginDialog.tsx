@@ -26,6 +26,7 @@ import MarketplaceInstallButton from '@/app/home/components/MarketplaceInstallBu
 import { pluginComponentIconMap } from '@/app/home/plugins/components/plugin-market/PluginComponentIcons';
 import { AuthenticatedPluginIcon } from '@/components/AuthenticatedPluginIcon';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -359,10 +360,10 @@ export default function AddBotPluginDialog({
             className="min-h-0 space-y-2 overflow-y-auto"
           >
             {installedRows.map((item) => (
-              <label
+              <Label
                 key={item.id}
                 data-addable-plugin={item.id}
-                className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 hover:bg-accent"
+                className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 font-normal leading-normal hover:bg-accent"
               >
                 <Checkbox
                   checked={selected.includes(item.id)}
@@ -394,7 +395,7 @@ export default function AddBotPluginDialog({
                     hooks={item.hasHooks}
                   />
                 </span>
-              </label>
+              </Label>
             ))}
             {installedRows.length === 0 && (
               <p className="py-4 text-center text-sm text-muted-foreground">
@@ -407,13 +408,14 @@ export default function AddBotPluginDialog({
             className="min-h-0 space-y-2 overflow-y-auto"
           >
             {catalogError ? (
-              <button
+              <Button
                 type="button"
-                className="w-full py-4 text-center text-sm text-destructive"
+                variant="ghost"
+                className="w-full py-4 text-destructive hover:text-destructive"
                 onClick={() => void loadCatalog()}
               >
                 {t('bots.pluginHooks.add.unavailable')}
-              </button>
+              </Button>
             ) : catalog === null ? (
               <p className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
@@ -508,15 +510,21 @@ export default function AddBotPluginDialog({
                 );
               })
             )}
-            <a
-              href="https://space.langbot.app/market?type=plugin"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-1 py-1 text-xs text-muted-foreground hover:text-foreground"
+            <Button
+              asChild
+              variant="link"
+              size="sm"
+              className="w-full text-xs text-muted-foreground hover:text-foreground"
             >
-              {t('bots.pluginHooks.add.viewMarketplace')}
-              <ExternalLink className="size-3" />
-            </a>
+              <a
+                href="https://space.langbot.app/market?type=plugin"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {t('bots.pluginHooks.add.viewMarketplace')}
+                <ExternalLink className="size-3" />
+              </a>
+            </Button>
           </TabsContent>
         </Tabs>
         <DialogFooter>

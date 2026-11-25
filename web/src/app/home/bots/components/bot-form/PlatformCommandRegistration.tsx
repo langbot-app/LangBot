@@ -8,6 +8,7 @@ import type {
 } from '@/app/infra/entities/api';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 
@@ -67,7 +68,7 @@ export default function PlatformCommandRegistration({
       className="space-y-3 rounded-lg border p-3"
       aria-label={t('bots.platformCommands.title')}
     >
-      <label className="flex items-center justify-between gap-3 text-sm font-medium">
+      <Label className="flex items-center justify-between gap-3 text-sm font-medium">
         {t('bots.platformCommands.title')}
         <Switch
           checked={registration.enabled}
@@ -78,7 +79,7 @@ export default function PlatformCommandRegistration({
             })
           }
         />
-      </label>
+      </Label>
       {registration.enabled && (
         <>
           <div className="space-y-1 text-xs">
@@ -100,7 +101,7 @@ export default function PlatformCommandRegistration({
           </div>
           <div className="flex flex-wrap gap-1.5">
             {names.map((name) => (
-              <label
+              <Label
                 key={name}
                 className="flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs has-[[data-state=checked]]:border-primary/50 has-[[data-state=checked]]:bg-primary/5"
               >
@@ -122,7 +123,7 @@ export default function PlatformCommandRegistration({
                   }
                 />
                 <code>/{name}</code>
-              </label>
+              </Label>
             ))}
           </div>
         </>

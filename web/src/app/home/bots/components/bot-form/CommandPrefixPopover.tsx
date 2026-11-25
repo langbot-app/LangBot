@@ -75,14 +75,16 @@ export default function CommandPrefixPopover({
             >
               {prefix}
               {prefixes.length > 1 && (
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon"
                   onClick={() => remove(prefix)}
-                  className="rounded-full p-0.5 text-muted-foreground hover:text-foreground"
+                  className="size-4 rounded-full text-muted-foreground hover:text-foreground"
                   aria-label={`${t('common.remove')} ${prefix}`}
                 >
                   <X className="size-3" />
-                </button>
+                </Button>
               )}
             </Badge>
           ))}

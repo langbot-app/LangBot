@@ -21,6 +21,7 @@ import type {
   MessagePolicySectionName,
 } from '@/app/infra/entities/api';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Collapsible,
@@ -90,15 +91,17 @@ function ListInput({
               className={cn('gap-1 pr-1 text-xs', mono && 'font-mono')}
             >
               {item}
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon"
                 disabled={disabled}
                 aria-label={`remove ${item}`}
-                className="rounded-sm p-0.5 hover:bg-background/60"
+                className="size-4 rounded-sm hover:bg-background/60"
                 onClick={() => onChange(value.filter((v) => v !== item))}
               >
                 <X className="size-3" />
-              </button>
+              </Button>
             </Badge>
           ))}
         </div>
@@ -208,9 +211,10 @@ function SettingRow({
   return (
     <Collapsible open={open} onOpenChange={setOpen} data-policy-setting={id}>
       <CollapsibleTrigger asChild>
-        <button
+        <Button
           type="button"
-          className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40"
+          variant="ghost"
+          className="h-auto w-full justify-start gap-3 rounded-none px-4 py-3 text-left font-normal hover:bg-muted/40"
         >
           <Icon className="size-4 shrink-0 text-muted-foreground" />
           <span className="w-32 shrink-0 text-sm font-medium sm:w-40">
@@ -234,7 +238,7 @@ function SettingRow({
               open && 'rotate-90',
             )}
           />
-        </button>
+        </Button>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="space-y-4 border-t bg-muted/20 px-4 py-4 sm:pl-11">
@@ -411,7 +415,7 @@ export default function PolicySettings({
               <p className="text-xs text-muted-foreground">
                 {t(k('group.anyHint'))}
               </p>
-              <label className="flex items-center gap-2 text-sm">
+              <Label className="text-sm font-normal">
                 <Checkbox
                   checked={Boolean(group.at)}
                   disabled={disabled}
@@ -420,7 +424,7 @@ export default function PolicySettings({
                   }
                 />
                 {t(k('group.atLabel'))}
-              </label>
+              </Label>
               <div className="space-y-1.5">
                 <Label className="text-sm font-normal">
                   {t(k('group.prefixLabel'))}

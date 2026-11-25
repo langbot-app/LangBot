@@ -44,14 +44,11 @@ export function CommandOutputView({ output }: { output: CommandOutput }) {
       )}
       {output.image && <p className="text-xs text-muted-foreground">[image]</p>}
       {output.file_url && (
-        <a
-          href={output.file_url}
-          target="_blank"
-          rel="noreferrer"
-          className="text-sm underline"
-        >
-          {output.file_name || output.file_url}
-        </a>
+        <Button asChild variant="link" className="h-auto p-0 text-sm">
+          <a href={output.file_url} target="_blank" rel="noreferrer">
+            {output.file_name || output.file_url}
+          </a>
+        </Button>
       )}
     </div>
   );

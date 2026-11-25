@@ -55,6 +55,7 @@ import BotMessagePolicyPanel from './BotMessagePolicyPanel';
 import { BOT_SCOPE } from './PolicyScopeSelect';
 import { normalizeRouteOverride } from './message-policy';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, useWatch } from 'react-hook-form';
@@ -1445,14 +1446,19 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                     <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
                       {t('bots.pluginHooks.tabDescription')}{' '}
                       {t('bots.pluginHooks.devDocsHint')}{' '}
-                      <a
-                        href={t('bots.pluginHooks.devDocsUrl')}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-medium text-foreground underline underline-offset-4"
+                      <Button
+                        asChild
+                        variant="link"
+                        className="h-auto p-0 text-xs font-medium text-foreground underline underline-offset-4"
                       >
-                        {t('bots.pluginHooks.devDocs')} ↗
-                      </a>
+                        <a
+                          href={t('bots.pluginHooks.devDocsUrl')}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {t('bots.pluginHooks.devDocs')} ↗
+                        </a>
+                      </Button>
                     </p>
                     <BotPluginsPanel
                       botId={initBotId}
