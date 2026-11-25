@@ -845,3 +845,13 @@ async def test_ten_parallel_tool_calls_complete_and_resumed_incomplete_turn_clea
     assert conv['status'] == 'ready'
     assert conv['error'] is None
     assert conv['messages'][-1]['content'] == 'Discovery finished.'
+
+
+def test_turn_input_accepts_up_to_ten_setup_plan_choices():
+    from langbot.pkg.api.http.controller.groups.assistant import TurnInput
+
+    choices = {f'field_{i}': f'option_{i}' for i in range(6)}
+    parsed = TurnInput.model_validate({'revision': 1, 'choices': choices})
+    assert parsed.choices == choices
+    ten_choices = {f'field_{i}': f'option_{i}' for i in range(10)}
+    assert TurnInput.model_validate({'revision': 1, 'choices': ten_choices}).choices == ten_choices

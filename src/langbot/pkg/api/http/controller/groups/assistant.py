@@ -23,7 +23,7 @@ class TurnInput(BaseModel):
     revision: int = Field(ge=0, strict=True)
     text: str | None = Field(default=None, min_length=1, max_length=8000)
     approved: bool | None = Field(default=None, strict=True)
-    choices: dict[str, str] | None = Field(default=None, max_length=4)
+    choices: dict[str, str] | None = Field(default=None, max_length=10)
     continue_run: bool | None = Field(default=None, strict=True)
     model_uuid: UUID | None = None
 
