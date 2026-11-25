@@ -1064,6 +1064,7 @@ const esES = {
         'Las rutas nuevas usan la política de mensajes predeterminada del bot. Puedes definir una para esta ruta en la pestaña Política de mensajes.',
     },
     pluginHooks: {
+      openSettings: 'Abrir ajustes del plugin',
       devDocsHint:
         '¿Quieres crear tu propio plugin de comandos o hooks? Consulta la',
       devDocs: 'documentación de desarrollo de plugins',

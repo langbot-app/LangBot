@@ -991,6 +991,7 @@ const zhHans = {
         '新路由沿用机器人默认消息策略，可在「消息策略」页签单独设置。',
     },
     pluginHooks: {
+      openSettings: '打开插件设置',
       devDocsHint: '想自己开发命令或钩子插件？参见',
       devDocs: '插件开发文档',
       devDocsUrl: 'https://langbot.app/docs/zh/plugin/dev/tutor',

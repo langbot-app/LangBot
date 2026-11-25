@@ -1043,6 +1043,7 @@ const viVN = {
         'Tuyến mới dùng chính sách tin nhắn mặc định của bot. Bạn có thể đặt riêng trong tab Chính sách tin nhắn.',
     },
     pluginHooks: {
+      openSettings: 'Mở cài đặt plugin',
       devDocsHint: 'Muốn tự viết plugin lệnh hoặc hook? Xem',
       devDocs: 'tài liệu phát triển plugin',
       devDocsUrl: 'https://langbot.app/docs/en/plugin/dev/tutor',

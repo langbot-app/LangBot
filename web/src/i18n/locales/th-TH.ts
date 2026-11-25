@@ -1028,6 +1028,7 @@ const thTH = {
         'เส้นทางใหม่ใช้นโยบายข้อความเริ่มต้นของบอท ตั้งค่าเฉพาะได้ในแท็บนโยบายข้อความ',
     },
     pluginHooks: {
+      openSettings: 'เปิดการตั้งค่าปลั๊กอิน',
       devDocsHint: 'อยากพัฒนาปลั๊กอินคำสั่งหรือฮุกเอง? ดู',
       devDocs: 'เอกสารการพัฒนาปลั๊กอิน',
       devDocsUrl: 'https://langbot.app/docs/en/plugin/dev/tutor',

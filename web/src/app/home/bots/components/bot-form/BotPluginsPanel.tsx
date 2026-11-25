@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import {
   Inbox,
   MessageSquareReply,
@@ -12,6 +13,7 @@ import {
   Settings2,
   AlertCircle,
   Blocks,
+  SquareArrowOutUpRight,
   Download,
   Plus,
   X,
@@ -829,6 +831,33 @@ export default function BotPluginsPanel({
                           ))}
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
+                        {row.installed && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                asChild
+                                variant="ghost"
+                                size="icon"
+                                className="size-8"
+                              >
+                                <Link
+                                  to={`/home/extensions?id=${encodeURIComponent(row.id)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  data-testid="plugin-settings-link"
+                                  aria-label={t(
+                                    'bots.pluginHooks.openSettings',
+                                  )}
+                                >
+                                  <SquareArrowOutUpRight className="size-4" />
+                                </Link>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {t('bots.pluginHooks.openSettings')}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
                         {commands.enabled &&
                           !route &&
                           row.installed &&

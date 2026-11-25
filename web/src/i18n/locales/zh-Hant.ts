@@ -987,6 +987,7 @@ const zhHant = {
         '新路由沿用機器人預設訊息策略，可在「訊息策略」頁籤單獨設定。',
     },
     pluginHooks: {
+      openSettings: '開啟插件設定',
       devDocsHint: '想自己開發指令或鉤子插件？參見',
       devDocs: '插件開發文件',
       devDocsUrl: 'https://langbot.app/docs/zh/plugin/dev/tutor',
