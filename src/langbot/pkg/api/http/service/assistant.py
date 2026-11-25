@@ -256,7 +256,7 @@ class AssistantService:
     @staticmethod
     def _calls(message):
         calls = message.get('tool_calls') or []
-        if len(calls) > 8:
+        if len(calls) > 32:
             raise ValueError('Too many tool calls')
         return calls
 
@@ -367,7 +367,11 @@ class AssistantService:
                 'model_request_failed',
                 'model_unavailable',
             }
-            resumable = (investigation_paused or model_error) and conversation['status'] in {'paused', 'failed'}
+            system_error = conversation['error'] in {'turn_failed', 'tool_failed'}
+            resumable = (investigation_paused or model_error or system_error) and conversation['status'] in {
+                'paused',
+                'failed',
+            }
             expected_status = 'approval' if approved is not None else 'choice' if choices is not None else None
             if continue_run:
                 expected_status = conversation['status'] if resumable else None
@@ -448,6 +452,18 @@ class AssistantService:
                         )
                         await self._execute(context, conversation, calls, approved, on_event)
                         uncertain_write = False
+                    # Clean up unfulfilled trailing assistant messages from a prior failed turn so the model context remains valid.
+                    while (
+                        conversation['messages']
+                        and conversation['messages'][-1].get('role') == 'assistant'
+                        and conversation['messages'][-1].get('tool_calls')
+                    ):
+                        tool_calls = conversation['messages'][-1].get('tool_calls') or []
+                        completed = {m.get('tool_call_id') for m in conversation['messages'] if m.get('role') == 'tool'}
+                        if not all(call.get('id') in completed for call in tool_calls):
+                            conversation['messages'].pop()
+                        else:
+                            break
                     round_index = 0
                     repeated_call = None
                     repeated_count = 0
@@ -599,9 +615,11 @@ class AssistantService:
                 await self._save(context, conversation, 'failed', error)
             except Exception as exc:
                 self.ap.logger.warning(
-                    'Management assistant turn failed (%s); conversation=%s',
+                    'Management assistant turn failed (%s: %s); conversation=%s',
                     type(exc).__name__,
+                    exc,
                     conversation_id,
+                    exc_info=True,
                 )
                 await self._save(context, conversation, 'failed', 'turn_failed')
             return conversation

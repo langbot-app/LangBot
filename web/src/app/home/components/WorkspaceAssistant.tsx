@@ -616,7 +616,9 @@ function AssistantPanel({
       conversation?.error === 'model_auth_failed' ||
       conversation?.error === 'model_permission_denied' ||
       conversation?.error === 'model_request_failed' ||
-      conversation?.error === 'model_unavailable') &&
+      conversation?.error === 'model_unavailable' ||
+      conversation?.error === 'turn_failed' ||
+      conversation?.error === 'tool_failed') &&
     (conversation.status === 'paused' || conversation.status === 'failed');
   const [stopping, setStopping] = useState(false);
   const [sessions, setSessions] = useState<

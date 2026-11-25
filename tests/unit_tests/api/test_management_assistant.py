@@ -805,3 +805,43 @@ async def test_stop_is_private_revision_scoped_and_does_not_stop_other_chat(assi
     released.set()
     await asyncio.wait_for(tasks[1], 5)
     assert (await service.get(ctx, ids[1]))['status'] == 'ready'
+
+
+async def test_ten_parallel_tool_calls_complete_and_resumed_incomplete_turn_cleaned(assistant):
+    service, ap, provider = assistant
+    ap.llm_model_service = SimpleNamespace(get_llm_models=AsyncMock(return_value=[]))
+    ap.embedding_models_service = SimpleNamespace(get_embedding_models=AsyncMock(return_value=[]))
+    ap.pipeline_service.get_pipelines = AsyncMock(return_value=[])
+    ap.knowledge_service = SimpleNamespace(
+        get_knowledge_base_summaries=AsyncMock(return_value=[]),
+        list_knowledge_engines=AsyncMock(return_value=[]),
+    )
+    ap.bot_service = SimpleNamespace(get_bots=AsyncMock(return_value=[]))
+    ap.skill_service = SimpleNamespace(list_skills=AsyncMock(return_value=[]))
+
+    kinds = ['skills', 'bots', 'pipelines', 'knowledge_bases', 'plugins', 'models', 'embedding_models']
+    tool_calls = [
+        {
+            'id': f'call-{i}',
+            'type': 'function',
+            'function': {'name': 'list_resources', 'arguments': f'{{"kind": "{kinds[i % len(kinds)]}"}}'},
+        }
+        for i in range(10)
+    ]
+    ten_calls_message = Message.model_validate(
+        {
+            'role': 'assistant',
+            'content': 'Discovering resources...',
+            'tool_calls': tool_calls,
+        }
+    )
+    provider.invoke_llm.side_effect = [
+        ten_calls_message,
+        Message(role='assistant', content='Discovery finished.'),
+    ]
+    ctx = context()
+    cid = (await service.create(ctx))['uuid']
+    conv = await service.turn(ctx, cid, 0, text='Build a bot')
+    assert conv['status'] == 'ready'
+    assert conv['error'] is None
+    assert conv['messages'][-1]['content'] == 'Discovery finished.'
