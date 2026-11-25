@@ -15,7 +15,6 @@ import type { PipelineConfigStage } from '@/app/infra/entities/pipeline';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -29,9 +28,7 @@ import {
   isMessageRoute,
   mergePolicy,
   resolveRoutePolicy,
-  routeDetail,
   routeKey,
-  routeLabel,
   stableJson,
 } from './message-policy';
 
@@ -113,9 +110,6 @@ export default function BotMessagePolicyPanel({
     ? resolveRoutePolicy(baseBot, route.policy)
     : baseBot;
   const editable = !route || routeCustom;
-  const messageRoutes = bindings
-    .map((binding, index) => ({ binding, index }))
-    .filter(({ binding }) => isMessageRoute(binding));
 
   function setRoutePolicy(policy: MessagePolicyOverride | null) {
     const next = [...bindings];
@@ -274,56 +268,6 @@ export default function BotMessagePolicyPanel({
             {t('bots.policy.botDefaultHint')}
             {neutralDefault && ` ${t('bots.policy.neutralDefaultHint')}`}
           </p>
-          {messageRoutes.length > 0 && (
-            <ul
-              className="divide-y rounded-lg border"
-              aria-label={t('bots.policy.routes')}
-            >
-              {messageRoutes.map(({ binding, index }) => (
-                <li
-                  key={routeKey(binding, index)}
-                  className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm"
-                >
-                  <button
-                    type="button"
-                    className="group min-w-0 flex-1 text-left"
-                    onClick={() => onScopeChange(routeKey(binding, index))}
-                  >
-                    <span className="block truncate group-hover:underline">
-                      {routeLabel(binding, index, agents)}
-                    </span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {routeDetail(binding, agents, t)}
-                    </span>
-                  </button>
-                  <Badge
-                    variant={
-                      hasSectionOverride(binding.policy) ? 'default' : 'outline'
-                    }
-                    className="text-[11px]"
-                  >
-                    {t('bots.policy.policyState', {
-                      state: hasSectionOverride(binding.policy)
-                        ? t('bots.policy.custom')
-                        : t('bots.policy.inheritDefault'),
-                    })}
-                  </Badge>
-                  <Badge
-                    variant={
-                      hasPluginOverride(binding.policy) ? 'default' : 'outline'
-                    }
-                    className="text-[11px]"
-                  >
-                    {t('bots.policy.pluginState', {
-                      state: hasPluginOverride(binding.policy)
-                        ? t('bots.policy.custom')
-                        : t('bots.policy.inheritDefault'),
-                    })}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          )}
         </>
       )}
       {route && !routeCustom && (

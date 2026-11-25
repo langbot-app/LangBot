@@ -284,8 +284,10 @@ test('plugins tab shows lifecycle, hook applicability and bot-level enablement',
   // Message policy: promote the Chat route's custom policy to the bot default.
   await page.getByRole('tab', { name: 'Message policy' }).click();
   const policy = page.getByTestId('bot-message-policy');
-  await expect(policy).toContainText('Policy: Custom');
-  await policy.getByRole('button', { name: 'Group chat' }).click();
+  await page.getByRole('combobox', { name: 'Applies to' }).click();
+  const chatRoute = page.getByRole('option', { name: /Group chat/ });
+  await expect(chatRoute).toContainText('Custom');
+  await chatRoute.click();
   await page.screenshot({
     path: 'test-results/bot-policy-route.png',
     fullPage: true,
