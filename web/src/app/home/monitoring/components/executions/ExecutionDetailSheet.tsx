@@ -494,6 +494,10 @@ export default function ExecutionDetailSheet({
             <div className="text-sm leading-6">
               {hasExecutionValue(body) ? (
                 <Value value={body} />
+              ) : hasExecutionValue(primary.content) ? (
+                // Non-message events (member joined, banned, ...) have no
+                // message body; their properties are the readable input.
+                <Value value={primary.content} />
               ) : (
                 <p className="text-muted-foreground">
                   {t('monitoring.unified.noRecords')}
@@ -501,6 +505,7 @@ export default function ExecutionDetailSheet({
               )}
             </div>
             <Value value={primary.attachments} />
+            <RawData value={primary} />
           </div>
         )}
         {items.length > 0 && (
@@ -531,6 +536,9 @@ export default function ExecutionDetailSheet({
                     <span className="ml-auto tabular-nums">
                       {itemTime(item)}
                     </span>
+                  </div>
+                  <div className="text-sm leading-6">
+                    <Value value={item.content} />
                   </div>
                   <RawData value={item} />
                 </div>
