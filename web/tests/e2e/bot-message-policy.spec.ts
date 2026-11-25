@@ -549,3 +549,43 @@ test('route notes are optional and routes are told apart by their conditions', a
   const body = saved[0] as { event_bindings: { description: string }[] };
   expect(body.event_bindings[0].description).toBe('Support group');
 });
+
+test('message policy settings read as summaries and edit in place', async ({
+  page,
+}) => {
+  const saved = await setup(page);
+  await page.goto('/home/bots?id=policy-bot');
+  await page.getByRole('tab', { name: 'Message policy' }).click();
+  const policy = page.getByTestId('bot-message-policy');
+  const groupRow = policy.locator(
+    '[data-policy-setting="group-respond-rules"]',
+  );
+  await expect(groupRow.locator('[data-policy-summary]')).toHaveText(
+    'Reply to every group message',
+  );
+  await groupRow.getByRole('button').first().click();
+  await groupRow
+    .getByRole('radio', { name: 'Only when conditions match' })
+    .click();
+  await expect(groupRow.locator('[data-policy-summary]')).toContainText(
+    'No condition set',
+  );
+  await groupRow.getByText('When the bot is @-mentioned').click();
+  const prefix = groupRow.getByPlaceholder(/Type a prefix/);
+  await prefix.fill('ai');
+  await prefix.press('Enter');
+  await expect(groupRow.locator('[data-policy-summary]')).toHaveText(
+    'Reply when @-mentioned, or starting with “ai”',
+  );
+  await page.screenshot({
+    path: 'test-results/bot-policy-settings.png',
+    fullPage: true,
+  });
+
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect.poll(() => saved.length).toBe(1);
+  const body = saved[0] as { message_policy: Record<string, unknown> };
+  expect(body.message_policy.trigger).toMatchObject({
+    'group-respond-rules': { enabled: true, at: true, prefix: ['ai'] },
+  });
+});

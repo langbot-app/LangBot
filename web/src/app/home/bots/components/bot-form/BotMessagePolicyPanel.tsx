@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { ArrowUpToLine, Info, LogIn, Send, ShieldCheck } from 'lucide-react';
+import { ArrowUpToLine, Info } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import type {
   Agent,
@@ -11,15 +11,12 @@ import type {
   MessagePolicyOverride,
   MessagePolicySectionName,
 } from '@/app/infra/entities/api';
-import type { PipelineConfigStage } from '@/app/infra/entities/pipeline';
-import { extractI18nObject } from '@/i18n/I18nProvider';
-import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { cn } from '@/lib/utils';
 import PolicyScopeSelect, { BOT_SCOPE } from './PolicyScopeSelect';
+import PolicySettings from './PolicySettings';
 import {
   POLICY_SECTIONS,
   admitsEverything,
@@ -31,12 +28,6 @@ import {
   routeKey,
   stableJson,
 } from './message-policy';
-
-const SECTION_ICONS = {
-  trigger: LogIn,
-  safety: ShieldCheck,
-  output: Send,
-} as const;
 
 /** Adapters whose native streaming cannot carry @ / quote on the first frame. */
 const STREAM_REPLY_LIMITS = new Set(['discord', 'lark']);
@@ -188,38 +179,6 @@ export default function BotMessagePolicyPanel({
 
   const neutralDefault = admitsEverything(botPolicy, metadata.neutral);
 
-  function renderStage(
-    section: MessagePolicySectionName,
-    stage: PipelineConfigStage,
-  ) {
-    return (
-      <div
-        key={`${effectiveScope}-${section}-${stage.name}-${formVersion}`}
-        className="rounded-lg border p-4"
-      >
-        <div className="mb-3">
-          <h4 className="text-sm font-medium">
-            {extractI18nObject(stage.label)}
-          </h4>
-          {stage.description && (
-            <p className="text-xs text-muted-foreground">
-              {extractI18nObject(stage.description)}
-            </p>
-          )}
-        </div>
-        <DynamicFormComponent
-          itemConfigList={stage.config}
-          initialValues={
-            (shown[section]?.[stage.name] as Record<string, unknown>) ?? {}
-          }
-          onSubmit={(values) =>
-            writeStage(section, stage.name, values as Record<string, unknown>)
-          }
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-5" data-testid="bot-message-policy">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -277,36 +236,19 @@ export default function BotMessagePolicyPanel({
         </Alert>
       )}
 
-      <fieldset
+      <PolicySettings
+        key={`${effectiveScope}-${formVersion}`}
+        policy={shown}
+        neutral={metadata.neutral ?? {}}
         disabled={!editable}
-        className={cn('flex flex-col gap-6', !editable && 'opacity-70')}
-      >
-        {metadata.configs.map((config) => {
-          const section = config.name as MessagePolicySectionName;
-          const Icon = SECTION_ICONS[section] ?? Info;
-          return (
-            <section
-              key={section}
-              aria-label={extractI18nObject(config.label)}
-              data-policy-section={section}
-              className="flex flex-col gap-3"
-            >
-              <h3 className="flex items-center gap-2 text-sm font-semibold">
-                <Icon className="size-4 text-muted-foreground" />
-                {extractI18nObject(config.label)}
-              </h3>
-              {section === 'output' && (
-                <p className="text-xs text-muted-foreground">
-                  {t('bots.policy.streamingNote')}
-                  {STREAM_REPLY_LIMITS.has(adapter) &&
-                    ` ${t('bots.policy.streamingPlatformLimit')}`}
-                </p>
-              )}
-              {config.stages.map((stage) => renderStage(section, stage))}
-            </section>
-          );
-        })}
-      </fieldset>
+        onWrite={writeStage}
+        streamingNote={
+          t('bots.policy.streamingNote') +
+          (STREAM_REPLY_LIMITS.has(adapter)
+            ? ` ${t('bots.policy.streamingPlatformLimit')}`
+            : '')
+        }
+      />
     </div>
   );
 }
