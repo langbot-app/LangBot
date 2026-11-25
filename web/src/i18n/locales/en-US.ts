@@ -1091,7 +1091,8 @@ const enUS = {
         all: 'All',
         loading: 'Loading Marketplace…',
         unavailable: 'Cannot reach the Marketplace',
-        noMarketplace: 'No matching plugins in the Marketplace.',
+        noMarketplace:
+          'No uninstalled or updatable plugins match in the Marketplace.',
         viewMarketplace: 'View in Marketplace',
         confirm: 'Add {{count}} plugin(s)',
         installAndAdd: 'Install and add {{plugin}}',
@@ -1099,6 +1100,10 @@ const enUS = {
           'Installed and added {{plugin}}. Save the bot to apply.',
         installFailed: 'Installation failed',
         alreadyAdded: 'Added',
+        update: 'Update',
+        updateAvailable: 'Update {{from}} → {{to}}',
+        updated: '{{plugin}} updated',
+        updateFailed: 'Update failed',
       },
       commands: {
         botWide:

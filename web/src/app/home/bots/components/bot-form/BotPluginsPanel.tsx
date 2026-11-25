@@ -349,6 +349,18 @@ export default function BotPluginsPanel({
         );
       });
   const enabledRows = listedRows.filter((row) => row.installed);
+  const installedVersions = new Map(
+    (plugins ?? []).map((plugin) => {
+      const metadata = plugin.manifest?.manifest?.metadata;
+      return [
+        `${metadata?.author ?? ''}/${metadata?.name}`,
+        {
+          version: metadata?.version ?? '',
+          source: plugin.install_source,
+        },
+      ];
+    }),
+  );
   const addable = rows
     .filter((row) => !selectionIncludes(selection, row.id))
     .map((row) => ({
@@ -904,14 +916,7 @@ export default function BotPluginsPanel({
         open={adding}
         onOpenChange={setAdding}
         addable={addable}
-        installedIds={new Set(rows.map((row) => row.id))}
-        addedIds={
-          new Set(
-            rows
-              .filter((row) => selectionIncludes(selection, row.id))
-              .map((row) => row.id),
-          )
-        }
+        installed={installedVersions}
         onAdd={addPlugins}
         onInstalled={pluginInstalled}
         marketplaceOnly={selection.enable_all}

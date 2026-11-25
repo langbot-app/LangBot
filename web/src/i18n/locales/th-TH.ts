@@ -1068,13 +1068,18 @@ const thTH = {
         all: 'ทั้งหมด',
         loading: 'กำลังโหลดมาร์เก็ตเพลส…',
         unavailable: 'เชื่อมต่อมาร์เก็ตเพลสไม่ได้',
-        noMarketplace: 'ไม่พบปลั๊กอินที่ตรงกันในมาร์เก็ตเพลส',
+        noMarketplace:
+          'ไม่พบปลั๊กอินที่ยังไม่ได้ติดตั้งหรือมีอัปเดตที่ตรงกันในมาร์เก็ตเพลส',
         viewMarketplace: 'ดูในมาร์เก็ตเพลส',
         confirm: 'เพิ่ม {{count}} ปลั๊กอิน',
         installAndAdd: 'ติดตั้งและเพิ่ม {{plugin}}',
         installedAdded: 'ติดตั้งและเพิ่ม {{plugin}} แล้ว บันทึกบอทเพื่อให้มีผล',
         installFailed: 'ติดตั้งไม่สำเร็จ',
         alreadyAdded: 'เพิ่มแล้ว',
+        update: 'อัปเดต',
+        updateAvailable: 'มีอัปเดต {{from}} → {{to}}',
+        updated: 'อัปเดต {{plugin}} แล้ว',
+        updateFailed: 'อัปเดตไม่สำเร็จ',
       },
       commands: {
         botWide:

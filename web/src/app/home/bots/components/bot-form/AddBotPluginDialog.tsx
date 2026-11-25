@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ExternalLink, Loader2, Search, TerminalSquare } from 'lucide-react';
+import {
+  ExternalLink,
+  Loader2,
+  RefreshCcw,
+  Search,
+  TerminalSquare,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import type { PluginV4 } from '@/app/infra/entities/plugin';
-import { getCloudServiceClientSync } from '@/app/infra/http';
+import { getCloudServiceClientSync, httpClient } from '@/app/infra/http';
+import { isNewerVersion } from '@/app/utils/versionCompare';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import {
   getErrorMessage,
@@ -94,8 +101,7 @@ export default function AddBotPluginDialog({
   open,
   onOpenChange,
   addable,
-  installedIds,
-  addedIds,
+  installed,
   onAdd,
   onInstalled,
   marketplaceOnly = false,
@@ -103,8 +109,8 @@ export default function AddBotPluginDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   addable: AddablePlugin[];
-  installedIds: Set<string>;
-  addedIds: Set<string>;
+  /** Installed plugins: version and install source, keyed by `author/name`. */
+  installed: Map<string, { version: string; source: string }>;
   onAdd: (ids: string[]) => void;
   onInstalled: (id: string) => Promise<void>;
   /** With "enable all" on there is nothing to add; only install new plugins. */
@@ -122,6 +128,13 @@ export default function AddBotPluginDialog({
     id: string;
     taskId?: number;
   } | null>(null);
+
+  const [upgrading, setUpgrading] = useState<{
+    id: string;
+    label: string;
+    taskId: number;
+  } | null>(null);
+  const busy = Boolean(installing || upgrading);
 
   const loadCatalog = useCallback(async () => {
     setCatalogError(false);
@@ -143,6 +156,61 @@ export default function AddBotPluginDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  /** Marketplace shows plugins not installed yet, or installed with an update. */
+  function hasUpdate(plugin: PluginV4) {
+    const current = installed.get(marketplacePluginId(plugin));
+    return Boolean(
+      current &&
+      current.source === 'marketplace' &&
+      isNewerVersion(plugin.latest_version, current.version),
+    );
+  }
+  function isOffered(plugin: PluginV4) {
+    return !installed.has(marketplacePluginId(plugin)) || hasUpdate(plugin);
+  }
+
+  async function upgrade(plugin: PluginV4) {
+    if (busy) return;
+    const id = marketplacePluginId(plugin);
+    const label = extractI18nObject(plugin.label) || plugin.name;
+    try {
+      const { task_id: taskId } = await httpClient.upgradePlugin(
+        plugin.author,
+        plugin.name,
+      );
+      addTask({
+        taskId,
+        pluginName: id,
+        source: 'marketplace',
+        extensionType: 'plugin',
+        operation: 'upgrade',
+      });
+      setUpgrading({ id, label, taskId });
+    } catch (error) {
+      toast.error(
+        getErrorMessage(error) || t('bots.pluginHooks.add.updateFailed'),
+      );
+    }
+  }
+
+  const upgradeTask = upgrading
+    ? tasks.find((item) => item.taskId === upgrading.taskId)
+    : undefined;
+  useEffect(() => {
+    if (!upgrading || !upgradeTask) return;
+    if (upgradeTask.stage === InstallStage.ERROR) {
+      toast.error(upgradeTask.error || t('bots.pluginHooks.add.updateFailed'));
+      setUpgrading(null);
+    } else if (upgradeTask.stage === InstallStage.DONE) {
+      const { id, label } = upgrading;
+      void onInstalled(id).finally(() => {
+        toast.success(t('bots.pluginHooks.add.updated', { plugin: label }));
+        setUpgrading(null);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upgradeTask?.stage]);
+
   const installedRows = useMemo(
     () =>
       addable.filter((item) =>
@@ -156,14 +224,17 @@ export default function AddBotPluginDialog({
   );
   const marketRows = useMemo(
     () =>
-      (catalog ?? []).filter((plugin) =>
-        matches(filter, query, {
-          hasCommands: Boolean(plugin.components?.Command),
-          hasHooks: Boolean(plugin.components?.EventListener),
-          text: `${extractI18nObject(plugin.label)} ${marketplacePluginId(plugin)} ${extractI18nObject(plugin.description)}`,
-        }),
+      (catalog ?? []).filter(
+        (plugin) =>
+          isOffered(plugin) &&
+          matches(filter, query, {
+            hasCommands: Boolean(plugin.components?.Command),
+            hasHooks: Boolean(plugin.components?.EventListener),
+            text: `${extractI18nObject(plugin.label)} ${marketplacePluginId(plugin)} ${extractI18nObject(plugin.description)}`,
+          }),
       ),
-    [catalog, filter, query],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [catalog, filter, query, installed],
   );
 
   const task = installing?.taskId
@@ -178,7 +249,7 @@ export default function AddBotPluginDialog({
     : 0;
 
   async function install(plugin: PluginV4) {
-    if (installing) return;
+    if (busy) return;
     const id = marketplacePluginId(plugin);
     const label = extractI18nObject(plugin.label) || plugin.name;
     setInstalling({ id });
@@ -248,7 +319,7 @@ export default function AddBotPluginDialog({
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!installing) onOpenChange(next);
+        if (!busy) onOpenChange(next);
       }}
     >
       <DialogContent
@@ -355,7 +426,8 @@ export default function AddBotPluginDialog({
                 const id = marketplacePluginId(plugin);
                 const label = extractI18nObject(plugin.label) || plugin.name;
                 const description = extractI18nObject(plugin.description);
-                const isInstalled = installedIds.has(id);
+                const updatable = hasUpdate(plugin);
+                const current = installed.get(id);
                 return (
                   <div
                     key={id}
@@ -378,6 +450,17 @@ export default function AddBotPluginDialog({
                         <span className="truncate text-xs text-muted-foreground">
                           {id}
                         </span>
+                        {updatable && (
+                          <Badge
+                            variant="outline"
+                            className="shrink-0 text-[11px] text-primary"
+                          >
+                            {t('bots.pluginHooks.add.updateAvailable', {
+                              from: current?.version,
+                              to: plugin.latest_version,
+                            })}
+                          </Badge>
+                        )}
                       </span>
                       {description && (
                         <span className="line-clamp-2 text-xs text-muted-foreground">
@@ -389,28 +472,30 @@ export default function AddBotPluginDialog({
                         hooks={Boolean(plugin.components?.EventListener)}
                       />
                     </span>
-                    {addedIds.has(id) ? (
-                      <span className="w-16 shrink-0 text-center text-xs text-muted-foreground">
-                        {t('bots.pluginHooks.add.alreadyAdded')}
-                      </span>
-                    ) : isInstalled ? (
+                    {updatable ? (
                       <Button
                         type="button"
                         size="sm"
                         variant="outline"
-                        className="shrink-0"
-                        onClick={() => {
-                          onAdd([id]);
-                          onOpenChange(false);
-                        }}
+                        className="shrink-0 gap-1"
+                        disabled={busy}
+                        title={`${current?.version} → ${plugin.latest_version}`}
+                        onClick={() => void upgrade(plugin)}
                       >
-                        {t('bots.pluginHooks.add.button')}
+                        {upgrading?.id === id ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCcw className="size-3.5" />
+                        )}
+                        {upgrading?.id === id && upgradeTask
+                          ? `${Math.max(5, upgradeTask.overallProgress)}%`
+                          : t('bots.pluginHooks.add.update')}
                       </Button>
                     ) : (
                       <MarketplaceInstallButton
                         installing={installing?.id === id}
                         progress={progress}
-                        disabled={Boolean(installing) && installing?.id !== id}
+                        disabled={busy && installing?.id !== id}
                         label={t('bots.pluginHooks.add.installAndAdd', {
                           plugin: label,
                         })}
@@ -436,7 +521,7 @@ export default function AddBotPluginDialog({
           <Button
             type="button"
             variant="outline"
-            disabled={Boolean(installing)}
+            disabled={busy}
             onClick={() => onOpenChange(false)}
           >
             {t('common.cancel')}

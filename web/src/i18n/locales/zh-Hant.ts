@@ -1024,13 +1024,17 @@ const zhHant = {
         all: '全部',
         loading: '正在載入插件市場…',
         unavailable: '無法連線插件市場',
-        noMarketplace: '市場中沒有找到對應的插件。',
+        noMarketplace: '市場中沒有未安裝或可更新的對應插件。',
         viewMarketplace: '在市場中查看',
         confirm: '新增 {{count}} 個插件',
         installAndAdd: '安裝並新增 {{plugin}}',
         installedAdded: '已安裝並新增 {{plugin}}，儲存機器人後生效。',
         installFailed: '安裝失敗',
         alreadyAdded: '已新增',
+        update: '更新',
+        updateAvailable: '可更新 {{from}} → {{to}}',
+        updated: '{{plugin}} 已更新',
+        updateFailed: '更新失敗',
       },
       commands: {
         botWide:

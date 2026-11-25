@@ -1028,13 +1028,17 @@ const zhHans = {
         all: '全部',
         loading: '正在加载插件市场…',
         unavailable: '无法连接插件市场',
-        noMarketplace: '市场里没有找到对应的插件。',
+        noMarketplace: '市场里没有未安装或可更新的对应插件。',
         viewMarketplace: '在市场中查看',
         confirm: '添加 {{count}} 个插件',
         installAndAdd: '安装并添加 {{plugin}}',
         installedAdded: '已安装并添加 {{plugin}}，保存机器人后生效。',
         installFailed: '安装失败',
         alreadyAdded: '已添加',
+        update: '更新',
+        updateAvailable: '可更新 {{from}} → {{to}}',
+        updated: '{{plugin}} 已更新',
+        updateFailed: '更新失败',
       },
       commands: {
         botWide:

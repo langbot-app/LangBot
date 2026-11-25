@@ -1105,7 +1105,8 @@ const esES = {
         all: 'Todos',
         loading: 'Cargando el Marketplace…',
         unavailable: 'No se puede conectar con el Marketplace',
-        noMarketplace: 'No hay plugins que coincidan en el Marketplace.',
+        noMarketplace:
+          'No hay plugins sin instalar o con actualización que coincidan en el Marketplace.',
         viewMarketplace: 'Ver en el Marketplace',
         confirm: 'Añadir {{count}} plugin(s)',
         installAndAdd: 'Instalar y añadir {{plugin}}',
@@ -1113,6 +1114,10 @@ const esES = {
           '{{plugin}} instalado y añadido. Guarda el bot para aplicarlo.',
         installFailed: 'Error al instalar',
         alreadyAdded: 'Añadido',
+        update: 'Actualizar',
+        updateAvailable: 'Actualización {{from}} → {{to}}',
+        updated: '{{plugin}} actualizado',
+        updateFailed: 'Error al actualizar',
       },
       commands: {
         botWide:

@@ -1099,7 +1099,8 @@ const ruRU = {
         all: 'Все',
         loading: 'Загрузка Маркетплейса…',
         unavailable: 'Не удаётся подключиться к Маркетплейсу',
-        noMarketplace: 'В Маркетплейсе нет подходящих плагинов.',
+        noMarketplace:
+          'В Маркетплейсе нет подходящих неустановленных или обновляемых плагинов.',
         viewMarketplace: 'Открыть в Маркетплейсе',
         confirm: 'Добавить плагины: {{count}}',
         installAndAdd: 'Установить и добавить {{plugin}}',
@@ -1107,6 +1108,10 @@ const ruRU = {
           '{{plugin}} установлен и добавлен. Сохраните бота, чтобы применить.',
         installFailed: 'Не удалось установить',
         alreadyAdded: 'Добавлен',
+        update: 'Обновить',
+        updateAvailable: 'Обновление {{from}} → {{to}}',
+        updated: '{{plugin}} обновлён',
+        updateFailed: 'Не удалось обновить',
       },
       commands: {
         botWide:

@@ -1096,7 +1096,8 @@ const jaJP = {
         all: 'すべて',
         loading: 'マーケットを読み込み中…',
         unavailable: 'マーケットに接続できません',
-        noMarketplace: '該当するプラグインがマーケットにありません。',
+        noMarketplace:
+          '未インストールまたは更新可能な該当プラグインはマーケットにありません。',
         viewMarketplace: 'マーケットで見る',
         confirm: '{{count}} 個のプラグインを追加',
         installAndAdd: '{{plugin}} をインストールして追加',
@@ -1104,6 +1105,10 @@ const jaJP = {
           '{{plugin}} をインストールして追加しました。ボットを保存すると反映されます。',
         installFailed: 'インストールに失敗しました',
         alreadyAdded: '追加済み',
+        update: '更新',
+        updateAvailable: '更新あり {{from}} → {{to}}',
+        updated: '{{plugin}} を更新しました',
+        updateFailed: '更新に失敗しました',
       },
       commands: {
         botWide:

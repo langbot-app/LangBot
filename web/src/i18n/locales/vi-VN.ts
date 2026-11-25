@@ -1082,13 +1082,18 @@ const viVN = {
         all: 'Tất cả',
         loading: 'Đang tải Marketplace…',
         unavailable: 'Không kết nối được Marketplace',
-        noMarketplace: 'Không có plugin phù hợp trên Marketplace.',
+        noMarketplace:
+          'Không có plugin chưa cài hoặc có bản cập nhật phù hợp trên Marketplace.',
         viewMarketplace: 'Xem trên Marketplace',
         confirm: 'Thêm {{count}} plugin',
         installAndAdd: 'Cài và thêm {{plugin}}',
         installedAdded: 'Đã cài và thêm {{plugin}}. Lưu bot để áp dụng.',
         installFailed: 'Cài đặt thất bại',
         alreadyAdded: 'Đã thêm',
+        update: 'Cập nhật',
+        updateAvailable: 'Có bản cập nhật {{from}} → {{to}}',
+        updated: 'Đã cập nhật {{plugin}}',
+        updateFailed: 'Cập nhật thất bại',
       },
       commands: {
         botWide:
