@@ -456,6 +456,10 @@ class MemoryInjector(EventListener):
                     self.plugin, candidate_config["model_uuid"], text,
                     store._now_timestamp(), sender_id, candidate_config["max_per_turn"],
                 )
+            except ValueError as exc:
+                # Invalid model output is expected occasionally; keep it to one line.
+                logger.warning("Memory candidate model extraction failed; no candidates written: %s", exc)
+                return
             except Exception:
                 logger.exception("Memory candidate model extraction failed; no candidates written")
                 return
