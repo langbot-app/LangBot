@@ -2625,7 +2625,7 @@ const zhHant = {
       noResults: '暫無文件',
       dragAndDrop: '拖曳文檔到此處或點擊上傳',
       uploading: '上傳中...',
-      supportedFormats: '支援 PDF、Word、TXT、Markdown 等文檔格式',
+      supportedFormats: '可上傳的檔案格式取決於知識引擎和已安裝的解析器。',
       uploadSuccess: '文檔上傳成功！',
       uploadError: '文檔上傳失敗：',
       uploadingFile: '上傳文檔中...',

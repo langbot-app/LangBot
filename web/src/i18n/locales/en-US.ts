@@ -2795,7 +2795,7 @@ const enUS = {
       dragAndDrop: 'Drag and drop files here or click to upload',
       uploading: 'Uploading...',
       supportedFormats:
-        'Supports PDF, Word, TXT, Markdown, HTML, ZIP and other document formats',
+        'Supported formats depend on your knowledge engine and installed parsers.',
       uploadSuccess: 'File uploaded successfully!',
       uploadError: 'File upload failed: ',
       uploadingFile: 'Uploading file...',

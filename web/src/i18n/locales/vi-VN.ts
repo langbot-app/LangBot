@@ -2774,7 +2774,7 @@ const viVN = {
       dragAndDrop: 'Kéo và thả tệp vào đây hoặc nhấp để tải lên',
       uploading: 'Đang tải lên...',
       supportedFormats:
-        'Hỗ trợ các định dạng PDF, Word, TXT, Markdown, HTML, ZIP và các định dạng tài liệu khác',
+        'Các định dạng được hỗ trợ tùy thuộc vào công cụ cơ sở tri thức và các trình phân tích đã cài đặt.',
       uploadSuccess: 'Tải tệp lên thành công!',
       uploadError: 'Tải tệp lên thất bại: ',
       uploadingFile: 'Đang tải tệp lên...',
