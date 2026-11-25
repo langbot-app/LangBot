@@ -1,8 +1,24 @@
 import LoadErrorState from '@/components/LoadErrorState';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { RefreshCw } from 'lucide-react';
+import {
+  ArrowUpRight,
+  ChevronRight,
+  Copy,
+  MessageSquare,
+  RefreshCw,
+  User,
+  Users,
+} from 'lucide-react';
+import { toast } from 'sonner';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import CopyableId from '@/components/CopyableId';
+import { copyToClipboard } from '@/app/utils/clipboard';
 import {
   Sheet,
   SheetContent,
@@ -36,8 +52,6 @@ export type ExecutionSelection = Pick<ExecutionRow, 'id'> & {
   source: ExecutionRow['source'] | 'auto';
 };
 
-const mainSections: ExecutionSection[] = ['inputs', 'outputs', 'deliveries'];
-
 // Keep transport metadata in the payload disclosure, not in the message body.
 function messageBody(value: unknown): unknown {
   if (typeof value === 'string') {
@@ -65,14 +79,64 @@ function messageBody(value: unknown): unknown {
   }
   return null;
 }
-const secondarySections: ExecutionSection[] = [
-  'related',
-  'conversation',
+// Diagnostics share one tab strip. A tab never disappears when it is empty:
+// it says so, instead of collapsing under the pointer.
+const diagnosticSections: ExecutionSection[] = [
   'llm_calls',
   'tool_calls',
-  'errors',
   'events',
+  'related',
+  'conversation',
 ];
+
+function RawData({
+  value,
+  defaultOpen = false,
+}: {
+  value: unknown;
+  defaultOpen?: boolean;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(defaultOpen);
+  const text = useMemo(() => {
+    if (!open) return '';
+    try {
+      return JSON.stringify(value, null, 2) ?? '';
+    } catch {
+      return String(value);
+    }
+  }, [open, value]);
+  if (value == null) return null;
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <div className="flex items-center gap-2">
+        <CollapsibleTrigger className="group flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+          <ChevronRight className="size-3.5 transition-transform group-data-[state=open]:rotate-90" />
+          {t('monitoring.unified.payload')}
+        </CollapsibleTrigger>
+        {open && (
+          <button
+            type="button"
+            className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() =>
+              copyToClipboard(text)
+                .then(() => toast.success(t('common.copySuccess')))
+                .catch(() => toast.error(t('common.copyFailed')))
+            }
+          >
+            <Copy className="size-3" />
+            {t('monitoring.unified.copyJson')}
+          </button>
+        )}
+      </div>
+      <CollapsibleContent>
+        <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/50 p-2 font-mono text-[11px] leading-4">
+          {text}
+        </pre>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
 
 export default function ExecutionDetailSheet({
   row,
@@ -97,6 +161,7 @@ export default function ExecutionDetailSheet({
   const pendingSections = useRef(new Set<ExecutionSection>());
   const expandedSections = useRef(new Set<ExecutionSection>());
   const [refresh, setRefresh] = useState(0);
+  const [diagnostic, setDiagnostic] = useState<ExecutionSection | null>(null);
   const request = useRef(0);
   const identity = `${workspace}:${row?.source}:${row?.id}`;
   const requestedIdentity = useRef('');
@@ -112,6 +177,7 @@ export default function ExecutionDetailSheet({
       setDetail(null);
       requestedIdentity.current = identity;
       expandedSections.current.clear();
+      setDiagnostic(null);
     }
     setError(false);
     setSectionError({});
@@ -212,6 +278,21 @@ export default function ExecutionDetailSheet({
       }
     }
   };
+  const itemTime = (item: ExecutionDetailItem) =>
+    item.timestamp_ms
+      ? formatDateTime(new Date(item.timestamp_ms))
+      : typeof item.timestamp === 'string'
+        ? item.timestamp
+        : '';
+  const itemStatus = (item: ExecutionDetailItem) =>
+    item.status ? (
+      <Badge status={item.status}>
+        {t(
+          `monitoring.execution.status.${['success', 'delivered'].includes(item.status) ? 'completed' : item.status}`,
+          { defaultValue: item.status },
+        )}
+      </Badge>
+    ) : null;
   const renderItem = (section: ExecutionSection, item: ExecutionDetailItem) => {
     if (section === 'related') {
       const related = item as unknown as ExecutionRow;
@@ -241,11 +322,11 @@ export default function ExecutionDetailSheet({
     const title = content
       ? [
           item.actor_name || item.actor_id,
-          item.event_type,
           item.role &&
             t(`monitoring.unified.roles.${item.role}`, {
               defaultValue: item.role,
             }),
+          item.event_type,
         ]
           .filter(Boolean)
           .join(' · ')
@@ -257,33 +338,22 @@ export default function ExecutionDetailSheet({
             item.id,
         );
     return (
-      <div className="min-w-0 space-y-3 rounded-lg border bg-background p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-          <span className="break-all">{title}</span>
-          <span>
-            {item.timestamp_ms
-              ? formatDateTime(new Date(item.timestamp_ms))
-              : typeof item.timestamp === 'string'
-                ? item.timestamp
-                : ''}
+      <div className="min-w-0 space-y-2 rounded-lg border bg-background p-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span className="min-w-0 flex-1 break-all font-medium text-foreground/80">
+            {title}
           </span>
-          {item.status && (
-            <Badge status={item.status}>
-              {t(
-                `monitoring.execution.status.${['success', 'delivered'].includes(item.status) ? 'completed' : item.status}`,
-                { defaultValue: item.status },
-              )}
-            </Badge>
-          )}
+          {itemStatus(item)}
           <PluginHandledBadge
             handledBy={
               typeof item.handled_by === 'string' ? item.handled_by : null
             }
           />
+          <span className="tabular-nums">{itemTime(item)}</span>
         </div>
         {content ? (
           <>
-            <div className="text-sm leading-7">
+            <div className="text-sm leading-6">
               {hasExecutionValue(body) ? (
                 <Value value={body} />
               ) : (
@@ -301,14 +371,6 @@ export default function ExecutionDetailSheet({
                 {String(item.delivery.delivery_error)}
               </p>
             ) : null}
-            <details className="border-t pt-2">
-              <summary className="cursor-pointer text-xs text-muted-foreground">
-                {t('monitoring.unified.payload')}
-              </summary>
-              <div className="mt-3 max-h-80 overflow-auto rounded-md bg-muted/40 p-3">
-                <Value value={item} />
-              </div>
-            </details>
           </>
         ) : (
           <>
@@ -321,31 +383,25 @@ export default function ExecutionDetailSheet({
               )}
             </div>
             <Value value={item.error_message} />
-            <details>
-              <summary className="cursor-pointer text-xs text-muted-foreground">
-                {t('monitoring.unified.payload')}
-              </summary>
-              <div className="mt-2">
-                <Value value={section === 'events' ? item.data : item} />
-              </div>
-            </details>
           </>
         )}
+        <RawData value={section === 'events' ? item.data : item} />
       </div>
     );
   };
-  const renderSection = (section: ExecutionSection, primary = false) => {
+  const pageTitle = (section: ExecutionSection) => {
     const page = visible?.pages[section];
-    if (primary && !page) return null;
-    if (
-      !primary &&
-      page?.items.length === 0 &&
-      section !== 'conversation' &&
-      !sectionError[section]
-    )
-      return null;
-    const body = (
-      <div className="mt-3 space-y-3">
+    const count = page
+      ? `${page.items.length}${page.has_more ? '+' : ''}`
+      : visible?.counts?.[section] != null
+        ? String(visible.counts[section])
+        : null;
+    return { label: t(`monitoring.unified.${section}`), count };
+  };
+  const renderList = (section: ExecutionSection) => {
+    const page = visible?.pages[section];
+    return (
+      <div className="space-y-2">
         {section === 'conversation' && (
           <p className="text-xs text-muted-foreground">
             {t('monitoring.unified.contextHint')}
@@ -355,7 +411,7 @@ export default function ExecutionDetailSheet({
           <Skeleton className="h-16 w-full" />
         )}
         {page?.items.length === 0 && (
-          <p className="text-sm text-muted-foreground">
+          <p className="rounded-lg border border-dashed px-3 py-4 text-center text-sm text-muted-foreground">
             {t('monitoring.unified.noRecords')}
           </p>
         )}
@@ -381,36 +437,140 @@ export default function ExecutionDetailSheet({
         )}
       </div>
     );
-    const title = `${t(`monitoring.unified.${section}`)}${page ? ` (${page.items.length}${page.has_more ? '+' : ''})` : ''}`;
-    return primary ? (
-      <section key={section} className="space-y-3">
-        <h3 className="flex items-center gap-2 text-sm font-semibold">
-          <span className="flex size-6 items-center justify-center rounded-full bg-muted text-xs text-muted-foreground">
-            {mainSections.indexOf(section) + 1}
+  };
+  const sectionHeading = (section: ExecutionSection, index: number) => {
+    const { label, count } = pageTitle(section);
+    return (
+      <h3 className="flex items-center gap-2 text-sm font-semibold">
+        <span className="flex size-5 items-center justify-center rounded-full bg-muted text-[11px] text-muted-foreground">
+          {index}
+        </span>
+        {label}
+        {count != null && (
+          <span className="font-normal text-muted-foreground tabular-nums">
+            {count}
           </span>
-          {title}
-        </h3>
-        {body}
-      </section>
-    ) : (
-      <details
-        key={section}
-        open={section === 'errors' ? true : undefined}
-        onToggle={(event) => {
-          if (event.currentTarget.open) {
-            expandedSections.current.add(section);
-            if (!page) void loadMore(section);
-          } else expandedSections.current.delete(section);
-        }}
-        className={`rounded-lg border p-3 ${section === 'errors' ? 'border-red-500/25 bg-red-500/5' : ''}`}
-      >
-        <summary className="cursor-pointer text-sm font-medium">
-          {title}
-        </summary>
-        {body}
-      </details>
+        )}
+      </h3>
     );
   };
+  // One inbound event is usually journaled several times (platform ingress,
+  // pipeline query, legacy summary). Show the richest copy as the trigger and
+  // keep every raw record one click away instead of repeating the message.
+  const renderTrigger = () => {
+    const page = visible?.pages.inputs;
+    if (!page) return null;
+    const items = page.items;
+    const primary =
+      items.find(
+        (item) =>
+          item.role === 'user' && hasExecutionValue(messageBody(item.content)),
+      ) ??
+      items.find((item) => hasExecutionValue(messageBody(item.content))) ??
+      items[0];
+    const body = primary ? messageBody(primary.content) : null;
+    const chat = visible?.chat;
+    const sender =
+      primary?.actor_name ||
+      chat?.sender_name ||
+      primary?.actor_id ||
+      chat?.sender_id;
+    return (
+      <section className="space-y-2">
+        {sectionHeading('inputs', 1)}
+        {!primary ? (
+          <p className="rounded-lg border border-dashed px-3 py-4 text-center text-sm text-muted-foreground">
+            {t('monitoring.unified.noRecords')}
+          </p>
+        ) : (
+          <div className="min-w-0 space-y-2 rounded-lg border bg-background p-3">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span className="min-w-0 flex-1 break-all font-medium text-foreground/80">
+                {sender || t('monitoring.unified.roles.user')}
+              </span>
+              {itemStatus(primary)}
+              <span className="tabular-nums">{itemTime(primary)}</span>
+            </div>
+            <div className="text-sm leading-6">
+              {hasExecutionValue(body) ? (
+                <Value value={body} />
+              ) : (
+                <p className="text-muted-foreground">
+                  {t('monitoring.unified.noRecords')}
+                </p>
+              )}
+            </div>
+            <Value value={primary.attachments} />
+          </div>
+        )}
+        {items.length > 0 && (
+          <Collapsible>
+            <CollapsibleTrigger className="group flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+              <ChevronRight className="size-3.5 transition-transform group-data-[state=open]:rotate-90" />
+              {t('monitoring.unified.rawEvents', {
+                count: items.length,
+                more: page.has_more ? '+' : '',
+              })}
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2 space-y-2">
+              {items.map((item, i) => (
+                <div
+                  key={`${item.id}-${i}`}
+                  className="space-y-1 rounded-md border bg-muted/20 p-2"
+                >
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                    <span className="font-medium text-foreground/80">
+                      {item.event_type ||
+                        t(`monitoring.unified.roles.${item.role ?? 'user'}`, {
+                          defaultValue: item.role,
+                        })}
+                    </span>
+                    {item.actor_id && (
+                      <span className="break-all">{item.actor_id}</span>
+                    )}
+                    <span className="ml-auto tabular-nums">
+                      {itemTime(item)}
+                    </span>
+                  </div>
+                  <RawData value={item} />
+                </div>
+              ))}
+              {page.has_more && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!!busy.inputs}
+                  onClick={() => loadMore('inputs')}
+                >
+                  {t('monitoring.unified.loadMore')}
+                </Button>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+      </section>
+    );
+  };
+  const selectDiagnostic = (section: ExecutionSection) => {
+    setDiagnostic(section);
+    // Polling re-reads only the open diagnostic, never every visited one.
+    expandedSections.current.clear();
+    expandedSections.current.add(section);
+    if (!visible?.pages[section]) void loadMore(section);
+  };
+  const activeDiagnostic =
+    diagnostic ??
+    diagnosticSections.find(
+      (section) => (visible?.counts?.[section] ?? 0) > 0,
+    ) ??
+    null;
+  useEffect(() => {
+    // Auto-open the first non-empty diagnostic once its count is known.
+    if (diagnostic || !activeDiagnostic || !visible) return;
+    if (!visible.pages[activeDiagnostic]) selectDiagnostic(activeDiagnostic);
+    else setDiagnostic(activeDiagnostic);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeDiagnostic, diagnostic, visible]);
   const record = visible?.row;
   const href = record?.target_id
     ? record.target_kind === 'pipeline'
@@ -419,6 +579,98 @@ export default function ExecutionDetailSheet({
         ? `/home/agents?id=${encodeURIComponent(record.target_id)}`
         : null
     : null;
+  // Where the event came from: bot, chat (with the exact ID routing rules
+  // match) and sender. Group chats lead with the group, not the sender.
+  const renderChat = () => {
+    if (!record) return null;
+    const chat = visible?.chat;
+    const isGroup = chat?.type === 'group';
+    const senderName = chat?.sender_name || record.user_name;
+    const senderId = chat?.sender_id || record.user_id;
+    const routeTarget =
+      record.pipeline_id ||
+      (['pipeline', 'agent'].includes(record.target_kind)
+        ? record.target_id
+        : null);
+    const routeHref =
+      chat?.id && chat.type && record.bot_id
+        ? `/home/bots?id=${encodeURIComponent(record.bot_id)}&tab=config&routeChat=${encodeURIComponent(`${chat.type}:${chat.id}`)}${routeTarget ? `&routeTarget=${encodeURIComponent(routeTarget)}` : ''}`
+        : null;
+    const rows: [string, React.ReactNode][] = [];
+    if (record.bot_name || record.platform)
+      rows.push([
+        t('monitoring.unified.chat.bot'),
+        <span className="break-all">
+          {[record.bot_name, record.platform].filter(Boolean).join(' · ')}
+        </span>,
+      ]);
+    if (chat?.id)
+      rows.push([
+        isGroup
+          ? t('monitoring.unified.chat.groupId')
+          : t('monitoring.unified.chat.privateChat'),
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {isGroup && chat.name && (
+            <span className="font-medium">{chat.name}</span>
+          )}
+          <CopyableId
+            value={chat.id}
+            label={t('monitoring.unified.chat.groupId')}
+          />
+          {routeHref && (
+            <Link
+              to={routeHref}
+              onClick={onClose}
+              className="inline-flex items-center gap-0.5 text-xs text-primary hover:underline"
+            >
+              {isGroup
+                ? t('monitoring.unified.chat.routeGroup')
+                : t('monitoring.unified.chat.routePerson')}
+              <ArrowUpRight className="size-3" />
+            </Link>
+          )}
+        </div>,
+      ]);
+    if (senderName || senderId)
+      rows.push([
+        t('monitoring.unified.chat.sender'),
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {senderName && <span>{senderName}</span>}
+          {senderId && senderId !== senderName && (
+            <CopyableId
+              value={senderId}
+              label={t('monitoring.unified.chat.sender')}
+            />
+          )}
+        </div>,
+      ]);
+    if (rows.length === 0) return null;
+    const Icon = isGroup
+      ? Users
+      : chat?.type === 'person'
+        ? User
+        : MessageSquare;
+    return (
+      <div className="rounded-lg border">
+        <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-2 text-xs font-medium">
+          <Icon className="size-3.5 text-muted-foreground" />
+          {isGroup
+            ? t('monitoring.unified.chat.groupChat')
+            : chat?.type === 'person'
+              ? t('monitoring.unified.chat.privateChat')
+              : t('monitoring.unified.chat.source')}
+        </div>
+        <dl className="grid grid-cols-[max-content_1fr] items-start gap-x-4 gap-y-2 px-3 py-2.5 text-sm">
+          {rows.map(([label, value]) => (
+            <div key={label} className="contents">
+              <dt className="pt-0.5 text-xs text-muted-foreground">{label}</dt>
+              <dd className="min-w-0">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    );
+  };
   return (
     <Sheet
       open={row !== null}
@@ -481,50 +733,46 @@ export default function ExecutionDetailSheet({
                     </Badge>
                   )}
                   {href && (
-                    <Button asChild variant="outline" size="sm">
-                      <Link to={href}>
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="sm"
+                      className="ml-auto h-7"
+                    >
+                      <Link to={href} onClick={onClose}>
                         {t('monitoring.execution.detail.openObject')}
+                        <ArrowUpRight className="size-3.5" />
                       </Link>
                     </Button>
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  {[
-                    record.bot_name,
-                    record.platform,
-                    record.user_name || record.user_id,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </p>
+                {renderChat()}
                 <div className="grid grid-cols-3 divide-x rounded-lg border bg-muted/20">
-                  <div className="space-y-1 p-3">
-                    <p className="text-xs text-muted-foreground">
-                      {t('monitoring.execution.detail.duration')}
-                    </p>
-                    <p className="text-sm font-semibold tabular-nums">
-                      {record.duration_ms != null
+                  {[
+                    [
+                      t('monitoring.execution.detail.duration'),
+                      record.duration_ms != null
                         ? formatRunDuration(record.duration_ms)
-                        : '—'}
-                    </p>
-                  </div>
-                  <div className="space-y-1 p-3">
-                    <p className="text-xs text-muted-foreground">
-                      {t('monitoring.llmCalls.totalTokens')}
-                    </p>
-                    <p className="text-sm font-semibold tabular-nums">
-                      {record.usage?.total_tokens?.toLocaleString() ?? '—'}
-                    </p>
-                  </div>
-                  <div className="space-y-1 p-3">
-                    <p className="text-xs text-muted-foreground">
-                      {t('monitoring.unified.deliveries')}
-                    </p>
-                    <p className="text-sm font-semibold tabular-nums">
-                      {visible?.pages.deliveries?.items.length ?? 0}
-                      {visible?.pages.deliveries?.has_more ? '+' : ''}
-                    </p>
-                  </div>
+                        : '—',
+                    ],
+                    [
+                      t('monitoring.llmCalls.totalTokens'),
+                      record.usage?.total_tokens?.toLocaleString() ?? '—',
+                    ],
+                    [
+                      t('monitoring.unified.deliveries'),
+                      `${visible?.pages.deliveries?.items.length ?? 0}${visible?.pages.deliveries?.has_more ? '+' : ''}`,
+                    ],
+                  ].map(([label, value]) => (
+                    <div key={label} className="space-y-0.5 px-3 py-2">
+                      <p className="text-[11px] text-muted-foreground">
+                        {label}
+                      </p>
+                      <p className="text-sm font-semibold tabular-nums">
+                        {value}
+                      </p>
+                    </div>
+                  ))}
                 </div>
                 {record.status_reason &&
                   !['stop', 'completed', 'success'].includes(
@@ -541,49 +789,122 @@ export default function ExecutionDetailSheet({
                         .join('; ')}
                     </p>
                   )}
-                {mainSections.map((section) => renderSection(section, true))}
-                {secondarySections.map((section) => renderSection(section))}
-                <details className="rounded-lg border p-3">
-                  <summary className="cursor-pointer text-sm">
+                {(visible?.pages.errors?.items.length ?? 0) > 0 && (
+                  <section className="space-y-2 rounded-lg border border-red-500/25 bg-red-500/5 p-3">
+                    <h3 className="text-sm font-semibold text-destructive">
+                      {t('monitoring.unified.errors')}{' '}
+                      <span className="font-normal tabular-nums">
+                        {pageTitle('errors').count}
+                      </span>
+                    </h3>
+                    {renderList('errors')}
+                  </section>
+                )}
+                {renderTrigger()}
+                {visible?.pages.outputs && (
+                  <section className="space-y-2">
+                    {sectionHeading('outputs', 2)}
+                    {renderList('outputs')}
+                  </section>
+                )}
+                {visible?.pages.deliveries && (
+                  <section className="space-y-2">
+                    {sectionHeading('deliveries', 3)}
+                    {renderList('deliveries')}
+                  </section>
+                )}
+                <section className="space-y-3 border-t pt-4">
+                  <h3 className="text-sm font-semibold">
+                    {t('monitoring.unified.diagnostics')}
+                  </h3>
+                  <div
+                    role="tablist"
+                    className="flex flex-wrap gap-1.5"
+                    aria-label={t('monitoring.unified.diagnostics')}
+                  >
+                    {diagnosticSections.map((section) => {
+                      const { label, count } = pageTitle(section);
+                      const selected = activeDiagnostic === section;
+                      return (
+                        <button
+                          key={section}
+                          type="button"
+                          role="tab"
+                          aria-selected={selected}
+                          onClick={() => selectDiagnostic(section)}
+                          className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs transition-colors ${
+                            selected
+                              ? 'border-primary bg-primary text-primary-foreground'
+                              : count === '0'
+                                ? 'text-muted-foreground/70 hover:bg-accent'
+                                : 'hover:bg-accent'
+                          }`}
+                        >
+                          {label}
+                          {count != null && (
+                            <span
+                              className={`tabular-nums ${selected ? 'opacity-80' : 'text-muted-foreground'}`}
+                            >
+                              {count}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {activeDiagnostic ? (
+                    <div role="tabpanel">{renderList(activeDiagnostic)}</div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {t('monitoring.unified.diagnosticsHint')}
+                    </p>
+                  )}
+                </section>
+                <Collapsible className="rounded-lg border px-3 py-2">
+                  <CollapsibleTrigger className="group flex w-full items-center gap-1 text-sm">
+                    <ChevronRight className="size-4 transition-transform group-data-[state=open]:rotate-90" />
                     {t('monitoring.unified.metadata')}
-                  </summary>
-                  <dl className="mt-3 space-y-2 text-xs">
-                    {[
-                      [t('monitoring.execution.detail.executionId'), record.id],
-                      [
-                        t('monitoring.execution.detail.eventId'),
-                        record.event_id,
-                      ],
-                      [
-                        t('monitoring.unified.conversation'),
-                        record.conversation_id || record.session_id,
-                      ],
-                      [
-                        t('monitoring.execution.detail.runner'),
-                        record.runner_id,
-                      ],
-                      [
-                        t('monitoring.execution.detail.created'),
-                        record.created_at_ms
-                          ? formatDateTime(new Date(record.created_at_ms))
-                          : null,
-                      ],
-                      [
-                        t('monitoring.execution.detail.duration'),
-                        record.duration_ms != null
-                          ? formatRunDuration(record.duration_ms)
-                          : null,
-                      ],
-                    ]
-                      .filter(([, value]) => value)
-                      .map(([label, value]) => (
-                        <div key={label}>
-                          <dt className="text-muted-foreground">{label}</dt>
-                          <dd className="break-all">{value}</dd>
-                        </div>
-                      ))}
-                  </dl>
-                </details>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-xs">
+                      {[
+                        [
+                          t('monitoring.execution.detail.executionId'),
+                          record.id,
+                        ],
+                        [
+                          t('monitoring.execution.detail.eventId'),
+                          record.event_id,
+                        ],
+                        [
+                          t('monitoring.unified.conversation'),
+                          record.conversation_id || record.session_id,
+                        ],
+                        [
+                          t('monitoring.execution.detail.runner'),
+                          record.runner_id,
+                        ],
+                        [
+                          t('monitoring.execution.detail.created'),
+                          record.created_at_ms
+                            ? formatDateTime(new Date(record.created_at_ms))
+                            : null,
+                        ],
+                      ]
+                        .filter(([, value]) => value)
+                        .map(([label, value]) => (
+                          <div key={label} className="contents">
+                            <dt className="pt-0.5 text-muted-foreground">
+                              {label}
+                            </dt>
+                            <dd className="min-w-0">
+                              <CopyableId value={String(value)} />
+                            </dd>
+                          </div>
+                        ))}
+                    </dl>
+                  </CollapsibleContent>
+                </Collapsible>
               </>
             )}
           </div>

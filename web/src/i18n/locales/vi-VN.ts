@@ -1427,6 +1427,12 @@ const viVN = {
     collapse: 'Thu gọn',
     imagesAttached: 'hình ảnh đính kèm',
     noLogs: 'Chưa có nhật ký',
+    routeDraftExists:
+      'Đã có quy tắc cho {{id}}; quy tắc được mở rộng bên dưới.',
+    routeDraftAddedGroup:
+      'Đã thêm quy tắc cho nhóm {{id}} ở đầu danh sách. Chọn pipeline rồi lưu.',
+    routeDraftAddedPerson:
+      'Đã thêm quy tắc cho người dùng {{id}} ở đầu danh sách. Chọn pipeline rồi lưu.',
     sessionMonitor: {
       resetContext: 'Đặt lại ngữ cảnh',
       resetDescription:
@@ -1442,6 +1448,21 @@ const viVN = {
       filterByGroup: 'Cùng nhóm',
       groupFilterActive: 'Nhóm {{group}}',
       clearGroupFilter: 'Hiện tất cả phiên',
+      groupTitle: 'Nhóm {{group}}',
+      memberLine: 'Thành viên: {{name}}',
+      lastSenderLine: 'Người gửi gần nhất: {{name}}',
+      privateChat: 'Trò chuyện riêng',
+      groupChat: 'Trò chuyện nhóm',
+      groupId: 'ID nhóm',
+      member: 'Thành viên',
+      lastSender: 'Người gửi gần nhất',
+      userId: 'ID người dùng',
+      pipeline: 'Pipeline',
+      routeGroup: 'Định tuyến nhóm này',
+      routeGroupHint:
+        'Tạo quy tắc định tuyến gửi nhóm này đến một pipeline cụ thể',
+      contextShared: 'Ngữ cảnh chung của nhóm',
+      contextPerMember: 'Ngữ cảnh riêng từng thành viên',
 
       title: 'Phiên',
       sessions: 'Phiên',
@@ -3196,7 +3217,22 @@ const viVN = {
       llm_calls: 'Lần gọi mô hình',
       tool_calls: 'Lần gọi công cụ',
       errors: 'Lỗi',
-      payload: 'Chi tiết',
+      payload: 'Dữ liệu gốc',
+      rawEvents: 'Sự kiện gốc ({{count}}{{more}})',
+      copyJson: 'Sao chép JSON',
+      diagnostics: 'Chẩn đoán',
+      diagnosticsHint:
+        'Chọn một mục để tải lệnh gọi mô hình, lệnh gọi công cụ, sự kiện, lần chạy liên quan hoặc ngữ cảnh hội thoại.',
+      chat: {
+        bot: 'Bot',
+        groupChat: 'Trò chuyện nhóm',
+        privateChat: 'Trò chuyện riêng',
+        source: 'Nguồn',
+        groupId: 'ID nhóm',
+        sender: 'Người gửi',
+        routeGroup: 'Định tuyến nhóm này',
+        routePerson: 'Định tuyến người dùng này',
+      },
       metadata: 'Thông tin kỹ thuật',
       loadMore: 'Tải thêm',
       noRecords: 'Chưa có bản ghi',

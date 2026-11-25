@@ -1457,6 +1457,11 @@ const esES = {
     collapse: 'Contraer',
     imagesAttached: 'imagen(es) adjunta(s)',
     noLogs: 'Aún no hay registros',
+    routeDraftExists: 'Ya existe una regla para {{id}}; se muestra abajo.',
+    routeDraftAddedGroup:
+      'Se añadió arriba una regla para el grupo {{id}}. Elige su pipeline y guarda.',
+    routeDraftAddedPerson:
+      'Se añadió arriba una regla para el usuario {{id}}. Elige su pipeline y guarda.',
     sessionMonitor: {
       resetContext: 'Restablecer contexto',
       resetDescription:
@@ -1472,6 +1477,21 @@ const esES = {
       filterByGroup: 'Mismo grupo',
       groupFilterActive: 'Grupo {{group}}',
       clearGroupFilter: 'Mostrar todas las sesiones',
+      groupTitle: 'Grupo {{group}}',
+      memberLine: 'Miembro: {{name}}',
+      lastSenderLine: 'Último remitente: {{name}}',
+      privateChat: 'Chat privado',
+      groupChat: 'Chat de grupo',
+      groupId: 'ID de grupo',
+      member: 'Miembro',
+      lastSender: 'Último remitente',
+      userId: 'ID de usuario',
+      pipeline: 'Pipeline',
+      routeGroup: 'Enrutar este grupo',
+      routeGroupHint:
+        'Crea una regla de enrutamiento que envíe este grupo a un pipeline concreto',
+      contextShared: 'Contexto compartido del grupo',
+      contextPerMember: 'Contexto por miembro',
 
       title: 'Sesiones',
       sessions: 'Sesiones',
@@ -3272,7 +3292,22 @@ const esES = {
       llm_calls: 'Llamadas al modelo',
       tool_calls: 'Llamadas a herramientas',
       errors: 'Errores',
-      payload: 'Detalles',
+      payload: 'Datos sin procesar',
+      rawEvents: 'Eventos sin procesar ({{count}}{{more}})',
+      copyJson: 'Copiar JSON',
+      diagnostics: 'Diagnóstico',
+      diagnosticsHint:
+        'Elige un elemento para cargar llamadas al modelo, llamadas a herramientas, eventos, ejecuciones relacionadas o el contexto de la conversación.',
+      chat: {
+        bot: 'Bot',
+        groupChat: 'Chat de grupo',
+        privateChat: 'Chat privado',
+        source: 'Origen',
+        groupId: 'ID de grupo',
+        sender: 'Remitente',
+        routeGroup: 'Enrutar este grupo',
+        routePerson: 'Enrutar este usuario',
+      },
       metadata: 'Información técnica',
       loadMore: 'Cargar más',
       noRecords: 'Sin registros',

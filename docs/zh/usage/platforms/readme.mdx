@@ -8,6 +8,9 @@ description: "将 LangBot 接入各消息平台：Discord、Telegram、Slack、�
 
 运行 `lbctl bot get <bot>` 查看路由 ID，再用 `lbctl bot routes bind <bot> --binding <id> --agent <agent> --dry-run` 预览。确认后用 `--yes` 应用。绑定流水线时可用 `--pipeline`。若有人并发修改了路由，Core 返回冲突，此时可重新读取并核对。
 
+**按群路由**：要让某个群使用指定的流水线，打开机器人的**会话监控**，选中该群的会话，标题下方会显示完整的**群 ID**（可复制）。点击**为此群配置路由**，LangBot 会在事件路由最上方添加一条“会话类型 = 群聊、会话 ID = 该群 ID”的规则，选择流水线后保存即可；其他群继续走下方的规则。执行详情抽屉中同样会显示群 ID 和该入口。
+
+
 
 | 平台 | 状态 | 备注  |教程 |
 | ------ | ---- | ---- | ---- |
