@@ -1055,7 +1055,7 @@ const viVN = {
       policyCaption: 'Chính sách tin nhắn',
       enableTitle: 'Plugin',
       enableHint:
-        'Lệnh: chạy khi người dùng gửi tiền tố kèm tên lệnh. Hook sự kiện chat: tự chạy ở các bước như nhận tin nhắn hoặc trước/sau khi trả lời.',
+        'Lệnh: plugin chạy khi người dùng gửi tiền tố kèm tên lệnh. Hook sự kiện chat: can thiệp ở các bước như nhận tin nhắn hoặc trước/sau khi trả lời, còn tin nhắn vẫn do Agent hoặc Chat mà tuyến chỉ định xử lý.',
       inheritHint:
         'Tuyến này dùng lựa chọn plugin mặc định của bot. Chuyển sang Tùy chỉnh để chọn plugin riêng.',
       loadFailed: 'Không tải được plugin',
@@ -1182,7 +1182,7 @@ const viVN = {
       incompleteEvents:
         'Bot hiện chỉ hỗ trợ một số sự kiện mà bộ xử lý theo dõi ({{events}}). Bộ xử lý có thể không hoạt động đầy đủ trong mọi trường hợp.',
       description:
-        'Tự động nhận sự kiện do plugin khai báo, hoạt động độc lập với các tuyến.',
+        'Plugin tự xử lý trọn vẹn các sự kiện nó đăng ký, không cần Agent hay Chat. Chạy độc lập với các tuyến.',
       empty:
         'Chưa có bộ xử lý plugin. Dùng nút bên dưới để chọn plugin đã cài hoặc cài ngay từ chợ plugin.',
       add: 'Thêm bộ xử lý plugin',

@@ -1062,7 +1062,7 @@ const enUS = {
       policyCaption: 'Message policy',
       enableTitle: 'Plugins',
       enableHint:
-        'Commands run when a user sends the prefix plus a command name. Chat event hooks run automatically at steps such as message received or before/after a reply.',
+        'Commands: the plugin runs when a user sends the prefix plus a command name. Chat event hooks: step in at points such as message received or before/after a reply, while the Agent or Chat chosen by the routes still handles the message.',
       inheritHint:
         'This route uses the bot default plugin selection. Switch to Custom to choose plugins for this route.',
       loadFailed: 'Failed to load plugins',
@@ -1191,7 +1191,7 @@ const enUS = {
       incompleteEvents:
         'This bot only supports some of the subscribed events ({{events}}). The processor may not behave as intended in all cases.',
       description:
-        'Automatically receive events declared by the plugin, independently of routes.',
+        'The plugin fully handles the events it subscribes to, with no Agent or Chat needed. Runs independently of routes.',
       empty:
         'No plugin processors yet. Use the button below to pick an installed plugin or install one from the marketplace.',
       add: 'Add plugin processor',

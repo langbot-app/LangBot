@@ -1077,7 +1077,7 @@ const esES = {
       policyCaption: 'Política de mensajes',
       enableTitle: 'Plugins',
       enableHint:
-        'Comandos: se ejecutan cuando un usuario envía el prefijo más el nombre del comando. Hooks de eventos de chat: se ejecutan solos en pasos como recibir un mensaje o antes/después de responder.',
+        'Comandos: el plugin se ejecuta cuando un usuario envía el prefijo más el nombre del comando. Hooks de eventos de chat: intervienen en pasos como recibir un mensaje o antes/después de responder, mientras el Agent o Chat elegido por las rutas sigue procesando el mensaje.',
       inheritHint:
         'Esta ruta usa la selección de plugins predeterminada del bot. Cambia a Personalizado para elegir plugins para esta ruta.',
       loadFailed: 'No se pudieron cargar los plugins',
@@ -1207,7 +1207,7 @@ const esES = {
       incompleteEvents:
         'Este bot solo admite algunos de los eventos suscritos ({{events}}). El procesador podría no comportarse como se espera en todos los casos.',
       description:
-        'Recibe automáticamente los eventos declarados por el plugin, de forma independiente de las rutas.',
+        'El plugin procesa por completo los eventos a los que se suscribe, sin necesidad de Agent ni Chat. Funciona de forma independiente a las rutas.',
       empty:
         'Aún no hay procesadores de plugins. Usa el botón de abajo para elegir un plugin instalado o instalar uno desde el marketplace.',
       add: 'Añadir procesador de plugin',
