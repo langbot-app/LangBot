@@ -1,11 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle, ChevronRight, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
+import { Collapsible, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 
 /** One setting: icon, name and a plain-language summary; expands to edit. */
@@ -68,11 +64,12 @@ export function SettingRow({
       </CollapsibleTrigger>
       {/* Stay mounted while folded: an invalid draft inside still blocks
           saving, and edits are never dropped by collapsing the row. */}
-      <CollapsibleContent forceMount>
-        <div className="space-y-4 border-t bg-muted/20 px-4 py-4 sm:pl-11">
-          {children}
-        </div>
-      </CollapsibleContent>
+      <div
+        hidden={!open}
+        className="space-y-4 border-t bg-muted/20 px-4 py-4 sm:pl-11"
+      >
+        {children}
+      </div>
     </Collapsible>
   );
 }

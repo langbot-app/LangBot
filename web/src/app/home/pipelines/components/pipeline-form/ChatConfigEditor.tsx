@@ -43,11 +43,6 @@ import {
 import PipelineExtension from '@/app/home/pipelines/components/pipeline-extensions/PipelineExtension';
 import { Button } from '@/components/ui/button';
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
-import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -237,6 +232,34 @@ function PrimaryBlock({
         {children}
       </div>
     </section>
+  );
+}
+
+/** Retrieval tuning, folded but kept mounted so its values stay validated. */
+function RetrievalSettings({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <Button
+        type="button"
+        variant="link"
+        size="sm"
+        aria-expanded={open}
+        className="h-auto p-0 text-xs text-muted-foreground"
+        onClick={() => setOpen(!open)}
+      >
+        {label}
+      </Button>
+      <div hidden={!open} className="pt-3">
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -540,21 +563,9 @@ export default function ChatConfigEditor({
         <PrimaryBlock icon={BookOpen}>
           {runnerForm(groups.knowledge)}
           {groups.retrieval.length > 0 && (
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <Button
-                  type="button"
-                  variant="link"
-                  size="sm"
-                  className="h-auto p-0 text-xs text-muted-foreground"
-                >
-                  {t(k('retrieval'))}
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent forceMount className="pt-3">
-                {runnerForm(groups.retrieval)}
-              </CollapsibleContent>
-            </Collapsible>
+            <RetrievalSettings label={t(k('retrieval'))}>
+              {runnerForm(groups.retrieval)}
+            </RetrievalSettings>
           )}
         </PrimaryBlock>
       )}
