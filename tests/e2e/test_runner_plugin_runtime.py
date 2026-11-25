@@ -488,7 +488,7 @@ def _init_and_auth(client: httpx.Client) -> str:
     return payload['data']['token']
 
 
-def _install_qa_plugin(client: httpx.Client, token: str, package_path: Path) -> None:
+def _install_qa_plugin(client: httpx.Client, token: str, package_path: Path, runner_id=QA_RUNNER_ID) -> None:
     """Install the QA Runner through the same asynchronous local-upload API as the UI."""
     headers = {'Authorization': f'Bearer {token}'}
     with package_path.open('rb') as package_file:
@@ -514,7 +514,7 @@ def _install_qa_plugin(client: httpx.Client, token: str, package_path: Path) -> 
             metadata = task['task_context']['metadata']
             if metadata.get('pending_permission_confirmation'):
                 # A fresh installation stays disabled until an account confirms it.
-                _confirm_qa_plugin_permissions(client, token)
+                _confirm_qa_plugin_permissions(client, token, runner_id)
                 return
             assert metadata['progress_percent'] == 100
             return
@@ -522,9 +522,9 @@ def _install_qa_plugin(client: httpx.Client, token: str, package_path: Path) -> 
     raise AssertionError(f'Plugin installation task {task_id} did not complete')
 
 
-def _confirm_qa_plugin_permissions(client: httpx.Client, token: str) -> None:
+def _confirm_qa_plugin_permissions(client: httpx.Client, token: str, runner_id=QA_RUNNER_ID) -> None:
     """Grant every declared permission, as the WebUI grant dialog does."""
-    author, name = QA_RUNNER_ID.removeprefix('plugin:').split('/')[:2]
+    author, name = runner_id.removeprefix('plugin:').split('/')[:2]
     path = f'/api/v1/plugins/{author}/{name}/permissions'
     headers = {'Authorization': f'Bearer {token}'}
     response = client.get(path, headers=headers)
@@ -539,7 +539,7 @@ def _confirm_qa_plugin_permissions(client: httpx.Client, token: str) -> None:
     assert response.json()['code'] == 0, response.text
 
 
-def _wait_for_qa_runner(client: httpx.Client, token: str, timeout: float = 60) -> set[str]:
+def _wait_for_qa_runner(client: httpx.Client, token: str, timeout: float = 60, runner_id=QA_RUNNER_ID) -> set[str]:
     """Return the latest Runner option set, waiting for the QA Runner when needed."""
     deadline = time.time() + timeout
     option_names: set[str] = set()
@@ -557,7 +557,7 @@ def _wait_for_qa_runner(client: httpx.Client, token: str, timeout: float = 60) -
         runner_select = next(item for item in runner_stage['config'] if item['name'] == 'id')
         # Metadata can precede Runtime reconnection after a Core restart.
         option_names = {option['name'] for option in runner_select.get('options', [])}
-        if QA_RUNNER_ID in option_names:
+        if runner_id in option_names:
             break
         time.sleep(1)
     return option_names

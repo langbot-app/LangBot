@@ -1,4 +1,7 @@
 {
+  "Regenerating reply": "Đang tạo lại phản hồi",
+  "Last turn removed": "Đã xóa lượt trao đổi cuối",
+  "Switched to {model} for this session": "Đã chuyển sang {model} cho phiên này",
   "Sender: {sender}\nSession: {session}": "Người gửi: {sender}\nPhiên: {session}",
   "New conversation started": "Đã bắt đầu hội thoại mới",
   "Reply stopped": "Đã dừng phản hồi",

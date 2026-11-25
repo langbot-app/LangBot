@@ -1,4 +1,7 @@
 {
+  "Regenerating reply": "Regenerando la respuesta",
+  "Last turn removed": "Se eliminó el último turno",
+  "Switched to {model} for this session": "Se cambió a {model} solo para esta sesión",
   "Sender: {sender}\nSession: {session}": "Remitente: {sender}\nSesión: {session}",
   "New conversation started": "Conversación iniciada",
   "Reply stopped": "Respuesta detenida",

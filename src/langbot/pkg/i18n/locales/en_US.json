@@ -1,4 +1,7 @@
 {
+  "Regenerating reply": "Regenerating reply",
+  "Last turn removed": "Last turn removed",
+  "Switched to {model} for this session": "Switched to {model} for this session",
   "Sender: {sender}\nSession: {session}": "Sender: {sender}\nSession: {session}",
   "New conversation started": "New conversation started",
   "Reply stopped": "Reply stopped",

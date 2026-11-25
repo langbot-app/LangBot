@@ -316,8 +316,13 @@ class TranscriptStore:
             if not any(row.role == 'assistant' and row.item_type == 'message' for row in rows):
                 return None
             message = self._transcript_item_to_provider_message(self._row_to_dict(user))
-            if message is None or (require_text and not isinstance(message.content, str)):
+            if message is None:
                 return None
+            if require_text and not isinstance(message.content, str):
+                parts = message.content
+                if not parts or any(part.type != 'text' or part.text is None for part in parts):
+                    return None
+                message = message.model_copy(update={'content': ''.join(part.text for part in parts)})
             for row in rows:
                 await session.delete(row)
             return message

@@ -1,4 +1,7 @@
 {
+  "Regenerating reply": "正在重新產生回覆",
+  "Last turn removed": "已刪除最後一輪問答",
+  "Switched to {model} for this session": "已切換為 {model}（僅限目前對話）",
   "Sender: {sender}\nSession: {session}": "傳送者：{sender}\n工作階段：{session}",
   "New conversation started": "已開始新對話",
   "Reply stopped": "已停止回覆",

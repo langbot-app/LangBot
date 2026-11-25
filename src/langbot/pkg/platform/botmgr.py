@@ -1217,15 +1217,9 @@ class RuntimeBot:
             if plugin_id
             else builtin_settings(settings, cmd_name)['permission']
         )
-        if not can_run(settings, permission, event.sender.id):
-            if settings.get('denied_reply', 'silent') == 'silent':
-                return False
-            chain = platform_message.MessageChain([platform_message.Plain(text=t('Permission denied'))])
-            if runtime is not None:
-                await runtime.send_command_reply(query, chain)
-            else:
-                await adapter.reply_message(message_source=event.to_legacy_event(), message=chain, quote_origin=False)
-            return True
+        allowed = can_run(settings, permission, event.sender.id)
+        if not allowed and settings.get('denied_reply', 'silent') == 'silent':
+            return False
         async with runtime.admit(query, cmd_text) if runtime is not None else contextlib.nullcontext() as item:
             if item:
                 binding = dict(
@@ -1234,6 +1228,13 @@ class RuntimeBot:
                     target_uuid=f'{plugin_id}/{cmd_name}',
                 )
                 return await self._record_policy_drop(event, binding, item)
+            if not allowed:
+                chain = platform_message.MessageChain([platform_message.Plain(text=t('Permission denied'))])
+                if runtime is not None:
+                    await runtime.send_command_reply(query, chain)
+                else:
+                    await adapter.reply_message(message_source=event.to_legacy_event(), message=chain, quote_origin=False)
+                return True
             await self._execute_matched_plugin_command(
                 event=event,
                 adapter=adapter,
@@ -1325,7 +1326,7 @@ class RuntimeBot:
                     command=command_name,
                     params=command_text.split()[1:],
                     text_message=full_command_text,
-                    is_admin=cmd_ctx.privilege == 2,
+                    is_admin=can_run(self.bot_entity.command_settings or {}, 'admins', sender_id),
                 ),
                 query._listener_plugins,
             )

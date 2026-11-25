@@ -78,6 +78,32 @@ async def context_service(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('media', [None, 'image_url', 'file_url'])
+async def test_retry_reads_structured_local_agent_turn(context_service, media):
+    _, engine = context_service
+    store = TranscriptStore(engine)
+    parts = [{'type': 'text', 'text': 'Hello '}, {'type': 'text', 'text': 'world'}]
+    if media:
+        parts.append({'type': media})
+    await store.append_transcript(
+        None,
+        'user-event',
+        'person_u',
+        'user',
+        bot_id='b',
+        workspace_id='w',
+        content_json={'role': 'user', 'content': parts},
+    )
+    await store.append_transcript(None, 'reply', 'person_u', 'assistant', bot_id='b', workspace_id='w', content='reply')
+    result = await store.pop_last_turn('person_u', 'b', 'w', None, require_text=True)
+    remaining = await store.get_legacy_provider_messages('person_u', bot_id='b', workspace_id='w')
+    if media:
+        assert result is None and len(remaining) == 2
+    else:
+        assert result.content == 'Hello world' and remaining == []
+
+
+@pytest.mark.asyncio
 async def test_pop_last_turn_preserves_other_bot_and_previous_turn(context_service):
     _, engine = context_service
     store = TranscriptStore(engine)

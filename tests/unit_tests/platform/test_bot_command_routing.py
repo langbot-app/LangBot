@@ -1,5 +1,6 @@
 """Unit tests for bot-level plugin command routing at the platform layer."""
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, create_autospec
 
@@ -191,6 +192,26 @@ async def test_system_command_resolution(text, builtin, enabled, expected):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('admitted', [True, False])
+async def test_permission_notice_requires_group_admission(admitted):
+    event = make_message_event('/status', chat_type='group')
+    bot = make_bot({'denied_reply': 'notice'})
+    bot._record_policy_drop = AsyncMock(return_value={'status': 'discarded'})
+    bot._execute_matched_plugin_command = AsyncMock()
+
+    @asynccontextmanager
+    async def admit(query, text):
+        yield None if admitted else 'trigger.group-respond-rules'
+
+    runtime = SimpleNamespace(admit=admit, send_command_reply=AsyncMock())
+    object.__setattr__(event, '_entry_query', SimpleNamespace(_message_policy=runtime))
+    result = await bot._try_handle_plugin_command(event, Mock())
+    assert result == (True if admitted else {'status': 'discarded'})
+    assert runtime.send_command_reply.await_count == int(admitted)
+    bot._execute_matched_plugin_command.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_non_message_received_event_does_not_hit():
     """Non message.received event (e.g. MemberJoinedEvent) does not match plugin command."""
     bot = make_bot(
@@ -228,6 +249,7 @@ async def test_matched_command_skips_processors_and_pipeline(prevent):
     bot = make_bot(
         command_settings={
             'enabled': True,
+            'admins': ['person_1001'],
             'prefixes': ['/'],
             'processors': [{'processor_uuid': 'proc-plugin_a', 'enabled': True}],
         },
@@ -266,6 +288,8 @@ async def test_matched_command_skips_processors_and_pipeline(prevent):
         assert query is event.query
         assert query.bot_uuid == 'bot-123'
         assert not bot.ap.query_pool.queries
+        if event.event_name == 'PersonCommandSent':
+            assert event.is_admin is True
         seen.append((event.event_name, query.query_uuid))
         ctx = EventContext.from_event(event)
         if event.event_name == prevent:

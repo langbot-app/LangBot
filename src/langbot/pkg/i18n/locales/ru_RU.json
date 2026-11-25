@@ -1,4 +1,7 @@
 {
+  "Regenerating reply": "Ответ генерируется заново",
+  "Last turn removed": "Последний обмен удалён",
+  "Switched to {model} for this session": "Для текущего сеанса выбрана модель {model}",
   "Sender: {sender}\nSession: {session}": "Отправитель: {sender}\nСеанс: {session}",
   "New conversation started": "Новый диалог начат",
   "Reply stopped": "Ответ остановлен",

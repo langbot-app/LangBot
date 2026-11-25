@@ -143,7 +143,7 @@ async def execute_builtin(bot, event, adapter, name, text, query, session):
                 execution_context=context,
                 route_id=route.get('id'),
             )
-        return t(DESCRIPTIONS[name])
+        return t('Regenerating reply') if name == 'retry' else t('Last turn removed')
     if name == 'stop' and (pipeline or binding):
         admin = can_run(settings, 'admins', event.sender.id)
         if binding:
@@ -157,7 +157,7 @@ async def execute_builtin(bot, event, adapter, name, text, query, session):
         except RunnerNotFoundError:
             descriptor = None
         model_uuid, _ = config_schema.extract_model_selection(descriptor, runner_config)
-        if pipeline:
+        if pipeline and is_local_agent(descriptor):
             model_uuid = getattr(session, '_command_model_uuid', None) or model_uuid
         models = ap.model_mgr.runtime_llm_models_for_workspace(context.workspace_uuid)
         model = models.get(model_uuid)
@@ -176,11 +176,11 @@ async def execute_builtin(bot, event, adapter, name, text, query, session):
         args = text.split(maxsplit=1)
         if len(args) == 1:
             return model_name
-        if pipeline and config_schema.uses_host_models(descriptor):
+        if pipeline and is_local_agent(descriptor) and config_schema.uses_host_models(descriptor):
             for candidate in models.values():
                 if candidate.model_entity.name == args[1]:
                     session._command_model_uuid = candidate.model_entity.uuid
-                    return candidate.model_entity.name
+                    return t('Switched to {model} for this session', model=candidate.model_entity.name)
             return t('model not found')
     if name == 'tools' and (pipeline or binding):
         catalog = await ap.tool_mgr.get_resolved_tool_catalog(
