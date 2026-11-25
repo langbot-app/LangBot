@@ -1,6 +1,6 @@
-# Multica 智能体
+# 外部智能体对话
 
-在 LangBot 中直接与选定的 [Multica](https://github.com/multica-ai/multica) 智能体对话。
+此运行器将 LangBot 会话转发给已配置的 Multica 智能体。
 
 每个 LangBot 会话绑定一个 Multica 聊天会话。用户消息会发送到该会话并触发所选智能体运行，运行器等待智能体回复后把结果发回聊天。同一会话也能在 Multica 网页端的 **Chat** 中看到。
 
@@ -12,7 +12,7 @@
 
 1. 在 Multica 中创建个人访问令牌（Settings → API tokens，形如 `mul_...`）。聊天以令牌所属用户身份创建，该用户需有权使用目标智能体。
 2. 记下工作区 UUID（`multica workspace list --output json`）。智能体填名称即可，也可填 UUID。
-3. 在 LangBot 流水线中选择 **Multica 智能体** 运行器并填写下列配置。智能体所在的运行时（Multica daemon）需在线才能回复。
+3. 在 LangBot 流水线中选择 **外部智能体对话** 运行器并填写下列配置。智能体所在的运行时（Multica daemon）需在线才能回复。
 
 ## 插件设置
 

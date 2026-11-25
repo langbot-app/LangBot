@@ -6,23 +6,23 @@ metadata:
   version: 0.2.2
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/multica-agent
   label:
-    en_US: Multica Agent
-    zh_Hans: Multica 智能体
-    zh_Hant: Multica 智能體
-    ja_JP: Multica エージェント
-    th_TH: เอเจนต์ Multica
-    vi_VN: Tác nhân Multica
-    es_ES: Agente de Multica
-    ru_RU: Агент Multica
+    en_US: External Agent Chat
+    zh_Hans: 外部智能体对话
+    zh_Hant: 外部智慧體對話
+    ja_JP: 外部エージェントとのチャット
+    th_TH: แชทกับเอเจนต์ภายนอก
+    vi_VN: Trò chuyện với tác nhân bên ngoài
+    es_ES: Chat con un agente externo
+    ru_RU: Чат с внешним агентом
   description:
-    en_US: Chat with a selected Multica agent directly from LangBot.
-    zh_Hans: 在 LangBot 中直接与选定的 Multica 智能体对话。
-    zh_Hant: 在 LangBot 中直接與選定的 Multica 智能體對話。
-    ja_JP: LangBot から選択した Multica エージェントと直接チャットします。
-    th_TH: แชทกับเอเจนต์ Multica ที่เลือกได้โดยตรงจาก LangBot
-    vi_VN: Trò chuyện trực tiếp với tác nhân Multica đã chọn ngay trong LangBot.
-    es_ES: Chatea con un agente de Multica seleccionado directamente desde LangBot.
-    ru_RU: Общайтесь с выбранным агентом Multica прямо из LangBot.
+    en_US: Routes LangBot conversations to a configured Multica agent.
+    zh_Hans: 将 LangBot 会话转发给已配置的 Multica 智能体。
+    zh_Hant: 將 LangBot 對話轉發給已設定的 Multica 智慧體。
+    ja_JP: LangBot の会話を設定済みの Multica エージェントに転送します。
+    th_TH: ส่งต่อบทสนทนาใน LangBot ไปยังเอเจนต์ Multica ที่ตั้งค่าไว้
+    vi_VN: Chuyển tiếp cuộc trò chuyện trong LangBot đến tác nhân Multica đã cấu hình.
+    es_ES: Enruta las conversaciones de LangBot a un agente de Multica configurado.
+    ru_RU: Перенаправляет диалоги LangBot настроенному агенту Multica.
   icon: assets/icon.svg
 spec:
   config:

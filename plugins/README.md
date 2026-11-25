@@ -25,7 +25,7 @@ publication. Plugins are not included in Core release artifacts.
 - [DifyAgent](Runner/dify-agent/README.md)
 - [LangflowAgent](Runner/langflow-agent/README.md)
 - [LocalAgent](Runner/LocalAgent/README.md)
-- [MulticaAgent](Runner/multica-agent/README.md)
+- [External Agent Chat](Runner/multica-agent/README.md) (connects to Multica)
 - [N8nAgent](Runner/n8n-agent/README.md)
 - [RunnerDemo](Runner/RunnerDemo/README.md)
 - [TboxAgent](Runner/tbox-agent/README.md)

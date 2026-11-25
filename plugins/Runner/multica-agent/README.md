@@ -1,6 +1,6 @@
-# Multica Agent
+# External Agent Chat
 
-Chat with a selected [Multica](https://github.com/multica-ai/multica) agent directly from LangBot.
+This runner connects LangBot conversations to a configured Multica agent.
 
 [简体中文](readme/README_zh_Hans.md)
 
@@ -19,7 +19,7 @@ in the Multica web app under **Chat**.
    Chats are created as the token's owner, so that user must be able to use the agent.
 2. Copy the workspace UUID (`multica workspace list --output json`). For the agent,
    its name is enough; a UUID also works.
-3. In a LangBot pipeline, choose the **Multica Agent** runner and fill in the fields
+3. In a LangBot pipeline, choose the **External Agent Chat** runner and fill in the fields
    below. The agent's runtime (Multica daemon) must be online to reply.
 
 ## Plugin settings

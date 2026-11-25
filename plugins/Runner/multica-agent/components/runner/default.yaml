@@ -3,8 +3,8 @@ kind: Runner
 metadata:
   name: default
   label:
-    en_US: Multica Agent
-    zh_Hans: Multica 智能体
+    en_US: External Agent Chat
+    zh_Hans: 外部智能体对话
   description:
     en_US: Forward each conversation to a Multica agent chat session and reply with the agent's answer.
     zh_Hans: 将每个会话转发到 Multica 智能体的聊天会话，并以智能体的回答回复。
@@ -16,8 +16,8 @@ spec:
         en_US: Multica API URL
         zh_Hans: Multica API 地址
       description:
-        en_US: Multica server API base URL. Use https://api.multica.ai for Multica Cloud, or your self-hosted server URL.
-        zh_Hans: Multica 服务端 API 地址。Multica Cloud 使用 https://api.multica.ai，自托管填写你的服务端地址。
+        en_US: Base URL of the Multica API. For a self-hosted deployment, enter your server URL.
+        zh_Hans: Multica API 的基础地址。自托管时请填写你的服务端地址。
       type: string
       required: true
       default: 'https://api.multica.ai'
