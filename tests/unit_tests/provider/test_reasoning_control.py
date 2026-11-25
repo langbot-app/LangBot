@@ -194,12 +194,15 @@ def test_deepseek_profiles_match_model_generation(monkeypatch):
     request = _requester('deepseek', 'deepseek-chat-completions')
     monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
 
+    # DeepSeek declares effort levels low/high/max via /models, and deepseek-flash /
+    # deepseek-chat are aliases of the same backend model as deepseek-v4-*, so the
+    # whole generation shares one table (LangBot issue #2834).
     assert request.get_reasoning_capabilities(_runtime_model(request, name='deepseek-v4-flash', abilities=[]))[
         'levels'
-    ] == ['provider_default', 'disabled', 'low', 'high', 'xhigh', 'max']
+    ] == ['provider_default', 'disabled', 'low', 'high', 'max']
     assert request.get_reasoning_capabilities(_runtime_model(request, name='deepseek-chat', abilities=[]))[
         'levels'
-    ] == ['provider_default', 'disabled', 'enabled']
+    ] == ['provider_default', 'disabled', 'low', 'high', 'max']
     assert request.get_reasoning_capabilities(_runtime_model(request, name='deepseek-r1', abilities=[]))['levels'] == [
         'provider_default'
     ]
@@ -329,7 +332,7 @@ def test_doubao_exposes_documented_effort_range(monkeypatch):
             'claude-sonnet-4-6',
             ['provider_default', 'disabled', 'low', 'medium', 'high', 'xhigh', 'max'],
         ),
-        ('deepseek-v4-flash', ['provider_default', 'disabled', 'low', 'high', 'xhigh', 'max']),
+        ('deepseek-v4-flash', ['provider_default', 'disabled', 'low', 'high', 'max']),
         ('kimi-k2.6', ['provider_default', 'disabled', 'enabled']),
         ('qwen-plus', ['provider_default', 'disabled', 'enabled']),
         ('doubao-seed-2-1-pro-260628', ['provider_default', 'disabled', 'low', 'medium', 'high']),
