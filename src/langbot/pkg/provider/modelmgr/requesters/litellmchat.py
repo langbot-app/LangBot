@@ -1376,9 +1376,14 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         answer and must not see it as a failed request.
         """
         cls = getattr(litellm_exceptions, 'MidStreamFallbackError', None)
-        if cls is None or not isinstance(e, cls):
+        if cls is None or not isinstance(e, cls) or e.is_pre_first_chunk:
             return False
-        return not getattr(e, 'is_pre_first_chunk', False)
+        # LiteLLM synthesizes this error while handling iterator exhaustion.
+        # It also wraps transport failures, but those are not raised from
+        # iterator exhaustion and must not finalize a partial answer.
+        return isinstance(e.__context__, (StopAsyncIteration, StopIteration)) and str(e.original_exception).endswith(
+            'Stream ended before a finish_reason was received'
+        )
 
     def _handle_litellm_error(self, e: Exception) -> None:
         """Convert LiteLLM exceptions to RequesterError. Never returns, always raises."""
@@ -1926,10 +1931,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     yield chunk
 
             except Exception as e:
-                # A provider can close the stream after the last content delta
-                # without ever sending a finish_reason. LiteLLM reports that as
-                # a mid-stream transport failure; for the caller it is the end
-                # of a complete answer, so close it out instead of failing.
+                # Some providers end the stream cleanly without a finish_reason.
+                # Flush those answers without treating transport failures as EOF.
                 if chunk_idx and self._is_stream_eof_without_finish(e):
                     async for chunk in _finish():
                         yield chunk
