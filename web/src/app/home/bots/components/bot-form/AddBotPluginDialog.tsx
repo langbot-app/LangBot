@@ -266,6 +266,8 @@ export default function AddBotPluginDialog({
             pluginName: id,
             source: 'marketplace',
             extensionType: 'plugin',
+            // Installing here adds it to this bot, so it is enabled.
+            skipEnablementHint: true,
           });
         },
       });

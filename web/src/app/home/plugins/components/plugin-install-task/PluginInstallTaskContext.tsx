@@ -43,6 +43,8 @@ export interface PluginInstallTask {
   /** When the current stage began, used to bound in-stage drift. */
   stageStartedAt: number;
   currentAction: string; // raw backend action string
+  /** Installed from a bot's plugin list, which enables it there; no "not enabled" hint. */
+  skipEnablementHint?: boolean;
 }
 
 type OnTaskCompleteCallback = (
@@ -61,6 +63,7 @@ interface PluginInstallTaskContextValue {
     extensionType: 'plugin' | 'mcp' | 'skill';
     fileSize?: number;
     operation?: PluginTaskOperation;
+    skipEnablementHint?: boolean;
   }) => void;
   removeTask: (id: string) => void;
   clearCompletedTasks: () => void;
@@ -332,6 +335,7 @@ export function PluginInstallTaskProvider({
                     t.operation,
                     t.extensionType === 'plugin' &&
                       t.operation === 'install' &&
+                      !t.skipEnablementHint &&
                       typeof md.plugin_name === 'string'
                       ? md.plugin_name
                       : undefined,
@@ -480,6 +484,7 @@ export function PluginInstallTaskProvider({
       extensionType: 'plugin' | 'mcp' | 'skill';
       fileSize?: number;
       operation?: PluginTaskOperation;
+      skipEnablementHint?: boolean;
     }) => {
       const operation = params.operation ?? 'install';
       const taskKey = pluginTaskKey(params.taskId, params.source, operation);
@@ -503,6 +508,7 @@ export function PluginInstallTaskProvider({
         startedAt: Date.now(),
         stageStartedAt: Date.now(),
         currentAction: '',
+        skipEnablementHint: params.skipEnablementHint,
       };
 
       setTasks((prev) => {
