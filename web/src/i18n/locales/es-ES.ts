@@ -239,6 +239,14 @@ const esES = {
     cancelled: 'Cancelado',
     ignored: 'Ignorado',
   },
+  githubStarPrompt: {
+    title: 'LangBot ya ha procesado {{total}} eventos por ti',
+    description:
+      'Si LangBot te resulta útil, una estrella en GitHub ayuda a que más personas lo descubran.',
+    later: 'Más tarde',
+    star: 'Star',
+    close: 'Cerrar',
+  },
   assistant: {
     movePosition: 'Mover el asistente horizontalmente',
     resizeHeight: 'Ajustar la altura del asistente',
@@ -1449,6 +1457,11 @@ const esES = {
     collapse: 'Contraer',
     imagesAttached: 'imagen(es) adjunta(s)',
     noLogs: 'Aún no hay registros',
+    routeDraftExists: 'Ya existe una regla para {{id}}; se muestra abajo.',
+    routeDraftAddedGroup:
+      'Se añadió arriba una regla para el grupo {{id}}. Elige su pipeline y guarda.',
+    routeDraftAddedPerson:
+      'Se añadió arriba una regla para el usuario {{id}}. Elige su pipeline y guarda.',
     sessionMonitor: {
       resetContext: 'Restablecer contexto',
       resetDescription:
@@ -1456,6 +1469,29 @@ const esES = {
       resetSuccess: 'Contexto restablecido.',
       resetError:
         'No se pudo restablecer. Espere a que terminen las tareas activas y vuelva a intentarlo.',
+      resetScopeMember:
+        'Este chat guarda un contexto independiente para cada miembro del grupo, así que solo se restablece el de este miembro.',
+      resetScopeGroup:
+        'Este grupo comparte un único contexto, así que se restablece la conversación de todo el grupo, no solo la de este miembro.',
+      inGroup: 'en {{group}}',
+      filterByGroup: 'Mismo grupo',
+      groupFilterActive: 'Grupo {{group}}',
+      clearGroupFilter: 'Mostrar todas las sesiones',
+      groupTitle: 'Grupo {{group}}',
+      memberLine: 'Miembro: {{name}}',
+      lastSenderLine: 'Último remitente: {{name}}',
+      privateChat: 'Chat privado',
+      groupChat: 'Chat de grupo',
+      groupId: 'ID de grupo',
+      member: 'Miembro',
+      lastSender: 'Último remitente',
+      userId: 'ID de usuario',
+      pipeline: 'Pipeline',
+      routeGroup: 'Enrutar este grupo',
+      routeGroupHint:
+        'Crea una regla de enrutamiento que envíe este grupo a un pipeline concreto',
+      contextShared: 'Contexto compartido del grupo',
+      contextPerMember: 'Contexto por miembro',
 
       title: 'Sesiones',
       sessions: 'Sesiones',
@@ -1949,6 +1985,12 @@ const esES = {
     debugging: 'Depuración',
     uploadLocalPlugin: 'Subir plugin local',
     spaceUpload: {
+      descriptionInstalled:
+        'Sube el plugin instalado localmente {{author}}/{{name}} al mercado.',
+      shareInstalledAction: 'Compartir en Space',
+      installedPackageTitle: 'Se subirá el paquete instalado',
+      installedPackageHint:
+        'Un plugin instalado localmente se sube tal cual su .lbpkg; autor, nombre y versión salen del manifest.',
       menuAction: 'Subir a la tienda de extensiones',
       title: 'Subir plugin a la tienda de extensiones',
       description:
@@ -2199,6 +2241,10 @@ const esES = {
     updating: 'Actualizando...',
     updateSuccess: 'Plugin actualizado correctamente',
     updateError: 'Error al actualizar: ',
+    installedVersion: 'Versión instalada v{{version}}',
+    updateToVersion: 'Actualizar a v{{version}}',
+    confirmUpdatePluginVersion:
+      '¿Actualizar el plugin {{author}}/{{name}} de v{{from}} a v{{to}}?',
     saveConfigSuccessNormal: 'Configuración guardada correctamente',
     saveConfigError: 'Error al guardar la configuración: ',
     config: 'Configuración',
@@ -2234,6 +2280,25 @@ const esES = {
     backToReleases: 'Volver a versiones',
     backToRepoUrl: 'Volver a la URL del repositorio',
     backToAssets: 'Volver a archivos',
+    githubSourceRelease: 'Release',
+    githubSourceBranch: 'Rama',
+    searchBranches: 'Buscar ramas...',
+    defaultBranch: 'Predeterminada',
+    noBranchesFound: 'No hay ramas coincidentes',
+    branchesTruncated: 'Solo se muestran las primeras 500 ramas',
+    pluginDirectory: 'Directorio del plugin',
+    pluginDirectoryPlaceholder: 'Raíz del repositorio',
+    pluginDirectoryHelp:
+      'Subdirectorio que contiene manifest.yaml, si el plugin no está en la raíz',
+    downloadSourceDirect: 'Directo a GitHub · {{latency}} ms',
+    downloadSourceMirror: 'Espejo {{host}} · {{latency}} ms',
+    releasesUnavailable:
+      'Este servidor no puede acceder a las releases de GitHub. Puedes instalar desde una rama.',
+    noReleasesUseBranch:
+      'Este repositorio no tiene releases. Puedes instalar desde una rama.',
+    useBranchInstead: 'Instalar desde una rama',
+    fetchBranchesError: 'Error al cargar las ramas: ',
+    backToBranches: 'Volver a ramas',
     releaseTag: 'Etiqueta: {{tag}}',
     releaseName: 'Nombre: {{name}}',
     publishedAt: 'Publicado el: {{date}}',
@@ -2265,6 +2330,12 @@ const esES = {
       depsProgress:
         '{{installed}}/{{total}} instaladas · {{remaining}} restantes',
       installComplete: 'Plugin instalado correctamente',
+      followUp: {
+        nextSteps: 'Próximos pasos',
+        agents: 'Crea un Agent o un procesador de plugin',
+        pipelines: 'Crea una canalización',
+        knowledge: 'Crea una base de conocimiento',
+      },
       updateComplete: 'Plugin actualizado correctamente',
       installCompletePlugin: 'Plugin instalado correctamente',
       installCompleteMCP: 'Servidor MCP instalado correctamente',
@@ -2277,6 +2348,13 @@ const esES = {
     },
   },
   market: {
+    typeTiles: {
+      all: 'Todas las extensiones',
+      allDesc: 'Plugins, MCP y skills',
+      pluginDesc: 'Plataformas, herramientas, runners y más',
+      mcpDesc: 'Herramientas de servidores MCP externos',
+      skillDesc: 'Enseña a los Agents nuevas formas de trabajar',
+    },
     certifiedPlugin: 'Plugin certificado',
     certificationTooltip:
       'Esta versión ha superado la revisión de aislamiento de datos y compatibilidad con entornos compartidos. El paquete está firmado.',
@@ -2948,6 +3026,21 @@ const esES = {
     newVersionAvailable: 'Nueva versión disponible',
     viewUpdateGuide: 'Ver guía de actualización',
     noReleaseNotes: 'No hay notas de la versión disponibles',
+    latestBadge: 'Última',
+    currentBadge: 'Actual',
+    viewOnWebsite: 'Ver en el sitio web',
+    whatsNewInCurrent: 'Novedades de esta versión',
+    releasesIncluded: 'Incluye {{count}} versiones',
+    upToDate: 'Estás usando la última versión',
+    showOlderReleases: 'Mostrar {{count}} versiones anteriores',
+    viewFullChangelog: 'Ver el registro de cambios completo',
+    changeTypes: {
+      new: 'Nuevo',
+      improved: 'Mejorado',
+      changed: 'Cambiado',
+      fixed: 'Corregido',
+      security: 'Seguridad',
+    },
   },
   account: {
     settings: 'Configuración de la cuenta',
@@ -3065,6 +3158,32 @@ const esES = {
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
+  dailyMessageQuota: {
+    planLimited: '{{count}} mensajes al día',
+    planUnlimited: 'Mensajes diarios ilimitados',
+    planHelp:
+      'Mensajes que tus bots pueden procesar al día, contados por día UTC y reiniciados a las 00:00 UTC. Solo cuentan los mensajes que un bot procesa realmente. Al agotarse, los mensajes nuevos de ese día no se procesan y se avisa al usuario.',
+    title: 'Mensajes de hoy',
+    usage: '{{used}} / {{limit}}',
+    remaining: 'Quedan {{count}}',
+    resetsAt: 'Se reinicia {{time}}',
+    today: 'hoy {{time}}',
+    tomorrow: 'mañana {{time}}',
+    exhausted: 'Cuota de hoy agotada',
+    exhaustedHint: 'Los mensajes nuevos se pausan hasta {{time}}',
+    nearLimit: 'Casi agotada',
+    upgrade: 'Mejorar plan',
+    unlimited: 'Ilimitado',
+    settingsTitle: 'Cuota diaria de mensajes',
+    settingsDescription:
+      'Mensajes que tus bots pueden procesar al día, incluido el chat de depuración. Se cuenta por día UTC; los mensajes de grupo que no activan un bot no cuentan.',
+    unlimitedDescription: 'Tu plan no limita los mensajes diarios.',
+    errorTitle: 'Cuota diaria de mensajes agotada',
+    errorBody:
+      'Este espacio de trabajo ya procesó {{limit}} mensajes hoy, por lo que este mensaje no se procesó. La cuota se reinicia {{time}}.',
+    errorUpgrade: 'Mejora para una cuota mayor',
+    unavailable: 'El uso de hoy no está disponible ahora',
+  },
   workspace: {
     dedicatedSpaceMembersHint:
       'Los miembros que inician sesión con su cuenta de LangBot se invitan desde la página Cloud de LangBot Space. La invitación de abajo crea una cuenta con contraseña independiente en esta instancia.',
@@ -3173,7 +3292,22 @@ const esES = {
       llm_calls: 'Llamadas al modelo',
       tool_calls: 'Llamadas a herramientas',
       errors: 'Errores',
-      payload: 'Detalles',
+      payload: 'Datos sin procesar',
+      rawEvents: 'Eventos sin procesar ({{count}}{{more}})',
+      copyJson: 'Copiar JSON',
+      diagnostics: 'Diagnóstico',
+      diagnosticsHint:
+        'Elige un elemento para cargar llamadas al modelo, llamadas a herramientas, eventos, ejecuciones relacionadas o el contexto de la conversación.',
+      chat: {
+        bot: 'Bot',
+        groupChat: 'Chat de grupo',
+        privateChat: 'Chat privado',
+        source: 'Origen',
+        groupId: 'ID de grupo',
+        sender: 'Remitente',
+        routeGroup: 'Enrutar este grupo',
+        routePerson: 'Enrutar este usuario',
+      },
       metadata: 'Información técnica',
       loadMore: 'Cargar más',
       noRecords: 'Sin registros',
@@ -3654,6 +3788,7 @@ const esES = {
       skill: 'Habilidad',
       knowledge_base: 'Base de conocimiento',
       mcp_server: 'Servidor MCP',
+      content: 'Contenido compartido',
       runtime: 'Entorno de ejecución',
       system: 'Sistema',
       resource: 'Recurso',
@@ -3664,6 +3799,8 @@ const esES = {
       error: 'Fallido',
     },
     actions: {
+      content_publish: 'Compartir contenido en Space',
+      plugin_publish: 'Publicar extensión en Space',
       audit_log_view: 'Ver registros de operación',
       settings_update: 'Actualizar ajustes de trazabilidad',
       settings_view: 'Ver ajustes de trazabilidad',
@@ -4331,6 +4468,114 @@ const esES = {
       failed: 'Fallido',
       rate_limited: 'Cuota agotada',
       skipped: 'Omitido',
+    },
+  },
+  promptLibrary: {
+    emptyTitle: 'Las plantillas están en camino ✨',
+    emptyBody: 'Pulsa «Compartir» junto a un prompt y sé el primero.',
+    bindToFavorite: 'Vincula una cuenta para guardar favoritos',
+    originalLanguage: 'original',
+    open: 'Biblioteca de prompts',
+    title: 'Biblioteca de prompts',
+    description:
+      'Busca prompts revisados compartidos en LangBot Space. Guarda la configuración después de aplicar uno.',
+    kindMessaging: 'Conversación',
+    kindAgent: 'Agent',
+    searchPlaceholder: 'Buscar nombre, descripción, etiquetas o texto',
+    tabAll: 'Todos',
+    tabFavorites: 'Favoritos',
+    favoritesNeedAccount: 'Vincula una LangBot Account para usar favoritos',
+    otherKindHint:
+      'Estás viendo prompts de tipo {{kind}}, pensados para otro uso. Revísalos antes de aplicar.',
+    noFavorites: 'Aún no hay favoritos',
+    empty: 'No hay prompts coincidentes',
+    loadFailed: 'No se pudo cargar la biblioteca',
+    favoriteFailed: 'No se pudo actualizar el favorito',
+    applied: 'Aplicado. Guarda para que surta efecto.',
+    uses: '{{count}} usos',
+    favorite: 'Favorito',
+    variablesHint: 'Variables:',
+    append: 'Añadir al prompt actual',
+    replace: 'Reemplazar prompt actual',
+    replaceTitle: '¿Reemplazar el prompt actual?',
+    replaceDescription:
+      'El prompt actual se sobrescribirá (puedes descartar antes de guardar).',
+    selectHint: 'Selecciona un prompt a la izquierda',
+  },
+  spaceShare: {
+    modeNew: 'Publicar como nuevo',
+    modeUpdate: 'Actualizar existente ({{count}})',
+    pickExisting: 'Elige el elemento a actualizar',
+    unlisted: 'oculto',
+    identifierHint:
+      'Minúsculas, dígitos, - o _. No se puede cambiar tras publicar.',
+    bindAccount: 'Vincular cuenta de LangBot',
+    autoTranslateNotice:
+      'Escríbelo en un solo idioma. Lo traduciremos automáticamente a otros idiomas después de subirlo.',
+    shareShort: 'Compartir',
+    shareToSpace: 'Compartir en Space',
+    findingsBlockTitle:
+      'Se detectaron posibles credenciales: elimínalas antes de compartir',
+    findingsWarnTitle: 'Contiene datos personales o internos',
+    submitFailed: 'Error al enviar',
+    submittedTitle: 'Enviado a revisión',
+    submittedAgentReview:
+      '{{id}} se está revisando automáticamente y aparecerá en LangBot Space al aprobarse.',
+    submittedManualReview: '{{id}} espera una revisión manual.',
+    viewProgress: 'Ver el progreso en LangBot Space',
+    needAccountTitle: 'Se requiere una LangBot Account',
+    needAccount:
+      'Vincula una cuenta de LangBot para compartir. Tu aportación se publica con el perfil de creador de esa cuenta en LangBot Space.',
+    needCreatorTitle: 'Aún no tienes perfil de creador',
+    needCreator:
+      'Configura un perfil de creador en LangBot Space para compartir. Solo hace falta una vez.',
+    openCreator: 'Configurar perfil de creador',
+    acknowledgeWarnings: 'Confirmo que esta información puede ser pública',
+    displayName: 'Nombre visible',
+    identifier: 'Identificador',
+    descriptionLabel: 'Descripción',
+    changelog: 'Cambios',
+    reviewNotice:
+      'Los envíos se revisan antes de publicarse en LangBot Space. Compartir el mismo nombre publica una nueva versión.',
+    submit: 'Enviar a revisión',
+    promptTitle: 'Compartir prompt en LangBot Space',
+    promptDescriptionMessaging:
+      'Se publica como prompt de conversación para la configuración de pipelines.',
+    promptDescriptionAgent:
+      'Se publica como prompt de Agent para la configuración de Agents.',
+    detectedVariables: 'Variables detectadas:',
+    skillTitle: 'Compartir Skill en LangBot Space',
+    skillDescription:
+      'Sube el paquete actual de la Skill. La revisión comprueba scripts y peticiones externas.',
+    packageFiles: 'Archivos a enviar',
+    mcpTitle: 'Compartir servidor MCP en LangBot Space',
+    mcpDescription:
+      'Solo MCP remoto. Las credenciales nunca se suben: se sustituyen por marcadores que cada instalador rellena.',
+    mcpPublishedConfig: 'Configuración a publicar',
+    mcpToolsCount: 'Incluye {{count}} herramientas',
+    mcpRedactedTitle: '{{count}} credenciales eliminadas',
+    mcpRedactedHint:
+      'Se pedirán estos valores al instalar. Ponles un nombre claro:',
+    mcpInputLabelPlaceholder: 'Etiqueta (por defecto: {{label}})',
+    mcpNoCredentials: 'No hay credenciales; se publica tal cual.',
+    mcpNeedsConnection:
+      'Conecta correctamente primero; se publica la lista de herramientas',
+    mcpFillInputsTitle: 'Rellena las credenciales antes de activar',
+    mcpFillInputs:
+      'Este MCP de la comunidad necesita tus valores para {{names}}. Sustitúyelos, guarda y actívalo.',
+    finding: {
+      openai_key: 'Clave de OpenAI',
+      anthropic_key: 'Clave de Anthropic',
+      github_token: 'Token de GitHub',
+      slack_token: 'Token de Slack',
+      aws_access_key: 'Clave de acceso de AWS',
+      google_api_key: 'Clave de API de Google',
+      private_key: 'Clave privada',
+      jwt: 'Token JWT',
+      langbot_key: 'Clave de LangBot',
+      email: 'Correo electrónico',
+      phone: 'Número de teléfono',
+      private_url: 'URL interna',
     },
   },
 };

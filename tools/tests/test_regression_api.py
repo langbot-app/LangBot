@@ -27,6 +27,9 @@ class ApiContractTests(unittest.TestCase):
         fixed, shuffled = first['cases'][:half], first['cases'][half:]
         self.assertEqual(Counter(c['scenario'] for c in fixed), Counter(c['scenario'] for c in shuffled))
         self.assertEqual(set(Counter(c['scenario'] for c in fixed).values()), {1})
+        pr, _ = suite_profile('api', 'pr', api_fixed_only=True)
+        validate(pr)
+        self.assertEqual(pr['cases'], fixed)
         self.assertEqual(first['resources'], [])
         self.assertNotIn('api', DEFAULT_GROUPS)
         daily = expanded_profile(DEFAULT_GROUPS)
@@ -52,7 +55,7 @@ class ApiContractTests(unittest.TestCase):
             'tools.regression.regression_api_cases.credentials_case', side_effect=ValueError('Revoked key still works')
         ):
             with self.assertRaisesRegex(ValueError, 'Revoked key'):
-                run_case(suite, {'scenario': 'api_credentials', 'expect': 'OK'}, row)
+                run_case(suite, {'name': 'fixed_api_credentials', 'scenario': 'api_credentials', 'expect': 'OK'}, row)
         self.assertEqual(row['assertions']['api_chain'], 'failed')
 
     def test_rejection_keeps_http_failure_when_state_check_also_fails(self):
@@ -154,7 +157,9 @@ class ApiContractTests(unittest.TestCase):
                     patch('tools.regression.regression_api_cases.unique_name', return_value='qa-api-owned-key'),
                     self.assertRaisesRegex(ValueError, error),
                 ):
-                    run_case(suite, {'scenario': 'api_credentials', 'expect': 'OK'}, row)
+                    run_case(
+                        suite, {'name': 'fixed_api_credentials', 'scenario': 'api_credentials', 'expect': 'OK'}, row
+                    )
                 self.assertEqual(row['assertions']['api_chain'], 'failed')
                 self.assertEqual(row['assertions']['key_cleanup'], 'passed')
                 self.assertFalse(row.get('cleanup_errors'))
@@ -227,7 +232,9 @@ class ApiContractTests(unittest.TestCase):
                     patch('tools.regression.regression_api_cases.unique_name', return_value='qa-api-owned-key'),
                     self.assertRaisesRegex(ValueError, error),
                 ):
-                    run_case(suite, {'scenario': 'api_credentials', 'expect': 'OK'}, row)
+                    run_case(
+                        suite, {'name': 'fixed_api_credentials', 'scenario': 'api_credentials', 'expect': 'OK'}, row
+                    )
                 self.assertEqual(row['assertions']['api_chain'], 'failed')
                 self.assertEqual(row['assertions']['key_cleanup'], 'passed')
                 self.assertEqual(row['assertions']['cleanup_pipeline_qa-api-owned-key'], 'passed')

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -10,7 +11,7 @@ from langbot_plugin.cli.commands import runplugin
 
 
 class FakeDiscoveryEngine:
-    manifest = object()
+    manifest = SimpleNamespace(metadata=SimpleNamespace(author="test", name="worker"))
     load_calls = []
 
     def load_component_manifest(self, **kwargs):
@@ -94,7 +95,7 @@ async def test_arun_plugin_process_builds_controller_and_sets_runtime_env(
     tmp_path, monkeypatch
 ):
     calls = []
-    manifest = object()
+    manifest = FakeDiscoveryEngine.manifest
     components = [object()]
     (tmp_path / "manifest.yaml").write_text("kind: Plugin\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
@@ -166,7 +167,7 @@ async def test_arun_plugin_process_builds_controller_and_sets_runtime_env(
 
 async def test_arun_plugin_process_uses_debug_runtime_ws_url(tmp_path, monkeypatch):
     components = []
-    manifest = object()
+    manifest = FakeDiscoveryEngine.manifest
     (tmp_path / "manifest.yaml").write_text("kind: Plugin\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DEBUG_RUNTIME_WS_URL", "ws://debug")
@@ -229,7 +230,7 @@ def test_run_plugin_process_configures_logging_and_runs_async_entry(monkeypatch)
     monkeypatch.setattr(
         runplugin,
         "configure_process_logging",
-        lambda: calls.append(("configure_logging",)),
+        lambda **kwargs: calls.append(("configure_logging", kwargs["service"])),
     )
     monkeypatch.setattr(
         runplugin,
@@ -251,7 +252,7 @@ def test_run_plugin_process_configures_logging_and_runs_async_entry(monkeypatch)
     )
 
     assert calls == [
-        ("configure_logging",),
+        ("configure_logging", "PLUGIN.unknown"),
         (
             "arun",
             (True, True, "debug-key", "https://mirror", "mirror"),
@@ -262,7 +263,7 @@ def test_run_plugin_process_configures_logging_and_runs_async_entry(monkeypatch)
 
 def test_run_plugin_process_reports_cancelled_error(monkeypatch):
     prints = []
-    monkeypatch.setattr(runplugin, "configure_process_logging", lambda: None)
+    monkeypatch.setattr(runplugin, "configure_process_logging", lambda **kwargs: None)
     monkeypatch.setattr(runplugin, "arun_plugin_process", lambda *args: "coroutine")
     monkeypatch.setattr(
         runplugin.asyncio,
@@ -278,7 +279,7 @@ def test_run_plugin_process_reports_cancelled_error(monkeypatch):
 
 def test_run_plugin_process_reports_keyboard_interrupt(monkeypatch):
     prints = []
-    monkeypatch.setattr(runplugin, "configure_process_logging", lambda: None)
+    monkeypatch.setattr(runplugin, "configure_process_logging", lambda **kwargs: None)
     monkeypatch.setattr(runplugin, "arun_plugin_process", lambda *args: "coroutine")
     monkeypatch.setattr(
         runplugin.asyncio,
@@ -311,8 +312,7 @@ def test_cli_run_forwards_the_process_tag(monkeypatch):
 
     forwarded: list = []
     monkeypatch.setattr(
-        cli_module,
-        "run_plugin_process",
+        "langbot_plugin.cli.commands.runplugin.run_plugin_process",
         lambda *args, **kwargs: forwarded.append(kwargs),
     )
     monkeypatch.setattr(sys, "argv", ["lbp", "run", "--tag", "langbot-team/LangRAG"])

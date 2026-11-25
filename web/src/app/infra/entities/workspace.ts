@@ -23,6 +23,19 @@ export interface WorkspaceMembership {
   created_at: string;
 }
 
+/** Cloud daily message quota for the current Workspace (UTC calendar day). */
+export interface MessageQuota {
+  /** False when the plan does not cap messages (limit/remaining are -1). */
+  enforced: boolean;
+  limit: number;
+  used: number;
+  remaining: number;
+  period: 'day';
+  timezone: string;
+  period_start: string;
+  resets_at: string;
+}
+
 export interface CurrentWorkspace {
   current_plan?: {
     subscription_started_at?: number | null;
@@ -39,6 +52,8 @@ export interface CurrentWorkspace {
   /** Signed Cloud display metadata; never used for client-side authorization. */
   plan_name?: string | null;
   limitation?: Record<string, number> | null;
+  /** Null when the entitlement could not be resolved. */
+  message_quota?: MessageQuota | null;
 }
 
 export interface WorkspaceSpaceBilling {

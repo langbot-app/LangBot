@@ -11,6 +11,7 @@ import json
 import os
 import signal
 import socket
+import contextlib
 import sqlite3
 import subprocess
 import sys
@@ -159,6 +160,7 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
 
             from typing import AsyncGenerator
             import json
+            import logging
             from pathlib import Path
 
             from langbot_plugin.api.definition.components.runner.runner import Runner
@@ -170,6 +172,8 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
             class DefaultRunner(Runner):
                 async def run(self, ctx: RunnerContext) -> AsyncGenerator[RunnerResult, None]:
                     text = ctx.input.to_text()
+                    if text == 'hello from orchestrator e2e':
+                        logging.getLogger(__name__).warning('Runner trace probe')
                     content = f'{ctx.config.get("prefix", "e2e echo")}: {text}'
                     if text.startswith('boundary probe'):
                         tools = await ctx.get_available_tools()
@@ -628,6 +632,23 @@ def test_host_orchestrator_runs_runner_and_records_ledger(
     assert result['final_text'] == 'e2e echo: hello from orchestrator e2e'
     assert result['outputs'][0]['role'] == 'assistant'
 
+    from tools.regression.service_logs import records
+
+    runtime_file = runner_e2e_tmpdir / 'plugin-runtime.stderr.log'
+    with runtime_file.open() as stream:
+        warning = next(row for row in records(stream, 'runtime') if row.msg == 'Runner trace probe')
+    assert warning.module == 'PLUGIN.e2e/agent-runner-qa' and warning.level == 'WARN'
+    assert warning.trace.startswith('Y-')
+    detail = runner_client.get('/api/v1/plugins/e2e/agent-runner-qa/logs?level=WARNING', headers=headers)
+    assert any(
+        row['level'] == 'WARNING' and warning.trace in row['text'] and 'Runner trace probe' in row['text']
+        for row in detail.json()['data']['logs']
+    )
+    with (runner_e2e_tmpdir / 'langbot.stdout.log').open() as stream:
+        assert any(
+            row.trace == warning.trace and f'/agents/{agent_uuid}/debug ' in row.msg for row in records(stream, 'core')
+        )
+
     db_path = runner_e2e_tmpdir / 'data' / 'langbot.db'
     conn = sqlite3.connect(str(db_path))
     try:
@@ -729,7 +750,7 @@ def _create_boundary_pipeline(client, token):
 
 
 def _pipeline_failure_diagnostics(directory, pipeline_id):
-    with sqlite3.connect(directory / 'data' / 'langbot.db') as connection:
+    with contextlib.closing(sqlite3.connect(directory / 'data' / 'langbot.db')) as connection:
         messages = connection.execute(
             'SELECT status, level, runner_name FROM monitoring_messages WHERE pipeline_id = ?',
             (pipeline_id,),

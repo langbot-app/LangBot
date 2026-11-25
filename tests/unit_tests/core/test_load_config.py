@@ -20,6 +20,35 @@ def get_load_config_module():
     return import_module('langbot.pkg.core.stages.load_config')
 
 
+def test_content_defaults_preserve_old_config_and_explicit_choices():
+    complete = get_load_config_module()._complete_content_defaults
+    old = complete({})
+    assert old['skills']['persistence'] == 'filesystem'
+    assert old['storage']['use'] == 'local'
+    assert old['box']['file_transfer_mode'] == 'legacy'
+    assert old['box']['workspace_mode'] == 'private'
+    current = complete(
+        {
+            'skills': {'persistence': 'database'},
+            'storage': {'use': 'persistent'},
+            'box': {'file_transfer_mode': 'network'},
+        }
+    )
+    assert current['skills']['persistence'] == 'database'
+    assert current['storage']['use'] == 'persistent'
+    assert current['box']['file_transfer_mode'] == 'network'
+    assert current['box']['workspace_mode'] == 'shared'
+    current['box']['workspace_mode'] = 'private'
+    assert complete(current)['box']['workspace_mode'] == 'private'
+
+
+def test_required_migration_source_env_remains_boolean():
+    module = get_load_config_module()
+    with patch.dict(os.environ, {'SKILLS__MIGRATION__REQUIRE_SOURCE': 'true'}, clear=True):
+        config = module._apply_env_overrides_to_config(module._complete_content_defaults({}))
+    assert config['skills']['migration']['require_source'] is True
+
+
 class TestApplyEnvOverridesToConfig:
     """Tests for _apply_env_overrides_to_config function."""
 

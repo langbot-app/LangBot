@@ -31,6 +31,24 @@ class TestGetPlatform:
                 result = platform_module.get_platform()
                 assert result == 'docker'
 
+    def test_explicit_docker_env_false_overrides_dockerenv(self):
+        """Native deploys inside a container set DOCKER_ENV=false to opt out of Docker mode."""
+        platform_module = get_platform_module()
+
+        for value in ('false', 'False', '0', 'no', ' off '):
+            with patch('os.path.exists', return_value=True):
+                with patch.dict(os.environ, {'DOCKER_ENV': value}, clear=True):
+                    assert platform_module.get_platform() == sys.platform
+
+    def test_unrecognized_docker_env_falls_back_to_dockerenv(self):
+        """Empty/unknown DOCKER_ENV keeps the /.dockerenv heuristic."""
+        platform_module = get_platform_module()
+
+        for value in ('', 'maybe'):
+            with patch('os.path.exists', return_value=True):
+                with patch.dict(os.environ, {'DOCKER_ENV': value}, clear=True):
+                    assert platform_module.get_platform() == 'docker'
+
     def test_returns_docker_when_env_var_true(self):
         """Test returns 'docker' when DOCKER_ENV=true."""
         platform_module = get_platform_module()

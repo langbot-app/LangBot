@@ -7,6 +7,13 @@ The Workspace API lets a plugin work with the Workspace it is installed in: list
 
 Every operation has a stable ID, such as `pipeline.list` or `knowledge.base.retrieve`. A plugin can only call operations it [declares in its manifest](/en/plugin/dev/permissions#declare-permissions) and a member has granted to its installation.
 
+
+Plugins may explicitly request `artifact.create`, `artifact.get`, `artifact.read`, `artifact.read_content`, `artifact.retain`, `artifact.release` and `artifact.delete`. List the seven needed operation IDs individually: `artifact.*` is rejected because it also includes account-only publication and Skill-source operations. Typed calls use `self.plugin.workspace.artifact.<method>(...)`, or the run-bound `ctx.api.workspace` proxy.
+
+These Artifacts belong to the installation UUID, not the plugin's author/name, an account or a run. Every operation rechecks the current enabled installation and effective grants; a revoked grant or reinstallation with a new UUID cannot access old assets. Knowing an ID or retaining it does not share access. Account uploads, Skill sources and run handles cannot be imported through these plugin operations. `artifact.skill_resource.create` and `artifact.publication.get/set/disable` remain account/API-key only. See [Artifact API](/en/develop/artifacts).
+
+For the JSON RPC path, create with `filename`, `content_base64`, optional `mime_type` and `ttl_seconds`. The decoded input is limited to 256 KiB; plugin raw reads use the same 256 KiB ceiling and return `metadata` plus `content_base64`. Prefer `read_content` for bounded text/structured media. This smaller transport limit does not change existing authenticated HTTP upload/download contracts. Retain/release concern this installation's pin; deletion refuses active business references.
+
 ## Calling an operation
 
 From any component, use `self.plugin.workspace`. Each operation has a typed method named after its ID:
@@ -236,6 +243,7 @@ This reference covers every operation a plugin can request in the current LangBo
 | Plugin Debug Info<br/>Inspect internal plugin runtime process state and memory. | `plugin.debug_info`<br/>`workspace.plugin.debug_info()` | Read | `resource.manage` |
 | Get Plugin<br/>Get detailed metadata and manifest for an installed plugin. | `plugin.get`<br/>`workspace.plugin.get()` | Read | `resource.view` |
 | Plugin GitHub Assets<br/>List downloadable asset files for a GitHub release. | `plugin.github.assets`<br/>`workspace.plugin.github.assets()` | Read | `resource.view` |
+| Plugin GitHub Branches<br/>List branches, tags and the default branch for a repository. | `plugin.github.refs`<br/>`workspace.plugin.github.refs()` | Read | `resource.view` |
 | Plugin GitHub Releases<br/>List releases of a plugin repository hosted on GitHub. | `plugin.github.releases`<br/>`workspace.plugin.github.releases()` | Read | `resource.view` |
 | Install Plugin from Marketplace<br/>Install a certified plugin from the official marketplace. | `plugin.install.marketplace`<br/>`workspace.plugin.install.marketplace()` | High risk | `resource.manage` |
 | List Plugins<br/>List all installed plugins and their running status. | `plugin.list`<br/>`workspace.plugin.list()` | Read | `resource.view` |

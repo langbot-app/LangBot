@@ -4,6 +4,7 @@
 # ruff: noqa: F811
 
 import json
+import contextlib
 import sqlite3
 import zipfile
 
@@ -64,7 +65,7 @@ def test_missing_local_agent_has_recovery_hint(runner_client, runner_e2e_tmpdir)
     assert response['code'] == 0, response
     assert response['data']['status'] == 'failed', response
     assert 'Plugins' in response['data']['reply'], response
-    with sqlite3.connect(runner_e2e_tmpdir / 'data' / 'langbot.db') as connection:
+    with contextlib.closing(sqlite3.connect(runner_e2e_tmpdir / 'data' / 'langbot.db')) as connection:
         errors = connection.execute(
             'SELECT error_message FROM monitoring_errors WHERE pipeline_id = ?', (pipeline_id,)
         ).fetchall()

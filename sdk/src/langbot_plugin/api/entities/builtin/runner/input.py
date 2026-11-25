@@ -41,7 +41,7 @@ class InputAttachment(pydantic.BaseModel):
     such as url, base64 or message_chain."""
 
     url: str | None = None
-    """External URL when the attachment is backed by a URL."""
+    """Legacy external URL; current Hosts keep source locators private."""
 
     path: str | None = None
     """Sandbox/workspace path when Host has staged the attachment as a file."""

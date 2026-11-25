@@ -3,12 +3,24 @@
 from __future__ import annotations
 
 import json
+import asyncio
+import time
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
 from unittest.mock import AsyncMock, Mock
 from importlib import import_module
+
+from langbot.pkg.alerts.service import AlertService
+from langbot.pkg.telemetry import usage
+
+
+@pytest.fixture(autouse=True)
+def reset_usage():
+    usage._workspaces.clear()
+    yield
+    usage._workspaces.clear()
 
 
 def get_heartbeat_module():
@@ -60,6 +72,67 @@ def make_app():
     ap.skill_mgr.total_cached_skill_count.return_value = 3
 
     return ap
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('instance_enabled,workspace_enabled', [(True, True), (False, True), (True, False)])
+@pytest.mark.parametrize('channel', ['auto', 'instance', 'space', 'off'])
+async def test_alert_state_each_heartbeat(instance_enabled, workspace_enabled, channel):
+    ap = make_app()
+    ap.instance_config.data['alerts'] = {'enabled': instance_enabled}
+    ap.alert_service = AlertService(ap)
+    settings = ap.alert_service._normalize_settings(None)
+    settings.update(enabled=workspace_enabled, email_channel=channel)
+    ap.alert_service._settings_cache['workspace-a'] = (settings, time.monotonic())
+    for _ in range(2):
+        payload = await get_heartbeat_module().build_heartbeat_payload(ap, workspace_uuid='workspace-a')
+        batch = payload['features']['usage']
+        assert batch['c'] == [
+            [
+                'alert.state',
+                {'enabled': 'yes' if instance_enabled and workspace_enabled else 'no', 'channel': channel},
+                1,
+            ]
+        ]
+        usage.ack('workspace-a', batch)
+
+
+@pytest.mark.asyncio
+async def test_alert_state_default_off_workspace():
+    ap = make_app()
+    ap.persistence_mgr.tenant_uow = None
+    ap.persistence_mgr.execute_async.return_value.first.return_value = None
+    ap.alert_service = AlertService(ap)
+    payload = await get_heartbeat_module().build_heartbeat_payload(ap, workspace_uuid='workspace-a')
+    assert payload['features']['usage']['c'] == [['alert.state', {'enabled': 'no', 'channel': 'auto'}, 1]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('mode', ['missing', 'failure', 'timeout', 'disabled'])
+async def test_alert_state_cannot_break_heartbeat(monkeypatch, mode):
+    ap = make_app()
+    ap.alert_service = None
+    if mode != 'missing':
+        ap.alert_service = SimpleNamespace(_settings=AsyncMock(side_effect=RuntimeError('unavailable')))
+    if mode == 'disabled':
+        ap.instance_config.data['space'] = {'disable_telemetry': True}
+    if mode == 'timeout':
+
+        async def stalled_settings(workspace_uuid):
+            await asyncio.Event().wait()
+
+        ap.alert_service._settings = AsyncMock(side_effect=stalled_settings)
+        real_wait_for = asyncio.wait_for
+
+        async def short_timeout(awaitable, timeout):
+            assert timeout == 1.0
+            return await real_wait_for(awaitable, timeout=0.01)
+
+        monkeypatch.setattr(get_heartbeat_module().asyncio, 'wait_for', short_timeout)
+    payload = await get_heartbeat_module().build_heartbeat_payload(ap, workspace_uuid='workspace-a')
+    assert 'usage' not in payload['features']
+    if mode == 'disabled':
+        ap.alert_service._settings.assert_not_awaited()
 
 
 class TestBuildHeartbeatPayload:

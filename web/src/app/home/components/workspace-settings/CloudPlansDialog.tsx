@@ -134,7 +134,11 @@ function Benefits({
           )}
           <ul className="space-y-2">
             {Object.entries(plan.limits)
-              .filter(([key]) => key !== 'chat_history.retention_days')
+              .filter(
+                ([key]) =>
+                  key !== 'chat_history.retention_days' &&
+                  key !== 'messages.daily',
+              )
               .map(([key, limit]) => {
                 const resource = key.replace(/\.max$/, '');
                 const label =
@@ -161,6 +165,21 @@ function Benefits({
                 );
               })}
           </ul>
+        </Help>
+      </>
+    ),
+    daily_messages: (
+      <>
+        <PlanIcon name="ri-message-3-line" />
+        <span className="min-w-0 break-words">
+          {(plan.limits['messages.daily'] ?? 0) > 0
+            ? t('dailyMessageQuota.planLimited', {
+                count: plan.limits['messages.daily'],
+              })
+            : t('dailyMessageQuota.planUnlimited')}
+        </span>
+        <Help label={t('dailyMessageQuota.settingsTitle')}>
+          {t('dailyMessageQuota.planHelp')}
         </Help>
       </>
     ),
@@ -264,11 +283,17 @@ function Benefits({
   ].filter((key) => key in rows);
   return (
     <ul className="space-y-3 text-sm">
-      {order.map((key) => (
-        <li key={key} className="flex items-start gap-2 break-words">
-          {rows[key]}
-        </li>
-      ))}
+      {order.flatMap((key) =>
+        // The daily message quota is not admin-orderable; it always
+        // follows the quota summary because it is the limit users hit first.
+        (key === 'quota_summary' ? [key, 'daily_messages'] : [key]).map(
+          (rowKey) => (
+            <li key={rowKey} className="flex items-start gap-2 break-words">
+              {rows[rowKey]}
+            </li>
+          ),
+        ),
+      )}
     </ul>
   );
 }

@@ -5,6 +5,10 @@ description: "Common LangBot local deployment and runtime issues, with symptoms,
 
 This page collects practical troubleshooting paths for common issues. It currently covers Docker deployment problems. More sections for models, bot adapters, MCP, and Skills can be added later.
 
+<Tip>
+If you installed with the one-line installer or [brought your deployment under lbctl](/en/deploy/lbctl), run `lbctl doctor` first to check the environment automatically (Docker, ports, disk, network, sandbox and more), then read logs with `lbctl logs` (on Docker add `--service langbot_box` or `--service langbot_plugin_runtime`).
+</Tip>
+
 The commands below assume you are running them from `LangBot/docker`.
 
 ## Docker Deployment

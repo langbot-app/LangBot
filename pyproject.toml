@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.11.7"
+version = "4.11.9"
 description = "Production-grade platform for building agentic IM bots"
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -51,7 +51,7 @@ dependencies = [
     "python-socks>=2.7.1", # dingtalk missing dependency
     "pip>=26.2.0",
     "uv>=0.13.4",
-    "pypdf>=6.0.0",
+    "pypdf>=6.21.4,<7", # GHSA-5849-834g-hvw5, GHSA-cggf-277g-3q54; 7.0 has no importer to validate
     "python-docx>=1.1.0",
     "chardet>=5.2.0",
     "xxhash>=3.5.0",
@@ -65,9 +65,9 @@ dependencies = [
     "python-multipart>=0.0.32",
     "Mako>=1.4.2",
     "langchain-text-splitters>=1.1.2",
-    "chromadb>=1.0.0,<2.0.0",
+    "chromadb>=1.5.3,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
-    "langbot-plugin==0.7.24",
+    "langbot-plugin==0.7.26",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "matrix-nio>=0.25.2",
@@ -75,7 +75,11 @@ dependencies = [
     "boto3>=1.35.0",
     "pgvector>=0.4.1",
     "botocore>=1.42.39",
-    "litellm>=1.88.6",
+    "litellm>=1.108.3", # filelock<5, so filelock advisories can be cleared
+    "pyasn1>=0.6.5", # GHSA-2qm8-x737-gmw5, GHSA-mm57-4v3p-rchx
+    "anyio>=4.14.2", # GHSA-82r6-8w77-94w6 (critical, TLS host name spoofing)
+    "oauthlib>=4.0.1", # GHSA-3jp2-3mrg-2vxc
+    "filelock>=4.2.1", # GHSA-v4x8-3wr5-3wq8 and the rest of the 4.2.0 set
     "webauthn>=3.0.0",
     "httpx[socks]>=0.28.1",
 ]
@@ -148,6 +152,9 @@ dev = [
     "pytest-cov>=7.0.0",
     "ruff>=0.11.9",
 ]
+
+[tool.uv.sources]
+langbot-plugin = { path = "sdk", editable = true }
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.

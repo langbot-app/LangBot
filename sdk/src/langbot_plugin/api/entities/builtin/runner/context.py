@@ -190,6 +190,10 @@ class RunnerContext(pydantic.BaseModel):
             return None
         return await self.api.read_input_attachment(ref)
 
+    async def read_input_attachment_content(self, ref: str, **options) -> list[dict]:
+        """Read bounded text or structured media using this run's input grant."""
+        return await self.api.read_input_attachment_content(ref, **options)
+
     async def import_box_attachments(
         self, attachment_ids: list[str] | None = None
     ) -> list["BoxFile"]:
@@ -199,6 +203,14 @@ class RunnerContext(pydantic.BaseModel):
     async def export_box_files(self, paths: list[str]) -> list["BoxFile"]:
         """Export explicitly selected absolute sandbox paths; does not send them."""
         return await self.api.export_box_files(paths)
+
+    async def read_run_file(self, file_id: str, **options) -> list[dict]:
+        """Read a run-owned exported handle using the frozen Box grant."""
+        return await self.api.read_run_file(file_id, **options)
+
+    async def commit_run_files(self, file_ids: list[str]) -> list["BoxFile"]:
+        """Publish selected files to the Host-authorized recipient without sending a message."""
+        return await self.api.commit_run_files(file_ids)
 
     async def reply_files(self, file_ids: list[str]) -> typing.Any:
         """Explicitly reply with exported handles, subject to tool authorization."""
@@ -366,12 +378,15 @@ class RunnerContext(pydantic.BaseModel):
         run_id: str | None = None,
         reason: str | None = None,
         cleanup_confirmed: bool = True,
+        *,
+        expected_retry_count: int | None = None,
     ) -> AgentRun:
         """Acknowledge completed cancellation cleanup."""
         return await self.api.run_cancel_ack(
             run_id=run_id,
             reason=reason,
             cleanup_confirmed=cleanup_confirmed,
+            expected_retry_count=expected_retry_count,
         )
 
     async def run_retry(

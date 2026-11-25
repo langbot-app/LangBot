@@ -4,6 +4,7 @@ from ....i18n import t
 
 import contextvars
 import dataclasses
+import base64
 import enum
 import json
 import math
@@ -11,7 +12,7 @@ import re
 import time
 import typing
 import ipaddress
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import timedelta
 import traceback
@@ -19,6 +20,7 @@ from langbot_plugin.api.entities.events import pipeline_query
 import sqlalchemy
 import asyncio
 import hashlib
+import anyio
 import httpx
 
 import uuid as uuid_module
@@ -60,6 +62,7 @@ MCP_RESOURCE_CACHE_MAX_ENTRIES = 32
 MCP_RESOURCE_PREVIEW_MAX_BYTES = 64 * 1024
 MCP_RESOURCE_AGENT_READ_MAX_BYTES = 64 * 1024
 MCP_RESOURCE_AGENT_READ_MAX_TOKENS = 12000
+MCP_TOOL_PDF_MAX_BYTES = 10 * 1024 * 1024
 MCP_RESOURCE_CONTEXT_MAX_TOKENS = 8000
 MCP_RESOURCE_CONTEXT_MAX_BYTES = 96 * 1024
 MCP_RESOURCE_TRACE_QUERY_KEY = '_mcp_resource_reads'
@@ -986,8 +989,15 @@ class RuntimeMCPSession:
         Long-lived MCP servers (notably UDP/HTTP transports) commonly enforce
         their own session timeout (e.g. ~30 minutes); once it fires, any call
         on the cached session raises this rather than a transport-level error.
+
+        A dead transport is treated the same way: the MCP client's HTTP/SSE
+        writers swallow their own errors and close the session streams, so the
+        cached session stays "connected" while every call raises a bare
+        ``anyio.ClosedResourceError`` / ``BrokenResourceError``.
         """
         for leaf in RuntimeMCPSession._iter_exception_leaves(exc):
+            if isinstance(leaf, (anyio.ClosedResourceError, anyio.BrokenResourceError)):
+                return True
             msg = str(leaf).lower()
             if 'session terminated' in msg or 'session expired' in msg:
                 return True
@@ -1219,6 +1229,22 @@ class RuntimeMCPSession:
                 }
                 return [provider_message.ContentElement.from_text(f'{json.dumps(header, ensure_ascii=False)}\n{text}')]
             if isinstance(resource, mcp_types.BlobResourceContents):
+                if (resource.mimeType or '').split(';', 1)[0].strip().lower() == 'application/pdf':
+                    if len(resource.blob) > 4 * ((MCP_TOOL_PDF_MAX_BYTES + 2) // 3):
+                        raise ValueError(t('Artifact exceeds the read size limit'))
+                    try:
+                        value = base64.b64decode(resource.blob, validate=True)
+                    except ValueError as exc:
+                        raise ValueError('MCP tool returned invalid PDF base64') from exc
+                    if len(value) > MCP_TOOL_PDF_MAX_BYTES:
+                        raise ValueError(t('Artifact exceeds the read size limit'))
+                    filename = unquote(urlparse(str(resource.uri)).path).rsplit('/', 1)[-1] or 'document.pdf'
+                    return [
+                        provider_message.ContentElement.from_file_base64(
+                            'data:application/pdf;base64,' + resource.blob,
+                            filename,
+                        )
+                    ]
                 return [
                     provider_message.ContentElement.from_text(
                         json.dumps(

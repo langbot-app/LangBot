@@ -15,7 +15,7 @@
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb)](https://discord.gg/wdNEHETs87)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/langbot-app/LangBot)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/langbot-app/LangBot)](https://github.com/langbot-app/LangBot/releases/latest)
-<img src="https://img.shields.io/badge/python-3.10 ~ 3.13 -blue.svg" alt="python">
+<img src="https://img.shields.io/badge/python-3.11%20~%203.14-blue.svg" alt="python">
 [![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
 
 <a href="https://langbot.app">Inicio</a> ｜
@@ -70,13 +70,21 @@ Haga clic en los botones Star y Watch en la esquina superior derecha del reposit
 
 Sin despliegue, listo para usar.
 
-### Lanzamiento en una línea
+### Instalación en una línea (recomendada para autoalojar)
+
+macOS / Linux:
 
 ```bash
-uvx langbot
+curl -fsSL https://langbot.app/install.sh | bash
 ```
 
-> Requiere [uv](https://docs.astral.sh/uv/getting-started/installation/). Visite http://localhost:5300 — listo.
+Windows (PowerShell):
+
+```powershell
+irm https://langbot.app/install.ps1 | iex
+```
+
+> Instala [lbctl](https://github.com/langbot-app/langbot-cli) (la CLI de LangBot) y despliega LangBot: de forma nativa por defecto, con Python configurado automáticamente, o con Docker. No requiere permisos de administrador. Al terminar, visite http://localhost:5300. Actualice después con `lbctl upgrade`.
 
 ### Docker Compose
 

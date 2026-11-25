@@ -119,14 +119,42 @@ def render_alert_email(
         lines += ['', f'{lang["open"]}: {console_url}']
     lines += ['', lang['footer']]
 
+    body = render_layout(
+        subject=subject,
+        heading=heading,
+        intro=intro,
+        rows_html=''.join(rows),
+        button_label=lang['open'],
+        button_url=console_url,
+        footer=lang['footer'],
+    )
+    return subject, '\n'.join(lines) + '\n', body
+
+
+def render_layout(
+    *,
+    subject: str,
+    heading: str,
+    intro: str,
+    rows_html: str,
+    button_label: str,
+    button_url: str | None,
+    footer: str,
+    extra_html: str = '',
+) -> str:
+    """Shared LangBot transactional email shell (alerts, quota notices).
+
+    ``rows_html`` and ``extra_html`` must already be escaped.
+    """
+
     button = (
-        f'<p style="margin:24px 0 0;"><a href="{html.escape(console_url, quote=True)}" target="_blank" '
+        f'<p style="margin:24px 0 0;"><a href="{html.escape(button_url, quote=True)}" target="_blank" '
         'style="display:inline-block;padding:11px 20px;background:#2563eb;color:#ffffff;border-radius:8px;'
-        f'font-size:14px;font-weight:700;text-decoration:none;">{html.escape(lang["open"])}</a></p>'
-        if console_url
+        f'font-size:14px;font-weight:700;text-decoration:none;">{html.escape(button_label)}</a></p>'
+        if button_url
         else ''
     )
-    body = f"""<!doctype html>
+    return f"""<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(subject)}</title></head>
 <body style="margin:0;padding:0;background:#f4f7fb;color:#111827;font-family:Arial,'Helvetica Neue',sans-serif;">
@@ -138,10 +166,9 @@ def render_alert_email(
 <h1 style="margin:0 0 12px;font-size:22px;line-height:1.3;color:#111827;">{html.escape(heading)}</h1>
 <p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#526173;">{html.escape(intro)}</p>
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
- style="background:#f6f8fb;border-radius:8px;">{''.join(rows)}</table>
-{button}
+ style="background:#f6f8fb;border-radius:8px;">{rows_html}</table>
+{extra_html}{button}
 </td></tr>
 <tr><td align="center" style="padding:18px 24px 0;font-size:12px;line-height:1.6;color:#5f6f84;">
-{html.escape(lang['footer'])}</td></tr>
+{html.escape(footer)}</td></tr>
 </table></td></tr></table></body></html>"""
-    return subject, '\n'.join(lines) + '\n', body

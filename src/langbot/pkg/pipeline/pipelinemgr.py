@@ -258,6 +258,8 @@ class RuntimePipeline:
         if result.user_notice or result.debug_notice or result.console_notice or result.error_notice:
             await self._assert_execution_active(query)
         if result.user_notice:
+            if result.structured_error and '_cli_run_status' in query.variables:
+                query.variables['_cli_run_error'] = result.structured_error
             # 处理str类型
 
             if isinstance(result.user_notice, str):
@@ -280,10 +282,17 @@ class RuntimePipeline:
                     is_final=query.resp_messages[-1].is_final,
                 )
             else:
+                reply_options = {}
+                if result.structured_error:
+                    from ..platform.sources.websocket_adapter import WebSocketAdapter
+
+                    if isinstance(query.adapter, WebSocketAdapter):
+                        reply_options['error'] = result.structured_error
                 await query.adapter.reply_message(
                     message_source=query.message_event,
                     message=result.user_notice,
                     quote_origin=query.pipeline_config['output']['misc']['quote-origin'],
+                    **reply_options,
                 )
         if result.debug_notice:
             self.ap.logger.debug(result.debug_notice)
@@ -323,7 +332,7 @@ class RuntimePipeline:
                     bot_name=bot_name,
                     pipeline_id=self.pipeline_entity.uuid,
                     pipeline_name=pipeline_name,
-                    error_type='PipelineError',
+                    error_type=result.structured_error['error_code'] if result.structured_error else 'PipelineError',
                     error_message=result.error_notice,
                     session_id=session_id,
                     stack_trace=result.debug_notice if result.debug_notice else None,
@@ -451,8 +460,10 @@ class RuntimePipeline:
         return event_type[:160] or 'message.received'
 
     async def process_query(self, query: pipeline_query.Query):
+        from langbot_plugin.utils.log import log_scope
+
         workspace_uuid = getattr(query, 'workspace_uuid', None) or getattr(self, 'workspace_uuid', '')
-        with language_scope(await get_workspace_language(self.ap, workspace_uuid)):
+        with log_scope(workspace=workspace_uuid), language_scope(await get_workspace_language(self.ap, workspace_uuid)):
             return await self._process_query_with_language(query)
 
     async def _process_query_with_language(self, query: pipeline_query.Query):
@@ -1009,7 +1020,18 @@ class PipelineManager:
 
         # initialize stage containers according to pipeline_entity.stages
         stage_containers: list[StageInstContainer] = []
-        for stage_name in pipeline_entity.stages:
+        stages = list(pipeline_entity.stages)
+        if 'RequireDailyMessageQuota' not in stages:
+            # Stored pipelines predate this stage: meter right before the
+            # rate limiter (or the processor). Pipelines that never reach a
+            # processor have nothing to meter.
+            index = next(
+                (stages.index(name) for name in ('RequireRateLimitOccupancy', 'MessageProcessor') if name in stages),
+                None,
+            )
+            if index is not None:
+                stages.insert(index, 'RequireDailyMessageQuota')
+        for stage_name in stages:
             if stage_name not in self.stage_dict:
                 self.ap.logger.warning(f'Pipeline stage {stage_name} is not registered; skipping')
                 continue

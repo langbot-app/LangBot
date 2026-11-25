@@ -26,8 +26,6 @@ import {
   RotateCcw,
   Ban,
   Bot,
-  Copy,
-  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -37,13 +35,18 @@ import {
   ShieldCheck,
   ShieldOff,
   Wrench,
+  User,
+  Users,
+  X,
+  ArrowUpRight,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import CopyableId from '@/components/CopyableId';
 import { toast } from 'sonner';
 import BotAdminsDialog, {
   useBotAdmins,
 } from '@/app/home/bots/components/bot-admins/BotAdminsDialog';
 import type { BotAdmin } from '@/app/home/bots/components/bot-admins/BotAdminsDialog';
-import { copyToClipboard } from '@/app/utils/clipboard';
 import {
   MessageChainComponent,
   Plain,
@@ -53,6 +56,11 @@ import {
   Voice,
 } from '@/app/infra/entities/message';
 import { PIPELINE_DISCARD } from '@/app/home/bots/components/bot-form/EventBindingsEditor';
+import {
+  parseGroupMemberSessionId,
+  parseSessionType,
+  sessionGroupId,
+} from './session-scope';
 
 interface SessionInfo {
   session_id: string;
@@ -158,6 +166,10 @@ const BotSessionMonitor = forwardRef<
   const canReset = workspace?.permissions.includes('resource.manage') ?? false;
   const [resetTarget, setResetTarget] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
+  // How far a reset reaches for the selected group session: one member, or the
+  // whole group when its Chat shares context (or the session predates per-member
+  // records). null = not a group session, or the Chat could not be read.
+  const [resetScope, setResetScope] = useState<'member' | 'group' | null>(null);
   const resetContext = async () => {
     if (!resetTarget || resetting) return;
     setResetting(true);
@@ -178,6 +190,7 @@ const BotSessionMonitor = forwardRef<
   const [endDate, setEndDate] = useState('');
   const [userQuery, setUserQuery] = useState('');
   const [appliedUserQuery, setAppliedUserQuery] = useState('');
+  const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     null,
   );
@@ -189,7 +202,6 @@ const BotSessionMonitor = forwardRef<
   const [sessionError, setSessionError] = useState(false);
   const [messageError, setMessageError] = useState(false);
   const [analysisError, setAnalysisError] = useState(false);
-  const [copiedUserId, setCopiedUserId] = useState(false);
   const [feedbackMap, setFeedbackMap] = useState<
     Record<string, SessionFeedback>
   >({});
@@ -206,15 +218,13 @@ const BotSessionMonitor = forwardRef<
   const [adminsDialogOpen, setAdminsDialogOpen] = useState(false);
   const [togglingAdmin, setTogglingAdmin] = useState<string | null>(null);
 
-  const parseSessionType = (sessionId: string): string | null => {
-    const lower = sessionId.toLowerCase();
-    if (lower.includes('person')) return 'person';
-    if (lower.includes('group')) return 'group';
-    return null;
-  };
+  // Bot admins are people, not group chats. Group sessions never map to an
+  // admin target, so the UI cannot grant a whole group admin privileges.
+  const adminLauncherType = (sessionId: string): 'person' | null =>
+    parseSessionType(sessionId) === 'person' ? 'person' : null;
 
   const isSessionAdmin = (session: SessionInfo): boolean => {
-    const type = parseSessionType(session.session_id);
+    const type = adminLauncherType(session.session_id);
     const lid =
       session.user_id ??
       session.session_id.replace(
@@ -227,7 +237,7 @@ const BotSessionMonitor = forwardRef<
   };
 
   const toggleAdmin = async (session: SessionInfo) => {
-    const type = parseSessionType(session.session_id);
+    const type = adminLauncherType(session.session_id);
     if (!type) return;
     const lid =
       session.user_id ??
@@ -261,12 +271,6 @@ const BotSessionMonitor = forwardRef<
     return `${id.slice(0, 4)}..${id.slice(-4)}`;
   };
 
-  const copyUserId = (userId: string) => {
-    copyToClipboard(userId).catch(() => {});
-    setCopiedUserId(true);
-    setTimeout(() => setCopiedUserId(false), 2000);
-  };
-
   const loadSessions = useCallback(async () => {
     const requestId = ++sessionRequestIdRef.current;
     setLoadingSessions(true);
@@ -283,6 +287,7 @@ const BotSessionMonitor = forwardRef<
           ? localDateBoundaryToISOString(endDate, true)
           : undefined,
         userQuery: appliedUserQuery || undefined,
+        launcherId: groupFilter ?? undefined,
       });
       if (requestId !== sessionRequestIdRef.current) return;
       setSessions(response.sessions ?? []);
@@ -297,7 +302,7 @@ const BotSessionMonitor = forwardRef<
         setLoadingSessions(false);
       }
     }
-  }, [appliedUserQuery, botId, endDate, sessionPage, startDate]);
+  }, [appliedUserQuery, botId, endDate, groupFilter, sessionPage, startDate]);
 
   useImperativeHandle(
     ref,
@@ -398,7 +403,7 @@ const BotSessionMonitor = forwardRef<
   useEffect(() => {
     setSelectedSessionId(null);
     setMessagePage(0);
-  }, [appliedUserQuery, botId, endDate, sessionPage, startDate]);
+  }, [appliedUserQuery, botId, endDate, groupFilter, sessionPage, startDate]);
 
   useEffect(() => {
     retriedImageMessagesRef.current.clear();
@@ -744,6 +749,75 @@ const BotSessionMonitor = forwardRef<
   const selectedSession = sessions.find(
     (s) => s.session_id === selectedSessionId,
   );
+  const selectedGroupId = selectedSessionId
+    ? sessionGroupId(selectedSessionId)
+    : null;
+
+  // Whether the selected group's Chat shares one context across members, so
+  // the header can explain why a group session still names a sender.
+  const [contextScope, setContextScope] = useState<'member' | 'group' | null>(
+    null,
+  );
+  const selectedPipelineId = selectedSession?.pipeline_id;
+  useEffect(() => {
+    setContextScope(null);
+    if (!selectedGroupId || !selectedPipelineId) return;
+    let cancelled = false;
+    httpClient
+      .getPipeline(selectedPipelineId)
+      .then((resp) => {
+        if (cancelled) return;
+        const runner = (
+          resp.pipeline.config?.ai as
+            { runner?: Record<string, unknown> } | undefined
+        )?.runner;
+        setContextScope(
+          runner?.['group-context'] === 'group' ? 'group' : 'member',
+        );
+      })
+      .catch(() => {
+        /* The scope badge is optional. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedGroupId, selectedPipelineId]);
+
+  const resetScopeRequestRef = useRef(0);
+  const openReset = (session: SessionInfo) => {
+    const requestId = ++resetScopeRequestRef.current;
+    setResetTarget(session.session_id);
+    setResetScope(null);
+    if (!parseGroupMemberSessionId(session.session_id)) {
+      // Whole-group IDs always reset the shared group conversation.
+      if (sessionGroupId(session.session_id)) setResetScope('group');
+      return;
+    }
+    if (!session.pipeline_id) {
+      setResetScope('member');
+      return;
+    }
+    httpClient
+      .getPipeline(session.pipeline_id)
+      .then((resp) => {
+        if (requestId !== resetScopeRequestRef.current) return;
+        const runner = (
+          resp.pipeline.config?.ai as
+            { runner?: Record<string, unknown> } | undefined
+        )?.runner;
+        setResetScope(
+          runner?.['group-context'] === 'group' ? 'group' : 'member',
+        );
+      })
+      .catch(() => {
+        // Keep the generic description when the Chat cannot be read.
+      });
+  };
+
+  const applyGroupFilter = (groupId: string | null) => {
+    setSessionPage(0);
+    setGroupFilter(groupId);
+  };
   const sessionPageCount = Math.max(
     1,
     Math.ceil(sessionTotal / SESSION_PAGE_SIZE),
@@ -830,6 +904,25 @@ const BotSessionMonitor = forwardRef<
                 className="h-7 min-w-0 rounded border bg-background px-1 text-[10px]"
               />
             </div>
+            {groupFilter && (
+              <div className="flex items-center gap-1 rounded border bg-muted/50 px-2 py-1 text-[11px]">
+                <Users className="size-3 shrink-0" />
+                <span className="min-w-0 flex-1 truncate" title={groupFilter}>
+                  {t('bots.sessionMonitor.groupFilterActive', {
+                    group: abbreviateId(groupFilter),
+                  })}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => applyGroupFilter(null)}
+                  className="shrink-0 text-muted-foreground hover:text-foreground"
+                  aria-label={t('bots.sessionMonitor.clearGroupFilter')}
+                  title={t('bots.sessionMonitor.clearGroupFilter')}
+                >
+                  <X className="size-3" />
+                </button>
+              </div>
+            )}
           </div>
           {/* Session List */}
           <ScrollArea className="flex-1 min-h-0">
@@ -852,7 +945,9 @@ const BotSessionMonitor = forwardRef<
                 {sessions.map((session) => {
                   const isSelected = selectedSessionId === session.session_id;
                   const sessionType = parseSessionType(session.session_id);
-                  const sessionIsAdmin = isSessionAdmin(session);
+                  const memberGroup = parseGroupMemberSessionId(
+                    session.session_id,
+                  )?.groupId;
                   return (
                     <div
                       key={session.session_id}
@@ -867,34 +962,55 @@ const BotSessionMonitor = forwardRef<
                         setMessagePage(0);
                       }}
                     >
-                      <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-sm font-medium truncate mr-2">
-                          {session.user_name ||
-                            session.user_id ||
-                            session.session_id.slice(0, 12)}
-                        </span>
-                        <span className="text-[11px] text-muted-foreground tabular-nums flex-shrink-0">
-                          {formatRelativeTime(session.last_activity)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        {sessionType && (
-                          <span className="px-1 py-0.5 rounded bg-muted text-[10px]">
-                            {sessionType}
-                          </span>
-                        )}
-
-                        {session.user_id && (
-                          <span className="truncate text-[10px]">
-                            {abbreviateId(session.user_id)}
-                          </span>
-                        )}
-                        {session.is_active && (
-                          <span className="flex items-center gap-0.5 text-green-600 dark:text-green-400">
-                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-                          </span>
-                        )}
-                      </div>
+                      {(() => {
+                        // Group sessions lead with the group: that is the
+                        // chat routing rules and context scope refer to.
+                        const groupId = sessionGroupId(session.session_id);
+                        const person =
+                          session.user_name || session.user_id || '';
+                        return (
+                          <>
+                            <div className="mb-0.5 flex items-center justify-between gap-2">
+                              <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+                                {groupId ? (
+                                  <Users className="size-3.5 shrink-0 text-muted-foreground" />
+                                ) : sessionType === 'person' ? (
+                                  <User className="size-3.5 shrink-0 text-muted-foreground" />
+                                ) : null}
+                                <span className="truncate">
+                                  {groupId
+                                    ? t('bots.sessionMonitor.groupTitle', {
+                                        group: abbreviateId(groupId),
+                                      })
+                                    : person || session.session_id.slice(0, 12)}
+                                </span>
+                              </span>
+                              <span className="flex shrink-0 items-center gap-1 text-[11px] tabular-nums text-muted-foreground">
+                                {session.is_active && (
+                                  <span
+                                    className="inline-block size-1.5 rounded-full bg-green-500"
+                                    title={t('bots.sessionMonitor.active')}
+                                  />
+                                )}
+                                {formatRelativeTime(session.last_activity)}
+                              </span>
+                            </div>
+                            <div className="truncate pl-5 text-xs text-muted-foreground">
+                              {groupId
+                                ? person &&
+                                  t(
+                                    memberGroup
+                                      ? 'bots.sessionMonitor.memberLine'
+                                      : 'bots.sessionMonitor.lastSenderLine',
+                                    { name: person },
+                                  )
+                                : session.user_id && session.user_name
+                                  ? abbreviateId(session.user_id)
+                                  : t('bots.sessionMonitor.privateChat')}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   );
                 })}
@@ -935,75 +1051,133 @@ const BotSessionMonitor = forwardRef<
           ) : (
             <>
               {/* Chat Header */}
-              <div className="px-4 py-2.5 border-b shrink-0 flex items-center justify-between">
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium truncate">
-                    {selectedSession?.user_name ||
-                      selectedSession?.user_id ||
-                      selectedSessionId.slice(0, 20)}
+              <div className="px-4 py-3 border-b shrink-0 flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {selectedGroupId ? (
+                      <Users className="size-4 text-muted-foreground" />
+                    ) : (
+                      <User className="size-4 text-muted-foreground" />
+                    )}
+                    <span className="text-sm font-medium">
+                      {selectedGroupId
+                        ? t('bots.sessionMonitor.groupChat')
+                        : selectedSession?.user_name ||
+                          selectedSession?.user_id ||
+                          t('bots.sessionMonitor.privateChat')}
+                    </span>
+                    {selectedSession?.is_active && (
+                      <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                        <span className="inline-block size-1.5 rounded-full bg-green-500" />
+                        {t('bots.sessionMonitor.active')}
+                      </span>
+                    )}
+                    {selectedGroupId && contextScope && (
+                      <span
+                        className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground"
+                        title={t(
+                          contextScope === 'group'
+                            ? 'bots.sessionMonitor.resetScopeGroup'
+                            : 'bots.sessionMonitor.resetScopeMember',
+                        )}
+                      >
+                        {t(
+                          contextScope === 'group'
+                            ? 'bots.sessionMonitor.contextShared'
+                            : 'bots.sessionMonitor.contextPerMember',
+                        )}
+                      </span>
+                    )}
                   </div>
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
-                    {parseSessionType(selectedSessionId) && (
-                      <span>{parseSessionType(selectedSessionId)}</span>
+                  <dl className="grid grid-cols-[max-content_1fr] items-start gap-x-3 gap-y-1.5 text-xs">
+                    {selectedGroupId && (
+                      <>
+                        <dt className="pt-0.5 text-muted-foreground">
+                          {t('bots.sessionMonitor.groupId')}
+                        </dt>
+                        <dd className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                          <CopyableId
+                            value={selectedGroupId}
+                            label={t('bots.sessionMonitor.groupId')}
+                          />
+                          <Link
+                            to={`/home/bots?id=${encodeURIComponent(botId)}&tab=config&routeChat=${encodeURIComponent(`group:${selectedGroupId}`)}${selectedSession?.pipeline_id ? `&routeTarget=${encodeURIComponent(selectedSession.pipeline_id)}` : ''}`}
+                            className="inline-flex items-center gap-0.5 text-primary hover:underline"
+                            title={t('bots.sessionMonitor.routeGroupHint')}
+                          >
+                            {t('bots.sessionMonitor.routeGroup')}
+                            <ArrowUpRight className="size-3" />
+                          </Link>
+                          {groupFilter !== selectedGroupId && (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                              onClick={() => applyGroupFilter(selectedGroupId)}
+                            >
+                              {t('bots.sessionMonitor.filterByGroup')}
+                            </button>
+                          )}
+                        </dd>
+                      </>
                     )}
                     {selectedSession?.user_id && (
                       <>
-                        <span>·</span>
-                        <span className="font-mono">
-                          {selectedSession.user_id}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => copyUserId(selectedSession.user_id!)}
-                          className="inline-flex items-center text-muted-foreground hover:text-foreground transition-colors"
-                          title={t('common.copy')}
-                        >
-                          {copiedUserId ? (
-                            <Check className="w-3 h-3 text-green-600" />
-                          ) : (
-                            <Copy className="w-3 h-3" />
+                        <dt className="pt-0.5 text-muted-foreground">
+                          {selectedGroupId
+                            ? t(
+                                parseGroupMemberSessionId(selectedSessionId)
+                                  ? 'bots.sessionMonitor.member'
+                                  : 'bots.sessionMonitor.lastSender',
+                              )
+                            : t('bots.sessionMonitor.userId')}
+                        </dt>
+                        <dd className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                          {selectedGroupId && selectedSession.user_name && (
+                            <span>{selectedSession.user_name}</span>
                           )}
-                        </button>
+                          <CopyableId
+                            value={selectedSession.user_id}
+                            label={t('bots.sessionMonitor.userId')}
+                          />
+                          {adminLauncherType(selectedSessionId) && (
+                            <button
+                              type="button"
+                              className={cn(
+                                'inline-flex items-center gap-1 transition-colors',
+                                isSessionAdmin(selectedSession)
+                                  ? 'text-blue-500'
+                                  : 'text-muted-foreground hover:text-blue-500',
+                              )}
+                              disabled={togglingAdmin === selectedSessionId}
+                              title={
+                                isSessionAdmin(selectedSession)
+                                  ? t('bots.admins.removeAdminTitle')
+                                  : t('bots.admins.setAdminTitle')
+                              }
+                              onClick={() => toggleAdmin(selectedSession)}
+                            >
+                              {isSessionAdmin(selectedSession) ? (
+                                <ShieldCheck className="size-3.5" />
+                              ) : (
+                                <ShieldOff className="size-3.5" />
+                              )}
+                              <span>{t('bots.admins.adminBadge')}</span>
+                            </button>
+                          )}
+                        </dd>
                       </>
                     )}
-                    {selectedSession?.is_active && (
+                    {selectedSession?.pipeline_name && (
                       <>
-                        <span>·</span>
-                        <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-                          Active
-                        </span>
+                        <dt className="pt-0.5 text-muted-foreground">
+                          {t('bots.sessionMonitor.pipeline')}
+                        </dt>
+                        <dd className="min-w-0 truncate pt-0.5">
+                          {selectedSession.pipeline_name}
+                        </dd>
                       </>
                     )}
-                    {selectedSession && parseSessionType(selectedSessionId) && (
-                      <>
-                        <span>·</span>
-                        <button
-                          type="button"
-                          className={cn(
-                            'inline-flex items-center gap-1 transition-colors',
-                            isSessionAdmin(selectedSession)
-                              ? 'text-blue-500'
-                              : 'text-muted-foreground hover:text-blue-500',
-                          )}
-                          disabled={togglingAdmin === selectedSessionId}
-                          title={
-                            isSessionAdmin(selectedSession)
-                              ? t('bots.admins.removeAdminTitle')
-                              : t('bots.admins.setAdminTitle')
-                          }
-                          onClick={() => toggleAdmin(selectedSession)}
-                        >
-                          {isSessionAdmin(selectedSession) ? (
-                            <ShieldCheck className="size-3.5" />
-                          ) : (
-                            <ShieldOff className="size-3.5" />
-                          )}
-                          <span>{t('bots.admins.adminBadge')}</span>
-                        </button>
-                      </>
-                    )}
-                  </div>
+                  </dl>
                 </div>
                 {canReset && (
                   <Button
@@ -1011,7 +1185,9 @@ const BotSessionMonitor = forwardRef<
                     size="sm"
                     className="h-7 shrink-0 gap-1.5"
                     disabled={resetting}
-                    onClick={() => setResetTarget(selectedSessionId)}
+                    onClick={() =>
+                      selectedSession && openReset(selectedSession)
+                    }
                   >
                     <RotateCcw className="size-3.5" />
                     {t('bots.sessionMonitor.resetContext')}
@@ -1311,6 +1487,13 @@ const BotSessionMonitor = forwardRef<
             <DialogDescription>
               {t('bots.sessionMonitor.resetDescription')}
             </DialogDescription>
+            {resetScope && (
+              <p className="text-sm text-muted-foreground">
+                {resetScope === 'member'
+                  ? t('bots.sessionMonitor.resetScopeMember')
+                  : t('bots.sessionMonitor.resetScopeGroup')}
+              </p>
+            )}
           </DialogHeader>
           <DialogFooter>
             <Button

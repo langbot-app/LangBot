@@ -6,6 +6,7 @@ import base64
 import copy
 import json
 import typing
+from urllib.parse import quote
 
 import pydantic
 
@@ -37,8 +38,20 @@ class ImportBoxArgs(EmptyArgs):
     attachment_ids: list[str] | None = None
 
 
-class ReadInputAttachmentArgs(EmptyArgs):
+class ReadContentArgs(EmptyArgs):
+    mode: typing.Literal["auto", "text", "native", "pages"] = "auto"
+    offset: int = pydantic.Field(default=0, ge=0)
+    max_chars: int = pydantic.Field(default=8192, ge=1, le=16384)
+    page_start: int = pydantic.Field(default=1, ge=1)
+    page_end: int | None = pydantic.Field(default=None, ge=1)
+
+
+class ReadInputAttachmentArgs(ReadContentArgs):
     ref: str = pydantic.Field(min_length=1)
+
+
+class ReadRunFileArgs(ReadContentArgs):
+    file_id: str = pydantic.Field(min_length=1)
 
 
 class ReplyFilesArgs(EmptyArgs):
@@ -180,6 +193,7 @@ class AgentRunExternalTools:
                     "langbot_bind_box",
                     "langbot_import_box_attachments",
                     "langbot_export_box_files",
+                    "langbot_read_run_file",
                 }
             )
             if any(
@@ -252,6 +266,88 @@ class AgentRunExternalTools:
             }
 
         structured = _dump_jsonable(result)
+        content_types = {"text", "image_base64", "file_base64", "image_url", "file_url"}
+        if (
+            isinstance(structured, list)
+            and structured
+            and all(
+                isinstance(item, dict) and item.get("type") in content_types
+                for item in structured
+            )
+        ):
+            contents = []
+            try:
+                for item in structured:
+                    kind = item["type"]
+                    if kind == "text":
+                        if not isinstance(item.get("text"), str):
+                            raise ValueError("Missing tool text content")
+                        contents.append({"type": "text", "text": item["text"]})
+                    elif kind in {"image_url", "file_url"}:
+                        uri = (
+                            item["image_url"]["url"]
+                            if kind == "image_url"
+                            else item["file_url"]
+                        )
+                        if not isinstance(uri, str) or not uri:
+                            raise ValueError("Missing tool media URL")
+                        contents.append(
+                            {
+                                "type": "resource_link",
+                                "uri": uri,
+                                "name": item.get("file_name") or "image",
+                            }
+                        )
+                    else:
+                        encoded = item[kind]
+                        if not isinstance(encoded, str) or not encoded:
+                            raise ValueError("Missing tool media payload")
+                        mime_type = (
+                            "image/png"
+                            if kind == "image_base64"
+                            else "application/octet-stream"
+                        )
+                        if encoded.startswith("data:"):
+                            header, separator, encoded = encoded.partition(",")
+                            if not separator or not header.endswith(";base64"):
+                                raise ValueError("Invalid tool media data URL")
+                            mime_type = header[5:-7]
+                        if not mime_type or (
+                            kind == "image_base64"
+                            and not mime_type.startswith("image/")
+                        ):
+                            raise ValueError("Invalid tool media MIME type")
+                        base64.b64decode(encoded, validate=True)
+                        if kind == "image_base64":
+                            contents.append(
+                                {
+                                    "type": "image",
+                                    "data": encoded,
+                                    "mimeType": mime_type,
+                                }
+                            )
+                        else:
+                            contents.append(
+                                {
+                                    "type": "resource",
+                                    "resource": {
+                                        "uri": "langbot-artifact:///"
+                                        + quote(
+                                            item.get("file_name") or "file", safe=""
+                                        ),
+                                        "mimeType": mime_type,
+                                        "blob": encoded,
+                                    },
+                                }
+                            )
+                return {"content": contents}
+            except (KeyError, TypeError, ValueError) as exc:
+                return {
+                    "isError": True,
+                    "content": [
+                        {"type": "text", "text": f"Invalid tool media content: {exc}"}
+                    ],
+                }
         if not isinstance(structured, dict):
             structured = {"result": structured}
         return {
@@ -503,18 +599,20 @@ class AgentRunExternalTools:
 
     @agent_tool(
         name="langbot_read_input_attachment",
-        description="Read one current input attachment by ref, such as att-1 from [attachment att-1: ...] in the message. Returns name, mime_type, size and base64 content.",
+        description="Read a current input attachment by ref. Auto returns bounded text or a structured image; PDF defaults to text. Use native for PDF visual content with a supporting model. Text offsets are Unicode characters; use next_offset to continue. At most ten PDF pages per call. Page rendering is unavailable.",
         args_model=ReadInputAttachmentArgs,
     )
     async def read_input_attachment(self, args: ReadInputAttachmentArgs):
-        data = await self.api.read_input_attachment(args.ref)
-        return {
-            "ref": data.ref,
-            "name": data.name,
-            "mime_type": data.mime_type,
-            "size": data.size,
-            "content_base64": base64.b64encode(data.data).decode("ascii"),
-        }
+        return await self.api.read_input_attachment_content(**args.model_dump())
+
+    @agent_tool(
+        name="langbot_read_run_file",
+        description="Read a file ID returned by this run's sandbox export. Auto returns bounded text or a structured image; PDF defaults to text. Use native for PDF visual content with a supporting model. Text offsets are Unicode characters; use next_offset to continue. At most ten PDF pages per call. Page rendering is unavailable.",
+        args_model=ReadRunFileArgs,
+        read_only=True,
+    )
+    async def read_run_file(self, args: ReadRunFileArgs):
+        return await self.api.read_run_file(**args.model_dump())
 
     @agent_tool(
         name="langbot_export_box_files",

@@ -17,14 +17,14 @@ LangBot は充実した Web フロントエンドを備えており、ほぼす�
 
 - **バックエンド**：Python（`>=3.11,<4.0`）、依存関係は `uv` で管理。Web フレームワークは Quart（Flask の非同期版）。HTTP API とビルド済みフロントエンドはいずれもバックエンドが `http://127.0.0.1:5300` で提供します。
 - **フロントエンド**：`web/` は **Vite + React Router 7 + shadcn/ui + Tailwind CSS** の SPA で、`pnpm` で管理します（注意：Next.js では**ありません**。`dev` スクリプトは `vite` です）。
-- **プラグインシステム**：プラグイン SDK、CLI（`lbp`）、プラグインランタイム、Box（サンドボックス）ランタイム、および LangBot とプラグインで共有されるエンティティ/API 定義は、すべて LangBot リポジトリの [`sdk/`](https://github.com/langbot-app/LangBot/tree/master/sdk) ディレクトリにあり、PyPI パッケージ `langbot-plugin` として個別にリリースされます。LangBot は `sdk/` ディレクトリを直接使わず、`pyproject.toml` でバージョン固定した `langbot-plugin` パッケージを通じて依存します。
+- **プラグインシステム**：プラグイン SDK、CLI（`lbp`）、プラグインランタイム、Box（サンドボックス）ランタイム、および LangBot とプラグインで共有されるエンティティ/API 定義は、すべて LangBot リポジトリの [`sdk/`](https://github.com/langbot-app/LangBot/tree/master/sdk) ディレクトリにあり、PyPI パッケージ `langbot-plugin` として個別にリリースされます。ルートの `uv sync` は同じチェックアウトの `sdk/` を使用します。ソース、Docker、ZIP、fnOS の配置は SDK の公開前に連携した変更を利用でき、Core の単独 PyPI インストールは公開済み SDK に依存します。
 
 ## リポジトリ構成
 
 ```
 LangBot/
 ├── main.py                     # エントリーシム -> langbot.__main__.main()
-├── pyproject.toml              # Python プロジェクト + 依存（uv）、langbot-plugin==<x.y.z> を固定
+├── pyproject.toml              # Python プロジェクト + 依存（uv）、同じ SDK ソース
 ├── src/langbot/
 │   ├── __main__.py             # 実際のエントリーポイント、CLI 引数（--standalone-runtime / --standalone-box / --debug）
 │   ├── pkg/                    # コアバックエンドパッケージ

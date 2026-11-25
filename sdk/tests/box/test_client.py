@@ -21,6 +21,7 @@ from langbot_plugin.box.client import (
 )
 from langbot_plugin.box.errors import (
     BoxAdmissionError,
+    BoxArtifactNotPreparedError,
     BoxBackendUnavailableError,
     BoxError,
     BoxManagedProcessConflictError,
@@ -44,6 +45,7 @@ from langbot_plugin.box.models import (
 )
 from langbot_plugin.box.tenancy import namespace_session_id
 from langbot_plugin.entities.io.context import ActionContext
+from langbot_plugin.entities.io.errors import ActionCallError, ActionCallTimeoutError
 
 
 @pytest.fixture
@@ -132,6 +134,36 @@ def test_translate_action_error_matches_prefix_anywhere_in_message():
         Exception("ActionCallError: BoxSessionNotFoundError: no such session")
     )
     assert type(err) is BoxSessionNotFoundError
+
+
+@pytest.mark.parametrize(
+    "error,expected",
+    [
+        (
+            ActionCallError("BoxArtifactNotPreparedError: missing"),
+            BoxArtifactNotPreparedError,
+        ),
+        (
+            ActionCallError("BoxError: BoxArtifactNotPreparedError: already executed"),
+            BoxError,
+        ),
+        (BoxError("BoxArtifactNotPreparedError: already executed"), BoxError),
+        (ActionCallTimeoutError("BoxArtifactNotPreparedError: timed out"), BoxError),
+        (RuntimeError("BoxArtifactNotPreparedError: local error"), BoxError),
+    ],
+)
+def test_preflight_error_requires_the_exact_remote_exception(error, expected):
+    assert type(_translate_action_error(error)) is expected
+
+
+@pytest.mark.anyio
+async def test_execute_preserves_the_remote_preflight_error(client, handler):
+    handler.call_action.side_effect = ActionCallError(
+        "BoxArtifactNotPreparedError: missing"
+    )
+    with pytest.raises(BoxArtifactNotPreparedError):
+        await client.execute(BoxSpec(session_id="cold", cmd="echo once"))
+    handler.call_action.assert_awaited_once()
 
 
 # ── _call error handling ──────────────────────────────────────────────
@@ -284,7 +316,9 @@ async def test_execute_sends_spec_and_parses_result(client, handler):
     # Verify the EXEC action, json-serialized spec payload, and 300s timeout.
     args, kwargs = handler.call_action.call_args
     assert args[0] is LangBotToBoxAction.EXEC
-    assert args[1] == spec.model_dump(mode="json")
+    assert args[1] == spec.model_dump(
+        mode="json", exclude={"artifact_mounts", "local_mounts"}
+    )
     assert kwargs["timeout"] == 300.0
     assert kwargs["cancel_peer_on_cancel"] is True
 
@@ -401,7 +435,39 @@ async def test_create_session_sends_spec(client, handler):
     assert result == {"session_id": "new-sess", "backend_name": "nsjail"}
     args = handler.call_action.call_args.args
     assert args[0] is LangBotToBoxAction.CREATE_SESSION
-    assert args[1] == spec.model_dump(mode="json")
+    assert args[1] == spec.model_dump(
+        mode="json", exclude={"artifact_mounts", "local_mounts"}
+    )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("method", "action"),
+    [
+        ("execute", LangBotToBoxAction.EXEC),
+        ("create_session", LangBotToBoxAction.CREATE_SESSION),
+    ],
+)
+async def test_nonempty_artifact_mounts_are_preserved(client, handler, method, action):
+    handler.call_action.return_value = {
+        "session_id": "artifact-session",
+        "backend_name": "host",
+        "status": "completed",
+        "exit_code": 0,
+        "duration_ms": 1,
+    }
+    digest = "sha256:" + "a" * 64
+    spec = BoxSpec(
+        session_id="artifact-session",
+        cmd="true",
+        artifact_mounts=[{"content_digest": digest}],
+    )
+
+    await getattr(client, method)(spec)
+
+    args = handler.call_action.call_args.args
+    assert args[0] is action
+    assert args[1]["artifact_mounts"] == [{"content_digest": digest}]
 
 
 @pytest.mark.anyio
@@ -577,7 +643,7 @@ async def test_init_sends_config(client, handler):
     await client.init({"backend": "nsjail", "foo": 1})
     args = handler.call_action.call_args.args
     assert args[0] is LangBotToBoxAction.INIT
-    assert args[1] == {"backend": "nsjail", "foo": 1}
+    assert args[1] == {"backend": "nsjail", "foo": 1, "file_chunk_256k": True}
 
 
 @pytest.mark.anyio

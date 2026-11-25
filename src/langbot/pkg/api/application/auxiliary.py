@@ -11,6 +11,7 @@ from typing import Literal
 
 import sqlalchemy
 from pydantic import Field
+from typing_extensions import TypedDict
 
 from .contracts import Input, Operation
 from ..authz import Permission, PermissionDeniedError
@@ -104,6 +105,11 @@ class ImageGet(Input):
     file_key: str
 
 
+class ImageOutput(TypedDict):
+    content: bytes
+    media_type: str
+
+
 class ToolList(Input):
     pipeline_uuid: str | None = None
 
@@ -184,6 +190,8 @@ async def workspace_get(ap, context, payload):
 
 
 async def workspace_current(ap, context, payload):
+    from ...cloud.message_quota import message_quota_display
+
     workspace = await ap.workspace_service.get_workspace(context.workspace_uuid)
     result = {
         'workspace': _workspace(workspace),
@@ -192,6 +200,7 @@ async def workspace_current(ap, context, payload):
         'membership': None,
         'plan_name': None,
         'current_plan': None,
+        'message_quota': await message_quota_display(ap, context.workspace_uuid),
         'limitation': None,
     }
     if context.principal.principal_type == PrincipalType.ACCOUNT:
@@ -633,6 +642,10 @@ async def sandbox_update(ap, context, payload):
     )
 
 
+async def sandbox_reset(ap, context, payload):
+    return await ap.box_service.reset_workspace_backend(context)
+
+
 async def sandbox_check(ap, context, payload):
     return await ap.box_service.get_workspace_backend_settings(context, refresh=True, e2b_draft=payload.e2b)
 
@@ -661,6 +674,15 @@ def operations() -> list[Operation]:
             Permission.WORKSPACE_UPDATE,
             sandbox_update,
             SandboxUpdate,
+            dict,
+            True,
+            principals=administrators,
+        ),
+        Operation(
+            'workspace.sandbox.reset',
+            Permission.WORKSPACE_UPDATE,
+            sandbox_reset,
+            Empty,
             dict,
             True,
             principals=administrators,
@@ -734,7 +756,7 @@ def operations() -> list[Operation]:
         Operation('task.get', view, task_get, TaskGet, dict),
         Operation('file.image.upload', manage, image_upload, Upload, dict[str, str], True),
         Operation('file.document.upload', manage, document_upload, Upload, dict[str, str], True),
-        Operation('file.image.get', view, image_get, ImageGet, dict[str, bytes | str]),
+        Operation('file.image.get', view, image_get, ImageGet, ImageOutput),
         Operation('box.status', view, box_status, Empty, dict),
         Operation('box.sessions.list', Permission.AUDIT_VIEW, box_sessions, Empty, list[dict]),
         Operation('box.errors.list', Permission.AUDIT_VIEW, box_errors, Empty, list[dict]),

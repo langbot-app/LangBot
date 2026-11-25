@@ -7,6 +7,11 @@ Bots are used to receive message events from messaging platforms and call pipeli
 
 ![arch](/images/zh/deploy/bots/arch.png)
 
+Use `lbctl bot get <bot>` to find a route ID. With `lbctl bot routes bind <bot> --binding <id> --agent <agent> --dry-run` you can check a change before applying it with `--yes`. Use `--pipeline` for a Pipeline target. If the binding changes concurrently, Core returns a conflict and the CLI can read the latest configuration.
+
+**Route one group to its own pipeline**: open the bot's **Sessions** tab and select a session from that group. The full **Group ID** (copyable) appears under the title. Click **Route this group** to add a rule at the top of the event routes that matches chat type = group and chat ID = that group. Pick the pipeline and save; other groups keep using the rules below it. The execution detail drawer shows the same Group ID and shortcut.
+
+
 
 | Platform | Status | Notes | Tutorial |
 | ------ | ---- | ---- | ---- |

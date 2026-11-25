@@ -106,7 +106,7 @@ class TestDailyGroupedRotatingFileHandler:
         box = {'date': '2026-06-08'}
         self._patch_date(monkeypatch, box)
 
-        handler = DailyGroupedRotatingFileHandler(str(tmp_path), max_bytes=200, backup_count=3)
+        handler = DailyGroupedRotatingFileHandler(str(tmp_path), max_bytes=200, backup_count=3, suffix='.wf')
         logger = _make_logger(handler, 'lb_logtest_pattern')
         for i in range(40):
             logger.info('padding line %d', i)
@@ -114,5 +114,6 @@ class TestDailyGroupedRotatingFileHandler:
         logger.info('next day line')
         handler.close()
 
+        assert 'langbot-2026-06-08.log.wf.1' in _listing(tmp_path)
         for name in _listing(tmp_path):
             assert LOG_FILE_PATTERN.match(name), name

@@ -88,6 +88,7 @@ async def test_agent_run_snapshot_records_identity_and_redacts_inline_attachment
     event = SimpleNamespace(
         event_id='event-1',
         conversation_id='conversation-1',
+        ledger_conversation_id='conversation-1',
         thread_id=None,
         workspace_id='workspace-1',
         bot_id='bot-1',

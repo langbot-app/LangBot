@@ -5,8 +5,27 @@ import pytest
 
 # These are behavior obligations, independent of file names and parametrization.
 REQUIRED_CONTRACTS = {
-    'sdk_core': {'execution_routing', 'rag_file_transfer', 'rag_cancellation'},
+    'p0_permissions': {
+        'permission_lifecycle',
+        'permission_legacy',
+        'permission_transport',
+        'permission_inflight',
+        'permission_key_revocation',
+        'permission_workspace_isolation',
+        'permission_reinstall',
+    },
+    'p0_image': {'legacy_image_upgrade', 'image_fresh_defaults'},
+    'sdk_core': {
+        'execution_routing',
+        'rag_file_transfer',
+        'rag_cancellation',
+        'artifact_workspace_routing',
+        'artifact_workspace_live',
+    },
     'network_plugin': {'registered_runner_file_delivery'},
+    'artifact_persistence': {'uploaded_artifact_postgres_minio'},
+    'artifact_mixed': {'mixed_media_runner_lifecycle'},
+    'skill_network': {'two_core_skill_network'},
     'skill_persistence': {
         'skill_publication_recovery',
         'persistent_media_isolation',
@@ -15,6 +34,9 @@ REQUIRED_CONTRACTS = {
         'postgres_minio',
         'skill_content_rls',
         'two_core_cache_recovery',
+        'legacy_skill_import',
+        'legacy_asset_import',
+        'migration_fencing',
     },
     'session_summary': {
         'reader_dependencies',

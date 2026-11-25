@@ -246,3 +246,45 @@ async def test_extract_voice_bytes_ignores_non_audio_mime_hint():
     voice = Voice(base64='data:audio/mpeg;base64,' + base64.b64encode(b'unrecognized').decode())
     _, fmt = await audio_utils.extract_voice_bytes(voice)
     assert fmt == 'mp3'
+
+
+@pytest.mark.asyncio
+async def test_start_backs_off_when_gateway_rejects_connection(monkeypatch):
+    """Rejected credentials make open_connection fail forever; retries must back off."""
+    from types import SimpleNamespace
+
+    from langbot.libs.dingtalk_api import api as dingtalk_api
+
+    client = object.__new__(DingTalkClient)
+    client.logger = SimpleNamespace(error=AsyncMock())
+    attempts = []
+
+    def open_connection():
+        attempts.append(1)
+        return None
+
+    client.client = SimpleNamespace(pre_start=lambda: None, open_connection=open_connection)
+    delays = []
+
+    async def fake_sleep(delay):
+        delays.append(delay)
+        if len(delays) >= 8:
+            client._stopped = True
+
+    monkeypatch.setattr(dingtalk_api.asyncio, 'sleep', fake_sleep)
+
+    await client.start()
+
+    assert delays == [10, 20, 40, 80, 160, 180, 180, 180]
+    assert len(attempts) == 8
+    last_log = client.logger.error.await_args.args[0]
+    assert 'attempt 8' in last_log
+    assert 'Client ID and Client Secret' in last_log
+    assert 'Retrying in 180s' in last_log
+
+
+def test_open_retry_delay_resets_from_initial_value():
+    from langbot.libs.dingtalk_api.api import _open_retry_delay
+
+    assert _open_retry_delay(1) == 10
+    assert _open_retry_delay(10_000) == 180

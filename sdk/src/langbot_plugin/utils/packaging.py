@@ -39,6 +39,11 @@ ALWAYS_EXCLUDED_NAMES = frozenset(
         "*.pyc",
         "*.pyo",
         "*.pyd",
+        # Local virtualenvs: the runtime builds its own environment from
+        # requirements.txt, and a bundled venv can push the package past the
+        # marketplace install limit (LANG-535).
+        ".venv",
+        "venv",
     }
 )
 
@@ -243,9 +248,14 @@ def build_plugin_package(
             for directory in dirs:
                 dir_path = os.path.join(root, directory)
                 relative_dir_path = os.path.relpath(dir_path, plugin_root)
-                if should_ignore(relative_dir_path, gitignore_patterns) or any(
-                    fnmatch.fnmatch(directory, pattern)
-                    for pattern in ALWAYS_EXCLUDED_NAMES
+                if (
+                    should_ignore(relative_dir_path, gitignore_patterns)
+                    or any(
+                        fnmatch.fnmatch(directory, pattern)
+                        for pattern in ALWAYS_EXCLUDED_NAMES
+                    )
+                    # Any virtualenv, whatever its directory name.
+                    or os.path.isfile(os.path.join(dir_path, "pyvenv.cfg"))
                 ):
                     dirs_to_remove.append(directory)
             for directory in dirs_to_remove:

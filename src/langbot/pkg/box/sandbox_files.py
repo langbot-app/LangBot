@@ -3,6 +3,8 @@
 import os
 import textwrap
 
+from .selected_files import windows_export_script
+
 
 def outbox_script(
     outbox_root: str,
@@ -22,7 +24,10 @@ def outbox_script(
         'max_files': max_files,
         'max_total_bytes': max_total_bytes,
     }
-    return f'settings = {settings!r}\n' + textwrap.dedent("""\
+    return (
+        windows_export_script('outbox', settings)
+        + f'settings = {settings!r}\n'
+        + textwrap.dedent("""\
         import base64, errno, json, os, stat, sys
         directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         file_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
@@ -151,3 +156,4 @@ def outbox_script(
             pass
         print(json.dumps(out))
         """)
+    )

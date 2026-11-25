@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "seed": 20261118,
+  "include": ["chat", "box", "rag_chat", "media_chat"],
+  "weights": {"chat": 3, "box": 1, "rag_chat": 1, "media_chat": 1},
+  "phases": [
+    {"name": "soak", "duration_seconds": 14400, "rps": 1.5, "workers": 12, "groups": 24, "members_per_group": 3, "cooldown_seconds": 60, "min_delivery_ratio": 0.90}
+  ]
+}

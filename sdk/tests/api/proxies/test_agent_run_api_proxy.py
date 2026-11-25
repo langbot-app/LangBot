@@ -1535,6 +1535,16 @@ class TestRunnerAPIProxyRunLedgerAPI:
         action, data, _timeout = mock_handler.call_action_mock.call_args.args
         assert action == PluginToRuntimeAction.RUN_CANCEL_ACK
         assert data["cleanup_confirmed"] is True
+        assert "expected_retry_count" not in data
+
+        ctx._api = proxy
+        for entrypoint in (ctx, ctx.api, RunnerAdminAPIProxy(mock_handler)):
+            await entrypoint.run_cancel_ack("run_target")
+            _, old_wire, _ = mock_handler.call_action_mock.call_args.args
+            assert "expected_retry_count" not in old_wire
+            await entrypoint.run_cancel_ack("run_target", expected_retry_count=0)
+            _, wire, _ = mock_handler.call_action_mock.call_args.args
+            assert wire == {**old_wire, "expected_retry_count": 0}
 
     @pytest.mark.anyio
     async def test_steering_preserves_legacy_default_and_explicit_claim(self):

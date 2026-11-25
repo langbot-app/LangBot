@@ -145,12 +145,8 @@ class ExecutionWindow:
 
     def sample(self):
         from tools.entrypoints.regression_suite import resolve
-        from tools.entrypoints.regression_traffic import (
-            owned_box_containers,
-            read_endpoint_snapshot,
-            read_process_snapshot,
-            sample_containers,
-        )
+        from tools.entrypoints.regression_traffic import owned_box_containers, sample_containers
+        from tools.regression.observations import read_endpoint_snapshot, read_process_snapshot
 
         def run(command, **kwargs):
             kwargs['timeout'] = self.timeout(kwargs.get('timeout', 10), sampling=True)
@@ -233,7 +229,7 @@ class ExecutionWindow:
                 error = f'Resource recovery evidence unavailable: {exc}'
                 result['errors'].append(error)
                 result.setdefault('incomplete', []).append(error)
-        from tools.regression.regression_smoke import reconcile_scenario_runs
+        from tools.regression.run_ledger import reconcile_scenario_runs
 
         reconcile_scenario_runs(self.suite, result, key='ledger_closeout')
         self.mark('finished')

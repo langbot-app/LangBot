@@ -14,6 +14,27 @@ export interface AsyncTaskCreatedResp {
   task_id: number;
 }
 
+export interface GithubRefEntry {
+  name: string;
+  commit_sha: string;
+}
+
+export interface GithubRefsResp {
+  owner: string;
+  repo: string;
+  default_branch: string;
+  requested_ref: string;
+  source_subdir: string;
+  branches: GithubRefEntry[];
+  tags: GithubRefEntry[];
+  truncated: boolean;
+  source: {
+    kind: 'direct' | 'mirror';
+    host: string;
+    latency_ms: number;
+  };
+}
+
 export interface ApiRespProviderRequesters {
   requesters: Requester[];
 }
@@ -388,6 +409,7 @@ export interface Adapter {
     help_links?: Record<string, string>;
     supported_events?: string[];
     supported_apis?: string[];
+    platform_specific_apis?: { action: string }[];
     config: IDynamicFormItemSchema[];
   };
 }
@@ -895,6 +917,8 @@ export type MCPServer =
       enable: boolean;
       extra_args: MCPServerExtraArgsSSE;
       runtime_info?: MCPServerRuntimeInfo;
+      /** ${VAR} placeholder names still to fill (community installs). */
+      unfilled_inputs?: string[];
       readme?: string;
       created_at?: string;
       updated_at?: string;
@@ -906,6 +930,8 @@ export type MCPServer =
       enable: boolean;
       extra_args: MCPServerExtraArgsHttp;
       runtime_info?: MCPServerRuntimeInfo;
+      /** ${VAR} placeholder names still to fill (community installs). */
+      unfilled_inputs?: string[];
       readme?: string;
       created_at?: string;
       updated_at?: string;
@@ -917,6 +943,8 @@ export type MCPServer =
       enable: boolean;
       extra_args: MCPServerExtraArgsRemote;
       runtime_info?: MCPServerRuntimeInfo;
+      /** ${VAR} placeholder names still to fill (community installs). */
+      unfilled_inputs?: string[];
       readme?: string;
       created_at?: string;
       updated_at?: string;
@@ -928,6 +956,8 @@ export type MCPServer =
       enable: boolean;
       extra_args: MCPServerExtraArgsStdio;
       runtime_info?: MCPServerRuntimeInfo;
+      /** ${VAR} placeholder names still to fill (community installs). */
+      unfilled_inputs?: string[];
       readme?: string;
       created_at?: string;
       updated_at?: string;

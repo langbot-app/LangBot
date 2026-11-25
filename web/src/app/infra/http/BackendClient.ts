@@ -6,6 +6,18 @@ import type {
   AlertSummary,
 } from '@/app/infra/entities/alerts';
 import type {
+  ContentSubmissionResult,
+  LibraryPrompt,
+  MCPSharePreview,
+  MyContentSubmission,
+  SpaceOwnedItem,
+  PromptKind,
+  PromptMessage,
+  ShareFinding,
+  ShareMetadata,
+  SpaceShareContext,
+} from '@/app/infra/entities/space-share';
+import type {
   WorkspaceSandboxSettings,
   E2BConfigInput,
 } from '@/app/infra/entities/workspace';
@@ -51,6 +63,7 @@ import {
   ApiRespPluginConfig,
   ApiRespExtensions,
   AsyncTaskCreatedResp,
+  GithubRefsResp,
   ApiRespSystemInfo,
   ApiRespAsyncTasks,
   ApiRespUserToken,
@@ -118,6 +131,7 @@ import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogs
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
 import type {
   CurrentWorkspace,
+  MessageQuota,
   Workspace,
   WorkspaceInvitation,
   WorkspaceInvitationDelivery,
@@ -874,6 +888,17 @@ export class BackendClient extends BaseHttpClient {
     return this.put(`/api/v1/platform/bots/${uuid}`, bot);
   }
 
+  public callBotPlatformApi<T = Record<string, unknown>>(
+    botId: string,
+    action: string,
+    params: Record<string, unknown> = {},
+  ): Promise<T> {
+    return this.post(`/api/v1/platform/bots/${botId}/platform-api`, {
+      action,
+      params,
+    });
+  }
+
   public dryRunBotEventRoute(
     botId: string,
     request: BotRouteDryRunRequest,
@@ -939,6 +964,7 @@ export class BackendClient extends BaseHttpClient {
       startTime?: string;
       endTime?: string;
       userQuery?: string;
+      launcherId?: string;
     },
   ): Promise<{
     sessions: Array<{
@@ -969,6 +995,9 @@ export class BackendClient extends BaseHttpClient {
     }
     if (options.userQuery) {
       queryParams.append('userQuery', options.userQuery);
+    }
+    if (options.launcherId) {
+      queryParams.append('launcherId', options.launcherId);
     }
     return this.get(`/api/v1/monitoring/sessions?${queryParams.toString()}`);
   }
@@ -1222,10 +1251,12 @@ export class BackendClient extends BaseHttpClient {
   private async getAuthenticatedObjectURL(
     path: string,
     rewritePluginPageSdk = false,
+    workspaceUuid?: string | null,
   ): Promise<string> {
     const response = await this.instance.get<Blob>(path, {
       responseType: 'blob',
-    });
+      workspaceUuid,
+    } as RequestConfig);
     let blob = response.data;
     if (rewritePluginPageSdk && blob.type.startsWith('text/html')) {
       const apiBase =
@@ -1251,10 +1282,12 @@ export class BackendClient extends BaseHttpClient {
     author: string,
     name: string,
     filepath: string,
+    workspaceUuid?: string | null,
   ): Promise<string> {
     return this.getAuthenticatedObjectURL(
       `/api/v1/plugins/${author}/${name}/authenticated-assets/${filepath}`,
       true,
+      workspaceUuid,
     );
   }
 
@@ -1313,6 +1346,25 @@ export class BackendClient extends BaseHttpClient {
       repo,
       release_tag: releaseTag,
     });
+  }
+
+  public installPluginFromGithubBranch(
+    owner: string,
+    repo: string,
+    ref: string,
+    sourceSubdir: string,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.post('/api/v1/plugins/install/github', {
+      source_type: 'branch',
+      owner,
+      repo,
+      ref,
+      source_subdir: sourceSubdir,
+    });
+  }
+
+  public getGithubRefs(repoUrl: string): Promise<GithubRefsResp> {
+    return this.post('/api/v1/plugins/github/refs', { repo_url: repoUrl });
   }
 
   public getGithubReleases(repoUrl: string): Promise<{
@@ -1680,6 +1732,121 @@ export class BackendClient extends BaseHttpClient {
     );
   }
 
+  // ============ LangBot Space sharing / prompt library (LANG-439) ============
+  public getSpaceShareContext(): Promise<SpaceShareContext> {
+    return this.get('/api/v1/space-share/context');
+  }
+
+  public listLibraryPrompts(params: {
+    kind?: PromptKind;
+    q?: string;
+    sort?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<{ prompts: LibraryPrompt[]; total: number }> {
+    return this.get('/api/v1/space-share/prompts/library', params);
+  }
+
+  public trackLibraryPromptUse(
+    author: string,
+    name: string,
+    kind?: PromptKind,
+  ): Promise<object> {
+    return this.post(
+      `/api/v1/space-share/prompts/library/${encodeURIComponent(author)}/${encodeURIComponent(name)}/use`,
+      { kind },
+    );
+  }
+
+  public listFavoritePrompts(kind?: PromptKind): Promise<{
+    available: boolean;
+    prompts: LibraryPrompt[];
+    prompt_ids: string[];
+  }> {
+    return this.get('/api/v1/space-share/prompts/favorites', { kind });
+  }
+
+  public setPromptFavorite(
+    author: string,
+    name: string,
+    favorite: boolean,
+  ): Promise<{ favorited: boolean; favorite_count: number }> {
+    const url = `/api/v1/space-share/prompts/favorites/${encodeURIComponent(author)}/${encodeURIComponent(name)}`;
+    return favorite ? this.put(url) : this.delete(url);
+  }
+
+  public previewPromptShare(payload: {
+    kind: PromptKind;
+    messages: PromptMessage[];
+  }): Promise<{ payload: object; findings: ShareFinding[] }> {
+    return this.post('/api/v1/space-share/prompts/preview', payload);
+  }
+
+  public sharePrompt(
+    payload: ShareMetadata & {
+      kind: PromptKind;
+      language: string;
+      messages: PromptMessage[];
+      variables: { name: string; description?: string }[];
+      acknowledge_warnings?: boolean;
+    },
+  ): Promise<ContentSubmissionResult> {
+    return this.post('/api/v1/space-share/prompts', payload);
+  }
+
+  public previewSkillShare(skillName: string): Promise<{
+    files: { path: string; size: number }[];
+    findings: ShareFinding[];
+    size: number;
+  }> {
+    return this.get(
+      `/api/v1/space-share/skills/${encodeURIComponent(skillName)}/preview`,
+    );
+  }
+
+  public shareSkill(
+    skillName: string,
+    payload: ShareMetadata,
+  ): Promise<ContentSubmissionResult> {
+    return this.post(
+      `/api/v1/space-share/skills/${encodeURIComponent(skillName)}`,
+      payload,
+    );
+  }
+
+  public previewMCPShare(
+    serverName: string,
+    overrides?: object,
+  ): Promise<MCPSharePreview> {
+    return this.post(
+      `/api/v1/space-share/mcp/${encodeURIComponent(serverName)}/preview`,
+      { overrides },
+    );
+  }
+
+  public shareMCP(
+    serverName: string,
+    payload: ShareMetadata & { overrides?: object },
+  ): Promise<ContentSubmissionResult> {
+    return this.post(
+      `/api/v1/space-share/mcp/${encodeURIComponent(serverName)}`,
+      payload,
+    );
+  }
+
+  public listMySpaceItems(
+    type: SpaceOwnedItem['item_type'],
+  ): Promise<{ available: boolean; items: SpaceOwnedItem[] }> {
+    return this.get('/api/v1/space-share/items', { type });
+  }
+
+  public listMyContentSubmissions(): Promise<{
+    available: boolean;
+    submissions: MyContentSubmission[];
+  }> {
+    return this.get('/api/v1/space-share/submissions');
+  }
+
   public getBoxRuntimeStatus(): Promise<ApiRespBoxStatus> {
     return this.get('/api/v1/box/runtime-status');
   }
@@ -2025,6 +2192,10 @@ export class BackendClient extends BaseHttpClient {
 
   public getCurrentWorkspace(): Promise<CurrentWorkspace> {
     return this.get('/api/v1/workspaces/current');
+  }
+
+  public getMessageQuota(): Promise<MessageQuota> {
+    return this.get('/api/v1/workspaces/current/message-quota');
   }
 
   public getWorkspace(
@@ -2385,6 +2556,7 @@ export class BackendClient extends BaseHttpClient {
       start_time: string;
       platform?: string;
       user_id?: string;
+      user_name?: string;
     }>;
     errors: Array<{
       id: string;
@@ -2513,6 +2685,23 @@ export class BackendClient extends BaseHttpClient {
     }
 
     return this.get(`/api/v1/monitoring/executions?${queryParams.toString()}`);
+  }
+
+  /** Count-only read of the current Workspace's executions (no aggregates). */
+  public async getExecutionTotal(params: {
+    source: ExecutionSourceFilter;
+    mode?: ExecutionModeFilter;
+  }): Promise<number> {
+    const queryParams = new URLSearchParams({
+      source: params.source,
+      mode: params.mode ?? 'all',
+      limit: '1',
+      summary: 'false',
+    });
+    const result = await this.get<{ total: number }>(
+      `/api/v1/monitoring/executions?${queryParams.toString()}`,
+    );
+    return Number(result?.total) || 0;
   }
 
   public getExecutionDetail(

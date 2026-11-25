@@ -55,7 +55,7 @@ test('pipeline defaults retain plugin runner containers, not retired Core runner
     read('../../../src/langbot/templates/default-pipeline-config.json'),
   );
   assert.deepEqual(config.ai, {
-    runner: { id: '', 'expire-time': 0 },
+    runner: { id: '', 'expire-time': 0, 'group-context': 'member' },
     runner_config: {},
   });
   const metadata = read(

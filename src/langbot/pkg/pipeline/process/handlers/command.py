@@ -1,13 +1,11 @@
 from __future__ import annotations
 import typing
 
-import sqlalchemy
-
 from .. import handler
 from ... import entities
 from ... import monitoring_helper
 from ... import plugin_diagnostics
-from ....entity.persistence.bot import BotAdmin
+from ...command_text import command_text_from_chain, strip_command_prefix
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -21,21 +19,11 @@ class CommandHandler(handler.MessageHandler):
     ) -> typing.AsyncGenerator[entities.StageProcessResult, None]:
         """Process"""
 
-        full_command_text = str(query.message_chain).strip()
+        full_command_text = command_text_from_chain(query.message_chain)
+        command_prefixes = self.ap.instance_config.data.get('command', {}).get('prefix', ['!'])
+        command_text = strip_command_prefix(full_command_text, command_prefixes)
 
-        command_text = full_command_text[1:]
-
-        privilege = 1
-
-        admins = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(BotAdmin).where(
-                BotAdmin.bot_uuid == (query.bot_uuid or ''),
-                BotAdmin.launcher_type == query.launcher_type.value,
-                BotAdmin.launcher_id == str(query.launcher_id),
-            )
-        )
-        if admins.first() is not None:
-            privilege = 2
+        privilege = await self.ap.cmd_mgr.resolve_privilege(query)
 
         spt = command_text.split(' ')
 

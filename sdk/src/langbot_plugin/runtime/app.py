@@ -33,7 +33,7 @@ from langbot_plugin.runtime.security import (
     PLUGIN_RUNTIME_CONTROL_TOKEN_HEADER,
     validate_runtime_secret,
 )
-from langbot_plugin.utils.log import configure_process_logging
+from langbot_plugin.utils.log import configure_process_logging, install_loop_logging
 
 logger = logging.getLogger(__name__)
 
@@ -291,6 +291,12 @@ class RuntimeApplication:
             return
         self._closing = True
 
+        from langbot_plugin.runtime.io.connections.stdio import StdioConnection
+
+        for handler in getattr(self.context.plugin_mgr, "plugin_handlers", ()):
+            if isinstance(handler.conn, StdioConnection):
+                handler.conn.expecting_eof = True
+
         async with self._control_handler_lock:
             control_handler = getattr(self.context, "control_handler", None)
             if control_handler is not None:
@@ -313,6 +319,8 @@ class RuntimeApplication:
 
 async def _run_with_shutdown(app: RuntimeApplication) -> None:
     """Run the Runtime and turn container SIGTERM into an orderly shutdown."""
+
+    install_loop_logging()
 
     app.blocking_executor = configure_bounded_default_executor_from_env(
         thread_name_prefix="langbot-plugin-runtime-blocking",
@@ -350,9 +358,8 @@ async def _run_with_shutdown(app: RuntimeApplication) -> None:
 def main(args: argparse.Namespace):
     configure_process_logging()
 
-    app = RuntimeApplication(args)
-
     try:
+        app = RuntimeApplication(args)
         asyncio.run(_run_with_shutdown(app))
     except asyncio.CancelledError:
         logger.info("Runtime application cancelled")
@@ -360,3 +367,6 @@ def main(args: argparse.Namespace):
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt, exiting...")
         return
+    except Exception:
+        logger.exception("Plugin Runtime failed")
+        raise SystemExit(1) from None

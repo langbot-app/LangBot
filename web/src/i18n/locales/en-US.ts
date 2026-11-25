@@ -1,4 +1,5 @@
 import slackSetup from './slack-setup/en-US';
+import wxoaMenu from './wxoa-menu/en-US';
 import pipelineMigration from './pipeline-migration/en-US';
 import pluginPermissions from './plugin-permissions/en-US';
 const enUS = {
@@ -216,6 +217,7 @@ const enUS = {
     saveFailed: 'Failed to save language',
   },
   slackSetup,
+  wxoaMenu,
   inflight: {
     autoCollapse: 'Auto-collapse',
     empty: 'No events are being processed',
@@ -241,6 +243,14 @@ const enUS = {
     failed: 'Failed',
     cancelled: 'Cancelled',
     ignored: 'Ignored',
+  },
+  githubStarPrompt: {
+    title: 'LangBot has handled {{total}} events for you',
+    description:
+      'If LangBot has been helpful, a Star on GitHub helps more people discover it.',
+    later: 'Maybe later',
+    star: 'Star',
+    close: 'Close',
   },
   assistant: {
     movePosition: 'Move assistant horizontally',
@@ -1431,6 +1441,12 @@ const enUS = {
     collapse: 'Collapse',
     imagesAttached: 'image(s) attached',
     noLogs: 'No logs yet',
+    routeDraftExists:
+      'A routing rule for {{id}} already exists; it is expanded below.',
+    routeDraftAddedGroup:
+      'Added a rule for group {{id}} at the top. Choose its pipeline, then save.',
+    routeDraftAddedPerson:
+      'Added a rule for user {{id}} at the top. Choose its pipeline, then save.',
     sessionMonitor: {
       resetContext: 'Reset context',
       resetDescription:
@@ -1439,6 +1455,29 @@ const enUS = {
         'Context reset. New messages will start a fresh conversation.',
       resetError:
         'Could not reset context. Wait for active tasks to finish and try again.',
+      resetScopeMember:
+        "This chat keeps a separate context for each group member, so only this member's context is reset.",
+      resetScopeGroup:
+        "This group shares one context, so the whole group's conversation is reset, not just this member's.",
+      inGroup: 'in {{group}}',
+      filterByGroup: 'Same group',
+      groupFilterActive: 'Group {{group}}',
+      clearGroupFilter: 'Show all sessions',
+      groupTitle: 'Group {{group}}',
+      memberLine: 'Member: {{name}}',
+      lastSenderLine: 'Last sender: {{name}}',
+      privateChat: 'Private chat',
+      groupChat: 'Group chat',
+      groupId: 'Group ID',
+      member: 'Member',
+      lastSender: 'Last sender',
+      userId: 'User ID',
+      pipeline: 'Pipeline',
+      routeGroup: 'Route this group',
+      routeGroupHint:
+        'Create a routing rule that sends this group to a specific pipeline',
+      contextShared: 'Shared group context',
+      contextPerMember: 'Per-member context',
 
       title: 'Sessions',
       sessions: 'Sessions',
@@ -1468,13 +1507,13 @@ const enUS = {
     admins: {
       title: 'Admins',
       description:
-        "Launchers (person/group IDs) that have admin privilege for this bot's commands",
+        "Users (by person ID) with admin privilege for this bot's commands",
       addAdmin: 'Add Admin',
       launcherType: 'Type',
-      launcherId: 'ID',
+      launcherId: 'User ID',
       typePerson: 'Person',
       typeGroup: 'Group',
-      placeholderId: 'User or group ID',
+      placeholderId: 'User ID',
       addSuccess: 'Admin added',
       addError: 'Failed to add admin: ',
       deleteSuccess: 'Admin removed',
@@ -1922,6 +1961,12 @@ const enUS = {
     debugging: 'Debugging',
     uploadLocalPlugin: 'Upload Local Plugin',
     spaceUpload: {
+      descriptionInstalled:
+        'Upload the locally installed plugin {{author}}/{{name}} to the marketplace.',
+      shareInstalledAction: 'Share to Space',
+      installedPackageTitle: 'The installed plugin package will be uploaded',
+      installedPackageHint:
+        'A locally installed plugin is uploaded exactly as the .lbpkg it runs; author, name and version come from its manifest. To change them, edit the source, rebuild and reinstall.',
       menuAction: 'Upload to Extension Market',
       title: 'Upload plugin to Extension Market',
       description:
@@ -2167,6 +2212,10 @@ const enUS = {
     updating: 'Updating...',
     updateSuccess: 'Plugin updated successfully',
     updateError: 'Update failed: ',
+    installedVersion: 'Installed version v{{version}}',
+    updateToVersion: 'Update to v{{version}}',
+    confirmUpdatePluginVersion:
+      'Update plugin {{author}}/{{name}} from v{{from}} to v{{to}}?',
     saveConfigSuccessNormal: 'Configuration saved successfully',
     saveConfigError: 'Configuration save failed: ',
     config: 'Configuration',
@@ -2202,6 +2251,25 @@ const enUS = {
     backToReleases: 'Back to releases',
     backToRepoUrl: 'Back to repository URL',
     backToAssets: 'Back to assets',
+    githubSourceRelease: 'Release',
+    githubSourceBranch: 'Branch',
+    searchBranches: 'Search branches...',
+    defaultBranch: 'Default',
+    noBranchesFound: 'No matching branches',
+    branchesTruncated: 'Only the first 500 branches are listed',
+    pluginDirectory: 'Plugin directory',
+    pluginDirectoryPlaceholder: 'Repository root',
+    pluginDirectoryHelp:
+      'Subdirectory containing manifest.yaml, if the plugin is not at the repository root',
+    downloadSourceDirect: 'Direct to GitHub · {{latency}} ms',
+    downloadSourceMirror: 'Mirror {{host}} · {{latency}} ms',
+    releasesUnavailable:
+      'GitHub releases are unreachable from this server. You can install from a branch instead.',
+    noReleasesUseBranch:
+      'This repository has no releases. You can install from a branch instead.',
+    useBranchInstead: 'Install from a branch',
+    fetchBranchesError: 'Failed to load branches: ',
+    backToBranches: 'Back to branches',
     releaseTag: 'Tag: {{tag}}',
     releaseName: 'Name: {{name}}',
     publishedAt: 'Published at: {{date}}',
@@ -2233,6 +2301,12 @@ const enUS = {
       depsProgress:
         '{{installed}}/{{total}} installed · {{remaining}} remaining',
       installComplete: 'Installation successful',
+      followUp: {
+        nextSteps: 'Next steps',
+        agents: 'Create an Agent or plugin processor',
+        pipelines: 'Create a pipeline',
+        knowledge: 'Create a knowledge base',
+      },
       updateComplete: 'Plugin updated successfully',
       installCompletePlugin: 'Plugin installed successfully',
       installCompleteMCP: 'MCP Server installed successfully',
@@ -2245,6 +2319,13 @@ const enUS = {
     },
   },
   market: {
+    typeTiles: {
+      all: 'All extensions',
+      allDesc: 'Plugins, MCP servers and skills',
+      pluginDesc: 'Platforms, tools, runners and more',
+      mcpDesc: 'Tools served by external MCP servers',
+      skillDesc: 'Teach Agents new ways of working',
+    },
     certifiedPlugin: 'Certified plugin',
     certificationTooltip:
       'This version has passed a review of data isolation and compatibility with shared runtimes, and its package is signed.',
@@ -2897,6 +2978,21 @@ const enUS = {
     newVersionAvailable: 'New Version Available',
     viewUpdateGuide: 'View Update Guide',
     noReleaseNotes: 'No release notes available',
+    latestBadge: 'Latest',
+    currentBadge: 'Current',
+    viewOnWebsite: 'View on website',
+    whatsNewInCurrent: "What's new in this version",
+    releasesIncluded: '{{count}} releases included',
+    upToDate: "You're on the latest version",
+    showOlderReleases: 'Show {{count}} older releases',
+    viewFullChangelog: 'View full changelog',
+    changeTypes: {
+      new: 'New',
+      improved: 'Improved',
+      changed: 'Changed',
+      fixed: 'Fixed',
+      security: 'Security',
+    },
   },
   account: {
     settings: 'Account Settings',
@@ -3012,6 +3108,32 @@ const enUS = {
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
+  dailyMessageQuota: {
+    planLimited: '{{count}} messages per day',
+    planUnlimited: 'Unlimited daily messages',
+    planHelp:
+      'Messages your bots can process per day, counted per UTC day and reset at 00:00 UTC. Only messages a bot actually handles count. Once used up, new messages that day are not processed and the user is told why.',
+    title: "Today's messages",
+    usage: '{{used}} / {{limit}}',
+    remaining: '{{count}} left',
+    resetsAt: 'Resets {{time}}',
+    today: 'today {{time}}',
+    tomorrow: 'tomorrow {{time}}',
+    exhausted: "Today's quota is used up",
+    exhaustedHint: 'New messages are paused until {{time}}',
+    nearLimit: 'Almost used up',
+    upgrade: 'Upgrade plan',
+    unlimited: 'Unlimited',
+    settingsTitle: 'Daily message quota',
+    settingsDescription:
+      'Messages your bots can process per day, including Debug Chat. Counted per UTC day; group messages that do not trigger a bot are not counted.',
+    unlimitedDescription: 'Your plan does not limit daily messages.',
+    errorTitle: "Today's message quota is used up",
+    errorBody:
+      'This workspace has already processed {{limit}} messages today, so this message was not processed. The quota resets {{time}}.',
+    errorUpgrade: 'Upgrade for a higher quota',
+    unavailable: "Today's usage is unavailable right now",
+  },
   workspace: {
     dedicatedSpaceMembersHint:
       'Members who sign in with their LangBot Account are invited from the Cloud page on LangBot Space. The invitation below creates a separate password account on this instance.',
@@ -3120,7 +3242,22 @@ const enUS = {
       llm_calls: 'Model calls',
       tool_calls: 'Tool calls',
       errors: 'Errors',
-      payload: 'Details',
+      payload: 'Raw data',
+      rawEvents: 'Raw events ({{count}}{{more}})',
+      copyJson: 'Copy JSON',
+      diagnostics: 'Diagnostics',
+      diagnosticsHint:
+        'Pick an item to load model calls, tool calls, trace events, related executions or conversation context.',
+      chat: {
+        bot: 'Bot',
+        groupChat: 'Group chat',
+        privateChat: 'Private chat',
+        source: 'Source',
+        groupId: 'Group ID',
+        sender: 'Sender',
+        routeGroup: 'Route this group',
+        routePerson: 'Route this user',
+      },
       metadata: 'Technical details',
       loadMore: 'Load more',
       noRecords: 'No records',
@@ -3598,6 +3735,7 @@ const enUS = {
       skill: 'Skill',
       knowledge_base: 'Knowledge base',
       mcp_server: 'MCP server',
+      content: 'Shared content',
       runtime: 'Runtime',
       system: 'System',
       resource: 'Resource',
@@ -3608,6 +3746,8 @@ const enUS = {
       error: 'Failed',
     },
     actions: {
+      content_publish: 'Share content to Space',
+      plugin_publish: 'Publish extension to Space',
       audit_log_view: 'View operation logs',
       settings_update: 'Update tracing settings',
       settings_view: 'View tracing settings',
@@ -4257,6 +4397,115 @@ const enUS = {
       failed: 'Failed',
       rate_limited: 'Quota reached',
       skipped: 'Skipped',
+    },
+  },
+  promptLibrary: {
+    emptyTitle: 'Templates are on their way ✨',
+    emptyBody: 'Hit “Share” next to a prompt and be the first!',
+    bindToFavorite: 'Bind an account to favorite',
+    originalLanguage: 'original',
+    open: 'Prompt library',
+    title: 'Prompt library',
+    description:
+      'Search reviewed prompts shared on LangBot Space. Save the configuration after applying one.',
+    kindMessaging: 'Messaging',
+    kindAgent: 'Agent',
+    searchPlaceholder: 'Search name, description, tags or text',
+    tabAll: 'All',
+    tabFavorites: 'Favorites',
+    favoritesNeedAccount: 'Bind a LangBot Account to favorite prompts',
+    otherKindHint:
+      'You are browsing {{kind}} prompts, written for a different use. Check they fit before applying.',
+    noFavorites: 'No favorite prompts yet',
+    empty: 'No matching prompts',
+    loadFailed: 'Failed to load the prompt library',
+    favoriteFailed: 'Could not update the favorite',
+    applied: 'Applied. Save to take effect.',
+    uses: '{{count}} uses',
+    favorite: 'Favorite',
+    variablesHint: 'Variables:',
+    append: 'Append to current prompt',
+    replace: 'Replace current prompt',
+    replaceTitle: 'Replace the current prompt?',
+    replaceDescription:
+      'The current prompt will be overwritten (you can still discard before saving).',
+    selectHint: 'Select a prompt on the left to preview',
+  },
+  spaceShare: {
+    modeNew: 'Publish as new',
+    modeUpdate: 'Update existing ({{count}})',
+    pickExisting: 'Choose the item to update',
+    unlisted: 'unlisted',
+    identifierHint:
+      'Lowercase letters, digits, - or _. Fixed after publishing.',
+    bindAccount: 'Bind LangBot Account',
+    autoTranslateNotice:
+      'Write it in one language. We translate it into other languages automatically after upload.',
+    shareShort: 'Share',
+    shareToSpace: 'Share to Space',
+    findingsBlockTitle:
+      'Possible credentials found — remove them before sharing',
+    findingsWarnTitle: 'Contains personal or internal data',
+    submitFailed: 'Submission failed',
+    submittedTitle: 'Submitted for review',
+    submittedAgentReview:
+      '{{id}} is being reviewed automatically and will appear on LangBot Space once approved.',
+    submittedManualReview: '{{id}} is waiting for a manual review.',
+    viewProgress: 'View review progress on LangBot Space',
+    needAccountTitle: 'LangBot Account required',
+    needAccount:
+      'Bind a LangBot Account to share. Your contribution is published under that account’s LangBot Space creator profile.',
+    needCreatorTitle: 'No creator profile yet',
+    needCreator:
+      'Set up a creator profile on LangBot Space to share. You only need to do this once.',
+    openCreator: 'Set up creator profile',
+    acknowledgeWarnings: 'I confirm this information can be public',
+    displayName: 'Display name',
+    identifier: 'Identifier',
+    descriptionLabel: 'Description',
+    changelog: 'Changelog',
+    reviewNotice:
+      'Submissions are reviewed before they become public on LangBot Space. Sharing the same name again publishes a new version.',
+    submit: 'Submit for review',
+    promptTitle: 'Share prompt to LangBot Space',
+    promptDescriptionMessaging:
+      'Published as a Messaging prompt that others can find in pipeline settings.',
+    promptDescriptionAgent:
+      'Published as an Agent prompt that others can find in Agent settings.',
+    detectedVariables: 'Detected variables:',
+    skillTitle: 'Share Skill to LangBot Space',
+    skillDescription:
+      'Uploads the current Skill package. The review checks scripts and outbound requests.',
+    packageFiles: 'Files to submit',
+    mcpTitle: 'Share MCP server to LangBot Space',
+    mcpDescription:
+      'Remote MCP only. Credentials are never uploaded: they become placeholders that installers fill in with their own values.',
+    mcpPublishedConfig: 'Configuration to publish',
+    mcpToolsCount: 'Includes a snapshot of {{count}} tools',
+    mcpRedactedTitle: '{{count}} credentials removed',
+    mcpRedactedHint:
+      'Installers will be asked for these values. Give each a friendly label:',
+    mcpInputLabelPlaceholder: 'Label (default: {{label}})',
+    mcpNoCredentials:
+      'No credentials found; the configuration is published as is.',
+    mcpNeedsConnection:
+      'Connect successfully first; the tool list is published with it',
+    mcpFillInputsTitle: 'Fill in credentials before enabling',
+    mcpFillInputs:
+      'This community MCP server needs your own values for {{names}}. Replace them, save, then enable it.',
+    finding: {
+      openai_key: 'OpenAI key',
+      anthropic_key: 'Anthropic key',
+      github_token: 'GitHub token',
+      slack_token: 'Slack token',
+      aws_access_key: 'AWS access key',
+      google_api_key: 'Google API key',
+      private_key: 'Private key',
+      jwt: 'JWT token',
+      langbot_key: 'LangBot key',
+      email: 'Email address',
+      phone: 'Phone number',
+      private_url: 'Internal URL',
     },
   },
 };

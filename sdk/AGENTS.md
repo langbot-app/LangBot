@@ -11,7 +11,7 @@ Read `ARCHITECTURE.md` before non-trivial SDK, CLI, Plugin Runtime, Box Runtime,
 - CLI entrypoint: `lbp = langbot_plugin.cli:main`.
 - Main consumers: LangBot main repo and third-party plugins.
 - Runtime license: `src/langbot_plugin/runtime/` is AGPL; the rest is Apache 2.0.
-- LangBot Core pins this package exactly (`langbot-plugin==X` in `../pyproject.toml`) and installs it from PyPI; testing Core against `sdk/` needs an explicit overlay install.
+- LangBot Core declares this package exactly (`langbot-plugin==X` in `../pyproject.toml`); root `uv sync` resolves it to editable `sdk/`. Standalone Core PyPI installs retain the published dependency.
 - Releases: `sdk/vX.Y.Z` tags publish to PyPI; never a GitHub Release. See `RELEASING.md`.
 
 ## Essential Commands
@@ -57,13 +57,12 @@ uv run python scripts/check_action_consistency.py
 All commands in this file run from `sdk/` unless noted. When changing shared entities, component contracts, action payloads, Plugin Runtime, or Box Runtime, change the Core bridge in the same PR and test both:
 
 ```bash
-# from the repository root: overlay the in-tree SDK on Core's venv
+# from the repository root: install Core and this checkout's SDK
 uv sync --dev
-uv pip install ./sdk
-uv run --no-sync main.py
+uv run main.py
 ```
 
-CI does the same in the `Core with in-tree SDK` job (`.github/workflows/run-tests.yml`); the SDK's own suite runs in `sdk-tests.yml`.
+All Core CI jobs use that local source. The `Core with in-tree SDK` job (`.github/workflows/run-tests.yml`) also runs cross-component contracts; the SDK's own suite runs in `sdk-tests.yml`. Independent plugin checks keep their released-SDK compatibility paths.
 
 Standalone runtime flows:
 
@@ -85,7 +84,7 @@ Then configure LangBot as needed:
 - Treat action enums and Pydantic models as cross-process API contracts; update callers, handlers, and tests together.
 - Do not duplicate action strings outside the enum definitions.
 - Keep generated plugin templates, component base classes, CLI renderer behavior, and docs consistent when component contracts change.
-- Preserve `uv run --no-sync` guidance for local SDK testing; otherwise LangBot may reinstall the pinned PyPI package.
+- Root `uv sync` and `uv run` use this checkout's SDK. Keep published-SDK compatibility checks in isolated environments.
 - Keep comments/docstrings in English and user-facing labels/descriptions i18n-ready.
 - Commit message format: `<type>(<scope>): <subject>`.
 

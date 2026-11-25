@@ -636,6 +636,10 @@ cache token counters，Host / SDK 不应丢弃这些字段。没有 usage 的 pr
 为 true 时可用；没有 query 缓存、prompt 已过期或非 query entry run 时 Host
 可以返回错误或空列表。Runner 应在不可用时回退到自己的 config/prompt 策略。
 
+Pipeline 在 `PromptPreProcessing` 前记录历史中的系统消息，在事件链完成后提取本轮新增或修改的系统消息。`get_prompt()` 将这些消息排在生效的 `default_prompt` 后，保持最终 hook 顺序。已有历史系统消息按出现次数匹配，避免经此接口重复投影。用户消息和 assistant/tool 历史仍走 Transcript API。投影保存在当前 Query 的 Host 保留变量中，每次预处理覆盖，包括空投影。投影生命周期为当前运行。该投影只桥接本轮系统上下文，历史 API 的记录编辑仍由其持久化边界决定。
+
+自动检索范围和显式检索授权采用独立投影。资源构建仍按 binding 配置和 policy 生成冻结的授权 KB。Pipeline 在构建 RunnerContext 后，将配置中的 schema-defined KB selectors 与事件处理后的 `_knowledge_base_uuids` 及实际授权 KB 求交集，写入本次运行独立复制的 `context.config`。空选择覆盖 schema 默认值。共享 binding、Pipeline 持久配置及资源授权保持其各自生命周期。LongTermMemory 在自身查询级检索结束后才修改自动选择，避免先移除知识库导致其查询授权失败。
+
 `steering_pull(mode="all")` 是推荐默认：Host 按 claim 顺序返回全部 pending steering 输入并清空对应队列。`mode="one-at-a-time"` 仅用于 runner 主动节流，每次返回一条。Host 不合并多条用户消息；runner 负责在 turn 边界决定模型侧格式。
 
 Steering 审计使用 EventLog 而不是 Transcript schema 扩展：被 active run 吸收的原始 `message.received` 事件保留原事件类型，并在 `metadata.steering` 标记 `status="queued"`、`trigger_behavior="absorbed_into_active_run"`、`claimed_by_run_id`、`claimed_runner_id`、`claimed_at`。Runner 成功 pull 后，Host 追加 `steering.injected` EventLog 记录，`metadata.steering.status="injected"` 并引用 `source_event_id`。若 run 结束时仍有已 claim 但未 pull 的 steering 输入，Host 追加 `steering.dropped` EventLog 记录，`metadata.steering.status="dropped"` 并引用 `source_event_id`；这不是用户消息事实的删除，只是 dispatch 终态。Transcript 继续只表示会话事实，不承担 dispatch 行为标记。
@@ -766,6 +770,7 @@ Runner 失败使用 `run.failed`：
 ## 10. Timeout 与 Cancellation
 
 - Host 在 `ctx.runtime.deadline_at` 下发总 deadline；SDK proxy 必须用该 deadline 限制单次 action timeout。
+- Host 在消费非终态事件时并行启动下一条 Runner result 的读取，最多预读一条；读取仍受原 deadline 限制，不接受真正超时的结果。`message.completed` 不是 Run 终态。合法的 `run.completed`、`run.failed` 或 `run.cancelled` 经校验并完成 Host 内部处理后，Host 先持久化终态，再关闭流；下游消息投递可能仍未完成。不再处理该终态之后的结果。
 - Host 可以取消 active run；Runtime 应尽力中断 runner。
 - Protocol v1 的 run 绑定当前 Host 进程和当前 runtime channel，不保证跨 Host 重启恢复。Host 重启、runtime channel 断开或 run session 丢失时，Runtime / external harness connector 必须 fail-fast 并尽力取消仍在执行的 runner，不得继续使用旧 `run_id` 调用 Host API。
 - Runner 支持中断时应返回或触发 `run.failed`，code 为 `cancelled`。

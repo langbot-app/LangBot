@@ -761,6 +761,51 @@ async def test_stream_completion_delivers_attachments_once(with_text):
 
 
 @pytest.mark.asyncio
+async def test_stream_final_edit_ignores_message_not_modified():
+    adapter = make_adapter()
+    bot = SimpleNamespace(
+        send_message=AsyncMock(return_value=SimpleNamespace(message_id=900)),
+        edit_message_text=AsyncMock(
+            side_effect=telegram.error.BadRequest(
+                'Message is not modified: specified new message content and reply markup are exactly '
+                'the same as a current content and reply markup of the message'
+            )
+        ),
+    )
+    object.__setattr__(adapter, 'bot', bot)
+    adapter.msg_stream_id['stream'] = ('message', 999, True)
+    source = platform_events.MessageReceivedEvent(
+        message_id=88, source_platform_object=make_update({'message': base_message_payload(message_id=88)})
+    )
+    chunk = SimpleNamespace(resp_message_id='stream', msg_sequence=2, tool_calls=None)
+    chain = platform_message.MessageChain([platform_message.Plain(text='same answer')])
+
+    await adapter.reply_message_chunk(source, chunk, chain, is_final=True)
+
+    bot.edit_message_text.assert_awaited_once()
+    assert 'stream' not in adapter.msg_stream_id
+
+
+@pytest.mark.asyncio
+async def test_stream_edit_still_raises_other_bad_requests():
+    adapter = make_adapter()
+    bot = SimpleNamespace(
+        send_message=AsyncMock(return_value=SimpleNamespace(message_id=900)),
+        edit_message_text=AsyncMock(side_effect=telegram.error.BadRequest('Message to edit not found')),
+    )
+    object.__setattr__(adapter, 'bot', bot)
+    adapter.msg_stream_id['stream'] = ('message', 999, True)
+    source = platform_events.MessageReceivedEvent(
+        message_id=88, source_platform_object=make_update({'message': base_message_payload(message_id=88)})
+    )
+    chunk = SimpleNamespace(resp_message_id='stream', msg_sequence=2, tool_calls=None)
+    chain = platform_message.MessageChain([platform_message.Plain(text='answer')])
+
+    with pytest.raises(telegram.error.BadRequest, match='not found'):
+        await adapter.reply_message_chunk(source, chunk, chain, is_final=True)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('reply', [False, True])
 async def test_telegram_send_returns_message_result(reply):
     adapter = make_adapter()

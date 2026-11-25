@@ -4,6 +4,7 @@ from . import handler
 from .handlers import chat, command
 from .. import entities
 from .. import stage
+from ..command_text import command_text_from_chain
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
@@ -34,7 +35,7 @@ class Processor(stage.PipelineStage):
         stage_inst_name: str,
     ) -> entities.StageProcessResult:
         """Process"""
-        message_text = str(query.message_chain).strip()
+        message_text = command_text_from_chain(query.message_chain)
 
         self.ap.logger.info(
             f'Processing request from {query.launcher_type.value}_{query.launcher_id} ({query.query_id}): {message_text}'

@@ -51,6 +51,16 @@ spec:
       type: boolean
       required: false
       default: true
+    - name: box-local-mounts
+      label:
+        en_US: Local Box mounts
+        zh_Hans: Box 本地挂载
+      description:
+        en_US: Comma-separated names configured by the administrator of a self-hosted Docker Box.
+        zh_Hans: 自托管 Docker Box 管理员配置的挂载名称，多个名称用逗号分隔。
+      type: string
+      required: false
+      default: ''
     - name: box-session-id-template
       label:
         en_US: Sandbox reuse

@@ -18,7 +18,7 @@ from langbot.pkg.vector.vdb import VectorDatabase
 
 Base = declarative_base()
 
-DEFAULT_ALLOWED_DIMENSIONS = (384, 512, 768, 1024, 1536, 3072)
+DEFAULT_ALLOWED_DIMENSIONS = (384, 512, 768, 1024, 1536, 2048, 3072)
 
 # pgvector schema only stores these metadata fields.
 _PG_SUPPORTED_FIELDS = {'text', 'file_id', 'chunk_uuid'}
@@ -31,6 +31,9 @@ _PG_COLUMN_MAP = {
     'file_id': 'file_id',
     'chunk_uuid': 'chunk_uuid',
 }
+
+# Bound on remembered collections for the once-per-collection hybrid warning.
+_HYBRID_FALLBACK_WARN_LIMIT = 1024
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -312,10 +315,18 @@ class PgVectorDatabase(VectorDatabase):
         scope: PgVectorScope | None = None,
     ) -> dict[str, Any]:
         del query_text, vector_weight
+        if search_type != 'vector':
+            if search_type != 'hybrid' or not query_embedding:
+                raise ValueError(
+                    f"Search type '{search_type}' is not available on the pgvector backend; "
+                    "change the knowledge base retrieval type to 'vector'"
+                )
+            # Like the other vector-only backends (Qdrant, Milvus), serve the
+            # vector half of a hybrid query instead of failing every retrieval
+            # of a knowledge base whose engine offers hybrid search.
+            self._warn_hybrid_fallback(collection)
         scope = self._require_scope(scope, require_dimension=True)
         await self.get_or_create_collection(collection)
-        if search_type != 'vector':
-            raise ValueError('pgvector currently supports vector search only')
         if k <= 0:
             raise ValueError('pgvector search limit must be positive')
         if len(query_embedding) != scope.embedding_dimension:
@@ -352,6 +363,19 @@ class PgVectorDatabase(VectorDatabase):
             {'text': row.text or '', 'file_id': row.file_id or '', 'uuid': row.chunk_uuid or ''} for row in rows
         ]
         return {'ids': [ids], 'distances': [distances], 'metadatas': [metadatas]}
+
+    def _warn_hybrid_fallback(self, collection: str) -> None:
+        warned = getattr(self, '_hybrid_fallback_warned', None)
+        if warned is None:
+            warned = self._hybrid_fallback_warned = set()
+        if collection in warned:
+            return
+        if len(warned) >= _HYBRID_FALLBACK_WARN_LIMIT:
+            warned.clear()
+        warned.add(collection)
+        self.ap.logger.warning(
+            f"pgvector does not support hybrid search; serving vector search for collection '{collection}'"
+        )
 
     async def delete_by_file_id(
         self,

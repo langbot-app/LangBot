@@ -23,6 +23,7 @@ from ...entity.persistence import plugin as persistence_plugin
 from ...i18n import t
 from ...plugin.archive import inspect_plugin_archive_metadata
 from ...plugin.github import validate_github_plugin_install_info
+from ...plugin.github_mirror import GitHubSources
 from ...plugin.management import (
     count_plugin_components,
     normalize_plugin_asset_path,
@@ -152,7 +153,10 @@ class GithubAssetsInput(Input):
 class GithubInstallInput(Input):
     owner: str
     repo: str
-    release_tag: str
+    release_tag: str | None = None
+    source_type: Literal['release', 'branch'] = 'release'
+    ref: str | None = None
+    source_subdir: str = ''
     asset_url: str | None = None
     asset_id: int | None = None
     release_id: int | None = None
@@ -335,37 +339,31 @@ async def _github_json(url):
         return await httpclient.parse_json_response(response)
 
 
+async def github_refs(ap, context, payload):
+    await _fence(ap, context)
+    return await GitHubSources(ap).list_refs(payload.repo_url)
+
+
 async def github_releases(ap, context, payload):
     await _fence(ap, context)
     repo = parse_github_repo_url(payload.repo_url)
     if not repo:
         raise ValueError('Invalid GitHub repository URL')
-    owner, name, ref = repo['owner'], repo['repo'], repo['ref']
+    owner, name = repo['owner'], repo['repo']
     # Repository parts become URL path segments, never a caller-selected host/path.
     if (
         re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]{0,38}', owner) is None
         or re.fullmatch(r'[A-Za-z0-9._-]{1,100}', name) is None
     ):
         raise ValueError('Invalid GitHub repository URL')
-    if ref:
-        releases = [
-            {
-                'id': 0,
-                'tag_name': ref,
-                'name': ref,
-                'published_at': '',
-                'prerelease': False,
-                'draft': False,
-                'source_type': 'branch',
-                'archive_url': f'https://api.github.com/repos/{owner}/{name}/zipball/{ref}',
-            }
-        ]
-    else:
+    try:
         data = await _github_json(f'https://api.github.com/repos/{owner}/{name}/releases')
         releases = [
             {key: release[key] for key in ('id', 'tag_name', 'name', 'published_at', 'prerelease', 'draft')}
             for release in data
         ]
+    except httpx.HTTPError:
+        _fail('github_releases_unavailable', 'GitHub releases unavailable; try browsing branches instead', 502)
     return {'releases': releases, 'owner': owner, 'repo': name, 'source_subdir': repo['subdir']}
 
 
@@ -569,7 +567,7 @@ async def install_github(ap, context, payload):
         PluginInstallSource.GITHUB,
         data,
         identity,
-        f'Installing plugin from GitHub {identity}@{data["release_tag"]}',
+        f'Installing plugin from GitHub {identity}@{data.get("release_tag") or data["ref"]}',
     )
 
 
@@ -686,6 +684,7 @@ def operations() -> list[Operation]:
         Operation('plugin.icon', view, icon, PluginInput, BinaryResult),
         Operation('plugin.asset', view, asset, AssetInput, BinaryResult),
         Operation('plugin.page_action', manage, page_action, PageInput, Any, side_effect=True),
+        Operation('plugin.github.refs', view, github_refs, GithubRepoInput, dict),
         Operation('plugin.github.releases', view, github_releases, GithubRepoInput, dict),
         Operation('plugin.github.assets', view, github_assets, GithubAssetsInput, dict),
         Operation(

@@ -22,6 +22,11 @@ import { toast } from 'sonner';
 import AtBadge from './AtBadge';
 import { WebSocketClient } from '@/app/infra/websocket/WebSocketClient';
 import ImagePreviewDialog from './ImagePreviewDialog';
+import {
+  DailyQuotaExceededCard,
+  isDailyQuotaError,
+} from './DailyQuotaExceededCard';
+import { requestMessageQuotaRefresh } from '@/app/home/components/workspace-quota/useDailyMessageQuota';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -242,6 +247,10 @@ export default function DebugDialog({
               ...wsMessage,
               message_chain: wsMessage.message_chain as MessageChainComponent[],
             };
+            // Every processed reply consumes daily quota; keep meters current.
+            if (message.role === 'assistant' && message.is_final) {
+              requestMessageQuotaRefresh();
+            }
 
             setMessages((prevMessages) => {
               // Check if message with same ID already exists
@@ -934,75 +943,82 @@ export default function DebugDialog({
                     message.role === 'user' ? 'justify-end' : 'justify-start',
                   )}
                 >
-                  <div
-                    className={cn(
-                      'rounded-2xl',
-                      compact
-                        ? 'max-w-[92%] px-3 py-2 text-sm'
-                        : 'max-w-3xl px-5 py-3',
-                      message.role === 'user'
-                        ? 'user-message-bubble bg-primary/10 text-foreground rounded-br-none'
-                        : 'bg-muted text-foreground rounded-bl-none',
-                    )}
-                  >
-                    {renderMessageContent(message)}
+                  {isDailyQuotaError(message) ? (
+                    <DailyQuotaExceededCard
+                      error={message.error}
+                      compact={compact}
+                    />
+                  ) : (
                     <div
                       className={cn(
-                        'text-xs mt-2 flex items-center justify-between gap-2',
-                        'text-muted-foreground',
+                        'rounded-2xl',
+                        compact
+                          ? 'max-w-[92%] px-3 py-2 text-sm'
+                          : 'max-w-3xl px-5 py-3',
+                        message.role === 'user'
+                          ? 'user-message-bubble bg-primary/10 text-foreground rounded-br-none'
+                          : 'bg-muted text-foreground rounded-bl-none',
                       )}
                     >
-                      <div className="flex items-center gap-2">
-                        <span>
-                          {message.role === 'user'
-                            ? t('pipelines.debugDialog.userMessage')
-                            : t('pipelines.debugDialog.botMessage')}
-                        </span>
-                        {hasPlainText(message) && (
+                      {renderMessageContent(message)}
+                      <div
+                        className={cn(
+                          'text-xs mt-2 flex items-center justify-between gap-2',
+                          'text-muted-foreground',
+                        )}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span>
+                            {message.role === 'user'
+                              ? t('pipelines.debugDialog.userMessage')
+                              : t('pipelines.debugDialog.botMessage')}
+                          </span>
+                          {hasPlainText(message) && (
+                            <button
+                              type="button"
+                              onClick={() => toggleRawMode(message)}
+                              className={cn(
+                                'px-1.5 py-0.5 rounded text-[10px] transition-colors',
+                                'hover:bg-accent',
+                              )}
+                              title={
+                                rawModeMessages.has(getMessageKey(message))
+                                  ? t('pipelines.debugDialog.showMarkdown')
+                                  : t('pipelines.debugDialog.showRaw')
+                              }
+                            >
+                              {rawModeMessages.has(getMessageKey(message)) ? (
+                                <span className="flex items-center gap-0.5">
+                                  <Code className="size-3" />
+                                  MD
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-0.5">
+                                  <AlignLeft className="size-3" />
+                                  {t('pipelines.debugDialog.showRaw')}
+                                </span>
+                              )}
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => toggleRawMode(message)}
+                            onClick={() => setQuotedMessage(message)}
                             className={cn(
-                              'px-1.5 py-0.5 rounded text-[10px] transition-colors',
+                              'px-1.5 py-0.5 rounded text-[10px] transition-colors flex items-center gap-0.5',
                               'hover:bg-accent',
                             )}
-                            title={
-                              rawModeMessages.has(getMessageKey(message))
-                                ? t('pipelines.debugDialog.showMarkdown')
-                                : t('pipelines.debugDialog.showRaw')
-                            }
+                            title={t('pipelines.debugDialog.reply')}
                           >
-                            {rawModeMessages.has(getMessageKey(message)) ? (
-                              <span className="flex items-center gap-0.5">
-                                <Code className="size-3" />
-                                MD
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-0.5">
-                                <AlignLeft className="size-3" />
-                                {t('pipelines.debugDialog.showRaw')}
-                              </span>
-                            )}
+                            <Reply className="size-3" />
+                            {t('pipelines.debugDialog.reply')}
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setQuotedMessage(message)}
-                          className={cn(
-                            'px-1.5 py-0.5 rounded text-[10px] transition-colors flex items-center gap-0.5',
-                            'hover:bg-accent',
-                          )}
-                          title={t('pipelines.debugDialog.reply')}
-                        >
-                          <Reply className="size-3" />
-                          {t('pipelines.debugDialog.reply')}
-                        </button>
+                        </div>
+                        <span className="text-[10px]">
+                          {formatTimestamp(getMessageTimestamp(message))}
+                        </span>
                       </div>
-                      <span className="text-[10px]">
-                        {formatTimestamp(getMessageTimestamp(message))}
-                      </span>
                     </div>
-                  </div>
+                  )}
                 </div>
               ))
             )}

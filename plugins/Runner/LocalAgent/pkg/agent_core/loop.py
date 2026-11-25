@@ -58,6 +58,8 @@ class AgentLoop:
         self.tool_executor = tool_executor
         self.model_ids = list(model_ids)
         self.messages = [message.model_copy(deep=True) for message in messages]
+        self._model_only_messages: list[Message] = []
+        self._prepared_model_messages = list(self.messages)
         self.tools = list(tools)
         self.streaming = streaming
         self.max_tool_iterations = max_tool_iterations
@@ -96,14 +98,30 @@ class AgentLoop:
         return index, outcome
 
     async def _prepare_model_turn(self) -> None:
-        messages = await self.hooks.prepare_model_turn(self.messages)
-        self.messages = [message.model_copy(deep=True) for message in messages]
+        messages = await self.hooks.prepare_model_turn(self.messages + self._model_only_messages)
+        self._accept_prepared_messages(messages)
+
+    def _accept_prepared_messages(self, messages: list[Message]) -> None:
+        durable_messages = list(messages)
+        for media in self._model_only_messages:
+            try:
+                durable_messages.remove(media)
+            except ValueError as exc:
+                raise ModelCallError(
+                    "Attachment content was removed by context budgeting. Use a smaller attachment or text/page range.",
+                    retryable=False,
+                ) from exc
+        self._prepared_model_messages = [message.model_copy(deep=True) for message in messages]
+        self.messages = [message.model_copy(deep=True) for message in durable_messages]
 
     async def _recover_context_overflow(self, error: ModelCallError) -> bool:
-        messages = await self.hooks.recover_context_overflow(self.messages, error)
+        messages = await self.hooks.recover_context_overflow(self._prepared_model_messages, error)
         if messages is None:
             return False
-        self.messages = [message.model_copy(deep=True) for message in messages]
+        try:
+            self._accept_prepared_messages(messages)
+        except ModelCallError:
+            return False
         return True
 
     def _should_execute_serially(self) -> bool:
@@ -167,6 +185,7 @@ class AgentLoop:
             if outcome is None or outcome.message is None:
                 continue
             self.messages.append(outcome.message)
+            self._model_only_messages.extend(outcome.model_only_messages)
             tool_results.append(outcome.message)
             yield AgentLoopEvent.message_start(outcome.message)
             yield AgentLoopEvent.message_end(outcome.message)
@@ -266,7 +285,7 @@ class AgentLoop:
                     async with aclosing(
                         self.model_adapter.stream_turn(
                             model_ids=turn_model_ids,
-                            messages=self.messages,
+                            messages=self._prepared_model_messages,
                             tools=self.tools,
                             visible_prefix=visible_content_prefix,
                         )
@@ -392,13 +411,13 @@ class AgentLoop:
                     if committed_model_id is None:
                         model_turn = await self.model_adapter.invoke_turn(
                             model_ids=candidate_model_ids,
-                            messages=self.messages,
+                            messages=self._prepared_model_messages,
                             tools=self.tools,
                         )
                     else:
                         model_turn = await self.model_adapter.invoke_committed_turn(
                             committed_model_id=committed_model_id,
-                            messages=self.messages,
+                            messages=self._prepared_model_messages,
                             tools=self.tools,
                         )
                     break

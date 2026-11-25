@@ -1,0 +1,66 @@
+{
+  "sample_id": "conv-26",
+  "kb_id": "ee852652-e958-4b03-a4a5-aa2fbe20a4e0",
+  "chunk_count": 185,
+  "raw_exact_chunks": 179,
+  "cp1252_utf8_reversible_chunks": 5,
+  "unmatched_after_encoding_recovery": 0,
+  "all_session_nonspace_coverage_complete_after_recovery": true,
+  "coverage": {
+    "session_1": 1.0,
+    "session_2": 1.0,
+    "session_3": 1.0,
+    "session_4": 1.0,
+    "session_5": 1.0,
+    "session_6": 1.0,
+    "session_7": 1.0,
+    "session_8": 1.0,
+    "session_9": 1.0,
+    "session_10": 1.0,
+    "session_11": 1.0,
+    "session_12": 1.0,
+    "session_13": 1.0,
+    "session_14": 1.0,
+    "session_15": 1.0,
+    "session_16": 1.0,
+    "session_17": 1.0,
+    "session_18": 1.0,
+    "session_19": 1.0
+  },
+  "repairs": [
+    {
+      "id": "02e29ce0-7ced-4250-8588-10b20bb857b1_4",
+      "mojibake": "[4:33 pm on 12 July, 2023] Melanie: Caroline, so glad you got the support! Your experience really brought you to where you need to be. You're gonna make a huge difference! This book I read last year reminds me to always pursue my dreams, just like you are doing!\u00f0\u0178\u0152\u0178",
+      "restored": "[4:33 pm on 12 July, 2023] Melanie: Caroline, so glad you got the support! Your experience really brought you to where you need to be. You're gonna make a huge difference! This book I read last year reminds me to always pursue my dreams, just like you are doing!\ud83c\udf1f"
+    },
+    {
+      "id": "4e071343-0796-4d2d-b883-9ff2f60224bb_2",
+      "mojibake": "[10:31 am on 13 October, 2023] Caroline: That's great news about your friend! It can be tough, but so worth it. It's a great way to add to your family and show your love. If you ever do it, let me know \u00e2\u20ac\u201d I'd love to help in any way I can.\n[10:31 am on 13 October, 2023] Melanie: Thanks, Caroline! Appreciate your help. Got any tips for getting started on it?",
+      "restored": "[10:31 am on 13 October, 2023] Caroline: That's great news about your friend! It can be tough, but so worth it. It's a great way to add to your family and show your love. If you ever do it, let me know \u2014 I'd love to help in any way I can.\n[10:31 am on 13 October, 2023] Melanie: Thanks, Caroline! Appreciate your help. Got any tips for getting started on it?"
+    },
+    {
+      "id": "90a39882-4846-477c-8626-30c787fb20e0_8",
+      "mojibake": "[7:55 pm on 9 June, 2023] Melanie: Yes, Caroline! We can do it. Your courage is inspiring. I want to be couragous for my family- they motivate me and give me love. What motivates you?\n[7:55 pm on 9 June, 2023] Caroline: Thanks, Mel! My friends, family and mentors are my rocks \u00e2\u20ac\u201c they motivate me and give me the strength to push on. Here's a pic from when we met up last week!\n[7:55 pm on 9 June, 2023] Melanie: Wow, that photo is great! How long have you had such a great support system?",
+      "restored": "[7:55 pm on 9 June, 2023] Melanie: Yes, Caroline! We can do it. Your courage is inspiring. I want to be couragous for my family- they motivate me and give me love. What motivates you?\n[7:55 pm on 9 June, 2023] Caroline: Thanks, Mel! My friends, family and mentors are my rocks \u2013 they motivate me and give me the strength to push on. Here's a pic from when we met up last week!\n[7:55 pm on 9 June, 2023] Melanie: Wow, that photo is great! How long have you had such a great support system?"
+    },
+    {
+      "id": "ccb5a8b0-5b06-4bd4-b10c-c4190415c8f3_2",
+      "mojibake": "[3:31 pm on 23 August, 2023] Caroline: He's so cute! What\u00e2\u20ac\u2122s the funniest thing Oliver's done? And sure, check out this pic of him eating parsley! Veggies are his fave!\n[3:31 pm on 23 August, 2023] Melanie: Oliver's hilarious! He hid his bone in my slipper once! Cute, right? Almost as silly as when I got to feed a horse a carrot.",
+      "restored": "[3:31 pm on 23 August, 2023] Caroline: He's so cute! What\u2019s the funniest thing Oliver's done? And sure, check out this pic of him eating parsley! Veggies are his fave!\n[3:31 pm on 23 August, 2023] Melanie: Oliver's hilarious! He hid his bone in my slipper once! Cute, right? Almost as silly as when I got to feed a horse a carrot."
+    },
+    {
+      "id": "fde8c776-2794-495b-a826-9360cf091ea7_9",
+      "mojibake": "[1:33 pm on 25 August, 2023] Caroline: I was out walking in my neighborhood when I came across this cool rainbow sidewalk for Pride Month. It was so vibrant and welcoming, I had to take a picture! It reminds us that love and acceptance are everywhere\u00e2\u20ac\u201deven where we least expect it.\n[1:33 pm on 25 August, 2023] Melanie: That's so nice, Caroline! Art can be in the most unlikely places. Love and acceptance really can be found everywhere.",
+      "restored": "[1:33 pm on 25 August, 2023] Caroline: I was out walking in my neighborhood when I came across this cool rainbow sidewalk for Pride Month. It was so vibrant and welcoming, I had to take a picture! It reminds us that love and acceptance are everywhere\u2014even where we least expect it.\n[1:33 pm on 25 August, 2023] Melanie: That's so nice, Caroline! Art can be in the most unlikely places. Love and acceptance really can be found everywhere."
+    },
+    {
+      "id": "7880d72f-2b6c-4cea-b066-b8ece2802347_10",
+      "mojibake": "[12:09 am on 13 September, 2023] Melanie: Caroline, it's got to be tough dealing with those changes. Glad you've found people who uplift and accept you! Here's to a good time at the caf\u221a\u00a9 last weekend - they even had thoughtful signs like this! It brings me so much happiness.\n[12:09 am on 13 September, 2023] Caroline: Whoa, Mel, that sign looks serious. Did anything happen?",
+      "restored": "[12:09 am on 13 September, 2023] Melanie: Caroline, it's got to be tough dealing with those changes. Glad you've found people who uplift and accept you! Here's to a good time at the caf\u00e9 last weekend - they even had thoughtful signs like this! It brings me so much happiness.\n[12:09 am on 13 September, 2023] Caroline: Whoa, Mel, that sign looks serious. Did anything happen?",
+      "recovery_codec": "mac_roman"
+    }
+  ],
+  "unmatched": [],
+  "read_only": true,
+  "mac_roman_utf8_reversible_chunks": 1
+}

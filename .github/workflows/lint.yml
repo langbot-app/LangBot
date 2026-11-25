@@ -1,61 +1,50 @@
 name: Lint
 
 on:
-  push:
-    branches:
-      - main
-      - master
-      - dev
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'tools/**'
+      - 'sdk/src/langbot_plugin/**'
+      - 'scripts/*check_traceback_logging.py'
+      - 'pyproject.toml'
+      - '.github/workflows/lint.yml'
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
 
 concurrency:
-  group: lint-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: lint-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   ruff:
     name: Ruff Lint & Format
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
       - name: Run ruff check
         run: uvx ruff@0.14.14 check src/langbot/ tests/ tools/ --output-format=concise
-
       - name: Run ruff format
+        if: ${{ !cancelled() }}
         run: uvx ruff@0.14.14 format src tools --check
-
-  frontend:
-    name: Frontend Lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '25'
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Install dependencies
-        working-directory: web
-        run: pnpm install
-
-      - name: Run lint
-        working-directory: web
-        run: pnpm lint
+      - name: Reject new raw traceback calls
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        # Pull request checkout uses GitHub's test merge commit, whose first parent is the base.
+        run: |
+          python scripts/test_check_traceback_logging.py uvx ruff@0.14.14
+          python scripts/check_traceback_logging.py HEAD^1 uvx ruff@0.14.14

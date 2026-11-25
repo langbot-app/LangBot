@@ -25,6 +25,7 @@ class MockRuntimeModel:
         self.model_entity = Mock()
         self.model_entity.name = model_name
         self.model_entity.extra_args = {}
+        self.model_entity.abilities = []
         self.provider = Mock()
         self.provider.token_mgr = Mock()
         self.provider.token_mgr.get_token = Mock(return_value=api_key)
@@ -111,6 +112,17 @@ class TestBuildLiteLLMModelName:
         requester = litellmchat.LiteLLMRequester(ap=Mock(), config={'custom_llm_provider': 'openai'})
         result = requester._build_litellm_model_name('claude-3', custom_llm_provider='anthropic')
         assert result == 'anthropic/claude-3'
+
+
+class TestStreamEOFWithoutFinish:
+    def test_does_not_swallow_transport_failure_after_content(self):
+        error = litellm.exceptions.MidStreamFallbackError(
+            message='incomplete chunked response',
+            model='test',
+            llm_provider='openai',
+            original_exception=Exception('transport disconnected'),
+        )
+        assert not litellmchat.LiteLLMRequester._is_stream_eof_without_finish(error)
 
 
 class TestExtractUsage:

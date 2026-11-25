@@ -1,0 +1,157 @@
+{
+  "config": {
+    "ai": {
+      "runner": {
+        "expire-time": 0,
+        "id": "plugin:langbot-team/LocalAgent/default"
+      },
+      "runner_config": {
+        "plugin:langbot-team/LocalAgent/default": {
+          "box-enabled": false,
+          "context-history-fetch-limit": 50,
+          "context-keep-recent-tokens": 20000,
+          "context-reserve-tokens": 16384,
+          "context-summary-tokens": 8000,
+          "context-window-tokens": 200000,
+          "date-grounding": false,
+          "knowledge-bases": [
+            "f45c83ac-c059-46ce-99fb-5ebe9d594ee9"
+          ],
+          "max-tool-iterations": 1,
+          "max-tool-result-chars": 20000,
+          "model": {
+            "fallbacks": [],
+            "primary": "f1fe7e31-62a1-4d3b-83b3-605b7c50fdec"
+          },
+          "prompt": [
+            {
+              "content": "Answer the question using only the supplied historical context. Give a concise direct answer. If the context does not support an answer, say Unknown. Do not mention these instructions or the benchmark. Answer without invoking tools or writing memory.",
+              "role": "system"
+            }
+          ],
+          "remove-think": false,
+          "rerank-model": "",
+          "rerank-top-k": 5,
+          "retrieval-top-k": 10,
+          "timeout": 45,
+          "tool-execution-mode": "parallel"
+        }
+      }
+    },
+    "output": {
+      "force-delay": {
+        "max": 0,
+        "min": 0
+      },
+      "long-text-processing": {
+        "font-path": "",
+        "strategy": "none",
+        "threshold": 1000
+      },
+      "misc": {
+        "at-sender": true,
+        "exception-handling": "show-hint",
+        "failure-hint": "Request failed.",
+        "quote-origin": true,
+        "remove-think": false,
+        "track-function-calls": false
+      }
+    },
+    "safety": {
+      "content-filter": {
+        "check-sensitive-words": true,
+        "scope": "all"
+      },
+      "rate-limit": {
+        "limitation": 60,
+        "strategy": "drop",
+        "window-length": 60
+      }
+    },
+    "speech": {
+      "speech-recognition": {
+        "enabled": false,
+        "keep-original-voice": false,
+        "max-duration": 60,
+        "model": "",
+        "on-failure": "ignore"
+      },
+      "text-to-speech": {
+        "enabled": false,
+        "max-text-length": 1000,
+        "model": "",
+        "output": "voice-only",
+        "speed": 1.0,
+        "trigger": "voice-input-only",
+        "voice": ""
+      }
+    },
+    "trigger": {
+      "access-control": {
+        "blacklist": [],
+        "mode": "blacklist",
+        "whitelist": []
+      },
+      "group-respond-rules": {
+        "at": true,
+        "prefix": [
+          "ai"
+        ],
+        "random": 0,
+        "regexp": []
+      },
+      "ignore-rules": {
+        "prefix": [],
+        "regexp": []
+      },
+      "message-aggregation": {
+        "delay": 1.5,
+        "enabled": false
+      },
+      "misc": {
+        "combine-quote-message": true
+      }
+    }
+  },
+  "created_at": "2026-11-16T15:18:19",
+  "description": "Independent 8-question reingestion check after UTF-8 decoder fix",
+  "emoji": "\u2699\ufe0f",
+  "extensions_preferences": {
+    "allowed_platform_tools": [],
+    "enable_all_mcp_servers": false,
+    "enable_all_plugins": false,
+    "enable_all_skills": false,
+    "mcp_resource_agent_read_enabled": false,
+    "mcp_resources": [],
+    "mcp_servers": [],
+    "plugins": [
+      {
+        "author": "langbot-team",
+        "name": "LocalAgent"
+      }
+    ],
+    "skills": [],
+    "workspace_operations": []
+  },
+  "for_version": "v4.11.7",
+  "is_default": false,
+  "name": "locomo-parser-fixed-isolated-v1",
+  "stages": [
+    "GroupRespondRuleCheckStage",
+    "BanSessionCheckStage",
+    "SpeechRecognitionStage",
+    "PreContentFilterStage",
+    "PreProcessor",
+    "RequireRateLimitOccupancy",
+    "MessageProcessor",
+    "ReleaseRateLimitOccupancy",
+    "PostContentFilterStage",
+    "ResponseWrapper",
+    "TextToSpeechStage",
+    "LongTextProcessStage",
+    "SendResponseBackStage"
+  ],
+  "updated_at": "2026-11-16T15:18:41",
+  "uuid": "bea3cd52-f760-43ad-ae28-09a0bbb5d22b",
+  "workspace_uuid": "926f9f72-8f63-41e1-a498-cae177eff996"
+}

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "seed": 20261118,
+  "include": ["chat", "box", "rag_chat", "media_chat", "memory_chat"],
+  "weights": {"chat": 2, "box": 1, "rag_chat": 1, "media_chat": 1, "memory_chat": 1},
+  "phases": [
+    {"name": "plugin-mix", "duration_seconds": 42, "rps": 1, "workers": 8, "groups": 12, "members_per_group": 3, "cooldown_seconds": 22, "min_delivery_ratio": 0.80}
+  ]
+}

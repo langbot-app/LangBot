@@ -37,6 +37,48 @@ def _continue(query, _name):
 
 
 @pytest.mark.asyncio
+async def test_daily_quota_interrupt_records_error_and_notifies_debug_chat(mock_app, sample_query, monkeypatch):
+    from langbot.pkg.pipeline.ratelimit import daily_quota
+    from langbot.pkg.platform.sources import websocket_adapter as ws
+
+    quota = {
+        'enforced': True,
+        'limit': 2,
+        'used': 2,
+        'remaining': 0,
+        'period': 'day',
+        'timezone': 'UTC',
+        'period_start': '2026-11-20T00:00:00Z',
+        'resets_at': '2026-11-21T00:00:00Z',
+    }
+    monkeypatch.setattr(daily_quota, 'daily_message_quota', AsyncMock(return_value=(False, quota)))
+    mock_app.deployment = SimpleNamespace(mode='cloud')
+    mock_app.monitoring_service = AsyncMock()
+    sample_query.variables.update(_monitoring_message_id='message', _cli_run_status='failed')
+    context = get_query_execution_context(sample_query)
+    adapter = ws.WebSocketAdapter.model_construct(ap=mock_app, logger=Mock(execution_context=context))
+    adapter.websocket_person_session = ws.WebSocketSession(id='person')
+    sample_query.adapter = adapter
+    manager = AsyncMock()
+    manager.get_connection_by_session_id.return_value = None
+    manager.get_connection.return_value = None
+    monkeypatch.setattr(ws, 'ws_connection_manager', manager)
+    object.__setattr__(sample_query.message_event, '_langbot_pipeline_uuid', sample_query.pipeline_uuid)
+    runtime = _runtime(mock_app, sample_query, [])
+    result = await daily_quota.DailyMessageQuota(mock_app).process(sample_query, 'RequireDailyMessageQuota')
+    assert result.result_type == entities.ResultType.INTERRUPT
+    assert '2 per day' in result.user_notice
+    await runtime._check_output(sample_query, result)
+    assert sample_query.variables['_monitoring_has_error']
+    event = manager.broadcast_to_pipeline.await_args.args[1]
+    assert event['type'] == 'response'
+    assert sample_query.variables['_cli_run_error'] == event['data']['error'] == result.structured_error
+    assert result.structured_error['quota'] == quota
+    assert mock_app.monitoring_service.record_error.await_args.kwargs['error_type'] == 'daily_message_quota_exceeded'
+    assert mock_app.monitoring_service.update_message_status.await_args.kwargs['status'] == 'error'
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     'stage',
     [

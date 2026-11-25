@@ -142,21 +142,6 @@ class TestChatMessageHandlerReal:
     """Tests for real ChatMessageHandler class."""
 
     @pytest.mark.asyncio
-    async def test_real_import_works(self):
-        """Verify we can import the real handler class."""
-        chat = get_chat_handler()
-        assert hasattr(chat, 'ChatMessageHandler')
-        handler_cls = chat.ChatMessageHandler
-        assert handler_cls.__name__ == 'ChatMessageHandler'
-
-    @pytest.mark.asyncio
-    async def test_handler_creation(self, fake_app):
-        """ChatMessageHandler can be instantiated."""
-        chat = get_chat_handler()
-        handler = chat.ChatMessageHandler(fake_app)
-        assert handler.ap is fake_app
-
-    @pytest.mark.asyncio
     async def test_prevent_default_without_reply_interrupts(self, fake_app, mock_event_ctx):
         """prevent_default without reply chain yields INTERRUPT."""
         from tests.factories import text_query
@@ -360,6 +345,9 @@ class TestChatHandlerStreaming:
         query.user_message = Message(role='user', content=[ContentElement.from_text('test')])
         query.session = chat_session
 
+        first_chunk = '0123456789abcdefghij plus more'
+        final_chunk = first_chunk + ' and a final word'
+
         class StreamRunner:
             name = 'local-agent'
 
@@ -368,8 +356,8 @@ class TestChatHandlerStreaming:
                 self.config = config
 
             async def run(self, query):
-                yield MessageChunk(role='assistant', content='Hello', is_final=False)
-                yield MessageChunk(role='assistant', content='Hello World', is_final=True)
+                yield MessageChunk(role='assistant', content=first_chunk, is_final=False)
+                yield MessageChunk(role='assistant', content=final_chunk, is_final=True)
 
         set_runner(StreamRunner)
 
@@ -383,7 +371,10 @@ class TestChatHandlerStreaming:
 
         assert len(results) == 2
         assert all(result.result_type == get_entities().ResultType.CONTINUE for result in results)
-        assert [chunk.content for chunk in delivered] == ['Hello', 'Hello World']
+        assert [chunk.content for chunk in delivered] == [first_chunk, final_chunk]
+        fake_app.logger.info.assert_any_call(
+            f'Conversation({query.query_id}) Streaming started: assistant: 012345678...'
+        )
         assert [chunk.is_final for chunk in delivered] == [False, True]
         assert len({chunk.resp_message_id for chunk in delivered}) == 1
         query.adapter.create_message_card.assert_awaited_once()
@@ -551,28 +542,6 @@ class TestChatHandlerExceptions:
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestChatHandlerHelper:
     """Tests for helper methods."""
-
-    def test_cut_str_short(self, fake_app):
-        """cut_str returns short string unchanged."""
-        chat = get_chat_handler()
-        handler = chat.ChatMessageHandler(fake_app)
-        result = handler.cut_str('short text')
-        assert result == 'short text'
-
-    def test_cut_str_long(self, fake_app):
-        """cut_str truncates long string."""
-        chat = get_chat_handler()
-        handler = chat.ChatMessageHandler(fake_app)
-        result = handler.cut_str('this is a very long string that exceeds twenty characters')
-        assert '...' in result
-        assert len(result) <= 23
-
-    def test_cut_str_multiline(self, fake_app):
-        """cut_str truncates multiline string."""
-        chat = get_chat_handler()
-        handler = chat.ChatMessageHandler(fake_app)
-        result = handler.cut_str('first line\nsecond line')
-        assert result == 'first line...'
 
     def test_response_size_limit_uses_instance_config(self, fake_app):
         from langbot_plugin.api.entities.builtin.provider.message import Message

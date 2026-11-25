@@ -1,0 +1,38 @@
+{
+  "scope_id": "scp_7z8rd4kj92n7envsge4f51d392",
+  "profile": "powercontext.memory.extract.conversation.v1",
+  "complete": true,
+  "flushed_sessions": 19,
+  "extraction_wall_seconds_sum": 697.4474021310016,
+  "counts": {
+    "pc_sources": 19,
+    "pc_memory_entry_versions": 177,
+    "pc_memory_entry_heads": 173,
+    "pc_memory_vector_entries": 173
+  },
+  "usage": [
+    {
+      "scope_id": "scp_7z8rd4kj92n7envsge4f51d392",
+      "usage_date": "2026-11-16",
+      "purpose": "memory_extraction",
+      "operation": "generation",
+      "requests": 19,
+      "input_tokens": 154864,
+      "output_tokens": 134157,
+      "input_complete": 1,
+      "output_complete": 1
+    },
+    {
+      "scope_id": "scp_7z8rd4kj92n7envsge4f51d392",
+      "usage_date": "2026-11-16",
+      "purpose": "memory_indexing",
+      "operation": "embedding",
+      "requests": 25,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "input_complete": 1,
+      "output_complete": 0
+    }
+  ],
+  "ingestion_policy": "one LoCoMo session per captured source; sequential flush; no QA or gold answers"
+}

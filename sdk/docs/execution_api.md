@@ -1,6 +1,6 @@
 # ExecutionAPI 操作一览与作用域说明
 
-LangBot Core 通过统一的 `ExecutionAPI` facade 暴露 80 项核心业务能力。插件与 Agent Runner 可以通过统一的授权契约与 SDK 入口调用这些能力。
+LangBot Core 通过统一的 `ExecutionAPI` facade 暴露 83 项核心业务能力。插件与 Agent Runner 可以通过统一的授权契约与 SDK 入口调用这些能力。
 
 ## 作用域（Scopes）说明
 
@@ -72,10 +72,10 @@ async for chunk in api.execution.stream(
 | `execution.get_query_vars` | `plugin` | 否 | 否 | 获取当前查询的所有变量 |
 | `execution.create_new_conversation` | `plugin` | 是 | 否 | 为当前查询创建新会话 |
 | `execution.get_langbot_version` | `plugin_or_run` | 否 | 否 | 获取 LangBot Core 版本与 API 特性 |
+| `execution.get_bots` | `plugin` | 否 | 否 | 获取已配置的机器人列表 |
 | `execution.list_tools` | `plugin` | 否 | 否 | 列出插件可访问的工具 |
 | `execution.list_commands` | `plugin` | 否 | 否 | 列出插件可访问的命令 |
 | `execution.list_plugins_manifest` | `plugin` | 否 | 否 | 列出插件 manifest |
-| `execution.get_bots` | `plugin` | 否 | 否 | 获取已配置的机器人列表 |
 | `execution.get_bot_info` | `plugin` | 否 | 否 | 获取指定机器人的详细信息 |
 | `execution.send_message` | `plugin_or_run` | 是 | 否 | 向目标实体主动发送消息 |
 | `execution.call_platform_api` | `plugin_or_run` | 是 | 否 | 调用底层平台通信 API |
@@ -122,7 +122,10 @@ async for chunk in api.execution.stream(
 | `execution.bind_box` | `run` | 是 | 否 | 将特定 Box 实例与当前运行绑定 |
 | `execution.import_box_attachments` | `run` | 是 | 否 | 导入附件至绑定的 Box 沙箱 |
 | `execution.read_input_attachment` | `run` | 否 | 否 | 按 ref 读取当前事件输入附件的字节 |
+| `execution.read_input_attachment_content` | `run` | 否 | 否 | 按当前 Run 的冻结权限读取输入附件，返回有界文本或结构化媒体 |
 | `execution.export_box_files` | `run` | 是 | 否 | 导出 Box 沙箱生成的文件 |
+| `execution.read_run_file` | `run` | 否 | 否 | 按当前 Run 的文件句柄有界读取已导出 Artifact 的结构化内容 |
+| `execution.commit_run_files` | `run` | 是 | 否 | 按 Host 冻结并重新核验的执行器策略，将已导出文件发布给具名接收人 |
 | `execution.run_get` | `runner_admin` | 否 | 否 | 管理员查询指定 Agent Run 状态 |
 | `execution.run_list` | `runner_admin` | 否 | 否 | 管理员分页查询历史 Agent Run 列表 |
 | `execution.run_events_page` | `runner_admin` | 否 | 否 | 分页读取指定运行的事件 |
@@ -145,6 +148,8 @@ async for chunk in api.execution.stream(
 | `execution.run_release_claim` | `runner_admin` | 是 | 否 | 释放对运行的认领 |
 | `execution.list_application_operations` | `plugin_or_run` | 否 | 否 | 列出本次运行被授权的 ApplicationAPI 工作区操作及其 schema |
 | `execution.call_application_operation` | `plugin_or_run` | 是 | 否 | 以处理器身份调用本次运行被授权的 ApplicationAPI 工作区操作 |
+
+外部队列重新入队后，`execution.run_cancel_ack` 要求传入处理取消时保存的 `metadata.retry_count`，字段名为 `expected_retry_count`。同一确认重发时复用该值。首次执行和拥有新 ID 的运行可以省略。
 
 ---
 

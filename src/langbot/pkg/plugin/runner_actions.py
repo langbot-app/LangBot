@@ -28,6 +28,7 @@ from .agent_run_support import (
     _run_ledger_scope_filters,
     _project_runner_descriptor_for_api,
     _record_runner_admin_action,
+    _runner_admin_audit_data,
 )
 
 
@@ -515,31 +516,27 @@ def register(h):
                 auth_error = _authorize_target_run(session, run)
                 if auth_error:
                     return auth_error
-            updated = await store.acknowledge_cancel(
-                run_id=str(target_run_id),
-                reason=data.get('reason'),
-                cleanup_confirmed=bool(data.get('cleanup_confirmed', True)),
-            )
-            if not updated:
-                return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
-            await store.append_audit_event(
-                run_id=str(target_run_id),
-                event_type='run.cancel_ack',
-                data={
-                    'cleanup_confirmed': bool(data.get('cleanup_confirmed', True)),
-                    'reason': data.get('reason'),
-                },
-            )
+            confirmed = bool(data.get('cleanup_confirmed', True))
+            audit = None
             if is_admin:
-                await _record_runner_admin_action(
-                    h.ap,
-                    store,
+                audit = _runner_admin_audit_data(
                     action='run_cancel_ack',
                     caller_plugin_identity=caller_plugin_identity,
                     permission=AGENT_RUN_ADMIN_PERMISSION,
                     durable_run_id=str(target_run_id),
-                    detail={'cleanup_confirmed': bool(data.get('cleanup_confirmed', True))},
+                    detail={'cleanup_confirmed': confirmed},
                 )
+            updated = await store.acknowledge_cancel(
+                run_id=str(target_run_id),
+                reason=data.get('reason'),
+                cleanup_confirmed=confirmed,
+                expected_retry_count=data.get('expected_retry_count'),
+                admin_audit=audit,
+            )
+            if not updated:
+                return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
+            if audit is not None:
+                h.ap.logger.info('Agent runner admin action: %s', audit)
             return handler.ActionResponse.success(data=updated)
         except Exception as e:
             h.ap.logger.error(f'RUN_CANCEL_ACK error: {e}', exc_info=True)

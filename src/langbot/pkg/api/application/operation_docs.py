@@ -17,6 +17,10 @@ class OperationDoc:
 
 
 DOMAINS: dict[str, dict] = {
+    'artifact': {
+        'label': {'zh_Hans': '资产', 'en_US': 'Artifact'},
+        'summary': 'Create and access caller-owned files in the authenticated Workspace.',
+    },
     'adapter': {
         'label': {'zh_Hans': '适配器', 'en_US': 'Adapter'},
         'summary': 'Inspect IM platforms and chat network adapters available in the workspace.',
@@ -121,6 +125,94 @@ DOMAINS: dict[str, dict] = {
 
 
 OPERATION_DOCS: dict[str, OperationDoc] = {
+    'artifact.publication.get': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Get Output Publication', 'zh_Hans': '查看产物发布授权'},
+        summary='Get Output Publication',
+        description='Read the current caller-owned producer output publication policy. A missing policy never authorizes publication.',
+        risk='read',
+        exposure='none',
+    ),
+    'artifact.publication.set': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Set Output Publication', 'zh_Hans': '设置产物发布授权'},
+        summary='Set Output Publication',
+        description='Explicitly enable or disable publication to the authenticated named account or API key. No recipient ID is accepted; existing policies can only be changed by their recipient.',
+        risk='write',
+        exposure='none',
+    ),
+    'artifact.publication.disable': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Disable Output Publication', 'zh_Hans': '停用产物发布授权'},
+        summary='Disable Output Publication',
+        description='Disable the current caller-owned producer policy. Existing run snapshots become invalid; previously published assets keep their recipient.',
+        risk='write',
+        exposure='none',
+    ),
+    'artifact.create': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Create Artifact', 'zh_Hans': '创建资产'},
+        summary='Create a temporary caller-owned file.',
+        description='Upload bounded bytes with a name, MIME type and lifetime. The opaque ID does not grant access.',
+        risk='write',
+        exposure='all',
+    ),
+    'artifact.skill_resource.create': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Reference Skill Resource', 'zh_Hans': '引用技能资源'},
+        summary='Reference a file in an explicitly fixed Skill version.',
+        description='Create a caller-owned reference without copying package bytes. Source permission is required; IDs do not grant access.',
+        risk='write',
+        exposure='none',
+    ),
+    'artifact.get': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Get Artifact', 'zh_Hans': '查看资产'},
+        summary='Get authorized file metadata without reading bytes.',
+        description='Return name, MIME type, size, digest and lifetime for an owned asset.',
+        risk='read',
+        exposure='all',
+    ),
+    'artifact.read': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Read Artifact', 'zh_Hans': '读取资产'},
+        summary='Read an owned file within the requested byte limit.',
+        description='Return exact bytes and metadata for authenticated download; this is not model content extraction.',
+        risk='read',
+        exposure='all',
+    ),
+    'artifact.read_content': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Read Artifact content', 'zh_Hans': '读取资产内容'},
+        summary='Read bounded text or structured media from an owned asset.',
+        description='Returns text slices, images or native PDF input. PDF page rendering is unavailable.',
+        risk='read',
+        exposure='all',
+    ),
+    'artifact.retain': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Retain Artifact', 'zh_Hans': '保留资产'},
+        summary='Retain an owned file until its pin is released.',
+        description='Add a persistent caller-owned pin without changing access permissions.',
+        risk='write',
+        exposure='all',
+    ),
+    'artifact.release': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Release Artifact', 'zh_Hans': '释放资产'},
+        summary='Release the caller-owned persistent pin.',
+        description='Remove the caller pin and restore the temporary expiry grace period.',
+        risk='write',
+        exposure='all',
+    ),
+    'artifact.delete': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Delete Artifact', 'zh_Hans': '删除资产'},
+        summary='Delete an unpinned owned file.',
+        description='Refuse deletion while any persistent pin still protects the file.',
+        risk='dangerous',
+        exposure='all',
+    ),
     'adapter.get': OperationDoc(
         domain='adapter',
         label={'zh_Hans': '适配器详情', 'en_US': 'Get Adapter'},
@@ -313,6 +405,22 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         risk='write',
         exposure='all',
     ),
+    'bot.platform_api.call': OperationDoc(
+        domain='bot',
+        label={'zh_Hans': '调用平台专属接口', 'en_US': 'Call Platform Action'},
+        summary="Call a platform-specific action declared by the bot's adapter.",
+        description='Run one of the platform_specific_apis actions declared in the adapter manifest, for example menu.publish for WeChat Official Account. The bot must be enabled. Prerequisites: Call bot.list to obtain bot_uuid. Side effect: Changes platform-side state depending on the action.',
+        risk='dangerous',
+        exposure='none',
+    ),
+    'bot.routes.bind': OperationDoc(
+        domain='bot',
+        label={'zh_Hans': '切换路由目标', 'en_US': 'Change Route Target'},
+        summary='Preview or change the Agent or Pipeline target of one existing Bot route.',
+        description='Supply the binding returned by bot.get. Concurrent changes return a conflict.',
+        risk='write',
+        exposure='none',
+    ),
     'bot.routes.preview': OperationDoc(
         domain='bot',
         label={'zh_Hans': '路由预览', 'en_US': 'Preview Routes'},
@@ -440,6 +548,14 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         description='List files and documents stored in a knowledge base with ingestion status, chunk counts, and error details. Prerequisites: Call knowledge.base.list to obtain kb_uuid.',
         risk='read',
         exposure='all',
+    ),
+    'knowledge.file.store_artifact': OperationDoc(
+        domain='knowledge',
+        label={'zh_Hans': '导入知识库资产', 'en_US': 'Store Knowledge Artifact'},
+        summary='Ingest an owned Artifact into a knowledge base.',
+        description='Explicitly retain an owned Artifact for knowledge ingestion; returns the existing task identifier.',
+        risk='write',
+        exposure='none',
     ),
     'knowledge.file.store': OperationDoc(
         domain='knowledge',
@@ -1073,6 +1189,14 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         risk='read',
         exposure='all',
     ),
+    'plugin.github.refs': OperationDoc(
+        domain='plugin',
+        label={'zh_Hans': 'GitHub 分支', 'en_US': 'Plugin GitHub Branches'},
+        summary='List branches and tags of a plugin repository.',
+        description='List GitHub branches, tags and the default branch for a plugin repository URL.',
+        risk='read',
+        exposure='all',
+    ),
     'plugin.github.releases': OperationDoc(
         domain='plugin',
         label={'zh_Hans': 'GitHub发布版本', 'en_US': 'Plugin GitHub Releases'},
@@ -1092,8 +1216,8 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
     'plugin.install.github': OperationDoc(
         domain='plugin',
         label={'zh_Hans': '从GitHub安装插件', 'en_US': 'Install Plugin from GitHub'},
-        summary='Install a plugin package directly from a GitHub release.',
-        description='Download and install a plugin release asset directly from a GitHub repository. Restricted to assistant. Side effect: Installs executable code and starts container.',
+        summary='Install a plugin from a GitHub release or branch.',
+        description='Install a release asset or package a plugin directory from a branch. Restricted to assistant. Side effect: Installs executable code and starts container.',
         risk='write',
         exposure='assistant',
     ),
@@ -1353,6 +1477,22 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         risk='read',
         exposure='none',
     ),
+    'skill.package.preview': OperationDoc(
+        domain='skill',
+        label={'zh_Hans': '预览技能整包更新', 'en_US': 'Preview Skill Package Update'},
+        summary='Validate a complete Skill replacement and list added, modified and deleted files.',
+        description='Account/API key transport. Requires resource.view and an explicit base_revision. No Workspace publication is written. The Skill name in SKILL.md must match skill_name.',
+        risk='read',
+        exposure='none',
+    ),
+    'skill.package.publish': OperationDoc(
+        domain='skill',
+        label={'zh_Hans': '发布技能整包更新', 'en_US': 'Publish Skill Package Update'},
+        summary='Atomically replace an existing Skill package using revision compare-and-swap.',
+        description='Account/API key transport. Requires resource.manage and resource.view. Includes binary files and removes absent files. The Skill name in SKILL.md must match skill_name. A stale base_revision fails without replacing the current publication.',
+        risk='write',
+        exposure='none',
+    ),
     'skill.github.install': OperationDoc(
         domain='skill',
         label={'zh_Hans': '从GitHub安装技能', 'en_US': 'Install Skill from GitHub'},
@@ -1463,6 +1603,14 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         summary='Check a draft without saving or creating a sandbox.',
         description='Check backend availability using private draft credentials. Does not create a sandbox.',
         risk='read',
+        exposure='none',
+    ),
+    'workspace.sandbox.reset': OperationDoc(
+        domain='workspace',
+        label={'en_US': 'Reset Sandbox Settings', 'zh_Hans': '恢复默认沙箱配置'},
+        summary='Clear Workspace sandbox overrides and inherit deployment defaults.',
+        description='Remove the saved backend, E2B connection credentials and resource limits for future tasks. Existing tasks retain their snapshots. Requires a member or API key with workspace.update.',
+        risk='dangerous',
         exposure='none',
     ),
     'workspace.sandbox.test': OperationDoc(

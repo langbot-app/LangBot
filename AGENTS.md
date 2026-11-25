@@ -14,7 +14,7 @@ This is a monorepo: Core, WebUI, public docs, the plugin SDK, official plugins a
 | `web/` | WebUI: Vite + React Router 7 + shadcn/ui + Tailwind | `pnpm`; dev server `3000`, backend `5300`. |
 | `docs/` | **Public user/developer documentation**, published at https://langbot.app/docs/ | Fumapress, Node.js 24, `zh`/`en`/`ja` trees. Write for users and plugin authors; keep the three languages in step. |
 | `dev-docs/` | **Internal design notes, contracts, reviews and test reports** for maintainers and agents | Not published. `architecture/` (Application API, i18n, ...), `event-based-agents/` (standard events/platform APIs and per-adapter records), `review/`, OpenAPI snapshots. |
-| `sdk/` | Plugin SDK, `lbp` CLI, Plugin Runtime (`lbp rt`) and Box Runtime (`lbp box`), published to PyPI as `langbot-plugin` | Independent package (Python `>=3.10`, hatchling), own tests/CI (`sdk-*.yml`) and releases via `sdk/vX.Y.Z` tags. Core installs the PyPI pin, never `sdk/` directly. See `sdk/AGENTS.md` and `sdk/RELEASING.md`. |
+| `sdk/` | Plugin SDK, `lbp` CLI, Plugin Runtime (`lbp rt`) and Box Runtime (`lbp box`), published to PyPI as `langbot-plugin` | Independent package (Python `>=3.10`, hatchling), own tests/CI (`sdk-*.yml`) and releases via `sdk/vX.Y.Z` tags. Core source installs use `sdk/` through `uv`; standalone Core PyPI packages retain the exact published dependency. See `sdk/AGENTS.md` and `sdk/RELEASING.md`. |
 | `plugins/` | Official plugins (`Runner/`, `KnowledgeEngine/`, `misc/`), indexed by `plugins/catalog.json` | Independent packages, CI and Marketplace releases; never bundled in Core artifacts. See `plugins/AGENTS.md`. |
 | `skills/` | Agent skills (`skills/skills/<name>/SKILL.md`) and the `lbs` QA harness | Single source of truth for LangBot agent skills. See `skills/AGENTS.md`. |
 | `tests/` | Core unit, integration, e2e and manual tests | |
@@ -50,7 +50,7 @@ uv run pytest tests/manual/mcp_smoke.py
 
 ## Before-Merge Acceptance
 
-Agents must choose and run the existing acceptance paths that exercise the changed boundary before recommending merge. PR unit/smoke checks alone do not establish cross-component behavior. Use the [cross-component test guide](dev-docs/CROSS_COMPONENT_TESTING.md) for commands and environment requirements:
+Agents must choose and run the existing acceptance paths that exercise the changed boundary before recommending merge. Start with the [test asset map and evidence checklist](dev-docs/CROSS_COMPONENT_TESTING.md#test-assets-for-developers-and-agents). PR unit/smoke checks alone do not establish cross-component behavior. The [cross-component test guide](dev-docs/CROSS_COMPONENT_TESTING.md) lists the commands and environment requirements:
 
 - Shared SDK entities, APIs or Runtime protocol: Core with the in-tree SDK and representative official plugin consumers, retaining their declared SDK support and released-SDK checks.
 - File transfer, installation grants or Box routing: full HTTP → installed Plugin Runtime Runner → Box → HTTP file delivery, plus the affected real Box backend.
@@ -60,17 +60,16 @@ Select by changed behavior; do not mechanically run every backend. Missing envir
 
 ## SDK Work (`sdk/`)
 
-Core depends on the exact PyPI pin `langbot-plugin==X` in `pyproject.toml`; `uv sync` never installs `sdk/`. When changing SDK contracts (shared entities, plugin APIs, action protocol, `lbp rt`, `lbp box`), change `sdk/` and the Core bridge in the same PR and test them together:
+Core declares `langbot-plugin==X` in package metadata and resolves it to the editable local `sdk/` source for `uv sync`. Checkouts, Docker, release ZIPs and fnOS carry this source, so coordinated Core/SDK changes do not require a prior SDK release. Standalone Core PyPI installs still resolve the published dependency. When changing SDK contracts (shared entities, plugin APIs, action protocol, `lbp rt`, `lbp box`), change `sdk/` and the Core bridge in the same PR and test them together:
 
 ```bash
 uv sync --dev
-uv pip install ./sdk                           # overlay the in-tree SDK on Core's venv
-uv run --no-sync main.py                       # add --standalone-runtime / --standalone-box
-uv run --no-sync lbp rt                        # or: lbp box, for standalone debugging
+uv run main.py                                 # add --standalone-runtime / --standalone-box
+uv run lbp rt                                  # or: lbp box, for standalone debugging
 cd sdk && uv run pytest -q                     # SDK's own environment (Python >=3.10)
 ```
 
-CI mirrors this: `sdk-tests.yml` tests the SDK alone and the `Core with in-tree SDK` job in `run-tests.yml` runs Core tests over `sdk/`. Release order is always SDK first (`sdk/vX.Y.Z` tag → PyPI), then bump the Core pin, then release Core; `scripts/check_sdk_release_pin.py` blocks a Core release whose pin does not match the released `sdk/`. Never create a GitHub Release for the SDK. Details: `sdk/RELEASING.md`.
+CI mirrors this: Core jobs use the same local source, `sdk-tests.yml` tests the SDK alone, and the main Core job proves in-tree SDK provenance and retains the affected cross-component contracts. Official plugin checks preserve their independent released-SDK and candidate-SDK paths. Before publishing the standalone Core PyPI package, release the SDK (`sdk/vX.Y.Z` tag → PyPI), update the Core pin and pass `scripts/check_sdk_release_pin.py`. Docker/source deployments do not require that SDK publication. Never create a GitHub Release for the SDK. Details: `sdk/RELEASING.md`.
 
 Config keys in `data/config.yaml` / `src/langbot/templates/config.yaml`: `plugin.runtime_ws_url` (Docker default `langbot_plugin_runtime:5400/control/ws`), `box.enabled` / `box.backend` / `box.runtime.endpoint` (Docker default `langbot_box:5410`), `api.global_api_key`.
 
@@ -109,7 +108,7 @@ Plugin-/run-callable actions belong in the `ExecutionAPI` catalog; never add a s
 
 ## Platform Adapters: Standard Events and APIs
 
-EBA adapters live in `src/langbot/pkg/platform/adapters/<platform>/` (legacy ones in `pkg/platform/sources/`). Standard definitions: `dev-docs/event-based-agents/01-event-system.md` (events) and `02-platform-api.md` (entities and APIs), implemented in the SDK under `langbot_plugin/api/entities/builtin/platform/`.
+EBA adapters live in `src/langbot/pkg/platform/adapters/<platform>/`. `pkg/platform/sources/` holds the legacy single-file adapters and is **frozen**: do not update, fix or extend them, and never add new adapters there. New platforms and all adapter work go into `adapters/<platform>/` (port a platform that only exists in `sources/` instead of patching it). Standard definitions: `dev-docs/event-based-agents/01-event-system.md` (events) and `02-platform-api.md` (entities and APIs), implemented in the SDK under `langbot_plugin/api/entities/builtin/platform/`.
 
 - Align with the standard definitions first. Map native events to a standard event (`message.received`, `message.edited`, `group.member_joined`, `bot.muted`, ...) and native operations to a standard API (`send_message`, `reply_message`, `get_group_info`, ...) whenever the semantics match, even if the platform names or shapes differ. Use `platform.specific` events and `call_platform_api` actions only for capabilities with no standard equivalent.
 - Extend existing standard messages/APIs before inventing new ones (example: Slack threads ride on the standard message APIs).
@@ -135,7 +134,7 @@ EBA adapters live in `src/langbot/pkg/platform/adapters/<platform>/` (legacy one
 
 - Local stdio Plugin Runtime disconnects do not auto-reconnect; restart LangBot if that path breaks.
 - Orphan runtime processes on `5400`/`5401` commonly break plugin debugging.
-- Use `uv run --no-sync` after locally installing the SDK, or `uv` may restore the pinned package.
+- Standard root `uv sync` and `uv run` use `sdk/`. Use isolated environments for published-SDK compatibility checks.
 - A false Box "no backend" often means Docker is running but the current user lacks Docker socket permission.
 - Do not confuse external MCP servers LangBot connects to (`pkg/provider/tools/loaders/mcp.py`) with LangBot's own `/mcp` server (`pkg/api/mcp/`).
 

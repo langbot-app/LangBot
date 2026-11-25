@@ -20,11 +20,13 @@ from urllib.parse import urljoin, urlparse
 from langbot_plugin.api.entities.builtin.pipeline.query import provider_session
 
 from ..core import app
+from ..telemetry import usage
 from . import handler
 from . import runtime_ops
 from .errors import (
     PluginRuntimeNotConnectedError,
     PluginInstallationFailedError,
+    PluginNotInstalledError,
     MarketplacePluginVersionNotFoundError,
 )
 from .archive import inspect_plugin_archive_metadata
@@ -1387,7 +1389,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
                     fail('permission_denied', f'Plugin {plugin_author}/{plugin_name} is disabled')
                 return execution_context, setting
-        raise ValueError(f'Plugin {plugin_author}/{plugin_name} is not installed in this Workspace')
+        raise PluginNotInstalledError(f'Plugin {plugin_author}/{plugin_name} is not installed in this Workspace')
 
     async def _target_binding(
         self,
@@ -1429,6 +1431,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     return binding
         raise ValueError(f'Plugin {component_kind} {component_name!r} was not found in this Workspace')
 
+    @usage.observe_install('mcp', 'market')
     async def _install_mcp_from_marketplace(
         self,
         execution_context: ExecutionContext,
@@ -1466,9 +1469,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             self.ap.logger.info(f'MCP server {name} already exists, skipping installation')
             return
 
+        # Community-published MCP servers carry ``${VAR}`` placeholders instead
+        # of credentials (LANG-439). Install them disabled so nothing connects
+        # with a placeholder; the WebUI asks for the values before enabling.
+        required_inputs = mcp_data.get('required_inputs') or []
         server_data = {
             'name': name,
-            'enable': True,
+            'enable': not required_inputs,
             'mode': mode,
             'extra_args': extra_args,
             'readme': readme,
@@ -1493,11 +1500,15 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         self.ap.logger.info(f'Installing skill from marketplace ZIP ({len(file_bytes)} bytes)')
 
         # Install from ZIP using skill service
-        result = await skill_service.install_from_zip_upload(
-            execution_context,
-            file_bytes=file_bytes,
-            filename=filename + '.zip',
-        )
+        token = usage.install_source.set(usage.install_source.get() or 'market')
+        try:
+            result = await skill_service.install_from_zip_upload(
+                execution_context,
+                file_bytes=file_bytes,
+                filename=filename + '.zip',
+            )
+        finally:
+            usage.install_source.reset(token)
         self.ap.logger.info(f'Skill installed successfully: {result}')
 
     def _build_plugin_startup_failure_message(
@@ -1733,82 +1744,134 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             else:
                 asset_url = normalized['asset_url']
 
-            downloaded = 0
-            chunks: list[bytes] = []
-            start_time = time.time()
-            current_url = asset_url
-            if task_context is not None:
-                task_context.set_current_action('downloading plugin package')
-                task_context.metadata.update({'download_total': 0, 'download_current': 0, 'download_speed': 0})
-
-            for redirect_count in range(_GITHUB_PLUGIN_DOWNLOAD_MAX_REDIRECTS + 1):
-                self._validate_github_download_hop(
-                    current_url,
-                    owner=owner,
-                    repo=repo,
-                    release_tag=release_tag,
-                    asset_id=asset_id,
+            try:
+                package = await self._read_github_asset(
+                    client, asset_url, owner, repo, release_tag, asset_id, task_context
                 )
-                parsed = urlparse(current_url)
-                request_headers = {
-                    'Accept-Encoding': 'identity',
-                    'User-Agent': 'LangBot-Plugin-Installer',
-                }
-                if (parsed.hostname or '').lower() == 'api.github.com':
-                    request_headers.update(
-                        {
-                            'Accept': 'application/octet-stream',
-                            'X-GitHub-Api-Version': '2022-11-28',
-                        }
+            except httpx.HTTPError:
+                from .github_mirror import GitHubSources, fetch, source_url
+                from urllib.parse import quote
+
+                sources = GitHubSources(self.ap)
+                if not any(sources.prefixes):
+                    raise
+                if asset_id is None:
+                    response = await client.get(
+                        f'https://api.github.com/repos/{owner}/{repo}/releases/tags/{quote(release_tag, safe="")}'
                     )
-
-                async with client.stream('GET', current_url, headers=request_headers) as response:
-                    if response.status_code in _HTTP_REDIRECT_STATUSES:
-                        location = response.headers.get('location')
-                        if not location:
-                            raise ValueError('GitHub release asset redirect is missing a location')
-                        if redirect_count >= _GITHUB_PLUGIN_DOWNLOAD_MAX_REDIRECTS:
-                            raise ValueError('GitHub release asset exceeded the redirect limit')
-                        next_url = urljoin(current_url, location)
-                        self._validate_github_download_hop(
-                            next_url,
-                            owner=owner,
-                            repo=repo,
-                            release_tag=release_tag,
-                            asset_id=asset_id,
-                        )
-                        current_url = next_url
-                        continue
-
                     response.raise_for_status()
-                    content_length_header = response.headers.get('content-length')
+                    release = await httpclient.parse_json_response(response)
+                    asset = next(
+                        (item for item in release.get('assets', []) if item.get('browser_download_url') == asset_url),
+                        None,
+                    )
+                    if asset is None:
+                        raise ValueError('GitHub release asset metadata not found')
+                browser_url = validate_github_release_asset_url(
+                    asset.get('browser_download_url'), owner=owner, repo=repo, release_tag=release_tag
+                )
+                for prefix, _, _ in await sources.ranked(owner, repo):
+                    if not prefix:
+                        continue
                     try:
-                        content_length = int(content_length_header) if content_length_header is not None else 0
-                    except ValueError as exc:
-                        raise ValueError('GitHub release asset has an invalid content length') from exc
-                    if content_length < 0:
-                        raise ValueError('GitHub release asset has an invalid content length')
-                    if content_length > _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES:
+                        package = await fetch(
+                            client, source_url(prefix, browser_url), sources.hosts, _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES
+                        )
+                        self._verify_release_asset(package, asset)
+                    except (httpx.HTTPError, ValueError):
+                        continue
+                    self.ap.logger.info(f'GitHub release asset downloaded from {urlparse(prefix).hostname}')
+                    return package
+                raise ValueError('No mirror returned the requested release asset')
+            if asset_id is not None:
+                self._verify_release_asset(package, asset)
+            return package
+
+    @staticmethod
+    def _verify_release_asset(package, asset):
+        if len(package) != asset.get('size'):
+            raise ValueError('GitHub release asset size mismatch')
+        digest = asset.get('digest')
+        if digest and digest != 'sha256:' + hashlib.sha256(package).hexdigest():
+            raise ValueError('GitHub release asset digest mismatch')
+
+    async def _read_github_asset(self, client, asset_url, owner, repo, release_tag, asset_id, task_context):
+        downloaded = 0
+        chunks: list[bytes] = []
+        start_time = time.time()
+        current_url = asset_url
+        if task_context is not None:
+            task_context.set_current_action('downloading plugin package')
+            task_context.metadata.update({'download_total': 0, 'download_current': 0, 'download_speed': 0})
+
+        for redirect_count in range(_GITHUB_PLUGIN_DOWNLOAD_MAX_REDIRECTS + 1):
+            self._validate_github_download_hop(
+                current_url,
+                owner=owner,
+                repo=repo,
+                release_tag=release_tag,
+                asset_id=asset_id,
+            )
+            parsed = urlparse(current_url)
+            request_headers = {
+                'Accept-Encoding': 'identity',
+                'User-Agent': 'LangBot-Plugin-Installer',
+            }
+            if (parsed.hostname or '').lower() == 'api.github.com':
+                request_headers.update(
+                    {
+                        'Accept': 'application/octet-stream',
+                        'X-GitHub-Api-Version': '2022-11-28',
+                    }
+                )
+
+            async with client.stream('GET', current_url, headers=request_headers) as response:
+                if response.status_code in _HTTP_REDIRECT_STATUSES:
+                    location = response.headers.get('location')
+                    if not location:
+                        raise ValueError('GitHub release asset redirect is missing a location')
+                    if redirect_count >= _GITHUB_PLUGIN_DOWNLOAD_MAX_REDIRECTS:
+                        raise ValueError('GitHub release asset exceeded the redirect limit')
+                    next_url = urljoin(current_url, location)
+                    self._validate_github_download_hop(
+                        next_url,
+                        owner=owner,
+                        repo=repo,
+                        release_tag=release_tag,
+                        asset_id=asset_id,
+                    )
+                    current_url = next_url
+                    continue
+
+                response.raise_for_status()
+                content_length_header = response.headers.get('content-length')
+                try:
+                    content_length = int(content_length_header) if content_length_header is not None else 0
+                except ValueError as exc:
+                    raise ValueError('GitHub release asset has an invalid content length') from exc
+                if content_length < 0:
+                    raise ValueError('GitHub release asset has an invalid content length')
+                if content_length > _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES:
+                    raise ValueError('GitHub plugin package exceeds the 10 MiB download limit')
+                if task_context is not None:
+                    task_context.metadata['download_total'] = content_length
+
+                async for chunk in response.aiter_bytes(chunk_size=8192):
+                    downloaded += len(chunk)
+                    if downloaded > _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES:
                         raise ValueError('GitHub plugin package exceeds the 10 MiB download limit')
+                    chunks.append(chunk)
                     if task_context is not None:
-                        task_context.metadata['download_total'] = content_length
+                        elapsed = time.time() - start_time
+                        task_context.metadata.update(
+                            {
+                                'download_current': downloaded,
+                                'download_speed': downloaded / elapsed if elapsed > 0 else 0,
+                            }
+                        )
+                return b''.join(chunks)
 
-                    async for chunk in response.aiter_bytes(chunk_size=8192):
-                        downloaded += len(chunk)
-                        if downloaded > _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES:
-                            raise ValueError('GitHub plugin package exceeds the 10 MiB download limit')
-                        chunks.append(chunk)
-                        if task_context is not None:
-                            elapsed = time.time() - start_time
-                            task_context.metadata.update(
-                                {
-                                    'download_current': downloaded,
-                                    'download_speed': downloaded / elapsed if elapsed > 0 else 0,
-                                }
-                            )
-                    return b''.join(chunks)
-
-            raise ValueError('GitHub release asset exceeded the redirect limit')
+        raise ValueError('GitHub release asset exceeded the redirect limit')
 
     @staticmethod
     def _validate_github_download_hop(
@@ -1890,6 +1953,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 allow_not_found=True,
             )
             if mcp_status == 200:
+                usage.install_source.set('market')
                 mcp_payload = _decode_json_object(mcp_body, subject='Marketplace MCP metadata')
                 mcp_data = mcp_payload.get('data', {}).get('mcp', {})
                 if not isinstance(mcp_data, dict):
@@ -1914,11 +1978,30 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 allow_not_found=True,
             )
             if skill_status == 200:
-                _download_status, skill_package = await _marketplace_get(
-                    client,
-                    f'{space_url}/api/v1/marketplace/skills/download/{plugin_author}/{plugin_name}',
-                    max_bytes=_MARKETPLACE_SKILL_DOWNLOAD_MAX_BYTES,
-                )
+                try:
+                    skill_data = _decode_json_object(_skill_body, subject='Marketplace skill metadata')
+                    source = skill_data.get('data', {}).get('skill', {}).get('source')
+                except Exception:
+                    source = None
+                source = 'community' if source == 'community' else 'market'
+                usage.install_source.set(source)
+                try:
+                    _download_status, skill_package = await _marketplace_get(
+                        client,
+                        f'{space_url}/api/v1/marketplace/skills/download/{plugin_author}/{plugin_name}',
+                        max_bytes=_MARKETPLACE_SKILL_DOWNLOAD_MAX_BYTES,
+                    )
+                except Exception:
+                    usage.inc(
+                        self.ap,
+                        execution_context.workspace_uuid,
+                        'ugc.install',
+                        type='skill',
+                        source=source,
+                        outcome='failed',
+                        unfilled='no',
+                    )
+                    raise
                 await self._install_skill_from_zip(
                     execution_context,
                     skill_package,
@@ -1998,6 +2081,36 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         install_info: dict[str, Any],
         task_context: taskmgr.TaskContext | None = None,
     ) -> None:
+        outcome = 'failed'
+        token = usage.install_source.set(None)
+        try:
+            await self._install_plugin(install_source, install_info, task_context)
+            outcome = 'ok'
+        finally:
+            try:
+                context = self._execution_context.get()
+                if usage.install_source.get() is None:
+                    source = 'market' if install_source.value == 'marketplace' else install_source.value
+                    usage.inc(
+                        self.ap,
+                        getattr(context, 'workspace_uuid', None),
+                        'ugc.install',
+                        type='plugin',
+                        source=source,
+                        outcome=outcome,
+                        unfilled='no',
+                    )
+            except Exception:
+                pass
+            finally:
+                usage.install_source.reset(token)
+
+    async def _install_plugin(
+        self,
+        install_source: PluginInstallSource,
+        install_info: dict[str, Any],
+        task_context: taskmgr.TaskContext | None = None,
+    ) -> None:
         runtime_handler = self._runtime_handler()
         execution_context = await self._current_execution_context()
         plugin_author = str(install_info.get('plugin_author') or '')
@@ -2037,11 +2150,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 raise ValueError('Local plugin package is missing')
             file_bytes = candidate
         elif install_source == PluginInstallSource.GITHUB:
-            file_bytes = await self._download_github_package(
-                install_info,
-                task_context,
-            )
             install_info = validate_github_plugin_install_info(install_info)
+            if install_info.get('source_type') == 'branch':
+                from .github_mirror import GitHubSources
+
+                file_bytes = await GitHubSources(self.ap).branch_package(install_info)
+            else:
+                file_bytes = await self._download_github_package(install_info, task_context)
         else:
             raise ValueError(f'Unsupported plugin install source: {install_source.value}')
 
@@ -2301,6 +2416,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 metadata = plugin.get('manifest', {}).get('manifest', {}).get('metadata', {})
                 if plugin_id == f'{metadata.get("author", "")}/{metadata.get("name", "")}':
                     plugin['permission_status'] = permission_status(self.ap, setting)
+                    self._apply_setting_install_source(plugin, setting)
 
         # Filter plugins by component kinds if specified
         if component_kinds is not None:
@@ -2423,7 +2539,26 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             from ..api.application.plugin_permissions import permission_status
 
             info['permission_status'] = permission_status(self.ap, setting)
+            self._apply_setting_install_source(info, setting)
         return info
+
+    @staticmethod
+    def _apply_setting_install_source(info: dict[str, Any], setting) -> None:
+        """Report the install source recorded by Core, not the runtime echo.
+
+        Shared runtime slots build their container inside the plugin process,
+        which never learns the install source, so Cloud reported an empty
+        ``install_source``. The WebUI keys marketplace update detection and
+        the source badge on that field. Debug connections keep their own
+        source. Internal ``_``-prefixed install_info keys stay private.
+        """
+
+        if info.get('debug') or not setting.install_source:
+            return
+        info['install_source'] = setting.install_source
+        info['install_info'] = {
+            key: value for key, value in (setting.install_info or {}).items() if not str(key).startswith('_')
+        }
 
     @staticmethod
     def _pending_plugin_info(setting) -> dict[str, Any]:
@@ -2591,6 +2726,30 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 plugin_name,
                 manifest_overrides=manifest_overrides,
             )
+
+    async def get_installed_plugin_package(self, author: str, plugin_name: str) -> dict[str, Any]:
+        """Return the exact archive an installed local/GitHub plugin runs (LANG-439).
+
+        Every installation persists its verified ``.lbpkg`` by digest, so the
+        shared package is byte-identical to what this Workspace installed.
+        Marketplace installations are refused: they already live on Space.
+        """
+        execution_context, setting = await self._setting_for_plugin(author, plugin_name)
+        if setting.install_source not in (PluginInstallSource.LOCAL.value, PluginInstallSource.GITHUB.value):
+            raise ValueError('Only locally installed or GitHub-installed plugins can be shared to LangBot Space')
+        package = await self._load_artifact_package(execution_context, setting.artifact_digest)
+        if package is None:
+            raise ValueError('The installed plugin package is missing; reinstall the plugin and try again')
+        manifest, _, _ = inspect_plugin_archive_metadata(package, require_manifest=True)
+        metadata = (manifest or {}).get('metadata') or {}
+        version = str(metadata.get('version') or '')
+        return {
+            'package': package,
+            'filename': f'{author}-{plugin_name}-{version or "local"}.lbpkg',
+            'install_source': setting.install_source,
+            'version': version,
+            'artifact_digest': setting.artifact_digest,
+        }
 
     async def git_sync_plugin(
         self,

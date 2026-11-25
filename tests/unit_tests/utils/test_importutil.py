@@ -1,192 +1,116 @@
-"""
-Tests for langbot.pkg.utils.importutil module.
+"""Exercise module discovery and resource reads at their observable boundaries."""
 
-Tests import utility functions:
-- import_dir: imports modules from a directory
-- import_modules_in_pkg: imports all modules in a package
-- import_modules_in_pkgs: imports all modules in multiple packages
-- import_dot_style_dir: imports modules using dot notation path
-- read_resource_file: reads a text resource file
-- read_resource_file_bytes: reads a binary resource file
-- list_resource_files: lists files in a resource directory
+from __future__ import annotations
 
-Uses mocking for import operations to avoid actual module imports.
-"""
-
-import pytest
 import importlib
 import os
-from unittest.mock import patch, MagicMock, call
+import sys
+
+import pytest
+
+import langbot
+from langbot.pkg.utils import importutil
 
 
-class TestImportDir:
-    """Test import_dir function."""
-
-    def test_calls_importlib_for_each_python_file(self, tmp_path, monkeypatch):
-        """Should call importlib.import_module for each .py file."""
-        module_dir = tmp_path / 'test_modules'
-        module_dir.mkdir()
-
-        (module_dir / '__init__.py').write_text('')
-        (module_dir / 'module_a.py').write_text("VALUE_A = 'a'\n")
-        (module_dir / 'module_b.py').write_text("VALUE_B = 'b'\n")
-        (module_dir / 'readme.txt').write_text('not a module')
-
-        from langbot.pkg.utils import importutil
-
-        monkeypatch.setattr(importutil, '__file__', str(tmp_path / 'pkg' / 'utils' / 'importutil.py'))
-        with patch.object(importlib, 'import_module') as mock_import:
-            importutil.import_dir(str(module_dir), path_prefix='test_prefix.')
-            # Should call import_module for each .py file (excluding __init__.py)
-            assert mock_import.call_count == 2
-            mock_import.assert_has_calls(
-                [call('test_prefix.test_modules.module_a'), call('test_prefix.test_modules.module_b')],
-                any_order=True,
-            )
-
-    def test_skips_init_py(self, tmp_path, monkeypatch):
-        """Should skip __init__.py when importing."""
-        module_dir = tmp_path / 'test_modules'
-        module_dir.mkdir()
-
-        (module_dir / '__init__.py').write_text('')
-        (module_dir / 'regular.py').write_text('VALUE = 1\n')
-
-        from langbot.pkg.utils import importutil
-
-        monkeypatch.setattr(importutil, '__file__', str(tmp_path / 'pkg' / 'utils' / 'importutil.py'))
-        with patch.object(importlib, 'import_module') as mock_import:
-            importutil.import_dir(str(module_dir), path_prefix='test_prefix.')
-            mock_import.assert_called_once_with('test_prefix.test_modules.regular')
-
-    def test_ignores_non_py_files(self, tmp_path, monkeypatch):
-        """Should ignore non-.py files."""
-        module_dir = tmp_path / 'test_modules'
-        module_dir.mkdir()
-
-        (module_dir / 'module.py').write_text('VALUE = 1\n')
-        (module_dir / 'readme.txt').write_text('text')
-        (module_dir / 'data.json').write_text('{}')
-
-        from langbot.pkg.utils import importutil
-
-        monkeypatch.setattr(importutil, '__file__', str(tmp_path / 'pkg' / 'utils' / 'importutil.py'))
-        with patch.object(importlib, 'import_module') as mock_import:
-            importutil.import_dir(str(module_dir), path_prefix='test_prefix.')
-            mock_import.assert_called_once_with('test_prefix.test_modules.module')
+@pytest.fixture
+def package_root(tmp_path, monkeypatch):
+    # Make a temporary package discoverable without changing the real source tree.
+    monkeypatch.setattr(importutil, '__file__', str(tmp_path / 'pkg' / 'utils' / 'importutil.py'))
+    monkeypatch.setattr(langbot, '__path__', [*langbot.__path__, str(tmp_path)])
+    try:
+        yield tmp_path
+    finally:
+        for name in tuple(sys.modules):
+            if name == 'langbot.qa_fixture' or name.startswith('langbot.qa_fixture.'):
+                sys.modules.pop(name)
+        if hasattr(langbot, 'qa_fixture'):
+            del langbot.qa_fixture
 
 
-class TestImportModulesInPkg:
-    """Test import_modules_in_pkg function."""
-
-    def test_imports_modules_from_package(self, tmp_path):
-        """Should import all modules from a package object."""
-        mock_pkg = MagicMock()
-        mock_pkg.__file__ = str(tmp_path / '__init__.py')
-
-        (tmp_path / '__init__.py').write_text('')
-        (tmp_path / 'mod1.py').write_text('MOD1 = 1\n')
-
-        from langbot.pkg.utils import importutil
-
-        with patch.object(importutil, 'import_dir') as mock_import_dir:
-            importutil.import_modules_in_pkg(mock_pkg)
-            mock_import_dir.assert_called_once()
-            call_path = mock_import_dir.call_args[0][0]
-            assert call_path == str(tmp_path)
+def _write_package(directory):
+    directory.mkdir(parents=True)
+    (directory / '__init__.py').write_text('', encoding='utf-8')
+    return directory
 
 
-class TestImportModulesInPkgs:
-    """Test import_modules_in_pkgs function."""
+def test_discovers_modules_in_real_packages_without_importing_other_entries(package_root):
+    parent = _write_package(package_root / 'qa_fixture')
+    first = _write_package(parent / 'first')
+    second = _write_package(parent / 'second')
+    (first / 'alpha.py').write_text("VALUE = 'alpha'\n", encoding='utf-8')
+    (first / 'beta.py').write_text("VALUE = 'beta'\n", encoding='utf-8')
+    (second / 'gamma.py').write_text("VALUE = 'gamma'\n", encoding='utf-8')
+    (first / 'readme.txt').write_text('not a module', encoding='utf-8')
+    (first / 'settings.json').write_text('{}', encoding='utf-8')
+    _write_package(first / 'nested')
+    first_pkg = importlib.import_module('langbot.qa_fixture.first')
+    second_pkg = importlib.import_module('langbot.qa_fixture.second')
 
-    def test_imports_from_multiple_packages(self):
-        """Should call import_modules_in_pkg for each package."""
-        from langbot.pkg.utils import importutil
+    importutil.import_modules_in_pkgs([first_pkg, second_pkg])
 
-        mock_pkg1 = MagicMock()
-        mock_pkg1.__file__ = '/path/to/pkg1/__init__.py'
-        mock_pkg2 = MagicMock()
-        mock_pkg2.__file__ = '/path/to/pkg2/__init__.py'
-
-        with patch.object(importutil, 'import_modules_in_pkg') as mock_import:
-            importutil.import_modules_in_pkgs([mock_pkg1, mock_pkg2])
-            assert mock_import.call_args_list == [call(mock_pkg1), call(mock_pkg2)]
-
-
-class TestImportDotStyleDir:
-    """Test import_dot_style_dir function."""
-
-    def test_converts_dot_notation_to_path(self, tmp_path):
-        """Should convert dot notation to path and import."""
-        # Create structure matching the dot notation
-        (tmp_path / 'my').mkdir()
-        (tmp_path / 'my' / 'pkg').mkdir()
-        (tmp_path / 'my' / 'pkg' / 'test').mkdir()
-
-        from langbot.pkg.utils import importutil
-
-        with patch.object(importutil, 'import_dir') as mock_import_dir:
-            importutil.import_dot_style_dir('my.pkg.test')
-            mock_import_dir.assert_called_once_with(os.path.join('my', 'pkg', 'test'))
+    loaded = {
+        name: module.VALUE
+        for name, module in sys.modules.items()
+        if name.startswith(('langbot.qa_fixture.first.', 'langbot.qa_fixture.second.'))
+    }
+    assert loaded == {
+        'langbot.qa_fixture.first.alpha': 'alpha',
+        'langbot.qa_fixture.first.beta': 'beta',
+        'langbot.qa_fixture.second.gamma': 'gamma',
+    }
 
 
-class TestReadResourceFile:
-    """Test read_resource_file function."""
+def test_import_dir_honors_an_alternate_package_prefix(package_root, monkeypatch):
+    package = _write_package(package_root / 'qa_fixture')
+    (package / 'module.py').write_text('VALUE = 42\n', encoding='utf-8')
+    monkeypatch.syspath_prepend(str(package_root))
 
-    def test_reads_resource_file_content(self):
-        """Should read content from a resource file."""
-        from langbot.pkg.utils import importutil
+    try:
+        importutil.import_dir(str(package), path_prefix='')
 
-        content = importutil.read_resource_file('templates/config.yaml')
-        assert 'api:' in content
-        assert 'edition: community' in content
-
-    def test_raises_for_nonexistent_file(self):
-        """Should raise exception for non-existent resource file."""
-        from langbot.pkg.utils import importutil
-
-        with pytest.raises((FileNotFoundError, Exception)):
-            importutil.read_resource_file('nonexistent/path/file.txt')
+        assert sys.modules['qa_fixture.module'].VALUE == 42
+        assert 'langbot.qa_fixture.module' not in sys.modules
+    finally:
+        sys.modules.pop('qa_fixture.module', None)
+        sys.modules.pop('qa_fixture', None)
 
 
-class TestReadResourceFileBytes:
-    """Test read_resource_file_bytes function."""
+def test_dot_style_directory_is_forwarded_as_path(monkeypatch):
+    paths = []
+    monkeypatch.setattr(importutil, 'import_dir', paths.append)
 
-    def test_reads_resource_file_as_bytes(self):
-        """Should read content as bytes from a resource file."""
-        from langbot.pkg.utils import importutil
+    importutil.import_dot_style_dir('my.pkg.test')
 
-        content = importutil.read_resource_file_bytes('templates/config.yaml')
-        assert b'api:' in content
-        assert b'edition: community' in content
-
-    def test_raises_for_nonexistent_file_bytes(self):
-        """Should raise exception for non-existent resource file."""
-        from langbot.pkg.utils import importutil
-
-        with pytest.raises((FileNotFoundError, Exception)):
-            importutil.read_resource_file_bytes('nonexistent/path/file.txt')
+    assert paths == [os.path.join('my', 'pkg', 'test')]
 
 
-class TestListResourceFiles:
-    """Test list_resource_files function."""
+@pytest.mark.parametrize(
+    ('read', 'api', 'edition'),
+    [
+        (importutil.read_resource_file, 'api:', 'edition: community'),
+        (importutil.read_resource_file_bytes, b'api:', b'edition: community'),
+    ],
+    ids=['text', 'bytes'],
+)
+def test_reads_packaged_config_in_requested_representation(read, api, edition):
+    result = read('templates/config.yaml')
 
-    def test_lists_files_in_resource_directory(self):
-        """Should list files in a resource directory."""
-        from langbot.pkg.utils import importutil
-
-        files = importutil.list_resource_files('templates')
-        assert 'config.yaml' in files
-        assert 'default-pipeline-config.json' in files
-        assert all(isinstance(file, str) for file in files)
-
-    def test_raises_for_nonexistent_directory(self):
-        """Should raise exception for non-existent directory."""
-        from langbot.pkg.utils import importutil
-
-        with pytest.raises((FileNotFoundError, Exception)):
-            importutil.list_resource_files('nonexistent_directory_xyz')
+    assert isinstance(result, type(edition))
+    assert api in result
+    assert edition in result
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+@pytest.mark.parametrize(
+    'operation',
+    [importutil.read_resource_file, importutil.read_resource_file_bytes, importutil.list_resource_files],
+)
+def test_missing_resources_raise_file_not_found(operation):
+    with pytest.raises(FileNotFoundError):
+        operation('templates/nonexistent-resource')
+
+
+def test_lists_packaged_files():
+    files = importutil.list_resource_files('templates')
+
+    assert {'config.yaml', 'default-pipeline-config.json'} <= set(files)
+    assert all(isinstance(file, str) for file in files)

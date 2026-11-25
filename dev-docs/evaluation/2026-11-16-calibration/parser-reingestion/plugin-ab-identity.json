@@ -1,0 +1,13 @@
+{
+  "old_archive_sha256": "7a4bc661c409fb54baba7cd7b9146a323c73b72e64d6606272d8a6b0788226fc",
+  "new_archive_sha256": "453a6f60095fc58e9300cd05e390660ca27801eed6d59af2bca15c328ff114c6",
+  "old_version": "0.2.2",
+  "new_version": "0.2.2 test artifact",
+  "added_files": [],
+  "removed_files": [],
+  "changed_files": [
+    "components/knowledge_engine/parser.py"
+  ],
+  "new_parser_sha256": "94c1b8b9107a609f8bd47236fd6964254ddf12b809ff9518053d1e2143337ba6",
+  "build_method": "lbp build validation followed by exact-member isolated old archive repack; retained original manifest bytes and preexisting pycache"
+}

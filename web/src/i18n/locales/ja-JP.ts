@@ -1,4 +1,5 @@
 import slackSetup from './slack-setup/ja-JP';
+import wxoaMenu from './wxoa-menu/ja-JP';
 import pipelineMigration from './pipeline-migration/ja-JP';
 import pluginPermissions from './plugin-permissions/ja-JP';
 const jaJP = {
@@ -216,6 +217,7 @@ const jaJP = {
     saveFailed: '言語設定の保存に失敗しました',
   },
   slackSetup,
+  wxoaMenu,
   inflight: {
     autoCollapse: '自動折りたたみ',
     empty: '処理中のイベントはありません',
@@ -241,6 +243,14 @@ const jaJP = {
     failed: '失敗',
     cancelled: 'キャンセル済み',
     ignored: '無視',
+  },
+  githubStarPrompt: {
+    title: 'LangBot はこれまでに {{total}} 件のイベントを処理しました',
+    description:
+      'LangBot がお役に立っているなら、GitHub で Star を付けていただくと、より多くの人に届きます。',
+    later: '後で',
+    star: 'Star',
+    close: '閉じる',
   },
   assistant: {
     movePosition: 'アシスタントを左右に移動',
@@ -1437,6 +1447,12 @@ const jaJP = {
     collapse: '折りたたむ',
     imagesAttached: '枚の画像が添付されています',
     noLogs: 'ログはまだありません',
+    routeDraftExists:
+      '{{id}} のルーティングルールは既にあります。下に展開しました。',
+    routeDraftAddedGroup:
+      'グループ {{id}} のルールを先頭に追加しました。パイプラインを選んで保存してください。',
+    routeDraftAddedPerson:
+      'ユーザー {{id}} のルールを先頭に追加しました。パイプラインを選んで保存してください。',
     sessionMonitor: {
       resetContext: 'コンテキストをリセット',
       resetDescription:
@@ -1444,6 +1460,29 @@ const jaJP = {
       resetSuccess: 'コンテキストをリセットしました。',
       resetError:
         'リセットできませんでした。実行中のタスクが完了してから再試行してください。',
+      resetScopeMember:
+        'このチャットはグループメンバーごとに独立したコンテキストを保持するため、このメンバーのコンテキストのみリセットされます。',
+      resetScopeGroup:
+        'このグループは 1 つのコンテキストを共有しているため、このメンバーだけでなくグループ全体の会話がリセットされます。',
+      inGroup: 'グループ {{group}}',
+      filterByGroup: '同じグループ',
+      groupFilterActive: 'グループ {{group}}',
+      clearGroupFilter: 'すべてのセッションを表示',
+      groupTitle: 'グループ {{group}}',
+      memberLine: 'メンバー：{{name}}',
+      lastSenderLine: '最新の発言者：{{name}}',
+      privateChat: '個人チャット',
+      groupChat: 'グループチャット',
+      groupId: 'グループ ID',
+      member: 'メンバー',
+      lastSender: '最新の発言者',
+      userId: 'ユーザー ID',
+      pipeline: 'パイプライン',
+      routeGroup: 'このグループのルーティングを設定',
+      routeGroupHint:
+        'このグループを特定のパイプラインへ送るルーティングルールを作成します',
+      contextShared: 'グループ共有コンテキスト',
+      contextPerMember: 'メンバー別コンテキスト',
 
       title: 'セッション監視',
       sessions: 'セッション一覧',
@@ -1934,6 +1973,13 @@ const jaJP = {
     debugging: 'デバッグ中',
     uploadLocalPlugin: 'ローカルプラグインのアップロード',
     spaceUpload: {
+      descriptionInstalled:
+        'ローカルインストールのプラグイン {{author}}/{{name}} をマーケットにアップロードします。',
+      shareInstalledAction: 'Space に共有',
+      installedPackageTitle:
+        'インストール済みのプラグインパッケージをアップロードします',
+      installedPackageHint:
+        'ローカルインストールのプラグインは実行中の .lbpkg をそのままアップロードします。作者・名前・バージョンは manifest に従います。',
       menuAction: 'プラグインマーケットにアップロード',
       title: 'プラグインをプラグインマーケットにアップロード',
       description:
@@ -2180,6 +2226,10 @@ const jaJP = {
     updating: '更新中...',
     updateSuccess: 'プラグインの更新に成功しました',
     updateError: '更新に失敗しました：',
+    installedVersion: 'インストール済みバージョン v{{version}}',
+    updateToVersion: 'v{{version}} に更新',
+    confirmUpdatePluginVersion:
+      'プラグイン（{{author}}/{{name}}）を v{{from}} から v{{to}} に更新しますか？',
     saveConfigSuccessNormal: '設定を保存しました',
     saveConfigError: '設定の保存に失敗しました：',
     config: '設定',
@@ -2215,6 +2265,25 @@ const jaJP = {
     backToReleases: 'リリース一覧に戻る',
     backToRepoUrl: 'リポジトリURLに戻る',
     backToAssets: 'ファイル選択に戻る',
+    githubSourceRelease: 'リリース',
+    githubSourceBranch: 'ブランチ',
+    searchBranches: 'ブランチを検索...',
+    defaultBranch: 'デフォルト',
+    noBranchesFound: '一致するブランチがありません',
+    branchesTruncated: '最初の 500 ブランチのみ表示しています',
+    pluginDirectory: 'プラグインディレクトリ',
+    pluginDirectoryPlaceholder: 'リポジトリのルート',
+    pluginDirectoryHelp:
+      'プラグインがルートにない場合、manifest.yaml を含むサブディレクトリを入力してください',
+    downloadSourceDirect: 'GitHub に直接接続 · {{latency}} ms',
+    downloadSourceMirror: 'ミラー {{host}} · {{latency}} ms',
+    releasesUnavailable:
+      'このサーバーから GitHub リリースにアクセスできません。ブランチからインストールできます。',
+    noReleasesUseBranch:
+      'このリポジトリにはリリースがありません。ブランチからインストールできます。',
+    useBranchInstead: 'ブランチからインストール',
+    fetchBranchesError: 'ブランチの取得に失敗しました：',
+    backToBranches: 'ブランチ一覧に戻る',
     releaseTag: 'タグ: {{tag}}',
     releaseName: '名前: {{name}}',
     publishedAt: '公開日: {{date}}',
@@ -2246,6 +2315,12 @@ const jaJP = {
       depsProgress:
         '{{installed}}/{{total}} インストール済み · 残り {{remaining}} 個',
       installComplete: 'プラグインのインストール完了',
+      followUp: {
+        nextSteps: '次のステップ',
+        agents: 'Agent またはプラグインプロセッサを作成',
+        pipelines: 'パイプラインを作成',
+        knowledge: 'ナレッジベースを作成',
+      },
       updateComplete: 'プラグインの更新が完了しました',
       installCompletePlugin: 'プラグインをインストールしました',
       installCompleteMCP: 'MCP サーバーをインストールしました',
@@ -2258,6 +2333,13 @@ const jaJP = {
     },
   },
   market: {
+    typeTiles: {
+      all: 'すべての拡張',
+      allDesc: 'プラグイン・MCP・スキル',
+      pluginDesc: 'プラットフォーム・ツール・ランナーなど',
+      mcpDesc: '外部サービスのツールを接続',
+      skillDesc: 'Agent に新しい作業手順を教える',
+    },
     certifiedPlugin: '認証済みプラグイン',
     certificationTooltip:
       'このバージョンはデータ分離と共有実行環境との互換性の審査に合格し、パッケージに署名されています。',
@@ -2911,6 +2993,21 @@ const jaJP = {
     newVersionAvailable: '新しいバージョンが利用可能',
     viewUpdateGuide: 'アップデート方法を見る',
     noReleaseNotes: 'リリースノートはありません',
+    latestBadge: '最新',
+    currentBadge: '現在のバージョン',
+    viewOnWebsite: '公式サイトで見る',
+    whatsNewInCurrent: 'このバージョンの更新内容',
+    releasesIncluded: '{{count}} 件のリリースを含む',
+    upToDate: '最新バージョンを使用しています',
+    showOlderReleases: '以前の {{count}} 件のリリースを表示',
+    viewFullChangelog: 'すべての更新履歴を見る',
+    changeTypes: {
+      new: '新機能',
+      improved: '改善',
+      changed: '変更',
+      fixed: '修正',
+      security: 'セキュリティ',
+    },
   },
   account: {
     settings: 'アカウント設定',
@@ -3026,6 +3123,33 @@ const jaJP = {
     space_account_binding_required:
       'LangBot アカウントログインを使用する前に、アカウント設定でこのローカルアカウントを LangBot アカウントに連携してください。',
   },
+  dailyMessageQuota: {
+    planLimited: '1日 {{count}} 件のメッセージ',
+    planUnlimited: '1日のメッセージ数は無制限',
+    planHelp:
+      'ボットが1日に処理できるメッセージ数です。UTC の日付単位で集計し、00:00 (UTC) にリセットされます。ボットが実際に処理したメッセージのみカウントされます。上限に達すると、その日の新しいメッセージは処理されず、ユーザーに通知されます。',
+    title: '本日のメッセージ',
+    usage: '{{used}} / {{limit}}',
+    remaining: '残り {{count}} 件',
+    resetsAt: '{{time}} にリセット',
+    today: '今日 {{time}}',
+    tomorrow: '明日 {{time}}',
+    exhausted: '本日の上限に達しました',
+    exhaustedHint: '新しいメッセージは {{time}} まで処理されません',
+    nearLimit: '残りわずか',
+    upgrade: 'プランをアップグレード',
+    unlimited: '無制限',
+    settingsTitle: '1日のメッセージ上限',
+    settingsDescription:
+      'ボットが1日に処理できるメッセージ数です（デバッグチャットを含む）。UTC の日付単位で集計し、ボットを起動しないグループメッセージはカウントされません。',
+    unlimitedDescription:
+      '現在のプランでは1日のメッセージ数に上限はありません。',
+    errorTitle: '本日のメッセージ上限に達しました',
+    errorBody:
+      'このワークスペースは本日すでに {{limit}} 件のメッセージを処理したため、このメッセージは処理されませんでした。上限は{{time}}にリセットされます。',
+    errorUpgrade: 'アップグレードして上限を引き上げる',
+    unavailable: '本日の使用量を取得できません',
+  },
   workspace: {
     dedicatedSpaceMembersHint:
       'LangBot アカウントでログインするメンバーは LangBot Space の Cloud ページから招待します。下の招待はこのインスタンス専用のパスワードアカウントを作成します。',
@@ -3135,7 +3259,22 @@ const jaJP = {
       llm_calls: 'モデル呼び出し',
       tool_calls: 'ツール呼び出し',
       errors: 'エラー',
-      payload: '詳細',
+      payload: '生データ',
+      rawEvents: '生イベント（{{count}}{{more}}）',
+      copyJson: 'JSON をコピー',
+      diagnostics: '診断',
+      diagnosticsHint:
+        '項目を選ぶと、モデル呼び出し・ツール呼び出し・実行イベント・関連実行・会話コンテキストを読み込みます。',
+      chat: {
+        bot: 'ボット',
+        groupChat: 'グループチャット',
+        privateChat: '個人チャット',
+        source: '送信元',
+        groupId: 'グループ ID',
+        sender: '送信者',
+        routeGroup: 'このグループのルーティングを設定',
+        routePerson: 'このユーザーのルーティングを設定',
+      },
       metadata: '技術情報',
       loadMore: 'さらに読み込む',
       noRecords: '記録なし',
@@ -3614,6 +3753,7 @@ const jaJP = {
       skill: 'スキル',
       knowledge_base: 'ナレッジベース',
       mcp_server: 'MCP サーバー',
+      content: '共有コンテンツ',
       runtime: 'ランタイム',
       system: 'システム',
       resource: 'リソース',
@@ -3624,6 +3764,8 @@ const jaJP = {
       error: '失敗',
     },
     actions: {
+      content_publish: 'コンテンツを Space に共有',
+      plugin_publish: '拡張を Space に公開',
       audit_log_view: '操作ログを閲覧',
       settings_update: 'トレーサビリティ設定を変更',
       settings_view: 'トレーサビリティ設定を閲覧',
@@ -4268,6 +4410,114 @@ const jaJP = {
       failed: '失敗',
       rate_limited: '上限到達',
       skipped: 'スキップ',
+    },
+  },
+  promptLibrary: {
+    emptyTitle: 'テンプレートを準備中です ✨',
+    emptyBody: 'プロンプト横の「共有」から、最初の投稿者になりましょう！',
+    bindToFavorite: 'アカウント連携でお気に入り',
+    originalLanguage: '原文',
+    open: 'プロンプトライブラリ',
+    title: 'プロンプトライブラリ',
+    description:
+      'LangBot Space で共有・審査済みのプロンプトを検索します。適用後は設定を保存してください。',
+    kindMessaging: '会話プロンプト',
+    kindAgent: 'Agent プロンプト',
+    searchPlaceholder: '名前・説明・タグ・本文で検索',
+    tabAll: 'すべて',
+    tabFavorites: 'お気に入り',
+    favoritesNeedAccount: 'LangBot アカウントを連携するとお気に入りを使えます',
+    otherKindHint:
+      '{{kind}}を表示中です。別の用途向けに書かれているため、適用前に確認してください。',
+    noFavorites: 'お気に入りはまだありません',
+    empty: '該当するプロンプトはありません',
+    loadFailed: 'プロンプトライブラリの読み込みに失敗しました',
+    favoriteFailed: 'お気に入りの更新に失敗しました',
+    applied: '適用しました。保存すると反映されます。',
+    uses: '{{count}} 回使用',
+    favorite: 'お気に入り',
+    variablesHint: '変数：',
+    append: '現在のプロンプトに追加',
+    replace: '現在のプロンプトを置き換え',
+    replaceTitle: '現在のプロンプトを置き換えますか？',
+    replaceDescription:
+      '現在の内容は上書きされます（保存前なら破棄できます）。',
+    selectHint: '左側からプロンプトを選んでプレビュー',
+  },
+  spaceShare: {
+    modeNew: '新規として公開',
+    modeUpdate: '既存を更新（{{count}}）',
+    pickExisting: '更新する投稿を選択',
+    unlisted: '非公開',
+    identifierHint: '小文字・数字・- または _。公開後は変更できません',
+    bindAccount: 'LangBot アカウントを連携',
+    autoTranslateNotice:
+      '1 つの言語で書くだけで大丈夫です。アップロード後に他の言語へ自動翻訳します。',
+    shareShort: '共有',
+    shareToSpace: 'Space に共有',
+    findingsBlockTitle:
+      '認証情報らしき値があります。削除してから共有してください',
+    findingsWarnTitle: '個人情報や内部情報が含まれています',
+    submitFailed: '送信に失敗しました',
+    submittedTitle: '審査に送信しました',
+    submittedAgentReview:
+      '{{id}} を自動審査中です。承認後 LangBot Space に掲載されます。',
+    submittedManualReview: '{{id}} は手動審査待ちです。',
+    viewProgress: 'LangBot Space で審査状況を見る',
+    needAccountTitle: 'LangBot アカウントが必要です',
+    needAccount:
+      'LangBot アカウントを連携すると投稿できます。投稿はそのアカウントの LangBot Space クリエイタープロフィールで公開されます。',
+    needCreatorTitle: 'クリエイタープロフィールがありません',
+    needCreator:
+      'LangBot Space でクリエイタープロフィールを設定すると投稿できます。設定は一度だけです。',
+    openCreator: 'クリエイタープロフィールを設定',
+    acknowledgeWarnings: 'この情報を公開して問題ないことを確認しました',
+    displayName: '表示名',
+    identifier: '識別子',
+    descriptionLabel: '説明',
+    changelog: '変更内容',
+    reviewNotice:
+      '投稿は審査後に LangBot Space で公開されます。同じ名前で再共有すると新しいバージョンになります。',
+    submit: '審査に送信',
+    promptTitle: 'プロンプトを LangBot Space に共有',
+    promptDescriptionMessaging:
+      '「会話プロンプト」として公開され、他のユーザーがパイプライン設定で検索できます。',
+    promptDescriptionAgent:
+      '「Agent プロンプト」として公開され、他のユーザーが Agent 設定で検索できます。',
+    detectedVariables: '検出した変数：',
+    skillTitle: 'Skill を LangBot Space に共有',
+    skillDescription:
+      '現在の Skill パッケージをアップロードします。審査ではスクリプトと外部通信を確認します。',
+    packageFiles: '送信するファイル',
+    mcpTitle: 'MCP サーバーを LangBot Space に共有',
+    mcpDescription:
+      'リモート MCP のみ対応。認証情報はアップロードされず、プレースホルダーに置き換えられます。',
+    mcpPublishedConfig: '公開される設定',
+    mcpToolsCount: '{{count}} 個のツールのスナップショットを含みます',
+    mcpRedactedTitle: '{{count}} 件の認証情報を除去しました',
+    mcpRedactedHint:
+      'インストール時にこれらの値の入力を求められます。わかりやすい名前を付けられます：',
+    mcpInputLabelPlaceholder: '表示名（既定：{{label}}）',
+    mcpNoCredentials:
+      '認証情報は見つかりませんでした。設定はそのまま公開されます。',
+    mcpNeedsConnection:
+      '先に接続テストを成功させてください。ツール一覧も公開されます',
+    mcpFillInputsTitle: '認証情報を入力してから有効化してください',
+    mcpFillInputs:
+      'このコミュニティ MCP では {{names}} を自分の値に置き換え、保存してから有効化してください。',
+    finding: {
+      openai_key: 'OpenAI キー',
+      anthropic_key: 'Anthropic キー',
+      github_token: 'GitHub トークン',
+      slack_token: 'Slack トークン',
+      aws_access_key: 'AWS アクセスキー',
+      google_api_key: 'Google API キー',
+      private_key: '秘密鍵',
+      jwt: 'JWT トークン',
+      langbot_key: 'LangBot キー',
+      email: 'メールアドレス',
+      phone: '電話番号',
+      private_url: '内部 URL',
     },
   },
 };

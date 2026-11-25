@@ -15,7 +15,7 @@
 [![Discord](https://img.shields.io/discord/1335141740050649118?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb)](https://discord.gg/wdNEHETs87)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/langbot-app/LangBot)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/langbot-app/LangBot)](https://github.com/langbot-app/LangBot/releases/latest)
-<img src="https://img.shields.io/badge/python-3.10 ~ 3.13 -blue.svg" alt="python">
+<img src="https://img.shields.io/badge/python-3.11%20~%203.14-blue.svg" alt="python">
 [![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
 
 <a href="https://langbot.app">홈</a> ｜
@@ -70,13 +70,21 @@ LangBot은 AI 기반 인스턴트 메시징 봇을 구축하기 위한 **오픈�
 
 배포 없이 바로 사용.
 
-### 원라인 실행
+### 한 줄 설치 (셀프 호스팅 권장)
+
+macOS / Linux:
 
 ```bash
-uvx langbot
+curl -fsSL https://langbot.app/install.sh | bash
 ```
 
-> [uv](https://docs.astral.sh/uv/getting-started/installation/) 설치 필요. http://localhost:5300 방문 — 완료.
+Windows (PowerShell):
+
+```powershell
+irm https://langbot.app/install.ps1 | iex
+```
+
+> [lbctl](https://github.com/langbot-app/langbot-cli)(LangBot CLI)을 설치한 뒤 LangBot을 배포합니다. 기본은 네이티브 실행(Python 자동 설정)이며 Docker도 선택할 수 있고, 관리자 권한이 필요 없습니다. 완료 후 http://localhost:5300 에 접속하세요. 업그레이드는 `lbctl upgrade`로 합니다.
 
 ### Docker Compose
 

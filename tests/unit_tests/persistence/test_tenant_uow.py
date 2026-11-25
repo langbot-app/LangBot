@@ -1001,6 +1001,15 @@ async def test_resource_expansion_allows_only_the_fixed_function_and_media_colum
             _validate_scoped_statement_call((sa.select(expression),), {})
 
 
+async def test_bot_route_cas_cast_is_limited_to_event_bindings() -> None:
+    from langbot.pkg.entity.persistence.bot import Bot
+
+    _validate_scoped_statement_call((sa.select(sa.cast(Bot.event_bindings, sa.Text)),), {})
+    for column in (Bot.adapter_config, Bot.plugin_processors):
+        with pytest.raises(ScopedSessionTransactionError):
+            _validate_scoped_statement_call((sa.select(sa.cast(column, sa.Text)),), {})
+
+
 async def test_monitoring_json_casts_are_limited_to_journal_metadata() -> None:
     from langbot.pkg.entity.persistence.agent_run import AgentRun
     from langbot.pkg.entity.persistence.event_log import EventLog

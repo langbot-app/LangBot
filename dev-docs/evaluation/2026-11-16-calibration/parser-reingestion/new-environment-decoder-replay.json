@@ -1,0 +1,219 @@
+{
+  "chardet_version": "7.7.0",
+  "chardet_module": "/home/yhh/langbot-app/LangBot/data/plugin-runtime/environments/sha256/8bc1777c5ee0bf268f73b9f5b169045c3af4340acad4c8106899a984b697bf44/site-packages/chardet/__init__.py",
+  "sessions": [
+    {
+      "session": "session_1",
+      "detected": {
+        "encoding": "ascii",
+        "confidence": 1.0,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    },
+    {
+      "session": "session_2",
+      "detected": {
+        "encoding": "utf-8",
+        "confidence": 0.802198649951784,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    },
+    {
+      "session": "session_3",
+      "detected": {
+        "encoding": "utf-8",
+        "confidence": 0.8006622773044152,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    },
+    {
+      "session": "session_4",
+      "detected": {
+        "encoding": "ascii",
+        "confidence": 1.0,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    },
+    {
+      "session": "session_5",
+      "detected": {
+        "encoding": "ascii",
+        "confidence": 1.0,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    },
+    {
+      "session": "session_6",
+      "detected": {
+        "encoding": "ascii",
+        "confidence": 1.0,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    },
+    {
+      "session": "session_7",
+      "detected": {
+        "encoding": "utf-8",
+        "confidence": 0.8009863724853992,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    },
+    {
+      "session": "session_8",
+      "detected": {
+        "encoding": "ascii",
+        "confidence": 1.0,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    },
+    {
+      "session": "session_9",
+      "detected": {
+        "encoding": "ascii",
+        "confidence": 1.0,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    },
+    {
+      "session": "session_10",
+      "detected": {
+        "encoding": "ascii",
+        "confidence": 1.0,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    },
+    {
+      "session": "session_11",
+      "detected": {
+        "encoding": "ascii",
+        "confidence": 1.0,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    },
+    {
+      "session": "session_12",
+      "detected": {
+        "encoding": "ascii",
+        "confidence": 1.0,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    },
+    {
+      "session": "session_13",
+      "detected": {
+        "encoding": "utf-8",
+        "confidence": 0.80106875,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    },
+    {
+      "session": "session_14",
+      "detected": {
+        "encoding": "utf-8",
+        "confidence": 0.8005681063122924,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    },
+    {
+      "session": "session_15",
+      "detected": {
+        "encoding": "ascii",
+        "confidence": 1.0,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    },
+    {
+      "session": "session_16",
+      "detected": {
+        "encoding": "utf-8",
+        "confidence": 0.8005113254092846,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    },
+    {
+      "session": "session_17",
+      "detected": {
+        "encoding": "utf-8",
+        "confidence": 0.8007009633121541,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    },
+    {
+      "session": "session_18",
+      "detected": {
+        "encoding": "ascii",
+        "confidence": 1.0,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    },
+    {
+      "session": "session_19",
+      "detected": {
+        "encoding": "ascii",
+        "confidence": 1.0,
+        "language": "en",
+        "mime_type": "text/plain"
+      },
+      "old_exact": true,
+      "new_exact": true
+    }
+  ],
+  "old_exact_count": 19,
+  "new_exact_count": 19,
+  "total": 19,
+  "read_only": true
+}

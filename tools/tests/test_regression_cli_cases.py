@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from types import SimpleNamespace
+import sys
 import tempfile
 import json
 import unittest
@@ -16,12 +17,26 @@ class CLICompatibilityTests(unittest.TestCase):
     def test_large_readback_does_not_hide_the_cli_error(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
-            suite = Suite({'cli': {'config': 'unused'}, 'cases': []}, path / 'p.json', path, env={})
-            response = {'data': {'config': 'x' * 5000}, 'error': {'type': 'verification_failed'}}
-            process = SimpleNamespace(returncode=1, stdout=json.dumps(response), stderr='')
-            with patch('tools.entrypoints.regression_suite.subprocess.run', return_value=process):
-                with self.assertRaisesRegex(RuntimeError, 'verification_failed'):
-                    suite.call(['pipeline', 'apply'], {'name': 'test'})
+            child = path / 'cli_fixture.py'
+            child.write_text(
+                'import json, pathlib, sys\n'
+                "body = json.loads(pathlib.Path(sys.argv[sys.argv.index('--file') + 1]).read_text())\n"
+                "assert sys.argv[1] == '--config'\n"
+                "assert pathlib.Path(sys.argv[2]).name == 'cli.yaml'\n"
+                "assert sys.argv[3:7] == ['-o', 'json', 'pipeline', 'apply']\n"
+                "assert body == {'name': '测试'}\n"
+                "print(json.dumps({'data': {'config': 'x' * 5000}, 'error': {'type': 'verification_failed'}}))\n"
+                'sys.exit(1)\n',
+                encoding='utf-8',
+            )
+            suite = Suite(
+                {'cli': {'executable': sys.executable, 'config': str(path / 'cli.yaml')}, 'cases': []},
+                path / 'p.json',
+                path,
+            )
+            suite.cli.insert(1, str(child))
+            with self.assertRaisesRegex(RuntimeError, 'verification_failed'):
+                suite.call(['pipeline', 'apply'], {'name': '测试'})
 
     def test_wrong_workspace_fails_even_when_cli_exits_successfully(self):
         suite = SimpleNamespace(
@@ -95,7 +110,10 @@ class CLICompatibilityTests(unittest.TestCase):
         profile, _ = suite_profile('cli', 'unit-test')
         validate(profile)
         self.assertEqual(profile['resources'], [])
-        self.assertEqual(len(profile['cases']), 3)
+        self.assertCountEqual(
+            [(case['name'], case['scenario'], case['stage']) for case in profile['cases']],
+            [(name, name, 'cli') for name in ('cli.identity', 'cli.pipeline_roundtrip', 'cli.invalid_credential')],
+        )
         self.assertNotIn('execution', profile)
         smoke, _ = suite_profile('smoke', 'unit-test')
         self.assertFalse(any(case.get('scenario', '').startswith('cli.') for case in smoke['cases']))

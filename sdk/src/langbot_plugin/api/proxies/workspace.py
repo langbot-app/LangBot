@@ -87,10 +87,16 @@ class WorkspaceOperationsProxy(WorkspaceDomains):
         timeout = _timeout if _timeout is not None else 180.0
 
         try:
+            options = (
+                {"cancel_peer_on_cancel": True}
+                if operation_id.startswith("artifact.")
+                else {}
+            )
             result = await self._handler.call_action(
                 PluginToRuntimeAction.CALL_APPLICATION_OPERATION,
                 payload,
                 timeout=timeout,
+                **options,
             )
             if isinstance(result, dict):
                 return result
