@@ -1443,7 +1443,16 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                   </TabsContent>
                   <TabsContent value="plugins" className="min-w-0">
                     <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-                      {t('bots.pluginHooks.tabDescription')}
+                      {t('bots.pluginHooks.tabDescription')}{' '}
+                      {t('bots.pluginHooks.devDocsHint')}{' '}
+                      <a
+                        href={t('bots.pluginHooks.devDocsUrl')}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-foreground underline underline-offset-4"
+                      >
+                        {t('bots.pluginHooks.devDocs')} ↗
+                      </a>
                     </p>
                     <BotPluginsPanel
                       botId={initBotId}

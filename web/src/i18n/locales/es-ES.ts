@@ -1064,6 +1064,10 @@ const esES = {
         'Las rutas nuevas usan la política de mensajes predeterminada del bot. Puedes definir una para esta ruta en la pestaña Política de mensajes.',
     },
     pluginHooks: {
+      devDocsHint:
+        '¿Quieres crear tu propio plugin de comandos o hooks? Consulta la',
+      devDocs: 'documentación de desarrollo de plugins',
+      devDocsUrl: 'https://langbot.app/docs/en/plugin/dev/tutor',
       tabDescription:
         'Añade aquí plugins para usar sus comandos y hooks de eventos de chat. Consulta la documentación de cada plugin para saber qué hace.',
       routeMode: 'Plugins de esta ruta',

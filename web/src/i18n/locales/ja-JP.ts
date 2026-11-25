@@ -1055,6 +1055,9 @@ const jaJP = {
         '新しいルートはボットの既定メッセージポリシーを使用します。「メッセージポリシー」タブで個別に設定できます。',
     },
     pluginHooks: {
+      devDocsHint: 'コマンドやフックのプラグインを自作するには',
+      devDocs: 'プラグイン開発ドキュメント',
+      devDocsUrl: 'https://langbot.app/docs/ja/plugin/dev/tutor',
       tabDescription:
         'ここでプラグインを追加すると、そのコマンドとチャットイベントフックを使えます。具体的な動作はプラグインのドキュメントを参照してください。',
       routeMode: 'このルートのプラグイン',

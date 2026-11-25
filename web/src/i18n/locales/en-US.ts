@@ -1050,6 +1050,9 @@ const enUS = {
         'New routes use the bot default message policy. You can set one for this route in the Message policy tab.',
     },
     pluginHooks: {
+      devDocsHint: 'Want to build your own command or hook plugin? See the',
+      devDocs: 'plugin development docs',
+      devDocsUrl: 'https://langbot.app/docs/en/plugin/dev/tutor',
       tabDescription:
         "Add plugins here to use their commands and chat event hooks. See each plugin's docs for what it does.",
       routeMode: 'Plugins for this route',
