@@ -1078,6 +1078,7 @@ const enUS = {
         hook: 'Chat event hooks',
       },
       add: {
+        installNew: 'Install new plugin',
         button: 'Add plugin',
         title: 'Add plugins',
         description:

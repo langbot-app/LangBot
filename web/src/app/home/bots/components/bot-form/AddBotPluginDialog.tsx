@@ -98,6 +98,7 @@ export default function AddBotPluginDialog({
   addedIds,
   onAdd,
   onInstalled,
+  marketplaceOnly = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -106,6 +107,8 @@ export default function AddBotPluginDialog({
   addedIds: Set<string>;
   onAdd: (ids: string[]) => void;
   onInstalled: (id: string) => Promise<void>;
+  /** With "enable all" on there is nothing to add; only install new plugins. */
+  marketplaceOnly?: boolean;
 }) {
   const { t } = useTranslation();
   const { addTask, tasks } = usePluginInstallTasks();
@@ -134,7 +137,7 @@ export default function AddBotPluginDialog({
     setSelected([]);
     setQuery('');
     setFilter('all');
-    setTab(addable.length ? 'installed' : 'marketplace');
+    setTab(!marketplaceOnly && addable.length ? 'installed' : 'marketplace');
     if (catalog === null) void loadCatalog();
     // Only reset when the dialog opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -253,7 +256,13 @@ export default function AddBotPluginDialog({
         data-testid="add-bot-plugin-dialog"
       >
         <DialogHeader>
-          <DialogTitle>{t('bots.pluginHooks.add.title')}</DialogTitle>
+          <DialogTitle>
+            {t(
+              marketplaceOnly
+                ? 'bots.pluginHooks.add.installNew'
+                : 'bots.pluginHooks.add.title',
+            )}
+          </DialogTitle>
           <DialogDescription>
             {t('bots.pluginHooks.add.description')}
           </DialogDescription>
@@ -263,7 +272,7 @@ export default function AddBotPluginDialog({
           onValueChange={setTab}
           className="flex min-h-0 flex-1 flex-col gap-3"
         >
-          <TabsList className="w-full">
+          <TabsList className={marketplaceOnly ? 'hidden' : 'w-full'}>
             <TabsTrigger value="installed">
               {t('bots.pluginHooks.add.installed')}
             </TabsTrigger>

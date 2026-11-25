@@ -1017,6 +1017,7 @@ const zhHans = {
         hook: '聊天事件钩子',
       },
       add: {
+        installNew: '安装新插件',
         button: '添加插件',
         title: '添加插件',
         description: '选择提供命令或聊天事件钩子的插件，保存机器人后生效。',

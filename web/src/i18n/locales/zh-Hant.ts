@@ -1013,6 +1013,7 @@ const zhHant = {
         hook: '聊天事件鉤子',
       },
       add: {
+        installNew: '安裝新插件',
         button: '新增插件',
         title: '新增插件',
         description: '選擇提供指令或聊天事件鉤子的插件，儲存機器人後生效。',

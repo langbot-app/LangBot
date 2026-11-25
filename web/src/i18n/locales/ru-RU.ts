@@ -1086,6 +1086,7 @@ const ruRU = {
         hook: 'Хуки событий чата',
       },
       add: {
+        installNew: 'Установить новый плагин',
         button: 'Добавить плагин',
         title: 'Добавить плагины',
         description:

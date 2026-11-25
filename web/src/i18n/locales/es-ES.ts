@@ -1092,6 +1092,7 @@ const esES = {
         hook: 'Hooks de eventos de chat',
       },
       add: {
+        installNew: 'Instalar plugin nuevo',
         button: 'Añadir plugin',
         title: 'Añadir plugins',
         description:

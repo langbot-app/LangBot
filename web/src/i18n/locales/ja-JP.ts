@@ -1083,6 +1083,7 @@ const jaJP = {
         hook: 'チャットイベントフック',
       },
       add: {
+        installNew: '新しいプラグインをインストール',
         button: 'プラグインを追加',
         title: 'プラグインを追加',
         description:

@@ -1070,6 +1070,7 @@ const viVN = {
         hook: 'Hook sự kiện chat',
       },
       add: {
+        installNew: 'Cài plugin mới',
         button: 'Thêm plugin',
         title: 'Thêm plugin',
         description:

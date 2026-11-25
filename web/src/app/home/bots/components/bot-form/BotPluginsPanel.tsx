@@ -12,6 +12,7 @@ import {
   Settings2,
   AlertCircle,
   Blocks,
+  Download,
   Plus,
   X,
 } from 'lucide-react';
@@ -872,8 +873,16 @@ export default function BotPluginsPanel({
                   onClick={() => setAdding(true)}
                   data-testid="add-bot-plugin"
                 >
-                  <Plus className="size-4" />
-                  {t('bots.pluginHooks.add.button')}
+                  {selection.enable_all ? (
+                    <Download className="size-4" />
+                  ) : (
+                    <Plus className="size-4" />
+                  )}
+                  {t(
+                    selection.enable_all
+                      ? 'bots.pluginHooks.add.installNew'
+                      : 'bots.pluginHooks.add.button',
+                  )}
                 </Button>
               )}
             </div>
@@ -905,6 +914,7 @@ export default function BotPluginsPanel({
         }
         onAdd={addPlugins}
         onInstalled={pluginInstalled}
+        marketplaceOnly={selection.enable_all}
       />
 
       {configuringRow && configuringDescriptor && (

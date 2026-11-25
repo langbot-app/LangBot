@@ -1056,6 +1056,7 @@ const thTH = {
         hook: 'ฮุกเหตุการณ์แชท',
       },
       add: {
+        installNew: 'ติดตั้งปลั๊กอินใหม่',
         button: 'เพิ่มปลั๊กอิน',
         title: 'เพิ่มปลั๊กอิน',
         description:
