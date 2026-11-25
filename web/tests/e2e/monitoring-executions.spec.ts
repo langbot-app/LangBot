@@ -145,10 +145,9 @@ test('loads collapsed history on demand, retries and pages without reloading it 
     sheet.getByText('Selected message').filter({ visible: true }),
   ).toBeVisible();
   expect(requests).toEqual(['?section=overview']);
-  const history = sheet.locator('details').filter({
-    has: page.locator('summary', { hasText: /^Conversation context/ }),
-  });
-  await history.locator(':scope > summary').click();
+  const historyTab = sheet.getByRole('tab', { name: /^Conversation context/ });
+  const history = sheet.getByRole('tabpanel');
+  await historyTab.click();
   await expect(history.getByRole('alert')).toBeVisible();
   await history.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(
@@ -162,12 +161,14 @@ test('loads collapsed history on demand, retries and pages without reloading it 
     history.getByText('Recent history').filter({ visible: true }),
   ).toBeVisible();
   const count = requests.length;
-  await history.locator(':scope > summary').click();
-  await history.locator(':scope > summary').click();
+  // Switching away and back reuses the loaded pages; tabs never vanish.
+  await sheet.getByRole('tab', { name: /^Tool calls/ }).click();
+  await expect(sheet.getByRole('tab', { name: /^Tool calls/ })).toBeVisible();
+  await historyTab.click();
   await expect(
     history.getByText('Older history').filter({ visible: true }),
   ).toBeVisible();
-  expect(requests).toHaveLength(count);
+  expect(requests.slice(count)).toEqual(['?section=tool_calls&offset=0']);
   expect(requests.every((query) => !query.includes('section=related'))).toBe(
     true,
   );
@@ -235,15 +236,9 @@ test('ignores a late history response after selecting a different execution', as
   await expect(
     sheet.getByText('Original selection').filter({ visible: true }),
   ).toBeVisible();
-  await sheet
-    .locator('summary')
-    .filter({ hasText: /^Conversation context/ })
-    .click();
+  await sheet.getByRole('tab', { name: /^Conversation context/ }).click();
   await expect.poll(() => !!releaseHistory).toBe(true);
-  await sheet
-    .locator('summary')
-    .filter({ hasText: /^Related executions/ })
-    .click();
+  await sheet.getByRole('tab', { name: /^Related executions/ }).click();
   await sheet.getByRole('button', { name: /Processor B/ }).click();
   await expect(
     sheet.getByText('Sibling selection').filter({ visible: true }),
@@ -362,15 +357,19 @@ test('renders typed and custom events without duplicate text or empty attachment
     .filter({ hasText: 'Open this execution' })
     .click();
   const sheet = page.getByRole('dialog');
+  // One trigger message; journaled copies stay folded under raw events.
   await expect(
     sheet.getByText('你好~', { exact: true }).filter({ visible: true }),
-  ).toHaveCount(2);
+  ).toHaveCount(1);
   await expect(sheet.getByText('[Empty message]', { exact: true })).toHaveCount(
     0,
   );
+  await sheet.getByRole('button', { name: /^Raw events \(6\)/ }).click();
+  await expect(
+    sheet.getByText('你好~', { exact: true }).filter({ visible: true }),
+  ).toHaveCount(3);
   for (const details of await sheet
-    .locator('summary')
-    .filter({ hasText: /^Details$/ })
+    .getByRole('button', { name: /^Raw data$/ })
     .all())
     await details.click();
   for (const text of [
@@ -387,12 +386,13 @@ test('renders typed and custom events without duplicate text or empty attachment
     'Distinct text',
     'Different content',
     'custom-value',
-    'event_reply',
   ]) {
     await expect(
       sheet.getByText(text, { exact: true }).filter({ visible: true }).first(),
     ).toBeVisible();
   }
+  // Tool calls of a generated reply stay reachable in its raw data.
+  await expect(sheet).toContainText('event_reply');
   await expect(
     sheet.getByRole('img', { name: 'Message attachment' }),
   ).toBeVisible();
@@ -469,8 +469,10 @@ test('pages a long trace without dropping inputs and opens related executions', 
   await expect(
     sheet.getByText('Generated but not sent').filter({ visible: true }),
   ).toBeVisible();
-  await expect(sheet.getByText('Delivery records (0)')).toBeVisible();
-  await sheet.getByText('Execution events (1+)', { exact: true }).click();
+  await expect(
+    sheet.getByRole('heading', { name: /Delivery records\s*0$/ }),
+  ).toBeVisible();
+  await sheet.getByRole('tab', { name: /^Execution events\s*1\+$/ }).click();
   await sheet.getByRole('button', { name: 'Load more' }).click();
   await expect(sheet.getByText('run.completed', { exact: true })).toBeVisible();
   await expect(
@@ -482,7 +484,7 @@ test('pages a long trace without dropping inputs and opens related executions', 
         query.includes('section=events') && query.includes('offset=100'),
     ),
   ).toBe(true);
-  await sheet.getByText('Related executions (1)', { exact: true }).click();
+  await sheet.getByRole('tab', { name: /^Related executions\s*1$/ }).click();
   await sheet.getByRole('button', { name: /Processor B/ }).click();
   await expect(
     sheet.getByText('Sibling input').filter({ visible: true }),
@@ -550,14 +552,16 @@ test('shows non-message events without fabricating a reply or a processor', asyn
   await expect(
     sheet.getByRole('heading', { name: 'No processor run' }),
   ).toBeVisible();
+  // The event's own properties are the readable trigger body.
+  await expect(sheet.getByText('member-42', { exact: true })).toBeVisible();
   await sheet
-    .locator('summary')
-    .filter({ hasText: /^Details$/ })
+    .getByRole('button', { name: /^Raw data$/ })
     .first()
     .click();
-  await expect(sheet.getByText(/member-42/)).toBeVisible();
   await expect(sheet.getByText(/No matching route/)).toBeVisible();
-  await expect(sheet.getByText('Delivery records (0)')).toBeVisible();
+  await expect(
+    sheet.getByRole('heading', { name: /Delivery records\s*0$/ }),
+  ).toBeVisible();
 });
 
 test('filters all three processor kinds with the sidebar icons', async ({

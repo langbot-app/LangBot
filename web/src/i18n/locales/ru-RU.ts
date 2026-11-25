@@ -1452,6 +1452,11 @@ const ruRU = {
     collapse: 'Свернуть',
     imagesAttached: 'изображений прикреплено',
     noLogs: 'Журналов пока нет',
+    routeDraftExists: 'Правило для {{id}} уже существует; оно раскрыто ниже.',
+    routeDraftAddedGroup:
+      'Правило для группы {{id}} добавлено в начало. Выберите конвейер и сохраните.',
+    routeDraftAddedPerson:
+      'Правило для пользователя {{id}} добавлено в начало. Выберите конвейер и сохраните.',
     sessionMonitor: {
       resetContext: 'Сбросить контекст',
       resetDescription:
@@ -1467,6 +1472,21 @@ const ruRU = {
       filterByGroup: 'Та же группа',
       groupFilterActive: 'Группа {{group}}',
       clearGroupFilter: 'Показать все сеансы',
+      groupTitle: 'Группа {{group}}',
+      memberLine: 'Участник: {{name}}',
+      lastSenderLine: 'Последний отправитель: {{name}}',
+      privateChat: 'Личный чат',
+      groupChat: 'Групповой чат',
+      groupId: 'ID группы',
+      member: 'Участник',
+      lastSender: 'Последний отправитель',
+      userId: 'ID пользователя',
+      pipeline: 'Конвейер',
+      routeGroup: 'Маршрут для этой группы',
+      routeGroupHint:
+        'Создать правило маршрутизации, отправляющее эту группу в выбранный конвейер',
+      contextShared: 'Общий контекст группы',
+      contextPerMember: 'Контекст для каждого участника',
 
       title: 'Сессии',
       sessions: 'Сессии',
@@ -3236,7 +3256,22 @@ const ruRU = {
       llm_calls: 'Вызовы модели',
       tool_calls: 'Вызовы инструментов',
       errors: 'Ошибки',
-      payload: 'Подробности',
+      payload: 'Исходные данные',
+      rawEvents: 'Исходные события ({{count}}{{more}})',
+      copyJson: 'Копировать JSON',
+      diagnostics: 'Диагностика',
+      diagnosticsHint:
+        'Выберите пункт, чтобы загрузить вызовы модели, вызовы инструментов, события, связанные запуски или контекст диалога.',
+      chat: {
+        bot: 'Бот',
+        groupChat: 'Групповой чат',
+        privateChat: 'Личный чат',
+        source: 'Источник',
+        groupId: 'ID группы',
+        sender: 'Отправитель',
+        routeGroup: 'Маршрут для этой группы',
+        routePerson: 'Маршрут для этого пользователя',
+      },
       metadata: 'Технические сведения',
       loadMore: 'Загрузить ещё',
       noRecords: 'Нет записей',

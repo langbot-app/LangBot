@@ -2,6 +2,7 @@ import EntityLoadState from '@/components/EntityLoadState';
 import { showBotError } from '../../bot-error';
 import React, {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -38,7 +39,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MENU_CONFIG_KEY } from '@/app/home/bots/components/bot-menu/wxoa-menu-model';
-import EventBindingsEditor from './EventBindingsEditor';
+import EventBindingsEditor, { type RouteDraft } from './EventBindingsEditor';
+import { useSearchParams } from 'react-router-dom';
 import EventRoutingHelp from './EventRoutingHelp';
 import LegacyAdapterHelp from './LegacyAdapterHelp';
 import PluginProcessorBindings from './PluginProcessorBindings';
@@ -278,6 +280,35 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
   >({});
 
   const [agentNameList, setAgentNameList] = useState<Agent[]>([]);
+
+  // `routeChat=group:<id>` (from Sessions or an execution trace) asks the
+  // routing editor to pre-create a rule for that chat once the bot is loaded.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const routeChat = searchParams.get('routeChat');
+  const routeTarget = searchParams.get('routeTarget');
+  const routeDraft = useMemo<RouteDraft | null>(() => {
+    const match = /^(group|person):(.+)$/.exec(routeChat ?? '');
+    return match
+      ? {
+          chatType: match[1] as RouteDraft['chatType'],
+          chatId: match[2],
+          targetUuid: routeTarget ?? undefined,
+        }
+      : null;
+  }, [routeChat, routeTarget]);
+  const clearRouteDraft = useCallback(
+    () =>
+      setSearchParams(
+        (previous) => {
+          const next = new URLSearchParams(previous);
+          next.delete('routeChat');
+          next.delete('routeTarget');
+          return next;
+        },
+        { replace: true },
+      ),
+    [setSearchParams],
+  );
 
   const [dynamicFormConfigList, setDynamicFormConfigList] = useState<
     IDynamicFormItemSchema[]
@@ -1341,6 +1372,8 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                     ])
                   }
                   botId={initBotId}
+                  routeDraft={initBotId ? routeDraft : null}
+                  onRouteDraftApplied={clearRouteDraft}
                   supportedEvents={adapterSupportedEvents[currentAdapter] || []}
                   agentOptions={agentNameList.filter(
                     (agent) => agent.kind !== 'event_processor',
