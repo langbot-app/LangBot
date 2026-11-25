@@ -249,7 +249,6 @@ test('pipeline plugin schema round-trips without resurrecting Core sandbox owner
     },
   );
   await page.goto('/home/pipelines?id=pipeline-scope-fixture');
-  await page.getByRole('tab', { name: 'AI', exact: true }).click();
   await expect(
     page.getByRole('region', { name: 'Configuration' }).getByRole('textbox'),
   ).toHaveValue('original');

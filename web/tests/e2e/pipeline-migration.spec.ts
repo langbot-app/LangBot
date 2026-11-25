@@ -517,10 +517,7 @@ test('SPEC canonical empty current detail allows selecting and saving a runner',
     });
   });
   await page.goto('/home/agents?id=one');
-  await expect(
-    page.getByRole('tab', { name: 'AI', exact: true }),
-  ).toBeVisible();
-  await page.getByRole('tab', { name: 'AI', exact: true }).click();
+  await expect(page.getByTestId('chat-config')).toBeVisible();
   const selector = page.getByRole('combobox', { name: 'Runner', exact: true });
   await selector.click();
   await page.getByRole('option', { name: /Local Agent/ }).click();

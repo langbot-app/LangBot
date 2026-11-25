@@ -8,6 +8,12 @@ const canonical = JSON.parse(
   readFileSync('../src/langbot/templates/default-pipeline-config.json', 'utf8'),
 );
 const outputSchema = contract.output_schema;
+const openRow = (page: Page, id: string) =>
+  page
+    .locator(`[data-policy-setting="${id}"]`)
+    .getByRole('button')
+    .first()
+    .click();
 const switchField = (page: Page, label: string) =>
   page
     .locator('label')
@@ -124,7 +130,6 @@ async function setup(
     }),
   );
   await page.goto('/home/pipelines?id=preserve');
-  await page.getByRole('tab', { name: 'AI', exact: true }).click();
   return { writes, raw, id };
 }
 for (const candidate of contract.cases) {
@@ -146,18 +151,15 @@ for (const candidate of contract.cases) {
       page.getByRole('button', { name: 'Save', exact: true }),
     ).toBeDisabled();
     expect(writes).toHaveLength(0);
-    await page.getByRole('tab', { name: 'Output', exact: true }).click();
-    await switchField(page, 'Quote Origin Message').click();
+    await openRow(page, 'reply');
+    await switchField(page, 'Track Function Calls').click();
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect.poll(() => writes.length).toBe(1);
-    // The editor materializes the group-context default; a missing key
-    // already means "member", so the saved runner config is unchanged.
-    expect(writes[0].config.ai).toEqual({
-      ...candidate.plan.config.ai,
-      runner: { 'group-context': 'member', ...candidate.plan.config.ai.runner },
-    });
-    expect(writes[0].config.output.misc['quote-origin']).toBe(
-      !candidate.plan.config.output.misc['quote-origin'],
+    // Untouched settings are saved exactly as converted; the editor does not
+    // write defaults the user never changed.
+    expect(writes[0].config.ai).toEqual(candidate.plan.config.ai);
+    expect(writes[0].config.output.misc['track-function-calls']).toBe(
+      !candidate.plan.config.output.misc['track-function-calls'],
     );
   });
 }
@@ -185,7 +187,6 @@ for (const agentId of [null, 'absent'] as const) {
       'web-search-enabled': true,
     });
     await page.reload();
-    await page.getByRole('tab', { name: 'AI', exact: true }).click();
     await expect(switchField(page, 'Enable Web Search')).toBeChecked();
     await expect(
       page.getByRole('button', { name: 'Save', exact: true }),
@@ -197,19 +198,17 @@ test('remove-think is synchronized only after intentional output or runner toggl
   page,
 }) => {
   const { writes, id } = await setup(page, 'LocalAgent', 'LocalAgent');
-  const runnerThink = switchField(page, 'Remove');
-  await expect(runnerThink).toBeChecked();
+  // One switch, in the reply row, controls both stored copies.
   expect(writes).toEqual([]);
-  await page.getByRole('tab', { name: 'Output', exact: true }).click();
-  const outputThink = switchField(page, 'Remove CoT');
-  await expect(outputThink).not.toBeChecked();
-  await outputThink.click();
+  await openRow(page, 'reply');
+  const think = switchField(page, 'Remove CoT');
+  await expect(think).not.toBeChecked();
+  await think.click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect.poll(() => writes.length).toBe(1);
   expect(writes[0].config.output.misc['remove-think']).toBe(true);
   expect(writes[0].config.ai.runner_config[id]['remove-think']).toBe(true);
-  await page.getByRole('tab', { name: 'AI', exact: true }).click();
-  await runnerThink.click();
+  await think.click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect.poll(() => writes.length).toBe(2);
   expect(writes[1].config.output.misc['remove-think']).toBe(false);

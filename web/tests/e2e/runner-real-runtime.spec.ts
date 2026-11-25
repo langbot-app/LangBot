@@ -42,7 +42,6 @@ test('real backend and SDK: save, copy and execute with extensions off', async (
   await page.goto(`/home/pipelines?id=${pipelineId}`, {
     waitUntil: 'domcontentloaded',
   });
-  await page.locator('[data-guide="pipeline-section-ai"]').click();
   await expect(
     page.getByRole('combobox', { name: 'Runner', exact: true }),
   ).toContainText('QA Echo Runner');
@@ -58,9 +57,12 @@ test('real backend and SDK: save, copy and execute with extensions off', async (
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   expect((await (await savedResponse).json()).code).toBe(0);
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.locator('[data-guide="pipeline-section-ai"]').click();
   await expect(prefixInput).toHaveValue('browser saved');
-  await page.getByRole('button', { name: 'Management', exact: true }).click();
+  await page
+    .locator('[data-policy-setting="manage"]')
+    .getByRole('button')
+    .first()
+    .click();
   await page.getByRole('button', { name: 'Copy', exact: true }).click();
   const copiedResponse = page.waitForResponse(
     (response) =>

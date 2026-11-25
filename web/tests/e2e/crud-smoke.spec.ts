@@ -286,8 +286,15 @@ test.describe('frontend CRUD smoke flows', () => {
     ).toHaveValue('Routes urgent customer issues to operators.');
     await page.keyboard.press('Escape');
 
-    await page.getByRole('button', { name: 'Management' }).click();
-    await page.getByRole('button', { name: /^Delete$/ }).click();
+    await page
+      .locator('[data-policy-setting="manage"]')
+      .getByRole('button')
+      .first()
+      .click();
+    await page
+      .locator('[data-policy-setting="manage"]')
+      .getByRole('button', { name: /^Delete$/ })
+      .click();
     await confirmDelete(page, '/api/v1/pipelines/pipeline-1');
 
     await expect(page).toHaveURL(/\/home\/agents$/);

@@ -3,8 +3,8 @@ import GuidedTour, {
   type GuidedTourStep,
 } from '@/app/home/components/guided-tour/GuidedTour';
 import EntityLoadState from '@/components/EntityLoadState';
-import { preserveRunnerConfig } from './RunnerConfigPreservation';
-import type { ComponentProps } from 'react';
+import ChatConfigEditor from './ChatConfigEditor';
+import type { Control } from 'react-hook-form';
 import { isCurrentPipelineConfig } from '../../pipeline-config-safety';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
@@ -19,14 +19,9 @@ import {
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { systemInfo } from '@/app/infra/http';
 import { GetPipelineResponseData, Pipeline } from '@/app/infra/entities/api';
-import {
-  PipelineConfigTab,
-  PipelineConfigStage,
-} from '@/app/infra/entities/pipeline';
-import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
+import { PipelineConfigTab } from '@/app/infra/entities/pipeline';
 import { getDefaultValues } from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -57,16 +52,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import {
-  Info,
-  Brain,
-  Mic,
-  FileOutput,
-  Puzzle,
-  Trash2,
-  Copy,
-} from 'lucide-react';
-import PipelineExtension from '@/app/home/pipelines/components/pipeline-extensions/PipelineExtension';
+import { Trash2, Copy } from 'lucide-react';
 import RunnerSelect from '@/app/home/agents/components/RunnerSelect';
 import {
   getErrorMessage,
@@ -74,35 +60,6 @@ import {
   resumePendingRunnerInstall,
   type InstalledRunner,
 } from '@/app/home/agents/runner-marketplace';
-
-/** A mount-scoped editing session: normalized defaults are UI state, not edits. */
-function PersistedRunnerForm(
-  props: ComponentProps<typeof DynamicFormComponent>,
-) {
-  const initialValues = useRef(props.initialValues);
-  const previous = useRef<Record<string, unknown> | undefined>(undefined);
-  const current = useRef(props.initialValues || {});
-  current.current = props.initialValues || {};
-  return (
-    <DynamicFormComponent
-      {...props}
-      initialValues={initialValues.current}
-      onSubmit={(values) => {
-        const emitted = values as Record<string, unknown>;
-        const next = preserveRunnerConfig(
-          current.current,
-          previous.current,
-          emitted,
-        );
-        previous.current = structuredClone(emitted);
-        if (JSON.stringify(next) !== JSON.stringify(current.current)) {
-          current.current = next;
-          props.onSubmit?.(next);
-        }
-      }}
-    />
-  );
-}
 
 interface PipelineFormComponentProps {
   pipelineId?: string;
@@ -186,54 +143,6 @@ const PipelineFormComponent = forwardRef<
       });
 
   type FormValues = z.infer<typeof formSchema>;
-  // Section navigation items with icons
-  const SECTION_ICONS: Record<string, React.ElementType> = {
-    basic: Info,
-    ai: Brain,
-    speech: Mic,
-    output: FileOutput,
-    extensions: Puzzle,
-  };
-
-  const formLabelList: SectionItem[] = isEditMode
-    ? [
-        {
-          label: t('common.management'),
-          name: 'basic',
-          icon: SECTION_ICONS.basic,
-        },
-        {
-          label: t('pipelines.aiCapabilities'),
-          name: 'ai',
-          icon: SECTION_ICONS.ai,
-        },
-        {
-          label: t('pipelines.speechProcessing'),
-          name: 'speech',
-          icon: SECTION_ICONS.speech,
-        },
-        {
-          label: t('pipelines.outputProcessing'),
-          name: 'output',
-          icon: SECTION_ICONS.output,
-        },
-        {
-          label: t('pipelines.extensions.title'),
-          name: 'extensions',
-          icon: SECTION_ICONS.extensions,
-        },
-      ]
-    : [
-        {
-          label: t('pipelines.basicInfo'),
-          name: 'basic',
-          icon: SECTION_ICONS.basic,
-        },
-      ];
-
-  const [activeSection, setActiveSection] = useState(
-    isEditMode ? 'ai' : 'basic',
-  );
   const guideSteps = useMemo<GuidedTourStep[]>(() => {
     const sections = ['ai', 'speech', 'output', 'extensions', 'basic'];
     return [
@@ -242,7 +151,6 @@ const PipelineFormComponent = forwardRef<
         target: `[data-guide="pipeline-section-${section}"]`,
         title: t(`guidedTour.pipeline.${section}.title`),
         description: t(`guidedTour.pipeline.${section}.description`),
-        onEnter: () => setActiveSection(section),
       })),
       ...(debugGuideEnabled
         ? [
@@ -269,22 +177,9 @@ const PipelineFormComponent = forwardRef<
         target: '[data-guide="pipeline-form-save"]',
         title: t('guidedTour.pipeline.save.title'),
         description: t('guidedTour.pipeline.save.description'),
-        onEnter: () => setActiveSection('ai'),
       },
     ];
   }, [t, debugGuideEnabled, monitoringGuideEnabled]);
-  const primarySectionNames = ['ai', 'speech', 'output'];
-  const primarySections = primarySectionNames
-    .map((name) => formLabelList.find((section) => section.name === name))
-    .filter((section): section is SectionItem => Boolean(section));
-  const secondarySections = formLabelList
-    .filter((section) => !primarySectionNames.includes(section.name))
-    .sort((left, right) => {
-      if (left.name === 'basic') return 1;
-      if (right.name === 'basic') return -1;
-      return 0;
-    });
-
   const [aiConfigTabSchema, setAIConfigTabSchema] =
     useState<PipelineConfigTab>();
   const [speechConfigTabSchema, setSpeechConfigTabSchema] =
@@ -592,10 +487,14 @@ const PipelineFormComponent = forwardRef<
     formName: keyof FormValues,
     stageName: string,
     values: object,
+    fromEdit = false,
   ) {
     const wasDirty = hasUnsavedChangesRef.current;
     const stageKey = `${String(formName)}.${stageName}`;
+    // A user edit is never a mount-time default fill, even if it is the
+    // first value this stage reports.
     const isFirstEmission =
+      !fromEdit &&
       !initializedStagesRef.current.has(stageKey) &&
       !(formName === 'output' && stageName === 'misc');
 
@@ -692,127 +591,6 @@ const PipelineFormComponent = forwardRef<
     }
   }
 
-  function renderDynamicForms(
-    stage: PipelineConfigStage,
-    formName: keyof FormValues,
-  ) {
-    // Special handling for AI config section
-    if (formName === 'ai') {
-      const runnerConfig = (form.getValues('ai.runner') as any) || {};
-      const currentRunner = runnerConfig.id;
-
-      // If this is the runner selector stage, render it directly
-      if (stage.name === 'runner') {
-        return (
-          <Card key={stage.name}>
-            <CardHeader>
-              <CardTitle>{extractI18nObject(stage.label)}</CardTitle>
-              <CardDescription>
-                {t('pipelines.extensions.runnerScopeHint')}
-              </CardDescription>
-              {stage.description && (
-                <CardDescription>
-                  {extractI18nObject(stage.description)}
-                </CardDescription>
-              )}
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <DynamicFormComponent
-                itemConfigList={stage.config}
-                initialValues={
-                  (form.getValues(formName) as Record<string, unknown>)?.[
-                    stage.name
-                  ] || {}
-                }
-                systemContext={dynamicFormSystemContext}
-                renderItem={({ config, field }) =>
-                  config.name === 'id' ? (
-                    <RunnerSelect
-                      options={config.options ?? []}
-                      label={extractI18nObject(config.label)}
-                      value={String(field.value ?? '')}
-                      onValueChange={field.onChange}
-                      installScope={runnerInstallScope}
-                      onInstalled={applyInstalledRunner}
-                    />
-                  ) : undefined
-                }
-                onSubmit={(values) => {
-                  handleDynamicFormEmit(formName, stage.name, values);
-                }}
-              />
-            </CardContent>
-          </Card>
-        );
-      }
-
-      // Do not render if not the currently selected runner
-      if (stage.name !== currentRunner) {
-        return null;
-      }
-
-      // For plugin runner configs, store in ai.runner_config[runnerId]
-      const isPluginRunner =
-        currentRunner && currentRunner.startsWith('plugin:');
-      if (isPluginRunner) {
-        const runnerConfigs = (form.getValues('ai.runner_config') as any) || {};
-        const stageInitialValues = runnerConfigs[stage.name] || {};
-        return (
-          <Card key={stage.name}>
-            <CardHeader>
-              <CardTitle>{extractI18nObject(stage.label)}</CardTitle>
-              {stage.description && (
-                <CardDescription>
-                  {extractI18nObject(stage.description)}
-                </CardDescription>
-              )}
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <PersistedRunnerForm
-                itemConfigList={stage.config}
-                initialValues={stageInitialValues}
-                systemContext={dynamicFormSystemContext}
-                onSubmit={(values) => {
-                  handleRunnerConfigEmit(stage.name, values);
-                }}
-              />
-            </CardContent>
-          </Card>
-        );
-      }
-    }
-
-    const StageForm =
-      formName === 'output' && stage.name === 'misc'
-        ? PersistedRunnerForm
-        : DynamicFormComponent;
-    const stageInitialValues: Record<string, any> =
-      (form.getValues(formName) as Record<string, any>)?.[stage.name] || {};
-
-    return (
-      <Card key={stage.name}>
-        <CardHeader>
-          <CardTitle>{extractI18nObject(stage.label)}</CardTitle>
-          {stage.description && (
-            <CardDescription>
-              {extractI18nObject(stage.description)}
-            </CardDescription>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <StageForm
-            itemConfigList={stage.config}
-            initialValues={stageInitialValues}
-            systemContext={dynamicFormSystemContext}
-            onSubmit={(values) => {
-              handleDynamicFormEmit(formName, stage.name, values);
-            }}
-          />
-        </CardContent>
-      </Card>
-    );
-  }
-
   const handleDelete = () => {
     setShowDeleteConfirm(true);
   };
@@ -881,56 +659,9 @@ const PipelineFormComponent = forwardRef<
             className="h-full flex flex-col flex-1 min-h-0 mb-2"
           >
             <div className="flex-1 flex min-h-0 flex-col">
-              {/* Keep the primary pipeline flow visible while editing. */}
-              {formLabelList.length > 1 && (
-                <nav className="mb-4 shrink-0 space-y-2 border-b pb-4">
-                  <Tabs value={activeSection} onValueChange={setActiveSection}>
-                    <div className="overflow-x-auto">
-                      <TabsList className="grid min-w-[34rem] w-full grid-cols-4">
-                        {primarySections.map((section) => {
-                          const Icon = section.icon;
-                          return (
-                            <TabsTrigger
-                              key={section.name}
-                              data-guide={`pipeline-section-${section.name}`}
-                              value={section.name}
-                            >
-                              <Icon />
-                              {section.label}
-                            </TabsTrigger>
-                          );
-                        })}
-                      </TabsList>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {secondarySections.map((section) => {
-                        const Icon = section.icon;
-                        return (
-                          <Button
-                            key={section.name}
-                            data-guide={`pipeline-section-${section.name}`}
-                            type="button"
-                            variant={
-                              activeSection === section.name
-                                ? 'secondary'
-                                : 'ghost'
-                            }
-                            size="sm"
-                            onClick={() => setActiveSection(section.name)}
-                          >
-                            <Icon />
-                            {section.label}
-                          </Button>
-                        );
-                      })}
-                    </div>
-                  </Tabs>
-                </nav>
-              )}
-
               {/* Content panel */}
               <div className="flex-1 overflow-y-auto min-h-0">
-                {activeSection === 'basic' && (
+                {!isEditMode && (
                   <div className="space-y-6">
                     <Card>
                       <CardHeader>
@@ -1073,49 +804,38 @@ const PipelineFormComponent = forwardRef<
                   </div>
                 )}
 
-                {/* Dynamic config sections (edit mode only) */}
-                {isEditMode && (
-                  <>
-                    {aiConfigTabSchema && (
-                      <div
-                        className="space-y-6"
-                        hidden={activeSection !== 'ai'}
-                      >
-                        {aiConfigTabSchema.stages.map((stage) =>
-                          renderDynamicForms(stage, 'ai'),
-                        )}
-                      </div>
-                    )}
-
-                    {activeSection === 'speech' && speechConfigTabSchema && (
-                      <div className="space-y-6">
-                        {speechConfigTabSchema.stages.map((stage) =>
-                          renderDynamicForms(stage, 'speech'),
-                        )}
-                      </div>
-                    )}
-
-                    {activeSection === 'output' && outputConfigTabSchema && (
-                      <div className="space-y-6">
-                        <Alert>
-                          <Info className="size-4" />
-                          <AlertDescription>
-                            {t('pipelines.outputMovedToPolicy')}
-                          </AlertDescription>
-                        </Alert>
-                        {outputConfigTabSchema.stages.map((stage) =>
-                          renderDynamicForms(stage, 'output'),
-                        )}
-                      </div>
-                    )}
-
-                    {activeSection === 'extensions' && pipelineId && (
-                      <PipelineExtension
-                        pipelineId={pipelineId}
-                        onSensitiveToolsChange={onSensitiveToolsChange}
-                      />
-                    )}
-                  </>
+                {/* Edit mode: every setting on one page, by importance. */}
+                {isEditMode && aiConfigTabSchema && pipelineId && (
+                  <ChatConfigEditor
+                    control={form.control as unknown as Control}
+                    getValues={(path) => form.getValues(path as never)}
+                    aiTab={aiConfigTabSchema}
+                    speechTab={speechConfigTabSchema}
+                    outputTab={outputConfigTabSchema}
+                    runnerId={String(form.getValues('ai.runner.id') ?? '')}
+                    onStage={(formName, stage, values, fromEdit) =>
+                      handleDynamicFormEmit(formName, stage, values, fromEdit)
+                    }
+                    onRunnerConfig={handleRunnerConfigEmit}
+                    renderRunnerSelect={({ config, field }) =>
+                      config.name === 'id' ? (
+                        <RunnerSelect
+                          options={config.options ?? []}
+                          label={extractI18nObject(config.label)}
+                          value={String(field.value ?? '')}
+                          onValueChange={field.onChange}
+                          installScope={runnerInstallScope}
+                          onInstalled={applyInstalledRunner}
+                        />
+                      ) : undefined
+                    }
+                    systemContext={dynamicFormSystemContext}
+                    pipelineId={pipelineId}
+                    onSensitiveToolsChange={onSensitiveToolsChange}
+                    onCopy={handleCopy}
+                    onDelete={handleDelete}
+                    isDefaultPipeline={isDefaultPipeline}
+                  />
                 )}
               </div>
             </div>
@@ -1206,8 +926,3 @@ const PipelineFormComponent = forwardRef<
 });
 
 export default PipelineFormComponent;
-interface SectionItem {
-  label: string;
-  name: string;
-  icon: React.ElementType;
-}

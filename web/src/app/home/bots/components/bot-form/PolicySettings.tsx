@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import {
   AlertTriangle,
   AtSign,
-  ChevronRight,
   Clock,
   FileText,
   Gauge,
@@ -14,7 +13,6 @@ import {
   ShieldAlert,
   UserCheck,
   X,
-  type LucideIcon,
 } from 'lucide-react';
 import type {
   MessagePolicy,
@@ -23,11 +21,6 @@ import type {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -41,6 +34,10 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
+import {
+  SettingGroup as Group,
+  SettingRow,
+} from '@/app/home/components/setting-row/SettingRow';
 
 type Values = Record<string, unknown>;
 type Write = (
@@ -188,86 +185,6 @@ function ToggleLine({
         onCheckedChange={onChange}
       />
     </div>
-  );
-}
-
-/** One setting: icon, name and a plain-language summary; expands to edit. */
-function SettingRow({
-  id,
-  icon: Icon,
-  title,
-  summary,
-  warning,
-  children,
-}: {
-  id: string;
-  icon: LucideIcon;
-  title: string;
-  summary: string;
-  warning?: boolean;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Collapsible open={open} onOpenChange={setOpen} data-policy-setting={id}>
-      <CollapsibleTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          className="h-auto w-full justify-start gap-3 rounded-none px-4 py-3 text-left font-normal hover:bg-muted/40"
-        >
-          <Icon className="size-4 shrink-0 text-muted-foreground" />
-          <span className="w-32 shrink-0 text-sm font-medium sm:w-40">
-            {title}
-          </span>
-          <span
-            className={cn(
-              'min-w-0 flex-1 truncate text-sm text-muted-foreground',
-              warning && 'text-amber-700 dark:text-amber-400',
-            )}
-            data-policy-summary
-          >
-            {warning && (
-              <AlertTriangle className="mr-1 inline size-3.5 -translate-y-px" />
-            )}
-            {summary}
-          </span>
-          <ChevronRight
-            className={cn(
-              'size-4 shrink-0 text-muted-foreground transition-transform',
-              open && 'rotate-90',
-            )}
-          />
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="space-y-4 border-t bg-muted/20 px-4 py-4 sm:pl-11">
-          {children}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-function Group({
-  title,
-  hint,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="space-y-2" aria-label={title}>
-      <div>
-        <h3 className="text-sm font-semibold">{title}</h3>
-        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-      </div>
-      <div className="divide-y overflow-hidden rounded-lg border bg-card">
-        {children}
-      </div>
-    </section>
   );
 }
 

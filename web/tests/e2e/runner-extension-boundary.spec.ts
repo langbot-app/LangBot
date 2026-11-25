@@ -33,10 +33,10 @@ test('independent Runner guidance remains visible with extensions disabled', asy
       'Select the Runner independently here, regardless of extension plugin switches. Its plugin must still be installed and available.',
     ),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Extensions', exact: true }).click();
+  await page.getByTestId('chat-manage-tools').click();
   await expect(
     page.getByText(
-      'Only controls event listeners, tools and commands for this pipeline; does not affect the Runner selected in AI settings.',
+      "Controls only which plugin tools the AI in this chat can call. Plugin commands and chat event hooks are added in the bot's Plugins tab.",
     ),
   ).toBeVisible();
 });

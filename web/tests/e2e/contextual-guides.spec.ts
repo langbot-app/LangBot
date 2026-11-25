@@ -476,14 +476,14 @@ test('pipeline guide follows its configuration sections, debug, history and bot 
   await guide.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(
     page.locator('[data-guide="pipeline-section-speech"]'),
-  ).toHaveAttribute('data-state', 'active');
+  ).toBeVisible();
   await expect(
     guide.getByRole('heading', { name: 'Configure speech capabilities' }),
   ).toBeVisible();
   await guide.getByRole('button', { name: 'Previous', exact: true }).click();
   await expect(
     page.locator('[data-guide="pipeline-section-ai"]'),
-  ).toHaveAttribute('data-state', 'active');
+  ).toBeVisible();
   expect(await highlight!.evaluate((element) => element.isConnected)).toBe(
     true,
   );
@@ -537,11 +537,11 @@ test('pipeline guide restores its section without appearing on creation', async 
   ).toBeVisible();
   await expect(
     page.locator('[data-guide="pipeline-section-output"]'),
-  ).toHaveAttribute('data-state', 'active');
+  ).toBeVisible();
   await guide.getByRole('button', { name: 'Previous', exact: true }).click();
   await expect(
     page.locator('[data-guide="pipeline-section-speech"]'),
-  ).toHaveAttribute('data-state', 'active');
+  ).toBeVisible();
 });
 
 for (const available of [true, false]) {

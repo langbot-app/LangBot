@@ -69,7 +69,14 @@ test('pipeline saves bot tools together with existing bindings and workspace sel
     },
   );
   await page.goto('/home/pipelines?id=pipeline-tools');
-  await page.getByRole('button', { name: 'Extensions', exact: true }).click();
+  // Tools are summarised on the Chat page and edited in a side sheet.
+  const chat = page.getByTestId('chat-config');
+  await expect(chat).toContainText('Plugin tools', { timeout: 30_000 });
+  await page.screenshot({
+    path: testInfo.outputPath('chat-config-overview.png'),
+    fullPage: true,
+  });
+  await page.getByTestId('chat-manage-tools').click();
   await page.getByRole('button', { name: /Bot tools/ }).click();
   await page.getByRole('checkbox', { name: /Send bot message/ }).check();
   await page.getByRole('button', { name: /Save tool access/ }).click();
@@ -87,7 +94,7 @@ test('pipeline saves bot tools together with existing bindings and workspace sel
     enable_all_plugins: false,
   });
   await page.reload();
-  await page.getByRole('button', { name: 'Extensions', exact: true }).click();
+  await page.getByTestId('chat-manage-tools').click();
   await page.getByRole('button', { name: /Bot tools/ }).click();
   await expect(
     page.getByRole('checkbox', { name: /Send bot message/ }),

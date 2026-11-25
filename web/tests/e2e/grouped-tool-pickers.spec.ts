@@ -39,7 +39,7 @@ test('agent bot tools use collapsible groups with group select-all', async ({
     },
   );
   await page.goto('/home/pipelines?id=pipeline-tools');
-  await page.getByRole('button', { name: 'Extensions', exact: true }).click();
+  await page.getByTestId('chat-manage-tools').click();
   await page.getByRole('button', { name: /Bot tools/ }).click();
 
   const groupHeader = page.getByRole('button', { name: /Messages.*0 \/ 2/ });
