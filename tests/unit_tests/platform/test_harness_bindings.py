@@ -67,3 +67,20 @@ async def test_sync_disables_revoked_processor_bot(processor):
     await sync_processor_bots(ap, object(), 'workspace-1', [])
     assert bot_service.updated == [(existing['uuid'], {'enable': False})]
     assert bot_service.bots[existing['uuid']]['enable'] is False
+
+
+@pytest.mark.asyncio
+async def test_v4_projection_adds_one_bot_for_each_new_processor():
+    """Measure the SPEC v4.0 baseline before changing the routing model."""
+    bot_service = FakeBotService()
+    ap = SimpleNamespace(bot_service=bot_service)
+    processors = [{'uuid': f'processor-{i}', 'kind': 'agent', 'name': f'Agent {i}'} for i in range(100)]
+
+    await sync_processor_bots(ap, object(), 'workspace-1', processors[:1])
+    assert len(bot_service.bots) == 1
+    await sync_processor_bots(ap, object(), 'workspace-1', processors)
+    assert len(bot_service.bots) == 100
+
+    await sync_processor_bots(ap, object(), 'workspace-1', processors[:1])
+    assert len(bot_service.bots) == 100
+    assert sum(bot['enable'] for bot in bot_service.bots.values()) == 1
