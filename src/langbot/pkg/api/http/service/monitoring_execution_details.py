@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import re
 from types import SimpleNamespace
 from langbot_plugin.api.entities.builtin.platform.events import event_summary
 
@@ -162,6 +163,9 @@ _FILTER_STAGE_POLICY_ITEMS = {
 }
 
 
+_DROP_REASON = re.compile(r'^(bot|route):[^ ]*: (?:trigger|safety|output)\.([a-z-]+)$')
+
+
 def pipeline_handling(handled_by: str | None) -> dict:
     """Handling facts of a Chat query from its recorded owner."""
     handled_by = handled_by or ''
@@ -182,10 +186,17 @@ def event_handling(metadata: dict) -> dict:
     target = route.get('target_type')
     facts: dict = {}
     if route.get('failure_code') == 'message_policy' or metadata.get('policy_item'):
+        # Rows written before structured fields only carry the drop reason,
+        # ``<bot|route>:<id>: <section>.<item>``.
+        legacy = _DROP_REASON.match(str(metadata.get('reason') or route.get('reason') or ''))
         facts = {
             'handling': 'policy',
-            'policy_item': metadata.get('policy_item') or route.get('policy_item'),
-            'policy_layer': metadata.get('policy_layer') or route.get('policy_layer'),
+            'policy_item': metadata.get('policy_item')
+            or route.get('policy_item')
+            or (legacy.group(2) if legacy else None),
+            'policy_layer': metadata.get('policy_layer')
+            or route.get('policy_layer')
+            or (legacy.group(1) if legacy else None),
         }
     elif target in {'builtin_command', 'plugin_command'}:
         name = str(route.get('target_uuid') or '')
@@ -763,8 +774,11 @@ class ExecutionDetailsMixin:
             for event_id, raw in result.all():
                 metadata = parsed(raw, {})
                 item = dropped[event_id]
-                item['policy_layer'] = metadata.get('policy_layer')
-                item['policy_item'] = metadata.get('policy_item') or item.get('policy_item')
+                legacy = _DROP_REASON.match(str(metadata.get('reason') or ''))
+                item['policy_layer'] = metadata.get('policy_layer') or (legacy.group(1) if legacy else None)
+                item['policy_item'] = (
+                    metadata.get('policy_item') or item.get('policy_item') or (legacy.group(2) if legacy else None)
+                )
         if pipeline_items:
             # Pipeline rows own the UI identity; their linked Runner ledger owns
             # timing and usage. Read them in one batch for both list and detail.

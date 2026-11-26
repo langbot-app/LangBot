@@ -1587,3 +1587,17 @@ async def test_handling_filter_and_row_facts_cover_every_source(engine, service)
     assert (policy['evt-policy']['policy_layer'], policy['evt-policy']['policy_item']) == ('bot', 'group-respond-rules')
     # Unknown values keep the unfiltered list.
     assert len(await ids('bogus')) == 10
+
+
+def test_legacy_policy_drop_reason_still_names_layer_and_rule():
+    from langbot.pkg.api.http.service.monitoring_execution_details import event_handling
+
+    facts = event_handling(
+        {
+            'reason': 'bot:b1: trigger.group-respond-rules',
+            'routes': [{'target_type': 'plugin_command', 'failure_code': 'message_policy'}],
+        }
+    )
+    assert facts == {'handling': 'policy', 'policy_item': 'group-respond-rules', 'policy_layer': 'bot'}
+    route = event_handling({'routes': [{'failure_code': 'message_policy', 'reason': 'route:r1: safety.rate-limit'}]})
+    assert (route['policy_layer'], route['policy_item']) == ('route', 'rate-limit')
