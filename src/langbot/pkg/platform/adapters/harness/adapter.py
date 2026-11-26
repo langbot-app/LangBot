@@ -9,6 +9,7 @@ from langbot_plugin.api.entities.builtin.platform import events as platform_even
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
 
 from .event_converter import build_event
+from .connection_registry import HarnessConnectionRegistry
 
 
 class HarnessAdapter(AbstractPlatformAdapter):
@@ -16,6 +17,11 @@ class HarnessAdapter(AbstractPlatformAdapter):
     logger: AbstractEventLogger = pydantic.Field(exclude=True)
     listeners: dict = pydantic.Field(default_factory=dict, exclude=True)
     _stopped: asyncio.Event = pydantic.PrivateAttr(default_factory=asyncio.Event)
+    _connections: HarnessConnectionRegistry = pydantic.PrivateAttr(default_factory=HarnessConnectionRegistry)
+
+    @property
+    def connections(self) -> HarnessConnectionRegistry:
+        return self._connections
 
     def get_supported_events(self) -> list[str]:
         """Only receive standard inbound messages; avoid legacy double dispatch."""
@@ -54,7 +60,13 @@ class HarnessAdapter(AbstractPlatformAdapter):
         return None
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
-        raise RuntimeError('Harness outbound transport is not connected')
+        raise RuntimeError('Harness proactive messaging is not supported')
 
     async def reply_message(self, message_source, message: platform_message.MessageChain, quote_origin: bool = False):
-        raise RuntimeError('Harness outbound transport is not connected')
+        source = getattr(message_source, 'source_platform_object', None)
+        conversation_id = source.get('harness_conversation_id') if isinstance(source, dict) else None
+        connection = await self.connections.get(conversation_id) if conversation_id else None
+        if connection is None:
+            raise RuntimeError('Harness conversation is not connected')
+        await connection.send({'type': 'message', 'role': 'assistant', 'content': str(message), 'final': True})
+        return platform_events.MessageResult(message_id='harness-reply', raw={})
