@@ -32,7 +32,7 @@ Receive:
 
 ## Group Trigger Rules
 
-Group messages only enter the pipeline if trigger rules are met:
+On a real bot, group admission uses the effective `message_policy.trigger`:
 
 ```json
 {
@@ -45,9 +45,9 @@ Group messages only enter the pipeline if trigger rules are met:
 }
 ```
 
-For testing, set `random: 1.0` via PUT `/api/v1/pipelines/<uuid>` to respond to all messages.
+On an isolated test bot, set `random: 1.0` in the bot or route policy. Chat debug uses a neutral policy and cannot test group admission or reply formatting.
 
-**Important:** EventListener hooks like `GroupMessageReceived` fire regardless of trigger rules. Only the LLM processing (`GroupNormalMessageReceived` and beyond) requires trigger rules.
+`GroupMessageReceived` fires before admission; `GroupNormalMessageReceived` fires only for admitted non-commands.
 
 ## Plugin Hot-Reload
 

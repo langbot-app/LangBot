@@ -21,7 +21,7 @@ Read the matching doc page before writing code; do not guess SDK signatures.
 
 Declare components in `manifest.yaml` `spec.components`; each component has a `.yaml` (metadata) and a `.py` (implementation). Docs per type in `docs/en/plugin/dev/components/`:
 
-- `EventListener`: hook pipeline events (`*MessageReceived`, `*NormalMessageReceived`, `NormalMessageResponded`, ...).
+- `EventListener`: Chat event hooks (聊天事件钩子). Enable the plugin on the bot or route, not in the Chat tool list. See [message lifecycle](references/sdk-pitfalls.md#chat-event-hooks) for command ordering and streaming limitations.
 - `Command`: `!command` handlers. `Tool`: LLM function-call tools.
 - `Runner`: an Agent runner/event processor (see LocalAgent and other `plugins/Runner/*`).
 - `KnowledgeEngine`, `KnowledgeRetriever`, `Parser`: RAG backends, retrieval and document parsing.

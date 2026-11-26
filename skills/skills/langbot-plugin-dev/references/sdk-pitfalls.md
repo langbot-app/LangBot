@@ -123,7 +123,7 @@ from langbot_plugin.api.definition.base_plugin import BasePlugin
 from langbot_plugin.api.definition.plugin import BasePlugin
 ```
 
-## Pipeline Events
+## Chat event hooks
 
 Events the EventListener can hook (from most general to most specific):
 
@@ -131,14 +131,14 @@ Events the EventListener can hook (from most general to most specific):
 |---|---|
 | `GroupMessageReceived` | **Any** group message arrives (before trigger rules) |
 | `PersonMessageReceived` | **Any** private message arrives |
-| `GroupNormalMessageReceived` | Group message passes trigger rules, going to LLM |
-| `PersonNormalMessageReceived` | Private message going to LLM |
+| `GroupNormalMessageReceived` | Admitted non-command group message before Chat or Agent dispatch |
+| `PersonNormalMessageReceived` | Admitted non-command private message before Chat or Agent dispatch |
 | `GroupCommandSent` | Group message matched as command |
 | `PersonCommandSent` | Private message matched as command |
-| `NormalMessageResponded` | LLM generated a response |
-| `PromptPreProcessing` | About to build LLM context |
+| `NormalMessageResponded` | Chat or Agent reply; streamed content can only be observed |
+| `PromptPreProcessing` | Chat builds model context; not fired on Agent routes |
 
-**Key insight:** `*MessageReceived` fires for ALL messages regardless of trigger rules. `*NormalMessageReceived` only fires for messages that match the pipeline's trigger rules (e.g., @bot, prefix, random%). Use `*MessageReceived` for message collection/logging.
+At bot entry, the host preselects a route to resolve its policy and enabled plugins. `*MessageReceived` fires once per raw message before admission, even for commands and dropped routes. A matching system command takes precedence over a same-name plugin command. Commands run before route dispatch and fire `*CommandSent` after admission. Only admitted non-commands reach `*NormalMessageReceived`.
 
 ## EventContext API
 

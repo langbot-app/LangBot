@@ -118,9 +118,7 @@ The tools wrap the LangBot service layer. Current tools (v1):
 `create_pipeline` and HTTP `POST /api/v1/pipelines` preserve a supplied `config`
 and `extensions_preferences`; omit `config` to use installed Runner defaults.
 Selecting `ai.runner.id` never grants extension access: an empty `plugins` list
-with `enable_all_plugins=false` still denies that plugin's Tool, EventListener
-and Command components, while allowing its selected Runner. Editing and copying
-a pipeline retain these independent settings.
+with `enable_all_plugins=false` denies its AI-callable tools, while allowing its selected Runner. Commands and Chat event hooks use the bot's plugin selection instead.
 
 | Tool | Purpose |
 | --- | --- |
@@ -257,6 +255,8 @@ independent settings. Optional plugin behavior belongs in the Runner config sche
 EventListener plugins are message lifecycle hooks on the bot and are enabled through `message_policy.plugins`; they fire for Chat, Agent and command routes alike (see above).
 
 ## Command processors
+
+Read and update `command_settings` on the bot. `enabled` controls command matching; `prefixes` is an ordered list such as `["/", "!"]`. `builtin` maps system command names to `{enabled, permission}`. An enabled system command takes precedence over a plugin command of the same name. `plugin_permissions` maps `author/plugin/command` to `everyone` or `admins`. `denied_reply` is `silent` or `notice`. Grant bot administrator status in session monitoring, not in `command_settings`. Inspect available system commands with `GET /api/v1/platform/bots/_/builtin-commands`.
 
 Telegram and Discord expose `spec.command_registration` in adapter metadata.
 Set `command_settings.platform_commands` to `{"enabled": true, "selected": ["draw"]}`
@@ -485,4 +485,4 @@ Workspace API documentation for the 256 KiB RPC envelope and compatibility rules
 
 Use `list_message_upgrade_checks` to inspect pending message-policy upgrades and
 `list_bot_event_route_statuses` for per-route 24-hour counts. Upgrade actions
-and acknowledgments are administrator decisions in the upgrade assistant.
+and acknowledgments are administrator decisions: under `/api/v1/platform/bots/_/upgrade-checks`, GET lists items and reports; POST `action` with `{id,action}`, `confirm` with `{id}`, or `confirm-all` without a body. MCP exposes only the read operation. In execution monitoring, filter `handling` by `ai`, `command`, `plugin` or `policy`; inspect `policy_layer`, `policy_item`, `command_kind`, `command_name`, `command_denied` and `hook`. Reply formatting actions appear in input event `metadata.policy_events`.
