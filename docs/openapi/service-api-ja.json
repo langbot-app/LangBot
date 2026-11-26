@@ -2647,7 +2647,7 @@
           "Plugins"
         ],
         "summary": "从 Marketplace 安装插件",
-        "description": "从 LangBot Marketplace 安装插件。异步操作，返回任务 ID。",
+        "description": "从 LangBot Marketplace 安装插件。异步操作，返回任务 ID。宣言された LangBot バージョン範囲が現在のバージョンと互換性がない（または互換バージョンのリリースが存在しない）場合、`allow_incompatible: true` が指定されていなければ非同期タスクはエラーコード `plugin_incompatible_langbot_version`（details に `current`、`min`、`max`、`status` を含む）で失敗します。",
         "requestBody": {
           "required": true,
           "content": {
@@ -2662,6 +2662,11 @@
                     "type": "string",
                     "description": "Marketplace 插件 ID（author/name 格式）",
                     "example": "kellz-dev/disaster-alert"
+                  },
+                  "allow_incompatible": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "現在の LangBot バージョンと互換性のないプラグインのインストールを許可するかどうか（デフォルト false）。ユーザーの明示的な確認後にのみ使用してください。"
                   }
                 }
               }
@@ -2692,6 +2697,49 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "プラグインが現在の LangBot バージョンと互換性がない場合、非同期タスクがエラーコード `plugin_incompatible_langbot_version` を返します",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "example": "plugin_incompatible_langbot_version"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "current": {
+                          "type": "string",
+                          "example": "4.11.9"
+                        },
+                        "min": {
+                          "type": "string",
+                          "nullable": true,
+                          "example": "4.12.0"
+                        },
+                        "max": {
+                          "type": "string",
+                          "nullable": true,
+                          "example": "4.x"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "incompatible",
+                            "invalid"
+                          ],
+                          "example": "incompatible"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -2702,7 +2750,7 @@
           "Plugins"
         ],
         "summary": "从 GitHub 安装插件",
-        "description": "从 GitHub 仓库安装插件。异步操作，返回任务 ID。",
+        "description": "从 GitHub 仓库安装插件。异步操作，返回任务 ID。宣言された LangBot バージョン範囲が現在のバージョンと互換性がない（または宣言が無効な）場合、`allow_incompatible: true` が指定されていなければ非同期タスクはエラーコード `plugin_incompatible_langbot_version`（details に `current`、`min`、`max`、`status` を含む）で失敗します。",
         "requestBody": {
           "required": true,
           "content": {
@@ -2717,6 +2765,11 @@
                     "type": "string",
                     "description": "GitHub 仓库 URL",
                     "example": "https://github.com/rocksclawbot/langbot-community-plugins/tree/main/disaster-alert"
+                  },
+                  "allow_incompatible": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "現在の LangBot バージョンと互換性のないプラグインのインストールを許可するかどうか（デフォルト false）。ユーザーの明示的な確認後にのみ使用してください。"
                   }
                 }
               }
@@ -2740,6 +2793,49 @@
                       "properties": {
                         "task_id": {
                           "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "プラグインが現在の LangBot バージョンと互換性がない場合、非同期タスクがエラーコード `plugin_incompatible_langbot_version` を返します",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                          "example": "plugin_incompatible_langbot_version"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "current": {
+                          "type": "string",
+                          "example": "4.11.9"
+                        },
+                        "min": {
+                          "type": "string",
+                          "nullable": true,
+                          "example": "4.12.0"
+                        },
+                        "max": {
+                          "type": "string",
+                          "nullable": true,
+                          "example": "4.x"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "incompatible",
+                            "invalid"
+                          ],
+                          "example": "incompatible"
                         }
                       }
                     }

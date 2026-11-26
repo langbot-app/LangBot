@@ -2647,7 +2647,7 @@
           "Plugins"
         ],
         "summary": "Install a plugin from Marketplace",
-        "description": "Install a plugin from LangBot Marketplace asynchronously and return the task ID.",
+        "description": "Install a plugin from LangBot Marketplace asynchronously and return the task ID. If the plugin's declared LangBot version range is incompatible with the current version (or no compatible release exists) and `allow_incompatible` is not `true`, the task fails with error code `plugin_incompatible_langbot_version` (details include `current`, `min`, `max`, and `status`).",
         "requestBody": {
           "required": true,
           "content": {
@@ -2662,6 +2662,11 @@
                     "type": "string",
                     "description": "Marketplace plugin ID (author/name format)",
                     "example": "kellz-dev/disaster-alert"
+                  },
+                  "allow_incompatible": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Allow installing a plugin incompatible with the current LangBot version (default false). Use only after explicit user confirmation."
                   }
                 }
               }
@@ -2692,6 +2697,49 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "When the plugin is incompatible with the current LangBot version, the async task fails with error code `plugin_incompatible_langbot_version`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "example": "plugin_incompatible_langbot_version"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "current": {
+                          "type": "string",
+                          "example": "4.11.9"
+                        },
+                        "min": {
+                          "type": "string",
+                          "nullable": true,
+                          "example": "4.12.0"
+                        },
+                        "max": {
+                          "type": "string",
+                          "nullable": true,
+                          "example": "4.x"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "incompatible",
+                            "invalid"
+                          ],
+                          "example": "incompatible"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -2702,7 +2750,7 @@
           "Plugins"
         ],
         "summary": "Install a plugin from GitHub",
-        "description": "Install a plugin from a GitHub repository asynchronously and return the task ID.",
+        "description": "Install a plugin from a GitHub repository asynchronously and return the task ID. If the plugin's declared LangBot version range is incompatible with the current version (or invalid) and `allow_incompatible` is not `true`, the task fails with error code `plugin_incompatible_langbot_version` (details include `current`, `min`, `max`, and `status`).",
         "requestBody": {
           "required": true,
           "content": {
@@ -2717,6 +2765,11 @@
                     "type": "string",
                     "description": "GitHub repository URL",
                     "example": "https://github.com/rocksclawbot/langbot-community-plugins/tree/main/disaster-alert"
+                  },
+                  "allow_incompatible": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Allow installing a plugin incompatible with the current LangBot version (default false). Use only after explicit user confirmation."
                   }
                 }
               }
@@ -2740,6 +2793,49 @@
                       "properties": {
                         "task_id": {
                           "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "When the plugin is incompatible with the current LangBot version, the async task fails with error code `plugin_incompatible_langbot_version`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "example": "plugin_incompatible_langbot_version"
+                    },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "current": {
+                          "type": "string",
+                          "example": "4.11.9"
+                        },
+                        "min": {
+                          "type": "string",
+                          "nullable": true,
+                          "example": "4.12.0"
+                        },
+                        "max": {
+                          "type": "string",
+                          "nullable": true,
+                          "example": "4.x"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "incompatible",
+                            "invalid"
+                          ],
+                          "example": "incompatible"
                         }
                       }
                     }

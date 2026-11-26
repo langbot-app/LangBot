@@ -47,6 +47,69 @@ Plugin multilingual support follows the [RFC 4646](https://datatracker.ietf.org/
 - `th_TH` Thai
 - `es_ES` Spanish
 
+## LangBot Version Compatibility
+
+Plugins can declare their compatible LangBot version range under `metadata.compatibility.langbot` in `manifest.yaml`:
+
+```yaml
+metadata:
+  compatibility:
+    langbot:
+      min: "4.12.0"   # Optional, inclusive
+      max: "4.x"      # Optional, inclusive
+```
+
+### Fields and Shorthand Rules
+
+- **Optional & Omission**: `compatibility`, `langbot`, or either bound (`min` or `max`) can be omitted (or set to `null`); an omitted bound means unrestricted. If no compatibility range is declared, the plugin is treated as compatible with all LangBot versions.
+- **Inclusive Bounds**: Both `min` and `max` are inclusive (`min <= Core version <= max`). An optional `v` prefix is allowed (e.g., `"v4.12.0"`).
+- **`min` Shorthand**: Supports `4`, `4.12`, and `4.12.3`. Missing segments are zero-padded (e.g., `"4"` equals `4.0.0`, `"4.12"` equals `4.12.0`). Wildcards (`x` or `*`) are not allowed in `min`.
+- **`max` Shorthand**: Supports `4`, `4.x`, `4.x.x`, `4.*`, `4.12`, `4.12.x`, and `4.12.3`. Missing segments or `x` / `*` mean that segment has no upper limit (e.g., `"4"` and `"4.x"` both equal `4.∞.∞`; `"4.12"` and `"4.12.x"` both equal `4.12.∞`). A wildcard must follow a numeric segment and cannot be followed by further numbers (e.g., `"4.x.5"` is invalid).
+
+### Quotes Are Required
+
+Both `min` and `max` values **must be strings**—always wrap version numbers in quotes (e.g., `"4.10"`). Without quotes, YAML parses `4.10` as the float `4.1` and `4` as the integer `4`, which alters the version or fails validation.
+
+### Version Comparison & Marketplace Selection
+
+- **Core Prerelease Comparison**: When comparing against the LangBot Core version, only the first three numeric segments `X.Y.Z` are used (stripping any `v` prefix and ignoring prerelease or dev suffixes). For example, `4.12.0b1`, `4.12.0rc1`, and `4.12.0.dev0+g123` are all treated as `4.12.0`, so prerelease builds satisfy `min: "4.12.0"`.
+- **Selecting the Latest Compatible Release**: When the plugin marketplace selects the "latest compatible version" (`compatible_version`) for the current LangBot, it orders compatible releases by semver descending:
+  - Plugin version parsing accepts an optional `v` prefix, pads `1.2` to `1.2.0`, and supports both SemVer prereleases (e.g., `1.2.0-beta.1`) and PEP 440 style prereleases (e.g., `1.2.0a1`, `1.2.0b1`, `1.2.0rc1`).
+  - **Stable releases first**: If any compatible stable release exists, the highest stable release is selected; prereleases are only selected when no compatible stable release is available.
+  - Unparseable version strings rank after all parseable versions in reverse publication order; versions with equal semver (such as `1.2` and `1.2.0`) also fall back to reverse publication order.
+
+### Validation & Error Examples
+
+If the declaration is invalid (non-string value, malformed version, or `min > max`), `lbp build` exits with status 1 and prints an error:
+
+```text
+$ lbp build
+metadata.compatibility.langbot.min: 请用引号包住版本号（YAML 解析值为 4.1）
+```
+
+```text
+$ lbp build
+metadata.compatibility.langbot.min: '4.12' exceeds max '4.11'
+```
+
+```text
+$ lbp build
+metadata.compatibility.langbot.min: invalid version '4.x'
+```
+
+Invalid declarations are also rejected during plugin submission to the marketplace (Space). During non-marketplace installation in LangBot Core (local upload or GitHub), an invalid declaration is treated as `invalid` and requires explicit user confirmation.
+
+### Recommended Configuration
+
+Declare only the tested minimum version `min`, and omit `max` unless you have confirmed that a future LangBot release breaks compatibility:
+
+```yaml
+metadata:
+  compatibility:
+    langbot:
+      min: "4.12.0"
+```
+
 ## Plugin Configuration Item Format
 
 In the `manifest.yaml` file, fields declared in `spec.config` will be rendered by LangBot as configuration item forms for users to fill out. Plugins can retrieve user-filled configuration items through APIs provided by the SDK (see later sections).

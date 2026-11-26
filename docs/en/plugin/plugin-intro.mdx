@@ -21,14 +21,14 @@ More component types will be supported for plugin implementation in the future.
 
 ## Installing Plugins
 
-Currently supports uploading plugin packages and installing plugins from the plugin marketplace.
+Currently supports uploading plugin packages, installing from the plugin marketplace, and installing from GitHub Releases.
 In LangBot's plugin management page, click the top-right corner to choose the installation method.
 
 <img width="600" src="/images/zh/plugin/install_method.png" />
 
-Click `Upload Local`, select `.lbpkg` files shared by others or downloaded from the Marketplace to install plugins.
+Click `Upload Local`, select `.lbpkg` files shared by others or downloaded from the Marketplace to install plugins. When installing via local upload or GitHub, if the plugin's declared LangBot version range is incompatible with your current version (or the declaration is invalid), a compatibility warning is shown and explicit confirmation is required before installation proceeds.
 
-Or click the Plugin Marketplace tab, select a plugin, and click install.
+Or click the Plugin Marketplace tab, select a plugin, and click install. The marketplace only lists plugins that have at least one version compatible with your current LangBot version, and automatically installs the latest compatible version (preferring stable releases).
 
 <img width="600" src="/images/zh/plugin/install_from_marketplace.png" />
 
@@ -46,9 +46,11 @@ Some plugins may require you to fill in specific configuration items (please ref
 
 ### Updating Plugins
 
-Only plugins installed from the plugin marketplace can be updated. The plugin detail page shows the installed version next to its title; when the marketplace has a newer version, an "Update to vX.Y.Z" button appears at the top right of the detail page. You can also update from the plugin menu in the installed list.
+Only plugins installed from the plugin marketplace can be updated. The plugin detail page shows the installed version next to its title; when the marketplace has a newer compatible version, an "Update to vX.Y.Z" button appears at the top right of the detail page. You can also update from the plugin menu in the installed list (incompatible releases do not trigger update prompts).
 
 <img width="600" src="/images/zh/plugin/update_plugin.png" />
+
+If an already installed plugin becomes incompatible after you upgrade LangBot, only a warning is displayed—the plugin will not be automatically disabled.
 
 ## Plugin Marketplace
 
