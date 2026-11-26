@@ -13,6 +13,8 @@ import {
   Settings2,
   AlertCircle,
   Blocks,
+  Command as CommandIcon,
+  Lock,
   SquareArrowOutUpRight,
   Download,
   Plus,
@@ -51,6 +53,10 @@ import PolicyScopeSelect, { BOT_SCOPE } from './PolicyScopeSelect';
 import RoutingLayer from './RoutingLayer';
 import CommandPrefixPopover from './CommandPrefixPopover';
 import CommandConfigDialog from './CommandConfigDialog';
+import SystemCommandsSheet, {
+  builtinState,
+  useBuiltinCommands,
+} from './SystemCommandsSheet';
 import AddBotPluginDialog, { PluginKindBadges } from './AddBotPluginDialog';
 import PlatformCommandRegistration from './PlatformCommandRegistration';
 import {
@@ -193,6 +199,10 @@ export default function BotPluginsPanel({
   const commands = { ...DEFAULT_COMMAND_SETTINGS, ...(commandSettings ?? {}) };
   const prefixes = commands.prefixes?.length ? commands.prefixes : ['/'];
   const commandPrefix = prefixes[0];
+  const { commands: builtinCommands } = useBuiltinCommands();
+  const builtinEnabled = (builtinCommands ?? []).filter(
+    (command) => builtinState(commands, command).enabled,
+  ).length;
 
   useEffect(() => {
     let cancelled = false;
@@ -561,6 +571,23 @@ export default function BotPluginsPanel({
                   </span>
                 )}
                 <div className="mt-1.5 flex min-h-5 w-full flex-wrap justify-center gap-1">
+                  {step === 'command' &&
+                    commands.enabled &&
+                    builtinEnabled > 0 && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            data-lifecycle-builtin
+                            className="flex size-5 items-center justify-center rounded bg-primary/10 text-primary ring-1 ring-border"
+                          >
+                            <CommandIcon className="size-3" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {t('bots.systemCommands.title')}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
                   {items.map((row) => (
                     <Tooltip key={row.id}>
                       <TooltipTrigger asChild>
@@ -629,6 +656,19 @@ export default function BotPluginsPanel({
               checked={commands.enabled}
               disabled={Boolean(route)}
               onCheckedChange={(enabled) => updateCommands({ enabled })}
+            />
+            <SystemCommandsSheet
+              settings={commands}
+              onChange={updateCommands}
+              prefix={commandPrefix}
+              readOnly={Boolean(route)}
+              pluginCommands={enabledRows.flatMap((row) =>
+                commandsOf(row).map((command) => ({
+                  key: `${row.id}/${command}`,
+                  command,
+                  pluginLabel: row.label,
+                })),
+              )}
             />
             <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
               {t('bots.pluginCommands.prefixes')}
@@ -759,6 +799,16 @@ export default function BotPluginsPanel({
                                 )}
                                 {commandPrefix}
                                 {command}
+                                {commands.plugin_permissions?.[
+                                  `${row.id}/${command}`
+                                ] === 'admins' && (
+                                  <Lock
+                                    className="size-3"
+                                    aria-label={t(
+                                      'bots.systemCommands.adminsOnly',
+                                    )}
+                                  />
+                                )}
                               </Badge>
                             );
                             return owner ? (

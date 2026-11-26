@@ -460,11 +460,31 @@ export interface CommandProcessorDescriptor {
   commands: CommandComponentDescriptor[];
 }
 
+export type CommandPermission = 'everyone' | 'admins';
+
 export interface BotCommandSettings {
   enabled: boolean;
   prefixes: string[];
   processors: BotCommandProcessorBinding[];
   platform_commands?: { enabled: boolean; selected: string[] };
+  /** Built-in (system) commands by name; missing entries use the defaults. */
+  builtin?: Record<string, { enabled: boolean; permission: CommandPermission }>;
+  /** Plugin command permissions keyed by `author/plugin/command`. */
+  plugin_permissions?: Record<string, CommandPermission>;
+  /** Admin sender IDs, `person_<id>`. */
+  admins?: string[];
+  /** What a sender without permission gets: nothing, or a notice. */
+  denied_reply?: 'silent' | 'notice';
+}
+
+export interface BuiltinCommandDescriptor {
+  name: string;
+  aliases: string[];
+  group: 'session' | 'info' | 'admin';
+  default_enabled: boolean;
+  default_permission: CommandPermission;
+  label: import('../common').I18nObject;
+  description: import('../common').I18nObject;
 }
 
 export interface PlatformCommandCapability {

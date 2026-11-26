@@ -1203,6 +1203,40 @@ const enUS = {
         },
       },
     },
+    systemCommands: {
+      title: 'System commands',
+      entry: 'System commands · {{enabled}}/{{total}}',
+      description:
+        'Commands built into LangBot, matched by the command prefix together with plugin commands. Turn each on or off and choose who may use it.',
+      readOnly:
+        'System commands apply to the whole bot; change them under Bot default.',
+      admins: 'Admins',
+      adminHint: 'Send /whoami in chat to get your ID, in the form person_xxx.',
+      adminFormat: 'Admin IDs start with person_, e.g. person_123456.',
+      removeAdmin: 'Remove {{id}}',
+      noAdmins:
+        'No admins yet, so commands set to "Admins only" can\'t be used by anyone.',
+      denied: 'Without permission',
+      deniedSilent: 'No reply',
+      deniedNotice: 'Reply with a notice',
+      deniedSilentHint:
+        'Treated as if the command did not exist; the message goes on to the routes.',
+      deniedNoticeHint:
+        'Replies "You don\'t have permission to do this" in the workspace language.',
+      everyone: 'Everyone',
+      adminsOnly: 'Admins only',
+      permissionOf: 'Who may use {{command}}',
+      enableCommand: 'Enable {{command}}',
+      pluginCommands: 'Plugin commands',
+      pluginCommandsHint:
+        'Commands from enabled plugins can be limited to admins one by one.',
+      noPluginCommands: 'The enabled plugins provide no commands.',
+      groups: {
+        session: 'Session',
+        info: 'Info',
+        admin: 'Admin',
+      },
+    },
     pluginHooks: {
       openSettings: 'Open plugin settings',
       devDocsHint: 'Want to build your own command or hook plugin? See the',

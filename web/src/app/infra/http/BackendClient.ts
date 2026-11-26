@@ -887,6 +887,12 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/platform/bots/${uuid}`);
   }
 
+  public getBuiltinCommands(): Promise<{
+    commands: import('../entities/api').BuiltinCommandDescriptor[];
+  }> {
+    return this.get('/api/v1/platform/bots/_/builtin-commands');
+  }
+
   public getMessagePolicyMetadata(): Promise<
     import('../entities/api').MessagePolicyMetadata
   > {

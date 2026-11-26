@@ -1207,6 +1207,41 @@ const jaJP = {
         },
       },
     },
+    systemCommands: {
+      title: 'システムコマンド',
+      entry: 'システムコマンド · {{enabled}}/{{total}}',
+      description:
+        'LangBot に組み込まれたコマンドで、プラグインコマンドと同じくプレフィックスで判定します。コマンドごとにオン／オフと利用権限を設定します。',
+      readOnly:
+        'システムコマンドはボット全体に適用されます。「ボットの既定」で変更してください。',
+      admins: '管理者',
+      adminHint:
+        'チャットで /whoami を送ると自分の ID（person_xxx 形式）を確認できます。',
+      adminFormat: '管理者 ID は person_ で始まります（例：person_123456）。',
+      removeAdmin: '{{id}} を削除',
+      noAdmins:
+        '管理者がいないため、「管理者のみ」のコマンドは誰も使えません。',
+      denied: '権限がないとき',
+      deniedSilent: '返信しない',
+      deniedNotice: '権限がない旨を返信',
+      deniedSilentHint:
+        'コマンドがないものとして扱い、メッセージは通常どおりルートで処理します。',
+      deniedNoticeHint:
+        '「この操作を実行する権限がありません」とワークスペースの言語で返信します。',
+      everyone: '全員',
+      adminsOnly: '管理者のみ',
+      permissionOf: '{{command}} の利用権限',
+      enableCommand: '{{command}} を有効化',
+      pluginCommands: 'プラグインコマンド',
+      pluginCommandsHint:
+        '有効なプラグインのコマンドを個別に管理者のみにできます。',
+      noPluginCommands: '有効なプラグインにコマンドはありません。',
+      groups: {
+        session: 'セッション',
+        info: '情報',
+        admin: '管理',
+      },
+    },
     pluginHooks: {
       openSettings: 'プラグイン設定を開く',
       devDocsHint: 'コマンドやフックのプラグインを自作するには',

@@ -1215,6 +1215,42 @@ const esES = {
         },
       },
     },
+    systemCommands: {
+      title: 'Comandos del sistema',
+      entry: 'Comandos del sistema · {{enabled}}/{{total}}',
+      description:
+        'Comandos integrados en LangBot que se reconocen por el prefijo, igual que los de plugins. Actívalos o desactívalos y elige quién puede usarlos.',
+      readOnly:
+        'Los comandos del sistema se aplican a todo el bot; cámbialos en «Predeterminado del bot».',
+      admins: 'Administradores',
+      adminHint:
+        'Envía /whoami en el chat para ver tu ID, con el formato person_xxx.',
+      adminFormat:
+        'Los ID de administrador empiezan por person_, p. ej. person_123456.',
+      removeAdmin: 'Quitar {{id}}',
+      noAdmins:
+        'Aún no hay administradores, así que nadie puede usar los comandos «Solo administradores».',
+      denied: 'Sin permiso',
+      deniedSilent: 'No responder',
+      deniedNotice: 'Responder con un aviso',
+      deniedSilentHint:
+        'Se trata como si el comando no existiera; el mensaje sigue a las rutas.',
+      deniedNoticeHint:
+        'Responde «No tienes permiso para hacer esto» en el idioma del espacio de trabajo.',
+      everyone: 'Todos',
+      adminsOnly: 'Solo administradores',
+      permissionOf: 'Quién puede usar {{command}}',
+      enableCommand: 'Activar {{command}}',
+      pluginCommands: 'Comandos de plugins',
+      pluginCommandsHint:
+        'Los comandos de los plugins activos se pueden limitar a administradores uno a uno.',
+      noPluginCommands: 'Los plugins activos no ofrecen comandos.',
+      groups: {
+        session: 'Sesión',
+        info: 'Información',
+        admin: 'Administración',
+      },
+    },
     pluginHooks: {
       openSettings: 'Abrir ajustes del plugin',
       devDocsHint:

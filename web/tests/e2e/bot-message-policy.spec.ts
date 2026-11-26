@@ -589,3 +589,68 @@ test('message policy settings read as summaries and edit in place', async ({
     'group-respond-rules': { enabled: true, at: true, prefix: ['ai'] },
   });
 });
+
+test('system commands are configured from a small entry in the command bar', async ({
+  page,
+}) => {
+  const saved = await setup(page);
+  const describe = (text: string) => ({ en_US: text, zh_Hans: text });
+  await page.route('**/api/v1/platform/bots/_/builtin-commands', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        data: {
+          commands: [
+            ['help', 'session', true, 'everyone', []],
+            ['new', 'session', true, 'everyone', ['reset']],
+            ['status', 'info', true, 'admins', []],
+            ['model', 'admin', false, 'admins', []],
+          ].map(([name, group, enabled, permission, aliases]) => ({
+            name,
+            group,
+            default_enabled: enabled,
+            default_permission: permission,
+            aliases,
+            label: describe(`/${name}`),
+            description: describe(`${name} description`),
+          })),
+        },
+      },
+    }),
+  );
+  await page.goto('/home/bots?id=policy-bot');
+  await page.getByRole('tab', { name: 'Plugins' }).click();
+  const entry = page.getByTestId('system-commands-button');
+  await expect(entry).toContainText('3/4', { timeout: 15_000 });
+  await entry.click();
+  const sheet = page.getByTestId('system-commands-sheet');
+  await expect(sheet).toContainText('No admins yet');
+  const admin = sheet.getByTestId('system-commands-admin-input');
+  await admin.fill('12345');
+  await admin.press('Enter');
+  await expect(sheet).toContainText('Admin IDs start with person_');
+  await admin.fill('person_12345');
+  await admin.press('Enter');
+  await expect(sheet).not.toContainText('No admins yet');
+  await sheet.getByRole('radio', { name: 'Reply with a notice' }).click();
+  await sheet.getByRole('switch', { name: 'Enable /model' }).click();
+  await sheet.getByRole('combobox', { name: 'Who may use /new' }).click();
+  await page.getByRole('option', { name: 'Admins only' }).click();
+  await sheet.getByRole('combobox', { name: 'Who may use /draw' }).click();
+  await page.getByRole('option', { name: 'Admins only' }).click();
+  await sheet.getByRole('button', { name: 'Close' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(entry).toContainText('4/4');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect.poll(() => saved.length).toBe(1);
+  const body = saved[0] as { command_settings: Record<string, unknown> };
+  expect(body.command_settings).toMatchObject({
+    admins: ['person_12345'],
+    denied_reply: 'notice',
+    builtin: {
+      model: { enabled: true, permission: 'admins' },
+      new: { enabled: true, permission: 'admins' },
+    },
+    plugin_permissions: { 'qa/draw/draw': 'admins' },
+  });
+});

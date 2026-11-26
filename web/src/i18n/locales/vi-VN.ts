@@ -1195,6 +1195,41 @@ const viVN = {
         },
       },
     },
+    systemCommands: {
+      title: 'Lệnh hệ thống',
+      entry: 'Lệnh hệ thống · {{enabled}}/{{total}}',
+      description:
+        'Lệnh có sẵn trong LangBot, nhận diện theo tiền tố như lệnh plugin. Bật/tắt và chọn ai được dùng từng lệnh tại đây.',
+      readOnly:
+        'Lệnh hệ thống áp dụng cho cả bot; hãy sửa trong «Mặc định của bot».',
+      admins: 'Quản trị viên',
+      adminHint: 'Gửi /whoami trong chat để xem ID của bạn, dạng person_xxx.',
+      adminFormat:
+        'ID quản trị viên bắt đầu bằng person_, ví dụ person_123456.',
+      removeAdmin: 'Gỡ {{id}}',
+      noAdmins:
+        'Chưa có quản trị viên nên chưa ai dùng được lệnh «Chỉ quản trị viên».',
+      denied: 'Khi không có quyền',
+      deniedSilent: 'Không trả lời',
+      deniedNotice: 'Trả lời thông báo',
+      deniedSilentHint:
+        'Coi như không có lệnh này; tin nhắn đi tiếp theo các tuyến.',
+      deniedNoticeHint:
+        'Trả lời «Bạn không có quyền thực hiện thao tác này» theo ngôn ngữ workspace.',
+      everyone: 'Mọi người',
+      adminsOnly: 'Chỉ quản trị viên',
+      permissionOf: 'Ai được dùng {{command}}',
+      enableCommand: 'Bật {{command}}',
+      pluginCommands: 'Lệnh plugin',
+      pluginCommandsHint:
+        'Lệnh của plugin đang bật có thể giới hạn cho quản trị viên từng lệnh.',
+      noPluginCommands: 'Các plugin đang bật không có lệnh.',
+      groups: {
+        session: 'Phiên',
+        info: 'Thông tin',
+        admin: 'Quản lý',
+      },
+    },
     pluginHooks: {
       openSettings: 'Mở cài đặt plugin',
       devDocsHint: 'Muốn tự viết plugin lệnh hoặc hook? Xem',
