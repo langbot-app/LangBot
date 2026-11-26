@@ -2647,7 +2647,7 @@
           "Plugins"
         ],
         "summary": "从 Marketplace 安装插件",
-        "description": "从 LangBot Marketplace 安装插件。异步操作，返回任务 ID。",
+        "description": "LangBot Marketplace からプラグインをインストールします。非同期処理で、POST リクエストは直ちに `task_id` を返します。現在の LangBot と互換性のあるバージョンが存在しない場合、非同期タスクは直ちに失敗します（`allow_incompatible` はこれに対して無効です）。`allow_incompatible` はパッケージの manifest に対する互換性チェックのみをスキップします。互換性エラー発生時は、タスク照会 API からエラーコード `plugin_incompatible_langbot_version` および `details`（`current`、`min`、`max`、`status`: `\"incompatible\" | \"invalid\"`）を取得できます。",
         "requestBody": {
           "required": true,
           "content": {
@@ -2662,6 +2662,11 @@
                     "type": "string",
                     "description": "Marketplace 插件 ID（author/name 格式）",
                     "example": "kellz-dev/disaster-alert"
+                  },
+                  "allow_incompatible": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "パッケージ manifest の LangBot 互換性チェックをスキップするかどうか（デフォルト false）。ユーザーの明示的な確認後にのみ使用してください（マーケットプレイスに互換バージョンがない場合は回避できません）。"
                   }
                 }
               }
@@ -2702,7 +2707,7 @@
           "Plugins"
         ],
         "summary": "从 GitHub 安装插件",
-        "description": "从 GitHub 仓库安装插件。异步操作，返回任务 ID。",
+        "description": "GitHub リポジトリからプラグインをインストールします。非同期処理で、POST リクエストは直ちに `task_id` を返します。宣言された LangBot バージョン範囲が現在のバージョンと互換性がない（または宣言が無効な）場合、`allow_incompatible: true` が指定されていなければ非同期タスクは失敗し、タスク照会 API からエラーコード `plugin_incompatible_langbot_version` および `details`（`current`、`min`、`max`、`status`: `\"incompatible\" | \"invalid\"`）を取得できます。",
         "requestBody": {
           "required": true,
           "content": {
@@ -2717,6 +2722,11 @@
                     "type": "string",
                     "description": "GitHub 仓库 URL",
                     "example": "https://github.com/rocksclawbot/langbot-community-plugins/tree/main/disaster-alert"
+                  },
+                  "allow_incompatible": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "現在の LangBot バージョンと互換性のないプラグインのインストールを許可するかどうか（デフォルト false）。ユーザーの明示的な確認後にのみ使用してください。"
                   }
                 }
               }
