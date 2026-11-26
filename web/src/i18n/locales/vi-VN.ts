@@ -1007,7 +1007,86 @@ const viVN = {
       addFallback: 'Thêm mô hình dự phòng',
     },
   },
+  upgradeChecks: {
+    banner: 'Có {{count}} thay đổi do nâng cấp cần xem lại',
+    review: 'Xem lại',
+    title: 'Kiểm tra nâng cấp',
+    description:
+      'Bản nâng cấp này chuyển cài đặt kích hoạt, an toàn và đầu ra chung từ Chat sang bot, đồng thời thêm lệnh hệ thống. Xem lại các thay đổi bên dưới hoặc điều chỉnh bằng một cú nhấp.',
+    empty: 'Không còn gì cần xem lại.',
+    confirmAll: 'Xác nhận tất cả',
+    allConfirmed: 'Đã xác nhận tất cả thay đổi',
+    acknowledge: 'Đã hiểu',
+    confirmedSection: 'Đã xác nhận {{count}}',
+    unknownBot: 'bot',
+    scopeDefault: 'mặc định của bot',
+    scopeRoutes: '{{count}} tuyến',
+    failed: 'Thao tác thất bại: {{error}}',
+    actionDone: 'Đã xong: {{action}}',
+    taskStarted:
+      'Đã bắt đầu: {{action}}. Theo dõi tiến độ trong danh sách tác vụ.',
+    links: {
+      admins: 'Đặt quản trị viên trong Giám sát phiên',
+      policy: 'Mở chính sách tin nhắn',
+      commands: 'Mở plugin và lệnh',
+    },
+    actions: {
+      restore_prefixes: 'Chấp nhận thêm ! và ！',
+      uninstall_essential: 'Gỡ EssentialCommands',
+      remove_plugin: 'Gỡ khỏi bot',
+      promote_route_policy: 'Đặt làm mặc định của bot',
+    },
+    confirm: {
+      uninstall_essential:
+        'EssentialCommands sẽ bị gỡ (giữ dữ liệu plugin). Các lệnh trùng tên do lệnh hệ thống xử lý.',
+      remove_plugin:
+        'Plugin {{plugin}} sẽ bị gỡ khỏi "{{bot}}"; lệnh và trình lắng nghe sự kiện của nó sẽ ngừng hoạt động ở đó.',
+      promote_route_policy:
+        'Cài đặt giống nhau này sẽ thành chính sách tin nhắn mặc định của "{{bot}}" và ghi đè trên {{count}} tuyến sẽ bị xóa. Mọi tuyến hoạt động như cũ.',
+    },
+    items: {
+      command_prefix_changed: {
+        title: 'Tiền tố lệnh đã đổi',
+        body: '"{{bot}}" từng dùng {{prefixes}} làm tiền tố lệnh; mặc định hiện là /.',
+        keep: 'Giữ /',
+      },
+      plugin_command_collision: {
+        title: 'Trùng tên với lệnh hệ thống',
+        body: 'Các lệnh plugin này trùng tên với lệnh hệ thống, giờ lệnh hệ thống sẽ chạy thay: {{names}}',
+        bodyEssential:
+          'Đã cài EssentialCommands và lệnh hệ thống đã bao gồm chức năng này; lệnh trùng tên chạy như lệnh hệ thống: {{names}}',
+        keep: 'Giữ plugin',
+      },
+      command_admin_missing: {
+        title: 'Lệnh chỉ cho quản trị viên nhưng chưa có quản trị viên',
+        body: '"{{bot}}" có lệnh chỉ dành cho quản trị viên nhưng chưa đặt quản trị viên, nên chưa ai dùng được.',
+      },
+      command_plugin_enabled: {
+        title: 'Plugin vừa được bật trên bot',
+        body: 'Plugin {{plugin}} có lệnh nên bản nâng cấp đã bật nó trên "{{bot}}" ({{scope}}).',
+        keep: 'Giữ lại',
+      },
+      equivalent_route_policies: {
+        title: 'Có thể đơn giản hóa ghi đè tuyến',
+        body: '{{count}} ghi đè tuyến của "{{bot}}" có cùng tác dụng và có thể trở thành chính sách mặc định của bot.',
+        unroutedCommands:
+          'Các lệnh không khớp tuyến nào cũng sẽ dùng cài đặt này.',
+      },
+      chat_settings_moved: {
+        title: 'Cài đặt Chat đã được chuyển',
+        body: 'Cài đặt kích hoạt, an toàn và đầu ra chung giờ nằm trên bot; {{count}} tuyến của "{{bot}}" giữ cài đặt của Chat cũ.',
+      },
+    },
+  },
   bots: {
+    routeCounts: {
+      last24h: '24 giờ qua',
+      none: 'không có tin nhắn',
+      ai: 'AI',
+      command: 'Lệnh',
+      plugin: 'Plugin',
+      policy: 'Bị chặn',
+    },
     routingTabs: {
       routes: 'Tuyến',
       plugins: 'Plugin và lệnh',
@@ -3796,6 +3875,69 @@ const viVN = {
       },
     },
     execution: {
+      handling: {
+        ai: 'AI',
+        command: 'Lệnh',
+        plugin: 'Plugin',
+        policy: 'Bị chính sách chặn',
+      },
+      badges: {
+        builtinCommand: 'Lệnh hệ thống /{{name}}',
+        pluginCommand: 'Lệnh plugin /{{name}}',
+        commandProcessor: 'Bộ xử lý lệnh',
+        commandDenied: 'Lệnh bị từ chối',
+        policyBlocked: 'Bị chính sách chặn · {{item}}',
+        policyBlockedUnknown: 'Bị chính sách chặn',
+        pluginIntercepted: 'Plugin chặn · {{plugin}} ({{hook}})',
+      },
+      policyItems: {
+        'access-control': 'Kiểm soát truy cập',
+        'group-respond-rules': 'Quy tắc phản hồi nhóm',
+        'rate-limit': 'Giới hạn tần suất',
+        'ignore-rules': 'Quy tắc bỏ qua',
+        'content-filter': 'Lọc nội dung',
+        'outbound-content-filter': 'Lọc nội dung đầu ra',
+      },
+      policyLayer: {
+        bot: 'chính sách mặc định của bot',
+        route: 'chính sách ghi đè của tuyến',
+      },
+      timeline: {
+        title: 'Chính sách tin nhắn',
+        steps: {
+          admission: 'Tiếp nhận',
+          hooks: 'Hook vòng đời',
+          processor: 'Bộ xử lý',
+          output: 'Đầu ra',
+        },
+        admitted: 'Đã tiếp nhận',
+        blocked: 'Bị chính sách tin nhắn chặn',
+        blockedBy: 'Bị "{{item}}" của {{layer}} chặn, không trả lời',
+        unknownLayer: 'chính sách tin nhắn',
+        notReached: 'Không chạy',
+        hookBy: 'Plugin {{plugin}} đã chặn tin nhắn tại {{hook}}',
+        noHook: 'Không plugin nào chặn',
+        denied: '/{{name}} bị từ chối do thiếu quyền ({{reply}})',
+        deniedNotice: 'trả lời thông báo không có quyền',
+        deniedSilent: 'không trả lời',
+        builtin: 'Đã chạy lệnh hệ thống /{{name}}',
+        pluginCommand: 'Đã chạy lệnh plugin /{{name}}',
+        discarded: 'Quy tắc định tuyến loại bỏ tin nhắn',
+        handledBy: 'Do {{target}} xử lý',
+        noOutput: 'Không xử lý đầu ra',
+        outputApplied: 'Đã áp dụng trước khi gửi câu trả lời',
+        actions: {
+          long_text: 'Văn bản dài {{strategy}}',
+          strategy: {
+            image: 'thành hình ảnh',
+            forward: 'thành tin nhắn chuyển tiếp',
+          },
+          delay: 'Trễ {{ms}} ms',
+          at: '@ người gửi',
+          quote: 'Trích dẫn tin nhắn',
+          outbound_block: 'Lọc nội dung đầu ra đã chặn câu trả lời',
+        },
+      },
       title: 'Lượt thực thi',
       subtitle:
         'Mọi sự kiện đầu vào và lượt thực thi được kích hoạt trên các tác nhân và chat.',
@@ -3811,6 +3953,8 @@ const viVN = {
         modeDebug: 'Chỉ gỡ lỗi',
         status: 'Trạng thái',
         statusAll: 'Tất cả trạng thái',
+        handling: 'Cách xử lý',
+        handlingAll: 'Mọi cách xử lý',
       },
       status: {
         completed: 'Hoàn thành',
@@ -3819,6 +3963,7 @@ const viVN = {
         queued: 'Trong hàng đợi',
         cancelled: 'Đã hủy',
         ignored: 'Đã bỏ qua',
+        denied: 'Bị từ chối',
       },
       // prettier-ignore
       kind: {

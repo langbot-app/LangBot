@@ -1028,7 +1028,86 @@ const esES = {
       addFallback: 'Añadir modelo de respaldo',
     },
   },
+  upgradeChecks: {
+    banner: 'Hay {{count}} cambios de la actualización por revisar',
+    review: 'Revisar',
+    title: 'Revisión de actualización',
+    description:
+      'Esta actualización movió la configuración de activación, seguridad y salida común de los Chats a los bots y añadió comandos del sistema. Revisa los cambios o ajústalos con un clic.',
+    empty: 'No queda nada por revisar.',
+    confirmAll: 'Confirmar todo',
+    allConfirmed: 'Todos los cambios confirmados',
+    acknowledge: 'Entendido',
+    confirmedSection: '{{count}} confirmados',
+    unknownBot: 'bot',
+    scopeDefault: 'predeterminado del bot',
+    scopeRoutes: '{{count}} rutas',
+    failed: 'La acción falló: {{error}}',
+    actionDone: 'Hecho: {{action}}',
+    taskStarted:
+      'Iniciado: {{action}}. Sigue el progreso en la lista de tareas.',
+    links: {
+      admins: 'Definir administradores en Sesiones',
+      policy: 'Abrir política de mensajes',
+      commands: 'Abrir plugins y comandos',
+    },
+    actions: {
+      restore_prefixes: 'Aceptar también ! y ！',
+      uninstall_essential: 'Desinstalar EssentialCommands',
+      remove_plugin: 'Quitar del bot',
+      promote_route_policy: 'Hacerla predeterminada del bot',
+    },
+    confirm: {
+      uninstall_essential:
+        'Se desinstalará EssentialCommands (se conservan sus datos). Los comandos con el mismo nombre los gestionan los comandos del sistema.',
+      remove_plugin:
+        'Se quitará el plugin {{plugin}} de «{{bot}}»; sus comandos y escuchas de eventos dejarán de funcionar allí.',
+      promote_route_policy:
+        'Esta configuración idéntica pasa a ser la política de mensajes predeterminada de «{{bot}}» y se eliminan las sobrescrituras de {{count}} rutas. Cada ruta se comporta igual.',
+    },
+    items: {
+      command_prefix_changed: {
+        title: 'Cambió el prefijo de comandos',
+        body: '«{{bot}}» usaba {{prefixes}} como prefijo; ahora el predeterminado es /.',
+        keep: 'Mantener /',
+      },
+      plugin_command_collision: {
+        title: 'Nombres ocupados por comandos del sistema',
+        body: 'Estos comandos de plugin tienen el mismo nombre que comandos del sistema, que ahora se ejecutan en su lugar: {{names}}',
+        bodyEssential:
+          'EssentialCommands está instalado y los comandos del sistema ya lo cubren; los comandos con el mismo nombre se ejecutan como comandos del sistema: {{names}}',
+        keep: 'Conservar plugin',
+      },
+      command_admin_missing: {
+        title: 'Comandos solo para administradores sin administradores',
+        body: '«{{bot}}» tiene comandos solo para administradores pero aún no tiene administradores, así que nadie puede usarlos.',
+      },
+      command_plugin_enabled: {
+        title: 'Plugin activado en un bot',
+        body: 'El plugin {{plugin}} aporta comandos, por eso la actualización lo activó en «{{bot}}» ({{scope}}).',
+        keep: 'Conservar',
+      },
+      equivalent_route_policies: {
+        title: 'Se pueden simplificar las sobrescrituras de rutas',
+        body: '{{count}} sobrescrituras de rutas de «{{bot}}» tienen el mismo efecto y pueden pasar a ser la política predeterminada del bot.',
+        unroutedCommands:
+          'Los comandos que no coinciden con ninguna ruta también usarán esta configuración.',
+      },
+      chat_settings_moved: {
+        title: 'La configuración del Chat se movió',
+        body: 'La configuración de activación, seguridad y salida común ahora está en los bots; {{count}} rutas de «{{bot}}» conservan la configuración de su Chat anterior.',
+      },
+    },
+  },
   bots: {
+    routeCounts: {
+      last24h: 'Últimas 24 h',
+      none: 'sin mensajes',
+      ai: 'IA',
+      command: 'Comandos',
+      plugin: 'Plugins',
+      policy: 'Bloqueados',
+    },
     routingTabs: {
       routes: 'Rutas',
       plugins: 'Plugins y comandos',
@@ -3882,6 +3961,70 @@ const esES = {
       },
     },
     execution: {
+      handling: {
+        ai: 'IA',
+        command: 'Comando',
+        plugin: 'Plugin',
+        policy: 'Bloqueado por política',
+      },
+      badges: {
+        builtinCommand: 'Comando del sistema /{{name}}',
+        pluginCommand: 'Comando de plugin /{{name}}',
+        commandProcessor: 'Procesador de comandos',
+        commandDenied: 'Comando denegado',
+        policyBlocked: 'Bloqueado por política · {{item}}',
+        policyBlockedUnknown: 'Bloqueado por política',
+        pluginIntercepted: 'Interceptado por plugin · {{plugin}} ({{hook}})',
+      },
+      policyItems: {
+        'access-control': 'Control de acceso',
+        'group-respond-rules': 'Reglas de respuesta en grupos',
+        'rate-limit': 'Límite de frecuencia',
+        'ignore-rules': 'Reglas de ignorar',
+        'content-filter': 'Filtro de contenido',
+        'outbound-content-filter': 'Filtro de contenido saliente',
+      },
+      policyLayer: {
+        bot: 'política predeterminada del bot',
+        route: 'política sobrescrita de la ruta',
+      },
+      timeline: {
+        title: 'Política de mensajes',
+        steps: {
+          admission: 'Admisión',
+          hooks: 'Hooks del ciclo de vida',
+          processor: 'Procesador',
+          output: 'Salida',
+        },
+        admitted: 'Admitido',
+        blocked: 'Bloqueado por la política de mensajes',
+        blockedBy: 'Bloqueado por «{{item}}» de la {{layer}}; no se respondió',
+        unknownLayer: 'política de mensajes',
+        notReached: 'No ejecutado',
+        hookBy: 'El plugin {{plugin}} interceptó el mensaje en {{hook}}',
+        noHook: 'Ningún plugin lo interceptó',
+        denied: '/{{name}} denegado por falta de permiso ({{reply}})',
+        deniedNotice: 'respondió con un aviso',
+        deniedSilent: 'sin respuesta',
+        builtin: 'Ejecutó el comando del sistema /{{name}}',
+        pluginCommand: 'Ejecutó el comando de plugin /{{name}}',
+        discarded: 'La regla de enrutamiento lo descarta',
+        handledBy: 'Gestionado por {{target}}',
+        noOutput: 'Sin procesamiento de salida',
+        outputApplied: 'Aplicado antes de enviar la respuesta',
+        actions: {
+          long_text: 'Texto largo {{strategy}}',
+          strategy: {
+            image: 'como imagen',
+            forward: 'como mensaje reenviado',
+          },
+          delay: 'Retraso de {{ms}} ms',
+          at: '@ remitente',
+          quote: 'Citó el mensaje',
+          outbound_block:
+            'El filtro de contenido saliente bloqueó la respuesta',
+        },
+      },
       title: 'Ejecuciones',
       subtitle:
         'Cada evento entrante y la ejecución que activó, en agentes y chats.',
@@ -3897,6 +4040,8 @@ const esES = {
         modeDebug: 'Solo depuración',
         status: 'Estado',
         statusAll: 'Todos los estados',
+        handling: 'Gestión',
+        handlingAll: 'Toda gestión',
       },
       status: {
         completed: 'Completada',
@@ -3905,6 +4050,7 @@ const esES = {
         queued: 'En cola',
         cancelled: 'Cancelada',
         ignored: 'Ignorada',
+        denied: 'Denegado',
       },
       // prettier-ignore
       kind: {

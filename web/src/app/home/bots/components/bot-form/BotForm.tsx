@@ -317,12 +317,22 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
   >({});
 
   const [agentNameList, setAgentNameList] = useState<Agent[]>([]);
-  const [routingTab, setRoutingTab] = useState('routes');
   const [policyScope, setPolicyScope] = useState(BOT_SCOPE);
 
   // `routeChat=group:<id>` (from Sessions or an execution trace) asks the
   // routing editor to pre-create a rule for that chat once the bot is loaded.
   const [searchParams, setSearchParams] = useSearchParams();
+  // `section=routes|plugins|policy` opens a routing page (upgrade checks).
+  const requestedSection = searchParams.get('section');
+  const [routingTab, setRoutingTab] = useState(
+    ['routes', 'plugins', 'policy'].includes(requestedSection ?? '')
+      ? requestedSection!
+      : 'routes',
+  );
+  useEffect(() => {
+    if (['routes', 'plugins', 'policy'].includes(requestedSection ?? ''))
+      setRoutingTab(requestedSection!);
+  }, [requestedSection]);
   const routeChat = searchParams.get('routeChat');
   const routeTarget = searchParams.get('routeTarget');
   const routeDraft = useMemo<RouteDraft | null>(() => {

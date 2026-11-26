@@ -790,7 +790,7 @@ _OUTPUT_TYPES = {
     'get_engine_creation_schema': dict | list[dict],
     'get_engine_retrieval_schema': dict | list[dict],
 }
-_INTERNAL_PARAMETERS = {'preserve_uuid', 'default', 'on_result', 'for_inflight'}
+_INTERNAL_PARAMETERS = {'preserve_uuid', 'default', 'on_result', 'for_inflight', 'handling'}
 
 
 _LIST_OPS_BY_ENTITY = {

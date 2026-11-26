@@ -633,6 +633,55 @@ export interface BotEventRouteStatus {
   order?: number | null;
   enabled?: boolean;
   current?: boolean;
+  /** Last 24h `message.received` events whose primary route was this rule. */
+  counts_24h?: BotRouteCounts;
+}
+
+export interface BotRouteCounts {
+  ai: number;
+  command: number;
+  plugin: number;
+  policy: number;
+}
+
+/** One item of the workspace "upgrade check" (message policy migration). */
+export type UpgradeCheckCode =
+  | 'command_prefix_changed'
+  | 'plugin_command_collision'
+  | 'command_admin_missing'
+  | 'command_plugin_enabled'
+  | 'equivalent_route_policies'
+  | 'chat_settings_moved';
+
+export type UpgradeCheckAction =
+  | 'restore_prefixes'
+  | 'uninstall_essential'
+  | 'remove_plugin'
+  | 'promote_route_policy';
+
+export interface UpgradeCheckItem {
+  id: string;
+  code: UpgradeCheckCode | string;
+  params: {
+    bot_uuid?: string;
+    original_prefixes?: string[];
+    essential_installed?: boolean;
+    names?: string[];
+    plugin?: string;
+    /** Route ids; `null` is the bot default. */
+    scopes?: (string | null)[];
+    route_ids?: string[];
+    changes_unrouted_commands?: boolean;
+    routes?: { bot_uuid: string; route_id: string; chat_uuid?: string }[];
+    [key: string]: unknown;
+  };
+  actions: (UpgradeCheckAction | string)[];
+  confirmed: boolean;
+}
+
+export interface UpgradeChecksResponse {
+  items: UpgradeCheckItem[];
+  reports: Record<string, unknown>[];
 }
 
 export interface BotEventRouteStatusResponse {

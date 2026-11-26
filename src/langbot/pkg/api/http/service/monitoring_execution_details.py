@@ -152,6 +152,56 @@ def transcript_item(row):
     }
 
 
+# Chat filter stages and the message policy item each one enforces.
+_FILTER_STAGE_POLICY_ITEMS = {
+    'BanSessionCheckStage': 'access-control',
+    'GroupRespondRuleCheckStage': 'group-respond-rules',
+    'PreContentFilterStage': 'content-filter',
+    'PostContentFilterStage': 'content-filter',
+    'RequireRateLimitOccupancy': 'rate-limit',
+}
+
+
+def pipeline_handling(handled_by: str | None) -> dict:
+    """Handling facts of a Chat query from its recorded owner."""
+    handled_by = handled_by or ''
+    if handled_by.startswith('filtered:'):
+        return {
+            'handling': 'policy',
+            'policy_item': _FILTER_STAGE_POLICY_ITEMS.get(handled_by.removeprefix('filtered:')),
+        }
+    if handled_by.startswith('plugin:'):
+        return {'handling': 'plugin'}
+    return {'handling': 'ai'}
+
+
+def event_handling(metadata: dict) -> dict:
+    """Handling facts of an ingress event from its first (primary) route."""
+    routes = [route for route in metadata.get('routes') or () if isinstance(route, dict)]
+    route = routes[0] if routes else {}
+    target = route.get('target_type')
+    facts: dict = {}
+    if route.get('failure_code') == 'message_policy' or metadata.get('policy_item'):
+        facts = {
+            'handling': 'policy',
+            'policy_item': metadata.get('policy_item') or route.get('policy_item'),
+            'policy_layer': metadata.get('policy_layer') or route.get('policy_layer'),
+        }
+    elif target in {'builtin_command', 'plugin_command'}:
+        name = str(route.get('target_uuid') or '')
+        facts = {
+            'handling': 'command',
+            'command_kind': 'builtin' if target == 'builtin_command' else 'plugin',
+            'command_name': name.rsplit('/', 1)[-1] or None,
+            'command_denied': route.get('status') == 'denied',
+        }
+    elif target in {'plugin', 'event_processor'}:
+        facts = {'handling': 'plugin', 'hook': route.get('hook')}
+    elif target in {'pipeline', 'agent'}:
+        facts = {'handling': 'ai'}
+    return facts
+
+
 class ExecutionDetailsMixin:
     def _conversation_message_source(self, workspace, bot_ids):
         """Count and page identities without carrying historical payloads."""
@@ -341,15 +391,14 @@ class ExecutionDetailsMixin:
             if message is not None and not message.event_id and message.role != 'assistant':
                 await self._summary_writer().link_event(session, workspace, message.bot_id, message_id, event_id)
 
-    async def route_counts_24h(self, context, bot_uuid):
-        workspace = require_workspace_uuid(context)
+    def _event_handling_expression(self):
+        """SQL form of ``event_handling``: ai/command/plugin/policy or NULL."""
 
         def route_field(name):
             return self._execution_json_text(EventLog.metadata_json, ('routes', 0, name))
 
-        binding = route_field('binding_id')
         target = route_field('target_type')
-        category = sa.case(
+        return sa.case(
             (
                 sa.or_(
                     route_field('failure_code') == 'message_policy',
@@ -361,6 +410,11 @@ class ExecutionDetailsMixin:
             (target.in_(['plugin', 'event_processor']), 'plugin'),
             (target.in_(['pipeline', 'agent']), 'ai'),
         )
+
+    async def route_counts_24h(self, context, bot_uuid):
+        workspace = require_workspace_uuid(context)
+        binding = self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'binding_id'))
+        category = self._event_handling_expression()
         rows = await self._execution_query(
             workspace,
             sa.select(binding, category, sa.func.count())
@@ -687,10 +741,30 @@ class ExecutionDetailsMixin:
                 if isinstance(route, dict) and route.get('status') == 'failed'
             )
             or None,
+            **event_handling(metadata),
         }
 
     async def enrich_execution_rows(self, workspace, items, *, summary_only=False):
         pipeline_items = {item['id']: item for item in items if item.get('source') == 'pipeline'}
+        dropped = {
+            item['event_id']: item
+            for item in pipeline_items.values()
+            if item.get('handling') == 'policy' and item.get('event_id')
+        }
+        if dropped and not summary_only:
+            # Chat filter stages record which layer dropped the message on the
+            # ingress event; the query row only knows the stage.
+            result = await self._execution_query(
+                workspace,
+                sa.select(EventLog.event_id, EventLog.metadata_json).where(
+                    EventLog.workspace_id == workspace, EventLog.event_id.in_(list(dropped))
+                ),
+            )
+            for event_id, raw in result.all():
+                metadata = parsed(raw, {})
+                item = dropped[event_id]
+                item['policy_layer'] = metadata.get('policy_layer')
+                item['policy_item'] = metadata.get('policy_item') or item.get('policy_item')
         if pipeline_items:
             # Pipeline rows own the UI identity; their linked Runner ledger owns
             # timing and usage. Read them in one batch for both list and detail.

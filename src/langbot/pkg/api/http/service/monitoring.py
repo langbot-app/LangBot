@@ -22,7 +22,7 @@ from ....utils import constants
 from ..authz import WorkspaceRequiredError
 from ..context import ExecutionContext
 from .tenant import TenantContext, require_workspace_uuid
-from .monitoring_execution_details import ExecutionDetailsMixin
+from .monitoring_execution_details import ExecutionDetailsMixin, pipeline_handling as _pipeline_handling
 from ....persistence.session_summary_contract import (
     parse_group_member_id,
     shares_group_context,
@@ -65,6 +65,10 @@ _PIPELINE_STATUS_GROUP = {
     'discarded': 'ignored',
     'not_matched': 'ignored',
 }
+
+
+# How the platform handled a message, as shown by the monitoring "handling" filter.
+EXECUTION_HANDLINGS = ('ai', 'command', 'plugin', 'policy')
 
 
 def _status_group(status: str, source: str) -> str:
@@ -1332,6 +1336,13 @@ class MonitoringService(ExecutionDetailsMixin):
             'has_error': row.status in {'failed', 'timeout'},
             'status_reason': row.status_reason,
             'input_preview': _message_preview(json.dumps(metadata.get('input') or {}, ensure_ascii=False), 200),
+            **(
+                {'handling': 'command', 'command_kind': 'processor'}
+                if str(row.binding_id or '').startswith('command_processor:')
+                else {'handling': 'plugin'}
+                if metadata.get('processor_type') == 'event_processor'
+                else {'handling': 'ai'}
+            ),
         }
 
     def _serialize_pipeline_execution(self, row, *, summary_only=False) -> dict:
@@ -1368,7 +1379,39 @@ class MonitoringService(ExecutionDetailsMixin):
             'platform': row.platform,
             'user_id': row.user_id,
             'user_name': row.user_name,
+            **_pipeline_handling(getattr(row, 'handled_by', None)),
         }
+
+    def _handling_conditions(self, kind: str, handling: str | None) -> list:
+        """SQL form of ``handling`` for one branch of the execution union."""
+        if not handling:
+            return []
+        if kind == 'agent':
+            AgentRun = persistence_agent_run.AgentRun
+            command = sqlalchemy.func.coalesce(AgentRun.binding_id, '').like('command_processor:%')
+            plugin = (
+                sqlalchemy.func.coalesce(self._execution_json_text(AgentRun.metadata_json, 'processor_type'), '')
+                == 'event_processor'
+            )
+            return [
+                {
+                    'command': command,
+                    'plugin': sqlalchemy.and_(~command, plugin),
+                    'ai': sqlalchemy.and_(~command, ~plugin),
+                }.get(handling, sqlalchemy.false())
+            ]
+        if kind == 'pipeline':
+            handled_by = sqlalchemy.func.coalesce(persistence_monitoring.MonitoringMessage.handled_by, '')
+            filtered = handled_by.like('filtered:%')
+            plugin = handled_by.like('plugin:%')
+            return [
+                {
+                    'policy': filtered,
+                    'plugin': plugin,
+                    'ai': sqlalchemy.and_(~filtered, ~plugin),
+                }.get(handling, sqlalchemy.false())
+            ]
+        return [self._event_handling_expression() == handling]
 
     async def _get_token_coverage(
         self,
@@ -1611,9 +1654,15 @@ class MonitoringService(ExecutionDetailsMixin):
         offset: int = 0,
         include_summary: bool = True,
         for_inflight: bool = False,
+        handling: str = 'all',
     ) -> dict:
-        """List executions from both object types (agent runs and pipeline queries)."""
+        """List executions from both object types (agent runs and pipeline queries).
+
+        ``handling`` narrows rows to how the message was handled: ``ai``,
+        ``command``, ``plugin`` or ``policy`` (dropped by the message policy).
+        """
         workspace_uuid = require_workspace_uuid(context)
+        handling = handling if handling in EXECUTION_HANDLINGS else None
         limit, offset = self.normalize_page_window(limit, offset)
         if source not in {'all', 'agent', 'pipeline', 'event'}:
             source = 'all'
@@ -1634,6 +1683,7 @@ class MonitoringService(ExecutionDetailsMixin):
                 end_time=end_time,
                 debug=debug,
             )
+            conditions.extend(self._handling_conditions('agent', handling))
             branches.append(
                 sqlalchemy.select(
                     sqlalchemy.literal('agent').label('source'),
@@ -1654,6 +1704,7 @@ class MonitoringService(ExecutionDetailsMixin):
             )
             if for_inflight:
                 conditions.append(self._inflight_pipeline_condition(pending_only=pipeline_statuses == ['pending']))
+            conditions.extend(self._handling_conditions('pipeline', handling))
             branches.append(
                 sqlalchemy.select(
                     sqlalchemy.literal('pipeline').label('source'),
@@ -1665,6 +1716,7 @@ class MonitoringService(ExecutionDetailsMixin):
             conditions = self._unhandled_event_conditions(workspace_uuid, bot_ids, start_time, end_time)
             if statuses:
                 conditions.append(self._execution_json_text(EventLog.metadata_json, 'status').in_(statuses))
+            conditions.extend(self._handling_conditions('event', handling))
             branches.append(
                 sqlalchemy.select(
                     sqlalchemy.literal('event').label('source'),

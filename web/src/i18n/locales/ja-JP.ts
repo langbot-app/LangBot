@@ -1022,7 +1022,85 @@ const jaJP = {
       addFallback: 'フォールバックモデルを追加',
     },
   },
+  upgradeChecks: {
+    banner: 'アップグレードによる変更が {{count}} 件あります',
+    review: '確認',
+    title: 'アップグレードチェック',
+    description:
+      '今回のアップグレードで、トリガー・安全・共通出力の設定がチャットからボットへ移り、システムコマンドが追加されました。以下の変更を確認するか、ワンクリックで調整してください。',
+    empty: '確認待ちの変更はありません。',
+    confirmAll: 'すべて確認',
+    allConfirmed: 'すべて確認しました',
+    acknowledge: '了解',
+    confirmedSection: '確認済み {{count}} 件',
+    unknownBot: 'ボット',
+    scopeDefault: 'ボットのデフォルト',
+    scopeRoutes: '{{count}} 件のルート',
+    failed: '操作に失敗しました：{{error}}',
+    actionDone: '完了：{{action}}',
+    taskStarted: '開始しました：{{action}}。進捗はタスク一覧で確認できます',
+    links: {
+      admins: 'セッション監視で管理者を設定',
+      policy: 'メッセージポリシーを開く',
+      commands: 'プラグインとコマンドを開く',
+    },
+    actions: {
+      restore_prefixes: '! と ！ も有効にする',
+      uninstall_essential: 'EssentialCommands をアンインストール',
+      remove_plugin: 'ボットから外す',
+      promote_route_policy: 'ボットのデフォルトにする',
+    },
+    confirm: {
+      uninstall_essential:
+        'EssentialCommands をアンインストールします（プラグインデータは保持）。同名のコマンドはシステムコマンドが処理します。',
+      remove_plugin:
+        '「{{bot}}」からプラグイン {{plugin}} を外します。そのコマンドとイベントリスナーは無効になります。',
+      promote_route_policy:
+        'この共通設定を「{{bot}}」のデフォルトのメッセージポリシーにし、{{count}} 件のルートの上書きを削除します。各ルートの動作は変わりません。',
+    },
+    items: {
+      command_prefix_changed: {
+        title: 'コマンドプレフィックスが変わりました',
+        body: '「{{bot}}」は {{prefixes}} をコマンドプレフィックスとして使っていましたが、現在のデフォルトは / です。',
+        keep: '/ のままにする',
+      },
+      plugin_command_collision: {
+        title: 'システムコマンドと同名',
+        body: '以下のプラグインコマンドはシステムコマンドと同名のため、システムコマンドが実行されます：{{names}}',
+        bodyEssential:
+          'EssentialCommands がインストールされていますが、その機能はシステムコマンドが提供します。同名コマンドはシステムコマンドが実行されます：{{names}}',
+        keep: 'プラグインを残す',
+      },
+      command_admin_missing: {
+        title: '管理者専用コマンドに管理者がいません',
+        body: '「{{bot}}」には管理者専用コマンドがありますが、管理者が未設定のため誰も使えません。',
+      },
+      command_plugin_enabled: {
+        title: 'ボットで新たに有効化されたプラグイン',
+        body: 'プラグイン {{plugin}} はコマンドを持つため、移行時に「{{bot}}」（{{scope}}）で有効化されました。',
+        keep: '残す',
+      },
+      equivalent_route_policies: {
+        title: 'ルートの上書きを簡略化できます',
+        body: '「{{bot}}」の {{count}} 件のルート上書きは同じ効果のため、ボットのデフォルトポリシーにできます。',
+        unroutedCommands:
+          'どのルートにも一致しないコマンドもこの設定を使うようになります。',
+      },
+      chat_settings_moved: {
+        title: 'チャットの設定は移動しました',
+        body: 'トリガー・安全・共通出力の設定は現在ボットにあります。「{{bot}}」の {{count}} 件のルートは元のチャットの設定を引き継いでいます。',
+      },
+    },
+  },
   bots: {
+    routeCounts: {
+      last24h: '直近 24 時間',
+      none: 'メッセージなし',
+      ai: 'AI',
+      command: 'コマンド',
+      plugin: 'プラグイン',
+      policy: 'ブロック',
+    },
     routingTabs: {
       routes: 'ルート',
       plugins: 'プラグインとコマンド',
@@ -3845,6 +3923,70 @@ const jaJP = {
       },
     },
     execution: {
+      handling: {
+        ai: 'AI',
+        command: 'コマンド',
+        plugin: 'プラグイン',
+        policy: 'ポリシーでブロック',
+      },
+      badges: {
+        builtinCommand: 'システムコマンド /{{name}}',
+        pluginCommand: 'プラグインコマンド /{{name}}',
+        commandProcessor: 'コマンドプロセッサ',
+        commandDenied: 'コマンド拒否',
+        policyBlocked: 'ポリシーでブロック · {{item}}',
+        policyBlockedUnknown: 'ポリシーでブロック',
+        pluginIntercepted: 'プラグインが横取り · {{plugin}}（{{hook}}）',
+      },
+      policyItems: {
+        'access-control': 'アクセス制御',
+        'group-respond-rules': 'グループ応答ルール',
+        'rate-limit': 'レート制限',
+        'ignore-rules': '無視ルール',
+        'content-filter': 'コンテンツフィルター',
+        'outbound-content-filter': '出力コンテンツフィルター',
+      },
+      policyLayer: {
+        bot: 'ボットのデフォルトポリシー',
+        route: 'ルートの上書きポリシー',
+      },
+      timeline: {
+        title: 'メッセージポリシー',
+        steps: {
+          admission: '受付',
+          hooks: 'ライフサイクルフック',
+          processor: 'プロセッサ',
+          output: '出力処理',
+        },
+        admitted: '受付済み',
+        blocked: 'メッセージポリシーでブロック',
+        blockedBy: '{{layer}}の「{{item}}」でブロックされ、返信していません',
+        unknownLayer: 'メッセージポリシー',
+        notReached: '未実行',
+        hookBy:
+          'プラグイン {{plugin}} が {{hook}} でメッセージを横取りしました',
+        noHook: 'プラグインによる横取りなし',
+        denied: '/{{name}} は権限不足で拒否（{{reply}}）',
+        deniedNotice: '権限なしを返信',
+        deniedSilent: '返信しない',
+        builtin: 'システムコマンド /{{name}} を実行',
+        pluginCommand: 'プラグインコマンド /{{name}} を実行',
+        discarded: 'ルーティングルールで破棄',
+        handledBy: '{{target}} が処理',
+        noOutput: '出力処理なし',
+        outputApplied: '返信の送信前に以下を適用',
+        actions: {
+          long_text: '長文を{{strategy}}',
+          strategy: {
+            image: '画像に変換',
+            forward: '転送メッセージに変換',
+          },
+          delay: '{{ms}} ミリ秒遅延',
+          at: '送信者に @',
+          quote: '元メッセージを引用',
+          outbound_block: '出力コンテンツフィルターが返信をブロック',
+        },
+      },
       title: '実行履歴',
       subtitle:
         'エージェントとチャットに届いた各イベントと、それによって開始された実行を確認します。',
@@ -3860,6 +4002,8 @@ const jaJP = {
         modeDebug: 'デバッグのみ',
         status: '状態',
         statusAll: 'すべての状態',
+        handling: '処理方法',
+        handlingAll: 'すべての処理方法',
       },
       status: {
         completed: '完了',
@@ -3868,6 +4012,7 @@ const jaJP = {
         queued: '待機中',
         cancelled: 'キャンセル済み',
         ignored: '無視',
+        denied: '拒否',
       },
       // prettier-ignore
       kind: {

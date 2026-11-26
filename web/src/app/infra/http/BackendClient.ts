@@ -33,6 +33,7 @@ import type {
   InflightFrame,
   ExecutionDetail,
   ExecutionListResult,
+  ExecutionHandlingFilter,
   ExecutionModeFilter,
   ExecutionSource,
   ExecutionSourceFilter,
@@ -116,6 +117,7 @@ import {
   BotRouteDryRunRequest,
   BotRouteDryRunResult,
   BotEventRouteStatusResponse,
+  UpgradeChecksResponse,
   ApiRespLangBotModelAvailability,
 } from '@/app/infra/entities/api';
 import { Plugin } from '@/app/infra/entities/plugin';
@@ -946,6 +948,28 @@ export class BackendClient extends BaseHttpClient {
       `/api/v1/platform/bots/${botId}/event-routes/dry-run`,
       request,
     );
+  }
+
+  public getUpgradeChecks(): Promise<UpgradeChecksResponse> {
+    return this.get('/api/v1/platform/bots/_/upgrade-checks');
+  }
+
+  public runUpgradeCheckAction(
+    id: string,
+    action: string,
+  ): Promise<{ id?: string; action?: string; task_id?: number }> {
+    return this.post('/api/v1/platform/bots/_/upgrade-checks/action', {
+      id,
+      action,
+    });
+  }
+
+  public confirmUpgradeCheck(id: string): Promise<{ confirmed: string[] }> {
+    return this.post('/api/v1/platform/bots/_/upgrade-checks/confirm', { id });
+  }
+
+  public confirmAllUpgradeChecks(): Promise<{ confirmed: string[] }> {
+    return this.post('/api/v1/platform/bots/_/upgrade-checks/confirm-all');
   }
 
   public getBotEventRouteStatuses(
@@ -2690,6 +2714,7 @@ export class BackendClient extends BaseHttpClient {
     status?: string[];
     source?: ExecutionSourceFilter;
     mode?: ExecutionModeFilter;
+    handling?: ExecutionHandlingFilter;
     startTime?: string;
     endTime?: string;
     limit?: number;
@@ -2725,6 +2750,9 @@ export class BackendClient extends BaseHttpClient {
     }
     if (params.offset) {
       queryParams.append('offset', params.offset.toString());
+    }
+    if (params.handling && params.handling !== 'all') {
+      queryParams.append('handling', params.handling);
     }
 
     return this.get(`/api/v1/monitoring/executions?${queryParams.toString()}`);

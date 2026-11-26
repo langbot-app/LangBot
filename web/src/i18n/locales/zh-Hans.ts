@@ -959,7 +959,84 @@ const zhHans = {
       addFallback: '添加备用模型',
     },
   },
+  upgradeChecks: {
+    banner: '本次升级有 {{count}} 项变化待确认',
+    review: '查看',
+    title: '升级检查',
+    description:
+      '这次升级把触发、安全和通用输出设置从聊天移到了机器人上，并新增了系统命令。确认以下变化，或一键调整。',
+    empty: '没有待确认的变化。',
+    confirmAll: '全部确认',
+    allConfirmed: '已全部确认',
+    acknowledge: '知道了',
+    confirmedSection: '已确认 {{count}} 项',
+    unknownBot: '机器人',
+    scopeDefault: '机器人默认',
+    scopeRoutes: '{{count}} 条路由',
+    failed: '操作失败：{{error}}',
+    actionDone: '已完成：{{action}}',
+    taskStarted: '已开始：{{action}}，可在任务列表查看进度',
+    links: {
+      admins: '前往会话监控设置管理员',
+      policy: '查看消息策略',
+      commands: '查看插件和命令',
+    },
+    actions: {
+      restore_prefixes: '同时启用 ! 和 ！',
+      uninstall_essential: '卸载 EssentialCommands',
+      remove_plugin: '从机器人移除',
+      promote_route_policy: '提升为机器人默认',
+    },
+    confirm: {
+      uninstall_essential:
+        '将卸载 EssentialCommands 插件（保留插件数据）。同名命令改由系统命令处理。',
+      remove_plugin:
+        '将从「{{bot}}」移除插件 {{plugin}}，它的命令和事件监听器不再生效。',
+      promote_route_policy:
+        '将把这份相同的设置写成「{{bot}}」的默认消息策略，并删除 {{count}} 条路由上的覆盖。每条路由的实际效果不变。',
+    },
+    items: {
+      command_prefix_changed: {
+        title: '命令前缀变了',
+        body: '「{{bot}}」原来使用 {{prefixes}} 作为命令前缀，现在默认是 /。',
+        keep: '保持 /',
+      },
+      plugin_command_collision: {
+        title: '与系统命令重名',
+        body: '这些插件命令与系统命令重名，现在只会执行系统命令：{{names}}',
+        bodyEssential:
+          '已安装 EssentialCommands，它的功能已由系统命令提供；重名命令只会执行系统命令：{{names}}',
+        keep: '保留插件',
+      },
+      command_admin_missing: {
+        title: '仅管理员命令没有管理员',
+        body: '「{{bot}}」有仅管理员可用的命令，但还没有设置管理员，目前没人能用。',
+      },
+      command_plugin_enabled: {
+        title: '机器人新启用的插件',
+        body: '插件 {{plugin}} 因为带有命令，迁移时被启用到了「{{bot}}」（{{scope}}）。',
+        keep: '保留',
+      },
+      equivalent_route_policies: {
+        title: '路由覆盖可以简化',
+        body: '「{{bot}}」的 {{count}} 条路由覆盖效果相同，可以提升为机器人默认策略。',
+        unroutedCommands: '没有命中任何路由的命令也会改用这份设置。',
+      },
+      chat_settings_moved: {
+        title: '原聊天设置已迁走',
+        body: '触发、安全和通用输出设置现在在机器人上；「{{bot}}」的 {{count}} 条路由沿用了原聊天的设置。',
+      },
+    },
+  },
   bots: {
+    routeCounts: {
+      last24h: '近 24 小时',
+      none: '没有消息',
+      ai: 'AI',
+      command: '命令',
+      plugin: '插件',
+      policy: '拦截',
+    },
     routingTabs: {
       routes: '路由规则',
       plugins: '插件和命令',
@@ -3591,6 +3668,69 @@ const zhHans = {
       },
     },
     execution: {
+      handling: {
+        ai: 'AI 处理',
+        command: '命令',
+        plugin: '插件',
+        policy: '策略拦截',
+      },
+      badges: {
+        builtinCommand: '系统命令 /{{name}}',
+        pluginCommand: '插件命令 /{{name}}',
+        commandProcessor: '命令处理器',
+        commandDenied: '命令被拒',
+        policyBlocked: '策略拦截 · {{item}}',
+        policyBlockedUnknown: '策略拦截',
+        pluginIntercepted: '插件拦截 · {{plugin}}（{{hook}}）',
+      },
+      policyItems: {
+        'access-control': '访问控制',
+        'group-respond-rules': '群聊响应规则',
+        'rate-limit': '限速',
+        'ignore-rules': '忽略规则',
+        'content-filter': '内容过滤',
+        'outbound-content-filter': '出口内容过滤',
+      },
+      policyLayer: {
+        bot: '机器人默认策略',
+        route: '路由覆盖策略',
+      },
+      timeline: {
+        title: '消息策略',
+        steps: {
+          admission: '入口准入',
+          hooks: '生命周期钩子',
+          processor: '处理器',
+          output: '出口处理',
+        },
+        admitted: '已通过准入',
+        blocked: '被消息策略拦截',
+        blockedBy: '被{{layer}}的「{{item}}」拦截，没有回复',
+        unknownLayer: '消息策略',
+        notReached: '未执行',
+        hookBy: '插件 {{plugin}} 在 {{hook}} 拦截了消息',
+        noHook: '没有插件拦截',
+        denied: '/{{name}} 权限不足，已拒绝（{{reply}}）',
+        deniedNotice: '回复无权限提示',
+        deniedSilent: '不回复',
+        builtin: '执行系统命令 /{{name}}',
+        pluginCommand: '执行插件命令 /{{name}}',
+        discarded: '路由规则设为丢弃',
+        handledBy: '交给 {{target}} 处理',
+        noOutput: '没有出口处理',
+        outputApplied: '回复发出前做了以下处理',
+        actions: {
+          long_text: '长文本{{strategy}}',
+          strategy: {
+            image: '转图片',
+            forward: '转合并转发',
+          },
+          delay: '延迟 {{ms}} 毫秒',
+          at: '@ 发送者',
+          quote: '引用原消息',
+          outbound_block: '出口内容过滤拦截了回复',
+        },
+      },
       title: '执行记录',
       subtitle: '每条入站事件及其触发的执行，覆盖 Agent 与聊天。',
       tabs: { executions: '执行记录' },
@@ -3605,6 +3745,8 @@ const zhHans = {
         modeDebug: '仅调试',
         status: '状态',
         statusAll: '全部状态',
+        handling: '处理方式',
+        handlingAll: '全部处理方式',
       },
       status: {
         completed: '已完成',
@@ -3613,6 +3755,7 @@ const zhHans = {
         queued: '排队中',
         cancelled: '已取消',
         ignored: '已忽略',
+        denied: '已拒绝',
       },
       // prettier-ignore
       kind: {

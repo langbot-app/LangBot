@@ -1,6 +1,9 @@
 export type ExecutionSource = 'agent' | 'pipeline' | 'event';
 export type ExecutionSourceFilter = 'all' | ExecutionSource;
 export type ExecutionModeFilter = 'all' | 'real' | 'debug';
+/** How the message was handled: AI, command, plugin hook or message policy. */
+export type ExecutionHandling = 'ai' | 'command' | 'plugin' | 'policy';
+export type ExecutionHandlingFilter = 'all' | ExecutionHandling;
 
 export interface ExecutionUsage {
   input_tokens?: number | null;
@@ -35,6 +38,17 @@ export interface ExecutionRow {
   runner_id: string | null;
   /** `runner:<id>`, `plugin:<author>/<name>` or `filtered:<stage>`; null for legacy rows. */
   handled_by?: string | null;
+  /** Handling facts; absent on rows written before message policies. */
+  handling?: ExecutionHandling | null;
+  /** `bot` (bot default) or `route` (route override) for policy drops. */
+  policy_layer?: 'bot' | 'route' | string | null;
+  /** Policy rule that dropped the message, e.g. `rate-limit`. */
+  policy_item?: string | null;
+  command_kind?: 'builtin' | 'plugin' | 'processor' | string | null;
+  command_name?: string | null;
+  command_denied?: boolean | null;
+  /** Lifecycle hook a plugin intercepted, e.g. `CommandSent`. */
+  hook?: string | null;
   conversation_id: string | null;
   session_id: string | null;
   created_at_ms: number | null;

@@ -555,6 +555,46 @@ test('route notes are optional and routes are told apart by their conditions', a
   expect(body.event_bindings[0].description).toBe('Support group');
 });
 
+test('saved message routes show their last 24 hours of handling', async ({
+  page,
+}) => {
+  await setup(page);
+  await page.route(
+    '**/api/v1/platform/bots/policy-bot/event-routes/status',
+    (route) =>
+      route.fulfill({
+        json: {
+          code: 0,
+          data: {
+            routes: [
+              {
+                binding_id: 'r-chat',
+                counts_24h: { ai: 20, command: 4, plugin: 0, policy: 3 },
+              },
+              {
+                binding_id: 'r-agent',
+                counts_24h: { ai: 0, command: 0, plugin: 0, policy: 0 },
+              },
+            ],
+            unmatched_events: [],
+            stale_routes: [],
+          },
+        },
+      }),
+  );
+  await page.goto('/home/bots?id=policy-bot');
+  const routes = page.locator('[data-testid^="event-route-"]');
+  const chat = routes.first().getByTestId('route-counts-24h');
+  await expect(chat).toContainText('Last 24h', { timeout: 15_000 });
+  await expect(chat).toContainText('AI20');
+  await expect(chat).toContainText('Commands4');
+  await expect(chat).toContainText('Blocked3');
+  await expect(chat).not.toContainText('Plugins');
+  await expect(routes.nth(1).getByTestId('route-counts-24h')).toContainText(
+    'no messages',
+  );
+});
+
 test('message policy settings read as summaries and edit in place', async ({
   page,
 }) => {

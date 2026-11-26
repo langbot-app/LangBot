@@ -3,6 +3,7 @@ import { isCurrentPipelineConfig } from './pipeline-config-safety';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import UpgradeChecksBanner from '@/app/home/components/upgrade-checks/UpgradeChecks';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import PipelineFormComponent, {
@@ -221,6 +222,7 @@ export default function PipelineDetailContent({
             settingsPage={t('pipelines.extensions.title')}
           />
         }
+        banner={<UpgradeChecksBanner />}
         titleAction={
           canManage ? (
             <EntityTitleEditButton onClick={() => setBasicInfoOpen(true)} />

@@ -1017,7 +1017,85 @@ const enUS = {
       addFallback: 'Add Fallback Model',
     },
   },
+  upgradeChecks: {
+    banner: '{{count}} upgrade changes need your review',
+    review: 'Review',
+    title: 'Upgrade check',
+    description:
+      'This upgrade moved trigger, safety and common output settings from Chats to bots and added system commands. Review the changes below or adjust them in one click.',
+    empty: 'Nothing left to review.',
+    confirmAll: 'Acknowledge all',
+    allConfirmed: 'All changes acknowledged',
+    acknowledge: 'Got it',
+    confirmedSection: '{{count}} acknowledged',
+    unknownBot: 'bot',
+    scopeDefault: 'bot default',
+    scopeRoutes: '{{count}} routes',
+    failed: 'Action failed: {{error}}',
+    actionDone: 'Done: {{action}}',
+    taskStarted: 'Started: {{action}}. Track progress in the task list.',
+    links: {
+      admins: 'Set admins in Sessions',
+      policy: 'Open message policy',
+      commands: 'Open plugins & commands',
+    },
+    actions: {
+      restore_prefixes: 'Also accept ! and ！',
+      uninstall_essential: 'Uninstall EssentialCommands',
+      remove_plugin: 'Remove from bot',
+      promote_route_policy: 'Make it the bot default',
+    },
+    confirm: {
+      uninstall_essential:
+        'EssentialCommands will be uninstalled (plugin data is kept). Commands with the same name are handled by system commands.',
+      remove_plugin:
+        'Plugin {{plugin}} will be removed from "{{bot}}"; its commands and event listeners stop working there.',
+      promote_route_policy:
+        'These identical settings become the default message policy of "{{bot}}" and the overrides on {{count}} routes are removed. Every route behaves the same.',
+    },
+    items: {
+      command_prefix_changed: {
+        title: 'Command prefix changed',
+        body: '"{{bot}}" used {{prefixes}} as command prefix; the default is now /.',
+        keep: 'Keep /',
+      },
+      plugin_command_collision: {
+        title: 'Names taken by system commands',
+        body: 'These plugin commands share a name with system commands, which now run instead: {{names}}',
+        bodyEssential:
+          'EssentialCommands is installed and system commands now cover it; same-name commands run as system commands: {{names}}',
+        keep: 'Keep plugin',
+      },
+      command_admin_missing: {
+        title: 'Admin-only commands without admins',
+        body: '"{{bot}}" has admin-only commands but no admins yet, so nobody can use them.',
+      },
+      command_plugin_enabled: {
+        title: 'Plugin newly enabled on a bot',
+        body: 'Plugin {{plugin}} provides commands, so the upgrade enabled it on "{{bot}}" ({{scope}}).',
+        keep: 'Keep',
+      },
+      equivalent_route_policies: {
+        title: 'Route overrides can be simplified',
+        body: '{{count}} route overrides of "{{bot}}" have the same effect and can become the bot default policy.',
+        unroutedCommands:
+          'Commands that match no route will also use these settings.',
+      },
+      chat_settings_moved: {
+        title: 'Chat settings moved',
+        body: 'Trigger, safety and common output settings now live on bots; {{count}} routes of "{{bot}}" keep the settings of their former Chat.',
+      },
+    },
+  },
   bots: {
+    routeCounts: {
+      last24h: 'Last 24h',
+      none: 'no messages',
+      ai: 'AI',
+      command: 'Commands',
+      plugin: 'Plugins',
+      policy: 'Blocked',
+    },
     routingTabs: {
       routes: 'Routes',
       plugins: 'Plugins & commands',
@@ -3831,6 +3909,69 @@ const enUS = {
       },
     },
     execution: {
+      handling: {
+        ai: 'AI',
+        command: 'Command',
+        plugin: 'Plugin',
+        policy: 'Blocked by policy',
+      },
+      badges: {
+        builtinCommand: 'System command /{{name}}',
+        pluginCommand: 'Plugin command /{{name}}',
+        commandProcessor: 'Command processor',
+        commandDenied: 'Command denied',
+        policyBlocked: 'Blocked by policy · {{item}}',
+        policyBlockedUnknown: 'Blocked by policy',
+        pluginIntercepted: 'Plugin intercepted · {{plugin}} ({{hook}})',
+      },
+      policyItems: {
+        'access-control': 'Access control',
+        'group-respond-rules': 'Group response rules',
+        'rate-limit': 'Rate limit',
+        'ignore-rules': 'Ignore rules',
+        'content-filter': 'Content filter',
+        'outbound-content-filter': 'Outbound content filter',
+      },
+      policyLayer: {
+        bot: 'bot default policy',
+        route: 'route override policy',
+      },
+      timeline: {
+        title: 'Message policy',
+        steps: {
+          admission: 'Admission',
+          hooks: 'Lifecycle hooks',
+          processor: 'Processor',
+          output: 'Output',
+        },
+        admitted: 'Admitted',
+        blocked: 'Blocked by the message policy',
+        blockedBy: 'Blocked by "{{item}}" of the {{layer}}; no reply was sent',
+        unknownLayer: 'message policy',
+        notReached: 'Not run',
+        hookBy: 'Plugin {{plugin}} intercepted the message in {{hook}}',
+        noHook: 'No plugin intercepted it',
+        denied: '/{{name}} denied: not permitted ({{reply}})',
+        deniedNotice: 'replied with a notice',
+        deniedSilent: 'no reply',
+        builtin: 'Ran system command /{{name}}',
+        pluginCommand: 'Ran plugin command /{{name}}',
+        discarded: 'The routing rule discards it',
+        handledBy: 'Handled by {{target}}',
+        noOutput: 'No output processing',
+        outputApplied: 'Applied before the reply was sent',
+        actions: {
+          long_text: 'Long text {{strategy}}',
+          strategy: {
+            image: 'as image',
+            forward: 'as forwarded message',
+          },
+          delay: 'Delayed {{ms}} ms',
+          at: '@ sender',
+          quote: 'Quoted the message',
+          outbound_block: 'Outbound content filter blocked the reply',
+        },
+      },
       title: 'Executions',
       subtitle:
         'Every inbound event and the execution it triggered, across agents and chats.',
@@ -3846,6 +3987,8 @@ const enUS = {
         modeDebug: 'Debug only',
         status: 'Status',
         statusAll: 'All statuses',
+        handling: 'Handling',
+        handlingAll: 'All handling',
       },
       status: {
         completed: 'Completed',
@@ -3854,6 +3997,7 @@ const enUS = {
         queued: 'Queued',
         cancelled: 'Cancelled',
         ignored: 'Ignored',
+        denied: 'Denied',
       },
       // prettier-ignore
       kind: {

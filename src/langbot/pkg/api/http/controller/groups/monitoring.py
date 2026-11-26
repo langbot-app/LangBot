@@ -122,6 +122,7 @@ class MonitoringRouterGroup(group.RouterGroup):
                 # ``summary=false`` skips the dashboard aggregates for callers
                 # that only need ``total`` (e.g. the WebUI milestone prompt).
                 include_summary=quart.request.args.get('summary', 'true').strip().lower() not in {'false', '0'},
+                handling=quart.request.args.get('handling', 'all'),
             )
 
             return self.success(data=result)

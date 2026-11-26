@@ -1431,3 +1431,159 @@ async def test_detail_exposes_chat_context_and_section_counts(engine, service):
         'sender_name': None,
     }
     assert chat_context({'conversation_id': 'person_U-3', 'user_name': 'Bob'})['type'] == 'person'
+
+
+@pytest.mark.asyncio
+async def test_handling_filter_and_row_facts_cover_every_source(engine, service):
+    import json
+    from langbot.pkg.entity.persistence.event_log import EventLog
+
+    factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as session:
+        session.add_all(
+            [
+                persistence_agent_run.AgentRun(
+                    run_id='run-ai',
+                    agent_id='agent-1',
+                    binding_id='agent_agent-1_default',
+                    runner_id='r',
+                    workspace_id=WORKSPACE,
+                    status='completed',
+                    created_at=_dt(9),
+                ),
+                persistence_agent_run.AgentRun(
+                    run_id='run-cmd',
+                    binding_id='command_processor:p1',
+                    runner_id='r',
+                    workspace_id=WORKSPACE,
+                    status='completed',
+                    created_at=_dt(9, 1),
+                ),
+                persistence_agent_run.AgentRun(
+                    run_id='run-plugin',
+                    binding_id='ep',
+                    runner_id='r',
+                    workspace_id=WORKSPACE,
+                    status='completed',
+                    created_at=_dt(9, 2),
+                    metadata_json=json.dumps({'processor_type': 'event_processor'}),
+                ),
+            ]
+        )
+        for message_id, handled_by, event_id in [
+            ('msg-ai', 'runner:local-agent', None),
+            ('msg-hook', 'plugin:a/b', None),
+            ('msg-filtered', 'filtered:RequireRateLimitOccupancy', 'evt-filtered'),
+        ]:
+            session.add(
+                persistence_monitoring.MonitoringMessage(
+                    id=message_id,
+                    workspace_uuid=WORKSPACE,
+                    timestamp=_dt(9, 3),
+                    bot_id='bot-1',
+                    bot_name='Bot',
+                    pipeline_id='pipeline-1',
+                    pipeline_name='Chat',
+                    message_content='{}',
+                    session_id='s',
+                    status='discarded' if handled_by.startswith('filtered') else 'success',
+                    level='info',
+                    role='user',
+                    handled_by=handled_by,
+                    event_id=event_id,
+                )
+            )
+        for event_id, metadata in [
+            (
+                'evt-filtered',
+                {
+                    'status': 'ignored',
+                    'policy_item': 'rate-limit',
+                    'policy_layer': 'route',
+                    'routes': [{'target_type': 'pipeline', 'status': 'delivered'}],
+                },
+            ),
+            (
+                'evt-builtin',
+                {
+                    'status': 'completed',
+                    'routes': [{'target_type': 'builtin_command', 'target_uuid': 'help', 'status': 'delivered'}],
+                },
+            ),
+            (
+                'evt-denied',
+                {
+                    'status': 'denied',
+                    'routes': [
+                        {
+                            'target_type': 'plugin_command',
+                            'target_uuid': 'weather',
+                            'status': 'denied',
+                            'failure_code': 'command_permission_denied',
+                        }
+                    ],
+                },
+            ),
+            (
+                'evt-policy',
+                {
+                    'status': 'ignored',
+                    'routes': [
+                        {
+                            'target_type': 'agent',
+                            'status': 'discarded',
+                            'failure_code': 'message_policy',
+                            'policy_layer': 'bot',
+                            'policy_item': 'group-respond-rules',
+                        }
+                    ],
+                },
+            ),
+            (
+                'evt-hook',
+                {
+                    'status': 'completed',
+                    'routes': [
+                        {
+                            'target_type': 'plugin',
+                            'target_uuid': 'plugin:a/b',
+                            'status': 'delivered',
+                            'hook': 'CommandSent',
+                        }
+                    ],
+                },
+            ),
+        ]:
+            session.add(
+                EventLog(
+                    event_id=event_id,
+                    event_type='message.received',
+                    workspace_id=WORKSPACE,
+                    source='platform',
+                    bot_id='bot-1',
+                    created_at=_dt(9, 4),
+                    metadata_json=json.dumps(metadata),
+                )
+            )
+        await session.commit()
+
+    async def ids(handling):
+        result = await service.get_executions(WORKSPACE, handling=handling, include_summary=False)
+        return {item['id']: item for item in result['items']}
+
+    assert set(await ids('ai')) == {'run-ai', 'msg-ai'}
+    commands = await ids('command')
+    assert set(commands) == {'run-cmd', 'evt-builtin', 'evt-denied'}
+    assert commands['run-cmd']['command_kind'] == 'processor'
+    builtin = commands['evt-builtin']
+    assert (builtin['command_kind'], builtin['command_name'], builtin['command_denied']) == ('builtin', 'help', False)
+    assert commands['evt-denied']['command_denied'] is True
+    plugins = await ids('plugin')
+    assert set(plugins) == {'run-plugin', 'msg-hook', 'evt-hook'}
+    assert plugins['evt-hook']['hook'] == 'CommandSent'
+    policy = await ids('policy')
+    assert set(policy) == {'msg-filtered', 'evt-policy'}
+    assert (policy['msg-filtered']['policy_layer'], policy['msg-filtered']['policy_item']) == ('route', 'rate-limit')
+    assert (policy['evt-policy']['policy_layer'], policy['evt-policy']['policy_item']) == ('bot', 'group-respond-rules')
+    # Unknown values keep the unfiltered list.
+    assert len(await ids('bogus')) == 10

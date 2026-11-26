@@ -955,7 +955,84 @@ const zhHant = {
       addFallback: '新增備用模型',
     },
   },
+  upgradeChecks: {
+    banner: '本次升級有 {{count}} 項變化待確認',
+    review: '查看',
+    title: '升級檢查',
+    description:
+      '這次升級把觸發、安全和通用輸出設定從聊天移到了機器人上，並新增了系統命令。確認以下變化，或一鍵調整。',
+    empty: '沒有待確認的變化。',
+    confirmAll: '全部確認',
+    allConfirmed: '已全部確認',
+    acknowledge: '知道了',
+    confirmedSection: '已確認 {{count}} 項',
+    unknownBot: '機器人',
+    scopeDefault: '機器人預設',
+    scopeRoutes: '{{count}} 條路由',
+    failed: '操作失敗：{{error}}',
+    actionDone: '已完成：{{action}}',
+    taskStarted: '已開始：{{action}}，可在任務列表查看進度',
+    links: {
+      admins: '前往會話監控設定管理員',
+      policy: '查看訊息策略',
+      commands: '查看外掛和命令',
+    },
+    actions: {
+      restore_prefixes: '同時啟用 ! 和 ！',
+      uninstall_essential: '解除安裝 EssentialCommands',
+      remove_plugin: '從機器人移除',
+      promote_route_policy: '提升為機器人預設',
+    },
+    confirm: {
+      uninstall_essential:
+        '將解除安裝 EssentialCommands 外掛（保留外掛資料）。同名命令改由系統命令處理。',
+      remove_plugin:
+        '將從「{{bot}}」移除外掛 {{plugin}}，它的命令和事件監聽器不再生效。',
+      promote_route_policy:
+        '將把這份相同的設定寫成「{{bot}}」的預設訊息策略，並刪除 {{count}} 條路由上的覆寫。每條路由的實際效果不變。',
+    },
+    items: {
+      command_prefix_changed: {
+        title: '命令前綴變了',
+        body: '「{{bot}}」原本使用 {{prefixes}} 作為命令前綴，現在預設是 /。',
+        keep: '保持 /',
+      },
+      plugin_command_collision: {
+        title: '與系統命令重名',
+        body: '這些外掛命令與系統命令重名，現在只會執行系統命令：{{names}}',
+        bodyEssential:
+          '已安裝 EssentialCommands，它的功能已由系統命令提供；重名命令只會執行系統命令：{{names}}',
+        keep: '保留外掛',
+      },
+      command_admin_missing: {
+        title: '僅管理員命令沒有管理員',
+        body: '「{{bot}}」有僅管理員可用的命令，但還沒有設定管理員，目前沒人能用。',
+      },
+      command_plugin_enabled: {
+        title: '機器人新啟用的外掛',
+        body: '外掛 {{plugin}} 因為帶有命令，遷移時被啟用到了「{{bot}}」（{{scope}}）。',
+        keep: '保留',
+      },
+      equivalent_route_policies: {
+        title: '路由覆寫可以簡化',
+        body: '「{{bot}}」的 {{count}} 條路由覆寫效果相同，可以提升為機器人預設策略。',
+        unroutedCommands: '沒有命中任何路由的命令也會改用這份設定。',
+      },
+      chat_settings_moved: {
+        title: '原聊天設定已遷走',
+        body: '觸發、安全和通用輸出設定現在在機器人上；「{{bot}}」的 {{count}} 條路由沿用了原聊天的設定。',
+      },
+    },
+  },
   bots: {
+    routeCounts: {
+      last24h: '近 24 小時',
+      none: '沒有訊息',
+      ai: 'AI',
+      command: '命令',
+      plugin: '外掛',
+      policy: '攔截',
+    },
     routingTabs: {
       routes: '路由規則',
       plugins: '插件和指令',
@@ -3591,6 +3668,69 @@ const zhHant = {
       },
     },
     execution: {
+      handling: {
+        ai: 'AI 處理',
+        command: '命令',
+        plugin: '外掛',
+        policy: '策略攔截',
+      },
+      badges: {
+        builtinCommand: '系統命令 /{{name}}',
+        pluginCommand: '外掛命令 /{{name}}',
+        commandProcessor: '命令處理器',
+        commandDenied: '命令被拒',
+        policyBlocked: '策略攔截 · {{item}}',
+        policyBlockedUnknown: '策略攔截',
+        pluginIntercepted: '外掛攔截 · {{plugin}}（{{hook}}）',
+      },
+      policyItems: {
+        'access-control': '存取控制',
+        'group-respond-rules': '群組回應規則',
+        'rate-limit': '限速',
+        'ignore-rules': '忽略規則',
+        'content-filter': '內容過濾',
+        'outbound-content-filter': '出口內容過濾',
+      },
+      policyLayer: {
+        bot: '機器人預設策略',
+        route: '路由覆寫策略',
+      },
+      timeline: {
+        title: '訊息策略',
+        steps: {
+          admission: '入口准入',
+          hooks: '生命週期鉤子',
+          processor: '處理器',
+          output: '出口處理',
+        },
+        admitted: '已通過准入',
+        blocked: '被訊息策略攔截',
+        blockedBy: '被{{layer}}的「{{item}}」攔截，沒有回覆',
+        unknownLayer: '訊息策略',
+        notReached: '未執行',
+        hookBy: '外掛 {{plugin}} 在 {{hook}} 攔截了訊息',
+        noHook: '沒有外掛攔截',
+        denied: '/{{name}} 權限不足，已拒絕（{{reply}}）',
+        deniedNotice: '回覆無權限提示',
+        deniedSilent: '不回覆',
+        builtin: '執行系統命令 /{{name}}',
+        pluginCommand: '執行外掛命令 /{{name}}',
+        discarded: '路由規則設為丟棄',
+        handledBy: '交給 {{target}} 處理',
+        noOutput: '沒有出口處理',
+        outputApplied: '回覆送出前做了以下處理',
+        actions: {
+          long_text: '長文字{{strategy}}',
+          strategy: {
+            image: '轉圖片',
+            forward: '轉合併轉發',
+          },
+          delay: '延遲 {{ms}} 毫秒',
+          at: '@ 傳送者',
+          quote: '引用原訊息',
+          outbound_block: '出口內容過濾攔截了回覆',
+        },
+      },
       title: '執行記錄',
       subtitle: '每條入站事件及其觸發的執行，涵蓋 Agent 與聊天。',
       tabs: { executions: '執行記錄' },
@@ -3605,6 +3745,8 @@ const zhHant = {
         modeDebug: '僅偵錯',
         status: '狀態',
         statusAll: '全部狀態',
+        handling: '處理方式',
+        handlingAll: '全部處理方式',
       },
       status: {
         completed: '已完成',
@@ -3613,6 +3755,7 @@ const zhHant = {
         queued: '排隊中',
         cancelled: '已取消',
         ignored: '已忽略',
+        denied: '已拒絕',
       },
       // prettier-ignore
       kind: {

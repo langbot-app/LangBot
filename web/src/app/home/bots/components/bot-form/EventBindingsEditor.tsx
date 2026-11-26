@@ -119,6 +119,7 @@ import {
   Agent,
   BotRouteDryRunResult,
   BotEventRouteStatus,
+  BotRouteCounts,
 } from '@/app/infra/entities/api';
 import { backendClient } from '@/app/infra/http';
 import AgentCreateContent from '@/app/home/agents/components/AgentCreateContent';
@@ -1290,6 +1291,49 @@ interface BindingCardProps {
   onRemove: (globalIndex: number) => void;
   dragHandleProps?: Record<string, unknown>;
   isOverlay?: boolean;
+  /** Last 24h handling counts of a saved message route. */
+  counts?: BotRouteCounts;
+}
+
+const ROUTE_COUNT_KINDS = [
+  ['ai', 'bg-emerald-500'],
+  ['command', 'bg-sky-500'],
+  ['plugin', 'bg-violet-500'],
+  ['policy', 'bg-amber-500'],
+] as const;
+
+function RouteCounts24h({ counts }: { counts: BotRouteCounts }) {
+  const { t } = useTranslation();
+  const total = ROUTE_COUNT_KINDS.reduce(
+    (sum, [kind]) => sum + (counts[kind] ?? 0),
+    0,
+  );
+  return (
+    <span
+      className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-muted-foreground"
+      data-testid="route-counts-24h"
+    >
+      <span>{t('bots.routeCounts.last24h')}</span>
+      {total === 0 ? (
+        <span>{t('bots.routeCounts.none')}</span>
+      ) : (
+        ROUTE_COUNT_KINDS.filter(([kind]) => (counts[kind] ?? 0) > 0).map(
+          ([kind, dot]) => (
+            <span key={kind} className="inline-flex items-center gap-1">
+              <span
+                aria-hidden="true"
+                className={`size-1.5 shrink-0 rounded-full ${dot}`}
+              />
+              {t(`bots.routeCounts.${kind}`)}
+              <span className="tabular-nums text-foreground/80">
+                {counts[kind]}
+              </span>
+            </span>
+          ),
+        )
+      )}
+    </span>
+  );
 }
 
 function BindingCardContent({
@@ -1304,6 +1348,7 @@ function BindingCardContent({
   onRemove,
   dragHandleProps,
   isOverlay = false,
+  counts,
 }: BindingCardProps) {
   const { t } = useTranslation();
   const isEnabled = binding.enabled ?? true;
@@ -1384,6 +1429,9 @@ function BindingCardContent({
             <span className="block truncate text-xs text-destructive">
               {t('bots.unsupportedPipelineEvent')}
             </span>
+          )}
+          {counts && binding.id && pipelineAllowed && !isOverlay && (
+            <RouteCounts24h counts={counts} />
           )}
         </Button>
 
@@ -1571,6 +1619,9 @@ export default function EventBindingsEditor({
   const [routeStatuses, setRouteStatuses] = useState<BotEventRouteStatus[]>([]);
   const [routeStatusLoading, setRouteStatusLoading] = useState(false);
   const [routeStatusError, setRouteStatusError] = useState<string | null>(null);
+  const [routeCounts, setRouteCounts] = useState<
+    Record<string, BotRouteCounts>
+  >({});
 
   // stable ids for dnd
   const nextId = useRef(0);
@@ -1649,6 +1700,33 @@ export default function EventBindingsEditor({
   useEffect(() => {
     if (recordsOpen) void refreshRouteStatuses();
   }, [recordsOpen, refreshRouteStatuses]);
+
+  // Saved routes show how their last 24h of messages were handled.
+  useEffect(() => {
+    if (!botId) {
+      setRouteCounts({});
+      return;
+    }
+    let active = true;
+    backendClient
+      .getBotEventRouteStatuses(botId)
+      .then((response) => {
+        if (!active) return;
+        const next: Record<string, BotRouteCounts> = {};
+        for (const route of response.routes ?? []) {
+          if (route.binding_id && route.counts_24h)
+            next[String(route.binding_id)] = route.counts_24h;
+        }
+        setRouteCounts(next);
+      })
+      .catch(() => {
+        // Counts are decorative; route editing must not depend on them.
+        if (active) setRouteCounts({});
+      });
+    return () => {
+      active = false;
+    };
+  }, [botId]);
 
   function updateBindings(next: EventBinding[]) {
     const ordered = [
@@ -1932,12 +2010,16 @@ export default function EventBindingsEditor({
                   onToggleExpand={toggleExpand}
                   onUpdate={updateBinding}
                   onRemove={removeBinding}
+                  counts={
+                    binding.id ? routeCounts[String(binding.id)] : undefined
+                  }
                 />
               );
             })}
             {disabledBindings.map(({ b, i }) => (
               <BindingCardContent
                 key={b.id ?? `disabled-${i}`}
+                counts={b.id ? routeCounts[String(b.id)] : undefined}
                 binding={b}
                 globalIndex={i}
                 eventOptions={eventOptions}

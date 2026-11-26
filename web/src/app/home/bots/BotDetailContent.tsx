@@ -43,6 +43,7 @@ import EntityBasicInfoDialog, {
 } from '@/app/home/components/entity-basic-info/EntityBasicInfoDialog';
 import AdapterEventDebugDialog from './components/bot-form/AdapterEventDebugDialog';
 import EntityTitleEditButton from '@/app/home/components/entity-basic-info/EntityTitleEditButton';
+import UpgradeChecksBanner from '@/app/home/components/upgrade-checks/UpgradeChecks';
 
 export default function BotDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
@@ -339,6 +340,10 @@ export default function BotDetailContent({ id }: { id: string }) {
               </Button>
             </div>
           )}
+        </div>
+
+        <div className="shrink-0 empty:hidden [&:has(>*)]:pb-3">
+          <UpgradeChecksBanner />
         </div>
 
         {/* Horizontal Tabs */}

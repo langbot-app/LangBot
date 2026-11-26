@@ -580,7 +580,7 @@ class LangBotMCPServer:
             return _dump({'cancelled': True})
 
         @mcp.tool(
-            description='List Workspace executions, including events that did not start a processor. The legacy pipeline_ids filter accepts Agent, Pipeline and event processor IDs. Returns bounded rows and summary metrics.'
+            description='List Workspace executions, including events that did not start a processor. The legacy pipeline_ids filter accepts Agent, Pipeline and event processor IDs; handling narrows rows to AI, command, plugin or message-policy-dropped handling. Returns bounded rows and summary metrics.'
         )
         async def get_monitoring_executions(
             limit: int = 50,
@@ -589,6 +589,7 @@ class LangBotMCPServer:
             pipeline_ids: list[str] | None = None,
             statuses: list[str] | None = None,
             mode: typing.Literal['all', 'real', 'debug'] = 'all',
+            handling: typing.Literal['all', 'ai', 'command', 'plugin', 'policy'] = 'all',
         ) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(
@@ -600,6 +601,7 @@ class LangBotMCPServer:
                     pipeline_ids=pipeline_ids,
                     statuses=statuses,
                     mode=mode,
+                    handling=handling,
                 )
             )
 

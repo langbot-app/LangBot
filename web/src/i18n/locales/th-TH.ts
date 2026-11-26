@@ -992,7 +992,84 @@ const thTH = {
       addFallback: 'เพิ่มโมเดลสำรอง',
     },
   },
+  upgradeChecks: {
+    banner: 'มีการเปลี่ยนแปลงจากการอัปเกรด {{count}} รายการที่ต้องตรวจสอบ',
+    review: 'ตรวจสอบ',
+    title: 'ตรวจสอบการอัปเกรด',
+    description:
+      'การอัปเกรดนี้ย้ายการตั้งค่าทริกเกอร์ ความปลอดภัย และการส่งออกทั่วไปจากแชทไปยังบอท และเพิ่มคำสั่งระบบ ตรวจสอบการเปลี่ยนแปลงด้านล่าง หรือปรับด้วยคลิกเดียว',
+    empty: 'ไม่มีรายการที่ต้องตรวจสอบ',
+    confirmAll: 'รับทราบทั้งหมด',
+    allConfirmed: 'รับทราบทั้งหมดแล้ว',
+    acknowledge: 'รับทราบ',
+    confirmedSection: 'รับทราบแล้ว {{count}} รายการ',
+    unknownBot: 'บอท',
+    scopeDefault: 'ค่าเริ่มต้นของบอท',
+    scopeRoutes: '{{count}} เส้นทาง',
+    failed: 'ดำเนินการไม่สำเร็จ: {{error}}',
+    actionDone: 'เสร็จแล้ว: {{action}}',
+    taskStarted: 'เริ่มแล้ว: {{action}} ดูความคืบหน้าในรายการงาน',
+    links: {
+      admins: 'ตั้งผู้ดูแลในการติดตามเซสชัน',
+      policy: 'เปิดนโยบายข้อความ',
+      commands: 'เปิดปลั๊กอินและคำสั่ง',
+    },
+    actions: {
+      restore_prefixes: 'รับ ! และ ！ ด้วย',
+      uninstall_essential: 'ถอนการติดตั้ง EssentialCommands',
+      remove_plugin: 'นำออกจากบอท',
+      promote_route_policy: 'ตั้งเป็นค่าเริ่มต้นของบอท',
+    },
+    confirm: {
+      uninstall_essential:
+        'จะถอนการติดตั้ง EssentialCommands (เก็บข้อมูลปลั๊กอินไว้) คำสั่งชื่อซ้ำจะใช้คำสั่งระบบแทน',
+      remove_plugin:
+        'จะนำปลั๊กอิน {{plugin}} ออกจาก "{{bot}}" คำสั่งและตัวรับฟังเหตุการณ์ของปลั๊กอินจะหยุดทำงานที่นั่น',
+      promote_route_policy:
+        'การตั้งค่าที่เหมือนกันนี้จะเป็นนโยบายข้อความเริ่มต้นของ "{{bot}}" และลบการแทนที่บน {{count}} เส้นทาง ทุกเส้นทางทำงานเหมือนเดิม',
+    },
+    items: {
+      command_prefix_changed: {
+        title: 'คำนำหน้าคำสั่งเปลี่ยนไป',
+        body: '"{{bot}}" เคยใช้ {{prefixes}} เป็นคำนำหน้าคำสั่ง ตอนนี้ค่าเริ่มต้นคือ /',
+        keep: 'ใช้ / ต่อ',
+      },
+      plugin_command_collision: {
+        title: 'ชื่อซ้ำกับคำสั่งระบบ',
+        body: 'คำสั่งปลั๊กอินเหล่านี้ชื่อซ้ำกับคำสั่งระบบ ตอนนี้จะรันคำสั่งระบบแทน: {{names}}',
+        bodyEssential:
+          'ติดตั้ง EssentialCommands อยู่ และคำสั่งระบบครอบคลุมความสามารถนี้แล้ว คำสั่งชื่อซ้ำจะรันเป็นคำสั่งระบบ: {{names}}',
+        keep: 'เก็บปลั๊กอินไว้',
+      },
+      command_admin_missing: {
+        title: 'คำสั่งสำหรับผู้ดูแลแต่ไม่มีผู้ดูแล',
+        body: '"{{bot}}" มีคำสั่งเฉพาะผู้ดูแล แต่ยังไม่ได้ตั้งผู้ดูแล จึงยังไม่มีใครใช้ได้',
+      },
+      command_plugin_enabled: {
+        title: 'ปลั๊กอินที่เพิ่งเปิดใช้บนบอท',
+        body: 'ปลั๊กอิน {{plugin}} มีคำสั่ง การอัปเกรดจึงเปิดใช้บน "{{bot}}" ({{scope}})',
+        keep: 'เก็บไว้',
+      },
+      equivalent_route_policies: {
+        title: 'ทำให้การแทนที่เส้นทางง่ายขึ้นได้',
+        body: 'การแทนที่ {{count}} เส้นทางของ "{{bot}}" มีผลเหมือนกัน สามารถตั้งเป็นนโยบายเริ่มต้นของบอทได้',
+        unroutedCommands: 'คำสั่งที่ไม่ตรงกับเส้นทางใดจะใช้การตั้งค่านี้ด้วย',
+      },
+      chat_settings_moved: {
+        title: 'ย้ายการตั้งค่าแชทแล้ว',
+        body: 'การตั้งค่าทริกเกอร์ ความปลอดภัย และการส่งออกทั่วไปอยู่ที่บอทแล้ว {{count}} เส้นทางของ "{{bot}}" ยังใช้การตั้งค่าของแชทเดิม',
+      },
+    },
+  },
   bots: {
+    routeCounts: {
+      last24h: '24 ชม. ล่าสุด',
+      none: 'ไม่มีข้อความ',
+      ai: 'AI',
+      command: 'คำสั่ง',
+      plugin: 'ปลั๊กอิน',
+      policy: 'บล็อก',
+    },
     routingTabs: {
       routes: 'เส้นทาง',
       plugins: 'ปลั๊กอินและคำสั่ง',
@@ -3741,6 +3818,69 @@ const thTH = {
       },
     },
     execution: {
+      handling: {
+        ai: 'AI',
+        command: 'คำสั่ง',
+        plugin: 'ปลั๊กอิน',
+        policy: 'ถูกนโยบายบล็อก',
+      },
+      badges: {
+        builtinCommand: 'คำสั่งระบบ /{{name}}',
+        pluginCommand: 'คำสั่งปลั๊กอิน /{{name}}',
+        commandProcessor: 'ตัวประมวลผลคำสั่ง',
+        commandDenied: 'คำสั่งถูกปฏิเสธ',
+        policyBlocked: 'ถูกนโยบายบล็อก · {{item}}',
+        policyBlockedUnknown: 'ถูกนโยบายบล็อก',
+        pluginIntercepted: 'ปลั๊กอินสกัด · {{plugin}} ({{hook}})',
+      },
+      policyItems: {
+        'access-control': 'การควบคุมการเข้าถึง',
+        'group-respond-rules': 'กฎการตอบในกลุ่ม',
+        'rate-limit': 'จำกัดความถี่',
+        'ignore-rules': 'กฎการละเว้น',
+        'content-filter': 'ตัวกรองเนื้อหา',
+        'outbound-content-filter': 'ตัวกรองเนื้อหาขาออก',
+      },
+      policyLayer: {
+        bot: 'นโยบายเริ่มต้นของบอท',
+        route: 'นโยบายแทนที่ของเส้นทาง',
+      },
+      timeline: {
+        title: 'นโยบายข้อความ',
+        steps: {
+          admission: 'การรับเข้า',
+          hooks: 'ฮุกวงจรชีวิต',
+          processor: 'ตัวประมวลผล',
+          output: 'การส่งออก',
+        },
+        admitted: 'ผ่านการรับเข้า',
+        blocked: 'ถูกนโยบายข้อความบล็อก',
+        blockedBy: 'ถูก "{{item}}" ของ{{layer}}บล็อก จึงไม่ได้ตอบกลับ',
+        unknownLayer: 'นโยบายข้อความ',
+        notReached: 'ไม่ได้ทำงาน',
+        hookBy: 'ปลั๊กอิน {{plugin}} สกัดข้อความที่ {{hook}}',
+        noHook: 'ไม่มีปลั๊กอินสกัด',
+        denied: '/{{name}} ถูกปฏิเสธเพราะไม่มีสิทธิ์ ({{reply}})',
+        deniedNotice: 'ตอบกลับว่าไม่มีสิทธิ์',
+        deniedSilent: 'ไม่ตอบกลับ',
+        builtin: 'รันคำสั่งระบบ /{{name}}',
+        pluginCommand: 'รันคำสั่งปลั๊กอิน /{{name}}',
+        discarded: 'กฎการกำหนดเส้นทางทิ้งข้อความ',
+        handledBy: 'จัดการโดย {{target}}',
+        noOutput: 'ไม่มีการประมวลผลขาออก',
+        outputApplied: 'ทำสิ่งต่อไปนี้ก่อนส่งคำตอบ',
+        actions: {
+          long_text: 'ข้อความยาว{{strategy}}',
+          strategy: {
+            image: 'แปลงเป็นรูปภาพ',
+            forward: 'แปลงเป็นข้อความส่งต่อ',
+          },
+          delay: 'หน่วง {{ms}} มิลลิวินาที',
+          at: '@ ผู้ส่ง',
+          quote: 'อ้างอิงข้อความเดิม',
+          outbound_block: 'ตัวกรองเนื้อหาขาออกบล็อกคำตอบ',
+        },
+      },
       title: 'การทำงาน',
       subtitle:
         'เหตุการณ์ขาเข้าแต่ละรายการและการทำงานที่ถูกเรียกใช้ ทั้งในเอเจนต์และแชท',
@@ -3756,6 +3896,8 @@ const thTH = {
         modeDebug: 'เฉพาะดีบัก',
         status: 'สถานะ',
         statusAll: 'ทุกสถานะ',
+        handling: 'วิธีจัดการ',
+        handlingAll: 'ทุกวิธีจัดการ',
       },
       status: {
         completed: 'เสร็จสิ้น',
@@ -3764,6 +3906,7 @@ const thTH = {
         queued: 'อยู่ในคิว',
         cancelled: 'ยกเลิกแล้ว',
         ignored: 'ละเว้นแล้ว',
+        denied: 'ถูกปฏิเสธ',
       },
       // prettier-ignore
       kind: {
