@@ -23,6 +23,8 @@
   "Invalid command permission settings": "命令权限设置无效",
   "No processor handles this message": "当前没有处理这条消息的处理器",
   "This processor does not support this command": "当前处理器不支持此命令",
+  "The declared LangBot version range is incompatible with the current version ({current})": "该插件声明的 LangBot 版本范围与当前版本（{current}）不兼容",
+  "No plugin version is compatible with this LangBot version": "该插件没有兼容当前 LangBot 的版本",
   "Daily message quota reached ({limit} per day). It resets at 00:00 UTC. Upgrade your plan for a higher quota.": "今日消息额度已用完（每天 {limit} 条），将于 UTC 00:00 重置。升级套餐可提高额度。",
   "The bot route changed. Read the current binding.": "Bot 路由已变化。请读取当前绑定。",
   "Skill not found": "Skill 不存在",

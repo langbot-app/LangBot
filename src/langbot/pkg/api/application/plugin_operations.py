@@ -151,6 +151,7 @@ class GithubAssetsInput(Input):
 
 
 class GithubInstallInput(Input):
+    allow_incompatible: bool = Field(default=False, description='Use only when explicitly requested by the user.')
     owner: str
     repo: str
     release_tag: str | None = None
@@ -163,6 +164,7 @@ class GithubInstallInput(Input):
 
 
 class MarketplaceInput(Input):
+    allow_incompatible: bool = Field(default=False, description='Use only when explicitly requested by the user.')
     plugin_author: str = Field(min_length=1)
     plugin_name: str = Field(min_length=1)
     plugin_version: str | None = None
@@ -196,6 +198,7 @@ class FileInput(Input):
 
 
 class LocalInstallInput(FileInput):
+    allow_incompatible: bool = Field(default=False, description='Use only when explicitly requested by the user.')
     filename: str = 'local plugin'
     administrator_force: bool = False
 
@@ -380,6 +383,7 @@ _MARKETPLACE_RESULT_FIELDS = (
     'label',
     'description',
     'latest_version',
+    'compatible_version',
     'tags',
     'components',
     'runner_usages',
@@ -400,6 +404,9 @@ def _marketplace_url(ap) -> str:
 async def marketplace_search(ap, context, payload):
     await _fence(ap, context)
     body = payload.model_dump(exclude_none=True)
+    from langbot import __version__
+
+    body['langbot_version'] = __version__
     if not body.get('tags_filter'):
         body.pop('tags_filter', None)
     url = f'{_marketplace_url(ap)}/api/v1/marketplace/plugins/search'
@@ -621,13 +628,19 @@ async def install_local(ap, context, payload):
         ap,
         context,
         PluginInstallSource.LOCAL,
-        {'plugin_file': payload.content, 'administrator_force': payload.administrator_force},
+        {
+            'plugin_file': payload.content,
+            'administrator_force': payload.administrator_force,
+            'allow_incompatible': payload.allow_incompatible,
+        },
         payload.filename,
         f'Installing plugin from local {payload.filename}',
     )
 
 
 async def preview_local(ap, context, payload):
+    from ...plugin.compatibility import compatibility
+
     await _fence(ap, context)
     try:
         manifest, requirements, names = await asyncio.to_thread(inspect_plugin_archive_metadata, payload.content)
@@ -638,6 +651,7 @@ async def preview_local(ap, context, payload):
         'filename': payload.filename,
         'size': len(payload.content),
         'manifest': manifest,
+        'compatibility': compatibility(manifest),
         'metadata': manifest.get('metadata') or {},
         'component_types': list(counts),
         'component_counts': counts,

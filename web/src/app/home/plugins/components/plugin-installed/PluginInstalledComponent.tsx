@@ -37,6 +37,7 @@ import {
   pluginTaskKey,
   usePluginInstallTasks,
 } from '@/app/home/plugins/components/plugin-install-task';
+import { installableVersion } from '@/app/infra/entities/plugin';
 
 export interface PluginInstalledComponentRef {
   refreshPluginList: () => void;
@@ -163,11 +164,10 @@ const PluginInstalledComponent = forwardRef<
 
           let hasUpdate = false;
           if (plugin.install_source === 'marketplace' && marketplacePlugin) {
-            if (marketplacePlugin.latest_version) {
-              hasUpdate = isNewerVersion(
-                marketplacePlugin.latest_version,
-                meta.version ?? '',
-              );
+            // Only offer an update this Core can actually install.
+            const candidate = installableVersion(marketplacePlugin);
+            if (candidate) {
+              hasUpdate = isNewerVersion(candidate, meta.version ?? '');
             }
           }
 
@@ -183,6 +183,7 @@ const PluginInstalledComponent = forwardRef<
               version: meta.version ?? '',
               enabled: plugin.enabled,
               permission_status: plugin.permission_status,
+              compatibility: plugin.compatibility,
               type: marketplacePlugin?.type || 'plugin',
               // Icon is resolved by ExtensionCardComponent through the shared
               // installed-plugin hook (authenticated fetch in multi-Workspace

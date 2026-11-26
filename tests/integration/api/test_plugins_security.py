@@ -320,4 +320,5 @@ async def test_local_install_forwards_explicit_administrator_force(plugin_securi
     assert application.plugin_connector.install_plugin.await_args.args[1] == {
         'plugin_file': b'archive',
         'administrator_force': True,
+        'allow_incompatible': False,
     }

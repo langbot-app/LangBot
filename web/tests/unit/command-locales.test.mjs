@@ -48,7 +48,8 @@ test('command configuration and platform registration catalogs have matching key
         ts.isPropertyAssignment(node) &&
         ['commandProcessor', 'platformCommands'].includes(
           node.name.getText(ast),
-        )
+        ) &&
+        ts.isObjectLiteralExpression(node.initializer)
       ) {
         fields(node.initializer, node.name.getText(ast));
       }

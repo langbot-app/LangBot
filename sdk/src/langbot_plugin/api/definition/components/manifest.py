@@ -66,11 +66,30 @@ class I18nString(pydantic.BaseModel):
         return dic
 
 
+class LangBotVersionRange(pydantic.BaseModel):
+    min: str | None = None
+    max: str | None = None
+
+    @pydantic.model_validator(mode="before")
+    @classmethod
+    def validate_bounds(cls, value):
+        from langbot_plugin.utils.version_compat import parse_range
+
+        parse_range(value)
+        return value
+
+
+class Compatibility(pydantic.BaseModel):
+    langbot: LangBotVersionRange | None = None
+
+
 class Metadata(pydantic.BaseModel):
     """元数据"""
 
     name: str
     """名称"""
+
+    compatibility: Compatibility | None = None
 
     label: I18nString
     """标签"""
@@ -181,7 +200,21 @@ class ComponentManifest(pydantic.BaseModel):
             manifest=manifest,
             rel_path=rel_path,
         )
-        self._metadata = Metadata(**manifest["metadata"])
+        metadata = manifest["metadata"]
+        try:
+            self._metadata = Metadata(**metadata)
+        except pydantic.ValidationError as error:
+            if not all(
+                item["loc"][:1] == ("compatibility",) for item in error.errors()
+            ):
+                raise
+            self._metadata = Metadata(
+                **{
+                    key: value
+                    for key, value in metadata.items()
+                    if key != "compatibility"
+                }
+            )
         self._spec = manifest["spec"]
         if manifest.get("kind") == "Plugin" and "permissions" in self._spec:
             from langbot_plugin.api.entities.permissions import PluginPermissions

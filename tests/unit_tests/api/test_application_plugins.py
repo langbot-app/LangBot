@@ -191,6 +191,7 @@ async def test_archive_preview_uses_archive_admission_and_component_metadata():
     result = await ops.preview_local(ap, CONTEXT, ops.FileInput(content=archive.getvalue(), filename='sample.lbpkg'))
     assert result['metadata'] == {'author': 'example', 'name': 'sample'}
     assert result['component_counts'] == {'tools': 1}
+    assert result['compatibility']['status'] == 'unspecified'
     assert result['requirements'] == ['httpx']
     with pytest.raises(ValueError):
         await ops.preview_local(ap, CONTEXT, ops.FileInput(content=b'invalid'))

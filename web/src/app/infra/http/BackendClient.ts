@@ -120,7 +120,7 @@ import {
   UpgradeChecksResponse,
   ApiRespLangBotModelAvailability,
 } from '@/app/infra/entities/api';
-import { Plugin } from '@/app/infra/entities/plugin';
+import { Plugin, PluginCompatibility } from '@/app/infra/entities/plugin';
 import type {
   PluginLogEntry,
   PluginSpaceUploadConfig,
@@ -1405,6 +1405,7 @@ export class BackendClient extends BaseHttpClient {
     owner: string,
     repo: string,
     releaseTag: string,
+    allowIncompatible = false,
   ): Promise<AsyncTaskCreatedResp> {
     return this.post('/api/v1/plugins/install/github', {
       asset_id: assetId,
@@ -1412,6 +1413,7 @@ export class BackendClient extends BaseHttpClient {
       owner,
       repo,
       release_tag: releaseTag,
+      ...(allowIncompatible ? { allow_incompatible: true } : {}),
     });
   }
 
@@ -1420,6 +1422,7 @@ export class BackendClient extends BaseHttpClient {
     repo: string,
     ref: string,
     sourceSubdir: string,
+    allowIncompatible = false,
   ): Promise<AsyncTaskCreatedResp> {
     return this.post('/api/v1/plugins/install/github', {
       source_type: 'branch',
@@ -1427,6 +1430,7 @@ export class BackendClient extends BaseHttpClient {
       repo,
       ref,
       source_subdir: sourceSubdir,
+      ...(allowIncompatible ? { allow_incompatible: true } : {}),
     });
   }
 
@@ -1478,9 +1482,15 @@ export class BackendClient extends BaseHttpClient {
     });
   }
 
-  public installPluginFromLocal(file: File): Promise<AsyncTaskCreatedResp> {
+  public installPluginFromLocal(
+    file: File,
+    allowIncompatible = false,
+  ): Promise<AsyncTaskCreatedResp> {
     const formData = new FormData();
     formData.append('file', file);
+    if (allowIncompatible) {
+      formData.append('allow_incompatible', 'true');
+    }
     return this.postFile('/api/v1/plugins/install/local', formData);
   }
 
@@ -1500,6 +1510,8 @@ export class BackendClient extends BaseHttpClient {
     component_counts: Record<string, number>;
     requirements: string[];
     file_count: number;
+    /** Absent on Core builds that predate version compatibility. */
+    compatibility?: PluginCompatibility;
   }> {
     const formData = new FormData();
     formData.append('file', file);

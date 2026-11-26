@@ -10,7 +10,8 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { showPluginEnablementHint } from './plugin-enablement-hint';
-import { AsyncTask } from '@/app/infra/entities/api';
+import { AsyncTask, AsyncTaskCreatedResp } from '@/app/infra/entities/api';
+import type { PluginCompatibility } from '@/app/infra/entities/plugin';
 import {
   InstallStage,
   INSTALL_PROGRESS_CAP,
@@ -21,6 +22,28 @@ import {
 export { InstallStage } from './install-progress';
 
 export type PluginTaskOperation = 'install' | 'upgrade';
+
+/** Re-submit the same install with an explicit `allow_incompatible=true`. */
+export type ResubmitIncompatibleInstall = () => Promise<AsyncTaskCreatedResp>;
+
+/**
+ * The structured rejection Core reports when a package's declared LangBot
+ * range excludes this version (`plugin_incompatible_langbot_version`).
+ */
+export function incompatibilityFromTask(
+  task: Pick<AsyncTask, 'runtime'>,
+): PluginCompatibility | undefined {
+  const error = task.runtime?.error;
+  if (error?.code !== 'plugin_incompatible_langbot_version') return undefined;
+  const details = (error.details ?? {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' ? v : null);
+  return {
+    status: details.status === 'invalid' ? 'invalid' : 'incompatible',
+    current: str(details.current) ?? '',
+    min: str(details.min),
+    max: str(details.max),
+  };
+}
 
 export interface PluginInstallTask {
   pendingConfirmation?: boolean;
@@ -39,6 +62,10 @@ export interface PluginInstallTask {
   downloadTotal?: number; // total bytes to download
   downloadSpeed?: number; // bytes per second
   error?: string;
+  /** Set when the install was rejected for the declared LangBot range. */
+  incompatibility?: PluginCompatibility;
+  /** Present for sources that may retry with explicit confirmation. */
+  resubmitIncompatible?: ResubmitIncompatibleInstall;
   startedAt: number; // timestamp
   /** When the current stage began, used to bound in-stage drift. */
   stageStartedAt: number;
@@ -64,6 +91,7 @@ interface PluginInstallTaskContextValue {
     fileSize?: number;
     operation?: PluginTaskOperation;
     skipEnablementHint?: boolean;
+    resubmitIncompatible?: ResubmitIncompatibleInstall;
   }) => void;
   removeTask: (id: string) => void;
   clearCompletedTasks: () => void;
@@ -195,6 +223,7 @@ export function asyncTaskToPluginInstallTask(
     downloadTotal: num(md.download_total),
     downloadSpeed: num(md.download_speed),
     error,
+    incompatibility: done ? incompatibilityFromTask(task) : undefined,
     startedAt: task.created_at ? task.created_at * 1000 : Date.now(),
     stageStartedAt: Date.now(),
     currentAction: action,
@@ -319,6 +348,7 @@ export function PluginInstallTaskProvider({
                       stage: InstallStage.ERROR,
                       failedStage: mapActionToStage(action),
                       error: exception,
+                      incompatibility: incompatibilityFromTask(res),
                       overallProgress: computeStageProgress({
                         stage: mapActionToStage(action),
                         stageElapsedSeconds: 0,
@@ -436,6 +466,7 @@ export function PluginInstallTaskProvider({
                 converted.pluginName = existing.pluginName;
                 converted.fileSize = existing.fileSize;
                 converted.extensionType = existing.extensionType;
+                converted.resubmitIncompatible = existing.resubmitIncompatible;
                 updatedTasks[idx] = converted;
               }
             }
@@ -485,6 +516,7 @@ export function PluginInstallTaskProvider({
       fileSize?: number;
       operation?: PluginTaskOperation;
       skipEnablementHint?: boolean;
+      resubmitIncompatible?: ResubmitIncompatibleInstall;
     }) => {
       const operation = params.operation ?? 'install';
       const taskKey = pluginTaskKey(params.taskId, params.source, operation);
@@ -505,6 +537,7 @@ export function PluginInstallTaskProvider({
             : InstallStage.DOWNLOADING,
         overallProgress: operation === 'upgrade' ? 3 : 5,
         fileSize: params.fileSize,
+        resubmitIncompatible: params.resubmitIncompatible,
         startedAt: Date.now(),
         stageStartedAt: Date.now(),
         currentAction: '',

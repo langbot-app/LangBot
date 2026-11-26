@@ -37,7 +37,7 @@ for (const failsFirst of [false, true]) {
       });
     });
     await page.route(
-      '**/api/v1/marketplace/plugins/langbot-team/LocalAgent',
+      /\/api\/v1\/marketplace\/plugins\/langbot-team\/LocalAgent(\?.*)?$/,
       async (route) => {
         await route.fulfill({
           contentType: 'application/json',

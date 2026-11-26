@@ -1,7 +1,9 @@
 import pipelineMigration from './pipeline-migration/vi-VN';
 import pluginPermissions from './plugin-permissions/vi-VN';
+import pluginCompat from './plugin-compat/vi-VN';
 const viVN = {
   pluginPermissions,
+  pluginCompat,
   planRevision: {
     subscribedOn: 'Ngày đăng ký: {{date}}',
     latestQuota: 'Hạn mức mới nhất của gói này',

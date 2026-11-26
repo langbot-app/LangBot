@@ -919,6 +919,8 @@ export interface ApiRespAsyncTasks {
 export interface AsyncTaskRuntimeInfo {
   done: boolean;
   exception?: string;
+  /** Structured failure, currently only `plugin_incompatible_langbot_version`. */
+  error?: { code: string; details?: Record<string, unknown> };
   result?: object;
   state: string;
 }

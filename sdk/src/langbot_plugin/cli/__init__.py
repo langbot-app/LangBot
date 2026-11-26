@@ -209,8 +209,12 @@ def main():
             )
         case "build":
             from langbot_plugin.cli.commands.buildplugin import build_plugin_process
+            from langbot_plugin.utils.version_compat import InvalidCompatibility
 
-            build_plugin_process(args.output)
+            try:
+                build_plugin_process(args.output)
+            except InvalidCompatibility as exc:
+                raise SystemExit(str(exc)) from None
         case "publish":
             from langbot_plugin.cli.commands.publish import publish_process
 

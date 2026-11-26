@@ -73,6 +73,7 @@ export const httpClient = backendClient;
 // 创建云服务客户端实例（初始化时使用默认 URL）
 export const cloudServiceClient = new CloudServiceClient(
   'https://space.langbot.app',
+  () => systemInfo.version,
 );
 
 // 应用启动时自动初始化系统信息

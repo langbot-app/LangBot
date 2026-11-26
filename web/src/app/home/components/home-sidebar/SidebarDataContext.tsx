@@ -15,6 +15,7 @@ export type {
   PluginPageItem,
   SidebarDataContextValue,
 } from './sidebarDataStore';
+import { installableVersion } from '@/app/infra/entities/plugin';
 
 export function SidebarDataProvider({
   children,
@@ -175,11 +176,13 @@ export function SidebarDataProvider({
       setQuotaResourceLoaded('plugins', true);
       setPluginCount(pluginsResp.plugins?.length ?? 0);
 
-      // Build marketplace version lookup: "author/name" -> latest_version
+      // Build marketplace version lookup: "author/name" -> newest release
+      // compatible with this Core (latest_version on older Space).
       const marketplaceVersions = new Map<string, string>();
       for (const mp of marketplacePlugins) {
-        if (mp.latest_version) {
-          marketplaceVersions.set(`${mp.author}/${mp.name}`, mp.latest_version);
+        const candidate = installableVersion(mp);
+        if (candidate) {
+          marketplaceVersions.set(`${mp.author}/${mp.name}`, candidate);
         }
       }
 

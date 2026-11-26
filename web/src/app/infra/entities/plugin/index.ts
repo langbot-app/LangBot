@@ -17,6 +17,8 @@ export interface Plugin {
   install_source: string;
   install_info: Record<string, any>;
   components: PluginComponent[];
+  /** Declared LangBot range vs. this Core; informational only. */
+  compatibility?: PluginCompatibility;
 }
 
 export interface PluginComponent {
@@ -126,6 +128,11 @@ export interface PluginV4 {
   like_count?: number;
   hot_score?: number;
   latest_version: string;
+  /**
+   * Newest release compatible with this Core (Space LANG-696). `null` when no
+   * release is compatible; absent on Space deployments that predate it.
+   */
+  compatible_version?: string | null;
   components: Record<string, number>;
   runner_usages?: RunnerUsage[];
   status: PluginV4Status;
@@ -135,6 +142,47 @@ export interface PluginV4 {
 }
 
 export type RunnerUsage = 'agent' | 'event';
+
+/** One entry of a marketplace plugin's version history. */
+export interface MarketplacePluginVersion {
+  version: string;
+  langbot_version_min?: string | null;
+  langbot_version_max?: string | null;
+  /** Present only when the request carried the Core version. */
+  compatible?: boolean;
+  created_at?: string;
+}
+
+/**
+ * The marketplace version this Core should install or offer as an update.
+ * Falls back to `latest_version` for Space deployments without
+ * `compatible_version`; returns null when Space reports no compatible release.
+ */
+export function installableVersion(
+  plugin: Pick<PluginV4, 'latest_version' | 'compatible_version'>,
+): string | null {
+  if (plugin.compatible_version !== undefined) {
+    return plugin.compatible_version || null;
+  }
+  return plugin.latest_version || null;
+}
+
+/** Compatibility of an installed or uploaded package with this Core. */
+export interface PluginCompatibility {
+  status: 'compatible' | 'incompatible' | 'unspecified' | 'invalid';
+  current: string;
+  min: string | null;
+  max: string | null;
+}
+
+export function isPluginIncompatible(
+  compatibility: PluginCompatibility | null | undefined,
+): boolean {
+  return (
+    compatibility?.status === 'incompatible' ||
+    compatibility?.status === 'invalid'
+  );
+}
 
 /** Unknown usage metadata must not become an install recommendation. */
 export function supportsRunnerUsage(

@@ -43,11 +43,15 @@ import {
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
-import { getCloudServiceClientSync } from '@/app/infra/http';
+import {
+  getCloudServiceClient,
+  getCloudServiceClientSync,
+} from '@/app/infra/http';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { PluginV4 } from '@/app/infra/entities/plugin';
+import { installableVersion, PluginV4 } from '@/app/infra/entities/plugin';
+import { resolveInstallVersion } from './resolve-install-version';
 import type { GithubRefsResp, Skill } from '@/app/infra/entities/api';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { usePluginInstallTasks } from '@/app/home/plugins/components/plugin-install-task';
@@ -216,6 +220,11 @@ function AddExtensionContent() {
   const [pluginInstallStatus, setPluginInstallStatus] =
     useState<PluginInstallStatus>(PluginInstallStatus.ASK_CONFIRM);
   const [installError, setInstallError] = useState<string | null>(null);
+  // Deep-link installs resolve a version compatible with this Core first.
+  const [resolvingInstallVersion, setResolvingInstallVersion] = useState(false);
+  const [installVersionNotice, setInstallVersionNotice] = useState<
+    string | null
+  >(null);
   const [installIconFailed, setInstallIconFailed] = useState(false);
 
   // Marketplace icon URL for the extension being installed, by type.
@@ -333,8 +342,60 @@ function AddExtensionContent() {
     setInstallExtensionType(extType);
     setPluginInstallStatus(PluginInstallStatus.ASK_CONFIRM);
     setInstallError(null);
+    setInstallVersionNotice(null);
     setInstallIconFailed(false);
     setModalOpen(true);
+
+    // The link carries the version Space's web page showed, which may not
+    // support this Core. Resolve a compatible one before allowing install.
+    if (extType === 'plugin') {
+      setResolvingInstallVersion(true);
+      const sameTarget = (prev: Record<string, string>) =>
+        prev.plugin_author === author && prev.plugin_name === name;
+      void getCloudServiceClient()
+        .then((client) =>
+          Promise.all([
+            client
+              .getPluginVersions(author, name)
+              .then((resp) => resp.versions)
+              .catch(() => null),
+            client.getPluginDetail(author, name).then((resp) => resp.plugin),
+          ]),
+        )
+        .then(([versions, detail]) => {
+          const resolution = resolveInstallVersion(version, versions, detail);
+          if (resolution.kind === 'none') {
+            setInstallInfo((prev) =>
+              sameTarget(prev) ? { ...prev, plugin_version: '' } : prev,
+            );
+            setInstallError(
+              t('pluginCompat.noCompatibleVersion', {
+                current: systemInfo.version,
+              }),
+            );
+            setPluginInstallStatus(PluginInstallStatus.ERROR);
+            return;
+          }
+          setInstallInfo((prev) =>
+            sameTarget(prev)
+              ? { ...prev, plugin_version: resolution.version }
+              : prev,
+          );
+          if (resolution.kind === 'switched') {
+            setInstallVersionNotice(
+              t('pluginCompat.switchedVersion', {
+                requested: resolution.requested,
+                version: resolution.version,
+              }),
+            );
+          }
+        })
+        .catch(() => {
+          // Space unreachable: keep the linked version; Core still rejects
+          // an incompatible package at install time.
+        })
+        .finally(() => setResolvingInstallVersion(false));
+    }
 
     // The icon is not carried in the URL params, so fetch it from the
     // marketplace record. Without this the confirm dialog falls back to the
@@ -368,7 +429,7 @@ function AddExtensionContent() {
       },
       { replace: true },
     );
-  }, [searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, t]);
 
   useEffect(() => {
     const onComplete = (_taskId: number, success: boolean) => {
@@ -397,21 +458,38 @@ function AddExtensionContent() {
   const handleInstallPlugin = useCallback(
     async (plugin: PluginV4) => {
       if (extensionsReached) return;
+      const isPlugin = (plugin.type || 'plugin') === 'plugin';
+      const version = isPlugin
+        ? installableVersion(plugin)
+        : plugin.latest_version;
       setInstallInfo({
         plugin_author: plugin.author,
         plugin_name: plugin.name,
-        plugin_version: plugin.latest_version,
+        plugin_version: version || '',
         plugin_label: extractI18nObject(plugin.label) || plugin.name,
         plugin_description: extractI18nObject(plugin.description) || '',
         plugin_icon: plugin.icon || '',
       });
       setInstallExtensionType(plugin.type || 'plugin');
-      setPluginInstallStatus(PluginInstallStatus.ASK_CONFIRM);
-      setInstallError(null);
+      setInstallVersionNotice(null);
+      setResolvingInstallVersion(false);
       setInstallIconFailed(false);
+      if (isPlugin && !version) {
+        // Space lists only compatible plugins, but recommendation lists and
+        // stale cards may still surface one without a compatible release.
+        setInstallError(
+          t('pluginCompat.noCompatibleVersion', {
+            current: systemInfo.version,
+          }),
+        );
+        setPluginInstallStatus(PluginInstallStatus.ERROR);
+      } else {
+        setInstallError(null);
+        setPluginInstallStatus(PluginInstallStatus.ASK_CONFIRM);
+      }
       setModalOpen(true);
     },
-    [extensionsReached],
+    [extensionsReached, t],
   );
 
   function handleModalConfirm() {
@@ -717,13 +795,15 @@ function AddExtensionContent() {
       return;
     }
     const pluginDisplayName = `${githubOwner}/${githubRepo}@${selectedBranch}`;
-    httpClient
-      .installPluginFromGithubBranch(
+    const install = (allowIncompatible: boolean) =>
+      httpClient.installPluginFromGithubBranch(
         githubOwner,
         githubRepo,
         selectedBranch,
         githubSubdir.trim().replace(/^\/+|\/+$/g, ''),
-      )
+        allowIncompatible,
+      );
+    install(false)
       .then((resp) => {
         const taskId = resp.task_id;
         addTask({
@@ -731,6 +811,7 @@ function AddExtensionContent() {
           pluginName: pluginDisplayName,
           source: 'github',
           extensionType: 'plugin',
+          resubmitIncompatible: () => install(true),
         });
         setSelectedTaskId(`github-${taskId}`);
         resetGithubState();
@@ -826,14 +907,20 @@ function AddExtensionContent() {
       return;
     }
     const pluginDisplayName = `${githubOwner}/${githubRepo}`;
-    httpClient
-      .installPluginFromGithub(
-        selectedAsset.id,
-        selectedRelease.id,
-        githubOwner,
-        githubRepo,
-        selectedRelease.tag_name,
-      )
+    const asset = selectedAsset;
+    const release = selectedRelease;
+    const owner = githubOwner;
+    const repo = githubRepo;
+    const install = (allowIncompatible: boolean) =>
+      httpClient.installPluginFromGithub(
+        asset.id,
+        release.id,
+        owner,
+        repo,
+        release.tag_name,
+        allowIncompatible,
+      );
+    install(false)
       .then((resp) => {
         const taskId = resp.task_id;
         const taskKey = `github-${taskId}`;
@@ -842,7 +929,8 @@ function AddExtensionContent() {
           pluginName: pluginDisplayName,
           source: 'github',
           extensionType: 'plugin',
-          fileSize: selectedAsset.size,
+          fileSize: asset.size,
+          resubmitIncompatible: () => install(true),
         });
         setSelectedTaskId(taskKey);
         resetGithubState();
@@ -1752,6 +1840,20 @@ function AddExtensionContent() {
                   )}
                 </div>
               </div>
+              {resolvingInstallVersion && (
+                <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="size-3.5 animate-spin" />
+                  {t('pluginCompat.resolvingVersion')}
+                </p>
+              )}
+              {installVersionNotice && (
+                <p
+                  className="rounded-md border border-blue-500/25 bg-blue-500/10 px-3 py-2 text-xs text-blue-800 dark:text-blue-200"
+                  data-testid="install-version-switched"
+                >
+                  {installVersionNotice}
+                </p>
+              )}
             </div>
           )}
 
@@ -1780,7 +1882,12 @@ function AddExtensionContent() {
                 >
                   <Button
                     onClick={handleModalConfirm}
-                    disabled={extensionsReached}
+                    disabled={
+                      extensionsReached ||
+                      resolvingInstallVersion ||
+                      (installExtensionType === 'plugin' &&
+                        !installInfo.plugin_version)
+                    }
                   >
                     {t('common.confirm')}
                   </Button>

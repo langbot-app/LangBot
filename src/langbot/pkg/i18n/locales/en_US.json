@@ -23,6 +23,8 @@
   "Invalid command permission settings": "Invalid command permission settings",
   "No processor handles this message": "No processor handles this message",
   "This processor does not support this command": "This processor does not support this command",
+  "The declared LangBot version range is incompatible with the current version ({current})": "The declared LangBot version range is incompatible with the current version ({current})",
+  "No plugin version is compatible with this LangBot version": "No plugin version is compatible with this LangBot version",
   "Daily message quota reached ({limit} per day). It resets at 00:00 UTC. Upgrade your plan for a higher quota.": "Daily message quota reached ({limit} per day). It resets at 00:00 UTC. Upgrade your plan for a higher quota.",
   "The bot route changed. Read the current binding.": "The bot route changed. Read the current binding.",
   "Skill not found": "Skill not found",

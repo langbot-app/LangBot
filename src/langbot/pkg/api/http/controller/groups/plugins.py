@@ -23,6 +23,7 @@ from .. import group
 from .....workspace.errors import WorkspaceNotFoundError
 from langbot_plugin.entities.io.errors import ActionCallError
 from .....plugin.github import validate_github_plugin_install_info
+from .....plugin.compatibility import compatibility
 from .....api.application.contracts import ApplicationAPIException
 from .....plugin.archive import inspect_plugin_archive_metadata
 from .....utils import httpclient
@@ -926,6 +927,7 @@ class PluginsRouterGroup(group.RouterGroup):
                 install_info = validate_github_plugin_install_info(
                     {
                         'source_type': data.get('source_type', 'release'),
+                        'allow_incompatible': data.get('allow_incompatible') is True,
                         'ref': data.get('ref'),
                         'source_subdir': data.get('source_subdir', ''),
                         'asset_url': data.get('asset_url'),
@@ -1036,6 +1038,7 @@ class PluginsRouterGroup(group.RouterGroup):
             data = {
                 'plugin_file': file_bytes,
                 'administrator_force': administrator_force,
+                'allow_incompatible': form.get('allow_incompatible', '').lower() == 'true',
             }
 
             ctx = taskmgr.TaskContext.new()
@@ -1087,6 +1090,7 @@ class PluginsRouterGroup(group.RouterGroup):
                         'filename': file.filename or 'local plugin',
                         'size': len(file_bytes),
                         'manifest': manifest,
+                        'compatibility': compatibility(manifest),
                         'metadata': manifest.get('metadata') or {},
                         'component_types': component_types,
                         'component_counts': component_counts,
