@@ -39,6 +39,20 @@ by the active repository rules, and the branch requires three status checks.
 6. Publish contributor resynchronization instructions and retain the backup ref
    until maintainers confirm recovery is no longer needed.
 
+## Future prohibition
+
+Effective immediately upon approval of this proposal, the identity
+`multica-agent <github@multica.ai>` MUST NOT be used in any commit message
+trailer, co-author attribution, pull request description, release note, or
+repository automation.
+
+Only the exact removal of existing matching trailers is permitted under this
+migration. Any future exception requires written approval from repository
+maintainers and must be recorded in the migration log.
+
+This prohibition does not prevent governance, audit, or migration documents from
+quoting the prohibited identity solely to document or enforce the prohibition.
+
 This document is a proposal and verification record, not authorization to
 rewrite or force-update the shared branch. The branch update must be performed
 by an administrator during the agreed maintenance window.
