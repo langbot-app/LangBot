@@ -1,4 +1,6 @@
 {
+  "The declared LangBot version range is incompatible with the current version ({current})": "このプラグインが宣言した LangBot の対応範囲に現在のバージョン（{current}）は含まれていません",
+  "No plugin version is compatible with this LangBot version": "現在の LangBot に対応するプラグインのバージョンはありません",
   "Daily message quota reached ({limit} per day). It resets at 00:00 UTC. Upgrade your plan for a higher quota.": "本日のメッセージ上限（1 日 {limit} 件）に達しました。UTC 00:00 にリセットされます。プランのアップグレードで上限を増やせます。",
   "The bot route changed. Read the current binding.": "Bot のルートが変更されました。現在のバインディングを確認してください。",
   "Skill not found": "Skill が見つかりません",

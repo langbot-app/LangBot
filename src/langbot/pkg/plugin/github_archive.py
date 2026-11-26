@@ -71,4 +71,4 @@ def package_archive(data, sha, subdir):
 if __name__ == '__main__':
     from langbot_plugin.utils.packaging import build_plugin_package
 
-    Path(sys.argv[1]).write_bytes(build_plugin_package('.')[0])
+    Path(sys.argv[1]).write_bytes(build_plugin_package('.', validate_compatibility=False)[0])

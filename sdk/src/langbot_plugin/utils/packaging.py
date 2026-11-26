@@ -189,6 +189,7 @@ def build_plugin_package(
     *,
     manifest_overrides: dict[str, typing.Any] | None = None,
     extra_files: dict[str, bytes] | None = None,
+    validate_compatibility: bool = True,
 ) -> tuple[bytes, str]:
     """Build a ``.lbpkg`` for the plugin at ``plugin_root`` in memory.
 
@@ -224,6 +225,10 @@ def build_plugin_package(
     )
 
     metadata = packaging_manifest.get("metadata") or {}
+    if validate_compatibility and "compatibility" in metadata:
+        from langbot_plugin.utils.version_compat import declared_range, parse_range
+
+        parse_range(declared_range(metadata))
     plugin_author = str(metadata.get("author") or "unknown")
     plugin_name = str(metadata.get("name") or "plugin")
     plugin_version = str(metadata.get("version") or "0.0.0")

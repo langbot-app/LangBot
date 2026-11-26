@@ -1,11 +1,60 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
+from pathlib import Path
 import zipfile
 
 import yaml
+import pytest
 
 from langbot_plugin.cli.commands import buildplugin
+from langbot_plugin.utils.version_compat import check, parse_range
+
+
+@pytest.mark.parametrize(
+    ("bounds", "field", "value"),
+    [
+        ("{min: 4.10}", "min", "4.1"),
+        ('{max: "4.x.5"}', "max", "4.x.5"),
+        ('{min: "5", max: "4"}', "min", "'5' exceeds max '4'"),
+    ],
+)
+def test_build_cli_invalid_range(tmp_path, bounds, field, value):
+    manifest = f"apiVersion: v1\nkind: Plugin\nmetadata:\n  name: demo\n  label: {{en_US: Demo}}\n  compatibility:\n    langbot: {bounds}\nspec: {{components: {{}}}}\n"
+    (tmp_path / "manifest.yaml").write_text(manifest)
+    run = subprocess.run(
+        [sys.executable, "-c", "from langbot_plugin.cli import main; main()", "build"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode == 1
+    assert len(run.stderr.strip().splitlines()) == 1
+    assert "Traceback" not in run.stderr
+    assert f"metadata.compatibility.langbot.{field}:" in run.stderr
+    assert value in run.stderr
+    if bounds == "{min: 4.10}":
+        assert "请用引号包住版本号" in run.stderr
+
+
+@pytest.mark.parametrize("compat", [None, {"langbot": None}])
+def test_build_null_compatibility_is_unspecified(tmp_path, monkeypatch, compat):
+    metadata = {"name": "demo", "label": {"en_US": "Demo"}, "compatibility": compat}
+    manifest = {
+        "apiVersion": "v1",
+        "kind": "Plugin",
+        "metadata": metadata,
+        "spec": {"components": {}},
+    }
+    (tmp_path / "manifest.yaml").write_text(yaml.safe_dump(manifest))
+    monkeypatch.chdir(tmp_path)
+    assert Path(buildplugin.build_plugin_process("dist")).is_file()
+    assert parse_range(None) == (None, None)
+    assert check(manifest, "4.12.0") == dict(
+        status="unspecified", min=None, max=None, current="4.12.0"
+    )
 
 
 def test_parse_gitignore_ignores_comments_and_blank_lines(tmp_path):

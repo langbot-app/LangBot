@@ -618,7 +618,7 @@ test('installation progress remains inspectable during work and after a missing 
 }) => {
   const state = await setup(page);
   await page.route(
-    '**/api/v1/marketplace/plugins/langbot-team/DifyAgent',
+    /\/api\/v1\/marketplace\/plugins\/langbot-team\/DifyAgent(\?.*)?$/,
     (route) =>
       reply(route, {
         plugin: {

@@ -2,8 +2,10 @@ import slackSetup from './slack-setup/ja-JP';
 import wxoaMenu from './wxoa-menu/ja-JP';
 import pipelineMigration from './pipeline-migration/ja-JP';
 import pluginPermissions from './plugin-permissions/ja-JP';
+import pluginCompat from './plugin-compat/ja-JP';
 const jaJP = {
   pluginPermissions,
+  pluginCompat,
   planRevision: {
     subscribedOn: '契約日：{{date}}',
     latestQuota: 'このプランの最新の利用枠',

@@ -2,6 +2,8 @@ import asyncio
 import json
 
 import httpx
+from langbot import __version__
+from ......plugin.compatibility import compatible_release
 import quart
 import sqlalchemy
 
@@ -170,11 +172,13 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
             timeout=15,
             event_hooks=httpclient.httpx_response_limit_hooks(),
         ) as client:
-            resp = await client.get(f'{space_url}/api/v1/marketplace/plugins/{p_author}/{p_name}')
+            resp = await client.get(
+                f'{space_url}/api/v1/marketplace/plugins/{p_author}/{p_name}', params={'langbot_version': __version__}
+            )
             resp.raise_for_status()
             response_data = await httpclient.parse_json_response(resp)
             p_data = response_data.get('data', {}).get('plugin', {})
-            p_version = p_data.get('latest_version')
+            p_version = compatible_release(p_data) if 'compatible_version' in p_data else p_data.get('latest_version')
             if not p_version:
                 raise Exception(f'Could not determine latest version for {plugin_id}')
 

@@ -9,6 +9,8 @@ import { usePluginInstallTasks } from '@/app/home/plugins/components/plugin-inst
 import PluginComponentList from '@/app/home/plugins/components/plugin-installed/PluginComponentList';
 import { WorkspaceQuotaTooltip } from '@/app/home/components/workspace-quota/WorkspaceQuotaTooltip';
 import type { WorkspaceQuotaItem } from '@/app/home/components/workspace-quota/useWorkspaceQuotaStatus';
+import { isPluginIncompatible } from '@/app/infra/entities/plugin';
+import { PluginCompatibilityWarning } from '@/app/home/plugins/components/plugin-compatibility/PluginCompatibilityNotice';
 
 type PluginLocalPreview = Awaited<
   ReturnType<typeof httpClient.previewPluginInstallFromLocal>
@@ -43,11 +45,14 @@ export default function PluginLocalPreviewPanel({
   const [previewing, setPreviewing] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [acknowledgedIncompatible, setAcknowledgedIncompatible] =
+    useState(false);
 
   const loadPreview = useCallback(async () => {
     setPreviewing(true);
     setPreview(null);
     setErrorMessage(null);
+    setAcknowledgedIncompatible(false);
     try {
       const result = await httpClient.previewPluginInstallFromLocal(file);
       setPreview(result);
@@ -68,12 +73,24 @@ export default function PluginLocalPreviewPanel({
     void loadPreview();
   }, [loadPreview]);
 
+  const incompatible = isPluginIncompatible(preview?.compatibility);
+  const installBlocked = incompatible && !acknowledgedIncompatible;
+  const installLabel = installing
+    ? t('plugins.installing')
+    : incompatible
+      ? t('pluginCompat.installAnyway')
+      : t('plugins.confirmInstall');
+
   async function handleInstall() {
-    if (quota?.disabled) return;
+    if (quota?.disabled || installBlocked) return;
     setInstalling(true);
     setErrorMessage(null);
     try {
-      const resp = await httpClient.installPluginFromLocal(file);
+      // Only an explicit acknowledgement may override the declared range.
+      const resp = await httpClient.installPluginFromLocal(
+        file,
+        incompatible && acknowledgedIncompatible,
+      );
       const taskId = resp.task_id;
       const taskKey = `local-${taskId}`;
       const pluginName =
@@ -178,7 +195,16 @@ export default function PluginLocalPreviewPanel({
         </div>
       )}
 
-      {preview && (
+      {preview && incompatible && (
+        <PluginCompatibilityWarning
+          compatibility={preview.compatibility}
+          context="install"
+          acknowledged={acknowledgedIncompatible}
+          onAcknowledgedChange={setAcknowledgedIncompatible}
+        />
+      )}
+
+      {preview && !incompatible && (
         <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-300">
           <CheckCircle2 className="size-4" />
           {t('plugins.localPreview.ready')}
@@ -202,20 +228,26 @@ export default function PluginLocalPreviewPanel({
             <Button
               type="button"
               onClick={handleInstall}
-              disabled={quota.disabled || !preview || previewing || installing}
+              variant={incompatible ? 'destructive' : 'default'}
+              disabled={
+                quota.disabled ||
+                !preview ||
+                previewing ||
+                installing ||
+                installBlocked
+              }
             >
-              {installing
-                ? t('plugins.installing')
-                : t('plugins.confirmInstall')}
+              {installLabel}
             </Button>
           </WorkspaceQuotaTooltip>
         ) : (
           <Button
             type="button"
             onClick={handleInstall}
-            disabled={!preview || previewing || installing}
+            variant={incompatible ? 'destructive' : 'default'}
+            disabled={!preview || previewing || installing || installBlocked}
           >
-            {installing ? t('plugins.installing') : t('plugins.confirmInstall')}
+            {installLabel}
           </Button>
         )}
       </div>

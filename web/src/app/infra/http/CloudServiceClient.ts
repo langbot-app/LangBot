@@ -4,6 +4,7 @@ import {
   ApiRespMarketplacePlugins,
 } from '@/app/infra/entities/api';
 import {
+  MarketplacePluginVersion,
   PluginV4,
   RunnerUsage,
   supportsRunnerUsage,
@@ -15,9 +16,25 @@ import { I18nObject } from '@/app/infra/entities/common';
  * 负责与 cloud service 的所有交互
  */
 export class CloudServiceClient extends BaseHttpClient {
-  constructor(baseURL: string = '') {
+  private readonly getLangBotVersion: () => string;
+
+  constructor(
+    baseURL: string = '',
+    getLangBotVersion: () => string = () => '',
+  ) {
     // cloud service 不需要 token 认证
     super(baseURL, true);
+    this.getLangBotVersion = getLangBotVersion;
+  }
+
+  /**
+   * The running Core version for Space's compatibility filter. Space hides
+   * plugins without a compatible release and returns `compatible_version`.
+   * An empty value (system info not loaded yet) keeps the unfiltered list.
+   */
+  private langbotVersionParam(): { langbot_version?: string } {
+    const version = (this.getLangBotVersion() || '').trim().replace(/^v/i, '');
+    return version ? { langbot_version: version } : {};
   }
 
   public getMarketplacePlugins(
@@ -31,6 +48,7 @@ export class CloudServiceClient extends BaseHttpClient {
       page_size,
       sort_by,
       sort_order,
+      ...this.langbotVersionParam(),
     });
   }
 
@@ -119,6 +137,7 @@ export class CloudServiceClient extends BaseHttpClient {
         runner_usage,
         tags_filter,
         type_filter,
+        ...this.langbotVersionParam(),
       },
     );
   }
@@ -136,7 +155,7 @@ export class CloudServiceClient extends BaseHttpClient {
   }): Promise<ApiRespMarketplacePlugins> {
     return this.post<{ extensions: PluginV4[]; total: number }>(
       '/api/v1/marketplace/extensions/search',
-      data,
+      { ...data, ...this.langbotVersionParam() },
     )
       .then((resp) => {
         const extensions = resp?.extensions || [];
@@ -281,6 +300,21 @@ export class CloudServiceClient extends BaseHttpClient {
   ): Promise<ApiRespMarketplacePluginDetail> {
     return this.get<ApiRespMarketplacePluginDetail>(
       `/api/v1/marketplace/plugins/${author}/${pluginName}`,
+      this.langbotVersionParam(),
+    );
+  }
+
+  /**
+   * Version history of a marketplace plugin. With a Core version, each entry
+   * carries `compatible`; older Space deployments omit it.
+   */
+  public getPluginVersions(
+    author: string,
+    pluginName: string,
+  ): Promise<{ versions: MarketplacePluginVersion[] }> {
+    return this.get<{ versions: MarketplacePluginVersion[] }>(
+      `/api/v1/marketplace/plugins/${author}/${pluginName}/versions`,
+      this.langbotVersionParam(),
     );
   }
 
