@@ -327,9 +327,13 @@ class SkillToolLoader(loader.ToolLoader):
             skill_data['name'],
             path,
             expected_revision=skill_data.get('revision'),
+            max_bytes=_MAX_SKILL_RESOURCE_FILE_BYTES,
         )
-        content = str(result.get('content', ''))
-        size = len(content.encode('utf-8'))
+        binary = str(result.get('encoding') or '') == 'base64'
+        if binary:
+            size = int(result.get('size') or 0)
+        else:
+            size = len(str(result.get('content', '')).encode('utf-8'))
         if size > _MAX_SKILL_RESOURCE_FILE_BYTES:
             raise ValueError('Skill resource exceeds the per-file read limit')
         variables = getattr(query, 'variables', None)
@@ -341,7 +345,26 @@ class SkillToolLoader(loader.ToolLoader):
             raise ValueError('Skill resource reads exceed the per-run limit')
         variables[_SKILL_RESOURCE_BYTES_READ_KEY] = total
         result['size'] = size
+        if binary:
+            result['attachment'] = self._binary_resource_attachment(result)
         return result
+
+    @staticmethod
+    def _binary_resource_attachment(result: dict) -> dict:
+        """Describe the base64 payload to the attachment consumer.
+
+        The reference is the pinned package path plus revision; the descriptor
+        carries the exact bytes so an image/PDF reaches the model without a Box
+        session and without switching to a later revision.
+        """
+        return {
+            'type': 'file',
+            'source': 'base64',
+            'name': f'{result["skill"]["name"]}/{result["path"]}',
+            'mime_type': str(result.get('mime_type') or 'application/octet-stream'),
+            'content': result.get('content'),
+            'revision': result.get('revision'),
+        }
 
     async def _read_run_skill_artifact(self, parameters, query, skill_data, path, run_id):
         """Use the host-pinned run source, never a Runner-supplied artifact ID."""
@@ -575,7 +598,8 @@ class SkillToolLoader(loader.ToolLoader):
             description=(
                 'Read a pinned resource from an activated skill without a sandbox. '
                 'Text is bounded with continuation offsets; images and native PDF use structured model content. '
-                'Use mode=text for PDF text extraction or mode=native with a PDF-capable model.'
+                'Use mode=text for PDF text extraction or mode=native with a PDF-capable model. '
+                'Legacy package reads return binary bytes as base64 with mime type and pinned revision.'
             ),
             parameters={
                 'type': 'object',
