@@ -634,24 +634,41 @@ test('system commands are configured from a small entry in the command bar', asy
   await expect(commandsSection).toContainText('e.g. /help.');
   const entry = page.getByTestId('system-commands-button');
   await expect(entry).toContainText('3/4', { timeout: 15_000 });
+  // Shared by system and plugin commands: on the section, not in a sheet.
+  await expect(commandsSection).toContainText('No admins set yet.');
+  await expect(
+    commandsSection.getByRole('link', { name: /Open session monitor/ }),
+  ).toHaveAttribute('href', '/home/bots?id=policy-bot&tab=sessions');
+  await commandsSection
+    .getByRole('radio', { name: 'Reply with a notice' })
+    .click();
+
+  // System commands sheet lists only built-in commands.
   await entry.click();
   const sheet = page.getByTestId('system-commands-sheet');
-  // Admins come from the bot admin list (session monitor), not this sheet.
-  const adminInfo = sheet.getByTestId('system-commands-admins');
-  await expect(adminInfo).toContainText('No admins set yet.');
-  await expect(sheet).toContainText('No admins yet');
-  await expect(
-    adminInfo.getByRole('link', { name: /Open session monitor/ }),
-  ).toHaveAttribute('href', '/home/bots?id=policy-bot&tab=sessions');
-  await sheet.getByRole('radio', { name: 'Reply with a notice' }).click();
+  await expect(sheet).not.toContainText('/draw');
   await sheet.getByRole('switch', { name: 'Enable /model' }).click();
   await sheet.getByRole('combobox', { name: 'Who may use /new' }).click();
-  await page.getByRole('option', { name: 'Admins only' }).click();
-  await sheet.getByRole('combobox', { name: 'Who may use /draw' }).click();
   await page.getByRole('option', { name: 'Admins only' }).click();
   await sheet.getByRole('button', { name: 'Close' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(entry).toContainText('4/4');
+  await expect(
+    commandsSection.getByTestId('command-admins-warning'),
+  ).toBeVisible();
+
+  // Plugin command access has its own sheet on the plugin commands row.
+  await commandsSection.getByTestId('plugin-commands-button').click();
+  const pluginSheet = page.getByTestId('plugin-commands-sheet');
+  await expect(pluginSheet).not.toContainText('/help');
+  await pluginSheet
+    .getByRole('combobox', { name: 'Who may use /draw' })
+    .click();
+  await page.getByRole('option', { name: 'Admins only' }).click();
+  await pluginSheet.getByRole('button', { name: 'Close' }).click();
+  await expect(
+    commandsSection.getByTestId('plugin-commands-button'),
+  ).toContainText('1 admins-only');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect.poll(() => saved.length).toBe(1);
   const body = saved[0] as { command_settings: Record<string, unknown> };

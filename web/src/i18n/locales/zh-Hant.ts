@@ -1155,11 +1155,12 @@ const zhHant = {
       enableCommand: '啟用 {{command}}',
       pluginCommands: '插件指令',
       pluginCommandsHint: '已啟用插件提供的指令，可以單獨設為僅管理員可用。',
-      noPluginCommands: '目前啟用的插件沒有提供指令。',
       adminsCount: '目前有 {{count}} 位管理員。',
       adminsNone: '還沒有設定管理員。',
       adminsWhere: '管理員在「會話監控」中設定。',
       openSessions: '前往會話監控',
+      pluginEntry: '設定權限',
+      pluginEntryRestricted: '{{count}} 個僅管理員',
       groups: {
         session: '會話',
         info: '資訊',
@@ -1232,7 +1233,7 @@ const zhHant = {
         pluginTitle: '插件指令',
         pluginNone: '已新增的插件沒有提供指令。',
         pluginHint:
-          '來自下方已新增的插件，可在「系統指令」面板中設為僅管理員可用。',
+          '來自下方已新增的插件；點「設定權限」可把指令設為僅管理員可用。',
       },
       commandConfig: {
         button: '指令設定',

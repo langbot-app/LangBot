@@ -1159,11 +1159,12 @@ const zhHans = {
       enableCommand: '启用 {{command}}',
       pluginCommands: '插件命令',
       pluginCommandsHint: '已启用插件提供的命令，可以单独设为仅管理员可用。',
-      noPluginCommands: '当前启用的插件没有提供命令。',
       adminsCount: '当前有 {{count}} 位管理员。',
       adminsNone: '还没有设置管理员。',
       adminsWhere: '管理员在「会话监控」中设置。',
       openSessions: '前往会话监控',
+      pluginEntry: '设置权限',
+      pluginEntryRestricted: '{{count}} 个仅管理员',
       groups: {
         session: '会话',
         info: '信息',
@@ -1236,7 +1237,7 @@ const zhHans = {
         pluginTitle: '插件命令',
         pluginNone: '已添加的插件没有提供命令。',
         pluginHint:
-          '来自下方已添加的插件，可在「系统命令」面板中设为仅管理员可用。',
+          '来自下方已添加的插件；点「设置权限」可把命令设为仅管理员可用。',
       },
       commandConfig: {
         button: '命令配置',

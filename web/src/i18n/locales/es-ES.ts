@@ -1239,12 +1239,13 @@ const esES = {
       pluginCommands: 'Comandos de plugins',
       pluginCommandsHint:
         'Los comandos de los plugins activos se pueden limitar a administradores uno a uno.',
-      noPluginCommands: 'Los plugins activos no ofrecen comandos.',
       adminsCount: '{{count}} administrador(es) configurado(s).',
       adminsNone: 'Aún no hay administradores.',
       adminsWhere:
         'Los administradores se gestionan en el monitor de sesiones.',
       openSessions: 'Abrir monitor de sesiones',
+      pluginEntry: 'Configurar acceso',
+      pluginEntryRestricted: '{{count}} solo administradores',
       groups: {
         session: 'Sesión',
         info: 'Información',
@@ -1325,7 +1326,7 @@ const esES = {
         pluginTitle: 'Comandos de plugins',
         pluginNone: 'Los plugins añadidos no ofrecen comandos.',
         pluginHint:
-          'De los plugins añadidos abajo; limítalos a administradores en el panel de Comandos del sistema.',
+          'De los plugins añadidos abajo; usa Configurar acceso para limitarlos a administradores.',
       },
       commandConfig: {
         button: 'Ajustes de comandos',

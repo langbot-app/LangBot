@@ -1227,11 +1227,12 @@ const enUS = {
       pluginCommands: 'Plugin commands',
       pluginCommandsHint:
         'Commands from enabled plugins can be limited to admins one by one.',
-      noPluginCommands: 'The enabled plugins provide no commands.',
       adminsCount: '{{count}} admin(s) set.',
       adminsNone: 'No admins set yet.',
       adminsWhere: 'Admins are managed in the session monitor.',
       openSessions: 'Open session monitor',
+      pluginEntry: 'Set access',
+      pluginEntryRestricted: '{{count}} admins-only',
       groups: {
         session: 'Session',
         info: 'Info',
@@ -1312,7 +1313,7 @@ const enUS = {
         pluginTitle: 'Plugin commands',
         pluginNone: 'The added plugins provide no commands.',
         pluginHint:
-          'From the plugins added below; limit them to admins in the System commands panel.',
+          'From the plugins added below; use Set access to limit commands to admins.',
       },
       commandConfig: {
         button: 'Command settings',

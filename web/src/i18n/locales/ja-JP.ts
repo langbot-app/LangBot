@@ -1231,11 +1231,12 @@ const jaJP = {
       pluginCommands: 'プラグインコマンド',
       pluginCommandsHint:
         '有効なプラグインのコマンドを個別に管理者のみにできます。',
-      noPluginCommands: '有効なプラグインにコマンドはありません。',
       adminsCount: '管理者は {{count}} 人です。',
       adminsNone: '管理者はまだ設定されていません。',
       adminsWhere: '管理者はセッション監視で設定します。',
       openSessions: 'セッション監視を開く',
+      pluginEntry: '権限を設定',
+      pluginEntryRestricted: '{{count}} 件が管理者のみ',
       groups: {
         session: 'セッション',
         info: '情報',
@@ -1316,7 +1317,7 @@ const jaJP = {
         pluginTitle: 'プラグインコマンド',
         pluginNone: '追加したプラグインにコマンドはありません。',
         pluginHint:
-          '下に追加したプラグインのコマンドです。「システムコマンド」パネルで管理者のみにできます。',
+          '下に追加したプラグインのコマンドです。「権限を設定」で管理者のみにできます。',
       },
       commandConfig: {
         button: 'コマンド設定',

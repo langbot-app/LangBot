@@ -1219,11 +1219,12 @@ const viVN = {
       pluginCommands: 'Lệnh plugin',
       pluginCommandsHint:
         'Lệnh của plugin đang bật có thể giới hạn cho quản trị viên từng lệnh.',
-      noPluginCommands: 'Các plugin đang bật không có lệnh.',
       adminsCount: 'Có {{count}} quản trị viên.',
       adminsNone: 'Chưa đặt quản trị viên.',
       adminsWhere: 'Quản trị viên được đặt trong trang giám sát phiên.',
       openSessions: 'Mở giám sát phiên',
+      pluginEntry: 'Đặt quyền',
+      pluginEntryRestricted: '{{count}} chỉ quản trị viên',
       groups: {
         session: 'Phiên',
         info: 'Thông tin',
@@ -1300,7 +1301,7 @@ const viVN = {
         pluginTitle: 'Lệnh plugin',
         pluginNone: 'Các plugin đã thêm không có lệnh.',
         pluginHint:
-          'Từ các plugin thêm bên dưới; giới hạn cho quản trị viên trong bảng Lệnh hệ thống.',
+          'Từ các plugin thêm bên dưới; dùng Đặt quyền để giới hạn cho quản trị viên.',
       },
       commandConfig: {
         button: 'Cài đặt lệnh',

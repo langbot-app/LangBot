@@ -54,6 +54,8 @@ import RoutingLayer from './RoutingLayer';
 import CommandPrefixPopover from './CommandPrefixPopover';
 import CommandConfigDialog from './CommandConfigDialog';
 import SystemCommandsSheet, {
+  CommandAccessRows,
+  PluginCommandsSheet,
   builtinState,
   useBuiltinCommands,
 } from './SystemCommandsSheet';
@@ -677,6 +679,14 @@ export default function BotPluginsPanel({
                 onChange={(next) => updateCommands({ prefixes: next })}
               />
             </div>
+            <fieldset disabled={Boolean(route)} className="contents">
+              <CommandAccessRows
+                botId={botId}
+                settings={commands}
+                onChange={updateCommands}
+                readOnly={Boolean(route)}
+              />
+            </fieldset>
             <div className="flex items-center gap-3 px-3 py-2.5">
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium">
@@ -687,18 +697,25 @@ export default function BotPluginsPanel({
                 </p>
               </div>
               <SystemCommandsSheet
-                botId={botId}
                 settings={commands}
                 onChange={updateCommands}
                 prefix={commandPrefix}
                 readOnly={Boolean(route)}
-                pluginCommands={pluginCommandList}
               />
             </div>
             <div className="space-y-1.5 px-3 py-2.5">
-              <p className="text-sm font-medium">
-                {t('bots.pluginHooks.commands.pluginTitle')}
-              </p>
+              <div className="flex items-center gap-3">
+                <p className="min-w-0 flex-1 text-sm font-medium">
+                  {t('bots.pluginHooks.commands.pluginTitle')}
+                </p>
+                <PluginCommandsSheet
+                  settings={commands}
+                  onChange={updateCommands}
+                  pluginCommands={pluginCommandList}
+                  prefix={commandPrefix}
+                  readOnly={Boolean(route)}
+                />
+              </div>
               {pluginCommandList.length ? (
                 <div className="flex flex-wrap gap-1">
                   {pluginCommandList.map((entry) => (
