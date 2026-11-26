@@ -181,6 +181,26 @@ class HTTPController:
         await hypercorn_serve(traced_app, config, shutdown_trigger=shutdown_trigger)
 
     async def register_routes(self) -> None:
+        @self.quart_app.websocket('/api/v1/harness/ws')
+        async def harness_websocket():
+            # Harness identities and encrypted instance keys are provisioned by
+            # the registration/authentication slice. Do not fall back to the
+            # ordinary workspace bearer-token middleware on this E2EE route.
+            factory = getattr(self.ap, 'harness_transport_factory', None)
+            context_resolver = getattr(self.ap, 'harness_context_resolver', None)
+            if not callable(factory) or not callable(context_resolver):
+                await quart.websocket.close(1013, 'Harness transport is not configured')
+                return
+            from ....harness.ws import handle_ws
+
+            try:
+                transport = await factory(self.ap, quart.websocket)
+                context = await context_resolver(self.ap, transport)
+                await handle_ws(self.ap, transport, context)
+            except Exception:
+                self.ap.logger.exception('Harness WebSocket session failed')
+                await quart.websocket.close(1008, 'Harness session failed')
+
         @self.quart_app.route('/healthz')
         async def healthz():
             get_resource_stats = getattr(
