@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+
+metadata:
+  name: harness-omni
+  label:
+    en_US: LangBot Harness
+    zh_Hans: LangBot Harness
+    zh_Hant: LangBot Harness
+    ja_JP: LangBot Harness
+  description:
+    en_US: LangBot Harness secure channel. Auto-created per processor; do not configure manually.
+    zh_Hans: LangBot Harness 安全通道。按处理器自动创建，请勿手动配置。
+    zh_Hant: LangBot Harness 安全通道。按處理器自動建立，請勿手動設定。
+    ja_JP: LangBot Harness セキュアチャネル。プロセッサごとに自動作成されます。
+  icon: harness.svg
+
+spec:
+  categories: [integration]
+  config:
+    - name: processor_uuid
+      label:
+        en_US: Processor UUID
+        zh_Hans: 处理器 UUID
+        zh_Hant: 處理器 UUID
+        ja_JP: プロセッサ UUID
+      description:
+        en_US: Managed by the Harness binding; changing it breaks routing.
+        zh_Hans: 由 Harness 绑定管理，修改会破坏路由。
+        zh_Hant: 由 Harness 綁定管理，修改會破壞路由。
+        ja_JP: Harness バインディングが管理します。変更するとルーティングが壊れます。
+      type: string
+      required: true
+      default: ''
+  supported_events:
+    - message.received
+  supported_apis:
+    required: [send_message, reply_message]
+    optional: [get_user_info]
+
+execution:
+  python:
+    path: ./adapter.py
+    attr: HarnessAdapter
