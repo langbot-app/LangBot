@@ -1388,6 +1388,8 @@ const enUS = {
       overriddenBy: 'Overridden by {{plugin}} (higher priority)',
     },
     pluginSubscriptions: {
+      docs: 'Plugin processor dev docs',
+      docsUrl: 'https://langbot.app/docs/en/plugin/dev/components/runner',
       incompleteEvents:
         'This bot only supports some of the subscribed events ({{events}}). The processor may not behave as intended in all cases.',
       description:

@@ -1309,6 +1309,8 @@ const zhHans = {
       overriddenBy: '被 {{plugin}} 覆盖（优先级更高）',
     },
     pluginSubscriptions: {
+      docs: '插件处理器开发文档',
+      docsUrl: 'https://langbot.app/docs/zh/plugin/dev/components/runner',
       incompleteEvents:
         '当前机器人仅支持部分事件（{{events}}），处理器表现可能不完整。',
       description:

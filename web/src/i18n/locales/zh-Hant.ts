@@ -1305,6 +1305,8 @@ const zhHant = {
       overriddenBy: '被 {{plugin}} 覆蓋（優先級更高）',
     },
     pluginSubscriptions: {
+      docs: '插件處理器開發文件',
+      docsUrl: 'https://langbot.app/docs/zh/plugin/dev/components/runner',
       incompleteEvents:
         '目前機器人僅支援部分事件（{{events}}），處理器表現可能不完整。',
       description:

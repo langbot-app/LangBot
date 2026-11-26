@@ -11,7 +11,7 @@ export default function RoutingLayer({
 }: {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
-  description: string;
+  description: React.ReactNode;
   count: number;
   action?: React.ReactNode;
   children: React.ReactNode;

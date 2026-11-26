@@ -1377,6 +1377,8 @@ const viVN = {
       overriddenBy: 'Bị ghi đè bởi {{plugin}} (ưu tiên cao hơn)',
     },
     pluginSubscriptions: {
+      docs: 'Tài liệu phát triển bộ xử lý plugin',
+      docsUrl: 'https://langbot.app/docs/en/plugin/dev/components/runner',
       incompleteEvents:
         'Bot hiện chỉ hỗ trợ một số sự kiện mà bộ xử lý theo dõi ({{events}}). Bộ xử lý có thể không hoạt động đầy đủ trong mọi trường hợp.',
       description:

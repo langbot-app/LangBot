@@ -1395,6 +1395,8 @@ const ruRU = {
       overriddenBy: 'Перекрыто {{plugin}} (более высокий приоритет)',
     },
     pluginSubscriptions: {
+      docs: 'Документация по разработке обработчиков плагинов',
+      docsUrl: 'https://langbot.app/docs/en/plugin/dev/components/runner',
       incompleteEvents:
         'Этот бот поддерживает только часть отслеживаемых событий ({{events}}). Обработчик может работать не во всех случаях так, как ожидается.',
       description:

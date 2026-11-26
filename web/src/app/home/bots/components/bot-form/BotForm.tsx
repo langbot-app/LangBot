@@ -1489,7 +1489,24 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                       <RoutingLayer
                         icon={Puzzle}
                         title={t('bots.routingLayers.processors')}
-                        description={t('bots.pluginSubscriptions.description')}
+                        description={
+                          <>
+                            {t('bots.pluginSubscriptions.description')}{' '}
+                            <Button
+                              asChild
+                              variant="link"
+                              className="h-auto p-0 text-xs font-medium text-foreground underline underline-offset-4"
+                            >
+                              <a
+                                href={t('bots.pluginSubscriptions.docsUrl')}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                {t('bots.pluginSubscriptions.docs')} ↗
+                              </a>
+                            </Button>
+                          </>
+                        }
                         count={pluginProcessorCount}
                       >
                         <PluginProcessorBindings

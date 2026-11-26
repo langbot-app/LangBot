@@ -1402,6 +1402,8 @@ const esES = {
       overriddenBy: 'Sobrescrito por {{plugin}} (mayor prioridad)',
     },
     pluginSubscriptions: {
+      docs: 'Documentación para desarrollar procesadores de plugins',
+      docsUrl: 'https://langbot.app/docs/en/plugin/dev/components/runner',
       incompleteEvents:
         'Este bot solo admite algunos de los eventos suscritos ({{events}}). El procesador podría no comportarse como se espera en todos los casos.',
       description:

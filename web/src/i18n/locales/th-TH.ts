@@ -1358,6 +1358,8 @@ const thTH = {
       overriddenBy: 'ถูกเขียนทับโดย {{plugin}} (ลำดับความสำคัญสูงกว่า)',
     },
     pluginSubscriptions: {
+      docs: 'เอกสารพัฒนาตัวประมวลผลปลั๊กอิน',
+      docsUrl: 'https://langbot.app/docs/en/plugin/dev/components/runner',
       incompleteEvents:
         'บอตนี้รองรับเพียงบางเหตุการณ์ที่ตัวประมวลผลติดตาม ({{events}}) ตัวประมวลผลอาจทำงานได้ไม่ครบถ้วน',
       description:

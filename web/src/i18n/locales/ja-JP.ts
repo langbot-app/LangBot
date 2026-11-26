@@ -1394,6 +1394,8 @@ const jaJP = {
       overriddenBy: '{{plugin}} により上書き（優先度高）',
     },
     pluginSubscriptions: {
+      docs: 'プラグインプロセッサー開発ドキュメント',
+      docsUrl: 'https://langbot.app/docs/ja/plugin/dev/components/runner',
       incompleteEvents:
         'このボットは監視対象の一部のイベント（{{events}}）にのみ対応しています。プロセッサーが完全には動作しない可能性があります。',
       description:
