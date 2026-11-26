@@ -46,6 +46,7 @@ import {
   executionProcessorLabel,
   executionStatusLabel,
   ExecutionHandlingBadge,
+  eventRowTitle,
   PluginHandledBadge,
 } from './ExecutionTable';
 import PolicyTimeline from './PolicyTimeline';
@@ -701,7 +702,7 @@ export default function ExecutionDetailSheet({
               <h2 className="text-lg font-semibold">
                 {record
                   ? record.source === 'event'
-                    ? t('monitoring.unified.unhandled')
+                    ? eventRowTitle(record, t)
                     : executionProcessorLabel(record)
                   : t('monitoring.execution.detail.title')}
               </h2>

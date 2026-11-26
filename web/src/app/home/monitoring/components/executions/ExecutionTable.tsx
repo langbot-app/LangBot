@@ -1,5 +1,12 @@
 import React from 'react';
-import { Bot, Workflow, Puzzle, CircleDashed } from 'lucide-react';
+import {
+  Bot,
+  Workflow,
+  Puzzle,
+  CircleDashed,
+  ShieldAlert,
+  SquareTerminal,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import {
@@ -59,14 +66,53 @@ export function executionKindLabel(row: ExecutionRow, t: TFunction): string {
   if (KIND_GROUPS.includes(row.target_kind)) {
     if (row.target_kind === 'event_processor')
       return t('monitoring.execution.kind.processor');
-    if (row.target_kind === 'event') return t('monitoring.unified.unhandled');
+    if (row.target_kind === 'event')
+      return row.handling && row.handling !== 'ai'
+        ? t(`monitoring.execution.handling.${row.handling}`)
+        : t('monitoring.unified.unhandled');
     return t(`monitoring.execution.kind.${row.target_kind}`);
   }
   return row.target_kind;
 }
 
+/**
+ * Name of an ingress event that started no processor: the command, policy
+ * rule or plugin that handled it, else "not handled".
+ */
+export function eventRowTitle(row: ExecutionRow, t: TFunction): string {
+  if (row.handling === 'command' && row.command_name)
+    return `/${row.command_name}`;
+  if (row.handling === 'policy' && row.policy_item)
+    return policyItemLabel(row.policy_item, t);
+  if (row.handling === 'plugin') {
+    const plugin = pluginHandlerName(row.handled_by);
+    if (plugin && plugin !== 'unknown') return plugin;
+  }
+  return t('monitoring.unified.unhandled');
+}
+
 export function ExecutionKindBadge({ row }: { row: ExecutionRow }) {
   const { t } = useTranslation();
+  if (row.target_kind === 'event' && row.handling && row.handling !== 'ai') {
+    const Icon =
+      row.handling === 'command'
+        ? SquareTerminal
+        : row.handling === 'policy'
+          ? ShieldAlert
+          : Puzzle;
+    const color =
+      row.handling === 'command'
+        ? 'border-sky-200/70 bg-sky-50/70 text-sky-700 dark:border-sky-800/50 dark:bg-sky-950/30 dark:text-sky-300'
+        : row.handling === 'policy'
+          ? 'border-amber-200/70 bg-amber-50/70 text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300'
+          : 'border-violet-200/70 bg-violet-50/70 text-violet-700 dark:border-violet-800/50 dark:bg-violet-950/30 dark:text-violet-300';
+    return (
+      <Badge variant="outline" className={`gap-1 whitespace-nowrap ${color}`}>
+        <Icon className="size-3 shrink-0" aria-hidden="true" />
+        {executionKindLabel(row, t)}
+      </Badge>
+    );
+  }
   const Icon =
     row.target_kind === 'pipeline'
       ? Workflow
@@ -310,7 +356,7 @@ export default function ExecutionTable({
                       <ExecutionKindBadge row={row} />
                       <span className="truncate font-medium">
                         {row.source === 'event'
-                          ? t('monitoring.unified.unhandled')
+                          ? eventRowTitle(row, t)
                           : executionProcessorLabel(row)}
                       </span>
                     </div>

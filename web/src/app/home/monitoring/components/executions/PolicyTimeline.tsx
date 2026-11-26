@@ -228,10 +228,19 @@ function buildSteps(
               ? 'blocked'
               : 'ok',
             text: T('outputApplied'),
-            chips: actions.map((action) => ({
-              label: actionLabel(action, t),
-              warn: action.kind === 'outbound_block',
-            })),
+            // One output event is recorded per sent message; show each
+            // distinct action once.
+            chips: [
+              ...new Map(
+                actions.map((action) => [
+                  actionLabel(action, t),
+                  {
+                    label: actionLabel(action, t),
+                    warn: action.kind === 'outbound_block',
+                  },
+                ]),
+              ).values(),
+            ],
           };
   return [admission, hooks, processor, output];
 }

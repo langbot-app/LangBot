@@ -5,7 +5,14 @@ test.describe.configure({ timeout: 90_000 });
 
 const NOW = Date.parse('2026-11-26T10:00:00Z');
 
-function row(id: string, extra: Record<string, unknown>) {
+function row(
+  id: string,
+  extra: Record<string, unknown>,
+): Record<string, unknown> & {
+  id: string;
+  source: string;
+  input_preview: string;
+} {
   return {
     source: 'event',
     id,
