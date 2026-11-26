@@ -341,6 +341,58 @@ class ExecutionDetailsMixin:
             if message is not None and not message.event_id and message.role != 'assistant':
                 await self._summary_writer().link_event(session, workspace, message.bot_id, message_id, event_id)
 
+    async def route_counts_24h(self, context, bot_uuid):
+        workspace = require_workspace_uuid(context)
+
+        def route_field(name):
+            return self._execution_json_text(EventLog.metadata_json, ('routes', 0, name))
+
+        binding = route_field('binding_id')
+        target = route_field('target_type')
+        category = sa.case(
+            (
+                sa.or_(
+                    route_field('failure_code') == 'message_policy',
+                    self._execution_json_text(EventLog.metadata_json, 'policy_item').is_not(None),
+                ),
+                'policy',
+            ),
+            (target.in_(['builtin_command', 'plugin_command']), 'command'),
+            (target.in_(['plugin', 'event_processor']), 'plugin'),
+            (target.in_(['pipeline', 'agent']), 'ai'),
+        )
+        rows = await self._execution_query(
+            workspace,
+            sa.select(binding, category, sa.func.count())
+            .where(
+                EventLog.workspace_id == workspace,
+                EventLog.bot_id == bot_uuid,
+                EventLog.event_type == 'message.received',
+                EventLog.created_at
+                >= datetime.datetime.now(datetime.UTC).replace(tzinfo=None) - datetime.timedelta(days=1),
+            )
+            .group_by(binding, category),
+        )
+        counts = {}
+        for route_id, kind, count in rows:
+            if route_id and kind:
+                counts.setdefault(route_id, {})[kind] = count
+        return counts
+
+    async def record_policy_event(self, context, event_id, policy_event):
+        workspace = self._require_write_context(context)
+        scoped = (EventLog.workspace_id == workspace, EventLog.event_id == event_id)
+        async with self._summary_write_session(workspace, 'monitoring.policy') as session:
+            raw = (await session.execute(sa.select(EventLog.metadata_json).where(*scoped).with_for_update())).first()
+            if raw is not None:
+                metadata = parsed(raw[0], {})
+                metadata.setdefault('policy_events', []).append(policy_event)
+                if policy_event['type'] == 'admission':
+                    metadata.update(
+                        {key: policy_event[key] for key in ('policy_item', 'policy_layer', 'reason')}, status='ignored'
+                    )
+                await session.execute(sa.update(EventLog).where(*scoped).values(metadata_json=json.dumps(metadata)))
+
     async def record_ingress_event(
         self,
         context,
@@ -381,6 +433,13 @@ class ExecutionDetailsMixin:
                             'target_uuid',
                             'run_id',
                             'failure_code',
+                            'binding_id',
+                            'route_ref',
+                            'policy_layer',
+                            'policy_item',
+                            'hook',
+                            'denied_reply',
+                            'command_kind',
                         )
                     }
                 )
@@ -393,6 +452,12 @@ class ExecutionDetailsMixin:
                     metadata['status'] = 'ignored'
             if safe_routes and safe_routes[0].get('target_type') == 'plugin':
                 metadata['handled_by'] = safe_routes[0]['target_uuid']
+            elif safe_routes and safe_routes[0].get('target_type') == 'builtin_command':
+                metadata['handled_by'] = 'builtin_command:' + safe_routes[0]['target_uuid']
+                if safe_routes[0]['status'] == 'failed':
+                    metadata['status'] = 'failed'
+            if any(route.get('status') == 'denied' and route.get('denied_reply') == 'notice' for route in safe_routes):
+                metadata['status'] = 'denied'
         async with self._summary_write_session(workspace, 'monitoring.ingress') as session:
             await store.append_event(
                 event_id=event_id,
@@ -410,6 +475,21 @@ class ExecutionDetailsMixin:
                 session=session,
             )
             if routes is not None:
+                previous = (
+                    await session.execute(
+                        sa.select(EventLog.metadata_json)
+                        .where(EventLog.workspace_id == workspace, EventLog.event_id == event_id)
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                policy_events = parsed(previous, {}).get('policy_events')
+                if policy_events:
+                    metadata['policy_events'] = policy_events
+                    for event in policy_events:
+                        if event['type'] == 'admission':
+                            metadata.update(
+                                {key: event[key] for key in ('policy_item', 'policy_layer', 'reason')}, status='ignored'
+                            )
                 await session.execute(
                     sa.update(EventLog)
                     .where(

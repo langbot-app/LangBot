@@ -34,6 +34,7 @@ class _Reply:
     native: bool = False
     final_attempted: bool = False
     sequence: int = 0
+    policy_delay: float | None = None
     status: str = 'open'
     result: dict | None = None
 
@@ -163,7 +164,7 @@ class ReplyStreamSession:
                             reply.text = chain[0].text
                     if reply.native:
                         if self.policy_query is not None and not prepared:
-                            await self.policy_query._message_policy.wait_force_delay()
+                            reply.policy_delay = await self.policy_query._message_policy.wait_force_delay()
                         if self.source is not None:
                             await self._delivery_adapter.create_message_card(reply.delivery_id, self.source)
                         else:
@@ -235,7 +236,12 @@ class ReplyStreamSession:
         if self.source is not None:
             chain = self._message(reply.text)
             if self.policy_query is not None:
+                length = len(chain)
                 self.policy_query._message_policy.mention_sender(self.source, chain)
+                if reply.sequence == 1 and reply.policy_delay is not None:
+                    await self.policy_query._message_policy.finish_output(
+                        self.policy_query, reply.policy_delay, len(chain) != length
+                    )
             await self._delivery_adapter.reply_message_chunk(
                 message_source=self.source,
                 bot_message=chunk,

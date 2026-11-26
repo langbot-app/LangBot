@@ -96,6 +96,48 @@ async def test_bot_plugin_selection_round_trip(database, all_plugins, caplog):
     await database(scenario)
 
 
+@pytest.mark.asyncio
+async def test_plugin_selection_round_trip_with_text_json_and_no_workspace(database):
+    selection = importlib.import_module('langbot.pkg.persistence.alembic.versions.0060_bot_plugin_selection')
+
+    def scenario(conn):
+        metadata = sa.MetaData()
+        bots = sa.Table(
+            'bots',
+            metadata,
+            sa.Column('uuid', sa.String),
+            *(sa.Column(key, sa.JSON) for key in ('command_settings', 'event_bindings', 'message_policy')),
+        )
+        pipelines = sa.Table(
+            'legacy_pipelines', metadata, sa.Column('uuid', sa.String), sa.Column('extensions_preferences', sa.JSON)
+        )
+        sa.Table('agents', metadata, *(sa.Column(key, sa.String) for key in ('uuid', 'kind', 'component_ref')))
+        metadata.create_all(conn)
+        plugin = {'author': 'owner', 'name': 'example'}
+        routes = [route('chat', 'pipeline', 'target')]
+        conn.execute(
+            bots.insert().values(
+                uuid='bot', command_settings='{}', event_bindings=json.dumps(routes), message_policy='{}'
+            )
+        )
+        conn.execute(
+            pipelines.insert().values(
+                uuid='target', extensions_preferences=json.dumps({'enable_all_plugins': False, 'plugins': [plugin]})
+            )
+        )
+        with patch.object(selection, 'op', Operations(MigrationContext.configure(conn))):
+            selection.upgrade()
+            migrated = conn.execute(sa.select(bots.c.message_policy)).scalar_one()
+            assert migrated['plugins'] == {'enable_all': False, 'plugins': [plugin]}
+            selection.downgrade()
+            assert conn.execute(sa.select(bots.c.message_policy)).scalar_one() == {}
+            assert conn.execute(sa.select(bots.c.event_bindings)).scalar_one() == routes
+            selection.upgrade()
+            assert conn.execute(sa.select(bots.c.message_policy)).scalar_one() == migrated
+
+    await database(scenario)
+
+
 def legacy_config(prefix: str, *, limitation: int = 60, at_sender: bool = True) -> dict:
     """A full pre-policy Messaging config, distinguishable by its settings."""
     return {

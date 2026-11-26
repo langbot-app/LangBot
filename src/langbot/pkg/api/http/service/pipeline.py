@@ -361,6 +361,9 @@ class PipelineService:
             await publication.remove_producer(context, 'pipeline', pipeline_uuid)
 
     async def copy_pipeline(self, context: TenantContext, pipeline_uuid: str) -> str:
+        return (await self.copy_pipeline_result(context, pipeline_uuid))['uuid']
+
+    async def copy_pipeline_result(self, context: TenantContext, pipeline_uuid: str) -> dict:
         """Copy a pipeline with all its configurations"""
         workspace_uuid = require_workspace_uuid(context)
         # Check limitation
@@ -414,7 +417,7 @@ class PipelineService:
         pipeline = await self.get_pipeline(context, new_uuid, include_secret=True)
         await self.ap.pipeline_mgr.load_pipeline(context, pipeline)
 
-        return new_uuid
+        return {'uuid': new_uuid, 'ignored_keys': message_policy_schema.ignored_config_keys(original_pipeline.config)}
 
     async def get_pipeline_extensions(self, context: TenantContext, pipeline_uuid: str) -> dict:
         pipeline = await self.get_pipeline(context, pipeline_uuid)

@@ -72,7 +72,8 @@ async def test_agent_output_hooks_and_policy_follow_actual_delivery(native):
     policy.attach(query)
     policy.filter_outbound = AsyncMock(return_value=FilterVerdict(True))
     policy.process_long_text = AsyncMock(side_effect=lambda query, chain: chain)
-    policy.wait_force_delay = AsyncMock()
+    policy.wait_force_delay = AsyncMock(return_value=0.125)
+    policy.record_output = AsyncMock()
     session.policy_query, session.agent_hooks = query, True
     key = uuid4()
     await session.apply(request(key, 'update', 'partial'))
@@ -91,6 +92,9 @@ async def test_agent_output_hooks_and_policy_follow_actual_delivery(native):
         assert call['message'][-1].text == 'replacement'
     assert isinstance(call['message'][0], message.At)
     assert call['quote_origin'] is True
+    policy.record_output.assert_awaited_once_with(
+        query, [{'kind': 'delay', 'ms': 125}, {'kind': 'at'}, {'kind': 'quote'}]
+    )
 
 
 async def test_neutral_agent_reply_preserves_message():

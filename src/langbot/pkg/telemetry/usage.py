@@ -8,6 +8,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass, field
+from .message_policy import DIMENSIONS
 
 
 MAX_KEYS = 256
@@ -18,6 +19,7 @@ COMMAND = re.compile(r'[a-z0-9-]+(?:\.[a-z0-9-]+){0,5}')
 ERROR = re.compile(r'[A-Za-z0-9_.]{0,64}')
 GROUPS: set[str] = set()
 SCHEMA = {
+    **{name: tuple(dims) for name, dims in DIMENSIONS.items()},
     'alert.state': ('enabled', 'channel'),
     'alert.settings.update': ('enabled', 'channel'),
     'alert.incident': ('rule', 'event'),
@@ -109,7 +111,10 @@ def normalize(metric: str, dims: dict) -> tuple:
     for name in SCHEMA[metric]:
         value = dims.get(name, '')
         value = value if isinstance(value, str) else ''
-        if metric.startswith('alert.'):
+        if metric in DIMENSIONS:
+            if value not in DIMENSIONS[metric][name]:
+                raise ValueError('Invalid message telemetry dimension')
+        elif metric.startswith('alert.'):
             allowed = ALERT_ENUMS[name]
             if value not in allowed:
                 if 'other' not in allowed:

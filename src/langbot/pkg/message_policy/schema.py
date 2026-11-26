@@ -233,6 +233,17 @@ def extract_legacy_policy(config: typing.Any) -> tuple[dict[str, typing.Any], di
     return remaining, moved
 
 
+def ignored_config_keys(config) -> list[str]:
+    _, moved = extract_legacy_policy(config)
+    keys = [section for section in ('trigger', 'safety') if section in moved]
+    for block, value in moved.get('output', {}).items():
+        if block == 'misc':
+            keys.extend('output.misc.' + key for key in value)
+        else:
+            keys.append('output.' + block)
+    return sorted(keys)
+
+
 def policy_from_legacy(moved: typing.Any) -> dict[str, typing.Any]:
     """Turn moved legacy keys into a policy override that behaves the same."""
     policy = copy.deepcopy(moved) if isinstance(moved, dict) else {}

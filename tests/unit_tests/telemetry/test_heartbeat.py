@@ -56,6 +56,7 @@ def make_app():
 
     # platform manager with one enabled bot
     bot = Mock()
+    bot.bot_entity = SimpleNamespace(command_settings={}, message_policy={}, event_bindings=[])
     bot.enable = True
     bot.adapter = Mock()
     bot.adapter.__class__.__name__ = 'TelegramAdapter'

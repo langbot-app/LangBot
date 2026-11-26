@@ -26,8 +26,9 @@ async def migrate_global_command_config(ap: app.Application) -> None:
     if getattr(persistence, 'mode', None) in {PersistenceMode.CLOUD_RUNTIME, PersistenceMode.RELEASE_MIGRATION}:
         return
 
-    from ..entity.persistence.metadata import Metadata
+    from ..entity.persistence.metadata import Metadata, WorkspaceMetadata
     from ..entity.persistence.bot import Bot
+    from .message_upgrade_report import REPORT_PREFIX, report_value
 
     # Check if migration has already been executed
     result = await persistence.execute_async(sa.select(Metadata.value).where(Metadata.key == MIGRATION_FLAG_KEY))
@@ -59,22 +60,33 @@ async def migrate_global_command_config(ap: app.Application) -> None:
                 has_legacy_config = True
 
     # Migrate values into all existing bots if legacy config exists
-    target_settings = {
-        'enabled': old_enabled,
-        'prefixes': old_prefixes,
-        'processors': [],
-    }
-
     if has_legacy_config:
-        await persistence.execute_async(Bot.__table__.update().values(command_settings=target_settings))
+        workspace = (await ap.workspace_service.get_singleton_workspace()).uuid
+        updates = {}
+        if 'enable' in command_cfg:
+            updates['enabled'] = old_enabled
+        if 'prefix' in command_cfg:
+            updates['prefixes'] = old_prefixes
+        async with persistence.tenant_uow(workspace) as uow:
+            bots = await uow.execute(sa.select(Bot.uuid, Bot.command_settings).where(Bot.workspace_uuid == workspace))
+            for bot_uuid, settings in bots.all():
+                await uow.execute(
+                    Bot.__table__.update()
+                    .where(Bot.workspace_uuid == workspace, Bot.uuid == bot_uuid)
+                    .values(command_settings={**(settings or {}), **updates})
+                )
+            await uow.execute(
+                sa.insert(WorkspaceMetadata).values(
+                    workspace_uuid=workspace,
+                    key=REPORT_PREFIX + 'commands',
+                    value=report_value({'original_prefixes': updates.get('prefixes', [])}),
+                )
+            )
+            await uow.execute(sa.insert(Metadata).values(key=MIGRATION_FLAG_KEY, value='true'))
 
     # Mark migration complete in database metadata so it runs only once
-    await persistence.execute_async(
-        sa.insert(Metadata).values(
-            key=MIGRATION_FLAG_KEY,
-            value='true',
-        )
-    )
+    else:
+        await persistence.execute_async(sa.insert(Metadata).values(key=MIGRATION_FLAG_KEY, value='true'))
 
     # Remove legacy keys from data/config.yaml and dump config
     if instance_cfg is not None and isinstance(cfg_data, dict) and 'command' in cfg_data:

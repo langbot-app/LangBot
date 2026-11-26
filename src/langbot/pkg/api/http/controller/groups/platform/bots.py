@@ -21,6 +21,72 @@ class BotsRouterGroup(group.RouterGroup):
 
     async def initialize(self) -> None:
         @self.route(
+            '/_/upgrade-checks',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def list_upgrade_checks(request_context: RequestContext):
+            return self.success(data=await self.ap.bot_service.list_upgrade_checks(request_context))
+
+        @self.route(
+            '/_/upgrade-checks/confirm-all',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def confirm_all(request_context: RequestContext):
+            return self.success(data=await self.ap.bot_service.confirm_upgrade_checks(request_context, None))
+
+        @self.route(
+            '/_/upgrade-checks/confirm',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def confirm_check(request_context: RequestContext):
+            payload = await quart.request.get_json(silent=True)
+            if not isinstance(payload, dict) or not isinstance(payload.get('id'), str):
+                return self.http_status(400, 'invalid_upgrade_check', 'invalid_upgrade_check')
+            try:
+                return self.success(
+                    data=await self.ap.bot_service.confirm_upgrade_checks(request_context, payload['id'])
+                )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+
+        @self.route(
+            '/_/upgrade-checks/action',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def upgrade_action(request_context: RequestContext):
+            payload = await quart.request.get_json(silent=True)
+            if not isinstance(payload, dict) or not all(isinstance(payload.get(key), str) for key in ('id', 'action')):
+                return self.http_status(400, 'invalid_upgrade_check', 'invalid_upgrade_check')
+            try:
+                return self.success(
+                    data=await self.ap.bot_service.apply_upgrade_action(
+                        request_context, payload['id'], payload['action']
+                    )
+                )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+
+        @self.route(
+            '/<bot_uuid>/upgrade-checks/promote-route-policy',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def promote_route_policy(bot_uuid: str, request_context: RequestContext):
+            try:
+                return self.success(data=await self.ap.bot_service.promote_route_policy(request_context, bot_uuid))
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+
+        @self.route(
             '/_/builtin-commands',
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,

@@ -1266,6 +1266,58 @@ class BotService:
                 await self.sync_platform_commands(context, bot_uuid)
         await self._apply_bot_configuration(context, bot_uuid)
 
+    async def list_upgrade_checks(self, context: TenantContext) -> dict:
+        from .message_upgrade import checks
+
+        return await checks(self, context)
+
+    async def confirm_upgrade_checks(self, context: TenantContext, item_id: str | None) -> dict:
+        from .message_upgrade import confirm
+
+        return await confirm(self, context, item_id)
+
+    async def apply_upgrade_action(self, context: TenantContext, item_id: str, action: str) -> dict:
+        from .message_upgrade import act
+
+        return await act(self, context, item_id, action)
+
+    async def promote_route_policy(self, context: TenantContext, bot_uuid: str) -> dict:
+        from ....message_policy.promotion import policy_promotion
+
+        workspace = require_workspace_uuid(context)
+        model = persistence_bot.Bot
+        scoped = (model.workspace_uuid == workspace, model.uuid == bot_uuid)
+        async with self.ap.persistence_mgr.tenant_write_uow(workspace, operation='bot.policy.promote') as uow:
+            row = (
+                await uow.execute(
+                    sqlalchemy.select(model.message_policy, model.event_bindings).where(*scoped).with_for_update()
+                )
+            ).one_or_none()
+            if row is None:
+                raise WorkspaceNotFoundError('Bot not found')
+            default, bindings = row
+            promotion = policy_promotion(bot_uuid, default, bindings)
+            if promotion is None:
+                raise ApplicationAPIException(
+                    ApplicationAPIError('policy_promotion_not_equivalent', 'policy_promotion_not_equivalent', 409)
+                )
+            ids = set(promotion['route_ids'])
+            routes = [
+                {key: value for key, value in route.items() if key != 'policy'} if route['id'] in ids else route
+                for route in bindings
+            ]
+            await uow.execute(
+                sqlalchemy.update(model)
+                .where(*scoped)
+                .values(message_policy=promotion['message_policy'], event_bindings=routes)
+            )
+        runtime = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
+        if runtime is not None:
+            runtime.bot_entity.message_policy = promotion['message_policy']
+            runtime.bot_entity.event_bindings = routes
+        self.ap.message_policy_mgr.invalidate_bot(workspace, bot_uuid)
+        return promotion
+
     async def bind_event_route(
         self,
         context: TenantContext,
@@ -1385,6 +1437,7 @@ class BotService:
         runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
 
         latest_by_binding: dict[str, dict[str, typing.Any]] = {}
+        counts = await self.ap.monitoring_service.route_counts_24h(context, bot_uuid)
         unmatched_events: list[dict[str, typing.Any]] = []
         runtime_logs = getattr(getattr(runtime_bot, 'logger', None), 'logs', [])
         for log in runtime_logs:
@@ -1410,6 +1463,7 @@ class BotService:
                 current_binding_ids.add(str(binding_id))
             route_status = {
                 'binding_id': binding_id,
+                'counts_24h': dict.fromkeys(('ai', 'command', 'plugin', 'policy'), 0) | counts.get(binding_id, {}),
                 'event_pattern': binding.get('event_pattern'),
                 'event_type': None,
                 'target_type': binding.get('target_type'),

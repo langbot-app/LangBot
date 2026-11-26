@@ -359,6 +359,18 @@ class RuntimePipeline:
         item = query.variables.get('_policy_filter_item', item)
         reason = schema.drop_reason(runtime.bot_uuid, route, item)
         query.variables['message_policy_drop'] = reason
+        ingress = getattr(query, '_policy_ingress_id', None)
+        if ingress:
+            await self.ap.monitoring_service.record_policy_event(
+                get_query_execution_context(query),
+                ingress,
+                {
+                    'type': 'admission',
+                    'reason': reason,
+                    'policy_layer': reason.split(':', 1)[0],
+                    'policy_item': item.split('.', 1)[1],
+                },
+            )
         await bot._record_event_route_trace(
             event_type='message.received',
             binding=route,
@@ -366,6 +378,7 @@ class RuntimePipeline:
             target_uuid=query.pipeline_uuid,
             status='discarded',
             failure_code='message_policy',
+            details={'policy_layer': reason.split(':', 1)[0], 'policy_item': item.split('.', 1)[1]},
             text=reason,
             reason=reason,
         )
@@ -482,7 +495,10 @@ class RuntimePipeline:
         from langbot_plugin.utils.log import log_scope
 
         workspace_uuid = getattr(query, 'workspace_uuid', None) or getattr(self, 'workspace_uuid', '')
-        with log_scope(workspace=workspace_uuid), language_scope(await get_workspace_language(self.ap, workspace_uuid)):
+        with (
+            log_scope(trace=getattr(query, '_message_log_trace', None), workspace=workspace_uuid),
+            language_scope(await get_workspace_language(self.ap, workspace_uuid)),
+        ):
             return await self._process_query_with_language(query)
 
     async def _process_query_with_language(self, query: pipeline_query.Query):

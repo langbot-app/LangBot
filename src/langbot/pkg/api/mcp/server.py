@@ -713,7 +713,13 @@ class LangBotMCPServer:
 
         @mcp.tool(description='List recent runtime route status for a bot event route table.')
         async def list_bot_event_route_statuses(bot_uuid: str) -> str:
-            return _dump(await ap.bot_service.list_event_route_statuses(bot_uuid))
+            return _dump(
+                await ap.bot_service.list_event_route_statuses(_authorized(Permission.RESOURCE_VIEW), bot_uuid)
+            )
+
+        @mcp.tool(description='Inspect message policy upgrade checks for this workspace without changing any settings.')
+        async def list_message_upgrade_checks() -> str:
+            return _dump(await ap.bot_service.list_upgrade_checks(_authorized(Permission.RESOURCE_VIEW)))
 
         @mcp.tool(
             description=(

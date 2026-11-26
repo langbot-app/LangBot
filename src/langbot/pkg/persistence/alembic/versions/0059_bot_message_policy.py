@@ -18,6 +18,7 @@ from alembic import op
 import sqlalchemy as sa
 
 from langbot.pkg.message_policy import schema as policy_schema
+from langbot.pkg.persistence.message_upgrade_report import write_report
 
 revision = '0059_bot_message_policy'
 down_revision = '0058_platform_command_sync'
@@ -115,6 +116,7 @@ def upgrade() -> None:
         _columns(sa.inspect(bind), 'bots'),
         ('uuid', 'workspace_uuid', 'event_bindings', 'message_policy'),
     )
+    reports = {}
     for row in bind.execute(sa.select(bots)).mappings().all():
         values: dict = {}
         if not bots_had_policy:
@@ -130,11 +132,15 @@ def upgrade() -> None:
                 override = overrides.get((_scope(row), str(binding.get('target_uuid') or '')))
                 if override:
                     binding['policy'] = copy.deepcopy(override)
+                    reports.setdefault(_scope(row), {}).setdefault('route_overrides', []).append(
+                        {'bot_uuid': row['uuid'], 'route_id': binding.get('id'), 'chat_uuid': binding['target_uuid']}
+                    )
                     changed = True
             if changed:
                 values['event_bindings'] = bindings
         if values:
             bind.execute(bots.update().where(_same_row(bots, row)).values(**values))
+    write_report(bind, '0059', reports)
 
 
 def downgrade() -> None:

@@ -5,6 +5,7 @@ from ..cloud.plan_policy import require_workspace_platform
 from ..i18n import language_scope, t
 from ..command.permissions import builtin_settings, can_run
 from ..command.catalog import DESCRIPTIONS
+from ..telemetry.message_policy import observe
 from ..i18n.workspace import get_workspace_language
 
 import asyncio
@@ -402,6 +403,10 @@ class RuntimeBot:
         binding = binding or {}
         kind = str(target_type or binding.get('target_type') or '').strip()
         target = str(target_uuid or binding.get('target_uuid') or '').strip()
+        if kind == 'plugin_command':
+            return 'plugin_command'
+        if kind == 'builtin_command' and target in DESCRIPTIONS:
+            return f'builtin:{target}'
         if not kind or not target:
             return ''
         return f'{kind}:{target}'[:160]
@@ -421,6 +426,7 @@ class RuntimeBot:
         run_id: str | None = None,
         node: str | None = None,
         error: str = '',
+        details: dict | None = None,
     ) -> dict[str, typing.Any]:
         """Record structured event routing state while preserving the human log.
 
@@ -441,7 +447,33 @@ class RuntimeBot:
             'failure_code': failure_code,
             'reason': reason or text,
             'run_id': run_id,
+            **(details or {}),
         }
+        if metadata.get('policy_item'):
+            observe(
+                self.ap,
+                self.execution_context,
+                'policy.drop',
+                item=metadata['policy_item'],
+                layer=metadata['policy_layer'],
+            )
+        if metadata.get('hook'):
+            observe(self.ap, self.execution_context, 'hook.intercept', event=metadata['hook'])
+        if (
+            metadata.get('policy_item')
+            or metadata.get('hook')
+            or metadata['target_type'] in {'builtin_command', 'plugin_command'}
+        ):
+            from langbot_plugin.utils.log import trace_id
+            import logging
+
+            metadata['trace'] = trace_id.get()
+            logging.getLogger(__name__).info(
+                '%s %s: %s',
+                metadata['target_type'],
+                status,
+                text if metadata.get('policy_item') else metadata['target_uuid'],
+            )
         log_method = getattr(self.logger, level, self.logger.info)
         await log_method(text, metadata=metadata)
         if status in {'delivered', 'failed'}:
@@ -562,7 +594,7 @@ class RuntimeBot:
             'adapter': getattr(self.bot_entity, 'adapter', None) or adapter.__class__.__name__,
             'bot_uuid': self.bot_entity.uuid,
         }
-        await self.logger.info(
+        await self.logger.debug(
             f'Platform adapter received {event_type}',
             metadata=metadata,
         )
@@ -979,13 +1011,21 @@ class RuntimeBot:
                 if await store.get_event(execution_id):
                     return
                 await self._persist_monitoring_ingress(event, adapter, execution_id)
-        with ingress(
-            getattr(self, 'ap', None),
-            'completed',
-            getattr(self, 'execution_context', None),
-            execution_id,
-            require_route=True,
-        ) as binding:
+        from langbot_plugin.utils.log import log_scope
+
+        trace_id = 'M-' + uuid.uuid4().hex
+        object.__setattr__(event, '_message_log_trace', trace_id)
+        object.__setattr__(event, '_policy_ingress_id', execution_id)
+        with (
+            log_scope(trace=trace_id, workspace=self.execution_context.workspace_uuid),
+            ingress(
+                getattr(self, 'ap', None),
+                'completed',
+                getattr(self, 'execution_context', None),
+                execution_id,
+                require_route=True,
+            ) as binding,
+        ):
             if binding.created:
                 # The platform is known at ingress, whatever the route does next.
                 binding.state.adapter = adapter.__class__.__name__
@@ -1001,6 +1041,8 @@ class RuntimeBot:
         failure_detail = ''
         cancel_detail = ''
         for result in results:
+            if isinstance(result, dict) and result.get('status') == 'failed':
+                failure_detail = failure_detail or result.get('failure_code') or 'delivery_failed'
             if not isinstance(result, BaseException):
                 continue
             if is_cancellation(result):
@@ -1221,8 +1263,24 @@ class RuntimeBot:
             self.execution_context.workspace_uuid, self.bot_entity.uuid, 'person', event.sender.id, event.sender.id
         )
         allowed = can_run(permission, is_admin)
-        if not allowed and settings.get('denied_reply', 'silent') == 'silent':
-            return False
+        denied_reply = settings.get('denied_reply', 'silent')
+        kind = 'processor' if processor_uuid else 'plugin' if plugin_id else 'builtin'
+        dims = {'kind': kind, 'name': 'plugin' if plugin_id else cmd_name}
+        if not allowed:
+            observe(self.ap, self.execution_context, 'command.run', outcome='denied', **dims)
+            denial = await self._record_event_route_trace(
+                event_type=event.type,
+                binding=getattr(event, '_selected_route', None),
+                status='denied',
+                target_type='plugin_command' if plugin_id else 'builtin_command',
+                target_uuid=cmd_name,
+                failure_code='command_permission_denied',
+                text=f'Command {cmd_name} denied ({denied_reply})',
+                details={'denied_reply': denied_reply, 'command_kind': 'plugin' if plugin_id else 'builtin'},
+            )
+            object.__setattr__(event, '_command_denial', denial)
+            if denied_reply == 'silent':
+                return False
         async with runtime.admit(query, cmd_text) if runtime is not None else contextlib.nullcontext() as item:
             if item:
                 binding = dict(
@@ -1240,20 +1298,31 @@ class RuntimeBot:
                         message_source=event.to_legacy_event(), message=chain, quote_origin=False
                     )
                 return True
-            await self._execute_matched_plugin_command(
-                event=event,
-                adapter=adapter,
-                plugin_id=plugin_id,
-                command_name=cmd_name,
-                command_text=cmd_text,
-                full_command_text=full_cmd_text,
-                is_admin=is_admin,
-                command_config=cmd_config,
-                processor_uuid=processor_uuid,
-                execution_id=execution_id,
-                node=node,
-            )
-        return True
+            try:
+                result = await self._execute_matched_plugin_command(
+                    event=event,
+                    adapter=adapter,
+                    plugin_id=plugin_id,
+                    command_name=cmd_name,
+                    command_text=cmd_text,
+                    full_command_text=full_cmd_text,
+                    is_admin=is_admin,
+                    command_config=cmd_config,
+                    processor_uuid=processor_uuid,
+                    execution_id=execution_id,
+                    node=node,
+                )
+            except Exception:
+                observe(self.ap, self.execution_context, 'command.run', outcome='failed', **dims)
+                raise
+            outcome = 'ok'
+            if isinstance(result, dict):
+                if result.get('hook'):
+                    outcome = 'intercepted'
+                elif result.get('status') == 'failed':
+                    outcome = 'failed'
+            observe(self.ap, self.execution_context, 'command.run', outcome=outcome, **dims)
+        return result if isinstance(result, dict) else True
 
     async def _execute_matched_plugin_command(
         self,
@@ -1268,8 +1337,8 @@ class RuntimeBot:
         node: str = '',
         command_config: dict | None = None,
         processor_uuid: str = '',
-    ) -> None:
-        """Execute a matched plugin command and reply with the result."""
+    ) -> dict | None:
+        """Execute a matched command and return its terminal routing result."""
         legacy_event = event.to_legacy_event() if hasattr(event, 'to_legacy_event') else event
         is_group_message = (
             isinstance(legacy_event, platform_events.GroupMessage)
@@ -1339,24 +1408,49 @@ class RuntimeBot:
                 query._listener_plugins,
             )
             if ctx.is_prevented_default():
+                from ..pipeline import monitoring_helper
+
+                monitoring_helper.mark_plugin_handled(query, ctx)
+                owner = monitoring_helper.get_handled_by(query)
                 if ctx.event.reply_message_chain is not None:
                     await query._message_policy.send_command_reply(query, ctx.event.reply_message_chain)
-                return
+                return await self._record_event_route_trace(
+                    event_type=event.type,
+                    binding=getattr(event, '_selected_route', None),
+                    status='delivered',
+                    target_type='plugin',
+                    target_uuid=owner,
+                    text=f'{hook.__name__} handled by {owner}',
+                    details={'hook': 'CommandSent'},
+                )
         if not plugin_id:
             from ..command.builtin import execute_builtin
 
-            text = await execute_builtin(self, event, adapter, command_name, command_text, query, session, is_admin)
-            chain = platform_message.MessageChain([platform_message.Plain(text=text)])
-            if query is not None:
-                await query._message_policy.send_command_reply(query, chain)
+            try:
+                text = await execute_builtin(self, event, adapter, command_name, command_text, query, session, is_admin)
+                chain = platform_message.MessageChain([platform_message.Plain(text=text)])
+                if query is not None:
+                    await query._message_policy.send_command_reply(query, chain)
+                else:
+                    await adapter.reply_message(message_source=legacy_event, message=chain, quote_origin=False)
+            except Exception:
+                status = 'failed'
             else:
-                await adapter.reply_message(message_source=legacy_event, message=chain, quote_origin=False)
-            return
+                status = 'delivered'
+            return await self._record_event_route_trace(
+                event_type=event.type,
+                binding=getattr(event, '_selected_route', None),
+                status=status,
+                target_type='builtin_command',
+                target_uuid=command_name,
+                text=f'Builtin command {command_name}: {status}',
+                details={'route_ref': f'builtin:{command_name}'},
+                failure_code='command_execution_failed' if status == 'failed' else None,
+            )
 
         event_type = getattr(event, 'type', None) or 'message.received'
-        route_ref = f'plugin_command:{plugin_id}/{command_name}'
         binding = {
-            'id': route_ref,
+            'id': (getattr(event, '_selected_route', None) or {}).get('id'),
             'target_type': 'plugin_command',
             'target_uuid': f'{plugin_id}/{command_name}',
             'event_pattern': event_type,
@@ -1391,7 +1485,7 @@ class RuntimeBot:
         command_error: str | None = None
 
         try:
-            with trace_mod.scope(route_ref=route_ref):
+            with trace_mod.scope(route_ref='plugin_command'):
                 async for ret in self.ap.cmd_mgr.execute_command(cmd_ctx, bound_plugins=[plugin_id]):
                     await run_recorder.output(ret)
                     if ret.error is not None:
@@ -1399,7 +1493,7 @@ class RuntimeBot:
                     components: list[platform_message.MessageComponent] = []
                     if ret.error is not None:
                         components.append(platform_message.Plain(text=str(ret.error)))
-                        await self.logger.info(f'Command({query_id}) error: {ret.error}')
+                        await self.logger.debug(f'Command({query_id}) error: {ret.error}')
                     else:
                         if ret.text is not None:
                             components.append(platform_message.Plain(text=ret.text))
@@ -1416,7 +1510,6 @@ class RuntimeBot:
                             await adapter.reply_message(message_source=legacy_event, message=chain, quote_origin=False)
                         else:
                             await query._message_policy.send_command_reply(query, chain)
-                        await self.logger.info(f'Command({query_id}) replied: {chain}')
         except Exception as exc:
             await self._record_event_route_trace(
                 event_type=event_type,
@@ -1434,13 +1527,13 @@ class RuntimeBot:
 
         await run_recorder.finish(error=command_error)
 
-        await self._record_event_route_trace(
+        return await self._record_event_route_trace(
             event_type=event_type,
-            status='delivered',
+            status='failed' if command_error else 'delivered',
             binding=binding,
             target_type='plugin_command',
             target_uuid=f'{plugin_id}/{command_name}',
-            text=f'Plugin command {plugin_id}/{command_name} delivered successfully',
+            text=f'Plugin command {plugin_id}/{command_name}: {"failed" if command_error else "delivered"}',
         )
 
     async def _begin_message(self, event, adapter):
@@ -1466,6 +1559,9 @@ class RuntimeBot:
         )
         try:
             object.__setattr__(event, '_entry_query', query)
+            object.__setattr__(query, '_message_log_trace', getattr(event, '_message_log_trace', None))
+            object.__setattr__(query, '_policy_ingress_id', getattr(event, '_policy_ingress_id', None))
+            object.__setattr__(query, '_policy_route', route)
             await self.ap.message_policy_mgr.bind_query(query)
             await self._notify_platform_listeners(event, query=query)
             ctx = await self.ap.plugin_connector.emit_event(message_received_event(query), query._listener_plugins)
@@ -1510,6 +1606,7 @@ class RuntimeBot:
                             target_uuid=owner,
                             text=f'{event.type} handled by {owner}',
                             binding=event._selected_route,
+                            details={'hook': 'MessageReceived'},
                         )
                     )
             command_settings = getattr(self.bot_entity, 'command_settings', None) or {}
@@ -1579,6 +1676,8 @@ class RuntimeBot:
 
         # Recorded after handling so the inbound stage carries the real outcome
         # instead of a hardcoded success.
+        if denial := getattr(event, '_command_denial', None):
+            results = [*results, denial]
         outcome, error_detail = self._summarize_event_delivery(results)
         for result in results:
             if isinstance(result, BaseException):
@@ -1919,6 +2018,7 @@ class RuntimeBot:
                         status='delivered',
                         target_uuid=monitoring_helper.get_handled_by(query),
                         text=f'{hook.__name__} handled by plugin',
+                        details={'hook': 'NormalMessageReceived'},
                     )
                 altered = ctx.event.user_message_alter
             return await self._deliver_runner_event(event, adapter, execution_id, event_binding, binding, altered)
@@ -1930,6 +2030,7 @@ class RuntimeBot:
             binding=binding,
             status='discarded',
             failure_code='message_policy',
+            details={'policy_layer': reason.split(':', 1)[0], 'policy_item': item.split('.', 1)[1]},
             reason=reason,
             text=reason,
         )
@@ -2104,7 +2205,7 @@ class RuntimeBot:
             component for component in event.message_chain if isinstance(component, platform_message.Image)
         ]
 
-        await self.logger.info(
+        await self.logger.debug(
             f'{event.message_chain}',
             images=image_components,
             message_session_id=f'{launcher_kind}_{launcher_id}',

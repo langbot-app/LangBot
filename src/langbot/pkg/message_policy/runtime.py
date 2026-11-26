@@ -293,6 +293,7 @@ class MessagePolicyRuntime:
                 continue
             result = await content_filter.process(query, message)
             if result.level == filter_entities.ResultLevel.BLOCK:
+                await self.record_output(query, [{'kind': 'outbound_block'}])
                 return FilterVerdict(
                     allowed=False,
                     user_notice=result.user_notice,
@@ -319,17 +320,20 @@ class MessagePolicyRuntime:
             return message_chain
 
         if len(str(message_chain)) > self.policy['output']['long-text-processing']['threshold']:
-            return platform_message.MessageChain(await self.long_text_strategy.process(str(message_chain), query))
+            converted = platform_message.MessageChain(await self.long_text_strategy.process(str(message_chain), query))
+            object.__setattr__(query, '_policy_long_text', self.policy['output']['long-text-processing']['strategy'])
+            return converted
         return message_chain
 
     # ------------------------------------------------------------------ sending
 
-    async def wait_force_delay(self) -> None:
+    async def wait_force_delay(self) -> float:
         """Sleep for the configured forced reply delay."""
         delay = self.policy['output']['force-delay']
         random_delay = random.uniform(delay['min'], delay['max'])
         self.ap.logger.debug('根据规则强制延迟回复: %s s', random_delay)
         await asyncio.sleep(random_delay)
+        return random_delay
 
     def mention_sender(
         self,
@@ -340,6 +344,39 @@ class MessagePolicyRuntime:
         if self.at_sender and isinstance(message_event, platform_events.GroupMessage):
             message_chain.insert(0, platform_message.At(target=message_event.sender.id))
 
+    async def record_output(self, query, actions):
+        from ..telemetry.message_policy import observe
+
+        context = getattr(query, '_execution_context', None)
+        if not context:
+            return
+        for action in actions:
+            observe(self.ap, context, 'output.transform', kind=action['kind'])
+            if action['kind'] == 'outbound_block':
+                route = getattr(query, '_policy_route', None)
+                reason = schema.drop_reason(self.bot_uuid, route, 'safety.content-filter')
+                observe(self.ap, context, 'policy.drop', item='outbound-content-filter', layer=reason.split(':', 1)[0])
+        service = getattr(self.ap, 'monitoring_service', None)
+        ingress = getattr(query, '_policy_ingress_id', None)
+        if service and ingress and actions:
+            try:
+                await service.record_policy_event(context, ingress, {'type': 'output', 'actions': actions})
+            except Exception as exc:
+                self.ap.logger.warning('Failed to record output policy: %s', type(exc).__name__)
+
+    async def finish_output(self, query, delay, mentioned):
+        actions = []
+        if strategy := getattr(query, '_policy_long_text', None):
+            actions.append({'kind': 'long_text', 'strategy': strategy})
+            object.__setattr__(query, '_policy_long_text', None)
+        if delay:
+            actions.append({'kind': 'delay', 'ms': round(delay * 1000)})
+        if mentioned:
+            actions.append({'kind': 'at'})
+        if self.quote_origin:
+            actions.append({'kind': 'quote'})
+        await self.record_output(query, actions)
+
     async def prepare_reply_chain(self, query, chain):
         verdict = await self.filter_outbound(query, str(chain))
         if not verdict.allowed:
@@ -347,8 +384,10 @@ class MessagePolicyRuntime:
         if verdict.rewritten and verdict.text != str(chain).strip():
             chain = platform_message.MessageChain([platform_message.Plain(text=verdict.text)])
         chain = await self.process_long_text(query, chain)
-        await self.wait_force_delay()
+        delay = await self.wait_force_delay()
+        length = len(chain)
         self.mention_sender(query.message_event, chain)
+        await self.finish_output(query, delay, len(chain) != length)
         return chain
 
     async def send_command_reply(self, query, chain, quote_origin=False):
@@ -363,8 +402,10 @@ class MessagePolicyRuntime:
         """Send the latest reply chain of a query back to its conversation."""
         from ..pipeline import plugin_diagnostics
 
-        await self.wait_force_delay()
+        delay = await self.wait_force_delay()
+        length = len(query.resp_message_chain[-1])
         self.mention_sender(query.message_event, query.resp_message_chain[-1])
+        await self.finish_output(query, delay, len(query.resp_message_chain[-1]) != length)
 
         quote_origin = self.quote_origin
 

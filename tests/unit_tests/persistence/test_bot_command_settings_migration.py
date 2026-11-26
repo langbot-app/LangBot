@@ -1,6 +1,7 @@
 """Unit tests for 0057_bot_command_settings Alembic migration and startup YAML migration."""
 
 import importlib
+import contextlib
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
@@ -64,6 +65,15 @@ class FakePersistenceMgr:
         with self.engine.begin() as conn:
             return conn.execute(stmt, *args, **kwargs)
 
+    @contextlib.asynccontextmanager
+    async def tenant_uow(self, workspace):
+        with self.engine.begin() as conn:
+
+            async def execute(stmt):
+                return conn.execute(stmt)
+
+            yield SimpleNamespace(execute=execute)
+
 
 def _register_all_tables():
     """Register every entity so foreign keys of bots resolve regardless of test order."""
@@ -80,10 +90,10 @@ async def test_startup_migration_from_yaml_custom_prefix():
     db_metadata = sa.MetaData()
 
     from langbot.pkg.entity.persistence.bot import Bot
-    from langbot.pkg.entity.persistence.metadata import Metadata
+    from langbot.pkg.entity.persistence.metadata import Metadata, WorkspaceMetadata
 
     _register_all_tables()
-    db_metadata.create_all(engine, tables=[Bot.__table__, Metadata.__table__])
+    db_metadata.create_all(engine, tables=[Bot.__table__, Metadata.__table__, WorkspaceMetadata.__table__])
 
     with engine.begin() as conn:
         conn.execute(
@@ -94,7 +104,7 @@ async def test_startup_migration_from_yaml_custom_prefix():
                 adapter='test',
                 adapter_config={},
                 workspace_uuid='ws-1',
-                command_settings={'enabled': True, 'prefixes': ['/'], 'processors': []},
+                command_settings={'enabled': True, 'prefixes': ['/'], 'builtin': {'help': {'enabled': False}}},
             )
         )
 
@@ -109,6 +119,7 @@ async def test_startup_migration_from_yaml_custom_prefix():
         dump_config=dump_mock,
     )
     ap = SimpleNamespace(
+        workspace_service=SimpleNamespace(get_singleton_workspace=AsyncMock(return_value=SimpleNamespace(uuid='ws-1'))),
         persistence_mgr=FakePersistenceMgr(engine),
         instance_config=instance_config,
         logger=Mock(),
@@ -124,6 +135,7 @@ async def test_startup_migration_from_yaml_custom_prefix():
             settings = json.loads(settings)
         assert settings['prefixes'] == ['!', '！']
         assert settings['enabled'] is True
+        assert settings['builtin'] == {'help': {'enabled': False}}
 
         # 2. Flag recorded in metadata table
         flag = conn.execute(

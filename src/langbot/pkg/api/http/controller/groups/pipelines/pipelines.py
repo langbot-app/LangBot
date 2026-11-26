@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import quart
+from ......message_policy.schema import ignored_config_keys
 
 from .....application.contracts import ApplicationAPIException
 from ....authz import Permission, has_permission
@@ -57,7 +58,9 @@ class PipelinesRouterGroup(group.RouterGroup):
                 return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
-            return self.success(data={'uuid': pipeline_uuid})
+            return self.success(
+                data={'uuid': pipeline_uuid, 'ignored_keys': ignored_config_keys(pipeline_data.get('config'))}
+            )
 
         @self.route(
             '/_/metadata',
@@ -117,6 +120,7 @@ class PipelinesRouterGroup(group.RouterGroup):
                 quart.g.operation_log_changes = changes
                 if rule is not None and changes:
                     quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
+                return self.success(data={'ignored_keys': ignored_config_keys(json_data.get('config'))})
             else:
                 try:
                     await self.ap.pipeline_service.delete_pipeline(request_context, pipeline_uuid)
@@ -132,8 +136,9 @@ class PipelinesRouterGroup(group.RouterGroup):
         )
         async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
             try:
-                new_uuid = await self.ap.pipeline_service.copy_pipeline(request_context, pipeline_uuid)
-                return self.success(data={'uuid': new_uuid})
+                return self.success(
+                    data=await self.ap.pipeline_service.copy_pipeline_result(request_context, pipeline_uuid)
+                )
             except ApplicationAPIException as exc:
                 return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
             except ValueError as e:

@@ -182,8 +182,6 @@ class BuildAppStage(stage.BootingStage):
 
         from ...persistence import bot_command_migration
 
-        await bot_command_migration.migrate_global_command_config(ap)
-
         if deployment.multi_workspace_enabled:
             directory_projection_service = DirectoryProjectionService(
                 ap,
@@ -213,6 +211,7 @@ class BuildAppStage(stage.BootingStage):
         if not workspace_policy.multi_workspace_enabled:
             await workspace_service_inst.ensure_singleton_workspace()
         ap.workspace_service = workspace_service_inst
+        await bot_command_migration.migrate_global_command_config(ap)
         if workspace_policy.multi_workspace_enabled:
             # Directory refresh starts in Application.run(), after this serial
             # build graph. Share one validated immutable binding snapshot

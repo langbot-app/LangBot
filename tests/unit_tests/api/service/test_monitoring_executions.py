@@ -23,6 +23,40 @@ from langbot.pkg.entity.persistence.base import Base
 WORKSPACE = 'workspace-1'
 
 
+async def test_route_counts_only_include_current_bot_day_and_workspace(engine, service):
+    import json
+    from langbot.pkg.entity.persistence.event_log import EventLog
+
+    now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+    async with AsyncSession(engine) as session:
+        for index, (ws, bot, hours, target, failure) in enumerate(
+            [
+                (WORKSPACE, 'bot', 0, 'agent', None),
+                (WORKSPACE, 'bot', 1, 'builtin_command', None),
+                (WORKSPACE, 'bot', 2, 'plugin', None),
+                (WORKSPACE, 'bot', 2, 'agent', 'message_policy'),
+                ('other', 'bot', 0, 'agent', None),
+                (WORKSPACE, 'foreign', 0, 'agent', None),
+                (WORKSPACE, 'bot', 25, 'agent', None),
+            ]
+        ):
+            session.add(
+                EventLog(
+                    event_id=str(index),
+                    event_type='message.received',
+                    workspace_id=ws,
+                    source='platform',
+                    bot_id=bot,
+                    created_at=now - datetime.timedelta(hours=hours),
+                    metadata_json=json.dumps(
+                        {'routes': [{'binding_id': 'r', 'target_type': target, 'failure_code': failure}]}
+                    ),
+                )
+            )
+        await session.commit()
+    assert await service.route_counts_24h(WORKSPACE, 'bot') == {'r': {'ai': 1, 'policy': 1, 'command': 1, 'plugin': 1}}
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize('has_log', [False, True])
 async def test_event_properties_survive_detail_snapshot_fallback(engine, service, has_log):

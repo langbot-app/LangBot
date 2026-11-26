@@ -482,3 +482,7 @@ Do not use account MCP tools as a fallback for a denied plugin call. Publication
 and Skill-source operations remain account-only; `artifact.*` is not a valid
 plugin wildcard because it includes those excluded operations. See the localized
 Workspace API documentation for the 256 KiB RPC envelope and compatibility rules.
+
+Use `list_message_upgrade_checks` to inspect pending message-policy upgrades and
+`list_bot_event_route_statuses` for per-route 24-hour counts. Upgrade actions
+and acknowledgments are administrator decisions in the upgrade assistant.

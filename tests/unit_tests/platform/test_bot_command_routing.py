@@ -40,6 +40,7 @@ def make_bot(command_settings=None, plugin_processors=None):
     bot.workspace_uuid = 'ws-1'
     bot.placement_generation = 1
     bot.logger = SimpleNamespace(
+        debug=AsyncMock(),
         info=AsyncMock(),
         warning=AsyncMock(),
         error=AsyncMock(),
@@ -170,6 +171,25 @@ async def test_plugin_command_permissions(permission, admin, denied):
     assert result is (allowed or denied == 'notice')
     assert bot._execute_matched_plugin_command.await_count == int(allowed)
     assert adapter.reply_message.await_count == int(not allowed and denied == 'notice')
+    if not allowed:
+        denial = bot._record_event_route_trace.await_args.kwargs
+        assert (denial['status'], denial['failure_code']) == ('denied', 'command_permission_denied')
+        assert denial['details'] == {'denied_reply': denied, 'command_kind': 'plugin'}
+
+
+@pytest.mark.parametrize('fails', [False, True])
+async def test_builtin_terminal_route_survives_ingress(fails):
+    bot = make_bot()
+    bot.ap.cmd_mgr.is_admin.return_value = True
+    event = make_message_event('/version')
+    object.__setattr__(event, '_selected_route', {'id': 'chat'})
+    bot._record_event_route_trace = RuntimeBot._record_event_route_trace.__get__(bot)
+    adapter = SimpleNamespace(reply_message=AsyncMock(side_effect=RuntimeError('send failed') if fails else None))
+    result = await bot._try_handle_plugin_command(event, adapter)
+    assert result['target_type'] == 'builtin_command'
+    assert result['route_ref'] == 'builtin:version'
+    assert result['binding_id'] == 'chat'
+    assert result['status'] == ('failed' if fails else 'delivered')
 
 
 @pytest.mark.asyncio
@@ -321,6 +341,10 @@ async def test_matched_command_skips_processors_and_pipeline(prevent):
         assert seen[-1][0] == prevent
         bot.ap.cmd_mgr.execute_command.assert_not_called()
         adapter.reply_message.assert_not_awaited()
+        trace = bot._record_event_route_trace.await_args.kwargs
+        assert trace['target_type'] == 'plugin'
+        assert trace['status'] == 'delivered'
+        assert trace['details']['hook'] == ('CommandSent' if prevent == 'PersonCommandSent' else 'MessageReceived')
         return
     assert [name for name, _ in seen] == ['MessageReceived', 'PersonMessageReceived', 'PersonCommandSent']
     assert seen[0][1] == seen[1][1] == bot.ap.cmd_mgr.build_context.await_args.kwargs['query_uuid']
