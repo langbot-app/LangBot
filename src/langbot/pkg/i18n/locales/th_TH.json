@@ -2,7 +2,7 @@
   "Regenerating reply": "กำลังสร้างคำตอบใหม่",
   "Last turn removed": "ลบการโต้ตอบครั้งล่าสุดแล้ว",
   "Switched to {model} for this session": "เปลี่ยนเป็น {model} สำหรับเซสชันนี้แล้ว",
-  "Sender: {sender}\nSession: {session}": "ผู้ส่ง: {sender}\nเซสชัน: {session}",
+  "Sender: {sender}\nSession: {session}\nSet administrators in Session Monitoring.": "ผู้ส่ง: {sender}\nเซสชัน: {session}\nคุณสามารถตั้งค่าผู้ดูแลระบบได้ในการตรวจสอบเซสชัน",
   "New conversation started": "เริ่มการสนทนาใหม่แล้ว",
   "Reply stopped": "หยุดคำตอบแล้ว",
   "No active reply": "ไม่มีคำตอบที่กำลังสร้าง",

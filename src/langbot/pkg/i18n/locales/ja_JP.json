@@ -2,7 +2,7 @@
   "Regenerating reply": "応答を再生成しています",
   "Last turn removed": "最後のやり取りを削除しました",
   "Switched to {model} for this session": "このセッションのモデルを {model} に切り替えました",
-  "Sender: {sender}\nSession: {session}": "送信者：{sender}\nセッション：{session}",
+  "Sender: {sender}\nSession: {session}\nSet administrators in Session Monitoring.": "送信者：{sender}\nセッション：{session}\nセッション監視で管理者を設定できます。",
   "New conversation started": "新しい会話を開始しました",
   "Reply stopped": "応答を停止しました",
   "No active reply": "生成中の応答はありません",

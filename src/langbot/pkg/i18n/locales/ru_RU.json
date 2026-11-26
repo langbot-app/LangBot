@@ -2,7 +2,7 @@
   "Regenerating reply": "Ответ генерируется заново",
   "Last turn removed": "Последний обмен удалён",
   "Switched to {model} for this session": "Для текущего сеанса выбрана модель {model}",
-  "Sender: {sender}\nSession: {session}": "Отправитель: {sender}\nСеанс: {session}",
+  "Sender: {sender}\nSession: {session}\nSet administrators in Session Monitoring.": "Отправитель: {sender}\nСеанс: {session}\nАдминистраторов можно назначить в разделе мониторинга сеансов.",
   "New conversation started": "Новый диалог начат",
   "Reply stopped": "Ответ остановлен",
   "No active reply": "Нет активного ответа",

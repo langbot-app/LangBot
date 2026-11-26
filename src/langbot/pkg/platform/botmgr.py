@@ -1217,7 +1217,10 @@ class RuntimeBot:
             if plugin_id
             else builtin_settings(settings, cmd_name)['permission']
         )
-        allowed = can_run(settings, permission, event.sender.id)
+        is_admin = await self.ap.cmd_mgr.is_admin(
+            self.execution_context.workspace_uuid, self.bot_entity.uuid, 'person', event.sender.id, event.sender.id
+        )
+        allowed = can_run(permission, is_admin)
         if not allowed and settings.get('denied_reply', 'silent') == 'silent':
             return False
         async with runtime.admit(query, cmd_text) if runtime is not None else contextlib.nullcontext() as item:
@@ -1233,7 +1236,9 @@ class RuntimeBot:
                 if runtime is not None:
                     await runtime.send_command_reply(query, chain)
                 else:
-                    await adapter.reply_message(message_source=event.to_legacy_event(), message=chain, quote_origin=False)
+                    await adapter.reply_message(
+                        message_source=event.to_legacy_event(), message=chain, quote_origin=False
+                    )
                 return True
             await self._execute_matched_plugin_command(
                 event=event,
@@ -1242,6 +1247,7 @@ class RuntimeBot:
                 command_name=cmd_name,
                 command_text=cmd_text,
                 full_command_text=full_cmd_text,
+                is_admin=is_admin,
                 command_config=cmd_config,
                 processor_uuid=processor_uuid,
                 execution_id=execution_id,
@@ -1257,6 +1263,7 @@ class RuntimeBot:
         command_name: str,
         command_text: str,
         full_command_text: str,
+        is_admin: bool,
         execution_id: str | None = None,
         node: str = '',
         command_config: dict | None = None,
@@ -1313,6 +1320,7 @@ class RuntimeBot:
             launcher_id=launcher_id,
             sender_id=sender_id,
             config=command_config,
+            is_admin=is_admin,
         )
 
         if query is not None:
@@ -1326,7 +1334,7 @@ class RuntimeBot:
                     command=command_name,
                     params=command_text.split()[1:],
                     text_message=full_command_text,
-                    is_admin=can_run(self.bot_entity.command_settings or {}, 'admins', sender_id),
+                    is_admin=is_admin,
                 ),
                 query._listener_plugins,
             )
@@ -1337,7 +1345,7 @@ class RuntimeBot:
         if not plugin_id:
             from ..command.builtin import execute_builtin
 
-            text = await execute_builtin(self, event, adapter, command_name, command_text, query, session)
+            text = await execute_builtin(self, event, adapter, command_name, command_text, query, session, is_admin)
             chain = platform_message.MessageChain([platform_message.Plain(text=text)])
             if query is not None:
                 await query._message_policy.send_command_reply(query, chain)

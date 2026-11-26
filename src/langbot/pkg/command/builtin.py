@@ -17,7 +17,7 @@ from .catalog import DESCRIPTIONS
 from .permissions import builtin_settings, can_run
 
 
-async def _help(bot, event, settings):
+async def _help(bot, event, settings, is_admin):
     prefix = settings.get('prefixes', ['/'])[0]
     lines = []
     seen = set()
@@ -27,22 +27,20 @@ async def _help(bot, event, settings):
             seen.add(name)
             if name == 'new':
                 seen.add('reset')
-            if can_run(settings, config['permission'], event.sender.id):
+            if can_run(config['permission'], is_admin):
                 lines.append(f'{prefix}{name} — {t(description)}')
     for owner, _, manifest in await bot._effective_plugin_commands(event, settings.get('processors', [])):
         name = manifest.metadata.name
         if name in seen:
             continue
         seen.add(name)
-        if can_run(
-            settings, settings.get('plugin_permissions', {}).get(f'{owner}/{name}', 'everyone'), event.sender.id
-        ):
+        if can_run(settings.get('plugin_permissions', {}).get(f'{owner}/{name}', 'everyone'), is_admin):
             localized = descriptions(manifest)
             lines.append(f'{prefix}{name} — {localized.get(language.get()) or localized.get("en_US", name)}')
     return '\n'.join(lines)
 
 
-async def execute_builtin(bot, event, adapter, name, text, query, session):
+async def execute_builtin(bot, event, adapter, name, text, query, session, is_admin):
     settings = bot.bot_entity.command_settings or {}
     route = getattr(event, '_selected_route', None) or {}
     kind = route.get('target_type')
@@ -51,12 +49,16 @@ async def execute_builtin(bot, event, adapter, name, text, query, session):
     ap = bot.ap
     unsupported = t('This processor does not support this command')
     if name == 'help':
-        return await _help(bot, event, settings)
+        return await _help(bot, event, settings, is_admin)
     if name == 'version':
         return f'LangBot {constants.semantic_version}'
     launcher = f'{query.launcher_type.value}_{query.launcher_id}'
     if name == 'whoami':
-        return t('Sender: {sender}\nSession: {session}', sender=f'person_{event.sender.id}', session=launcher)
+        return t(
+            'Sender: {sender}\nSession: {session}\nSet administrators in Session Monitoring.',
+            sender=f'person_{event.sender.id}',
+            session=launcher,
+        )
     if name == 'plugins':
         selected = query._listener_plugins
         plugins = await ap.plugin_connector.list_plugins()
@@ -145,11 +147,10 @@ async def execute_builtin(bot, event, adapter, name, text, query, session):
             )
         return t('Regenerating reply') if name == 'retry' else t('Last turn removed')
     if name == 'stop' and (pipeline or binding):
-        admin = can_run(settings, 'admins', event.sender.id)
         if binding:
-            stopped = await ap.agent_run_orchestrator.cancel_active_from_event(envelope, runner_id, admin)
+            stopped = await ap.agent_run_orchestrator.cancel_active_from_event(envelope, runner_id, is_admin)
         else:
-            stopped = await ap.agent_run_orchestrator.cancel_active_from_query(query, allow_other_actors=admin)
+            stopped = await ap.agent_run_orchestrator.cancel_active_from_query(query, allow_other_actors=is_admin)
         return t('Reply stopped') if stopped else t('No active reply')
     if name in ('status', 'model'):
         try:

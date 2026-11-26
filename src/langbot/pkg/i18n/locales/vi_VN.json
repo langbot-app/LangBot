@@ -2,7 +2,7 @@
   "Regenerating reply": "Đang tạo lại phản hồi",
   "Last turn removed": "Đã xóa lượt trao đổi cuối",
   "Switched to {model} for this session": "Đã chuyển sang {model} cho phiên này",
-  "Sender: {sender}\nSession: {session}": "Người gửi: {sender}\nPhiên: {session}",
+  "Sender: {sender}\nSession: {session}\nSet administrators in Session Monitoring.": "Người gửi: {sender}\nPhiên: {session}\nBạn có thể chỉ định quản trị viên trong phần giám sát phiên.",
   "New conversation started": "Đã bắt đầu hội thoại mới",
   "Reply stopped": "Đã dừng phản hồi",
   "No active reply": "Không có phản hồi đang tạo",

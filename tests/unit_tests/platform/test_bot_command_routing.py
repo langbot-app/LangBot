@@ -158,12 +158,12 @@ async def test_plugin_command_permissions(permission, admin, denied):
         {
             'processors': [{'plugin_id': 'author/draw'}],
             'plugin_permissions': {'author/draw/draw': permission},
-            'admins': [f'person_{event.sender.id}'] if admin else [],
             'denied_reply': denied,
         }
     )
     bot.ap.plugin_connector.list_commands.return_value = [FakeCommandManifest('author/draw', 'draw')]
     bot._execute_matched_plugin_command = AsyncMock()
+    bot.ap.cmd_mgr.is_admin.return_value = admin
     adapter = SimpleNamespace(reply_message=AsyncMock())
     result = await bot._try_handle_plugin_command(event, adapter)
     allowed = permission == 'everyone' or admin
@@ -249,7 +249,6 @@ async def test_matched_command_skips_processors_and_pipeline(prevent):
     bot = make_bot(
         command_settings={
             'enabled': True,
-            'admins': ['person_1001'],
             'prefixes': ['/'],
             'processors': [{'processor_uuid': 'proc-plugin_a', 'enabled': True}],
         },
@@ -296,6 +295,7 @@ async def test_matched_command_skips_processors_and_pipeline(prevent):
             ctx.prevent_default()
         return ctx
 
+    bot.ap.cmd_mgr.is_admin.return_value = True
     bot.ap.plugin_connector.emit_event = emit
     ev = make_message_event('/hello world')
 
@@ -487,14 +487,7 @@ async def test_admin_privilege_passed_to_cmd_context():
     )
     ev = make_message_event('/admin_cmd')
 
-    await bot._execute_matched_plugin_command(
-        event=ev,
-        adapter=adapter,
-        plugin_id='author/plugin_a',
-        command_name='admin_cmd',
-        command_text='admin_cmd',
-        full_command_text='/admin_cmd',
-    )
+    await bot._try_handle_plugin_command(ev, adapter)
 
     real_cmd_mgr.is_admin.assert_awaited_once_with('ws-1', 'bot-123', 'person', '1001', '1001')
 
@@ -530,6 +523,7 @@ async def test_launcher_id_preserves_original_type():
     ev = make_message_event('/ping', chat_id=123456)
 
     await bot._execute_matched_plugin_command(
+        is_admin=False,
         event=ev,
         adapter=adapter,
         plugin_id='author/plugin_a',
@@ -575,6 +569,7 @@ async def test_telemetry_recorded_on_plugin_command_match():
     ev = make_message_event('/ping')
 
     await bot._execute_matched_plugin_command(
+        is_admin=False,
         event=ev,
         adapter=adapter,
         plugin_id='author/plugin_a',
@@ -677,6 +672,7 @@ async def _run_real_command(bot, manifest, instance_config):
     )
     adapter = SimpleNamespace(reply_message=AsyncMock(), get_launcher_id=Mock(return_value=None))
     await bot._execute_matched_plugin_command(
+        is_admin=False,
         event=make_message_event('/draw cat'),
         adapter=adapter,
         plugin_id='author/plugin_a',

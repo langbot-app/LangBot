@@ -2,7 +2,7 @@
   "Regenerating reply": "Regenerating reply",
   "Last turn removed": "Last turn removed",
   "Switched to {model} for this session": "Switched to {model} for this session",
-  "Sender: {sender}\nSession: {session}": "Sender: {sender}\nSession: {session}",
+  "Sender: {sender}\nSession: {session}\nSet administrators in Session Monitoring.": "Sender: {sender}\nSession: {session}\nSet administrators in Session Monitoring.",
   "New conversation started": "New conversation started",
   "Reply stopped": "Reply stopped",
   "No active reply": "No active reply",

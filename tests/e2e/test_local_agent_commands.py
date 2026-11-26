@@ -54,12 +54,14 @@ def test_session_model_and_retry(runner_client, runner_e2e_tmpdir, provider_wire
             'enable': True,
             'adapter': 'http_bot',
             'adapter_config': {'signature_required': False, 'callback_timeout': 10},
-            'command_settings': {'admins': ['person_admin'], 'builtin': {'model': {'enabled': True}}},
+            'command_settings': {'builtin': {'model': {'enabled': True}}},
             'event_bindings': [
                 {'event_pattern': 'message.received', 'target_type': 'pipeline', 'target_uuid': pipeline}
             ],
         },
     )['uuid']
+
+    api('POST', f'platform/bots/{bot}/admins', json={'launcher_type': 'person', 'launcher_id': 'admin'})
 
     def send(text, sender='admin'):
         result = client.post(

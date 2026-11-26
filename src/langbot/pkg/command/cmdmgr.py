@@ -176,10 +176,12 @@ class CommandManager:
         launcher_id: str,
         sender_id: str | None = None,
         config: dict | None = None,
+        is_admin: bool | None = None,
     ) -> command_context.ExecuteContext:
         """Construct command execution context."""
-        is_adm = await self.is_admin(workspace_uuid, bot_uuid, launcher_type, launcher_id, sender_id)
-        privilege = 2 if is_adm else 1
+        if is_admin is None:
+            is_admin = await self.is_admin(workspace_uuid, bot_uuid, launcher_type, launcher_id, sender_id)
+        privilege = 2 if is_admin else 1
 
         ctx = command_context.ExecuteContext(
             instance_uuid=instance_uuid,

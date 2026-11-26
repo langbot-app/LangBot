@@ -809,7 +809,7 @@ def test_http_bot_builtin_commands(runner_client, runner_e2e_tmpdir):
     catalog = data(client.get('/api/v1/platform/bots/_/builtin-commands', headers=headers))['commands']
     assert len(catalog) == 12
     print('catalog:', catalog[0])
-    settings = {'admins': ['person_admin'], 'denied_reply': 'silent', 'builtin': {}, 'plugin_permissions': {}}
+    settings = {'denied_reply': 'silent', 'builtin': {}, 'plugin_permissions': {}}
     bot = data(
         client.post(
             '/api/v1/platform/bots',
@@ -819,6 +819,7 @@ def test_http_bot_builtin_commands(runner_client, runner_e2e_tmpdir):
                 'name': 'QA Bot',
                 'enable': True,
                 'command_settings': settings,
+                'message_policy': {'trigger': {'group-respond-rules': {'enabled': False}}},
                 'adapter_config': {'signature_required': False, 'callback_timeout': 2},
                 'event_bindings': [
                     {
@@ -833,13 +834,22 @@ def test_http_bot_builtin_commands(runner_client, runner_e2e_tmpdir):
     )['uuid']
     url = f'/api/v1/platform/bots/{bot}'
     stored = data(client.get(url, headers=headers))['bot']['command_settings']
-    print('command_settings:', stored)
+    data(client.post(f'{url}/admins', headers=headers, json={'launcher_type': 'person', 'launcher_id': 'admin'}))
+    legacy = client.put(url, headers=headers, json={'command_settings': {**stored, 'admins': ['person_user']}})
+    assert legacy.status_code == 200
+    data(legacy)
+    assert 'admins' not in data(client.get(url, headers=headers))['bot']['command_settings']
 
-    def send(command, sender):
+    def send(command, sender, group=None):
         response = data(
             client.post(
                 f'/bots/{bot}/sync',
-                json={'session_id': sender, 'session_type': 'person', 'message': [{'type': 'Plain', 'text': command}]},
+                json={
+                    'session_id': group or sender,
+                    'session_type': 'group' if group else 'person',
+                    'sender': {'id': sender},
+                    'message': [{'type': 'Plain', 'text': command}],
+                },
             )
         )
         text = '\n'.join(part['text'] for part in response['message'] if part.get('type') == 'Plain')
@@ -850,9 +860,10 @@ def test_http_bot_builtin_commands(runner_client, runner_e2e_tmpdir):
     assert 'person_user' in send('/whoami', 'user')
     assert '已开始新会话' in send('/new', 'user')
     assert '机器人：QA Bot' in send('/status', 'admin')
-    assert send('/status', 'user') == ''
+    assert '机器人：QA Bot' in send('/status', 'admin', 'qa-group')
+    assert send('/status', 'user', 'qa-group') == ''
     data(client.put(url, headers=headers, json={'command_settings': {'denied_reply': 'notice'}}))
-    assert send('/status', 'user') == '没有执行此操作的权限'
+    assert send('/status', 'user', 'qa-group') == '没有执行此操作的权限'
 
 
 def test_http_agent_message_policy(runner_client, runner_e2e_tmpdir):

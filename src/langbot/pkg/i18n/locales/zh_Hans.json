@@ -2,7 +2,7 @@
   "Regenerating reply": "正在重新生成",
   "Last turn removed": "已删除最后一轮问答",
   "Switched to {model} for this session": "已切换为 {model}（仅当前会话）",
-  "Sender: {sender}\nSession: {session}": "发送者：{sender}\n会话：{session}",
+  "Sender: {sender}\nSession: {session}\nSet administrators in Session Monitoring.": "发送者：{sender}\n会话：{session}\n可以在会话监控中设为管理员。",
   "New conversation started": "已开始新会话",
   "Reply stopped": "已停止回复",
   "No active reply": "当前没有正在生成的回复",

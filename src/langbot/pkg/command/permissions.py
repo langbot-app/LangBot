@@ -6,7 +6,7 @@ BUILTIN_GROUPS = {
     'info': ('whoami', 'status', 'usage'),
     'admin': ('model', 'tools', 'plugins', 'version'),
 }
-PERMISSION_FIELDS = ('builtin', 'plugin_permissions', 'admins', 'denied_reply')
+PERMISSION_FIELDS = ('builtin', 'plugin_permissions', 'denied_reply')
 
 
 def builtin_settings(settings, name):
@@ -17,8 +17,8 @@ def builtin_settings(settings, name):
     return defaults | settings.get('builtin', {}).get(name, {})
 
 
-def can_run(settings, permission, sender_id):
-    return permission == 'everyone' or (permission == 'admins' and f'person_{sender_id}' in settings.get('admins', []))
+def can_run(permission, is_admin: bool):
+    return permission == 'everyone' or (permission == 'admins' and is_admin)
 
 
 def normalize_permissions(settings):
@@ -40,14 +40,6 @@ def normalize_permissions(settings):
                 if not isinstance(config['enabled'], bool) or config['permission'] not in ('everyone', 'admins'):
                     raise invalid()
                 result['builtin'][name] = {key: config[key] for key in ('enabled', 'permission')}
-    if 'admins' in settings:
-        admins = settings['admins']
-        if not isinstance(admins, list) or not all(isinstance(value, str) for value in admins):
-            raise invalid()
-        admins = [value.strip() for value in admins if value.strip()]
-        if any(not value.startswith('person_') or not value[7:] for value in admins):
-            raise invalid()
-        result['admins'] = list(dict.fromkeys(admins))
     if 'denied_reply' in settings:
         if settings['denied_reply'] not in ('silent', 'notice'):
             raise invalid()

@@ -74,7 +74,7 @@ async def test_builtin_command(name, expected, monkeypatch):
     monkeypatch.setattr(builtin, 'reset_conversation', reset)
     history = AsyncMock(return_value=Message(role='user', content='hello'))
     monkeypatch.setattr(builtin.TranscriptStore, 'pop_last_turn', history)
-    result = await builtin.execute_builtin(bot, event, None, name, name, query, session)
+    result = await builtin.execute_builtin(bot, event, None, name, name, query, session, False)
     assert expected in result
     if name == 'new':
         reset.assert_awaited_once_with(app, query, None)
@@ -89,5 +89,6 @@ async def test_processor_commands_without_route(name):
     query = NS(launcher_type=NS(value='person'), launcher_id='1')
     bot = NS(bot_entity=NS(command_settings={}), execution_context=None, ap=None)
     assert (
-        await builtin.execute_builtin(bot, NS(), None, name, name, query, None) == 'No processor handles this message'
+        await builtin.execute_builtin(bot, NS(), None, name, name, query, None, False)
+        == 'No processor handles this message'
     )
