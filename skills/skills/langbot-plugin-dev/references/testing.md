@@ -89,6 +89,6 @@ When a plugin doesn't work:
 1. **Check runtime logs**: `docker logs <runtime-container>` — look for mount/init errors
 2. **Check host logs**: `docker logs <langbot-container>` — look for pipeline processing errors
 3. **Verify plugin loaded**: `GET /api/v1/plugins` — should list your plugin
-4. **Test person mode first**: `session_type=person` always triggers pipeline, isolating trigger rule issues
-5. **Check trigger rules**: Group mode requires @bot, prefix match, or random% to enter pipeline
-6. **Verify model configured**: Pipeline's `config.ai.runner_config[config.ai.runner.id].model.primary` must point to a valid model UUID with working API keys
+4. **Test the Chat directly**: Debug Chat bypasses bot admission. If it works there, repeat the test on the bot.
+5. **Check the route policy**: On a real bot, inspect group rules and the enabled plugin list on the matched route.
+6. **Verify model configured**: The Chat's `config.ai.runner_config[config.ai.runner.id].model.primary` must point to a valid model UUID with working API keys
