@@ -1855,6 +1855,11 @@ const esES = {
     collapse: 'Contraer',
     imagesAttached: 'imagen(es) adjunta(s)',
     noLogs: 'Aún no hay registros',
+    routeDraftExists: 'Ya existe una regla para {{id}}; se muestra abajo.',
+    routeDraftAddedGroup:
+      'Se añadió arriba una regla para el grupo {{id}}. Elige su pipeline y guarda.',
+    routeDraftAddedPerson:
+      'Se añadió arriba una regla para el usuario {{id}}. Elige su pipeline y guarda.',
     sessionMonitor: {
       resetContext: 'Restablecer contexto',
       resetDescription:
@@ -1870,6 +1875,21 @@ const esES = {
       filterByGroup: 'Mismo grupo',
       groupFilterActive: 'Grupo {{group}}',
       clearGroupFilter: 'Mostrar todas las sesiones',
+      groupTitle: 'Grupo {{group}}',
+      memberLine: 'Miembro: {{name}}',
+      lastSenderLine: 'Último remitente: {{name}}',
+      privateChat: 'Chat privado',
+      groupChat: 'Chat de grupo',
+      groupId: 'ID de grupo',
+      member: 'Miembro',
+      lastSender: 'Último remitente',
+      userId: 'ID de usuario',
+      pipeline: 'Pipeline',
+      routeGroup: 'Enrutar este grupo',
+      routeGroupHint:
+        'Crea una regla de enrutamiento que envíe este grupo a un pipeline concreto',
+      contextShared: 'Contexto compartido del grupo',
+      contextPerMember: 'Contexto por miembro',
 
       title: 'Sesiones',
       sessions: 'Sesiones',
@@ -2778,6 +2798,25 @@ const esES = {
     backToReleases: 'Volver a versiones',
     backToRepoUrl: 'Volver a la URL del repositorio',
     backToAssets: 'Volver a archivos',
+    githubSourceRelease: 'Release',
+    githubSourceBranch: 'Rama',
+    searchBranches: 'Buscar ramas...',
+    defaultBranch: 'Predeterminada',
+    noBranchesFound: 'No hay ramas coincidentes',
+    branchesTruncated: 'Solo se muestran las primeras 500 ramas',
+    pluginDirectory: 'Directorio del plugin',
+    pluginDirectoryPlaceholder: 'Raíz del repositorio',
+    pluginDirectoryHelp:
+      'Subdirectorio que contiene manifest.yaml, si el plugin no está en la raíz',
+    downloadSourceDirect: 'Directo a GitHub · {{latency}} ms',
+    downloadSourceMirror: 'Espejo {{host}} · {{latency}} ms',
+    releasesUnavailable:
+      'Este servidor no puede acceder a las releases de GitHub. Puedes instalar desde una rama.',
+    noReleasesUseBranch:
+      'Este repositorio no tiene releases. Puedes instalar desde una rama.',
+    useBranchInstead: 'Instalar desde una rama',
+    fetchBranchesError: 'Error al cargar las ramas: ',
+    backToBranches: 'Volver a ramas',
     releaseTag: 'Etiqueta: {{tag}}',
     releaseName: 'Nombre: {{name}}',
     publishedAt: 'Publicado el: {{date}}',
@@ -3813,7 +3852,22 @@ const esES = {
       llm_calls: 'Llamadas al modelo',
       tool_calls: 'Llamadas a herramientas',
       errors: 'Errores',
-      payload: 'Detalles',
+      payload: 'Datos sin procesar',
+      rawEvents: 'Eventos sin procesar ({{count}}{{more}})',
+      copyJson: 'Copiar JSON',
+      diagnostics: 'Diagnóstico',
+      diagnosticsHint:
+        'Elige un elemento para cargar llamadas al modelo, llamadas a herramientas, eventos, ejecuciones relacionadas o el contexto de la conversación.',
+      chat: {
+        bot: 'Bot',
+        groupChat: 'Chat de grupo',
+        privateChat: 'Chat privado',
+        source: 'Origen',
+        groupId: 'ID de grupo',
+        sender: 'Remitente',
+        routeGroup: 'Enrutar este grupo',
+        routePerson: 'Enrutar este usuario',
+      },
       metadata: 'Información técnica',
       loadMore: 'Cargar más',
       noRecords: 'Sin registros',
@@ -4906,6 +4960,7 @@ const esES = {
     emailDescription: 'Se envía actualmente por: {{channel}}',
     recipients: 'Destinatarios (propietarios y administradores del Workspace)',
     noRecipients: 'Ningún propietario o administrador tiene correo.',
+    extraRecipientsCloud: 'Destinatarios adicionales (hasta 10)',
     extraRecipients:
       'Destinatarios adicionales (solo tu servicio de correo, hasta 10)',
     spaceRecipientsHint:
@@ -4914,6 +4969,12 @@ const esES = {
       auto: 'Automático',
       autoDescription:
         'Tu servicio de correo si está configurado; si no, LangBot Space',
+      autoDescriptionNoSpace: 'Tu servicio de correo cuando esté configurado',
+      autoDescriptionCloud: 'Enviado por LangBot Cloud',
+      cloud: 'LangBot Cloud',
+      cloudConfigured: 'Servicio de correo oficial',
+      cloudMissing:
+        'El servicio de correo de Cloud no está disponible temporalmente',
       instance: 'Tu servicio de correo',
       instanceConfigured: '{{provider}} configurado en config.yaml',
       instanceMissing:

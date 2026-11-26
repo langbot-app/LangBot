@@ -49,6 +49,7 @@ logger = logging.getLogger(__name__)
 class LogDemo(BasePlugin):
     async def initialize(self):
         logger.info("hello from plugin logger")
+        logger.warning("plugin warning line")
         logger.error("plugin error line")
 """
 
@@ -91,7 +92,9 @@ def _launch_spec(tmp_path) -> PluginWorkerLaunchSpec:
 
 
 @pytest.mark.asyncio
-async def test_oss_dedicated_worker_logs_reach_plugin_log_buffer(tmp_path):
+async def test_oss_dedicated_worker_logs_reach_plugin_log_buffer(tmp_path, caplog):
+    from langbot_plugin.utils.log import log_scope
+
     launcher = PluginWorkerLauncher(
         nsjail_path="", cgroup_v2_available=False, platform="linux"
     )
@@ -128,6 +131,10 @@ async def test_oss_dedicated_worker_logs_reach_plugin_log_buffer(tmp_path):
             context,
             stdio_process=controller.process,
             file_storage_dir=str(tmp_path / "host-transfer"),
+            log_plugin="tester/logdemo",
+        )
+        handler.supports_log_trace = (
+            registration.get("data", {}).get("log_trace") is True
         )
         task = asyncio.create_task(handler.run())
         try:
@@ -151,10 +158,19 @@ async def test_oss_dedicated_worker_logs_reach_plugin_log_buffer(tmp_path):
             handler.log_buffer.stop_reader()
             task.cancel()
 
-    await asyncio.wait_for(controller.run(on_connection), 60)
+    with log_scope("Y-0123456789abcdef"):
+        await asyncio.wait_for(controller.run(on_connection), 60)
 
     logs = captured["logs"]
     info = [e for e in logs if "hello from plugin logger" in e["text"]]
     error = [e for e in logs if "plugin error line" in e["text"]]
     assert info and info[0]["level"] == "INFO"
     assert error and error[0]["level"] == "ERROR"
+    assert "[Y-0123456789abcdef]" in error[0]["text"]
+    warning = next(
+        row for row in caplog.records if row.getMessage() == "plugin warning line"
+    )
+    assert (warning.log_module, warning.log_trace_id) == (
+        "PLUGIN.tester/logdemo",
+        "Y-0123456789abcdef",
+    )

@@ -1690,6 +1690,49 @@ class BotService:
         # Send message via adapter
         await runtime_bot.adapter.send_message(target_type, str(target_id), message_chain)
 
+    async def call_platform_api(
+        self,
+        context: TenantContext,
+        bot_uuid: str,
+        action: str,
+        params: dict | None = None,
+    ) -> dict:
+        """Call a platform-specific action the bot's adapter declares, such as managing a WeChat menu."""
+        bot = await self.get_bot(context, bot_uuid, include_secret=False)
+        if bot is None:
+            raise WorkspaceNotFoundError('Bot not found')
+        component = self._get_adapter_component(bot['adapter'])
+        declared = {
+            item.get('action')
+            for item in ((component.spec.get('platform_specific_apis') or []) if component else [])
+            if isinstance(item, dict)
+        }
+        if action not in declared:
+            raise ApplicationAPIException(
+                ApplicationAPIError('platform_api_not_supported', f'The adapter does not declare action {action}', 400)
+            )
+        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
+        if runtime_bot is None or not bot.get('enable', True):
+            raise ApplicationAPIException(
+                ApplicationAPIError('bot_not_running', 'Enable the bot before calling platform actions', 409)
+            )
+        try:
+            return await runtime_bot.adapter.call_platform_api(action, dict(params or {}))
+        except ValueError as exc:
+            raise ApplicationAPIException(ApplicationAPIError('invalid_input', str(exc), 400)) from None
+        except Exception as exc:
+            errcode = getattr(exc, 'errcode', None)
+            if errcode is None:
+                raise
+            raise ApplicationAPIException(
+                ApplicationAPIError(
+                    'platform_api_error',
+                    str(exc),
+                    502,
+                    {'errcode': errcode, 'errmsg': getattr(exc, 'errmsg', '')},
+                )
+            ) from None
+
     # ============ Bot Admins ============
 
     async def get_bot_admins(self, context: TenantContext, bot_uuid: str) -> list[dict]:

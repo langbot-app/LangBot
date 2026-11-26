@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import logging
 import os
 import re
 import typing
@@ -158,16 +159,26 @@ class HTTPController:
 
         config = HyperConfig()
         config.access_log_format = '%(h)s %(r)s %(s)s %(b)s %(D)s'
-        config.accesslog = '-'
+        from langbot_plugin.utils.log import HTTPStatusFilter
+
+        config.accesslog = logging.getLogger('hypercorn.access')
+        config.accesslog.setLevel(logging.INFO)
+        config.accesslog.addFilter(HTTPStatusFilter())
         config.bind = [f'{host}:{port}']
-        config.errorlog = config.accesslog
+        config.errorlog = logging.getLogger('hypercorn.error')
         config.websocket_max_message_size = group.MAX_FILE_SIZE
 
         asgi_app = self.quart_app
         if self.mcp_mount is not None:
             asgi_app = self.mcp_mount.wrap(self.quart_app)
 
-        await hypercorn_serve(asgi_app, config, shutdown_trigger=shutdown_trigger)
+        from langbot_plugin.utils.log import log_scope
+
+        async def traced_app(scope, receive, send):
+            with log_scope():
+                return await asgi_app(scope, receive, send)
+
+        await hypercorn_serve(traced_app, config, shutdown_trigger=shutdown_trigger)
 
     async def register_routes(self) -> None:
         @self.quart_app.route('/healthz')

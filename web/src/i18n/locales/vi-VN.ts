@@ -1819,6 +1819,12 @@ const viVN = {
     collapse: 'Thu gọn',
     imagesAttached: 'hình ảnh đính kèm',
     noLogs: 'Chưa có nhật ký',
+    routeDraftExists:
+      'Đã có quy tắc cho {{id}}; quy tắc được mở rộng bên dưới.',
+    routeDraftAddedGroup:
+      'Đã thêm quy tắc cho nhóm {{id}} ở đầu danh sách. Chọn pipeline rồi lưu.',
+    routeDraftAddedPerson:
+      'Đã thêm quy tắc cho người dùng {{id}} ở đầu danh sách. Chọn pipeline rồi lưu.',
     sessionMonitor: {
       resetContext: 'Đặt lại ngữ cảnh',
       resetDescription:
@@ -1834,6 +1840,21 @@ const viVN = {
       filterByGroup: 'Cùng nhóm',
       groupFilterActive: 'Nhóm {{group}}',
       clearGroupFilter: 'Hiện tất cả phiên',
+      groupTitle: 'Nhóm {{group}}',
+      memberLine: 'Thành viên: {{name}}',
+      lastSenderLine: 'Người gửi gần nhất: {{name}}',
+      privateChat: 'Trò chuyện riêng',
+      groupChat: 'Trò chuyện nhóm',
+      groupId: 'ID nhóm',
+      member: 'Thành viên',
+      lastSender: 'Người gửi gần nhất',
+      userId: 'ID người dùng',
+      pipeline: 'Pipeline',
+      routeGroup: 'Định tuyến nhóm này',
+      routeGroupHint:
+        'Tạo quy tắc định tuyến gửi nhóm này đến một pipeline cụ thể',
+      contextShared: 'Ngữ cảnh chung của nhóm',
+      contextPerMember: 'Ngữ cảnh riêng từng thành viên',
 
       title: 'Phiên',
       sessions: 'Phiên',
@@ -2720,6 +2741,25 @@ const viVN = {
     backToReleases: 'Quay lại danh sách phiên bản',
     backToRepoUrl: 'Quay lại URL kho lưu trữ',
     backToAssets: 'Quay lại danh sách tệp',
+    githubSourceRelease: 'Bản phát hành',
+    githubSourceBranch: 'Nhánh',
+    searchBranches: 'Tìm nhánh...',
+    defaultBranch: 'Mặc định',
+    noBranchesFound: 'Không có nhánh phù hợp',
+    branchesTruncated: 'Chỉ hiển thị 500 nhánh đầu tiên',
+    pluginDirectory: 'Thư mục plugin',
+    pluginDirectoryPlaceholder: 'Thư mục gốc kho',
+    pluginDirectoryHelp:
+      'Thư mục con chứa manifest.yaml, nếu plugin không nằm ở thư mục gốc',
+    downloadSourceDirect: 'Kết nối trực tiếp GitHub · {{latency}} ms',
+    downloadSourceMirror: 'Mirror {{host}} · {{latency}} ms',
+    releasesUnavailable:
+      'Máy chủ không truy cập được bản phát hành GitHub. Bạn có thể cài từ một nhánh.',
+    noReleasesUseBranch:
+      'Kho này không có bản phát hành. Bạn có thể cài từ một nhánh.',
+    useBranchInstead: 'Cài từ nhánh',
+    fetchBranchesError: 'Không tải được danh sách nhánh: ',
+    backToBranches: 'Quay lại danh sách nhánh',
     releaseTag: 'Tag: {{tag}}',
     releaseName: 'Tên: {{name}}',
     publishedAt: 'Ngày phát hành: {{date}}',
@@ -3727,7 +3767,22 @@ const viVN = {
       llm_calls: 'Lần gọi mô hình',
       tool_calls: 'Lần gọi công cụ',
       errors: 'Lỗi',
-      payload: 'Chi tiết',
+      payload: 'Dữ liệu gốc',
+      rawEvents: 'Sự kiện gốc ({{count}}{{more}})',
+      copyJson: 'Sao chép JSON',
+      diagnostics: 'Chẩn đoán',
+      diagnosticsHint:
+        'Chọn một mục để tải lệnh gọi mô hình, lệnh gọi công cụ, sự kiện, lần chạy liên quan hoặc ngữ cảnh hội thoại.',
+      chat: {
+        bot: 'Bot',
+        groupChat: 'Trò chuyện nhóm',
+        privateChat: 'Trò chuyện riêng',
+        source: 'Nguồn',
+        groupId: 'ID nhóm',
+        sender: 'Người gửi',
+        routeGroup: 'Định tuyến nhóm này',
+        routePerson: 'Định tuyến người dùng này',
+      },
       metadata: 'Thông tin kỹ thuật',
       loadMore: 'Tải thêm',
       noRecords: 'Chưa có bản ghi',
@@ -4799,6 +4854,7 @@ const viVN = {
     emailDescription: 'Hiện gửi qua: {{channel}}',
     recipients: 'Người nhận (chủ sở hữu và quản trị viên Workspace)',
     noRecipients: 'Không có chủ sở hữu hoặc quản trị viên nào có email.',
+    extraRecipientsCloud: 'Người nhận bổ sung (tối đa 10)',
     extraRecipients:
       'Người nhận bổ sung (chỉ dịch vụ email của bạn, tối đa 10)',
     spaceRecipientsHint:
@@ -4807,6 +4863,11 @@ const viVN = {
       auto: 'Tự động',
       autoDescription:
         'Dùng dịch vụ email của bạn nếu đã cấu hình, nếu không dùng LangBot Space',
+      autoDescriptionNoSpace: 'Dịch vụ email của bạn khi đã cấu hình',
+      autoDescriptionCloud: 'Gửi bởi LangBot Cloud',
+      cloud: 'LangBot Cloud',
+      cloudConfigured: 'Dịch vụ email chính thức',
+      cloudMissing: 'Dịch vụ email của Cloud tạm thời không khả dụng',
       instance: 'Dịch vụ email của bạn',
       instanceConfigured: 'Đã cấu hình {{provider}} trong config.yaml',
       instanceMissing:

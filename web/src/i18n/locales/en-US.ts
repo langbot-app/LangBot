@@ -1,4 +1,5 @@
 import slackSetup from './slack-setup/en-US';
+import wxoaMenu from './wxoa-menu/en-US';
 import pipelineMigration from './pipeline-migration/en-US';
 import pluginPermissions from './plugin-permissions/en-US';
 const enUS = {
@@ -216,6 +217,7 @@ const enUS = {
     saveFailed: 'Failed to save language',
   },
   slackSetup,
+  wxoaMenu,
   inflight: {
     autoCollapse: 'Auto-collapse',
     empty: 'No events are being processed',
@@ -1838,6 +1840,12 @@ const enUS = {
     collapse: 'Collapse',
     imagesAttached: 'image(s) attached',
     noLogs: 'No logs yet',
+    routeDraftExists:
+      'A routing rule for {{id}} already exists; it is expanded below.',
+    routeDraftAddedGroup:
+      'Added a rule for group {{id}} at the top. Choose its pipeline, then save.',
+    routeDraftAddedPerson:
+      'Added a rule for user {{id}} at the top. Choose its pipeline, then save.',
     sessionMonitor: {
       resetContext: 'Reset context',
       resetDescription:
@@ -1854,6 +1862,21 @@ const enUS = {
       filterByGroup: 'Same group',
       groupFilterActive: 'Group {{group}}',
       clearGroupFilter: 'Show all sessions',
+      groupTitle: 'Group {{group}}',
+      memberLine: 'Member: {{name}}',
+      lastSenderLine: 'Last sender: {{name}}',
+      privateChat: 'Private chat',
+      groupChat: 'Group chat',
+      groupId: 'Group ID',
+      member: 'Member',
+      lastSender: 'Last sender',
+      userId: 'User ID',
+      pipeline: 'Pipeline',
+      routeGroup: 'Route this group',
+      routeGroupHint:
+        'Create a routing rule that sends this group to a specific pipeline',
+      contextShared: 'Shared group context',
+      contextPerMember: 'Per-member context',
 
       title: 'Sessions',
       sessions: 'Sessions',
@@ -2744,6 +2767,25 @@ const enUS = {
     backToReleases: 'Back to releases',
     backToRepoUrl: 'Back to repository URL',
     backToAssets: 'Back to assets',
+    githubSourceRelease: 'Release',
+    githubSourceBranch: 'Branch',
+    searchBranches: 'Search branches...',
+    defaultBranch: 'Default',
+    noBranchesFound: 'No matching branches',
+    branchesTruncated: 'Only the first 500 branches are listed',
+    pluginDirectory: 'Plugin directory',
+    pluginDirectoryPlaceholder: 'Repository root',
+    pluginDirectoryHelp:
+      'Subdirectory containing manifest.yaml, if the plugin is not at the repository root',
+    downloadSourceDirect: 'Direct to GitHub · {{latency}} ms',
+    downloadSourceMirror: 'Mirror {{host}} · {{latency}} ms',
+    releasesUnavailable:
+      'GitHub releases are unreachable from this server. You can install from a branch instead.',
+    noReleasesUseBranch:
+      'This repository has no releases. You can install from a branch instead.',
+    useBranchInstead: 'Install from a branch',
+    fetchBranchesError: 'Failed to load branches: ',
+    backToBranches: 'Back to branches',
     releaseTag: 'Tag: {{tag}}',
     releaseName: 'Name: {{name}}',
     publishedAt: 'Published at: {{date}}',
@@ -3759,7 +3801,22 @@ const enUS = {
       llm_calls: 'Model calls',
       tool_calls: 'Tool calls',
       errors: 'Errors',
-      payload: 'Details',
+      payload: 'Raw data',
+      rawEvents: 'Raw events ({{count}}{{more}})',
+      copyJson: 'Copy JSON',
+      diagnostics: 'Diagnostics',
+      diagnosticsHint:
+        'Pick an item to load model calls, tool calls, trace events, related executions or conversation context.',
+      chat: {
+        bot: 'Bot',
+        groupChat: 'Group chat',
+        privateChat: 'Private chat',
+        source: 'Source',
+        groupId: 'Group ID',
+        sender: 'Sender',
+        routeGroup: 'Route this group',
+        routePerson: 'Route this user',
+      },
       metadata: 'Technical details',
       loadMore: 'Load more',
       noRecords: 'No records',
@@ -4832,6 +4889,7 @@ const enUS = {
     emailDescription: 'Currently sent via: {{channel}}',
     recipients: 'Recipients (Workspace owners and admins)',
     noRecipients: 'No owner or admin has an email address.',
+    extraRecipientsCloud: 'Extra recipients (up to 10)',
     extraRecipients: 'Extra recipients (your mail service only, up to 10)',
     spaceRecipientsHint:
       'LangBot Space only mails admins who signed in with LangBot Space, at their own Space address. Free quota: 20 per day, 200 per month per account.',
@@ -4839,6 +4897,11 @@ const enUS = {
       auto: 'Automatic',
       autoDescription:
         'Your mail service when configured, otherwise LangBot Space',
+      autoDescriptionNoSpace: 'Your mail service when configured',
+      autoDescriptionCloud: 'Sent by LangBot Cloud',
+      cloud: 'LangBot Cloud',
+      cloudConfigured: 'Official mail service',
+      cloudMissing: 'Cloud mail service is temporarily unavailable',
       instance: 'Your mail service',
       instanceConfigured: '{{provider}} configured in config.yaml',
       instanceMissing:

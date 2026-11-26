@@ -333,7 +333,7 @@ class MonitoringHelper:
                     )
                 return
             except Exception as exc:
-                ap.logger.warning(f'Terminal monitoring write failed (attempt {attempt + 1}): {exc}')
+                ap.logger.warning(f'Terminal monitoring write failed (attempt {attempt + 1}): {exc!r}')
         ap.logger.error(f'Unable to finish monitoring message {message_id}: {status}')
 
     @staticmethod

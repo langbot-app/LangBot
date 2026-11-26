@@ -158,6 +158,17 @@ jobs:
         run: |
           python -m tools.entrypoints.regression_report daily .qa/daily \
             --sha "$GITHUB_SHA" --step-outcome "$RUN_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+      - name: Scan service logs
+        if: always()
+        continue-on-error: true
+        run: |
+          shopt -s nullglob
+          for file in .qa/daily/.private/data/logs/*.log.wf*; do cp "$file" .qa/daily/; done
+          core_logs=(.qa/daily/*.log.wf*)
+          if (( ${#core_logs[@]} == 0 )); then core_logs=(.qa/daily/core.log); fi
+          uv run --no-sync python -m tools.entrypoints.log_scan --input "${core_logs[@]}" .qa/daily/{runtime,box,services}.log \
+            --allowlist tools/log_scan_allowlist.yaml --output .qa/daily
+          cat .qa/daily/log-anomalies.md >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve verdicts and observations
         if: always()
         uses: actions/upload-artifact@v4
@@ -193,6 +204,8 @@ jobs:
             .qa/daily/restart-checks/cleanup-checks.json
             .qa/daily/restart-checks/owned.json
             .qa/daily/*.log
+            .qa/daily/*.log.wf*
+            .qa/daily/log-anomalies.*
             .qa/daily/*-requests.jsonl
           if-no-files-found: warn
           retention-days: 30

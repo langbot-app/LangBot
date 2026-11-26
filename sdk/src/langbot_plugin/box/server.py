@@ -43,7 +43,7 @@ from langbot_plugin.runtime.io.handler import Handler
 from langbot_plugin.runtime.bounded_executor import (
     configure_bounded_default_executor_from_env,
 )
-from langbot_plugin.utils.log import configure_process_logging
+from langbot_plugin.utils.log import configure_process_logging, install_loop_logging
 
 from .actions import LangBotToBoxAction
 from .errors import (
@@ -571,7 +571,7 @@ class BoxServerHandler(Handler):
         @self.action(CommonAction.PING)
         async def ping(data: dict[str, Any]) -> ActionResponse:
             self._require_host_control()
-            return ActionResponse.success({})
+            return ActionResponse.success({"log_trace": True})
 
         @self.action(LangBotToBoxAction.HEALTH)
         async def health(data: dict[str, Any]) -> ActionResponse:
@@ -1238,6 +1238,7 @@ async def _run_server(
     blocking_executor = configure_bounded_default_executor_from_env(
         thread_name_prefix="langbot-box-runtime-blocking",
     )
+    install_loop_logging()
     control_token = str(os.environ.get(BOX_CONTROL_TOKEN_ENV, "")).strip()
     if control_token:
         control_token = validate_control_token(control_token)
@@ -1338,7 +1339,7 @@ def main(args: argparse.Namespace) -> None:
     # default, stdio when `-s`/`--stdio-control` is passed.
     control_mode = "stdio" if args.stdio_control else "ws"
 
-    configure_process_logging(stream=sys.stderr)
+    configure_process_logging(service="BOX", stream=sys.stderr)
     try:
         asyncio.run(
             _run_server(

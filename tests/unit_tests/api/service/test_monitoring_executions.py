@@ -1333,3 +1333,67 @@ async def test_inflight_snapshot_failure_is_logged_and_recovers(caplog):
     finally:
         await stream.aclose()
     assert not hub.channels
+
+
+@pytest.mark.asyncio
+async def test_detail_exposes_chat_context_and_section_counts(engine, service):
+    import json
+    from langbot.pkg.entity.persistence.event_log import EventLog
+
+    await _seed(engine)
+    async with AsyncSession(engine) as session:
+        session.add(
+            persistence_agent_run.AgentRun(
+                run_id='group-run',
+                event_id='group-event',
+                workspace_id=WORKSPACE,
+                runner_id='runner',
+                status='running',
+                conversation_id='group_G-1',
+                created_at=_dt(11),
+            )
+        )
+        # A legacy summary row without chat facts must not hide the real one.
+        session.add(
+            EventLog(
+                event_id='group-event',
+                event_type='message.received',
+                source='platform',
+                workspace_id=WORKSPACE,
+                conversation_id='group_G-1',
+                actor_id='U-1',
+                actor_name='Alice',
+                input_json=json.dumps(
+                    {
+                        'chat_type': 'group',
+                        'chat_id': 'G-1',
+                        'group': {'id': 'G-1', 'name': 'Ops room'},
+                        'sender': {'id': 'U-1', 'nickname': 'Alice'},
+                    }
+                ),
+                created_at=_dt(11),
+            )
+        )
+        await session.commit()
+
+    detail = await service.get_execution_detail(WORKSPACE, 'agent', 'group-run', section='overview')
+    assert detail['chat'] == {
+        'type': 'group',
+        'id': 'G-1',
+        'name': 'Ops room',
+        'sender_id': 'U-1',
+        'sender_name': 'Alice',
+    }
+    assert detail['counts'] == {'llm_calls': 0, 'tool_calls': 0, 'events': 0}
+
+    # Without an ingress payload, the monitoring session identity still names the chat.
+    from langbot.pkg.api.http.service.monitoring_execution_details import chat_context
+
+    assert chat_context({'session_id': 'groupmember_3_G-2_U-9'}) == {
+        'type': 'group',
+        'id': 'G-2',
+        'name': None,
+        'sender_id': 'U-9',
+        'sender_name': None,
+    }
+    assert chat_context({'conversation_id': 'person_U-3', 'user_name': 'Bob'})['type'] == 'person'

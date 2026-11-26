@@ -157,9 +157,21 @@ export interface ExecutionDetailPage {
   next_offset: number;
 }
 
+/** Chat that triggered an execution; `id` is what routing `chat_id` matches. */
+export interface ExecutionChat {
+  type: 'group' | 'person' | null;
+  id: string | null;
+  name: string | null;
+  sender_id: string | null;
+  sender_name: string | null;
+}
+
 export interface ExecutionDetail {
   source: ExecutionSource;
   row: ExecutionRow;
+  chat?: ExecutionChat | null;
+  /** Totals for collapsed diagnostics, returned with the overview. */
+  counts?: Partial<Record<ExecutionSection, number>>;
   pages: Partial<Record<ExecutionSection, ExecutionDetailPage>>;
   legacy_context: boolean;
 }

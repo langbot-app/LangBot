@@ -64,6 +64,7 @@ import {
   ApiRespPluginConfig,
   ApiRespExtensions,
   AsyncTaskCreatedResp,
+  GithubRefsResp,
   ApiRespSystemInfo,
   ApiRespAsyncTasks,
   ApiRespUserToken,
@@ -926,6 +927,17 @@ export class BackendClient extends BaseHttpClient {
     return this.put(`/api/v1/platform/bots/${uuid}`, bot);
   }
 
+  public callBotPlatformApi<T = Record<string, unknown>>(
+    botId: string,
+    action: string,
+    params: Record<string, unknown> = {},
+  ): Promise<T> {
+    return this.post(`/api/v1/platform/bots/${botId}/platform-api`, {
+      action,
+      params,
+    });
+  }
+
   public dryRunBotEventRoute(
     botId: string,
     request: BotRouteDryRunRequest,
@@ -1377,6 +1389,25 @@ export class BackendClient extends BaseHttpClient {
       repo,
       release_tag: releaseTag,
     });
+  }
+
+  public installPluginFromGithubBranch(
+    owner: string,
+    repo: string,
+    ref: string,
+    sourceSubdir: string,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.post('/api/v1/plugins/install/github', {
+      source_type: 'branch',
+      owner,
+      repo,
+      ref,
+      source_subdir: sourceSubdir,
+    });
+  }
+
+  public getGithubRefs(repoUrl: string): Promise<GithubRefsResp> {
+    return this.post('/api/v1/plugins/github/refs', { repo_url: repoUrl });
   }
 
   public getGithubReleases(repoUrl: string): Promise<{

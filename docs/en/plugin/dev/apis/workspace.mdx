@@ -243,6 +243,7 @@ This reference covers every operation a plugin can request in the current LangBo
 | Plugin Debug Info<br/>Inspect internal plugin runtime process state and memory. | `plugin.debug_info`<br/>`workspace.plugin.debug_info()` | Read | `resource.manage` |
 | Get Plugin<br/>Get detailed metadata and manifest for an installed plugin. | `plugin.get`<br/>`workspace.plugin.get()` | Read | `resource.view` |
 | Plugin GitHub Assets<br/>List downloadable asset files for a GitHub release. | `plugin.github.assets`<br/>`workspace.plugin.github.assets()` | Read | `resource.view` |
+| Plugin GitHub Branches<br/>List branches, tags and the default branch for a repository. | `plugin.github.refs`<br/>`workspace.plugin.github.refs()` | Read | `resource.view` |
 | Plugin GitHub Releases<br/>List releases of a plugin repository hosted on GitHub. | `plugin.github.releases`<br/>`workspace.plugin.github.releases()` | Read | `resource.view` |
 | Install Plugin from Marketplace<br/>Install a certified plugin from the official marketplace. | `plugin.install.marketplace`<br/>`workspace.plugin.install.marketplace()` | High risk | `resource.manage` |
 | List Plugins<br/>List all installed plugins and their running status. | `plugin.list`<br/>`workspace.plugin.list()` | Read | `resource.view` |

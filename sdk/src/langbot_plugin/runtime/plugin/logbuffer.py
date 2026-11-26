@@ -17,7 +17,10 @@ logger = logging.getLogger(__name__)
 # `langbot_plugin.utils.log.configure_process_logging`, e.g.:
 #   [06-13 10:30:00.123] main.py (45) - [INFO] : This is an info message
 # We only need the level here; the rest is kept verbatim as the message text.
-_LEVEL_RE = re.compile(r"^\[[^\]]+\]\s.*?-\s\[(?P<level>[A-Z]+)\]\s:\s")
+_LEVEL_RE = re.compile(
+    r"^\[[^\]]+\] (?:.*?- \[(?P<old>[A-Z]+)\] : |(?P<new>[A-Z]+) +\[[^\]]+\] "
+    r"\S+ \(.+?:\d+\) \[\d+\]\[[^\]]*\]\[ws=(?P<workspace>[^\]]+)\]\[(?P<trace>Y-[0-9a-f]{16}|-)\] )"
+)
 
 # Known logging level names, used to validate the parsed token.
 _KNOWN_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
@@ -36,11 +39,17 @@ class PluginLogBuffer:
     multi-line tracebacks) inherit the previous entry's level.
     """
 
-    def __init__(self, max_lines: int = DEFAULT_MAX_LINES) -> None:
+    def __init__(
+        self, max_lines: int = DEFAULT_MAX_LINES, *, plugin: str | None = None
+    ) -> None:
         self._buffer: collections.deque[dict[str, typing.Any]] = collections.deque(
             maxlen=max_lines
         )
         self._last_level: str = "INFO"
+        self.plugin = plugin
+        self._window = 0.0
+        self._forwarded = 0
+        self._suppressed = 0
         self._reader_task: asyncio.Task | None = None
 
     def add_line(self, raw_line: str) -> None:
@@ -51,7 +60,8 @@ class PluginLogBuffer:
 
         match = _LEVEL_RE.match(text)
         if match:
-            level = match.group("level")
+            level = match.group("new") or match.group("old")
+            level = {"WARN": "WARNING", "FATAL": "CRITICAL"}.get(level, level)
             if level not in _KNOWN_LEVELS:
                 level = self._last_level
             else:
@@ -67,6 +77,30 @@ class PluginLogBuffer:
                 "text": text,
             }
         )
+        if self.plugin and match and _level_no(level) >= logging.WARNING:
+            now = time.monotonic()
+            extra = {
+                "log_module": "PLUGIN." + self.plugin,
+                "log_workspace_id": "-",
+                "log_trace_id": "-",
+            }
+            if now - self._window >= 10:
+                if self._suppressed:
+                    logger.warning("suppressed %d lines", self._suppressed, extra=extra)
+                self._window, self._forwarded, self._suppressed = now, 0, 0
+            if self._forwarded < 50:
+                if match.group("trace"):
+                    extra["log_trace_id"] = match.group("trace")
+                    extra["log_workspace_id"] = match.group("workspace")
+                logger.log(
+                    _level_no(level),
+                    "%s",
+                    text[match.end() :],
+                    extra=extra,
+                )
+                self._forwarded += 1
+            else:
+                self._suppressed += 1
 
     def add_entry(self, level: str, text: str) -> None:
         """Append a synthetic log entry not read from the plugin stderr stream."""

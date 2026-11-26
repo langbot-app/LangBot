@@ -317,6 +317,13 @@ storage:
         # worker threads so an S3 slowdown cannot saturate the process.
         max_concurrency: 16
 plugin:
+    github_mirror:
+        enabled: true
+        probe_timeout: 5
+        mirrors:
+            - https://gh-proxy.com/
+            - https://ghfast.top/
+            - https://ghproxy.net/
     enable: true
     # Maximum time for the Runtime transport, handshake, and desired-state replay.
     connect_timeout_seconds: 180.0

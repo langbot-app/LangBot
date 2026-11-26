@@ -114,6 +114,17 @@ class TestBuildLiteLLMModelName:
         assert result == 'anthropic/claude-3'
 
 
+class TestStreamEOFWithoutFinish:
+    def test_does_not_swallow_transport_failure_after_content(self):
+        error = litellm.exceptions.MidStreamFallbackError(
+            message='incomplete chunked response',
+            model='test',
+            llm_provider='openai',
+            original_exception=Exception('transport disconnected'),
+        )
+        assert not litellmchat.LiteLLMRequester._is_stream_eof_without_finish(error)
+
+
 class TestExtractUsage:
     """Test _extract_usage method"""
 

@@ -19,6 +19,7 @@ class ActionRequest(pydantic.BaseModel):
     # instead of being reduced to the legacy Workspace envelope.
     context: InstallationBinding | ActionContext | None = None
     stream_flow_control: Literal[1] | None = None
+    log_trace_id: str | None = pydantic.Field(default=None, pattern=r"^Y-[0-9a-f]{16}$")
 
     @classmethod
     def make_request(

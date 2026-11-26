@@ -143,18 +143,18 @@ async def test_reinitialization_closes_previous_handlers(tmp_path, monkeypatch):
     with (tmp_path / 'console').open('w+b') as stream:
         monkeypatch.setattr(logmod.sys, 'stdout', stream)
         logger = await logmod.init_logging()
-        previous = logger.handlers[:]
+        previous = logging.root.handlers[:]
         try:
             logger.info('before reinitialization')
             await logmod.init_logging()
             logger.info('after reinitialization')
-            assert len(logger.handlers) == 2
+            assert len(logging.root.handlers) == 3
             assert all(handler._closed for handler in previous)
             assert not previous[0]._worker.is_alive()
             assert previous[1].stream is None
         finally:
-            for handler in logger.handlers[:]:
-                logger.removeHandler(handler)
+            for handler in logging.root.handlers[:]:
+                logging.root.removeHandler(handler)
                 handler.close()
 
 
@@ -182,7 +182,7 @@ def test_unread_stdout_keeps_webui_file_cache_and_process_exit_working(tmp_path,
             Path('data/logs').mkdir(parents=True)
             cache = LogCache()
             logger = await log.init_logging([PersistenceHandler('cache', SimpleNamespace(log_cache=cache))])
-            console = logger.handlers[0]
+            console = logging.root.handlers[0]
             app = Quart(__name__)
 
             @app.get('/health')

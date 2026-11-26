@@ -405,6 +405,14 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         risk='write',
         exposure='all',
     ),
+    'bot.platform_api.call': OperationDoc(
+        domain='bot',
+        label={'zh_Hans': '调用平台专属接口', 'en_US': 'Call Platform Action'},
+        summary="Call a platform-specific action declared by the bot's adapter.",
+        description='Run one of the platform_specific_apis actions declared in the adapter manifest, for example menu.publish for WeChat Official Account. The bot must be enabled. Prerequisites: Call bot.list to obtain bot_uuid. Side effect: Changes platform-side state depending on the action.',
+        risk='dangerous',
+        exposure='none',
+    ),
     'bot.routes.bind': OperationDoc(
         domain='bot',
         label={'zh_Hans': '切换路由目标', 'en_US': 'Change Route Target'},
@@ -1181,6 +1189,14 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         risk='read',
         exposure='all',
     ),
+    'plugin.github.refs': OperationDoc(
+        domain='plugin',
+        label={'zh_Hans': 'GitHub 分支', 'en_US': 'Plugin GitHub Branches'},
+        summary='List branches and tags of a plugin repository.',
+        description='List GitHub branches, tags and the default branch for a plugin repository URL.',
+        risk='read',
+        exposure='all',
+    ),
     'plugin.github.releases': OperationDoc(
         domain='plugin',
         label={'zh_Hans': 'GitHub发布版本', 'en_US': 'Plugin GitHub Releases'},
@@ -1200,8 +1216,8 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
     'plugin.install.github': OperationDoc(
         domain='plugin',
         label={'zh_Hans': '从GitHub安装插件', 'en_US': 'Install Plugin from GitHub'},
-        summary='Install a plugin package directly from a GitHub release.',
-        description='Download and install a plugin release asset directly from a GitHub repository. Restricted to assistant. Side effect: Installs executable code and starts container.',
+        summary='Install a plugin from a GitHub release or branch.',
+        description='Install a release asset or package a plugin directory from a branch. Restricted to assistant. Side effect: Installs executable code and starts container.',
         risk='write',
         exposure='assistant',
     ),

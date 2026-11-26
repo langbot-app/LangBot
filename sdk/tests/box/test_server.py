@@ -604,7 +604,7 @@ async def test_verify_shared_workspace_is_authenticated_host_control(
 async def test_ping(handler):
     resp = await _invoke(handler, CommonAction.PING, {})
     assert resp.code == 0
-    assert resp.data == {}
+    assert resp.data == {"log_trace": True}
 
 
 async def test_health(handler, mock_runtime):

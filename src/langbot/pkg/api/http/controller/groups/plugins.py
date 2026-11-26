@@ -23,6 +23,7 @@ from .. import group
 from .....workspace.errors import WorkspaceNotFoundError
 from langbot_plugin.entities.io.errors import ActionCallError
 from .....plugin.github import validate_github_plugin_install_info
+from .....api.application.contracts import ApplicationAPIException
 from .....plugin.archive import inspect_plugin_archive_metadata
 from .....utils import httpclient
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
@@ -160,6 +161,13 @@ class PluginsRouterGroup(group.RouterGroup):
         )
         persisted_config = result.scalar_one_or_none()
         return persisted_config if persisted_config is not None else plugin['plugin_config']
+
+    async def _github_query(self, operation, request_context):
+        try:
+            data = await self.ap.application_api.execute(operation, request_context, await quart.request.get_json())
+            return self.success(data=data)
+        except ApplicationAPIException as exc:
+            return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
 
     async def initialize(self) -> None:
         @self.route(
@@ -822,84 +830,22 @@ class PluginsRouterGroup(group.RouterGroup):
             return self.success(data=result.get('data'))
 
         @self.route(
+            '/github/refs',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            return await self._github_query('plugin.github.refs', request_context)
+
+        @self.route(
             '/github/releases',
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(request_context: RequestContext) -> str:
-            """Get releases from a GitHub repository URL"""
-            await self._require_authenticated_plugin_runtime_context(request_context)
-            data = await quart.request.json
-            repo_url = data.get('repo_url', '')
-
-            parsed_repo = self._parse_github_repo_url(repo_url)
-            if not parsed_repo:
-                return self.http_status(400, -1, 'Invalid GitHub repository URL')
-
-            owner = parsed_repo['owner']
-            repo = parsed_repo['repo']
-            requested_ref = parsed_repo['ref']
-            requested_subdir = parsed_repo['subdir']
-
-            try:
-                if requested_ref:
-                    return self.success(
-                        data={
-                            'releases': [
-                                {
-                                    'id': 0,
-                                    'tag_name': requested_ref,
-                                    'name': requested_ref,
-                                    'published_at': '',
-                                    'prerelease': False,
-                                    'draft': False,
-                                    'source_type': 'branch',
-                                    'archive_url': f'https://api.github.com/repos/{owner}/{repo}/zipball/{requested_ref}',
-                                }
-                            ],
-                            'owner': owner,
-                            'repo': repo,
-                            'source_subdir': requested_subdir,
-                        }
-                    )
-
-                # Fetch releases from GitHub API
-                url = f'https://api.github.com/repos/{owner}/{repo}/releases'
-                async with httpx.AsyncClient(
-                    trust_env=True,
-                    follow_redirects=True,
-                    timeout=10,
-                    event_hooks=httpclient.httpx_response_limit_hooks(),
-                ) as client:
-                    response = await client.get(url)
-                    response.raise_for_status()
-                    releases = await httpclient.parse_json_response(response)
-
-                # Format releases data for frontend
-                formatted_releases = []
-                for release in releases:
-                    formatted_releases.append(
-                        {
-                            'id': release['id'],
-                            'tag_name': release['tag_name'],
-                            'name': release['name'],
-                            'published_at': release['published_at'],
-                            'prerelease': release['prerelease'],
-                            'draft': release['draft'],
-                        }
-                    )
-
-                return self.success(
-                    data={
-                        'releases': formatted_releases,
-                        'owner': owner,
-                        'repo': repo,
-                        'source_subdir': requested_subdir,
-                    }
-                )
-            except httpx.RequestError:
-                raise
+            return await self._github_query('plugin.github.releases', request_context)
 
         @self.route(
             '/github/release-assets',
@@ -975,8 +921,13 @@ class PluginsRouterGroup(group.RouterGroup):
 
             data = await quart.request.json or {}
             try:
+                if any(key in data for key in ('mirror', 'mirrors', 'github_mirror', 'mirror_url')):
+                    raise ValueError('GitHub sources are configured by the operator')
                 install_info = validate_github_plugin_install_info(
                     {
+                        'source_type': data.get('source_type', 'release'),
+                        'ref': data.get('ref'),
+                        'source_subdir': data.get('source_subdir', ''),
                         'asset_url': data.get('asset_url'),
                         'asset_id': data.get('asset_id'),
                         'release_id': data.get('release_id'),
@@ -991,7 +942,7 @@ class PluginsRouterGroup(group.RouterGroup):
 
             owner = install_info['owner']
             repo = install_info['repo']
-            release_tag = install_info['release_tag']
+            release_tag = install_info.get('release_tag') or install_info['ref']
             # Name the installed extension in the trace. GitHub installs carry
             # owner/repo in the body, which the audit identity resolver can also
             # read, but publishing it here keeps the trace correct regardless of

@@ -17,10 +17,15 @@ from langbot_plugin.runtime.bounded_executor import run_blocking_with_backpressu
 logger = logging.getLogger(__name__)
 
 
+class _PeerEOF(ConnectionClosedError):
+    pass
+
+
 class StdioConnection(connection.Connection):
     """The connection for Stdio connections."""
 
     process: asyncio.subprocess.Process | None = None
+    expecting_eof: bool = False
 
     def __init__(
         self,
@@ -143,7 +148,7 @@ class StdioConnection(connection.Connection):
             )
 
             if self._process_exit_task is not None and self._process_exit_task in done:
-                raise ConnectionClosedError("Connection closed")
+                raise _PeerEOF("Connection closed")
 
             if read_task in done:
                 s_bytes = read_task.result()
@@ -152,14 +157,12 @@ class StdioConnection(connection.Connection):
                     if self._process_exit_task is not None:
                         if self._process_exit_task.done():
                             await self._process_exit_task
-                            raise ConnectionClosedError(
-                                "标准输出流已关闭，子进程已退出。"
-                            )
+                            raise _PeerEOF("标准输出流已关闭，子进程已退出。")
                         else:
-                            raise ConnectionClosedError("标准输出流意外关闭。")
+                            raise _PeerEOF("标准输出流意外关闭。")
                     else:
                         # process is None but still received EOF - connection is closed
-                        raise ConnectionClosedError("标准输出流已关闭。")
+                        raise _PeerEOF("标准输出流已关闭。")
                 try:
                     return s_bytes.decode("utf-8").strip()
                 except UnicodeDecodeError:
@@ -291,10 +294,14 @@ class StdioConnection(connection.Connection):
                     logger.warning("Skipping non-JSON output on stdio connection")
 
         except Exception as e:
-            logger.error(f"Error receiving message: {e}")
+            if self.expecting_eof and isinstance(e, _PeerEOF):
+                logger.info("Stdio peer closed during shutdown")
+            else:
+                logger.error(f"Error receiving message: {e}")
             raise ConnectionClosedError("Connection closed")
 
     async def close(self) -> None:
+        self.expecting_eof = True
         self.stdin.close()
         wait_closed = getattr(self.stdin, "wait_closed", None)
         if wait_closed is not None:

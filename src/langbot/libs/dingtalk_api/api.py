@@ -39,6 +39,16 @@ _MAX_MEDIA_BYTES = 10 * 1024 * 1024
 # DingTalk voice bubbles play at most 60 seconds of audio.
 _MAX_VOICE_DURATION_MS = 60 * 1000
 _MAX_GATEWAY_MESSAGE_BYTES = 1024 * 1024
+# Backoff for failed gateway connection opens. Rejected credentials fail
+# forever, so a fixed 10s retry hammered the DingTalk API (and the blocking
+# thread pool) indefinitely for every misconfigured bot.
+_OPEN_RETRY_INITIAL_SECONDS = 10
+_OPEN_RETRY_MAX_SECONDS = 180
+
+
+def _open_retry_delay(consecutive_failures: int) -> int:
+    exponent = max(consecutive_failures - 1, 0)
+    return min(_OPEN_RETRY_INITIAL_SECONDS * (2 ** min(exponent, 16)), _OPEN_RETRY_MAX_SECONDS)
 
 
 def _read_local_media_limited(file_path: str) -> bytes:
@@ -976,6 +986,7 @@ class DingTalkClient:
         """启动 WebSocket 连接，监听消息"""
         self._stopped = False
         self.client.pre_start()
+        open_failures = 0
 
         while not self._stopped:
             try:
@@ -985,10 +996,16 @@ class DingTalkClient:
                 connection = await asyncio.to_thread(self.client.open_connection)
 
                 if not connection:
+                    open_failures += 1
+                    delay = _open_retry_delay(open_failures)
                     if self.logger:
-                        await self.logger.error('DingTalk: open connection failed')
-                    await asyncio.sleep(10)
+                        await self.logger.error(
+                            f'DingTalk: open connection failed (attempt {open_failures}); '
+                            f'check the Client ID and Client Secret if this persists. Retrying in {delay}s'
+                        )
+                    await asyncio.sleep(delay)
                     continue
+                open_failures = 0
 
                 uri = '%s?ticket=%s' % (connection['endpoint'], urllib.parse.quote_plus(connection['ticket']))
                 async with websockets.connect(uri, max_size=_MAX_GATEWAY_MESSAGE_BYTES) as websocket:

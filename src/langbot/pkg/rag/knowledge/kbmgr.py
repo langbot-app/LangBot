@@ -19,6 +19,7 @@ from langbot.pkg.core import app, taskmgr
 from langbot.pkg.core.task_boundary import run_in_workspace_uow
 from langbot.pkg.entity.persistence import rag as persistence_rag
 from langbot.pkg.i18n import t
+from langbot.pkg.plugin.errors import PluginNotInstalledError
 from langbot.pkg.workspace.errors import WorkspaceInvariantError, WorkspaceNotFoundError
 from langbot.pkg.telemetry import usage
 
@@ -756,6 +757,17 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                 f'Calling RAG plugin {plugin_id}: on_knowledge_base_delete(kb_id={self.knowledge_base_entity.uuid})'
             )
             await self.ap.plugin_connector.rag_on_kb_delete(plugin_id, self.knowledge_base_entity.uuid)
+        except PluginNotInstalledError:
+            # The engine was uninstalled after the KB was created, so no plugin can
+            # clean up anymore. Purge the Host-owned vectors ourselves so the user
+            # can still delete the KB instead of being stuck with a permanent 500.
+            self.ap.logger.warning(
+                f'RAG plugin {plugin_id} is not installed; purging Host vectors for KB '
+                f'{self.knowledge_base_entity.uuid} without plugin cleanup'
+            )
+            vector_db_mgr = getattr(self.ap, 'vector_db_mgr', None)
+            if vector_db_mgr is not None:
+                await vector_db_mgr.delete_collection(execution_context, self.knowledge_base_entity.uuid)
         except Exception as e:
             self.ap.logger.error(f'Failed to notify plugin {plugin_id} on KB delete: {e}')
             raise

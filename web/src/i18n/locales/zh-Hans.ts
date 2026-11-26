@@ -1,4 +1,5 @@
 import slackSetup from './slack-setup/zh-Hans';
+import wxoaMenu from './wxoa-menu/zh-Hans';
 import pipelineMigration from './pipeline-migration/zh-Hans';
 import pluginPermissions from './plugin-permissions/zh-Hans';
 const zhHans = {
@@ -197,6 +198,7 @@ const zhHans = {
     saveFailed: '语言设置保存失败',
   },
   slackSetup,
+  wxoaMenu,
   inflight: {
     autoCollapse: '自动折叠',
     empty: '当前没有正在处理的事件',
@@ -1722,6 +1724,11 @@ const zhHans = {
     collapse: '收起',
     imagesAttached: '张图片',
     noLogs: '暂无日志',
+    routeDraftExists: '{{id}} 已有路由规则，已在下方展开。',
+    routeDraftAddedGroup:
+      '已在最上方为群 {{id}} 添加路由规则，请选择流水线后保存。',
+    routeDraftAddedPerson:
+      '已在最上方为用户 {{id}} 添加路由规则，请选择流水线后保存。',
     sessionMonitor: {
       resetContext: '重置上下文',
       resetDescription:
@@ -1736,6 +1743,20 @@ const zhHans = {
       filterByGroup: '同群会话',
       groupFilterActive: '群 {{group}}',
       clearGroupFilter: '显示全部会话',
+      groupTitle: '群 {{group}}',
+      memberLine: '成员：{{name}}',
+      lastSenderLine: '最近发言：{{name}}',
+      privateChat: '私聊',
+      groupChat: '群聊',
+      groupId: '群 ID',
+      member: '成员',
+      lastSender: '最近发言',
+      userId: '用户 ID',
+      pipeline: '流水线',
+      routeGroup: '为此群配置路由',
+      routeGroupHint: '新建一条路由规则，让这个群使用指定的流水线',
+      contextShared: '群内单一会话',
+      contextPerMember: '群成员独立会话',
 
       title: '会话监控',
       sessions: '会话列表',
@@ -2565,6 +2586,24 @@ const zhHans = {
     backToReleases: '返回 Release 列表',
     backToRepoUrl: '返回仓库地址',
     backToAssets: '返回文件选择',
+    githubSourceRelease: 'Release',
+    githubSourceBranch: '分支',
+    searchBranches: '搜索分支...',
+    defaultBranch: '默认',
+    noBranchesFound: '没有匹配的分支',
+    branchesTruncated: '分支较多，仅列出前 500 个',
+    pluginDirectory: '插件目录',
+    pluginDirectoryPlaceholder: '仓库根目录',
+    pluginDirectoryHelp:
+      '插件不在仓库根目录时，填写 manifest.yaml 所在的子目录',
+    downloadSourceDirect: '直连 GitHub · {{latency}} ms',
+    downloadSourceMirror: '镜像 {{host}} · {{latency}} ms',
+    releasesUnavailable:
+      '当前服务器无法访问 GitHub Release，可以改为从分支安装。',
+    noReleasesUseBranch: '该仓库没有 Release，可以从分支安装。',
+    useBranchInstead: '从分支安装',
+    fetchBranchesError: '获取分支列表失败：',
+    backToBranches: '返回分支列表',
     releaseTag: 'Tag: {{tag}}',
     releaseName: '名称: {{name}}',
     publishedAt: '发布于: {{date}}',
@@ -3523,7 +3562,22 @@ const zhHans = {
       llm_calls: '模型调用',
       tool_calls: '工具调用',
       errors: '错误',
-      payload: '查看详情',
+      payload: '原始数据',
+      rawEvents: '原始事件（{{count}}{{more}}）',
+      copyJson: '复制 JSON',
+      diagnostics: '诊断',
+      diagnosticsHint:
+        '选择一项以加载模型调用、工具调用、执行事件、关联执行或会话上下文。',
+      chat: {
+        bot: '机器人',
+        groupChat: '群聊',
+        privateChat: '私聊',
+        source: '来源',
+        groupId: '群 ID',
+        sender: '发送人',
+        routeGroup: '为此群配置路由',
+        routePerson: '为此用户配置路由',
+      },
       metadata: '技术信息',
       loadMore: '加载更多',
       noRecords: '暂无记录',
@@ -4545,12 +4599,18 @@ const zhHans = {
     emailDescription: '当前发送方式：{{channel}}',
     recipients: '收件人（工作区所有者和管理员）',
     noRecipients: '没有带邮箱的所有者或管理员。',
+    extraRecipientsCloud: '额外收件人（最多 10 个）',
     extraRecipients: '额外收件人（仅限你的邮件服务，最多 10 个）',
     spaceRecipientsHint:
       'LangBot Space 只发给使用 LangBot 账号登录的管理员本人的邮箱。免费额度：每个账号每天 20 封、每月 200 封。',
     channel: {
       auto: '自动',
       autoDescription: '已配置邮件服务时使用它，否则使用 LangBot Space',
+      autoDescriptionNoSpace: '已配置邮件服务时使用它',
+      autoDescriptionCloud: '由 LangBot Cloud 发送',
+      cloud: 'LangBot Cloud',
+      cloudConfigured: '官方邮件服务',
+      cloudMissing: 'Cloud 邮件服务暂不可用',
       instance: '你的邮件服务',
       instanceConfigured: '已在 config.yaml 中配置 {{provider}}',
       instanceMissing:

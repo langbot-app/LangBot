@@ -49,13 +49,19 @@ class RAGRuntimeService:
         self,
         execution_context: ExecutionContext,
         collection_id: str,
+        *,
+        for_write: bool = False,
     ) -> str:
-        """Resolve a plugin logical handle to a Workspace-owned KB UUID."""
+        """Resolve a plugin logical handle to a Workspace-owned KB UUID.
+
+        ``for_write`` refuses knowledge bases whose deletion has started, so an
+        ingestion that outlived its Core cannot repopulate a dropped collection.
+        """
 
         await self._validate_execution_context(execution_context)
         if not isinstance(collection_id, str) or not collection_id.strip():
             raise WorkspaceNotFoundError('Knowledge base not found')
-        result = await self.ap.persistence_mgr.execute_async(
+        statement = (
             sqlalchemy.select(persistence_rag.KnowledgeBase.uuid)
             .where(persistence_rag.KnowledgeBase.workspace_uuid == execution_context.workspace_uuid)
             .where(
@@ -66,6 +72,9 @@ class RAGRuntimeService:
             )
             .limit(1)
         )
+        if for_write:
+            statement = statement.where(persistence_rag.KnowledgeBase.deleting.is_(False))
+        result = await self.ap.persistence_mgr.execute_async(statement)
         kb_uuid = result.scalar_one_or_none()
         if kb_uuid is None:
             raise WorkspaceNotFoundError('Knowledge base not found')
@@ -81,7 +90,7 @@ class RAGRuntimeService:
         documents: list[str] | None = None,
     ) -> None:
         """Handle VECTOR_UPSERT action."""
-        knowledge_base_uuid = await self._resolve_knowledge_base_uuid(execution_context, collection_id)
+        knowledge_base_uuid = await self._resolve_knowledge_base_uuid(execution_context, collection_id, for_write=True)
         if len(vectors) != len(ids):
             raise ValueError('vectors and ids must have the same length')
         if metadata is not None and len(metadata) != len(vectors):

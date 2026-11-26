@@ -479,8 +479,10 @@ class RuntimePipeline:
         return event_type[:160] or 'message.received'
 
     async def process_query(self, query: pipeline_query.Query):
+        from langbot_plugin.utils.log import log_scope
+
         workspace_uuid = getattr(query, 'workspace_uuid', None) or getattr(self, 'workspace_uuid', '')
-        with language_scope(await get_workspace_language(self.ap, workspace_uuid)):
+        with log_scope(workspace=workspace_uuid), language_scope(await get_workspace_language(self.ap, workspace_uuid)):
             return await self._process_query_with_language(query)
 
     async def _process_query_with_language(self, query: pipeline_query.Query):

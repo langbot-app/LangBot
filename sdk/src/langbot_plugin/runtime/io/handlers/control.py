@@ -114,7 +114,9 @@ class ControlConnectionHandler(handler.Handler):
         @self.action(LangBotToRuntimeAction.SET_RUNTIME_CONFIG)
         async def set_runtime_config(data: dict[str, Any]) -> handler.ActionResponse:
             self.configure_runtime(RuntimeConfig.model_validate(data))
-            return handler.ActionResponse.success({"event_batch": True})
+            return handler.ActionResponse.success(
+                {"event_batch": True, "log_trace": True}
+            )
 
         @self.action(LangBotToRuntimeAction.RECONCILE_PLUGIN_INSTALLATIONS)
         async def reconcile_plugin_installations(

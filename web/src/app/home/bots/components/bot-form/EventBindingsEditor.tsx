@@ -136,9 +136,19 @@ export const PIPELINE_DISCARD = '__discard__';
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
+/** A rule to pre-create from a chat seen in Sessions or an execution trace. */
+export interface RouteDraft {
+  chatType: 'group' | 'person';
+  chatId: string;
+  /** Processor the chat currently uses, so saving unchanged is a no-op. */
+  targetUuid?: string;
+}
+
 interface EventBindingsEditorProps {
   form: UseFormReturn<any>;
   botId?: string;
+  routeDraft?: RouteDraft | null;
+  onRouteDraftApplied?: () => void;
   supportedEvents: string[];
   agentOptions: Agent[];
   onAgentCreated: (agent: Agent) => void;
@@ -1328,6 +1338,7 @@ function BindingCardContent({
         isOverlay ? 'pointer-events-none shadow-lg ring-1 ring-primary/20' : ''
       }`}
       data-drag-overlay={isOverlay ? 'true' : undefined}
+      data-binding-expanded={isExpanded && !isOverlay ? 'true' : undefined}
     >
       <div className="flex items-center gap-2 p-2.5">
         {isEnabled ? (
@@ -1544,6 +1555,8 @@ function SortableBindingCard({
 export default function EventBindingsEditor({
   form,
   botId,
+  routeDraft,
+  onRouteDraftApplied,
   supportedEvents,
   agentOptions,
   onAgentCreated,
@@ -1683,6 +1696,67 @@ export default function EventBindingsEditor({
       },
     ]);
   }
+
+  // Pre-create (or reveal) a rule matching exactly one chat. It goes first so
+  // it wins over broader rules; the user picks the processor and saves.
+  const appliedDraft = useRef<string | null>(null);
+  useEffect(() => {
+    if (!routeDraft) return;
+    const key = `${routeDraft.chatType}:${routeDraft.chatId}`;
+    if (appliedDraft.current === key) return;
+    appliedDraft.current = key;
+    const existing = bindings.findIndex(
+      (binding) =>
+        isMessageEventPattern(binding.event_pattern) &&
+        ((binding.filters ?? []) as unknown as FilterRow[]).some(
+          (filter) =>
+            filter.field === 'chat_id' &&
+            filter.operator === 'eq' &&
+            filter.value === routeDraft.chatId,
+        ),
+    );
+    let expandKey: string;
+    if (existing >= 0) {
+      expandKey = String(bindings[existing].id ?? existing);
+      toast.info(t('bots.routeDraftExists', { id: routeDraft.chatId }));
+    } else {
+      const target = agentOptions.find(
+        (agent) => agent.uuid === routeDraft.targetUuid,
+      );
+      updateBindings([
+        {
+          event_pattern: 'message.received',
+          target_type: target?.kind === 'agent' ? 'agent' : 'pipeline',
+          target_uuid: target?.uuid ?? '',
+          priority: 0,
+          enabled: true,
+          description: '',
+          filters: [
+            { field: 'chat_type', operator: 'eq', value: routeDraft.chatType },
+            { field: 'chat_id', operator: 'eq', value: routeDraft.chatId },
+          ],
+        },
+        ...bindings,
+      ]);
+      expandKey = '0';
+      toast.success(
+        t(
+          routeDraft.chatType === 'group'
+            ? 'bots.routeDraftAddedGroup'
+            : 'bots.routeDraftAddedPerson',
+          { id: routeDraft.chatId },
+        ),
+      );
+    }
+    setExpandedIds(new Set([expandKey]));
+    onRouteDraftApplied?.();
+    requestAnimationFrame(() =>
+      document
+        .querySelector('[data-binding-expanded="true"]')
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeDraft]);
 
   function updateBinding(index: number, patch: Partial<EventBinding>) {
     const next = [...bindings];

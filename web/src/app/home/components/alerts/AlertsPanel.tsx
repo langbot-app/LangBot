@@ -24,7 +24,11 @@ import { cn } from '@/lib/utils';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { rememberSpaceBindReturnPath } from '@/app/infra/space-bind-return';
-import { backendClient, useCurrentWorkspace } from '@/app/infra/http';
+import {
+  backendClient,
+  systemInfo,
+  useCurrentWorkspace,
+} from '@/app/infra/http';
 import type {
   AlertDelivery,
   AlertEmailChannel,
@@ -289,7 +293,14 @@ export default function AlertsPanel({ active }: AlertsPanelProps) {
   }
 
   const { channels } = data;
-  const channelOptions: {
+  // Multi-tenant Cloud sends every alert through the platform mail service;
+  // the Space channel is not offered there (space.supported === false), so
+  // the "sign in with LangBot Space" option must not be shown at all.
+  const isCloud = systemInfo.deployment_mode === 'cloud';
+  const instanceLabel = isCloud
+    ? t('alerts.channel.cloud')
+    : t('alerts.channel.instance');
+  const allChannelOptions: {
     value: AlertEmailChannel;
     label: string;
     description: string;
@@ -298,18 +309,26 @@ export default function AlertsPanel({ active }: AlertsPanelProps) {
     {
       value: 'auto',
       label: t('alerts.channel.auto'),
-      description: t('alerts.channel.autoDescription'),
+      description: channels.space.supported
+        ? t('alerts.channel.autoDescription')
+        : isCloud
+          ? t('alerts.channel.autoDescriptionCloud')
+          : t('alerts.channel.autoDescriptionNoSpace'),
       available: true,
     },
     {
       value: 'instance',
-      label: t('alerts.channel.instance'),
-      description: channels.instance.configured
-        ? t('alerts.channel.instanceConfigured', {
-            provider:
-              channels.instance.provider === 'resend' ? 'Resend' : 'SMTP',
-          })
-        : t('alerts.channel.instanceMissing'),
+      label: instanceLabel,
+      description: isCloud
+        ? channels.instance.configured
+          ? t('alerts.channel.cloudConfigured')
+          : t('alerts.channel.cloudMissing')
+        : channels.instance.configured
+          ? t('alerts.channel.instanceConfigured', {
+              provider:
+                channels.instance.provider === 'resend' ? 'Resend' : 'SMTP',
+            })
+          : t('alerts.channel.instanceMissing'),
       available: channels.instance.configured,
     },
     {
@@ -329,9 +348,15 @@ export default function AlertsPanel({ active }: AlertsPanelProps) {
       available: true,
     },
   ];
+  const channelOptions = allChannelOptions.filter(
+    (option) =>
+      option.value !== 'space' ||
+      channels.space.supported ||
+      draft.email_channel === 'space',
+  );
   const effectiveLabel =
     data.channels.effective_email_channel === 'instance'
-      ? t('alerts.channel.instance')
+      ? instanceLabel
       : data.channels.effective_email_channel === 'space'
         ? t('alerts.channel.space')
         : t('alerts.channel.none');
@@ -419,7 +444,12 @@ export default function AlertsPanel({ active }: AlertsPanelProps) {
           {!channels.instance.configured &&
             !channels.space.available &&
             channels.space.supported && <SignInCta />}
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div
+            className={cn(
+              'grid gap-2',
+              channelOptions.length === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2',
+            )}
+          >
             {channelOptions.map((option) => {
               const selected = draft.email_channel === option.value;
               const disabled =
@@ -509,7 +539,9 @@ export default function AlertsPanel({ active }: AlertsPanelProps) {
             {usesInstance && (
               <div className="pt-2">
                 <Label htmlFor="alerts-extra" className="text-xs">
-                  {t('alerts.extraRecipients')}
+                  {isCloud
+                    ? t('alerts.extraRecipientsCloud')
+                    : t('alerts.extraRecipients')}
                 </Label>
                 <Input
                   id="alerts-extra"

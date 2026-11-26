@@ -2,6 +2,7 @@ import EntityLoadState from '@/components/EntityLoadState';
 import { showBotError } from '../../bot-error';
 import React, {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -45,7 +46,9 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import EventBindingsEditor from './EventBindingsEditor';
+import { MENU_CONFIG_KEY } from '@/app/home/bots/components/bot-menu/wxoa-menu-model';
+import EventBindingsEditor, { type RouteDraft } from './EventBindingsEditor';
+import { useSearchParams } from 'react-router-dom';
 import EventRoutingHelp from './EventRoutingHelp';
 import LegacyAdapterHelp from './LegacyAdapterHelp';
 import PluginProcessorBindings from './PluginProcessorBindings';
@@ -228,6 +231,22 @@ const getFormSchema = (t: (key: string) => string) =>
       .optional(),
   });
 
+// Adapter config keys edited outside the dynamic form (e.g. the WeChat
+// Official Account menu tab). The dynamic form only emits declared fields, so
+// keep these when it reports changes.
+const EDITOR_MANAGED_CONFIG_KEYS = [MENU_CONFIG_KEY];
+
+function preserveEditorManagedConfig(
+  current: Record<string, unknown> | undefined,
+  values: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...values };
+  for (const key of EDITOR_MANAGED_CONFIG_KEYS) {
+    if (current && key in current && !(key in next)) next[key] = current[key];
+  }
+  return next;
+}
+
 export interface BotFormHandle {
   syncBasicInfo: (values: { name: string; description: string }) => void;
 }
@@ -300,6 +319,35 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
   const [agentNameList, setAgentNameList] = useState<Agent[]>([]);
   const [routingTab, setRoutingTab] = useState('routes');
   const [policyScope, setPolicyScope] = useState(BOT_SCOPE);
+
+  // `routeChat=group:<id>` (from Sessions or an execution trace) asks the
+  // routing editor to pre-create a rule for that chat once the bot is loaded.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const routeChat = searchParams.get('routeChat');
+  const routeTarget = searchParams.get('routeTarget');
+  const routeDraft = useMemo<RouteDraft | null>(() => {
+    const match = /^(group|person):(.+)$/.exec(routeChat ?? '');
+    return match
+      ? {
+          chatType: match[1] as RouteDraft['chatType'],
+          chatId: match[2],
+          targetUuid: routeTarget ?? undefined,
+        }
+      : null;
+  }, [routeChat, routeTarget]);
+  const clearRouteDraft = useCallback(
+    () =>
+      setSearchParams(
+        (previous) => {
+          const next = new URLSearchParams(previous);
+          next.delete('routeChat');
+          next.delete('routeTarget');
+          return next;
+        },
+        { replace: true },
+      ),
+    [setSearchParams],
+  );
 
   const [dynamicFormConfigList, setDynamicFormConfigList] = useState<
     IDynamicFormItemSchema[]
@@ -1346,9 +1394,14 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                       hiddenItemNames={connectionModeControllerNames}
                       initialValues={currentAdapterConfig}
                       onSubmit={(values) => {
-                        form.setValue('adapter_config', values, {
-                          shouldDirty: !isInitializing.current,
-                        });
+                        form.setValue(
+                          'adapter_config',
+                          preserveEditorManagedConfig(
+                            form.getValues('adapter_config'),
+                            values as Record<string, unknown>,
+                          ),
+                          { shouldDirty: !isInitializing.current },
+                        );
                       }}
                       systemContext={dynamicFormSystemContext}
                     />
@@ -1432,6 +1485,8 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                         ])
                       }
                       botId={initBotId}
+                      routeDraft={initBotId ? routeDraft : null}
+                      onRouteDraftApplied={clearRouteDraft}
                       supportedEvents={
                         adapterSupportedEvents[currentAdapter] || []
                       }

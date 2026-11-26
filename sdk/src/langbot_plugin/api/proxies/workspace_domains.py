@@ -399,6 +399,10 @@ PluginGithubAssetsArguments = TypedDict('PluginGithubAssetsArguments', {
     'repo': str,
 })
 
+PluginGithubRefsArguments = TypedDict('PluginGithubRefsArguments', {
+    'repo_url': str,
+})
+
 PluginGithubReleasesArguments = TypedDict('PluginGithubReleasesArguments', {
     'repo_url': str,
 })
@@ -1261,6 +1265,11 @@ class PluginGithubDomain:
         'plugin.github.assets: List downloadable distribution packages for a GitHub release tag of a plugin.\nParameters (Python -> wire): owner -> owner, release_id -> release_id, repo -> repo.'
         arguments: PluginGithubAssetsArguments = {'owner': owner, 'release_id': release_id, 'repo': repo}
         return cast(OperationResult[dict[str, JSONValue]], await self._workspace.call('plugin.github.assets', **arguments))
+
+    async def refs(self, *, repo_url: str) -> OperationResult[dict[str, JSONValue]]:
+        'plugin.github.refs: List GitHub branches, tags and the default branch for a plugin repository URL.\nParameters (Python -> wire): repo_url -> repo_url.'
+        arguments: PluginGithubRefsArguments = {'repo_url': repo_url}
+        return cast(OperationResult[dict[str, JSONValue]], await self._workspace.call('plugin.github.refs', **arguments))
 
     async def releases(self, *, repo_url: str) -> OperationResult[dict[str, JSONValue]]:
         'plugin.github.releases: Fetch available release versions and tags for a plugin from its GitHub repository URL.\nParameters (Python -> wire): repo_url -> repo_url.'
