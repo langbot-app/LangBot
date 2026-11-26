@@ -95,7 +95,13 @@ function formatSpeed(bytesPerSec: number): string {
  * A GitHub install rejected for its declared LangBot range: explain, require
  * explicit acknowledgement, then resubmit with `allow_incompatible=true`.
  */
-function IncompatibleInstallRetry({ task }: { task: PluginInstallTask }) {
+function IncompatibleInstallRetry({
+  task,
+  onDismiss,
+}: {
+  task: PluginInstallTask;
+  onDismiss: () => void;
+}) {
   const { t } = useTranslation();
   const { addTask, removeTask, setSelectedTaskId } = usePluginInstallTasks();
   const [acknowledged, setAcknowledged] = useState(false);
@@ -143,13 +149,23 @@ function IncompatibleInstallRetry({ task }: { task: PluginInstallTask }) {
           {retryError}
         </p>
       )}
-      {resubmit && (
-        <div className="flex items-center justify-end gap-3">
-          <span className="text-xs text-muted-foreground">
+      <div className="flex items-center justify-end gap-2">
+        {resubmit && (
+          <span className="mr-auto text-xs text-muted-foreground">
             {retrying
               ? t('pluginCompat.retrying')
               : t('pluginCompat.githubRetryHint')}
           </span>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onDismiss}
+          disabled={retrying}
+        >
+          {t('common.close')}
+        </Button>
+        {resubmit && (
           <Button
             size="sm"
             variant="destructive"
@@ -160,13 +176,19 @@ function IncompatibleInstallRetry({ task }: { task: PluginInstallTask }) {
             {retrying && <Loader2 className="size-4 animate-spin" />}
             {t('pluginCompat.installAnyway')}
           </Button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
 
-function TaskProgressContent({ task }: { task: PluginInstallTask }) {
+function TaskProgressContent({
+  task,
+  onDismiss,
+}: {
+  task: PluginInstallTask;
+  onDismiss: () => void;
+}) {
   const { t } = useTranslation();
   const { setSelectedTaskId } = usePluginInstallTasks();
 
@@ -277,7 +299,7 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
   }
 
   if (isError && task.incompatibility) {
-    return <IncompatibleInstallRetry task={task} />;
+    return <IncompatibleInstallRetry task={task} onDismiss={onDismiss} />;
   }
 
   if (isError) {
@@ -371,25 +393,33 @@ export default function PluginInstallProgressDialog() {
           </DialogTitle>
         </DialogHeader>
 
-        {selectedTask && <TaskProgressContent task={selectedTask} />}
+        {selectedTask && (
+          <TaskProgressContent task={selectedTask} onDismiss={handleDismiss} />
+        )}
 
-        <div className="flex justify-end gap-2 mt-2">
-          <Button
-            variant="default"
-            size="sm"
-            onClick={
-              selectedTask?.stage === InstallStage.DONE ||
+        {/* The incompatible-install view renders its own single action row. */}
+        {!(
+          selectedTask?.stage === InstallStage.ERROR &&
+          selectedTask.incompatibility
+        ) && (
+          <div className="flex justify-end gap-2 mt-2">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={
+                selectedTask?.stage === InstallStage.DONE ||
+                selectedTask?.stage === InstallStage.ERROR
+                  ? handleDismiss
+                  : handleClose
+              }
+            >
+              {selectedTask?.stage === InstallStage.DONE ||
               selectedTask?.stage === InstallStage.ERROR
-                ? handleDismiss
-                : handleClose
-            }
-          >
-            {selectedTask?.stage === InstallStage.DONE ||
-            selectedTask?.stage === InstallStage.ERROR
-              ? t('common.close')
-              : t('plugins.installProgress.background')}
-          </Button>
-        </div>
+                ? t('common.close')
+                : t('plugins.installProgress.background')}
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
