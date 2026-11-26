@@ -2647,7 +2647,7 @@
           "插件"
         ],
         "summary": "从 Marketplace 安装插件",
-        "description": "从 LangBot Marketplace 安装插件。异步操作，返回任务 ID。若目标插件声明的 LangBot 版本范围与当前版本不兼容（或没有兼容版本），且未传 `allow_incompatible: true`，异步任务将失败并返回错误码 `plugin_incompatible_langbot_version`（details 包含 `current`、`min`、`max`、`status`）。",
+        "description": "从 LangBot Marketplace 安装插件。异步操作，POST 请求立即返回 `task_id`。若插件没有任何兼容当前 LangBot 的版本，异步任务直接失败（`allow_incompatible` 对此无效）；`allow_incompatible` 仅用于跳过安装包 manifest 的兼容校验。发生兼容性错误时，可通过任务查询接口获取错误码 `plugin_incompatible_langbot_version` 及 `details`（包含 `current`、`min`、`max`、`status`: `\"incompatible\" | \"invalid\"`）。",
         "requestBody": {
           "required": true,
           "content": {
@@ -2666,7 +2666,7 @@
                   "allow_incompatible": {
                     "type": "boolean",
                     "default": false,
-                    "description": "是否允许安装与当前 LangBot 版本不兼容的插件，默认 false。仅在用户明确确认后使用。"
+                    "description": "是否跳过安装包 manifest 的 LangBot 兼容校验，默认 false。仅在用户明确确认后使用；无法绕过“市场无兼容版本”的限制。"
                   }
                 }
               }
@@ -2697,49 +2697,6 @@
                 }
               }
             }
-          },
-          "409": {
-            "description": "插件与当前 LangBot 版本不兼容时，异步任务返回错误码 `plugin_incompatible_langbot_version`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string",
-                      "example": "plugin_incompatible_langbot_version"
-                    },
-                    "details": {
-                      "type": "object",
-                      "properties": {
-                        "current": {
-                          "type": "string",
-                          "example": "4.11.9"
-                        },
-                        "min": {
-                          "type": "string",
-                          "nullable": true,
-                          "example": "4.12.0"
-                        },
-                        "max": {
-                          "type": "string",
-                          "nullable": true,
-                          "example": "4.x"
-                        },
-                        "status": {
-                          "type": "string",
-                          "enum": [
-                            "incompatible",
-                            "invalid"
-                          ],
-                          "example": "incompatible"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
           }
         }
       }
@@ -2750,7 +2707,7 @@
           "插件"
         ],
         "summary": "从 GitHub 安装插件",
-        "description": "从 GitHub 仓库安装插件。异步操作，返回任务 ID。若插件声明的 LangBot 版本范围与当前版本不兼容（或声明无效），且未传 `allow_incompatible: true`，异步任务将失败并返回错误码 `plugin_incompatible_langbot_version`（details 包含 `current`、`min`、`max`、`status`）。",
+        "description": "从 GitHub 仓库安装插件。异步操作，POST 请求立即返回 `task_id`。若插件声明的 LangBot 版本范围与当前版本不兼容（或声明无效），且未传 `allow_incompatible: true`，异步任务将失败，可通过任务查询接口获取错误码 `plugin_incompatible_langbot_version` 及 `details`（包含 `current`、`min`、`max`、`status`: `\"incompatible\" | \"invalid\"`）。",
         "requestBody": {
           "required": true,
           "content": {
@@ -2793,49 +2750,6 @@
                       "properties": {
                         "task_id": {
                           "type": "integer"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "插件与当前 LangBot 版本不兼容时，异步任务返回错误码 `plugin_incompatible_langbot_version`",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "string",
-                      "example": "plugin_incompatible_langbot_version"
-                    },
-                    "details": {
-                      "type": "object",
-                      "properties": {
-                        "current": {
-                          "type": "string",
-                          "example": "4.11.9"
-                        },
-                        "min": {
-                          "type": "string",
-                          "nullable": true,
-                          "example": "4.12.0"
-                        },
-                        "max": {
-                          "type": "string",
-                          "nullable": true,
-                          "example": "4.x"
-                        },
-                        "status": {
-                          "type": "string",
-                          "enum": [
-                            "incompatible",
-                            "invalid"
-                          ],
-                          "example": "incompatible"
                         }
                       }
                     }

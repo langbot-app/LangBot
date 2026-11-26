@@ -61,7 +61,7 @@ metadata:
 
 ### Fields and Shorthand Rules
 
-- **Optional & Omission**: `compatibility`, `langbot`, or either bound (`min` or `max`) can be omitted (or set to `null`); an omitted bound means unrestricted. If no compatibility range is declared, the plugin is treated as compatible with all LangBot versions.
+- **Optional & Omission**: `compatibility` or `langbot` can be omitted or set to `null` (equivalent to undeclared). To leave `min` or `max` unrestricted, **omit that key**—setting `min: null` or `max: null` is treated as a non-string value and rejected as an invalid declaration. If no compatibility range is declared, the plugin is treated as compatible with all LangBot versions.
 - **Inclusive Bounds**: Both `min` and `max` are inclusive (`min <= Core version <= max`). An optional `v` prefix is allowed (e.g., `"v4.12.0"`).
 - **`min` Shorthand**: Supports `4`, `4.12`, and `4.12.3`. Missing segments are zero-padded (e.g., `"4"` equals `4.0.0`, `"4.12"` equals `4.12.0`). Wildcards (`x` or `*`) are not allowed in `min`.
 - **`max` Shorthand**: Supports `4`, `4.x`, `4.x.x`, `4.*`, `4.12`, `4.12.x`, and `4.12.3`. Missing segments or `x` / `*` mean that segment has no upper limit (e.g., `"4"` and `"4.x"` both equal `4.∞.∞`; `"4.12"` and `"4.12.x"` both equal `4.12.∞`). A wildcard must follow a numeric segment and cannot be followed by further numbers (e.g., `"4.x.5"` is invalid).
