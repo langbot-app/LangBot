@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, ChevronRight, Command, Lock, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  ChevronRight,
+  Command,
+  ExternalLink,
+  Lock,
+} from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { useBotAdmins } from '@/app/home/bots/components/bot-admins/BotAdminsDialog';
 import type {
   BotCommandSettings,
   BuiltinCommandDescriptor,
@@ -8,9 +16,7 @@ import type {
 } from '@/app/infra/entities/api';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { extractI18nObject } from '@/i18n/I18nProvider';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -109,97 +115,20 @@ function PermissionSelect({
   );
 }
 
-function AdminList({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: string[];
-  onChange: (next: string[]) => void;
-  disabled?: boolean;
-}) {
-  const { t } = useTranslation();
-  const [draft, setDraft] = useState('');
-  const [error, setError] = useState(false);
-  function add() {
-    const id = draft.trim();
-    if (!id) return;
-    if (!/^person_\S+$/.test(id)) {
-      setError(true);
-      return;
-    }
-    setError(false);
-    if (!value.includes(id)) onChange([...value, id]);
-    setDraft('');
-  }
-  return (
-    <div className="space-y-2">
-      {value.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {value.map((id) => (
-            <Badge
-              key={id}
-              variant="secondary"
-              className="gap-1 pr-1 font-mono text-xs"
-            >
-              {id}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                disabled={disabled}
-                className="size-4 rounded-sm"
-                aria-label={t(k('removeAdmin'), { id })}
-                onClick={() => onChange(value.filter((item) => item !== id))}
-              >
-                <X className="size-3" />
-              </Button>
-            </Badge>
-          ))}
-        </div>
-      )}
-      <Input
-        value={draft}
-        disabled={disabled}
-        placeholder="person_123456"
-        aria-invalid={error}
-        className="h-8 max-w-xs font-mono text-sm"
-        data-testid="system-commands-admin-input"
-        onChange={(event) => {
-          setDraft(event.target.value);
-          setError(false);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            add();
-          }
-        }}
-        onBlur={add}
-      />
-      <p
-        className={
-          error ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'
-        }
-      >
-        {error ? t(k('adminFormat')) : t(k('adminHint'))}
-      </p>
-    </div>
-  );
-}
-
 /**
  * Small entry in the command bar ("系统命令 · 10/12") that opens a side
  * sheet with the admin list, the no-permission reply and every built-in and
  * plugin command's switch and permission.
  */
 export default function SystemCommandsSheet({
+  botId,
   settings,
   onChange,
   pluginCommands,
   prefix,
   readOnly,
 }: {
+  botId: string;
   settings: BotCommandSettings;
   onChange: (patch: Partial<BotCommandSettings>) => void;
   pluginCommands: PluginCommandEntry[];
@@ -209,6 +138,8 @@ export default function SystemCommandsSheet({
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const { commands, failed } = useBuiltinCommands();
+  // Admins live in the bot admin list, managed from the session monitor.
+  const { admins: botAdmins } = useBotAdmins(botId);
   if (failed) return null;
 
   const states = (commands ?? []).map((command) => ({
@@ -216,7 +147,7 @@ export default function SystemCommandsSheet({
     ...builtinState(settings, command),
   }));
   const enabledCount = states.filter((item) => item.enabled).length;
-  const admins = settings.admins ?? [];
+  const admins = botAdmins.filter((admin) => admin.launcher_type === 'person');
   const pluginPermissions = settings.plugin_permissions ?? {};
   const needsAdmins =
     admins.length === 0 &&
@@ -274,13 +205,31 @@ export default function SystemCommandsSheet({
             </SheetDescription>
           </SheetHeader>
           <fieldset disabled={readOnly} className="space-y-6 px-4 pb-8">
-            <section className="space-y-2">
+            <section className="space-y-2" data-testid="system-commands-admins">
               <h3 className="text-sm font-semibold">{t(k('admins'))}</h3>
-              <AdminList
-                value={admins}
-                disabled={readOnly}
-                onChange={(next) => onChange({ admins: next })}
-              />
+              <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+                <p className="text-xs text-muted-foreground">
+                  {admins.length
+                    ? t(k('adminsCount'), { count: admins.length })
+                    : t(k('adminsNone'))}{' '}
+                  {t(k('adminsWhere'))}
+                </p>
+                <Button
+                  asChild
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                >
+                  <Link
+                    to={`/home/bots?id=${encodeURIComponent(botId)}&tab=sessions`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {t(k('openSessions'))}
+                    <ExternalLink className="size-3.5" />
+                  </Link>
+                </Button>
+              </div>
               {needsAdmins && (
                 <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
                   <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />

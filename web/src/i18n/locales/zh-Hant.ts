@@ -956,7 +956,7 @@ const zhHant = {
   bots: {
     routingTabs: {
       routes: '路由規則',
-      plugins: '插件',
+      plugins: '插件和指令',
       policy: '訊息策略',
     },
     policy: {
@@ -1143,9 +1143,6 @@ const zhHant = {
         'LangBot 內建的指令，和插件指令一起按指令前綴比對。在這裡設定每個指令的開關和使用權限。',
       readOnly: '系統指令對整個機器人生效，請在「機器人預設」中修改。',
       admins: '管理員',
-      adminHint: '在聊天中傳送 /whoami 可以查到自己的 ID，格式為 person_xxx。',
-      adminFormat: '管理員 ID 需要以 person_ 開頭，例如 person_123456。',
-      removeAdmin: '移除 {{id}}',
       noAdmins: '還沒有管理員，設為「僅管理員」的指令目前誰都用不了。',
       denied: '沒有權限時',
       deniedSilent: '不回覆',
@@ -1159,6 +1156,10 @@ const zhHant = {
       pluginCommands: '插件指令',
       pluginCommandsHint: '已啟用插件提供的指令，可以單獨設為僅管理員可用。',
       noPluginCommands: '目前啟用的插件沒有提供指令。',
+      adminsCount: '目前有 {{count}} 位管理員。',
+      adminsNone: '還沒有設定管理員。',
+      adminsWhere: '管理員在「會話監控」中設定。',
+      openSessions: '前往會話監控',
       groups: {
         session: '會話',
         info: '資訊',
@@ -1171,7 +1172,7 @@ const zhHant = {
       devDocs: '插件開發文件',
       devDocsUrl: 'https://langbot.app/docs/zh/plugin/dev/tutor',
       tabDescription:
-        '在這裡新增插件，使用它們的指令和聊天事件鉤子。具體效果請參照插件文件。',
+        '在這裡設定指令和插件：指令由使用者傳送「前綴 + 指令名」觸發，插件提供指令和聊天事件鉤子。',
       routeMode: '此路由的插件啟用',
       lifecycleTitle: '訊息生命週期',
       lifecycleHint: '圖示表示在這一步起作用的已啟用插件',
@@ -1223,7 +1224,15 @@ const zhHant = {
         botWide:
           '指令開關、前綴和指令設定對整個機器人生效，請在「機器人預設」中修改。',
         label: '外掛指令',
-        hint: '僅對收到的訊息生效，先於路由規則比對，並沿用這則訊息原本會命中的路由的訊息策略。不同外掛的指令同名時，排在清單前面的外掛優先。',
+        hint: '只對收到的訊息生效，先於路由規則比對。同名時系統指令優先，其次是插件列表中靠前的插件。',
+        title: '指令',
+        enable: '啟用指令',
+        prefixHint: '系統指令和插件指令都用這些前綴，例如 {{example}}。',
+        systemHint: 'LangBot 內建的指令，如 /help、/new、/stop。',
+        pluginTitle: '插件指令',
+        pluginNone: '已新增的插件沒有提供指令。',
+        pluginHint:
+          '來自下方已新增的插件，可在「系統指令」面板中設為僅管理員可用。',
       },
       commandConfig: {
         button: '指令設定',

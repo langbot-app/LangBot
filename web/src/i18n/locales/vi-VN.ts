@@ -1010,7 +1010,7 @@ const viVN = {
   bots: {
     routingTabs: {
       routes: 'Tuyến',
-      plugins: 'Plugin',
+      plugins: 'Plugin và lệnh',
       policy: 'Chính sách tin nhắn',
     },
     policy: {
@@ -1203,10 +1203,6 @@ const viVN = {
       readOnly:
         'Lệnh hệ thống áp dụng cho cả bot; hãy sửa trong «Mặc định của bot».',
       admins: 'Quản trị viên',
-      adminHint: 'Gửi /whoami trong chat để xem ID của bạn, dạng person_xxx.',
-      adminFormat:
-        'ID quản trị viên bắt đầu bằng person_, ví dụ person_123456.',
-      removeAdmin: 'Gỡ {{id}}',
       noAdmins:
         'Chưa có quản trị viên nên chưa ai dùng được lệnh «Chỉ quản trị viên».',
       denied: 'Khi không có quyền',
@@ -1224,6 +1220,10 @@ const viVN = {
       pluginCommandsHint:
         'Lệnh của plugin đang bật có thể giới hạn cho quản trị viên từng lệnh.',
       noPluginCommands: 'Các plugin đang bật không có lệnh.',
+      adminsCount: 'Có {{count}} quản trị viên.',
+      adminsNone: 'Chưa đặt quản trị viên.',
+      adminsWhere: 'Quản trị viên được đặt trong trang giám sát phiên.',
+      openSessions: 'Mở giám sát phiên',
       groups: {
         session: 'Phiên',
         info: 'Thông tin',
@@ -1236,7 +1236,7 @@ const viVN = {
       devDocs: 'tài liệu phát triển plugin',
       devDocsUrl: 'https://langbot.app/docs/en/plugin/dev/tutor',
       tabDescription:
-        'Thêm plugin tại đây để dùng lệnh và hook sự kiện chat của chúng. Xem tài liệu của từng plugin để biết nó làm gì.',
+        'Thiết lập lệnh và plugin tại đây: lệnh chạy khi người dùng gửi tiền tố kèm tên lệnh; plugin cung cấp lệnh và hook sự kiện chat.',
       routeMode: 'Plugin của tuyến này',
       lifecycleTitle: 'Vòng đời tin nhắn',
       lifecycleHint: 'Biểu tượng là các plugin đã bật hoạt động ở mỗi bước',
@@ -1291,7 +1291,16 @@ const viVN = {
         botWide:
           'Công tắc lệnh, tiền tố và cài đặt lệnh áp dụng cho toàn bộ bot. Hãy thay đổi trong Mặc định của bot.',
         label: 'Lệnh plugin',
-        hint: 'Chỉ áp dụng cho tin nhắn nhận được. Lệnh được so khớp trước quy tắc định tuyến và theo chính sách tin nhắn của tuyến mà tin nhắn lẽ ra sẽ đi. Khi các plugin trùng tên lệnh, plugin đứng trước trong danh sách được ưu tiên.',
+        hint: 'Chỉ tin nhắn nhận được, khớp trước các tuyến. Nếu trùng tên, lệnh hệ thống được ưu tiên, sau đó là plugin cao hơn trong danh sách.',
+        title: 'Lệnh',
+        enable: 'Bật lệnh',
+        prefixHint:
+          'Lệnh hệ thống và lệnh plugin dùng chung các tiền tố này, ví dụ {{example}}.',
+        systemHint: 'Lệnh có sẵn trong LangBot, như /help, /new và /stop.',
+        pluginTitle: 'Lệnh plugin',
+        pluginNone: 'Các plugin đã thêm không có lệnh.',
+        pluginHint:
+          'Từ các plugin thêm bên dưới; giới hạn cho quản trị viên trong bảng Lệnh hệ thống.',
       },
       commandConfig: {
         button: 'Cài đặt lệnh',

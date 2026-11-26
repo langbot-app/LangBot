@@ -430,6 +430,11 @@ test('plugin commands are configured from the plugin list', async ({
   const settings = page.getByTestId('bot-command-settings');
   await expect(settings).toBeVisible({ timeout: 15_000 });
   await expect(settings).toContainText('Plugin commands');
+  const commandLayer = page.getByRole('region', {
+    name: 'Commands',
+    exact: true,
+  });
+  const commandSwitch = commandLayer.locator('#bot-commands-enabled');
   await expect(page.getByTestId('command-prefix-button')).toContainText('/');
   // The separate command binding section is gone.
   await expect(page.getByText('Add Plugin', { exact: true })).toHaveCount(0);
@@ -473,13 +478,13 @@ test('plugin commands are configured from the plugin list', async ({
   // Command settings are bot-wide: read-only while a route is selected.
   await page.getByRole('combobox', { name: 'Applies to' }).click();
   await page.getByRole('option', { name: /Private agent/ }).click();
-  await expect(settings.getByRole('switch')).toBeDisabled();
-  await expect(settings).toContainText('apply to the whole bot');
+  await expect(commandSwitch).toBeDisabled();
+  await expect(commandLayer).toContainText('apply to the whole bot');
   await expect(draw.getByTestId('command-config-button')).toHaveCount(0);
   await page.getByRole('combobox', { name: 'Applies to' }).click();
   await page.getByRole('option', { name: 'Bot default' }).click();
 
-  await settings.getByRole('switch').click();
+  await commandSwitch.click();
   await expect(draw.getByTestId('command-config-button')).toHaveCount(0);
   // Turning commands off crosses out every command badge.
   for (const plugin of [draw, listener])
@@ -618,20 +623,26 @@ test('system commands are configured from a small entry in the command bar', asy
       },
     }),
   );
+  const admins: { id: number; launcher_type: string; launcher_id: string }[] =
+    [];
+  await page.route('**/api/v1/platform/bots/policy-bot/admins', (route) =>
+    route.fulfill({ json: { code: 0, data: { admins } } }),
+  );
   await page.goto('/home/bots?id=policy-bot');
-  await page.getByRole('tab', { name: 'Plugins' }).click();
+  await page.getByRole('tab', { name: 'Plugins & commands' }).click();
+  const commandsSection = page.getByTestId('bot-command-settings');
+  await expect(commandsSection).toContainText('e.g. /help.');
   const entry = page.getByTestId('system-commands-button');
   await expect(entry).toContainText('3/4', { timeout: 15_000 });
   await entry.click();
   const sheet = page.getByTestId('system-commands-sheet');
+  // Admins come from the bot admin list (session monitor), not this sheet.
+  const adminInfo = sheet.getByTestId('system-commands-admins');
+  await expect(adminInfo).toContainText('No admins set yet.');
   await expect(sheet).toContainText('No admins yet');
-  const admin = sheet.getByTestId('system-commands-admin-input');
-  await admin.fill('12345');
-  await admin.press('Enter');
-  await expect(sheet).toContainText('Admin IDs start with person_');
-  await admin.fill('person_12345');
-  await admin.press('Enter');
-  await expect(sheet).not.toContainText('No admins yet');
+  await expect(
+    adminInfo.getByRole('link', { name: /Open session monitor/ }),
+  ).toHaveAttribute('href', '/home/bots?id=policy-bot&tab=sessions');
   await sheet.getByRole('radio', { name: 'Reply with a notice' }).click();
   await sheet.getByRole('switch', { name: 'Enable /model' }).click();
   await sheet.getByRole('combobox', { name: 'Who may use /new' }).click();
@@ -644,8 +655,8 @@ test('system commands are configured from a small entry in the command bar', asy
   await page.getByRole('button', { name: 'Save' }).click();
   await expect.poll(() => saved.length).toBe(1);
   const body = saved[0] as { command_settings: Record<string, unknown> };
+  expect(body.command_settings).not.toHaveProperty('admins');
   expect(body.command_settings).toMatchObject({
-    admins: ['person_12345'],
     denied_reply: 'notice',
     builtin: {
       model: { enabled: true, permission: 'admins' },

@@ -1023,7 +1023,7 @@ const jaJP = {
   bots: {
     routingTabs: {
       routes: 'ルート',
-      plugins: 'プラグイン',
+      plugins: 'プラグインとコマンド',
       policy: 'メッセージポリシー',
     },
     policy: {
@@ -1215,10 +1215,6 @@ const jaJP = {
       readOnly:
         'システムコマンドはボット全体に適用されます。「ボットの既定」で変更してください。',
       admins: '管理者',
-      adminHint:
-        'チャットで /whoami を送ると自分の ID（person_xxx 形式）を確認できます。',
-      adminFormat: '管理者 ID は person_ で始まります（例：person_123456）。',
-      removeAdmin: '{{id}} を削除',
       noAdmins:
         '管理者がいないため、「管理者のみ」のコマンドは誰も使えません。',
       denied: '権限がないとき',
@@ -1236,6 +1232,10 @@ const jaJP = {
       pluginCommandsHint:
         '有効なプラグインのコマンドを個別に管理者のみにできます。',
       noPluginCommands: '有効なプラグインにコマンドはありません。',
+      adminsCount: '管理者は {{count}} 人です。',
+      adminsNone: '管理者はまだ設定されていません。',
+      adminsWhere: '管理者はセッション監視で設定します。',
+      openSessions: 'セッション監視を開く',
       groups: {
         session: 'セッション',
         info: '情報',
@@ -1248,7 +1248,7 @@ const jaJP = {
       devDocs: 'プラグイン開発ドキュメント',
       devDocsUrl: 'https://langbot.app/docs/ja/plugin/dev/tutor',
       tabDescription:
-        'ここでプラグインを追加すると、そのコマンドとチャットイベントフックを使えます。具体的な動作はプラグインのドキュメントを参照してください。',
+        'コマンドとプラグインをここで設定します。コマンドはユーザーが「プレフィックス + コマンド名」を送ると実行され、プラグインはコマンドとチャットイベントフックを提供します。',
       routeMode: 'このルートのプラグイン',
       lifecycleTitle: 'メッセージのライフサイクル',
       lifecycleHint: 'アイコンは各ステップで動作する有効なプラグインです',
@@ -1306,7 +1306,17 @@ const jaJP = {
         botWide:
           'コマンドのオン/オフ、プレフィックス、コマンド設定はボット全体に適用されます。「ボットの既定」で変更してください。',
         label: 'プラグインコマンド',
-        hint: '受信メッセージにのみ適用されます。ルートルールより先に照合され、本来一致するルートのメッセージポリシーに従います。同名のコマンドがある場合は、リストの上にあるプラグインが優先されます。',
+        hint: '受信メッセージのみが対象で、ルートより先に判定します。名前が重なる場合はシステムコマンドが優先され、次にリストの上にあるプラグインです。',
+        title: 'コマンド',
+        enable: 'コマンドを有効化',
+        prefixHint:
+          'システムコマンドとプラグインコマンドは同じプレフィックスを使います（例：{{example}}）。',
+        systemHint:
+          '/help、/new、/stop など LangBot に組み込まれたコマンドです。',
+        pluginTitle: 'プラグインコマンド',
+        pluginNone: '追加したプラグインにコマンドはありません。',
+        pluginHint:
+          '下に追加したプラグインのコマンドです。「システムコマンド」パネルで管理者のみにできます。',
       },
       commandConfig: {
         button: 'コマンド設定',

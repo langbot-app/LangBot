@@ -960,7 +960,7 @@ const zhHans = {
   bots: {
     routingTabs: {
       routes: '路由规则',
-      plugins: '插件',
+      plugins: '插件和命令',
       policy: '消息策略',
     },
     policy: {
@@ -1147,9 +1147,6 @@ const zhHans = {
         'LangBot 自带的命令，和插件命令一起按命令前缀匹配。在这里设置每个命令的开关和使用权限。',
       readOnly: '系统命令对整个机器人生效，请在「机器人默认」中修改。',
       admins: '管理员',
-      adminHint: '在聊天中发送 /whoami 可以查到自己的 ID，格式为 person_xxx。',
-      adminFormat: '管理员 ID 需要以 person_ 开头，例如 person_123456。',
-      removeAdmin: '移除 {{id}}',
       noAdmins: '还没有管理员，设为「仅管理员」的命令目前谁都用不了。',
       denied: '没有权限时',
       deniedSilent: '不回复',
@@ -1163,6 +1160,10 @@ const zhHans = {
       pluginCommands: '插件命令',
       pluginCommandsHint: '已启用插件提供的命令，可以单独设为仅管理员可用。',
       noPluginCommands: '当前启用的插件没有提供命令。',
+      adminsCount: '当前有 {{count}} 位管理员。',
+      adminsNone: '还没有设置管理员。',
+      adminsWhere: '管理员在「会话监控」中设置。',
+      openSessions: '前往会话监控',
       groups: {
         session: '会话',
         info: '信息',
@@ -1175,7 +1176,7 @@ const zhHans = {
       devDocs: '插件开发文档',
       devDocsUrl: 'https://langbot.app/docs/zh/plugin/dev/tutor',
       tabDescription:
-        '在这里添加插件，使用它们的命令和聊天事件钩子。具体效果请参照插件文档。',
+        '在这里设置命令和插件：命令由用户发送「前缀 + 命令名」触发，插件提供命令和聊天事件钩子。',
       routeMode: '此路由的插件启用',
       lifecycleTitle: '消息生命周期',
       lifecycleHint: '图标表示在这一步起作用的已启用插件',
@@ -1227,7 +1228,15 @@ const zhHans = {
         botWide:
           '命令开关、前缀和命令配置对整个机器人生效，请在「机器人默认」中修改。',
         label: '插件命令',
-        hint: '仅对收到的消息生效，先于路由规则匹配，并沿用这条消息本来会命中的路由的消息策略。不同插件的命令同名时，排在列表前面的插件优先。',
+        hint: '只对收到的消息生效，先于路由规则匹配。同名时系统命令优先，其次是插件列表中靠前的插件。',
+        title: '命令',
+        enable: '启用命令',
+        prefixHint: '系统命令和插件命令都用这些前缀，例如 {{example}}。',
+        systemHint: 'LangBot 自带的命令，如 /help、/new、/stop。',
+        pluginTitle: '插件命令',
+        pluginNone: '已添加的插件没有提供命令。',
+        pluginHint:
+          '来自下方已添加的插件，可在「系统命令」面板中设为仅管理员可用。',
       },
       commandConfig: {
         button: '命令配置',

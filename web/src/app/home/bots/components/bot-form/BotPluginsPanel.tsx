@@ -361,6 +361,14 @@ export default function BotPluginsPanel({
         );
       });
   const enabledRows = listedRows.filter((row) => row.installed);
+  // Commands from the enabled plugins, in list (priority) order.
+  const pluginCommandList = enabledRows.flatMap((row) =>
+    commandsOf(row).map((command) => ({
+      key: `${row.id}/${command}`,
+      command,
+      pluginLabel: row.label,
+    })),
+  );
   const installedVersions = new Map(
     (plugins ?? []).map((plugin) => {
       const metadata = plugin.manifest?.manifest?.metadata;
@@ -613,6 +621,123 @@ export default function BotPluginsPanel({
         </ol>
       </section>
 
+      {/* Commands: one switch and one set of prefixes for both system and
+          plugin commands, matched before the routes. */}
+      <RoutingLayer
+        icon={TerminalSquare}
+        title={t('bots.pluginHooks.commands.title')}
+        description={
+          route
+            ? t('bots.pluginHooks.commands.botWide')
+            : t('bots.pluginHooks.commands.hint')
+        }
+        count={commands.enabled ? builtinEnabled + pluginCommandList.length : 0}
+        action={
+          <div className="flex items-center gap-2">
+            <Label htmlFor="bot-commands-enabled" className="text-xs">
+              {t('bots.pluginHooks.commands.enable')}
+            </Label>
+            <Switch
+              id="bot-commands-enabled"
+              checked={commands.enabled}
+              disabled={Boolean(route)}
+              onCheckedChange={(enabled) => updateCommands({ enabled })}
+            />
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-3" data-testid="bot-command-settings">
+          {!commands.enabled && (
+            <p className="text-xs text-muted-foreground">
+              {t('bots.routingLayers.commandsDisabled')}
+            </p>
+          )}
+          <div
+            className={cn(
+              'divide-y rounded-lg border',
+              !commands.enabled && 'opacity-60',
+            )}
+          >
+            <div className="flex items-center gap-3 px-3 py-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">
+                  {t('bots.pluginCommands.prefixes')}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t('bots.pluginHooks.commands.prefixHint', {
+                    example: prefixes
+                      .map((prefix) => `${prefix}help`)
+                      .join(' / '),
+                  })}
+                </p>
+              </div>
+              <CommandPrefixPopover
+                prefixes={prefixes}
+                disabled={!commands.enabled || Boolean(route)}
+                onChange={(next) => updateCommands({ prefixes: next })}
+              />
+            </div>
+            <div className="flex items-center gap-3 px-3 py-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">
+                  {t('bots.systemCommands.title')}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t('bots.pluginHooks.commands.systemHint')}
+                </p>
+              </div>
+              <SystemCommandsSheet
+                botId={botId}
+                settings={commands}
+                onChange={updateCommands}
+                prefix={commandPrefix}
+                readOnly={Boolean(route)}
+                pluginCommands={pluginCommandList}
+              />
+            </div>
+            <div className="space-y-1.5 px-3 py-2.5">
+              <p className="text-sm font-medium">
+                {t('bots.pluginHooks.commands.pluginTitle')}
+              </p>
+              {pluginCommandList.length ? (
+                <div className="flex flex-wrap gap-1">
+                  {pluginCommandList.map((entry) => (
+                    <Badge
+                      key={entry.key}
+                      variant="secondary"
+                      className="gap-1 font-mono text-[11px]"
+                      title={entry.pluginLabel}
+                    >
+                      {commandPrefix}
+                      {entry.command}
+                      {commands.plugin_permissions?.[entry.key] ===
+                        'admins' && <Lock className="size-3" />}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {t('bots.pluginHooks.commands.pluginNone')}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {t('bots.pluginHooks.commands.pluginHint')}
+              </p>
+            </div>
+          </div>
+          {registrationCapability && commands.enabled && (
+            <PlatformCommandRegistration
+              value={commands}
+              onChange={onCommandSettingsChange}
+              capability={registrationCapability}
+              botId={botId}
+              dirty={dirty}
+              names={[...commandOwners.keys()]}
+            />
+          )}
+        </div>
+      </RoutingLayer>
+
       {/* Plugins added to the bot: commands and chat event hooks */}
       <RoutingLayer
         icon={Blocks}
@@ -640,53 +765,6 @@ export default function BotPluginsPanel({
         }
       >
         <div className="flex flex-col gap-3">
-          <div
-            data-testid="bot-command-settings"
-            className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border bg-muted/30 px-3 py-2"
-          >
-            <TerminalSquare
-              className="size-4 text-muted-foreground"
-              strokeWidth={1.5}
-            />
-            <Label htmlFor="bot-commands-enabled" className="text-sm">
-              {t('bots.pluginHooks.commands.label')}
-            </Label>
-            <Switch
-              id="bot-commands-enabled"
-              checked={commands.enabled}
-              disabled={Boolean(route)}
-              onCheckedChange={(enabled) => updateCommands({ enabled })}
-            />
-            <SystemCommandsSheet
-              settings={commands}
-              onChange={updateCommands}
-              prefix={commandPrefix}
-              readOnly={Boolean(route)}
-              pluginCommands={enabledRows.flatMap((row) =>
-                commandsOf(row).map((command) => ({
-                  key: `${row.id}/${command}`,
-                  command,
-                  pluginLabel: row.label,
-                })),
-              )}
-            />
-            <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-              {t('bots.pluginCommands.prefixes')}
-              <CommandPrefixPopover
-                prefixes={prefixes}
-                disabled={!commands.enabled || Boolean(route)}
-                onChange={(next) => updateCommands({ prefixes: next })}
-              />
-            </span>
-            <p className="basis-full text-xs text-muted-foreground">
-              {route
-                ? t('bots.pluginHooks.commands.botWide')
-                : commands.enabled
-                  ? t('bots.pluginHooks.commands.hint')
-                  : t('bots.routingLayers.commandsDisabled')}
-            </p>
-          </div>
-
           {loadFailed ? (
             <p className="text-sm text-destructive">
               {t('bots.pluginHooks.loadFailed')}
@@ -977,16 +1055,6 @@ export default function BotPluginsPanel({
                 </Button>
               )}
             </div>
-          )}
-          {registrationCapability && commands.enabled && (
-            <PlatformCommandRegistration
-              value={commands}
-              onChange={onCommandSettingsChange}
-              capability={registrationCapability}
-              botId={botId}
-              dirty={dirty}
-              names={[...commandOwners.keys()]}
-            />
           )}
         </div>
       </RoutingLayer>

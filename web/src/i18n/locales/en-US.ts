@@ -1018,7 +1018,7 @@ const enUS = {
   bots: {
     routingTabs: {
       routes: 'Routes',
-      plugins: 'Plugins',
+      plugins: 'Plugins & commands',
       policy: 'Message policy',
     },
     policy: {
@@ -1211,9 +1211,6 @@ const enUS = {
       readOnly:
         'System commands apply to the whole bot; change them under Bot default.',
       admins: 'Admins',
-      adminHint: 'Send /whoami in chat to get your ID, in the form person_xxx.',
-      adminFormat: 'Admin IDs start with person_, e.g. person_123456.',
-      removeAdmin: 'Remove {{id}}',
       noAdmins:
         'No admins yet, so commands set to "Admins only" can\'t be used by anyone.',
       denied: 'Without permission',
@@ -1231,6 +1228,10 @@ const enUS = {
       pluginCommandsHint:
         'Commands from enabled plugins can be limited to admins one by one.',
       noPluginCommands: 'The enabled plugins provide no commands.',
+      adminsCount: '{{count}} admin(s) set.',
+      adminsNone: 'No admins set yet.',
+      adminsWhere: 'Admins are managed in the session monitor.',
+      openSessions: 'Open session monitor',
       groups: {
         session: 'Session',
         info: 'Info',
@@ -1243,7 +1244,7 @@ const enUS = {
       devDocs: 'plugin development docs',
       devDocsUrl: 'https://langbot.app/docs/en/plugin/dev/tutor',
       tabDescription:
-        "Add plugins here to use their commands and chat event hooks. See each plugin's docs for what it does.",
+        'Set up commands and plugins here: a command runs when a user sends the prefix plus its name; plugins provide commands and chat event hooks.',
       routeMode: 'Plugins for this route',
       lifecycleTitle: 'Message lifecycle',
       lifecycleHint: 'Icons show enabled plugins acting at each step',
@@ -1301,7 +1302,17 @@ const enUS = {
         botWide:
           'The command switch, prefixes and command settings apply to the whole bot. Change them under Bot default.',
         label: 'Plugin commands',
-        hint: 'Only for received messages. Commands match before route rules and follow the message policy of the route the message would have taken. When plugins share a command name, the plugin higher in the list wins.',
+        hint: 'Received messages only, matched before routes. On a name clash, system commands win, then plugins higher in the list.',
+        title: 'Commands',
+        enable: 'Enable commands',
+        prefixHint:
+          'System and plugin commands share these prefixes, e.g. {{example}}.',
+        systemHint:
+          'Commands built into LangBot, such as /help, /new and /stop.',
+        pluginTitle: 'Plugin commands',
+        pluginNone: 'The added plugins provide no commands.',
+        pluginHint:
+          'From the plugins added below; limit them to admins in the System commands panel.',
       },
       commandConfig: {
         button: 'Command settings',

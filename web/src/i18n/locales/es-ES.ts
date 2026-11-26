@@ -1031,7 +1031,7 @@ const esES = {
   bots: {
     routingTabs: {
       routes: 'Rutas',
-      plugins: 'Plugins',
+      plugins: 'Plugins y comandos',
       policy: 'Política de mensajes',
     },
     policy: {
@@ -1223,11 +1223,6 @@ const esES = {
       readOnly:
         'Los comandos del sistema se aplican a todo el bot; cámbialos en «Predeterminado del bot».',
       admins: 'Administradores',
-      adminHint:
-        'Envía /whoami en el chat para ver tu ID, con el formato person_xxx.',
-      adminFormat:
-        'Los ID de administrador empiezan por person_, p. ej. person_123456.',
-      removeAdmin: 'Quitar {{id}}',
       noAdmins:
         'Aún no hay administradores, así que nadie puede usar los comandos «Solo administradores».',
       denied: 'Sin permiso',
@@ -1245,6 +1240,11 @@ const esES = {
       pluginCommandsHint:
         'Los comandos de los plugins activos se pueden limitar a administradores uno a uno.',
       noPluginCommands: 'Los plugins activos no ofrecen comandos.',
+      adminsCount: '{{count}} administrador(es) configurado(s).',
+      adminsNone: 'Aún no hay administradores.',
+      adminsWhere:
+        'Los administradores se gestionan en el monitor de sesiones.',
+      openSessions: 'Abrir monitor de sesiones',
       groups: {
         session: 'Sesión',
         info: 'Información',
@@ -1258,7 +1258,7 @@ const esES = {
       devDocs: 'documentación de desarrollo de plugins',
       devDocsUrl: 'https://langbot.app/docs/en/plugin/dev/tutor',
       tabDescription:
-        'Añade aquí plugins para usar sus comandos y hooks de eventos de chat. Consulta la documentación de cada plugin para saber qué hace.',
+        'Configura aquí los comandos y plugins: un comando se ejecuta cuando un usuario envía el prefijo y su nombre; los plugins aportan comandos y hooks de eventos de chat.',
       routeMode: 'Plugins de esta ruta',
       lifecycleTitle: 'Ciclo de vida del mensaje',
       lifecycleHint: 'Los iconos muestran los plugins activos en cada paso',
@@ -1316,7 +1316,16 @@ const esES = {
         botWide:
           'El interruptor de comandos, los prefijos y los ajustes de comandos se aplican a todo el bot. Cámbialos en Predeterminado del bot.',
         label: 'Comandos de plugins',
-        hint: 'Solo para mensajes recibidos. Los comandos se evalúan antes que las reglas de ruta y siguen la política de mensajes de la ruta que habría tomado el mensaje. Si varios plugins comparten un nombre de comando, gana el que está más arriba en la lista.',
+        hint: 'Solo mensajes recibidos, antes que las rutas. Si coinciden nombres, ganan los comandos del sistema y luego los plugins más arriba en la lista.',
+        title: 'Comandos',
+        enable: 'Activar comandos',
+        prefixHint:
+          'Los comandos del sistema y de plugins usan estos prefijos, p. ej. {{example}}.',
+        systemHint: 'Comandos integrados en LangBot, como /help, /new y /stop.',
+        pluginTitle: 'Comandos de plugins',
+        pluginNone: 'Los plugins añadidos no ofrecen comandos.',
+        pluginHint:
+          'De los plugins añadidos abajo; limítalos a administradores en el panel de Comandos del sistema.',
       },
       commandConfig: {
         button: 'Ajustes de comandos',
