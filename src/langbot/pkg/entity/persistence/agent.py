@@ -18,6 +18,7 @@ class Agent(Base):
     description = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, default='')
     emoji = sqlalchemy.Column(sqlalchemy.String(10), nullable=True, default='🤖')
     kind = sqlalchemy.Column(sqlalchemy.String(50), nullable=False, default='agent')
+    access_mode = sqlalchemy.Column(sqlalchemy.String(32), nullable=False, server_default='all_members')
     component_ref = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     config = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, default={})
     supported_event_patterns = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, default=['*'])
