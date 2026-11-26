@@ -493,8 +493,6 @@ export interface BotCommandSettings {
   builtin?: Record<string, { enabled: boolean; permission: CommandPermission }>;
   /** Plugin command permissions keyed by `author/plugin/command`. */
   plugin_permissions?: Record<string, CommandPermission>;
-  /** Admin sender IDs, `person_<id>`. */
-  admins?: string[];
   /** What a sender without permission gets: nothing, or a notice. */
   denied_reply?: 'silent' | 'notice';
 }
