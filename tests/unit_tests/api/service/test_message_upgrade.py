@@ -84,7 +84,7 @@ def service():
     engine.dispose()
 
 
-async def test_current_checks_and_workspace_confirmations(service):
+async def test_current_checks_and_workspace_confirmations(service, monkeypatch):
     items = (await service.list_upgrade_checks('own'))['items']
     assert {item['code'] for item in items} == {
         'equivalent_route_policies',
@@ -99,13 +99,18 @@ async def test_current_checks_and_workspace_confirmations(service):
     await service.confirm_upgrade_checks('own', None)
     assert all(item['confirmed'] for item in (await service.list_upgrade_checks('own'))['items'])
     assert not any(item['confirmed'] for item in (await service.list_upgrade_checks('other'))['items'])
+    from langbot.pkg.api.application import plugin_operations
+
+    delete = AsyncMock(return_value={'task_id': 7})
+    monkeypatch.setattr(plugin_operations, 'delete', delete)
     with pytest.raises(ApplicationAPIException):
         await service.apply_upgrade_action('other', 'plugin_command_collision', 'uninstall_essential')
-    service.ap.plugin_connector.delete_plugin.assert_not_awaited()
-    await service.apply_upgrade_action('own', 'plugin_command_collision', 'uninstall_essential')
-    service.ap.plugin_connector.delete_plugin.assert_awaited_once_with(
-        'langbot-team', 'EssentialCommands', delete_data=False
-    )
+    delete.assert_not_awaited()
+    result = await service.apply_upgrade_action('own', 'plugin_command_collision', 'uninstall_essential')
+    assert result == {'id': 'plugin_command_collision', 'action': 'uninstall_essential', 'task_id': 7}
+    _, context, payload = delete.await_args.args
+    assert context == 'own'
+    assert (payload.author, payload.plugin_name, payload.delete_data) == ('langbot-team', 'EssentialCommands', False)
 
 
 async def test_promotion_is_workspace_scoped_and_rechecks(service):

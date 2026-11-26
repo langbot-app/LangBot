@@ -157,8 +157,13 @@ async def act(service, context, item_id, action):
     if action == 'promote_route_policy':
         return await service.promote_route_policy(context, params['bot_uuid'])
     if action == 'uninstall_essential':
-        await service.ap.plugin_connector.require_workspace_context(context)
-        await service.ap.plugin_connector.delete_plugin(*ESSENTIAL.split('/'), delete_data=False)
+        from ...application import plugin_operations
+
+        author, name = ESSENTIAL.split('/')
+        task = await plugin_operations.delete(
+            service.ap, context, plugin_operations.DeleteInput(author=author, plugin_name=name, delete_data=False)
+        )
+        return {'id': item_id, 'action': action, **task}
     else:
         bot = await service.get_bot(context, params['bot_uuid'])
         if action == 'restore_prefixes':
