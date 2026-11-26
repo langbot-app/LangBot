@@ -1,6 +1,15 @@
 import pytest
+from langbot.pkg.api.application.contracts import ApplicationAPIException
 
 from langbot.pkg.plugin.connector import _select_marketplace_plugin_version
+
+
+def test_select_latest_compatible_release():
+    options = dict(plugin_author='test', plugin_name='probe', requested_version=None)
+    assert _select_marketplace_plugin_version([], detail={'compatible_version': '1.2'}, **options) == '1.2'
+    with pytest.raises(ApplicationAPIException) as error:
+        _select_marketplace_plugin_version([{'version': '9.0'}], detail={'compatible_version': None}, **options)
+    assert error.value.error.code == 'plugin_incompatible_langbot_version'
 
 
 @pytest.mark.parametrize(

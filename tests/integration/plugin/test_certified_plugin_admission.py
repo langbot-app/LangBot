@@ -245,7 +245,22 @@ def _connector(deployment: str, trusted_public_keys: dict[str, str]):
     return connector, execution_context, binding
 
 
-def _archive(kind: str) -> tuple[bytes, dict[str, str]]:
+@pytest.mark.asyncio
+async def test_incompatible_local_archive_requires_confirmation_before_storage():
+    from langbot.pkg.api.application.contracts import ApplicationAPIException
+
+    package, keys = _archive('legacy', {'langbot': {'min': '99'}})
+    connector, _, _ = _connector('oss', keys)
+    with pytest.raises(ApplicationAPIException) as error:
+        await connector.install_plugin(PluginInstallSource.LOCAL, {'plugin_file': package})
+    assert error.value.error.code == 'plugin_incompatible_langbot_version'
+    assert error.value.error.details['min'] == '99'
+    connector._store_artifact_package.assert_not_awaited()
+    await connector.install_plugin(PluginInstallSource.LOCAL, {'plugin_file': package, 'allow_incompatible': True})
+    connector._store_artifact_package.assert_awaited_once()
+
+
+def _archive(kind: str, compatibility=None) -> tuple[bytes, dict[str, str]]:
     manifest = {
         'metadata': {'author': 'certified', 'name': 'example', 'version': '1.0.0'},
         'execution': {
@@ -255,6 +270,8 @@ def _archive(kind: str) -> tuple[bytes, dict[str, str]]:
     }
     if kind == 'legacy':
         manifest.pop('execution')
+    if compatibility is not None:
+        manifest['metadata']['compatibility'] = compatibility
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, 'w') as package:
         package.writestr('manifest.yaml', yaml.safe_dump(manifest))

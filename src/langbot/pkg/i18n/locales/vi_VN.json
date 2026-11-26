@@ -1,4 +1,5 @@
 {
+  "No plugin version is compatible with this LangBot version": "Không có phiên bản plugin tương thích với phiên bản LangBot hiện tại",
   "Daily message quota reached ({limit} per day). It resets at 00:00 UTC. Upgrade your plan for a higher quota.": "Đã đạt hạn mức tin nhắn hằng ngày ({limit} tin mỗi ngày). Hạn mức được đặt lại lúc 00:00 UTC. Hãy nâng cấp gói để tăng hạn mức.",
   "The bot route changed. Read the current binding.": "Tuyến của bot đã thay đổi. Hãy kiểm tra liên kết hiện tại.",
   "Skill not found": "Không tìm thấy Skill",
