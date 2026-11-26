@@ -2,8 +2,10 @@ import slackSetup from './slack-setup/en-US';
 import wxoaMenu from './wxoa-menu/en-US';
 import pipelineMigration from './pipeline-migration/en-US';
 import pluginPermissions from './plugin-permissions/en-US';
+import pluginCompat from './plugin-compat/en-US';
 const enUS = {
   pluginPermissions,
+  pluginCompat,
   planRevision: {
     subscribedOn: 'Subscribed on {{date}}',
     latestQuota: 'Latest quotas for this plan',

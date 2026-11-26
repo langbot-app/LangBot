@@ -1,7 +1,9 @@
 import pipelineMigration from './pipeline-migration/es-ES';
 import pluginPermissions from './plugin-permissions/es-ES';
+import pluginCompat from './plugin-compat/es-ES';
 const esES = {
   pluginPermissions,
+  pluginCompat,
   planRevision: {
     subscribedOn: 'Fecha de suscripción: {{date}}',
     latestQuota: 'Cuotas más recientes de este plan',

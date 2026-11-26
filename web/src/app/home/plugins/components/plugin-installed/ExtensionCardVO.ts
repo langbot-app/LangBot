@@ -1,3 +1,5 @@
+import type { PluginCompatibility } from '@/app/infra/entities/plugin';
+
 export type ExtensionType = 'plugin' | 'mcp' | 'skill';
 
 export interface IExtensionCardVO {
@@ -19,6 +21,7 @@ export interface IExtensionCardVO {
   status?: string;
   debug?: boolean;
   hasUpdate?: boolean;
+  compatibility?: PluginCompatibility;
   runtimeStatus?: 'connecting' | 'connected' | 'error' | 'disabled';
   tools?: number;
   mode?: 'stdio' | 'sse' | 'http' | 'remote';
@@ -43,6 +46,7 @@ export class ExtensionCardVO implements IExtensionCardVO {
   status?: string;
   debug?: boolean;
   hasUpdate?: boolean;
+  compatibility?: PluginCompatibility;
   runtimeStatus?: 'connecting' | 'connected' | 'error' | 'disabled';
   tools?: number;
   mode?: 'stdio' | 'sse' | 'http' | 'remote';
@@ -63,6 +67,7 @@ export class ExtensionCardVO implements IExtensionCardVO {
     this.status = prop.status;
     this.debug = prop.debug;
     this.hasUpdate = prop.hasUpdate;
+    this.compatibility = prop.compatibility;
     this.runtimeStatus = prop.runtimeStatus;
     this.tools = prop.tools;
     this.mode = prop.mode;

@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import ts from 'typescript';
+import { loadTs } from './load-ts.mjs';
+
+const pluginEntities = loadTs(
+  new URL('../../src/app/infra/entities/plugin/index.ts', import.meta.url),
+);
 
 function load(source, deps = {}, globals = {}) {
   const code = ts.transpileModule(
@@ -86,7 +91,7 @@ test('wizard Runner recovery waits for the matching plugin registration without 
       '@/app/infra/http/workspaceContext': {
         getActiveWorkspaceUuid: () => workspace,
       },
-      '@/app/infra/entities/plugin': {},
+      '@/app/infra/entities/plugin': pluginEntities,
     },
     {
       window: new EventTarget(),
@@ -146,7 +151,7 @@ test('wizard installation opts into backend confirmation while ordinary installa
         '@/app/infra/http/workspaceContext': {
           getActiveWorkspaceUuid: () => 'workspace',
         },
-        '@/app/infra/entities/plugin': {},
+        '@/app/infra/entities/plugin': pluginEntities,
       },
       {
         window: new EventTarget(),

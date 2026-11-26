@@ -1,7 +1,9 @@
 import pipelineMigration from './pipeline-migration/ru-RU';
 import pluginPermissions from './plugin-permissions/ru-RU';
+import pluginCompat from './plugin-compat/ru-RU';
 const ruRU = {
   pluginPermissions,
+  pluginCompat,
   planRevision: {
     subscribedOn: 'Дата подписки: {{date}}',
     latestQuota: 'Актуальные квоты этого плана',

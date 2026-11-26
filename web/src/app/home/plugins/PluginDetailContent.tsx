@@ -28,7 +28,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { Plugin } from '@/app/infra/entities/plugin';
+import { installableVersion, Plugin } from '@/app/infra/entities/plugin';
+import { PluginCompatibilityWarning } from '@/app/home/plugins/components/plugin-compatibility/PluginCompatibilityNotice';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useAsyncTask, AsyncTaskStatus } from '@/hooks/useAsyncTask';
 import { ArrowUp, Bug, Puzzle, Trash2, Upload } from 'lucide-react';
@@ -138,7 +139,8 @@ export default function PluginDetailContent({ id }: { id: string }) {
     getCloudServiceClient()
       .then((client) => client.getPluginDetail(pluginAuthor, pluginName))
       .then((res) => {
-        if (!cancelled) setLatestVersion(res.plugin?.latest_version || null);
+        if (!cancelled)
+          setLatestVersion(res.plugin ? installableVersion(res.plugin) : null);
       })
       .catch(() => {
         if (!cancelled) setLatestVersion(null);
@@ -350,6 +352,11 @@ export default function PluginDetailContent({ id }: { id: string }) {
               {description}
             </p>
           )}
+          <PluginCompatibilityWarning
+            compatibility={pluginInfo.compatibility}
+            context="installed"
+            className="mt-1"
+          />
         </div>
 
         <div className="flex min-h-0 max-w-full flex-1 flex-col gap-6 overflow-y-auto overscroll-none md:flex-row md:overflow-hidden">

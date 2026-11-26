@@ -1,5 +1,5 @@
 import type { KnowledgeEngine } from '@/app/infra/entities/api';
-import type { PluginV4 } from '@/app/infra/entities/plugin';
+import { installableVersion, type PluginV4 } from '@/app/infra/entities/plugin';
 import { getCloudServiceClient } from '@/app/infra/http';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { getActiveWorkspaceUuid } from '@/app/infra/http/workspaceContext';
@@ -193,14 +193,15 @@ export async function installMarketplaceKnowledgeEngine(
   plugin: PluginV4,
   options: InstallKnowledgeEngineOptions,
 ): Promise<KnowledgeEngine> {
-  if (!plugin.latest_version) {
+  const version = installableVersion(plugin);
+  if (!version) {
     throw new KnowledgeEngineMarketplaceError('version-unavailable');
   }
 
   const { task_id: taskId } = await httpClient.installPluginFromMarketplace(
     plugin.author,
     plugin.name,
-    plugin.latest_version,
+    version,
     // Inline installs confirm the declared permissions for the member.
     true,
   );

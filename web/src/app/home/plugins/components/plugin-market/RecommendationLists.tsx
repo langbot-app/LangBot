@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Star, Pause, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import PluginMarketCardComponent from './plugin-market-card/PluginMarketCardComponent';
 import { PluginMarketCardVO } from './plugin-market-card/PluginMarketCardVO';
-import { PluginV4 } from '@/app/infra/entities/plugin';
+import { installableVersion, PluginV4 } from '@/app/infra/entities/plugin';
 import { I18nObject } from '@/app/infra/entities/common';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { getCloudServiceClientSync } from '@/app/infra/http';
@@ -56,7 +56,7 @@ function pluginToVO(
     likeCount: plugin.like_count || 0,
     iconURL,
     githubURL: plugin.repository,
-    version: plugin.latest_version,
+    version: installableVersion(plugin) || plugin.latest_version,
     certificationStatus: plugin.certification_status,
     components: plugin.components,
     tags: plugin.tags || [],

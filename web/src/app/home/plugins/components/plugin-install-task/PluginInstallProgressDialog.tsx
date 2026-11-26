@@ -22,7 +22,9 @@ import {
   usePluginInstallTasks,
   InstallStage,
   PluginInstallTask,
+  pluginTaskKey,
 } from './PluginInstallTaskContext';
+import { PluginCompatibilityWarning } from '@/app/home/plugins/components/plugin-compatibility/PluginCompatibilityNotice';
 import PluginInstallFollowUp, {
   NextStepBanner,
   NextStepLink,
@@ -87,6 +89,81 @@ function formatSpeed(bytesPerSec: number): string {
   const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
   const i = Math.floor(Math.log(bytesPerSec) / Math.log(k));
   return (bytesPerSec / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
+}
+
+/**
+ * A GitHub install rejected for its declared LangBot range: explain, require
+ * explicit acknowledgement, then resubmit with `allow_incompatible=true`.
+ */
+function IncompatibleInstallRetry({ task }: { task: PluginInstallTask }) {
+  const { t } = useTranslation();
+  const { addTask, removeTask, setSelectedTaskId } = usePluginInstallTasks();
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const resubmit = task.resubmitIncompatible;
+
+  async function handleRetry() {
+    if (!resubmit || !acknowledged) return;
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      const { task_id: taskId } = await resubmit();
+      addTask({
+        taskId,
+        pluginName: task.pluginName,
+        source: task.source,
+        extensionType: task.extensionType,
+        fileSize: task.fileSize,
+      });
+      removeTask(task.id);
+      setSelectedTaskId(pluginTaskKey(taskId, task.source));
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'object' && error && 'msg' in error
+            ? String((error as { msg?: string }).msg || '')
+            : String(error);
+      setRetryError(message || t('plugins.installFailed'));
+      setRetrying(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <PluginCompatibilityWarning
+        compatibility={task.incompatibility}
+        context="install"
+        acknowledged={acknowledged}
+        onAcknowledgedChange={resubmit ? setAcknowledged : undefined}
+      />
+      {retryError && (
+        <p className="text-xs text-red-600 dark:text-red-400 break-all">
+          {retryError}
+        </p>
+      )}
+      {resubmit && (
+        <div className="flex items-center justify-end gap-3">
+          <span className="text-xs text-muted-foreground">
+            {retrying
+              ? t('pluginCompat.retrying')
+              : t('pluginCompat.githubRetryHint')}
+          </span>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={!acknowledged || retrying}
+            onClick={handleRetry}
+            data-testid="plugin-compat-install-anyway"
+          >
+            {retrying && <Loader2 className="size-4 animate-spin" />}
+            {t('pluginCompat.installAnyway')}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function TaskProgressContent({ task }: { task: PluginInstallTask }) {
@@ -197,6 +274,10 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
         )}
       </NextStepBanner>
     );
+  }
+
+  if (isError && task.incompatibility) {
+    return <IncompatibleInstallRetry task={task} />;
   }
 
   if (isError) {

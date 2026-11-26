@@ -1,6 +1,7 @@
 import { ExtensionCardVO, ExtensionType } from './ExtensionCardVO';
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { PluginCompatibilityBadge } from '@/app/home/plugins/components/plugin-compatibility/PluginCompatibilityNotice';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import {
@@ -119,6 +120,7 @@ export default function ExtensionCardComponent({
           v{cardVO.version}
         </Badge>
         {renderTypeBadge(cardVO.type)}
+        <PluginCompatibilityBadge compatibility={cardVO.compatibility} />
         {!cardVO.debug && (
           <>
             {cardVO.install_source === 'github' && (
