@@ -4079,12 +4079,18 @@ const zhHant = {
     emailDescription: '目前發送方式：{{channel}}',
     recipients: '收件人（工作區擁有者和管理員）',
     noRecipients: '沒有帶郵箱的擁有者或管理員。',
+    extraRecipientsCloud: '額外收件人（最多 10 個）',
     extraRecipients: '額外收件人（僅限你的郵件服務，最多 10 個）',
     spaceRecipientsHint:
       'LangBot Space 只發給使用 LangBot 帳號登入的管理員本人的郵箱。免費額度：每個帳號每天 20 封、每月 200 封。',
     channel: {
       auto: '自動',
       autoDescription: '已設定郵件服務時使用它，否則使用 LangBot Space',
+      autoDescriptionNoSpace: '已設定郵件服務時使用它',
+      autoDescriptionCloud: '由 LangBot Cloud 發送',
+      cloud: 'LangBot Cloud',
+      cloudConfigured: '官方郵件服務',
+      cloudMissing: 'Cloud 郵件服務暫不可用',
       instance: '你的郵件服務',
       instanceConfigured: '已在 config.yaml 中設定 {{provider}}',
       instanceMissing:

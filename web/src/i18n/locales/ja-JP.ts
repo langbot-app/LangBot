@@ -4344,6 +4344,7 @@ const jaJP = {
     emailDescription: '現在の送信方法：{{channel}}',
     recipients: '受信者（ワークスペースのオーナーと管理者）',
     noRecipients: 'メールアドレスを持つオーナーまたは管理者がいません。',
+    extraRecipientsCloud: '追加の受信者（最大 10 件）',
     extraRecipients: '追加の受信者（自前のメールサービスのみ、最大 10 件）',
     spaceRecipientsHint:
       'LangBot Space は LangBot アカウントでサインインした管理者本人のアドレスにのみ送信します。無料枠：アカウントごとに 1 日 20 通、月 200 通。',
@@ -4351,6 +4352,11 @@ const jaJP = {
       auto: '自動',
       autoDescription:
         'メールサービスが設定されていればそれを、なければ LangBot Space を使用',
+      autoDescriptionNoSpace: 'メールサービスが設定されている場合に使用',
+      autoDescriptionCloud: 'LangBot Cloud から公式に送信',
+      cloud: 'LangBot Cloud',
+      cloudConfigured: '公式メールサービス',
+      cloudMissing: 'Cloud のメールサービスは一時的に利用できません',
       instance: '自前のメールサービス',
       instanceConfigured: 'config.yaml で {{provider}} を設定済み',
       instanceMissing:

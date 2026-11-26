@@ -4243,6 +4243,7 @@ const thTH = {
     emailDescription: 'ส่งผ่าน: {{channel}}',
     recipients: 'ผู้รับ (เจ้าของและผู้ดูแล Workspace)',
     noRecipients: 'ไม่มีเจ้าของหรือผู้ดูแลที่มีอีเมล',
+    extraRecipientsCloud: 'ผู้รับเพิ่มเติม (สูงสุด 10)',
     extraRecipients: 'ผู้รับเพิ่มเติม (เฉพาะบริการอีเมลของคุณ สูงสุด 10)',
     spaceRecipientsHint:
       'LangBot Space ส่งเฉพาะผู้ดูแลที่เข้าสู่ระบบด้วย LangBot Space ไปยังอีเมล Space ของตนเอง โควตาฟรี: 20 ฉบับต่อวัน 200 ฉบับต่อเดือนต่อบัญชี',
@@ -4250,6 +4251,11 @@ const thTH = {
       auto: 'อัตโนมัติ',
       autoDescription:
         'ใช้บริการอีเมลของคุณเมื่อตั้งค่าไว้ ไม่เช่นนั้นใช้ LangBot Space',
+      autoDescriptionNoSpace: 'ใช้บริการอีเมลของคุณเมื่อตั้งค่าแล้ว',
+      autoDescriptionCloud: 'ส่งโดย LangBot Cloud',
+      cloud: 'LangBot Cloud',
+      cloudConfigured: 'บริการอีเมลทางการ',
+      cloudMissing: 'บริการอีเมลของ Cloud ไม่พร้อมใช้งานชั่วคราว',
       instance: 'บริการอีเมลของคุณ',
       instanceConfigured: 'ตั้งค่า {{provider}} ใน config.yaml แล้ว',
       instanceMissing:

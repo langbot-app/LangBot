@@ -4348,6 +4348,7 @@ const ruRU = {
     emailDescription: 'Сейчас отправляется через: {{channel}}',
     recipients: 'Получатели (владельцы и администраторы Workspace)',
     noRecipients: 'Ни у одного владельца или администратора нет адреса почты.',
+    extraRecipientsCloud: 'Дополнительные получатели (до 10)',
     extraRecipients:
       'Дополнительные получатели (только ваш почтовый сервис, до 10)',
     spaceRecipientsHint:
@@ -4356,6 +4357,11 @@ const ruRU = {
       auto: 'Автоматически',
       autoDescription:
         'Ваш почтовый сервис, если он настроен, иначе LangBot Space',
+      autoDescriptionNoSpace: 'Ваш почтовый сервис, если он настроен',
+      autoDescriptionCloud: 'Отправляется LangBot Cloud',
+      cloud: 'LangBot Cloud',
+      cloudConfigured: 'Официальный почтовый сервис',
+      cloudMissing: 'Почтовый сервис Cloud временно недоступен',
       instance: 'Ваш почтовый сервис',
       instanceConfigured: '{{provider}} настроен в config.yaml',
       instanceMissing:
