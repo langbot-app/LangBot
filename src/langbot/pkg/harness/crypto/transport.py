@@ -5,7 +5,9 @@ the application boundary; this module owns the wire-level cryptography.
 """
 
 import base64
+import hmac
 import json
+import secrets
 import time
 
 from cryptography.hazmat.primitives import serialization
@@ -31,7 +33,7 @@ class ReplayGuard:
     def issue(self) -> str:
         now = time.time()
         self._nonces = {key: expiry for key, expiry in self._nonces.items() if expiry >= now}
-        nonce = base64.urlsafe_b64encode(__import__('secrets').token_bytes(32)).decode().rstrip('=')
+        nonce = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode().rstrip('=')
         self._nonces[nonce] = now + 60
         return nonce
 
@@ -106,15 +108,18 @@ async def handshake(
     client_x25519_public: x25519.X25519PublicKey,
     client_ed25519_public: ed25519.Ed25519PublicKey,
     replay_guard: ReplayGuard,
+    initial_hello: dict | None = None,
+    issued_nonce: str | None = None,
 ):
     """Perform authenticated HS1/HS2 and return an encrypted session."""
-    nonce = replay_guard.issue()
-    await websocket.send(json.dumps({'type': 'challenge', 'v': 1, 'kid': kid, 'nonce_s': nonce}))
-    challenge = json.loads(await websocket.receive())
+    nonce = issued_nonce or replay_guard.issue()
+    if initial_hello is None:
+        await websocket.send(json.dumps({'type': 'challenge', 'v': 1, 'kid': kid, 'nonce_s': nonce}))
+    challenge = initial_hello or json.loads(await websocket.receive())
     if not isinstance(challenge, dict) or challenge.get('type') != 'hello':
         raise ValueError('invalid client hello')
     client_nonce = challenge.get('nonce_s')
-    if client_nonce != nonce or not replay_guard.consume(nonce):
+    if client_nonce != nonce or (issued_nonce is None and not replay_guard.consume(nonce)):
         raise ValueError('invalid or replayed server nonce')
     client_ephemeral_bytes = base64.b64decode(challenge.get('e_c', ''), validate=True)
     client_ephemeral = x25519.X25519PublicKey.from_public_bytes(client_ephemeral_bytes)
@@ -148,11 +153,79 @@ async def handshake(
         + server_x25519_private.exchange(client_ephemeral)
     )
     c2h, h2c, confirm = derive(shared, kid, transcript)
-    import hmac
-
     expected = hmac.digest(
         confirm, _signature_input(b'HS2', eh, ec, kid, timestamp, nonce.encode(), transcript), 'sha256'
     )
     if not hmac.compare_digest(base64.b64decode(hs2.get('confirm', ''), validate=True), expected):
         raise ValueError('invalid HS2 key confirmation')
     return SecureSession(websocket, kid, h2c, c2h)
+
+
+class HarnessTransportFactory:
+    """Load the active instance identity and negotiate a client session.
+
+    Client key lookup is injected because device registration is a separate
+    feature slice; it must return pinned static public keys for ``harness_id``.
+    """
+
+    def __init__(self, ap, client_key_lookup, replay_guard: ReplayGuard | None = None):
+        self.ap = ap
+        self.client_key_lookup = client_key_lookup
+        self.replay_guard = replay_guard or ReplayGuard()
+
+    async def __call__(self, ap, websocket):
+        from cryptography.fernet import Fernet
+        from sqlalchemy import select
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+
+        from ...entity.persistence.harness_instance_key import HarnessInstanceKey
+
+        async with async_sessionmaker(ap.persistence_mgr.get_db_engine(), expire_on_commit=False)() as db:
+            row = (
+                await db.execute(
+                    select(HarnessInstanceKey)
+                    .where(HarnessInstanceKey.status == 'active')
+                    .order_by(HarnessInstanceKey.created_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+        if row is None:
+            raise ValueError('No active Harness instance key')
+        jwt_secret = ap.instance_config.data['system']['jwt']['secret']
+        from ...api.http.service.totp import _derive_wrapping_key
+
+        wrapping_key = _derive_wrapping_key(jwt_secret, 1)
+        private_bundle = json.loads(Fernet(wrapping_key).decrypt(row.priv_ciphertext.encode()))
+        server_x = x25519.X25519PrivateKey.from_private_bytes(base64.b64decode(private_bundle['x25519'], validate=True))
+        server_ed = ed25519.Ed25519PrivateKey.from_private_bytes(
+            base64.b64decode(private_bundle['ed25519'], validate=True)
+        )
+
+        async def receive_client_keys():
+            hello = json.loads(await websocket.receive())
+            if not isinstance(hello, dict) or not isinstance(hello.get('harness_id'), str):
+                raise ValueError('Harness device identity required')
+            keys = await self.client_key_lookup(hello['harness_id'], hello.get('device_kid'))
+            if keys is None:
+                raise ValueError('Unregistered Harness device')
+            return hello, keys
+
+        # Start challenge and read the hello with pinned device identity.
+        nonce = self.replay_guard.issue()
+        await websocket.send(json.dumps({'type': 'challenge', 'v': 1, 'kid': row.kid, 'nonce_s': nonce}))
+        hello, client_keys = await receive_client_keys()
+        if hello.get('nonce_s') != nonce or not self.replay_guard.consume(nonce):
+            raise ValueError('invalid or replayed server nonce')
+        return await handshake(
+            websocket,
+            kid=row.kid,
+            server_x25519_private=server_x,
+            server_ed25519_private=server_ed,
+            client_x25519_public=x25519.X25519PublicKey.from_public_bytes(base64.b64decode(client_keys['x25519_pub'])),
+            client_ed25519_public=ed25519.Ed25519PublicKey.from_public_bytes(
+                base64.b64decode(client_keys['ed25519_pub'])
+            ),
+            replay_guard=self.replay_guard,
+            initial_hello=hello,
+            issued_nonce=nonce,
+        )
