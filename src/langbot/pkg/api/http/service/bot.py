@@ -791,7 +791,7 @@ class BotService:
 
         return persistence_bot
 
-    async def create_bot(self, context: TenantContext, bot_data: dict) -> str:
+    async def create_bot(self, context: TenantContext, bot_data: dict, *, bot_uuid: str | None = None) -> str:
         """Create bot"""
         workspace_uuid = require_workspace_uuid(context)
         if not isinstance(bot_data, dict):
@@ -813,7 +813,7 @@ class BotService:
 
         bot_data = await self._prepare_bot_data(context, bot_data, include_uuid=True)
         await require_workspace_platform(self.ap, workspace_uuid, bot_data['adapter'])
-        bot_data['uuid'] = str(uuid.uuid4())
+        bot_data['uuid'] = bot_uuid or str(uuid.uuid4())
         bot_data['workspace_uuid'] = workspace_uuid
         if not bot_data.get('event_bindings'):
             bot_data['event_bindings'] = await self._build_default_event_bindings(context)
