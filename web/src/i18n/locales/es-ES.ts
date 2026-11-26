@@ -1188,7 +1188,7 @@ const esES = {
           title: 'Mensajes ignorados',
           summary: '{{count}} regla(s) de ignorar',
           none: 'No se ignora nada',
-          hint: 'Los mensajes que cumplen estas reglas se ignoran en chats privados y de grupo, antes de las condiciones de grupo.',
+          hint: 'Los mensajes que cumplen estas reglas se ignoran en chats privados y de grupo, después de las condiciones de grupo.',
           prefixLabel: 'Ignorar mensajes que empiezan por',
           prefixPlaceholder: 'Escribe un prefijo y pulsa Intro, p. ej. #',
         },

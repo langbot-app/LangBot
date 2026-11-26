@@ -2024,6 +2024,19 @@ class RuntimeBot:
             return await self._deliver_runner_event(event, adapter, execution_id, event_binding, binding, altered)
 
     async def _record_policy_drop(self, event, binding, item):
+        query = getattr(event, '_entry_query', None)
+        notice = getattr(query, '_policy_drop_notice', None)
+        runtime = getattr(query, '_message_policy', None)
+        if (
+            notice
+            and runtime is not None
+            and callable(getattr(runtime, 'send_notice', None))
+            and callable(getattr(runtime, 'build_notice', None))
+        ):
+            try:
+                await runtime.send_notice(query, runtime.build_notice(query.message_event, notice))
+            except Exception as exc:
+                await self.logger.warning(f'Failed to send policy drop notice: {exc}')
         reason = policy_schema.drop_reason(self.bot_entity.uuid, binding, item)
         return await self._record_event_route_trace(
             event_type=event.type,

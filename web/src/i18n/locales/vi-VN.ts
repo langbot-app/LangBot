@@ -1167,7 +1167,7 @@ const viVN = {
           title: 'Tin nhắn bỏ qua',
           summary: '{{count}} quy tắc bỏ qua',
           none: 'Không bỏ qua',
-          hint: 'Tin nhắn khớp các quy tắc này bị bỏ qua ở cả chat riêng và nhóm, trước điều kiện trả lời trong nhóm.',
+          hint: 'Tin nhắn khớp các quy tắc này bị bỏ qua ở cả chat riêng và nhóm, sau khi kiểm tra điều kiện trả lời trong nhóm.',
           prefixLabel: 'Bỏ qua tin nhắn bắt đầu bằng',
           prefixPlaceholder: 'Nhập tiền tố rồi nhấn Enter, vd. #',
         },

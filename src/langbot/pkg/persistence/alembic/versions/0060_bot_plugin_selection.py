@@ -40,6 +40,8 @@ def _migrate(bot, preferences, instances):
     commands = {}
     settings = _json(bot['command_settings']) or {}
     for item in [*settings.get('plugins', []), *settings.get('processors', [])]:
+        if not isinstance(item, dict) or not item.get('enabled', True):
+            continue
         plugin = item.get('plugin_id') or instances.get((bot['workspace_uuid'], item.get('processor_uuid')))
         if not plugin and item.get('author') and item.get('name'):
             plugin = f'{item["author"]}/{item["name"]}'

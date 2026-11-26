@@ -558,3 +558,56 @@ async def test_installations_without_a_workspace_column_are_converted(database):
         assert _value(_rows(conn, 'legacy_pipelines')['p-a']['config']) == CONFIG_A
 
     await database(scenario)
+
+
+@pytest.mark.asyncio
+async def test_bot_plugin_selection_skips_disabled_command_processors(database):
+    selection = importlib.import_module('langbot.pkg.persistence.alembic.versions.0060_bot_plugin_selection')
+
+    def scenario(conn):
+        metadata = sa.MetaData()
+        bots, pipelines = _tables(metadata)
+        bots.append_column(sa.Column('command_settings', sa.JSON))
+        bots.append_column(sa.Column('message_policy', sa.JSON))
+        pipelines.append_column(sa.Column('extensions_preferences', sa.JSON))
+        agents = sa.Table(
+            'agents',
+            metadata,
+            *(sa.Column(key, sa.String) for key in ('uuid', 'workspace_uuid', 'kind', 'component_ref')),
+        )
+        metadata.create_all(conn)
+        conn.execute(
+            pipelines.insert().values(
+                uuid='A',
+                workspace_uuid='ws',
+                config={},
+                extensions_preferences={'enable_all_plugins': False, 'plugins': [{'author': 'owner', 'name': 'A'}]},
+            )
+        )
+        conn.execute(
+            agents.insert().values(
+                uuid='cmd-off', workspace_uuid='ws', kind='command_processor', component_ref='plugin:owner/disabled'
+            )
+        )
+        conn.execute(
+            bots.insert().values(
+                uuid='bot',
+                workspace_uuid='ws',
+                command_settings={
+                    'processors': [
+                        {'processor_uuid': 'cmd-off', 'enabled': False},
+                        {'plugin_id': 'owner/on', 'enabled': True},
+                    ]
+                },
+                event_bindings=[route('r-a', 'pipeline', 'A')],
+                message_policy={},
+            )
+        )
+        with patch.object(selection, 'op', Operations(MigrationContext.configure(conn))):
+            selection.upgrade()
+        migrated = conn.execute(sa.select(bots)).mappings().one()
+        plugins = _value(migrated['message_policy'])['plugins']
+        assert plugins['enable_all'] is False
+        assert plugins['plugins'] == [{'author': 'owner', 'name': 'A'}, {'author': 'owner', 'name': 'on'}]
+
+    await database(scenario)

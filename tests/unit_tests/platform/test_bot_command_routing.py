@@ -802,3 +802,78 @@ async def test_bot_command_execution_records_a_processor_run(monkeypatch, error,
     assert start['source'] == 'platform'
     assert calls[2] == ('output', None if error else 'done', error)
     assert calls[3] == ('finish', expected_error)
+
+
+@pytest.mark.asyncio
+async def test_policy_drop_sends_user_notice_for_rate_limit_and_content_filter():
+    from langbot.pkg.message_policy.runtime import FilterVerdict, MessagePolicyRuntime
+    from tests.factories import FakeApp, text_query
+
+    app = FakeApp()
+    rate_limiter = SimpleNamespace(require_access=AsyncMock(return_value=False), release_access=AsyncMock())
+    runtime = MessagePolicyRuntime(
+        app,
+        {
+            'safety': {'rate-limit': {'enabled': True, 'window-length': 60, 'limitation': 1, 'strategy': 'drop'}},
+            'output': {'misc': {'rate-limit-hint': 'Slow down!', 'at-sender': False, 'quote-origin': False}},
+        },
+        bot_uuid='bot-123',
+        rate_limiter=rate_limiter,
+    )
+    query = text_query('hello', bot_uuid='bot-123', pipeline_uuid=None)
+    query.message_event = SimpleNamespace()
+    query.adapter = SimpleNamespace(is_stream_output_supported=AsyncMock(return_value=False), reply_message=AsyncMock())
+    runtime.attach(query)
+
+    bot = make_bot()
+    bot._record_event_route_trace = AsyncMock(return_value={'status': 'discarded'})
+    event = make_message_event('hello')
+    object.__setattr__(event, '_entry_query', query)
+
+    async with runtime.admit(query) as item:
+        assert item == 'safety.rate-limit'
+    await bot._record_policy_drop(event, {'id': 'r1'}, 'safety.rate-limit')
+    assert query.adapter.reply_message.await_count == 1
+    assert str(query.adapter.reply_message.await_args.kwargs['message']) == 'Slow down!'
+
+    runtime2 = MessagePolicyRuntime(
+        app,
+        {'safety': {'rate-limit': {'enabled': False}}},
+        bot_uuid='bot-123',
+        rate_limiter=SimpleNamespace(require_access=AsyncMock(return_value=True), release_access=AsyncMock()),
+    )
+    runtime2.filter_inbound = AsyncMock(
+        return_value=FilterVerdict(allowed=False, user_notice='Blocked by filter!', policy_item='safety.content-filter')
+    )
+    query2 = text_query('badword', bot_uuid='bot-123', pipeline_uuid=None)
+    query2.message_event = SimpleNamespace()
+    query2.adapter = SimpleNamespace(
+        is_stream_output_supported=AsyncMock(return_value=False), reply_message=AsyncMock()
+    )
+    runtime2.attach(query2)
+    event2 = make_message_event('badword')
+    object.__setattr__(event2, '_entry_query', query2)
+
+    async with runtime2.admit(query2) as item2:
+        assert item2 == 'safety.content-filter'
+    await bot._record_policy_drop(event2, {'id': 'r1'}, 'safety.content-filter')
+    assert query2.adapter.reply_message.await_count == 1
+    assert str(query2.adapter.reply_message.await_args.kwargs['message']) == 'Blocked by filter!'
+
+
+@pytest.mark.asyncio
+async def test_windows_missing_font_falls_back_to_forward_strategy(monkeypatch):
+    from langbot.pkg.message_policy.runtime import MessagePolicyRuntime
+    from tests.factories import FakeApp
+
+    app = FakeApp()
+    runtime = MessagePolicyRuntime(
+        app,
+        {'output': {'long-text-processing': {'threshold': 100, 'strategy': 'image', 'font-path': '/nonexistent.ttf'}}},
+        rate_limiter=SimpleNamespace(),
+    )
+    monkeypatch.setattr('langbot.pkg.message_policy.runtime.os.name', 'nt')
+    monkeypatch.setattr('langbot.pkg.message_policy.runtime.os.path.exists', lambda _p: False)
+    await runtime._initialize_long_text()
+    assert runtime.policy['output']['long-text-processing']['strategy'] == 'forward'
+    assert runtime.long_text_strategy.name == 'forward'

@@ -113,8 +113,8 @@ stages:
       en_US: Ignore Rules
       zh_Hans: 消息忽略规则
     description:
-      en_US: Ignore rules that apply to both group and private messages
-      zh_Hans: 对群聊、私聊消息均适用的忽略规则（优先级高于群响应规则）
+      en_US: Ignore rules that apply to both group and private messages (evaluated after group reply conditions)
+      zh_Hans: 对群聊、私聊消息均适用的忽略规则（在群聊回复条件之后检查）
     config:
       - name: prefix
         label:

@@ -1109,7 +1109,7 @@ const zhHant = {
           title: '忽略的訊息',
           summary: '{{count}} 條忽略規則',
           none: '不忽略',
-          hint: '命中這些規則的訊息直接忽略，私聊和群聊都適用，優先於群聊回覆條件。',
+          hint: '命中這些規則的訊息直接忽略，私聊和群聊都適用，在群聊回覆條件匹配之後生效。',
           prefixLabel: '以這些前綴開頭時忽略',
           prefixPlaceholder: '輸入前綴後按 Enter，如 #',
         },

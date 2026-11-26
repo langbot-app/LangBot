@@ -1176,7 +1176,7 @@ const enUS = {
           title: 'Ignored messages',
           summary: '{{count}} ignore rule(s)',
           none: 'Nothing ignored',
-          hint: 'Messages matching these rules are ignored in private and group chats, before the group reply conditions.',
+          hint: 'Messages matching these rules are ignored in private and group chats, after the group reply conditions.',
           prefixLabel: 'Ignore messages starting with',
           prefixPlaceholder: 'Type a prefix and press Enter, e.g. #',
         },

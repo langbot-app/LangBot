@@ -121,7 +121,7 @@ class MessagePolicyRuntime:
                             self.ap.logger.warn(
                                 'Font file not found, and Windows system font cannot be used, switch to forward message component to send long messages, you can adjust the related settings in the configuration file.'
                             )
-                            config['blob_message_strategy'] = 'forward'
+                            config['strategy'] = 'forward'
                         else:
                             self.ap.logger.info('Using Windows system font: ' + use_font)
                             config['font-path'] = use_font
@@ -224,6 +224,9 @@ class MessagePolicyRuntime:
 
     @contextlib.asynccontextmanager
     async def admit(self, query, text=None, *, preview=False):
+        from ..i18n import pipeline_notice
+
+        object.__setattr__(query, '_policy_drop_notice', None)
         launcher = query.launcher_type.value
         if not self.check_access(launcher, query.launcher_id, query.sender_id).allowed:
             yield 'trigger.access-control'
@@ -234,10 +237,18 @@ class MessagePolicyRuntime:
             if preview
             else not await self.acquire_rate_limit(query)
         ):
+            if not preview:
+                object.__setattr__(
+                    query,
+                    '_policy_drop_notice',
+                    pipeline_notice(query, 'rate-limit-hint', 'Too many requests. Please try again later.'),
+                )
             yield 'safety.rate-limit'
         else:
             try:
                 verdict = await self.filter_inbound(query, str(query.message_chain) if text is None else text)
+                if not verdict.allowed and not preview and verdict.user_notice:
+                    object.__setattr__(query, '_policy_drop_notice', verdict.user_notice)
                 yield None if verdict.allowed else verdict.policy_item
             finally:
                 if not preview:
