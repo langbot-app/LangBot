@@ -115,8 +115,8 @@ class AssistantService:
                             body.approved,
                             str(body.model_uuid) if body.model_uuid else None,
                             on_event=emit,
-                            choices=body.choices,
-                            continue_run=body.continue_run is True,
+                            choices=getattr(body, 'choices', None),
+                            continue_run=getattr(body, 'continue_run', None) is True,
                         )
                     except asyncio.CancelledError:
                         conversation = await self.get(context, conversation_id)
