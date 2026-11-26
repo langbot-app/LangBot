@@ -77,7 +77,6 @@ test('runner tools dialog groups tools by provider with select-all and search', 
     withRunnerToolSelector: true,
   });
   await page.goto('/home/agents?id=agent-scope');
-  await page.getByRole('tab', { name: /^Runner$/ }).click();
   await page.getByRole('button', { name: 'Edit tools' }).click();
 
   const dialog = page.getByRole('dialog');

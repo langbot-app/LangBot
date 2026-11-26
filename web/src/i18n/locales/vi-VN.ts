@@ -1870,6 +1870,11 @@ const viVN = {
     },
   },
   agents: {
+    layout: {
+      platformTools: 'Công cụ nền tảng',
+      hostTools: 'Công cụ plugin và MCP',
+      toolsSheetDescription: 'Có hiệu lực sau khi lưu Agent.',
+    },
     apiToolsSelectAll: 'Chọn tất cả',
     monitoring: {
       rangeDays: '{{days}} ngày qua',

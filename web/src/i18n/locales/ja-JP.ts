@@ -1895,6 +1895,11 @@ const jaJP = {
     },
   },
   agents: {
+    layout: {
+      platformTools: 'プラットフォームツール',
+      hostTools: 'プラグイン・MCP ツール',
+      toolsSheetDescription: 'Agent を保存すると反映されます。',
+    },
     apiToolsSelectAll: 'すべて選択',
     monitoring: {
       rangeDays: '過去 {{days}} 日間',

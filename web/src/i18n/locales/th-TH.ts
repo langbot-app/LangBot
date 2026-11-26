@@ -1841,6 +1841,11 @@ const thTH = {
     },
   },
   agents: {
+    layout: {
+      platformTools: 'เครื่องมือแพลตฟอร์ม',
+      hostTools: 'เครื่องมือปลั๊กอินและ MCP',
+      toolsSheetDescription: 'มีผลหลังบันทึก Agent',
+    },
     apiToolsSelectAll: 'เลือกทั้งหมด',
     monitoring: {
       rangeDays: '{{days}} วันที่ผ่านมา',

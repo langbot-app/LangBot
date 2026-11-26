@@ -1768,6 +1768,11 @@ const zhHant = {
     },
   },
   agents: {
+    layout: {
+      platformTools: '平台工具',
+      hostTools: '插件與 MCP 工具',
+      toolsSheetDescription: '儲存 Agent 後生效。',
+    },
     apiToolsSelectAll: '全選',
     monitoring: {
       rangeDays: '最近 {{days}} 天',

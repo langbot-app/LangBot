@@ -1771,6 +1771,11 @@ const zhHans = {
     },
   },
   agents: {
+    layout: {
+      platformTools: '平台工具',
+      hostTools: '插件与 MCP 工具',
+      toolsSheetDescription: '保存 Agent 后生效。',
+    },
     apiToolsSelectAll: '全选',
     monitoring: {
       rangeDays: '最近 {{days}} 天',

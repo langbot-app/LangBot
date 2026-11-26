@@ -317,7 +317,6 @@ test.describe('frontend CRUD smoke flows', () => {
     await expect(
       page.getByRole('heading', { name: /pipeline-ai/ }),
     ).toBeVisible();
-    await page.getByRole('tab', { name: /^AI$/ }).click();
 
     await expect(page.getByText('Runtime', { exact: true })).toBeVisible();
     await expect(
@@ -906,7 +905,6 @@ test.describe('pipeline advanced flows', () => {
     });
 
     await page.goto('/home/agents?id=pipeline-scope');
-    await page.getByRole('tab', { name: /^AI$/ }).click();
     await expect(
       page.getByRole('button', { name: 'Edit tools' }),
     ).toBeVisible();
@@ -989,7 +987,6 @@ test.describe('pipeline advanced flows', () => {
       page.getByRole('heading', { name: /Dirty Form Pipeline Updated/ }),
     ).toBeVisible();
     await expect(saveButton).toBeDisabled();
-    await page.getByRole('tab', { name: /^AI$/ }).click();
     const instruction = page.locator('textarea[name="instruction"]');
     await expect(instruction).toHaveValue('Original instruction');
     await instruction.fill('Updated instruction');
@@ -997,7 +994,6 @@ test.describe('pipeline advanced flows', () => {
     await save(page);
     await expect(saveButton).toBeDisabled();
     await page.reload();
-    await page.getByRole('tab', { name: /^AI$/ }).click();
     await expect(page.locator('textarea[name="instruction"]')).toHaveValue(
       'Updated instruction',
     );
@@ -1259,9 +1255,6 @@ test.describe('agent runner resource selectors', () => {
           ? '/home/agents?id=agent-empty'
           : '/home/pipelines?id=agent-empty',
       );
-      await page
-        .getByRole('tab', { name: kind === 'agent' ? /^Runner$/ : /^AI$/ })
-        .click();
 
       const runnerSelect = page.getByRole('combobox', {
         name: 'Runner',
@@ -1400,7 +1393,6 @@ test.describe('agent runner resource selectors', () => {
     );
 
     await page.goto('/home/agents?id=pipeline-runner-selector');
-    await page.getByRole('tab', { name: /^AI$/ }).click();
 
     const runnerSelect = page.getByRole('combobox', { name: 'Runner' });
     await runnerSelect.click();
@@ -1444,7 +1436,6 @@ test.describe('agent runner resource selectors', () => {
     });
 
     await page.goto('/home/agents?id=agent-scope');
-    await page.getByRole('tab', { name: /^Runner$/ }).click();
     await page.getByRole('button', { name: 'Edit tools' }).click();
 
     const dialog = page.getByRole('dialog');
@@ -1489,7 +1480,6 @@ test.describe('agent and pipeline save concurrency', () => {
 
     await page.goto('/home/agents?id=agent-save-race');
     const saveButton = page.getByRole('button', { name: /^Save$/ });
-    await page.getByRole('tab', { name: 'Events & tools' }).click();
     const eventPatterns = page.getByRole('button', {
       name: 'Add event',
       exact: true,

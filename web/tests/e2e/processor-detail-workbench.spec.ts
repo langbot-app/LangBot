@@ -76,46 +76,22 @@ test.describe('processor detail workbench', () => {
       .toBe(0);
     expect(debugBox!.y).toBeGreaterThanOrEqual(0);
 
-    const flow = configPanel.getByRole('tablist');
-    await expect(flow.getByRole('tab')).toHaveCount(2);
-    const tabs = await flow.getByRole('tab').all();
-    const positions = await Promise.all(tabs.map((tab) => tab.boundingBox()));
-    expect(positions.every((position) => position !== null)).toBe(true);
-    for (let index = 1; index < positions.length; index++) {
-      expect(
-        Math.abs(positions[index]!.y - positions[0]!.y),
-      ).toBeLessThanOrEqual(1);
-      expect(positions[index]!.x).toBeGreaterThan(positions[index - 1]!.x);
-    }
-    await expect(flow.getByRole('tab').nth(0)).toContainText('Runner');
-    await expect(flow.getByRole('tab').nth(1)).toContainText('Events & tools');
-    await expect(flow.getByRole('tab')).toHaveCount(2);
-    const selectorCard = configPanel.locator('[data-slot="card"]').filter({
-      has: page.getByRole('combobox', { name: 'Runner', exact: true }),
-    });
-    const configCard = configPanel.locator('[data-slot="card"]').filter({
-      has: page
-        .locator('[data-slot="card-title"]')
-        .getByText('Local Agent', { exact: true }),
-    });
-    await expect(selectorCard).toBeVisible();
-    await expect(configCard).toBeVisible();
-    const selectorCardBox = await selectorCard.boundingBox();
-    const configCardBox = await configCard.boundingBox();
-    expect(configCardBox!.y).toBeGreaterThan(
-      selectorCardBox!.y + selectorCardBox!.height,
-    );
-
-    await expect(flow.getByText('Management')).toHaveCount(0);
-
+    // Agent settings are one page: runner, model/prompt, events, tools,
+    // then folded rows.
+    const agentConfig = configPanel.getByTestId('agent-config');
+    await expect(agentConfig).toBeVisible();
+    await expect(configPanel.getByRole('tablist')).toHaveCount(0);
+    const runnerBlock = agentConfig.locator('[data-guide="runner-selector"]');
+    const eventsBlock = agentConfig.locator('[data-guide="agent-sections"]');
+    await expect(
+      runnerBlock.getByRole('combobox', { name: 'Runner', exact: true }),
+    ).toBeVisible();
+    await expect(eventsBlock).toBeVisible();
+    const runnerBox = await runnerBlock.boundingBox();
+    const eventsBox = await eventsBlock.boundingBox();
+    expect(eventsBox!.y).toBeGreaterThan(runnerBox!.y + runnerBox!.height);
+    await expect(agentConfig.getByTestId('agent-manage-tools')).toBeVisible();
     await page.setViewportSize({ width: 1024, height: 900 });
-    const tabListMetrics = await flow.evaluate((element) => ({
-      clientWidth: element.clientWidth,
-      scrollWidth: element.scrollWidth,
-    }));
-    expect(tabListMetrics.scrollWidth).toBeLessThanOrEqual(
-      tabListMetrics.clientWidth,
-    );
 
     await expect(
       page.getByRole('heading', { name: /agent-workbench/ }),
@@ -147,19 +123,20 @@ test.describe('processor detail workbench', () => {
         .last(),
     ).toBeVisible();
 
-    await flow.getByRole('tab').nth(1).click();
-    await expect(
-      configPanel.getByText('Events & tools', { exact: true }).last(),
-    ).toBeVisible();
     const eventPicker = configPanel.getByRole('button', {
       name: 'Add event',
       exact: true,
     });
     await expect(eventPicker).toBeVisible();
-    await expect(configPanel.getByRole('textbox')).toHaveCount(1);
+    // Tool access is summarised on the page and edited in a side sheet.
+    await configPanel.getByTestId('agent-manage-tools').click();
     await expect(
-      configPanel.getByRole('textbox', { name: 'Search tools…' }),
+      page.getByRole('textbox', { name: 'Search tools…' }),
     ).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(
+      page.getByRole('textbox', { name: 'Search tools…' }),
+    ).toHaveCount(0);
     await eventPicker.click();
     await expect(
       page.getByRole('option').filter({ hasText: 'message.received' }),
@@ -196,7 +173,6 @@ test.describe('processor detail workbench', () => {
     await page.getByRole('option').filter({ hasText: 'All events' }).click();
     await page.keyboard.press('Escape');
 
-    await flow.getByRole('tab').nth(0).click();
     await expect(
       configPanel.getByText('Local Agent', { exact: true }).last(),
     ).toBeVisible();
@@ -302,8 +278,8 @@ test.describe('processor detail workbench', () => {
       .getByRole('button', { name: 'Review runner configuration' })
       .click();
     await expect(
-      page.getByRole('tab', { name: 'Runner', exact: true }),
-    ).toHaveAttribute('data-state', 'active');
+      page.locator('[data-guide="runner-selector"]'),
+    ).toBeInViewport();
   });
 
   test('pipeline keeps debug chat left and exposes its main flow first', async ({
@@ -600,9 +576,6 @@ test('merged runner page preserves both runner configurations when switching and
     .getByRole('option', { name: `First runner ${first}`, exact: true })
     .click();
   await expect(greeting).toHaveValue('First edited value');
-  await expect(
-    config.getByRole('tab', { name: 'Runner', exact: true }),
-  ).toHaveAttribute('data-state', 'active');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect
     .poll(() => saved)

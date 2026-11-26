@@ -1888,6 +1888,11 @@ const enUS = {
     },
   },
   agents: {
+    layout: {
+      platformTools: 'Platform tools',
+      hostTools: 'Plugin & MCP tools',
+      toolsSheetDescription: 'Takes effect after you save the Agent.',
+    },
     apiToolsSelectAll: 'Select all',
     monitoring: {
       rangeDays: 'Last {{days}} days',

@@ -1906,6 +1906,11 @@ const esES = {
     },
   },
   agents: {
+    layout: {
+      platformTools: 'Herramientas de plataforma',
+      hostTools: 'Herramientas de plugins y MCP',
+      toolsSheetDescription: 'Se aplica al guardar el Agent.',
+    },
     apiToolsSelectAll: 'Seleccionar todo',
     monitoring: {
       rangeDays: 'Últimos {{days}} días',

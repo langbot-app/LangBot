@@ -100,8 +100,6 @@ async function setup(page: Page, kind: 'agent' | 'pipeline' = 'agent') {
   await page.goto(
     `/home/${kind === 'agent' ? 'agents' : 'pipelines'}?id=${kind}-draft`,
   );
-  if (kind === 'pipeline')
-    await page.getByRole('tab', { name: /^AI$/ }).click();
   const input = page.locator('textarea[name="instruction"]');
   await expect(input).toHaveValue('Original instruction');
   return {
@@ -150,8 +148,6 @@ for (const kind of ['agent', 'pipeline'] as const) {
     });
     await expect(save).toBeDisabled();
     await page.reload();
-    if (kind === 'pipeline')
-      await page.getByRole('tab', { name: /^AI$/ }).click();
     await expect(input).toHaveValue('Original instruction final characters');
     await expect(save).toBeDisabled();
     await page

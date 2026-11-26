@@ -1903,6 +1903,11 @@ const ruRU = {
     },
   },
   agents: {
+    layout: {
+      platformTools: 'Инструменты платформы',
+      hostTools: 'Инструменты плагинов и MCP',
+      toolsSheetDescription: 'Вступит в силу после сохранения Agent.',
+    },
     apiToolsSelectAll: 'Выбрать все',
     monitoring: {
       rangeDays: 'Последние {{days}} дней',
