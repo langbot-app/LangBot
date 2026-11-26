@@ -1748,82 +1748,134 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             else:
                 asset_url = normalized['asset_url']
 
-            downloaded = 0
-            chunks: list[bytes] = []
-            start_time = time.time()
-            current_url = asset_url
-            if task_context is not None:
-                task_context.set_current_action('downloading plugin package')
-                task_context.metadata.update({'download_total': 0, 'download_current': 0, 'download_speed': 0})
-
-            for redirect_count in range(_GITHUB_PLUGIN_DOWNLOAD_MAX_REDIRECTS + 1):
-                self._validate_github_download_hop(
-                    current_url,
-                    owner=owner,
-                    repo=repo,
-                    release_tag=release_tag,
-                    asset_id=asset_id,
+            try:
+                package = await self._read_github_asset(
+                    client, asset_url, owner, repo, release_tag, asset_id, task_context
                 )
-                parsed = urlparse(current_url)
-                request_headers = {
-                    'Accept-Encoding': 'identity',
-                    'User-Agent': 'LangBot-Plugin-Installer',
-                }
-                if (parsed.hostname or '').lower() == 'api.github.com':
-                    request_headers.update(
-                        {
-                            'Accept': 'application/octet-stream',
-                            'X-GitHub-Api-Version': '2022-11-28',
-                        }
+            except httpx.HTTPError:
+                from .github_mirror import GitHubSources, fetch, source_url
+                from urllib.parse import quote
+
+                sources = GitHubSources(self.ap)
+                if not any(sources.prefixes):
+                    raise
+                if asset_id is None:
+                    response = await client.get(
+                        f'https://api.github.com/repos/{owner}/{repo}/releases/tags/{quote(release_tag, safe="")}'
                     )
-
-                async with client.stream('GET', current_url, headers=request_headers) as response:
-                    if response.status_code in _HTTP_REDIRECT_STATUSES:
-                        location = response.headers.get('location')
-                        if not location:
-                            raise ValueError('GitHub release asset redirect is missing a location')
-                        if redirect_count >= _GITHUB_PLUGIN_DOWNLOAD_MAX_REDIRECTS:
-                            raise ValueError('GitHub release asset exceeded the redirect limit')
-                        next_url = urljoin(current_url, location)
-                        self._validate_github_download_hop(
-                            next_url,
-                            owner=owner,
-                            repo=repo,
-                            release_tag=release_tag,
-                            asset_id=asset_id,
-                        )
-                        current_url = next_url
-                        continue
-
                     response.raise_for_status()
-                    content_length_header = response.headers.get('content-length')
+                    release = await httpclient.parse_json_response(response)
+                    asset = next(
+                        (item for item in release.get('assets', []) if item.get('browser_download_url') == asset_url),
+                        None,
+                    )
+                    if asset is None:
+                        raise ValueError('GitHub release asset metadata not found')
+                browser_url = validate_github_release_asset_url(
+                    asset.get('browser_download_url'), owner=owner, repo=repo, release_tag=release_tag
+                )
+                for prefix, _, _ in await sources.ranked(owner, repo):
+                    if not prefix:
+                        continue
                     try:
-                        content_length = int(content_length_header) if content_length_header is not None else 0
-                    except ValueError as exc:
-                        raise ValueError('GitHub release asset has an invalid content length') from exc
-                    if content_length < 0:
-                        raise ValueError('GitHub release asset has an invalid content length')
-                    if content_length > _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES:
+                        package = await fetch(
+                            client, source_url(prefix, browser_url), sources.hosts, _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES
+                        )
+                        self._verify_release_asset(package, asset)
+                    except (httpx.HTTPError, ValueError):
+                        continue
+                    self.ap.logger.info(f'GitHub release asset downloaded from {urlparse(prefix).hostname}')
+                    return package
+                raise ValueError('No mirror returned the requested release asset')
+            if asset_id is not None:
+                self._verify_release_asset(package, asset)
+            return package
+
+    @staticmethod
+    def _verify_release_asset(package, asset):
+        if len(package) != asset.get('size'):
+            raise ValueError('GitHub release asset size mismatch')
+        digest = asset.get('digest')
+        if digest and digest != 'sha256:' + hashlib.sha256(package).hexdigest():
+            raise ValueError('GitHub release asset digest mismatch')
+
+    async def _read_github_asset(self, client, asset_url, owner, repo, release_tag, asset_id, task_context):
+        downloaded = 0
+        chunks: list[bytes] = []
+        start_time = time.time()
+        current_url = asset_url
+        if task_context is not None:
+            task_context.set_current_action('downloading plugin package')
+            task_context.metadata.update({'download_total': 0, 'download_current': 0, 'download_speed': 0})
+
+        for redirect_count in range(_GITHUB_PLUGIN_DOWNLOAD_MAX_REDIRECTS + 1):
+            self._validate_github_download_hop(
+                current_url,
+                owner=owner,
+                repo=repo,
+                release_tag=release_tag,
+                asset_id=asset_id,
+            )
+            parsed = urlparse(current_url)
+            request_headers = {
+                'Accept-Encoding': 'identity',
+                'User-Agent': 'LangBot-Plugin-Installer',
+            }
+            if (parsed.hostname or '').lower() == 'api.github.com':
+                request_headers.update(
+                    {
+                        'Accept': 'application/octet-stream',
+                        'X-GitHub-Api-Version': '2022-11-28',
+                    }
+                )
+
+            async with client.stream('GET', current_url, headers=request_headers) as response:
+                if response.status_code in _HTTP_REDIRECT_STATUSES:
+                    location = response.headers.get('location')
+                    if not location:
+                        raise ValueError('GitHub release asset redirect is missing a location')
+                    if redirect_count >= _GITHUB_PLUGIN_DOWNLOAD_MAX_REDIRECTS:
+                        raise ValueError('GitHub release asset exceeded the redirect limit')
+                    next_url = urljoin(current_url, location)
+                    self._validate_github_download_hop(
+                        next_url,
+                        owner=owner,
+                        repo=repo,
+                        release_tag=release_tag,
+                        asset_id=asset_id,
+                    )
+                    current_url = next_url
+                    continue
+
+                response.raise_for_status()
+                content_length_header = response.headers.get('content-length')
+                try:
+                    content_length = int(content_length_header) if content_length_header is not None else 0
+                except ValueError as exc:
+                    raise ValueError('GitHub release asset has an invalid content length') from exc
+                if content_length < 0:
+                    raise ValueError('GitHub release asset has an invalid content length')
+                if content_length > _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES:
+                    raise ValueError('GitHub plugin package exceeds the 10 MiB download limit')
+                if task_context is not None:
+                    task_context.metadata['download_total'] = content_length
+
+                async for chunk in response.aiter_bytes(chunk_size=8192):
+                    downloaded += len(chunk)
+                    if downloaded > _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES:
                         raise ValueError('GitHub plugin package exceeds the 10 MiB download limit')
+                    chunks.append(chunk)
                     if task_context is not None:
-                        task_context.metadata['download_total'] = content_length
+                        elapsed = time.time() - start_time
+                        task_context.metadata.update(
+                            {
+                                'download_current': downloaded,
+                                'download_speed': downloaded / elapsed if elapsed > 0 else 0,
+                            }
+                        )
+                return b''.join(chunks)
 
-                    async for chunk in response.aiter_bytes(chunk_size=8192):
-                        downloaded += len(chunk)
-                        if downloaded > _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES:
-                            raise ValueError('GitHub plugin package exceeds the 10 MiB download limit')
-                        chunks.append(chunk)
-                        if task_context is not None:
-                            elapsed = time.time() - start_time
-                            task_context.metadata.update(
-                                {
-                                    'download_current': downloaded,
-                                    'download_speed': downloaded / elapsed if elapsed > 0 else 0,
-                                }
-                            )
-                    return b''.join(chunks)
-
-            raise ValueError('GitHub release asset exceeded the redirect limit')
+        raise ValueError('GitHub release asset exceeded the redirect limit')
 
     @staticmethod
     def _validate_github_download_hop(
@@ -2102,11 +2154,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 raise ValueError('Local plugin package is missing')
             file_bytes = candidate
         elif install_source == PluginInstallSource.GITHUB:
-            file_bytes = await self._download_github_package(
-                install_info,
-                task_context,
-            )
             install_info = validate_github_plugin_install_info(install_info)
+            if install_info.get('source_type') == 'branch':
+                from .github_mirror import GitHubSources
+
+                file_bytes = await GitHubSources(self.ap).branch_package(install_info)
+            else:
+                file_bytes = await self._download_github_package(install_info, task_context)
         else:
             raise ValueError(f'Unsupported plugin install source: {install_source.value}')
 

@@ -257,3 +257,96 @@ async def test_file_detach_during_read_does_not_return_bytes(artifact_replicas, 
     monkeypatch.setattr(content, '_read', detached)
     with pytest.raises(FileNotFoundError):
         await RAGRuntimeService(runtime.ap).get_file_stream(ctx, f'artifact:{file.uuid}', plugin_id='test/engine')
+
+
+async def _interrupt_one_ingestion(case):
+    runtime, tasks, ctx = await setup(case)
+    artifact = await runtime.ap.artifact_service.create(case.context, 'guide.txt', b'bytes', 'text/plain')
+    entered = asyncio.Event()
+
+    async def waiting(*args):
+        entered.set()
+        await asyncio.Event().wait()
+
+    runtime.ap.plugin_connector.call_rag_ingest.side_effect = waiting
+    await runtime.store_artifact(case.context, artifact['id'])
+    await asyncio.wait_for(entered.wait(), 5)
+    tasks[0].cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await tasks[0]
+    assert (await rows(runtime))[0].status == 'interrupted'
+    return runtime, artifact
+
+
+async def test_kb_with_only_interrupted_ingestion_can_be_deleted(artifact_replicas):
+    """Whole-KB deletion drops the engine collection, settling interrupted outcomes."""
+    case = artifact_replicas
+    runtime, artifact = await _interrupt_one_ingestion(case)
+    runtime.ap.rag_mgr = SimpleNamespace(delete_knowledge_base=AsyncMock())
+
+    await KnowledgeService(runtime.ap)._delete_knowledge_base_records(case.context, runtime.get_uuid())
+
+    runtime.ap.rag_mgr.delete_knowledge_base.assert_awaited_once()
+    assert not await rows(runtime)
+    remaining = (
+        await runtime.ap.persistence_mgr.execute_async(
+            sa.select(KnowledgeBase).where(KnowledgeBase.uuid == runtime.get_uuid())
+        )
+    ).all()
+    assert not remaining
+    # The knowledge-file holder was released with the file.
+    await runtime.ap.artifact_service.delete(case.context, artifact['id'])
+
+
+async def test_kb_with_active_ingestion_refuses_deletion_as_conflict(artifact_replicas):
+    from langbot.pkg.rag.errors import KnowledgeIngestionInProgressError
+
+    case = artifact_replicas
+    runtime, tasks, ctx = await setup(case)
+    artifact = await runtime.ap.artifact_service.create(case.context, 'guide.txt', b'bytes', 'text/plain')
+    entered = asyncio.Event()
+
+    async def waiting(*args):
+        entered.set()
+        await asyncio.Event().wait()
+
+    runtime.ap.plugin_connector.call_rag_ingest.side_effect = waiting
+    await runtime.store_artifact(case.context, artifact['id'])
+    await asyncio.wait_for(entered.wait(), 5)
+    runtime.ap.rag_mgr = SimpleNamespace(delete_knowledge_base=AsyncMock())
+    try:
+        with pytest.raises(KnowledgeIngestionInProgressError):
+            await KnowledgeService(runtime.ap)._delete_knowledge_base_records(case.context, runtime.get_uuid())
+        runtime.ap.rag_mgr.delete_knowledge_base.assert_not_awaited()
+        assert len(await rows(runtime)) == 1
+        kb = (
+            await runtime.ap.persistence_mgr.execute_async(
+                sa.select(KnowledgeBase).where(KnowledgeBase.uuid == runtime.get_uuid())
+            )
+        ).first()
+        assert kb is not None and kb.deleting is False
+    finally:
+        tasks[0].cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await tasks[0]
+
+
+async def test_vector_upsert_refused_once_kb_deletion_started(artifact_replicas):
+    case = artifact_replicas
+    runtime, _, ctx = await setup(case)
+    ap = runtime.ap
+    ap.vector_db_mgr = SimpleNamespace(upsert=AsyncMock(), search=AsyncMock(return_value=[]))
+    service = RAGRuntimeService(ap)
+    service._validate_execution_context = AsyncMock()
+
+    await service.vector_upsert(ctx, runtime.get_uuid(), [[0.1]], ['a'])
+    assert ap.vector_db_mgr.upsert.await_count == 1
+
+    await ap.persistence_mgr.execute_async(
+        sa.update(KnowledgeBase).where(KnowledgeBase.uuid == runtime.get_uuid()).values(deleting=True)
+    )
+    with pytest.raises(WorkspaceNotFoundError):
+        await service.vector_upsert(ctx, runtime.get_uuid(), [[0.1]], ['b'])
+    assert ap.vector_db_mgr.upsert.await_count == 1
+    # Reads still resolve so the engine can tear the collection down.
+    await service.vector_search(ctx, runtime.get_uuid(), [0.1], 1)

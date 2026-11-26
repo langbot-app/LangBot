@@ -53,8 +53,11 @@ async def test_model_selects_original_negation_without_rewriting_it():
 @pytest.mark.parametrize(
     "response",
     [
-        "```json\n[]\n```",
         "{}",
+        "",
+        "```json\n```",
+        "Here are the candidates: []",
+        "```json\n[]\n``` trailing prose",
         json.dumps(
             [{"candidate_type": "l2_episode", "evidence_quote": "I like coffee."}]
         ),
@@ -85,6 +88,41 @@ async def test_model_output_schema_and_full_evidence_are_validated(response):
         await extract_candidates(
             ModelPlugin(response), "model", TEXT, "2026-11-02T00:00:00Z", "alice", 3
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "wrap",
+    [
+        "```json\n{}\n```",
+        "```JSON\n{}```",
+        "```\n{}\n```",
+        "  \n```json\n{}\n```\n",
+    ],
+)
+async def test_single_wrapping_markdown_fence_is_accepted(wrap):
+    selected = await extract_candidates(
+        ModelPlugin(wrap.replace("{}", json.dumps(GOOD))),
+        "model", TEXT, "2026-11-02T00:00:00Z", "alice", 3,
+    )
+    assert [c["payload"]["value"] for c in selected] == [QUOTE]
+
+
+@pytest.mark.asyncio
+async def test_fenced_empty_list_selects_nothing():
+    assert await extract_candidates(
+        ModelPlugin("```json\n[]\n```"), "model", TEXT, "2026-11-02T00:00:00Z", "alice", 3
+    ) == []
+
+
+@pytest.mark.asyncio
+async def test_non_json_error_describes_shape_without_echoing_text():
+    with pytest.raises(ValueError) as info:
+        await extract_candidates(
+            ModelPlugin("I do not like coffee."), "model", TEXT, "2026-11-02T00:00:00Z", "alice", 3
+        )
+    assert "coffee" not in str(info.value)
+    assert "non-JSON" in str(info.value)
 
 
 @pytest.mark.asyncio

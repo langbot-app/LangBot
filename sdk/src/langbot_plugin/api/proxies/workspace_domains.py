@@ -399,6 +399,10 @@ PluginGithubAssetsArguments = TypedDict('PluginGithubAssetsArguments', {
     'repo': str,
 })
 
+PluginGithubRefsArguments = TypedDict('PluginGithubRefsArguments', {
+    'repo_url': str,
+})
+
 PluginGithubReleasesArguments = TypedDict('PluginGithubReleasesArguments', {
     'repo_url': str,
 })
@@ -647,6 +651,7 @@ MonitoringSessionsArguments = TypedDict('MonitoringSessionsArguments', {
     'bot_ids': NotRequired[Union[builtins.list[str], None]],
     'end_time': NotRequired[Union[str, None]],
     'is_active': NotRequired[Union[bool, None]],
+    'launcher_id': NotRequired[Union[str, None]],
     'limit': NotRequired[int],
     'offset': NotRequired[int],
     'pipeline_ids': NotRequired[Union[builtins.list[str], None]],
@@ -1261,6 +1266,11 @@ class PluginGithubDomain:
         arguments: PluginGithubAssetsArguments = {'owner': owner, 'release_id': release_id, 'repo': repo}
         return cast(OperationResult[dict[str, JSONValue]], await self._workspace.call('plugin.github.assets', **arguments))
 
+    async def refs(self, *, repo_url: str) -> OperationResult[dict[str, JSONValue]]:
+        'plugin.github.refs: List GitHub branches, tags and the default branch for a plugin repository URL.\nParameters (Python -> wire): repo_url -> repo_url.'
+        arguments: PluginGithubRefsArguments = {'repo_url': repo_url}
+        return cast(OperationResult[dict[str, JSONValue]], await self._workspace.call('plugin.github.refs', **arguments))
+
     async def releases(self, *, repo_url: str) -> OperationResult[dict[str, JSONValue]]:
         'plugin.github.releases: Fetch available release versions and tags for a plugin from its GitHub repository URL.\nParameters (Python -> wire): repo_url -> repo_url.'
         arguments: PluginGithubReleasesArguments = {'repo_url': repo_url}
@@ -1538,9 +1548,9 @@ class MonitoringDomain:
         arguments: MonitoringOverviewArguments = {'bot_ids': bot_ids, 'end_time': end_time, 'execution_statuses': execution_statuses, 'mode': mode, 'pipeline_ids': pipeline_ids, 'start_time': start_time}
         return cast(OperationResult[dict[str, JSONValue]], await self._workspace.call('monitoring.overview', **arguments))
 
-    async def sessions(self, *, bot_ids: Union[builtins.list[str], None] = None, end_time: Union[str, None] = None, is_active: Union[bool, None] = None, limit: int = 100, offset: int = 0, pipeline_ids: Union[builtins.list[str], None] = None, start_time: Union[str, None] = None, user_query: Union[str, None] = None) -> OperationResult[builtins.list[Union[builtins.list[dict[str, JSONValue]], int]]]:
-        'monitoring.sessions: Query chat sessions filtered by bot_ids, pipeline_ids, active status, user query keyword, and time range. Paginate results with limit and offset.\nParameters (Python -> wire): bot_ids -> bot_ids, end_time -> end_time, is_active -> is_active, limit -> limit, offset -> offset, pipeline_ids -> pipeline_ids, start_time -> start_time, user_query -> user_query.'
-        arguments: MonitoringSessionsArguments = {'bot_ids': bot_ids, 'end_time': end_time, 'is_active': is_active, 'limit': limit, 'offset': offset, 'pipeline_ids': pipeline_ids, 'start_time': start_time, 'user_query': user_query}
+    async def sessions(self, *, bot_ids: Union[builtins.list[str], None] = None, end_time: Union[str, None] = None, is_active: Union[bool, None] = None, launcher_id: Union[str, None] = None, limit: int = 100, offset: int = 0, pipeline_ids: Union[builtins.list[str], None] = None, start_time: Union[str, None] = None, user_query: Union[str, None] = None) -> OperationResult[builtins.list[Union[builtins.list[dict[str, JSONValue]], int]]]:
+        'monitoring.sessions: Query chat sessions filtered by bot_ids, pipeline_ids, active status, user query keyword, and time range. Paginate results with limit and offset.\nParameters (Python -> wire): bot_ids -> bot_ids, end_time -> end_time, is_active -> is_active, launcher_id -> launcher_id, limit -> limit, offset -> offset, pipeline_ids -> pipeline_ids, start_time -> start_time, user_query -> user_query.'
+        arguments: MonitoringSessionsArguments = {'bot_ids': bot_ids, 'end_time': end_time, 'is_active': is_active, 'launcher_id': launcher_id, 'limit': limit, 'offset': offset, 'pipeline_ids': pipeline_ids, 'start_time': start_time, 'user_query': user_query}
         return cast(OperationResult[builtins.list[Union[builtins.list[dict[str, JSONValue]], int]]], await self._workspace.call('monitoring.sessions', **arguments))
 
     async def tokens(self, *, bot_ids: Union[builtins.list[str], None] = None, bucket: str = 'hour', end_time: Union[str, None] = None, execution_statuses: Union[builtins.list[str], None] = None, mode: str = 'all', pipeline_ids: Union[builtins.list[str], None] = None, start_time: Union[str, None] = None) -> OperationResult[dict[str, JSONValue]]:

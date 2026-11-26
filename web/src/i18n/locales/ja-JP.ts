@@ -1466,6 +1466,12 @@ const jaJP = {
     collapse: '折りたたむ',
     imagesAttached: '枚の画像が添付されています',
     noLogs: 'ログはまだありません',
+    routeDraftExists:
+      '{{id}} のルーティングルールは既にあります。下に展開しました。',
+    routeDraftAddedGroup:
+      'グループ {{id}} のルールを先頭に追加しました。パイプラインを選んで保存してください。',
+    routeDraftAddedPerson:
+      'ユーザー {{id}} のルールを先頭に追加しました。パイプラインを選んで保存してください。',
     sessionMonitor: {
       resetContext: 'コンテキストをリセット',
       resetDescription:
@@ -1481,6 +1487,21 @@ const jaJP = {
       filterByGroup: '同じグループ',
       groupFilterActive: 'グループ {{group}}',
       clearGroupFilter: 'すべてのセッションを表示',
+      groupTitle: 'グループ {{group}}',
+      memberLine: 'メンバー：{{name}}',
+      lastSenderLine: '最新の発言者：{{name}}',
+      privateChat: '個人チャット',
+      groupChat: 'グループチャット',
+      groupId: 'グループ ID',
+      member: 'メンバー',
+      lastSender: '最新の発言者',
+      userId: 'ユーザー ID',
+      pipeline: 'パイプライン',
+      routeGroup: 'このグループのルーティングを設定',
+      routeGroupHint:
+        'このグループを特定のパイプラインへ送るルーティングルールを作成します',
+      contextShared: 'グループ共有コンテキスト',
+      contextPerMember: 'メンバー別コンテキスト',
 
       title: 'セッション監視',
       sessions: 'セッション一覧',
@@ -2263,6 +2284,25 @@ const jaJP = {
     backToReleases: 'リリース一覧に戻る',
     backToRepoUrl: 'リポジトリURLに戻る',
     backToAssets: 'ファイル選択に戻る',
+    githubSourceRelease: 'リリース',
+    githubSourceBranch: 'ブランチ',
+    searchBranches: 'ブランチを検索...',
+    defaultBranch: 'デフォルト',
+    noBranchesFound: '一致するブランチがありません',
+    branchesTruncated: '最初の 500 ブランチのみ表示しています',
+    pluginDirectory: 'プラグインディレクトリ',
+    pluginDirectoryPlaceholder: 'リポジトリのルート',
+    pluginDirectoryHelp:
+      'プラグインがルートにない場合、manifest.yaml を含むサブディレクトリを入力してください',
+    downloadSourceDirect: 'GitHub に直接接続 · {{latency}} ms',
+    downloadSourceMirror: 'ミラー {{host}} · {{latency}} ms',
+    releasesUnavailable:
+      'このサーバーから GitHub リリースにアクセスできません。ブランチからインストールできます。',
+    noReleasesUseBranch:
+      'このリポジトリにはリリースがありません。ブランチからインストールできます。',
+    useBranchInstead: 'ブランチからインストール',
+    fetchBranchesError: 'ブランチの取得に失敗しました：',
+    backToBranches: 'ブランチ一覧に戻る',
     releaseTag: 'タグ: {{tag}}',
     releaseName: '名前: {{name}}',
     publishedAt: '公開日: {{date}}',
@@ -3238,7 +3278,22 @@ const jaJP = {
       llm_calls: 'モデル呼び出し',
       tool_calls: 'ツール呼び出し',
       errors: 'エラー',
-      payload: '詳細',
+      payload: '生データ',
+      rawEvents: '生イベント（{{count}}{{more}}）',
+      copyJson: 'JSON をコピー',
+      diagnostics: '診断',
+      diagnosticsHint:
+        '項目を選ぶと、モデル呼び出し・ツール呼び出し・実行イベント・関連実行・会話コンテキストを読み込みます。',
+      chat: {
+        bot: 'ボット',
+        groupChat: 'グループチャット',
+        privateChat: '個人チャット',
+        source: '送信元',
+        groupId: 'グループ ID',
+        sender: '送信者',
+        routeGroup: 'このグループのルーティングを設定',
+        routePerson: 'このユーザーのルーティングを設定',
+      },
       metadata: '技術情報',
       loadMore: 'さらに読み込む',
       noRecords: '記録なし',
@@ -4308,6 +4363,7 @@ const jaJP = {
     emailDescription: '現在の送信方法：{{channel}}',
     recipients: '受信者（ワークスペースのオーナーと管理者）',
     noRecipients: 'メールアドレスを持つオーナーまたは管理者がいません。',
+    extraRecipientsCloud: '追加の受信者（最大 10 件）',
     extraRecipients: '追加の受信者（自前のメールサービスのみ、最大 10 件）',
     spaceRecipientsHint:
       'LangBot Space は LangBot アカウントでサインインした管理者本人のアドレスにのみ送信します。無料枠：アカウントごとに 1 日 20 通、月 200 通。',
@@ -4315,6 +4371,11 @@ const jaJP = {
       auto: '自動',
       autoDescription:
         'メールサービスが設定されていればそれを、なければ LangBot Space を使用',
+      autoDescriptionNoSpace: 'メールサービスが設定されている場合に使用',
+      autoDescriptionCloud: 'LangBot Cloud から公式に送信',
+      cloud: 'LangBot Cloud',
+      cloudConfigured: '公式メールサービス',
+      cloudMissing: 'Cloud のメールサービスは一時的に利用できません',
       instance: '自前のメールサービス',
       instanceConfigured: 'config.yaml で {{provider}} を設定済み',
       instanceMissing:

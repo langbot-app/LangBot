@@ -257,6 +257,7 @@ MIN_READ_PARAMS = {
     'plugin.config.get': {'author': 'a', 'plugin_name': 'p'},
     'plugin.get': {'author': 'a', 'plugin_name': 'p'},
     'plugin.github.assets': {'owner': 'o', 'repo': 'r', 'release_id': 1},
+    'plugin.github.refs': {'repo_url': 'https://github.com/langbot-app/test/tree/main'},
     'plugin.github.releases': {'repo_url': 'https://github.com/langbot-app/test/tree/main'},
     'plugin.logs': {'author': 'a', 'plugin_name': 'p'},
     'plugin.readme': {'author': 'a', 'plugin_name': 'p'},
@@ -283,7 +284,7 @@ async def test_processor_sweep_all_in_scope_read_operations(sweep_app):
         and not spec.side_effect
         and (spec.principals is None or PrincipalType.PROCESSOR in spec.principals)
     ]
-    assert len(read_op_ids) == 88
+    assert len(read_op_ids) == 89
 
     proc_ctx = await build_processor_request_context(
         sweep_app,
@@ -302,7 +303,14 @@ async def test_processor_sweep_all_in_scope_read_operations(sweep_app):
         return real_client(*args, **{**kwargs, 'transport': marketplace})
 
     with (
-        patch('langbot.pkg.api.application.plugin_operations._github_json', AsyncMock(return_value={'assets': []})),
+        patch(
+            'langbot.pkg.api.application.plugin_operations.GitHubSources.list_refs',
+            AsyncMock(return_value={'branches': []}),
+        ),
+        patch(
+            'langbot.pkg.api.application.plugin_operations._github_json',
+            AsyncMock(side_effect=lambda url: [] if url.endswith('/releases') else {'assets': []}),
+        ),
         patch('langbot.pkg.api.application.plugin_operations.httpx.AsyncClient', marketplace_client),
     ):
         for op_id in read_op_ids:

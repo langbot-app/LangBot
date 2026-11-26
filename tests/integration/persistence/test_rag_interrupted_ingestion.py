@@ -216,18 +216,33 @@ async def test_file_list_recovers_abandoned_task_without_restart(runtime):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('status', ['pending', 'processing', 'interrupted'])
-async def test_bulk_kb_delete_cannot_discard_unsettled_ingestion(runtime, status):
+@pytest.mark.parametrize('status', ['pending', 'processing'])
+async def test_bulk_kb_delete_cannot_discard_active_ingestion(runtime, status):
     from langbot.pkg.entity.persistence.rag import Chunk
+    from langbot.pkg.rag.errors import KnowledgeIngestionInProgressError
 
     async with runtime.ap.persistence_mgr.get_db_engine().begin() as conn:
         await conn.run_sync(lambda sync: Chunk.__table__.create(sync))
     await seed(runtime, status=status)
     service = make_service(runtime)
-    with pytest.raises(RuntimeError, match='ingestion'):
+    with pytest.raises(KnowledgeIngestionInProgressError, match='ingestion'):
         await service.delete_knowledge_base(CONTEXT, 'kb-a')
     assert await read_file_row(runtime) is not None
     runtime.ap.rag_mgr.delete_knowledge_base.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_bulk_kb_delete_settles_interrupted_ingestion(runtime):
+    """Dropping the whole engine collection settles an interrupted file's unknown outcome."""
+    from langbot.pkg.entity.persistence.rag import Chunk
+
+    async with runtime.ap.persistence_mgr.get_db_engine().begin() as conn:
+        await conn.run_sync(lambda sync: Chunk.__table__.create(sync))
+    await seed(runtime, status='interrupted')
+    service = make_service(runtime)
+    await service.delete_knowledge_base(CONTEXT, 'kb-a')
+    runtime.ap.rag_mgr.delete_knowledge_base.assert_awaited_once()
+    assert await read_file_row(runtime) is None
 
 
 @pytest.mark.asyncio
