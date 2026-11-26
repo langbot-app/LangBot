@@ -1,4 +1,5 @@
 {
+  "The declared LangBot version range is incompatible with the current version ({current})": "El rango de versiones de LangBot declarado por el complemento no es compatible con la versión actual ({current})",
   "No plugin version is compatible with this LangBot version": "Ninguna versión del complemento es compatible con esta versión de LangBot",
   "Daily message quota reached ({limit} per day). It resets at 00:00 UTC. Upgrade your plan for a higher quota.": "Se alcanzó el límite diario de mensajes ({limit} al día). Se restablece a las 00:00 UTC. Mejora tu plan para aumentar el límite.",
   "The bot route changed. Read the current binding.": "La ruta del bot ha cambiado. Consulta la vinculación actual.",

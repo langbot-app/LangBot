@@ -226,12 +226,9 @@ def build_plugin_package(
 
     metadata = packaging_manifest.get("metadata") or {}
     if validate_compatibility and "compatibility" in metadata:
-        from langbot_plugin.utils.version_compat import parse_range
+        from langbot_plugin.utils.version_compat import declared_range, parse_range
 
-        compatibility = metadata["compatibility"]
-        if not isinstance(compatibility, dict):
-            raise ValueError("metadata.compatibility must be a mapping")
-        parse_range(compatibility.get("langbot", {}))
+        parse_range(declared_range(metadata))
     plugin_author = str(metadata.get("author") or "unknown")
     plugin_name = str(metadata.get("name") or "plugin")
     plugin_version = str(metadata.get("version") or "0.0.0")

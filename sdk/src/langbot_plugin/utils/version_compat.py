@@ -4,15 +4,22 @@ import math
 import re
 
 
+class InvalidCompatibility(ValueError):
+    """Invalid LangBot compatibility declaration in a plugin manifest."""
+
+
 def _mapping(value, field):
     if not isinstance(value, dict):
-        raise ValueError(f"{field} must be a mapping")
+        raise InvalidCompatibility(f"{field}: expected a mapping, got {value!r}")
     return value
 
 
 def _endpoint(value, side):
+    field = f"metadata.compatibility.langbot.{side}"
     if not isinstance(value, str):
-        raise ValueError(f"{side}: quote the version number (请用引号包住版本号)")
+        raise InvalidCompatibility(
+            f"{field}: 请用引号包住版本号（YAML 解析值为 {value!r}）"
+        )
     parts = value.removeprefix("v").split(".")
     result = []
     for part in parts:
@@ -21,20 +28,32 @@ def _endpoint(value, side):
         elif side == "max" and result and part in ("x", "*"):
             result.append(math.inf)
         else:
-            raise ValueError(f"Invalid LangBot {side} version: {value!r}")
+            raise InvalidCompatibility(f"{field}: invalid version {value!r}")
     if len(result) > 3:
-        raise ValueError(f"Invalid LangBot {side} version: {value!r}")
+        raise InvalidCompatibility(f"{field}: invalid version {value!r}")
     return tuple(result + [0 if side == "min" else math.inf] * (3 - len(result)))
 
 
+def declared_range(metadata):
+    compat = metadata.get("compatibility")
+    if compat is None:
+        return {}
+    bounds = _mapping(compat, "metadata.compatibility").get("langbot")
+    return {} if bounds is None else _mapping(bounds, "metadata.compatibility.langbot")
+
+
 def parse_range(declaration):
-    declaration = _mapping(declaration, "compatibility.langbot")
+    if declaration is None:
+        return None, None
+    declaration = _mapping(declaration, "metadata.compatibility.langbot")
     lower, upper = (
         _endpoint(declaration[key], key) if key in declaration else None
         for key in ("min", "max")
     )
     if lower and upper and lower > upper:
-        raise ValueError("LangBot min version exceeds max version")
+        raise InvalidCompatibility(
+            f"metadata.compatibility.langbot.min: {declaration['min']!r} exceeds max {declaration['max']!r}"
+        )
     return lower, upper
 
 
@@ -49,8 +68,7 @@ def check(manifest_dict, core_version):
     result = dict(status="unspecified", min=None, max=None, current=core_version)
     try:
         metadata = _mapping(manifest_dict.get("metadata", {}), "metadata")
-        compat = _mapping(metadata.get("compatibility", {}), "compatibility")
-        declaration = _mapping(compat.get("langbot", {}), "compatibility.langbot")
+        declaration = declared_range(metadata)
         for key in ("min", "max"):
             if isinstance(declaration.get(key), str):
                 result[key] = declaration[key]

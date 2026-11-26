@@ -10,6 +10,7 @@ def test_select_latest_compatible_release():
     with pytest.raises(ApplicationAPIException) as error:
         _select_marketplace_plugin_version([{'version': '9.0'}], detail={'compatible_version': None}, **options)
     assert error.value.error.code == 'plugin_incompatible_langbot_version'
+    assert error.value.error.message == 'No plugin version is compatible with this LangBot version'
 
 
 @pytest.mark.parametrize(

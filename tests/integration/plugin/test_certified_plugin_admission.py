@@ -255,6 +255,10 @@ async def test_incompatible_local_archive_requires_confirmation_before_storage()
         await connector.install_plugin(PluginInstallSource.LOCAL, {'plugin_file': package})
     assert error.value.error.code == 'plugin_incompatible_langbot_version'
     assert error.value.error.details['min'] == '99'
+    assert (
+        error.value.error.message
+        == f'The declared LangBot version range is incompatible with the current version ({error.value.error.details["current"]})'
+    )
     connector._store_artifact_package.assert_not_awaited()
     await connector.install_plugin(PluginInstallSource.LOCAL, {'plugin_file': package, 'allow_incompatible': True})
     connector._store_artifact_package.assert_awaited_once()

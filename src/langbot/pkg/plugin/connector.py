@@ -24,7 +24,7 @@ from ..telemetry import usage
 from . import handler
 from . import runtime_ops
 from langbot import __version__
-from .compatibility import compatibility, incompatible, compatible_release
+from .compatibility import compatibility, incompatible_package, compatible_release
 from .errors import (
     PluginRuntimeNotConnectedError,
     PluginInstallationFailedError,
@@ -2184,7 +2184,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         manifest, _, _ = inspect_plugin_archive_metadata(file_bytes, require_manifest=True)
         status = compatibility(manifest)
         if status['status'] in {'invalid', 'incompatible'} and install_info.get('allow_incompatible') is not True:
-            raise incompatible(status)
+            raise incompatible_package(status)
         from ..api.application.plugin_permissions import read_declaration, expand_declaration
 
         expand_declaration(self.ap, read_declaration(manifest))
