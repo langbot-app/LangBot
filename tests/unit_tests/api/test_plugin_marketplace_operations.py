@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 
 import httpx
 import pytest
+from langbot import __version__
 
 from langbot.pkg.api.application import plugin_operations as ops
 from langbot.pkg.api.application.api import ApplicationAPI
@@ -98,6 +99,7 @@ async def test_marketplace_search_proxies_configured_space_and_projects_results(
     request = space.requests[0]
     assert str(request.url) == 'https://space.example/api/v1/marketplace/plugins/search'
     assert json.loads(request.content) == {
+        'langbot_version': __version__,
         'query': 'weather',
         'page': 1,
         'page_size': 10,
