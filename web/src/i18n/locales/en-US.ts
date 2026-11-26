@@ -4330,6 +4330,7 @@ const enUS = {
     emailDescription: 'Currently sent via: {{channel}}',
     recipients: 'Recipients (Workspace owners and admins)',
     noRecipients: 'No owner or admin has an email address.',
+    extraRecipientsCloud: 'Extra recipients (up to 10)',
     extraRecipients: 'Extra recipients (your mail service only, up to 10)',
     spaceRecipientsHint:
       'LangBot Space only mails admins who signed in with LangBot Space, at their own Space address. Free quota: 20 per day, 200 per month per account.',
@@ -4337,6 +4338,11 @@ const enUS = {
       auto: 'Automatic',
       autoDescription:
         'Your mail service when configured, otherwise LangBot Space',
+      autoDescriptionNoSpace: 'Your mail service when configured',
+      autoDescriptionCloud: 'Sent by LangBot Cloud',
+      cloud: 'LangBot Cloud',
+      cloudConfigured: 'Official mail service',
+      cloudMissing: 'Cloud mail service is temporarily unavailable',
       instance: 'Your mail service',
       instanceConfigured: '{{provider}} configured in config.yaml',
       instanceMissing:

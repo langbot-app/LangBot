@@ -4304,6 +4304,7 @@ const viVN = {
     emailDescription: 'Hiện gửi qua: {{channel}}',
     recipients: 'Người nhận (chủ sở hữu và quản trị viên Workspace)',
     noRecipients: 'Không có chủ sở hữu hoặc quản trị viên nào có email.',
+    extraRecipientsCloud: 'Người nhận bổ sung (tối đa 10)',
     extraRecipients:
       'Người nhận bổ sung (chỉ dịch vụ email của bạn, tối đa 10)',
     spaceRecipientsHint:
@@ -4312,6 +4313,11 @@ const viVN = {
       auto: 'Tự động',
       autoDescription:
         'Dùng dịch vụ email của bạn nếu đã cấu hình, nếu không dùng LangBot Space',
+      autoDescriptionNoSpace: 'Dịch vụ email của bạn khi đã cấu hình',
+      autoDescriptionCloud: 'Gửi bởi LangBot Cloud',
+      cloud: 'LangBot Cloud',
+      cloudConfigured: 'Dịch vụ email chính thức',
+      cloudMissing: 'Dịch vụ email của Cloud tạm thời không khả dụng',
       instance: 'Dịch vụ email của bạn',
       instanceConfigured: 'Đã cấu hình {{provider}} trong config.yaml',
       instanceMissing:

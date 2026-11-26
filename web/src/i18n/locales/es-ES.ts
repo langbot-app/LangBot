@@ -4400,6 +4400,7 @@ const esES = {
     emailDescription: 'Se envía actualmente por: {{channel}}',
     recipients: 'Destinatarios (propietarios y administradores del Workspace)',
     noRecipients: 'Ningún propietario o administrador tiene correo.',
+    extraRecipientsCloud: 'Destinatarios adicionales (hasta 10)',
     extraRecipients:
       'Destinatarios adicionales (solo tu servicio de correo, hasta 10)',
     spaceRecipientsHint:
@@ -4408,6 +4409,12 @@ const esES = {
       auto: 'Automático',
       autoDescription:
         'Tu servicio de correo si está configurado; si no, LangBot Space',
+      autoDescriptionNoSpace: 'Tu servicio de correo cuando esté configurado',
+      autoDescriptionCloud: 'Enviado por LangBot Cloud',
+      cloud: 'LangBot Cloud',
+      cloudConfigured: 'Servicio de correo oficial',
+      cloudMissing:
+        'El servicio de correo de Cloud no está disponible temporalmente',
       instance: 'Tu servicio de correo',
       instanceConfigured: '{{provider}} configurado en config.yaml',
       instanceMissing:

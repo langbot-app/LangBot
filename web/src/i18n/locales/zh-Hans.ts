@@ -4078,12 +4078,18 @@ const zhHans = {
     emailDescription: '当前发送方式：{{channel}}',
     recipients: '收件人（工作区所有者和管理员）',
     noRecipients: '没有带邮箱的所有者或管理员。',
+    extraRecipientsCloud: '额外收件人（最多 10 个）',
     extraRecipients: '额外收件人（仅限你的邮件服务，最多 10 个）',
     spaceRecipientsHint:
       'LangBot Space 只发给使用 LangBot 账号登录的管理员本人的邮箱。免费额度：每个账号每天 20 封、每月 200 封。',
     channel: {
       auto: '自动',
       autoDescription: '已配置邮件服务时使用它，否则使用 LangBot Space',
+      autoDescriptionNoSpace: '已配置邮件服务时使用它',
+      autoDescriptionCloud: '由 LangBot Cloud 发送',
+      cloud: 'LangBot Cloud',
+      cloudConfigured: '官方邮件服务',
+      cloudMissing: 'Cloud 邮件服务暂不可用',
       instance: '你的邮件服务',
       instanceConfigured: '已在 config.yaml 中配置 {{provider}}',
       instanceMissing:
