@@ -10,7 +10,7 @@ Bots receive message events from messaging platforms and hand them to a Chat, an
 The "Event routing" area of a bot has three tabs:
 
 - **Routes**: decide which processor handles each kind of event. Incoming messages can go to a Chat (formerly Pipeline), an Agent or a plugin processor. You can add conditional routes; when none matches, the default route applies.
-- **Plugins**: choose the plugins enabled on this bot, either "Enable all plugins" or a manual selection. Enabling a plugin enables both its commands and its event listeners (message lifecycle hooks). New bots enable all plugins. A single route can use its own selection. Each plugin shows whether its hooks apply to the processor of the selected route; for example `PromptPreProcessing` only applies to Chats.
+- **Plugins & commands**: choose the plugins enabled on this bot ("Enable all plugins" or a manual selection), and configure built-in [system commands](/en/deploy/system-commands) and plugin commands (enable/disable, command prefix defaulting to `/`, and `everyone` / `admins` permissions; enabled system commands take priority over same-named plugin commands). Enabling a plugin enables both its commands and its chat event hooks (formerly EventListener). New bots enable all plugins. A single route can use its own selection. Each plugin shows whether its hooks apply to the processor of the selected route; for example `PromptPreProcessing` only applies to Chats.
 - **Message policy**: the trigger, safety and general output settings that used to live in the pipeline now belong to the bot and apply to Chats, Agents and plugin commands. The bot has a default policy; a single route can override it.
 
 The message policy covers:
@@ -33,7 +33,13 @@ Notes:
 
 Use `lbctl bot get <bot>` to find a route ID. With `lbctl bot routes bind <bot> --binding <id> --agent <agent> --dry-run` you can check a change before applying it with `--yes`. Use `--pipeline` for a Chat target. If the binding changes concurrently, Core returns a conflict and the CLI can read the latest configuration.
 
-**Route one group to its own pipeline**: open the bot's **Sessions** tab and select a session from that group. The full **Group ID** (copyable) appears under the title. Click **Route this group** to add a rule at the top of the event routes that matches chat type = group and chat ID = that group. Pick the pipeline and save; other groups keep using the rules below it. The execution detail drawer shows the same Group ID and shortcut.
+**Route one group to its own Chat or Agent**: open the bot's **Sessions** tab and select a session from that group. The full **Group ID** (copyable) appears under the title. Click **Route this group** to add a rule at the top of the event routes that matches chat type = group and chat ID = that group. Choose the target processor and save; other groups keep using the rules below it. The execution detail drawer shows the same Group ID and shortcut.
+
+## Session Monitoring & Upgrade Checks
+
+- **Session monitoring**: session lists and execution records can be filtered by handling type and show four status badges: **AI**, **Command** (system commands, plugin commands, and command denied), **Plugin** (event processors / lifecycle hook interceptions), and **Blocked by policy** (with the rule name and whether it came from the bot default or a route override). Execution details include a four-stage **Message policy** timeline (**Admission** → **Lifecycle hooks** → **Processor** → **Output**), and the **Routes** tab shows **Last 24h** counts (AI / Commands / Plugins / Blocked) per route.
+- **Bot admins**: configure bot admins inside the bot's **Sessions** tab (send `/whoami` to inspect a sender ID). When the admin list is empty, no one can run admin-only system or plugin commands.
+- **Upgrade checks**: after upgrading from an earlier release, an **Upgrade checks** banner appears on the Bots and Chats pages summarizing command prefix changes, plugin command collisions or an installed `EssentialCommands` plugin, bots missing admins, newly enabled command plugins, equivalent route overrides that can become the bot default, and moved Chat settings, with one-click actions and acknowledgements.
 
 
 
