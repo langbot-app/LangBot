@@ -46,7 +46,7 @@ Start LangBot with consistent `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `http_pr
 
 ### Verification
 
-Backend startup should no longer show old proxy addresses, and a pipeline Debug Chat should complete with a Bot response.
+Backend startup should no longer show old proxy addresses, and a Chat Debug Chat should complete with a Bot response.
 
 ## mcp-stdio-args-not-applied: MCP Stdio test runs only the command without arguments
 
@@ -66,11 +66,11 @@ Structured entry: `../troubleshooting/dynamic-form-missing-config-id.yaml`
 
 Dynamic plugin/runner schemas can trigger React unique-key warnings when schema items lack `id`. Prefer backend-generated stable ids and keep frontend fallback keys.
 
-## pipeline-form-controlled-warning: Pipeline form input switches from uncontrolled to controlled
+## pipeline-form-controlled-warning: Chat form input switches from uncontrolled to controlled
 
 Structured entry: `../troubleshooting/pipeline-form-controlled-warning.yaml`
 
-Pipeline edit forms should initialize string fields to empty strings and coalesce loaded nullable values before rendering inputs.
+Chat edit forms should initialize string fields to empty strings and coalesce loaded nullable values before rendering inputs.
 
 ## marketplace-network-flaky: Marketplace requests are flaky but plugin data may still load
 

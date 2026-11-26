@@ -22,7 +22,7 @@ Read the matching doc page before writing code; do not guess SDK signatures.
 Declare components in `manifest.yaml` `spec.components`; each component has a `.yaml` (metadata) and a `.py` (implementation). Docs per type in `docs/en/plugin/dev/components/`:
 
 - `EventListener`: Chat event hooks (聊天事件钩子). Enable the plugin on the bot or route, not in the Chat tool list. See [message lifecycle](references/sdk-pitfalls.md#chat-event-hooks) for command ordering and streaming limitations.
-- `Command`: `!command` handlers. `Tool`: LLM function-call tools.
+- `Command`: `/command` handlers. `Tool`: LLM function-call tools.
 - `Runner`: an Agent runner/event processor (see LocalAgent and other `plugins/Runner/*`).
 - `KnowledgeEngine`, `KnowledgeRetriever`, `Parser`: RAG backends, retrieval and document parsing.
 - `Page`: plugin-provided WebUI pages.
@@ -32,7 +32,7 @@ Declare components in `manifest.yaml` `spec.components`; each component has a `.
 | Surface | Call | Docs |
 | --- | --- | --- |
 | Common plugin APIs (models, storage, bots, messages) | `self.plugin.invoke_llm(...)`, `self.plugin.send_message(...)`, ... | `apis/common.mdx`, `apis/messages.mdx`, `apis/llm-requests.mdx` |
-| Pipeline event context | `event_context.reply(...)`, `prevent_default()` | `apis/pipeline-events.mdx` |
+| Chat event context | `event_context.reply(...)`, `prevent_default()` | `apis/pipeline-events.mdx` |
 | Platform API | `self.plugin.call_platform_api(bot_uuid, action, params)`; standard actions first, adapter-specific actions via `action="call_platform_api"` | `apis/platform.mdx` |
 | Workspace API (Unified API) | `self.plugin.workspace.<domain>.<op>(...)` or `self.plugin.workspace.call("<op.id>", ...)`; Runners use `ctx.api.workspace` | `apis/workspace.mdx` |
 | Runner context | `ctx.api`, `ctx.resources` | `apis/agent-run.mdx`, `components/runner.mdx` |
@@ -69,7 +69,7 @@ lbp build                # package .lbpkg
 lbp login && lbp publish # upload to LangBot Space as a draft
 ```
 
-The debug key is per Workspace and rotates every two hours. For test traffic, prefer Debug Chat or the pipeline WebSocket in `references/testing.md`; drive instance setup through the `langbot-mcp-ops` skill.
+The debug key is per Workspace and rotates every two hours. For test traffic, prefer Debug Chat or the Chat WebSocket in `references/testing.md`; drive instance setup through the `langbot-mcp-ops` skill.
 
 For official plugins under `plugins/`, keep each plugin's dependencies and tests independent, regenerate `plugins/catalog.json` with `python plugins/scripts/check_catalog.py --write`, and never add plugin dependencies to Core.
 
@@ -81,5 +81,5 @@ For official plugins under `plugins/`, keep each plugin's dependencies and tests
 
 ## References
 
-- `references/sdk-pitfalls.md`: verified SDK gotchas (MessageChain iteration, `invoke_llm` arguments, `prevent_default` vs `prevent_postorder`, component YAML shape, import paths), pipeline event table, config field types, EventListener-only pattern.
-- `references/testing.md`: pipeline WebSocket testing, group trigger rules, restart timing, debugging checklist.
+- `references/sdk-pitfalls.md`: verified SDK gotchas (MessageChain iteration, `invoke_llm` arguments, `prevent_default` vs `prevent_postorder`, component YAML shape, import paths), Chat event table, config field types, EventListener-only pattern.
+- `references/testing.md`: Chat WebSocket testing, group trigger rules, restart timing, debugging checklist.

@@ -40,7 +40,7 @@ preconditions:
 steps:
   - "Prepare a small PNG file for upload. The bundled fixture base64 is at skills/langbot-testing/fixtures/multimodal/red-square.png.base64 if a temporary file is needed."
   - "Open LANGBOT_FRONTEND_URL."
-  - "Navigate to Pipelines and open the target local-agent pipeline."
+  - "Navigate to Processors and open the target local-agent pipeline."
   - "Open Configuration > AI."
   - "Use runner Default or the pluginized langbot-team/LocalAgent runner."
   - "Select a model that supports image input in the current environment, or use a known model that at least accepts the uploaded image payload."

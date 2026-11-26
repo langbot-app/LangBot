@@ -49,7 +49,7 @@ steps:
   - "Ensure case langrag-kb-retrieve has produced a knowledge base containing sentinel azalea-cobalt-7421."
   - "Prepare a PNG file for upload. Prefer the bundled fixture at skills/langbot-testing/fixtures/multimodal/red-square.png.base64."
   - "Open LANGBOT_FRONTEND_URL."
-  - "Navigate to Pipelines and open the target local-agent pipeline."
+  - "Navigate to Processors and open the target local-agent pipeline."
   - "Open Debug Chat."
   - "Attach the PNG through the image/file upload control."
   - "Send: I attached an image. Use the knowledge base and reply only the unique sentinel from the knowledge base."

@@ -38,7 +38,7 @@ fault_model_json: '{"target":"local Box runtime child owned by the active LangBo
 load_profile_json: '{"requests":1,"concurrency":1,"classification":"recovery-not-throughput-benchmark"}'
 preconditions:
   - "Run only against a disposable local LangBot development instance; never use a shared or production-like backend."
-  - "The selected Local Agent pipeline uses a model route that supports qa_mcp_echo tool calls."
+  - "The selected Local Agent Chat uses a model route that supports qa_mcp_echo tool calls."
   - "qa-local-stdio is already connected and LANGBOT_MCP_QA_STDIO_SERVER_UUID points to it."
 steps:
   - "Verify Box is available, the saved MCP server is connected, and qa_mcp_echo is globally visible."

@@ -1,6 +1,6 @@
 ---
 name: langbot-mcp-ops
-description: Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, agents, Chats (pipelines), models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (web-UI lbk_ keys and the config.yaml global key), the tool surface, and client configuration. Triggers on "langbot mcp", "manage langbot via mcp", "langbot /mcp", "langbot mcp server".
+description: Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, agents, Chats, models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (web-UI lbk_ keys and the config.yaml global key), the tool surface, and client configuration. Triggers on "langbot mcp", "manage langbot via mcp", "langbot /mcp", "langbot mcp server".
 ---
 
 # LangBot MCP Operations
@@ -81,7 +81,7 @@ or upgrading a plugin, direct a member to WebUI to review pending permissions.
 The marketplace HTTP install option `auto_confirm_permissions` is used by the
 setup wizard and remains member-only; setting it with an API key cannot grant
 permissions. Migration with plugin installation enabled uses the same checks.
-Pipeline extensions accept `allowed_platform_tools` as model preferences, not
+Chat extensions accept `allowed_platform_tools` as model preferences, not
 installation grants. See `docs/en/plugin/dev/permissions.mdx` for HTTP contracts.
 
 
@@ -95,7 +95,7 @@ Use `get_workspace_sandbox(refresh=true)` to detect selectable environments and 
 
 `create_bot` requires `bot_data.name` and `bot_data.adapter` as non-empty strings,
 and `bot_data.adapter_config` as an object with the adapter's settings.
-For `update_pipeline`, fetch the current pipeline before editing: `config`
+For `update_pipeline`, fetch the current Chat before editing: `config`
 preserves omitted top-level sections and replaces each supplied section in full,
 without deep merging. Supplied sections must be objects. The merged configuration
 is validated before persistence; secret placeholders retain existing values.
@@ -123,14 +123,17 @@ with `enable_all_plugins=false` denies its AI-callable tools, while allowing its
 | Tool | Purpose |
 | --- | --- |
 | `get_system_info` | Version, edition, instance id |
-| `list_bots` / `get_bot` / `create_bot` / `update_bot` / `delete_bot` | Manage messaging-platform bots (secrets redacted on read); supports `command_settings` |
+| `list_bots` / `get_bot` / `create_bot` / `update_bot` / `delete_bot` | Manage messaging-platform bots (secrets redacted on read); supports `message_policy` and `command_settings` |
 | `list_plugin_commands` | List commands provided by installed plugins in the current Workspace |
 | `list_bot_event_route_statuses` | Inspect bot event-route runtime status |
-| `list_processors` / `get_processor` / `create_processor` / `update_processor` / `delete_processor` | Manage the peer Agent, Pipeline, Event processor and Command processor types |
+| `list_bot_plugin_registrations` | Inspect bot or route plugin commands and Chat event hooks |
+| `list_message_upgrade_checks` | List message-policy upgrade checks and migration reports |
+| `sync_bot_platform_commands` | Synchronize the running bot’s platform command menu |
+| `list_processors` / `get_processor` / `create_processor` / `update_processor` / `delete_processor` | Manage the peer Agent, Chat, Event processor and Command processor types |
 | `get_processor_metadata` | Discover installed event-capable Runner components and command-providing plugins, schemas and supported event patterns. |
 | `list_processor_runs` / `get_processor_run_events` | Read one Agent, Event processor or Command processor run history and logs; paginate with `before_id` / `after_sequence`. |
 | `debug_agent` | Execute a synthetic Agent event (`processor_uuid`, `payload`); requires `runtime.operate`. Returns final text and up to 1000 execution events (thinking, text, tool arguments/results). Platform tools use Mock; other configured tools execute normally. Optional `payload.mock`: `errors`/`results` keyed by platform tool name, `unsupported_apis` lists unavailable platform APIs. |
-| `list_pipelines` / `get_pipeline` / `create_pipeline` / `update_pipeline` / `delete_pipeline` | Manage pipelines |
+| `list_pipelines` / `get_pipeline` / `create_pipeline` / `update_pipeline` / `delete_pipeline` | Manage Chats |
 | `list_llm_models` / `get_llm_model` / `list_embedding_models` / `list_asr_models` / `list_tts_models` / `list_model_providers` | Inspect models & providers |
 | `list_knowledge_bases` / `get_knowledge_base` / `retrieve_knowledge_base` | RAG knowledge bases (incl. semantic search) |
 | `list_mcp_servers` | External MCP servers LangBot connects to (as a client) |
@@ -147,11 +150,11 @@ shape as the corresponding HTTP API request body. Discover resources with the
 `resource.view`; mutations require `resource.manage`. All service calls inherit
 the immutable Workspace context authenticated at the MCP transport boundary.
 Pass `is_default: true` to `create_pipeline` only when the Workspace does not
-already have a default pipeline.
+already have a default Chat.
 
 ## How to use
 
-Chat (pipeline) plugin extension switches authorize only the AI-callable Tool
+Chat plugin extension switches authorize only the AI-callable Tool
 components; EventListener hooks and Commands are enabled on the bot through
 `message_policy.plugins`. Select the Runner independently in AI settings. An empty extension
 allowlist does not prevent saving, copying or running that Runner. Never enable
@@ -224,9 +227,9 @@ state as well; it is not the same operation as disconnecting an account.
 
 `create_bot` without non-empty `event_bindings` adds two explicit message routes:
 private chat (`chat_type eq person`) and group chat (`chat_type eq group` plus
-`is_at_bot eq true`). Both use the Workspace's default Pipeline, or the first
-available Pipeline. If none exists, first-bot setup creates one with the full
-default config. Creating a Pipeline via `create_agent(kind="pipeline")` also uses
+`is_at_bot eq true`). Both use the Workspace's default Chat, or the first
+available Chat. If none exists, first-bot setup creates one with the full
+default config. Creating a Chat via `create_agent(kind="pipeline")` also uses
 that full default config. Configure an authorized model before testing replies.
 
 Explicit routes on create are preserved; `update_bot` never automatically
@@ -245,7 +248,7 @@ optional `parameters`. API callers may also supply these when creating an instan
 Bind an instance by updating the bot's `plugin_processors` array with
 `{"processor_uuid": "<instance UUID>", "enabled": true}`. This replaces the full
 subscription list; preserve bindings you want to keep. Do not add plugin processors
-to `event_bindings`, which remains exclusive Agent/Pipeline routing.
+to `event_bindings`, which remains exclusive Agent/Chat routing.
 Each enabled subscription independently receives the installed Runner's declared
 events. Slow or failed subscribers do not prevent other subscribers or the primary
 route from executing. Installation alone never activates a handler. Reusing an
@@ -315,7 +318,7 @@ reported stage, not an estimated completion percentage. The UI uses the shared
 
 Use `get_monitoring_executions` for the execution list and
 its legacy `pipeline_ids` parameter to filter any processor kind (Agent,
-Pipeline or event processor); the summary uses the same processor scope. Use
+Chat or event processor); the summary uses the same processor scope. Use
 `get_monitoring_execution_detail` with `source=auto` to resolve a run,
 message or event identifier outside the current list page. The detail exposes
 `inputs`, `outputs` (generated content), `deliveries` (recorded platform sends),
@@ -337,7 +340,7 @@ Session lists support `bot_ids`, `pipeline_ids`, `start_time`, `end_time`,
 `user_query`, `launcher_id`, `is_active`, and pagination. For execution status or real/debug
 filters, use `get_monitoring_executions`; HTTP `/monitoring/sessions` rejects
 them. In HTTP `/monitoring/data`, `sessions` and `totalCount.sessions` use only
-bot/pipeline/time filters; execution filters apply to the other records.
+bot/Chat/time filters; execution filters apply to the other records.
 
 ### Workspace message language
 

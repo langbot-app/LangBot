@@ -1,13 +1,13 @@
-# Pipeline Debug Chat
+# Chat Debug Chat
 
 ## Goal
 
-Verify that a pipeline can receive a private debug message and return a bot response through the configured frontend.
+Verify that a Chat can receive a private debug message and return a bot response through the configured frontend.
 
 ## Path
 
 1. Open `LANGBOT_FRONTEND_URL` from `skills/.env` or the active user-provided environment.
-2. Navigate to `Pipelines`.
+2. Navigate to `Processors`.
 3. Open the target pipeline.
 4. Select `Debug Chat`.
 5. Send a short deterministic prompt, for example:

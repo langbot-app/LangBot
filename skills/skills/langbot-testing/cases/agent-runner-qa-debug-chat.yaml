@@ -43,14 +43,14 @@ setup_provides_env:
   - LANGBOT_QA_RUNNER_PIPELINE_NAME
 steps:
   - "Open LANGBOT_FRONTEND_URL."
-  - "Open the pipeline from LANGBOT_QA_RUNNER_PIPELINE_URL or LANGBOT_QA_RUNNER_PIPELINE_NAME."
-  - "Confirm the pipeline AI runner is plugin:qa/agent-runner/default."
+  - "Open the Chat from LANGBOT_QA_RUNNER_PIPELINE_URL or LANGBOT_QA_RUNNER_PIPELINE_NAME."
+  - "Confirm the Chat AI runner is plugin:qa/agent-runner/default."
   - "Open Debug Chat."
   - "Send: hello-live."
 checks:
   - "UI: The user message appears in Debug Chat."
   - "UI: A Bot message appears and contains QA_RUNNER_OK:hello-live."
-  - "API diagnostic: pipeline config uses plugin:qa/agent-runner/default."
+  - "API diagnostic: Chat config uses plugin:qa/agent-runner/default."
   - "Console: No unexpected frontend runtime errors appear during the send/receive path."
 evidence_required:
   - ui

@@ -45,11 +45,11 @@ setup_provides_env:
   - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
   - LANGBOT_LOCAL_AGENT_RAG_KB_UUID
 preconditions:
-  - "The target pipeline already has a text-capable model route that is available for this run, or LANGBOT_E2E_FAKE_PROVIDER_BASE_URL points to scripts/e2e/fake-openai-provider.mjs."
+  - "The target Chat already has a text-capable model route that is available for this run, or LANGBOT_E2E_FAKE_PROVIDER_BASE_URL points to scripts/e2e/fake-openai-provider.mjs."
 steps:
   - "Ensure case langrag-kb-retrieve has produced a knowledge base containing sentinel azalea-cobalt-7421."
   - "Open LANGBOT_FRONTEND_URL."
-  - "Navigate to Pipelines and open the target pipeline."
+  - "Navigate to Processors and open the target pipeline."
   - "Open Configuration > AI."
   - "Use runner Default and add the LangRAG knowledge base to Knowledge Bases."
   - "Save the pipeline."
@@ -57,7 +57,7 @@ steps:
   - "Send: Using the knowledge base, what is the local agent runner retrieval sentinel? Return only the sentinel."
 checks:
   - "UI: The AI config shows the selected knowledge base under Knowledge Bases."
-  - "UI: The pipeline saves successfully."
+  - "UI: The Chat saves successfully."
   - "UI: Debug Chat shows a Bot message containing azalea-cobalt-7421."
   - "Console: No unexpected frontend errors appear during configuration or chat."
   - "Logs: Backend logs show the debug chat request completed instead of plugin/runtime timeout."
@@ -70,7 +70,7 @@ evidence_required:
   - backend_log
   - api_diagnostic
 diagnostics:
-  - "For token-free deterministic UI coverage, start scripts/e2e/fake-openai-provider.mjs and pass LANGBOT_E2E_FAKE_PROVIDER_BASE_URL to this case; setup will bind the local-agent pipeline to that fake OpenAI-compatible model."
+  - "For token-free deterministic UI coverage, start scripts/e2e/fake-openai-provider.mjs and pass LANGBOT_E2E_FAKE_PROVIDER_BASE_URL to this case; setup will bind the local-agent Chat to that fake OpenAI-compatible model."
   - "The ensure-langrag-sentinel-kb setup script verifies LANGBOT_E2E_RAG_EXPECTED_TEXT, defaulting to azalea-cobalt-7421, so the Debug Chat expected text does not leak into KB setup."
   - "Use GET /api/v1/pipelines/{uuid} only to confirm the saved runner_config contains the knowledge base uuid."
   - "If the bot ignores the knowledge base, rerun Retrieve Test before debugging the runner."

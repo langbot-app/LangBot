@@ -64,7 +64,7 @@
     {
       "directory": "langbot-mcp-ops",
       "name": "langbot-mcp-ops",
-      "description": "Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, agents, Chats (pipelines), models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (web-UI lbk_ keys and the config.yaml global key), the tool surface, and client configuration. Triggers on \"langbot mcp\", \"manage langbot via mcp\", \"langbot /mcp\", \"langbot mcp server\".",
+      "description": "Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, agents, Chats, models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (web-UI lbk_ keys and the config.yaml global key), the tool surface, and client configuration. Triggers on \"langbot mcp\", \"manage langbot via mcp\", \"langbot /mcp\", \"langbot mcp server\".",
       "references": [],
       "cases": [],
       "case_summaries": [],
@@ -658,7 +658,7 @@
         },
         {
           "id": "dify-agent-debug-chat",
-          "title": "Dify Runner returns a response through Pipeline Debug Chat",
+          "title": "Dify Runner returns a response through Chat Debug Chat",
           "mode": "agent-browser",
           "area": "pipeline",
           "type": "provider",
@@ -1682,7 +1682,7 @@
         },
         {
           "id": "pipeline-debug-chat",
-          "title": "Pipeline Debug Chat returns a bot response",
+          "title": "Chat Debug Chat returns a bot response",
           "mode": "agent-browser",
           "area": "pipeline",
           "type": "smoke",
@@ -1705,7 +1705,7 @@
         },
         {
           "id": "pipeline-debug-chat-performance",
-          "title": "Pipeline Debug Chat user-path performance probe",
+          "title": "Chat Debug Chat user-path performance probe",
           "mode": "agent-browser",
           "area": "pipeline",
           "type": "performance",

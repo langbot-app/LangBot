@@ -6,7 +6,7 @@ API and direct backend checks diagnose failures; they do not establish UI accept
 
 ## Preconditions
 
-Use the frontend/backend and Local Agent pipeline selected in the machine's
+Use the frontend/backend and Local Agent Chat selected in the machine's
 `skills/.env.local`. The model must support tool calling. Do not record credentials.
 Use Docker/Podman, nsjail, or a configured E2B service. The runner may acquire an
 empty Box before activation; adding a revision must preserve that Box. Host mode
