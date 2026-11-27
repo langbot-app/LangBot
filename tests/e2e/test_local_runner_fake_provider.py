@@ -811,7 +811,7 @@ def test_harness_processor_bots_run_local_agent(
                 count = await ap.persistence_mgr.execute_async(sa.select(sa.func.count()).select_from(AgentRun).where(
                     AgentRun.status == 'completed',
                 ))
-                if count.scalar() == 3:
+                if count.scalar() == 4:
                     break
                 await asyncio.sleep(0.1)
         bots = await ap.bot_service.get_bots(context)
@@ -821,10 +821,15 @@ def test_harness_processor_bots_run_local_agent(
         )
         assert {bot['uuid'] for bot in bots} == {processor_bot_uuid(workspace, p) for p in processors}
         runs = [row for row in runs if row['event_id'].startswith('platform:')]
-        assert len(runs) == 3
+        assert len(runs) == (4 if web_origin else 3)
         assert all(row['status'] == 'completed' and row['runner_id'] == LOCAL_RUNNER_ID for row in runs)
         assert len({row['conversation_id'] for row in runs}) == 2
         assert all(row['conversation_id'].startswith('person_') for row in runs)
+        if web_origin:
+            inputs = [json.loads(row['metadata_json'])['input'] for row in runs]
+            attachment_turn = next(item for item in inputs if 'This message carries' in item['text'])
+            assert [item['name'] for item in attachment_turn['attachments']] == ['keep-me.txt']
+            assert 'remove-me.txt' not in json.dumps(inputs)
         await ap.bot_service.delete_bot(context, processor_bot_uuid(workspace, processors[0]))
         await ap.agent_service.delete_agent(context, processors[0])
 

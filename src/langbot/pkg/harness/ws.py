@@ -49,7 +49,7 @@ async def handle_ws(ap, transport, ctx, *, revalidate=None) -> None:
         if (
             not isinstance(frame, dict)
             or frame.get('type', 'message') != 'message'
-            or not isinstance(frame.get('content'), str)
+            or not isinstance(frame.get('content'), (str, dict))
         ):
             await session.send_payload({'type': 'error', 'code': 'invalid_message'})
             continue
@@ -80,6 +80,18 @@ async def handle_ws(ap, transport, ctx, *, revalidate=None) -> None:
             if error == 'account_not_found':
                 return
             continue
+        connection_id = uuid.uuid4().hex
+        try:
+            event = build_event(
+                frame,
+                {'account_uuid': ctx.account_uuid, 'display_name': user.user, 'email': user.normalized_email},
+                workspace_uuid=ctx.workspace_uuid,
+                processor_uuid=processor,
+                connection_id=connection_id,
+            )
+        except (ValueError, TypeError, OverflowError):
+            await session.send_payload({'type': 'error', 'code': 'invalid_message'})
+            continue
         try:
             if getattr(getattr(ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime':
                 async with ap.persistence_mgr.tenant_scope(ctx.workspace_uuid):
@@ -92,14 +104,6 @@ async def handle_ws(ap, transport, ctx, *, revalidate=None) -> None:
             await session.send_payload({'type': 'error', 'code': 'processor_not_running'})
             continue
         registry = bot.adapter.connections
-        connection_id = uuid.uuid4().hex
-        event = build_event(
-            frame,
-            {'account_uuid': ctx.account_uuid, 'display_name': user.user, 'email': user.normalized_email},
-            workspace_uuid=ctx.workspace_uuid,
-            processor_uuid=processor,
-            connection_id=connection_id,
-        )
         reply = _TurnReply()
         await registry.register(connection_id, reply)
         try:
