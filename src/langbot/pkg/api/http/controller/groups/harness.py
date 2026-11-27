@@ -22,12 +22,16 @@ class HarnessRouterGroup(group.RouterGroup):
     def _unavailable(self):
         return self.http_status(404, 'harness_registration_unavailable', 'Resource not found')
 
+    def _enrollment_service(self):
+        service = self._service()
+        origin = quart.request.headers.get('Origin')
+        return service if service is not None and (origin is None or origin == service.client_origin) else None
+
     async def initialize(self):
         @self.route('/register', methods=['POST'], auth_type=group.AuthType.NONE)
         async def register():
-            service = self._service()
-            origin = quart.request.headers.get('Origin')
-            if service is None or (origin is not None and origin != service.client_origin):
+            service = self._enrollment_service()
+            if service is None:
                 return self._unavailable()
             payload = await quart.request.get_json(silent=True)
             if not isinstance(payload, dict) or set(payload) != {'token'}:
@@ -87,9 +91,10 @@ class HarnessRouterGroup(group.RouterGroup):
 
         @self.route('/bindings/<uuid:binding_id>/devices', methods=['POST'], auth_type=group.AuthType.NONE)
         async def register_device(binding_id):
-            service = self._service()
+            if self._enrollment_service() is None:
+                return self._unavailable()
             payload = await quart.request.get_json(silent=True)
-            if service is None or not isinstance(payload, dict):
+            if not isinstance(payload, dict):
                 return self._unavailable()
             enrollment_token = payload.pop('enrollment_token', None)
             if not isinstance(enrollment_token, str) or len(enrollment_token) > 256:
@@ -100,7 +105,9 @@ class HarnessRouterGroup(group.RouterGroup):
                 return self.http_status(400, 'invalid_device_key', 'Invalid request parameters')
             if result is None:
                 return self.http_status(401, 'invalid_device_enrollment', 'Invalid authentication credentials')
-            return self.success(result)
+            response = self.success(result)
+            response.headers['Cache-Control'] = 'no-store'
+            return response
 
         @self.route('/devices/<device_id>/revoke', methods=['POST'], auth_type=group.AuthType.NONE)
         async def revoke_device(device_id):

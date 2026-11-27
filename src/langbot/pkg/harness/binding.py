@@ -10,8 +10,6 @@ import uuid
 from urllib.parse import urlsplit
 
 import sqlalchemy as sa
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
@@ -19,16 +17,13 @@ from ..api.http.service.totp import _derive_wrapping_key
 from ..entity.persistence.harness_instance_key import HarnessInstanceKey
 from ..entity.persistence.harness_registration import HarnessBinding, HarnessRegistrationLink
 from ..utils import constants
+from .crypto.keys import generate_key_material
 
 _LINK = HarnessRegistrationLink.__table__
 _BINDING = HarnessBinding.__table__
 _KEY = HarnessInstanceKey.__table__
 _TOKEN_PATTERN = re.compile(r'[A-Za-z0-9_-]{43}')
 _LINK_TTL = 1800
-
-
-def _b64(value):
-    return base64.b64encode(value).decode('ascii')
 
 
 def _digest(token):
@@ -74,24 +69,23 @@ class HarnessBindings:
         row = (await conn.execute(statement)).mappings().one_or_none()
         if row is not None:
             return row
-        agreement = x25519.X25519PrivateKey.generate()
-        signing = ed25519.Ed25519PrivateKey.generate()
-        bundle = json.dumps(
-            {'x25519': _b64(agreement.private_bytes_raw()), 'ed25519': _b64(signing.private_bytes_raw())}
-        )
-        cipher = Fernet(_derive_wrapping_key(self.jwt_secret, 1)).encrypt(bundle.encode()).decode()
+        material = generate_key_material(_derive_wrapping_key(self.jwt_secret, 1), kid='harness-initial-v1')
         insert = sqlite_insert if conn.dialect.name == 'sqlite' else pg_insert
         await conn.execute(
             insert(_KEY)
             .values(
-                kid='harness-initial-v1',
-                x25519_pub=_b64(agreement.public_key().public_bytes_raw()),
-                ed25519_pub=_b64(signing.public_key().public_bytes_raw()),
-                priv_ciphertext=cipher,
+                **material,
             )
             .on_conflict_do_nothing(index_elements=['kid'])
         )
         return (await conn.execute(statement)).mappings().one()
+
+    async def ensure_instance_key(self) -> str:
+        """Initialize the persistent instance identity before accepting HTS1 traffic."""
+        async with self.engine.begin() as conn:
+            if conn.dialect.name == 'sqlite':
+                await conn.exec_driver_sql('BEGIN IMMEDIATE')
+            return (await self._active_key(conn))['kid']
 
     async def issue(self, ctx, *, label, preferred_auth):
         token = secrets.token_urlsafe(32)
@@ -155,18 +149,12 @@ class HarnessBindings:
                     _LINK.c.expires_at > now,
                     sa.exists(sa.select(_KEY.c.kid).where(_KEY.c.kid == _LINK.c.kid, _KEY.c.status == 'active')),
                 )
-                .values(consumed_at=now)
-                .returning(_LINK.c.id, _LINK.c.issuer_workspace_uuid)
+                .values(consumed_at=now, token_hash=_digest(enrollment_token))
+                .returning(_LINK.c.id)
             )
-            consumed_link = result.one_or_none()
-            if consumed_link is None:
+            binding_id = result.scalar_one_or_none()
+            if binding_id is None:
                 return None
-            binding_id = consumed_link.id
-            await conn.execute(
-                _LINK.update()
-                .where(_LINK.c.token_hash == _digest(token), _LINK.c.consumed_at == now)
-                .values(token_hash=_digest(enrollment_token))
-            )
         return {
             'harness_id': binding_id,
             'instance_uuid': self.instance_uuid,
