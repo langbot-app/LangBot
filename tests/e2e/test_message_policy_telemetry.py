@@ -107,7 +107,7 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
                             _access_layers(received) == {'bot', 'route'}
                             and agent_events <= _agent_drops(received)
                             and completed_events <= _successful_runs(received)
-                            and _long_text_usage(received) >= 2
+                            and _long_text_usage(received) >= 4
                         )
                     ):
                         break
@@ -131,7 +131,7 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
     assert _access_layers(received) == {'bot', 'route'}
     assert agent_events <= _agent_drops(received)
     assert completed_events <= _successful_runs(received)
-    assert _long_text_usage(received) == 2
+    assert _long_text_usage(received) == 4
     assert not any(
         node.get('family') == 'runner' and node.get('event_id') in agent_events
         for payload in received
@@ -213,7 +213,7 @@ def _check_agent_ingress(client, token, bot, tmp_path):
                     'policy': {
                         'trigger': {'ignore-rules': {'prefix': ['ignored:']}},
                         'output': {
-                            'long-text-processing': {'threshold': 8, 'strategy': 'forward'},
+                            'long-text-processing': {'threshold': 32, 'strategy': 'forward'},
                             'misc': {'at-sender': False},
                         },
                     },
@@ -245,26 +245,41 @@ def _check_agent_ingress(client, token, bot, tmp_path):
             route['policy_layer'],
         ) == ('ignored', 'agent', target, 'ignore-rules', 'route'), metadata
         event_ids.add(event_id)
-        text = f'accepted {kind}'
-        body = json.dumps(
-            {'session_type': kind, 'session_id': 'agent', 'message': [{'type': 'Plain', 'text': text}]}
-        ).encode()
-        reply = client.post('/bots/' + bot + '/sync', content=body, headers=signed_headers(body, 'qa-signer')).json()
-        assert reply['code'] == 0, reply
-        (part,) = reply['data']['message']
-        assert part['type'] == 'Forward' and f'e2e echo: {text}' in str(part), part
-        event_id = f'platform:{bot}:{reply["data"]["reply_to"]}'
-        with closing(sqlite3.connect(tmp_path / 'data/langbot.db')) as db:
-            row = db.execute(
-                'SELECT metadata_json FROM event_log WHERE bot_id=? AND event_id=?', (bot, event_id)
-            ).fetchone()
-        metadata = json.loads(row[0])
-        (route,) = metadata['routes']
-        assert (route['target_uuid'], route['target_type'], route['status']) == (target, 'agent', 'delivered'), metadata
-        assert {'kind': 'long_text', 'strategy': 'forward'} in [
-            action for event in metadata['policy_events'] for action in event.get('actions', [])
-        ]
-        completed_events.add(event_id)
+        for length in (31, 32, 33, 32768):
+            prefix = 'e2e echo: '
+            text = '界' * (length - len(prefix))
+            body = json.dumps(
+                {'session_type': kind, 'session_id': 'agent', 'message': [{'type': 'Plain', 'text': text}]}
+            ).encode()
+            reply = client.post(
+                '/bots/' + bot + '/sync', content=body, headers=signed_headers(body, 'qa-signer')
+            ).json()
+            assert reply['code'] == 0, reply
+            (part,) = reply['data']['message']
+            if length > 32:
+                assert part['type'] == 'Forward'
+                (node,) = part['node_list']
+                (part,) = node['message_chain']
+            assert part['type'] == 'Plain' and part['text'] == prefix + text
+            event_id = f'platform:{bot}:{reply["data"]["reply_to"]}'
+            with closing(sqlite3.connect(tmp_path / 'data/langbot.db')) as db:
+                row = db.execute(
+                    'SELECT metadata_json FROM event_log WHERE bot_id=? AND event_id=?', (bot, event_id)
+                ).fetchone()
+            metadata = json.loads(row[0])
+            (route,) = metadata['routes']
+            assert (route['target_uuid'], route['target_type'], route['status']) == (target, 'agent', 'delivered'), (
+                metadata
+            )
+            transforms = [
+                action
+                for event in metadata.get('policy_events', [])
+                for action in event.get('actions', [])
+                if action['kind'] == 'long_text'
+            ]
+            assert transforms == ([{'kind': 'long_text', 'strategy': 'forward'}] if length > 32 else [])
+            completed_events.add(event_id)
+    assert len(completed_events) == 8
     return event_ids, completed_events
 
 

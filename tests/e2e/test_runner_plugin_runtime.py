@@ -473,17 +473,19 @@ def runner_runtime_process(runner_e2e_tmpdir, runner_runtime_ports):
         stderr=stderr_file,
         start_new_session=True,
     )
-    yield proc
     try:
-        os.killpg(proc.pid, signal.SIGTERM)
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        os.killpg(proc.pid, signal.SIGKILL)
-        proc.wait()
-    except ProcessLookupError:
-        pass
-    stdout_file.close()
-    stderr_file.close()
+        yield proc
+    finally:
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+        except ProcessLookupError:
+            pass
+        stdout_file.close()
+        stderr_file.close()
 
 
 @pytest.fixture(scope='session')

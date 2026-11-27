@@ -225,7 +225,9 @@ class MessageChain(pydantic.RootModel[list[pydantic.SerializeAsAny[MessageCompon
                                         )
 
                         # Special processing of the time field of the Source class
-                        if component_type == "Source" and "time" in item:
+                        if component_type == "Source" and isinstance(
+                            item.get("time"), (int, float)
+                        ):
                             item["time"] = datetime.fromtimestamp(item["time"])
                         components.append(component_class.model_validate(item))
                     else:
