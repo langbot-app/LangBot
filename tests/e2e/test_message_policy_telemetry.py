@@ -84,6 +84,7 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
                     _check_route_access_policy(client, token, bot, tmp_path)
                     runtime._ensure_qa_plugin(client, token, tmp_path / 'agent-runner-qa.zip')
                     agent_events, completed_events = _check_agent_ingress(client, token, bot, tmp_path)
+                    hook_events = _check_hook_intercepts(client, token, bot, tmp_path)
                 else:
                     unavailable = client.post(
                         '/api/v1/agents',
@@ -108,6 +109,8 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
                             and agent_events <= _agent_drops(received)
                             and completed_events <= _successful_runs(received)
                             and _long_text_usage(received) >= 4
+                            and _hook_usage(received) == {'MessageReceived': 2, 'NormalMessageReceived': 2}
+                            and hook_events <= _successful_event_routes(received)
                         )
                     ):
                         break
@@ -132,6 +135,16 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
     assert agent_events <= _agent_drops(received)
     assert completed_events <= _successful_runs(received)
     assert _long_text_usage(received) == 4
+    assert _hook_usage(received) == {'MessageReceived': 2, 'NormalMessageReceived': 2}
+    for event_id in hook_events:
+        nodes = [
+            node
+            for payload in received
+            for node in payload.get('records', [])
+            if node.get('event_type') == 'execution_node' and node.get('event_id') == event_id
+        ]
+        assert any(node['family'] == 'event_route' and node['outcome'] == 'success' for node in nodes), nodes
+        assert not any(node['family'] == 'runner' for node in nodes), nodes
     assert not any(
         node.get('family') == 'runner' and node.get('event_id') in agent_events
         for payload in received
@@ -154,6 +167,70 @@ def _access_layers(received):
         and node.get('operation') == 'access-control'
         and node.get('outcome') == 'discarded'
     }
+
+
+def _hook_usage(received):
+    counts = {}
+    for payload in received:
+        if payload.get('event_type') == 'instance_heartbeat':
+            for metric, dims, count in payload['features']['usage']['c']:
+                if metric == 'hook.intercept':
+                    name = dims['event']
+                    counts[name] = counts.get(name, 0) + count
+    return counts
+
+
+def _successful_event_routes(received):
+    return {
+        node['event_id']
+        for payload in received
+        for node in payload.get('records', [])
+        if (node.get('event_type'), node.get('family'), node.get('outcome'))
+        == ('execution_node', 'event_route', 'success')
+    }
+
+
+def _check_hook_intercepts(client, token, bot, tmp_path):
+    headers = {'Authorization': 'Bearer ' + token}
+    url = '/api/v1/platform/bots/' + bot
+    route = client.get(url, headers=headers).json()['data']['bot']['event_bindings'][0]
+    route['policy'] = {
+        'plugins': {'enable_all': False, 'plugins': [{'author': 'e2e', 'name': 'agent-runner-qa'}]},
+        'output': {'misc': {'at-sender': False}},
+    }
+    saved = client.put(url, headers=headers, json={'event_bindings': [route]}).json()
+    assert saved['code'] == 0, saved
+    ids = set()
+    for kind in ('person', 'group'):
+        for hook in ('MessageReceived', 'NormalMessageReceived'):
+            name = kind.title() + hook
+            text = 'trace-hook:' + name
+            body = json.dumps(
+                {'session_type': kind, 'session_id': 'agent', 'message': [{'type': 'Plain', 'text': text}]}
+            ).encode()
+            reply = client.post(
+                '/bots/' + bot + '/sync', content=body, headers=signed_headers(body, 'qa-signer')
+            ).json()
+            assert reply['code'] == 0, reply
+            sequence = [name] if hook == 'MessageReceived' else [kind.title() + 'MessageReceived', name]
+            assert reply['data']['message'] == [{'type': 'Plain', 'text': ' > '.join(sequence)}], reply
+            event_id = f'platform:{bot}:{reply["data"]["reply_to"]}'
+            with closing(sqlite3.connect(tmp_path / 'data/langbot.db')) as db:
+                row = db.execute(
+                    'SELECT metadata_json FROM event_log WHERE event_id=? AND bot_id=?', (event_id, bot)
+                ).fetchone()
+                assert db.execute('SELECT count(*) FROM agent_run WHERE event_id=?', (event_id,)).fetchone() == (0,)
+            metadata = json.loads(row[0])
+            (primary,) = metadata['routes']
+            assert (metadata['status'], primary['target_type'], primary['status'], primary['hook']) == (
+                'completed',
+                'plugin',
+                'delivered',
+                hook,
+            ), metadata
+            ids.add(event_id)
+    assert len(ids) == 4
+    return ids
 
 
 def _agent_drops(received):

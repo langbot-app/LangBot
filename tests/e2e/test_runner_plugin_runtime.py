@@ -298,9 +298,20 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
                 async def initialize(self):
                     await super().initialize()
                     self.plugin.received = []
+                    hook_calls = {}
+                    async def trace_hook(ctx):
+                        text = str(ctx.event.message_chain)
+                        if not text.startswith('trace-hook:'):
+                            return
+                        calls = hook_calls.setdefault(text, [])
+                        calls.append(ctx.event.event_name)
+                        if text.endswith(':' + ctx.event.event_name):
+                            await ctx.reply(MessageChain([Plain(text=' > '.join(calls))]))
+                            ctx.prevent_default()
                     @self.handler(events.PersonMessageReceived)
                     async def person(ctx):
                         self.plugin.received.append(str(ctx.event.message_chain))
+                        await trace_hook(ctx)
                     async def command(ctx):
                         if ctx.event.params == ['hook-probe', ctx.event.launcher_type]:
                             count = self.plugin.received.count(ctx.event.text_message)
@@ -310,12 +321,14 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
                     self.handler(events.GroupCommandSent)(command)
                     @self.handler(events.PersonNormalMessageReceived)
                     async def handle(ctx):
+                        await trace_hook(ctx)
                         self.plugin.boundary_listener_hits = getattr(self.plugin, 'boundary_listener_hits', 0) + 1
                         if 'agent-probe intercept' in ctx.event.text_message:
                             ctx.event.reply_message_chain = MessageChain([Plain(text='handled before agent')])
                             ctx.prevent_default()
                         elif 'agent-probe replace-input' in ctx.event.text_message:
                             ctx.event.user_message_alter = 'updated input'
+                    self.handler(events.GroupNormalMessageReceived)(trace_hook)
                     @self.handler(events.NormalMessageResponded)
                     async def responded(ctx):
                         if ctx.event.response_text == 'first and last':
@@ -327,6 +340,7 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
                     @self.handler(events.GroupMessageReceived)
                     async def group(ctx):
                         self.plugin.received.append(str(ctx.event.message_chain))
+                        await trace_hook(ctx)
                         if 'group-probe' in str(ctx.event.message_chain):
                             await ctx.reply(MessageChain([Plain(text='group:' + await ctx.get_bot_uuid())]))
                             ctx.prevent_default()

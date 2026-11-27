@@ -1593,7 +1593,10 @@ class RuntimeBot:
                 query, command_handled = await self._begin_message(event, adapter)
                 if command_handled:
                     from ..pipeline import monitoring_helper
+                    from ..telemetry import trace as trace_mod
 
+                    if event._selected_route and event._selected_route.get('target_type') != 'discard':
+                        trace_mod.admit()
                     owner = monitoring_helper.get_handled_by(query)
                     results.append(
                         await self._record_event_route_trace(
