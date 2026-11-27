@@ -19,6 +19,61 @@ provider_wire = wire.provider_wire
 
 
 @pytest.mark.e2e
+def test_local_agent_without_model(runner_client, runner_e2e_tmpdir):
+    client = runner_client
+    token = runtime._init_and_auth(client)
+    headers = {'Authorization': 'Bearer ' + token}
+    runtime._install_qa_plugin(client, token, _package_local_agent_plugin(runner_e2e_tmpdir), LOCAL_RUNNER_ID)
+    assert LOCAL_RUNNER_ID in runtime._wait_for_qa_runner(client, token, runner_id=LOCAL_RUNNER_ID)
+
+    def api(method, path, **kwargs):
+        result = client.request(method, '/api/v1/' + path, headers=headers, **kwargs).json()
+        assert result['code'] == 0, result
+        return result['data']
+
+    agent = api(
+        'POST',
+        'agents',
+        json={
+            'name': 'No model',
+            'kind': 'agent',
+            'supported_event_patterns': ['message.*'],
+            'config': {'runner': {'id': LOCAL_RUNNER_ID}, 'runner_config': {LOCAL_RUNNER_ID: {}}},
+        },
+    )['uuid']
+    bot = api(
+        'POST',
+        'platform/bots',
+        json={
+            'name': 'No model',
+            'adapter': 'http_bot',
+            'enable': True,
+            'adapter_config': {'inbound_secret': 'qa-sign', 'signature_required': True},
+            'event_bindings': [{'event_pattern': 'message.received', 'target_type': 'agent', 'target_uuid': agent}],
+            'message_policy': {'trigger': {'group-respond-rules': {'enabled': False}}},
+        },
+    )['uuid']
+    for index, kind in enumerate(('person', 'group'), start=1):
+        body = json.dumps(
+            {'session_type': kind, 'session_id': kind, 'message': [{'type': 'Plain', 'text': 'missing model'}]}
+        ).encode()
+        reply = client.post('/bots/' + bot, content=body, headers=signed_headers(body, 'qa-sign'))
+        assert reply.status_code == 202
+        deadline = time.monotonic() + 30
+        while True:
+            runs = api('GET', f'agents/{agent}/runs')['items']
+            if len(runs) == index and all(run['status'] == 'failed' for run in runs):
+                break
+            assert time.monotonic() < deadline, [(run['status'], run.get('status_reason')) for run in runs]
+            time.sleep(0.2)
+        for run in runs:
+            events = api('GET', f'agents/{agent}/runs/{run["run_id"]}/events')['items']
+            assert any(
+                event['type'] == 'run.failed' and 'runner.no_model' in json.dumps(event['data']) for event in events
+            ), [(event['type'], event['data']) for event in events if event['type'] == 'run.failed']
+
+
+@pytest.mark.e2e
 def test_session_model_and_retry(runner_client, runner_e2e_tmpdir, provider_wire):
     client = runner_client
     token = runtime._init_and_auth(client)
