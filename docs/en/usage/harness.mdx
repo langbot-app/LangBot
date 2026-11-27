@@ -7,3 +7,5 @@ On the `feat/harness` preview branch, self-hosted LangBot instances can issue on
 A Workspace owner or administrator can issue a link through `POST /api/v1/harness/registration-links`. Share the URL privately: it expires after 30 minutes and can be redeemed only once. Redemption starts enrollment; the binding is completed only after successful sign-in and Workspace authorization.
 
 The first authorized chat message to an Agent creates its managed Harness Bot. Later messages reuse that Bot. To remove an Agent that has a Harness Bot, stop sending messages to it and delete its Harness Bot before deleting the Agent.
+
+Harness chat replies carry an `execution: { source: "agent", id }` reference for Inspector. A client can read the trace over encrypted HTS1 HTTP RPC using `monitoring.execution.detail`, providing the access token, selected Workspace, processor, conversation ID, and execution ID. The server checks the current grant/device, Workspace membership, processor access, and ownership of the run before returning the bounded detail.
