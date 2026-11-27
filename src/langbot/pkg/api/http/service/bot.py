@@ -848,7 +848,14 @@ class BotService:
             else:
                 from sqlalchemy.dialects.sqlite import insert
             result = await self.ap.persistence_mgr.execute_async(
-                insert(persistence_bot.Bot).values(bot_data).on_conflict_do_nothing(index_elements=['uuid'])
+                # Do not name a conflict target here.  Some deployed PostgreSQL
+                # schemas resolve the managed-bot race through the composite
+                # ``uq_bots_workspace_uuid`` constraint (rather than the
+                # historical UUID index).  The row is deterministic, so any
+                # conflict means another request already provisioned this
+                # Workspace's shared Bot; the read below verifies its owner
+                # and adapter before returning it.
+                insert(persistence_bot.Bot).values(bot_data).on_conflict_do_nothing()
             )
             if result.rowcount == 0:
                 existing = await self.get_bot(context, bot_data['uuid'])

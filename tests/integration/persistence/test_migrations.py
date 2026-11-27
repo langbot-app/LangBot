@@ -105,6 +105,54 @@ async def test_harness_provisioning_is_bounded_under_concurrent_retries(sqlite_e
     assert ap.platform_mgr.load_bot.await_count == 2
 
 
+async def test_harness_provisioning_interleaves_workspaces_without_unique_errors(sqlite_engine, monkeypatch):
+    from langbot.pkg.api.http.service.bot import BotService
+    from langbot.pkg.entity.persistence.bot import Bot
+    from langbot.pkg.entity.persistence.workspace import Workspace
+    from langbot.pkg.persistence.mgr import PersistenceManager
+    from langbot.pkg.platform.adapters.harness.bindings import workspace_bot_uuid
+
+    async with sqlite_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(
+            Workspace.__table__.insert(),
+            [dict(uuid=w, instance_uuid=f'instance-{w}', name=w, slug=w) for w in ('alpha', 'beta')],
+        )
+
+    async def execute(statement):
+        async with sqlite_engine.begin() as conn:
+            return await conn.execute(statement)
+
+    ap = SimpleNamespace(
+        persistence_mgr=SimpleNamespace(
+            execute_async=execute,
+            get_db_engine=lambda: sqlite_engine,
+            serialize_model=PersistenceManager.serialize_model.__get__(object()),
+        ),
+        platform_mgr=SimpleNamespace(load_bot=AsyncMock()),
+    )
+    monkeypatch.setattr('langbot.pkg.api.http.service.workspace_limits.workspace_limits', AsyncMock(return_value={}))
+    monkeypatch.setattr('langbot.pkg.api.http.service.bot.require_workspace_platform', AsyncMock())
+    service = BotService(ap)
+
+    async def provision(workspace, index):
+        return await service.create_bot(
+            workspace,
+            {'name': f'agent-{workspace}-{index}', 'adapter': 'harness-omni', 'adapter_config': {}},
+            bot_uuid=f'old-{workspace}-{index}',
+        )
+
+    calls = [(workspace, index) for index in range(100) for workspace in ('alpha', 'beta')]
+    results = await asyncio.gather(*(provision(workspace, index) for workspace, index in calls))
+    assert results[::2] == [workspace_bot_uuid('alpha')] * 100
+    assert results[1::2] == [workspace_bot_uuid('beta')] * 100
+    rows = (await execute(sqlalchemy.select(Bot.__table__))).mappings().all()
+    assert {(row['workspace_uuid'], row['uuid']) for row in rows} == {
+        ('alpha', workspace_bot_uuid('alpha')),
+        ('beta', workspace_bot_uuid('beta')),
+    }
+
+
 async def test_harness_workspace_bot_upgrade_preserves_legacy_ids(sqlite_engine):
     from langbot.pkg.entity.persistence.bot import Bot
     from langbot.pkg.entity.persistence.monitoring import MonitoringSession
