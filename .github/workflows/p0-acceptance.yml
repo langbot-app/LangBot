@@ -37,6 +37,8 @@ jobs:
     timeout-minutes: 15
     env:
       LANGBOT_PERMISSION_E2E: '1'
+      SPACE__DISABLE_TELEMETRY: 'true'
+      ANONYMIZED_TELEMETRY: 'False'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
