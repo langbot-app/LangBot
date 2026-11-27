@@ -101,6 +101,8 @@ def upgrade() -> None:
                 moved = _json(row['message_policy_backup'])
                 if isinstance(moved, dict) and moved:
                     overrides[(_scope(row), row['uuid'])] = policy_schema.policy_from_legacy(moved)
+                elif moved is None:
+                    bind.execute(pipelines.update().where(_same_row(pipelines, row)).values(message_policy_backup={}))
                 continue
             overrides[(_scope(row), row['uuid'])] = policy_schema.policy_from_legacy(moved)
             bind.execute(
@@ -187,7 +189,7 @@ def downgrade() -> None:
                 if not isinstance(config, dict):
                     continue
                 moved = _json(row['message_policy_backup'])
-                if not isinstance(moved, dict) or not moved:
+                if not isinstance(moved, dict):
                     if 'trigger' in config and 'safety' in config:
                         continue
                     moved = policy_schema.policy_to_legacy(

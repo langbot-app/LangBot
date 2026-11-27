@@ -327,7 +327,7 @@ async def test_upgrade_moves_settings_to_route_overrides_and_keeps_bots_neutral(
             assert backup['safety'] == original['safety']
             assert policy_schema.restore_legacy_config(stored, backup) == original
         assert _value(pipelines['p-converted']['config']) == CONVERTED
-        assert pipelines['p-converted']['message_policy_backup'] is None
+        assert _value(pipelines['p-converted']['message_policy_backup']) == {}
 
         # One bot, several routes: each route carries the settings of its own processor.
         multi = _routes(conn, 'bot-multi')
@@ -397,6 +397,8 @@ async def test_upgrade_is_idempotent(database):
 async def test_downgrade_restores_configs_exactly_and_removes_policies(database):
     def scenario(conn):
         _seed(conn)
+        pipelines = sa.Table('legacy_pipelines', sa.MetaData(), autoload_with=conn)
+        conn.execute(pipelines.insert().values(uuid='empty', workspace_uuid='ws-1', config={}))
         before = (_rows(conn, 'bots'), _rows(conn, 'legacy_pipelines'))
         _run(conn, migration.upgrade)
 
@@ -405,7 +407,7 @@ async def test_downgrade_restores_configs_exactly_and_removes_policies(database)
         assert 'message_policy' not in _columns(conn, 'bots')
         assert 'message_policy_backup' not in _columns(conn, 'legacy_pipelines')
         bots, pipelines = _rows(conn, 'bots'), _rows(conn, 'legacy_pipelines')
-        for pipeline_uuid in ('p-a', 'p-b', 'p-other'):
+        for pipeline_uuid in before[1]:
             assert _value(pipelines[pipeline_uuid]['config']) == _value(before[1][pipeline_uuid]['config'])
         for bot_uuid, row in before[0].items():
             assert _value(bots[bot_uuid]['event_bindings']) == _value(row['event_bindings'])
