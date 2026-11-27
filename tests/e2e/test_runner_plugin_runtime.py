@@ -173,7 +173,7 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
             class DefaultRunner(Runner):
                 async def run(self, ctx: RunnerContext) -> AsyncGenerator[RunnerResult, None]:
                     text = ctx.input.to_text()
-                    if getattr(ctx.platform_event, 'type', None) == 'group.member_joined':
+                    if ctx.event.source != 'host_adapter' and ctx.platform_event.type == 'group.member_joined':
                         await ctx.call_tool('event_reply', {'text': 'Welcome to the group'})
                         yield RunnerResult.run_completed(ctx.run_id, finish_reason='stop')
                         return
