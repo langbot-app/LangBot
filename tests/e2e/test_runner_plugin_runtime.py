@@ -173,7 +173,7 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
             class DefaultRunner(Runner):
                 async def run(self, ctx: RunnerContext) -> AsyncGenerator[RunnerResult, None]:
                     text = ctx.input.to_text()
-                    if ctx.event.source != 'host_adapter' and ctx.platform_event.type == 'group.member_joined':
+                    if ctx.event.event_type == 'group.member_joined':
                         await ctx.call_tool('event_reply', {'text': 'Welcome to the group'})
                         yield RunnerResult.run_completed(ctx.run_id, finish_reason='stop')
                         return
@@ -1041,6 +1041,7 @@ def test_legacy_chat_config_http(runner_client):
 def test_upgrade_assistant_actions(runner_client, runner_e2e_tmpdir):
     client = runner_client
     token = _init_and_auth(client)
+    _ensure_qa_plugin(client, token, runner_e2e_tmpdir / 'agent-runner-qa.zip')
     headers = {'Authorization': f'Bearer {token}'}
     prefix = '/api/v1/platform/bots'
     checks = prefix + '/_/upgrade-checks'
@@ -1145,7 +1146,11 @@ def test_upgrade_assistant_actions(runner_client, runner_e2e_tmpdir):
                 time.sleep(0.2)
             else:
                 pytest.fail('EssentialCommands uninstall did not complete')
-        assert code not in items()
+            remaining = items()[code]
+            assert remaining['params'] == {'essential_installed': False, 'names': ['whoami']}, remaining
+            assert 'uninstall_essential' not in remaining['actions']
+        else:
+            assert code not in items()
     stored = request('GET', prefix + '/' + bot)['bot']
     assert {'!', '！'} <= set(stored['command_settings']['prefixes'])
     assert stored['message_policy']['plugins']['plugins'] == []
