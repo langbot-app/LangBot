@@ -816,6 +816,66 @@ def test_http_bot_plugin_lifecycle(runner_client, runner_e2e_tmpdir):
                     assert reply in (['Permission denied'], ['没有执行此操作的权限'])
 
 
+@pytest.mark.parametrize('kind', ['person', 'group'])
+def test_aggregated_messages_reach_plugin_separately(runner_client, runner_e2e_tmpdir, kind):
+    from tools.regression.http_bot import signed_headers
+
+    client = runner_client
+    token = _init_and_auth(client)
+    _ensure_qa_plugin(client, token, runner_e2e_tmpdir / 'agent-runner-qa.zip')
+    pipeline = _create_boundary_pipeline(client, token)
+    response = client.post(
+        '/api/v1/platform/bots',
+        headers={'Authorization': f'Bearer {token}'},
+        json={
+            'name': 'Aggregation ' + kind,
+            'adapter': 'http_bot',
+            'enable': True,
+            'adapter_config': {'signature_required': True, 'inbound_secret': 'qa-sign', 'callback_timeout': 5},
+            'message_policy': {
+                'plugins': {'enable_all': True},
+                'trigger': {
+                    'message-aggregation': {'enabled': True, 'delay': 2},
+                    'group-respond-rules': {'enabled': False},
+                },
+            },
+            'event_bindings': [
+                {'id': 'chat', 'event_pattern': 'message.received', 'target_type': 'pipeline', 'target_uuid': pipeline}
+            ],
+        },
+    ).json()
+    assert response['code'] == 0, response
+    bot = response['data']['uuid']
+
+    def send(text, sync=False, session=kind):
+        body = json.dumps(
+            {'session_type': kind, 'session_id': session, 'message': [{'type': 'Plain', 'text': text}]}
+        ).encode()
+        reply = client.post(
+            f'/bots/{bot}' + ('/sync' if sync else ''), headers=signed_headers(body, 'qa-sign'), content=body
+        ).json()
+        assert reply['code'] == 0, reply
+        return reply['data']
+
+    first, second = [f'{kind}-aggregate-{i}' for i in (1, 2)]
+    send(first)
+    assert [
+        part['text'] for part in send('/qa_boundary_command query-probe', True)['message'] if part['type'] == 'Plain'
+    ] == ['command:' + bot]
+    send(second)
+    deadline = time.monotonic() + 20
+    while True:
+        reply = send('lifecycle-counts', True, 'counts-' + kind)
+        counts = json.loads(next(part['text'] for part in reply['message'] if part['type'] == 'Plain'))
+        if any(first in text and second in text for text in counts['ran']):
+            break
+        assert time.monotonic() < deadline, counts
+    for text in (first, second):
+        assert counts['received'].count(text) == 1
+        assert text not in counts['ran']
+    assert not any('qa_boundary_command' in text and first in text for text in counts['ran'])
+
+
 def test_legacy_chat_config_http(runner_client):
     client = runner_client
     headers = {'Authorization': f'Bearer {_init_and_auth(client)}'}
