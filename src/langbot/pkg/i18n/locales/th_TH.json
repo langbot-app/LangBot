@@ -1,4 +1,6 @@
 {
+  "The declared LangBot version range is incompatible with the current version ({current})": "ช่วงเวอร์ชัน LangBot ที่ปลั๊กอินระบุไม่รองรับเวอร์ชันปัจจุบัน ({current})",
+  "No plugin version is compatible with this LangBot version": "ไม่มีเวอร์ชันปลั๊กอินที่เข้ากันได้กับ LangBot รุ่นนี้",
   "Daily message quota reached ({limit} per day). It resets at 00:00 UTC. Upgrade your plan for a higher quota.": "ใช้โควตาข้อความรายวันครบแล้ว ({limit} ข้อความต่อวัน) โควตาจะรีเซ็ตเวลา 00:00 UTC อัปเกรดแผนเพื่อเพิ่มโควตา",
   "The bot route changed. Read the current binding.": "เส้นทางของบอตเปลี่ยนไป โปรดตรวจสอบการผูกเส้นทางปัจจุบัน",
   "Skill not found": "ไม่พบ Skill",

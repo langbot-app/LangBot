@@ -83,6 +83,7 @@ def validate_github_plugin_install_info(install_info: dict[str, Any]) -> dict[st
             raise ValueError('Invalid plugin source directory')
         return {
             'source_type': 'branch',
+            **({'allow_incompatible': True} if install_info.get('allow_incompatible') is True else {}),
             'owner': owner,
             'repo': repo,
             'ref': ref,

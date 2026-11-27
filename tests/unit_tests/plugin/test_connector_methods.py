@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, Mock
 from importlib import import_module
 
 from tests.factories import text_query
+from langbot import __version__
 from langbot_plugin.entities.io.context import InstallationBinding, PluginExecutionMode
 
 from langbot.pkg.api.http.context import ExecutionContext
@@ -196,7 +197,12 @@ class TestListPlugins:
         result = await connector.list_plugins()
 
         connector.handler.list_plugins.assert_called_once()
-        assert result == [{'manifest': {'manifest': {'metadata': {'author': 'test', 'name': 'plugin'}}}}]
+        assert result == [
+            {
+                'manifest': {'manifest': {'metadata': {'author': 'test', 'name': 'plugin'}}},
+                'compatibility': {'status': 'unspecified', 'current': __version__, 'min': None, 'max': None},
+            }
+        ]
         connector._load_workspace_settings.assert_any_await(TEST_EXECUTION_CONTEXT)
         assert all(
             awaited.args == (TEST_EXECUTION_CONTEXT,) for awaited in connector._load_workspace_settings.await_args_list
@@ -770,13 +776,15 @@ class TestGetPluginInfo:
         connector = create_mock_connector()
 
         configure_handler(connector, AsyncMock())
-        connector.handler.get_plugin_info = AsyncMock(return_value={'manifest': {'metadata': {'name': 'plugin'}}})
+        manifest = {'manifest': {'metadata': {'name': 'plugin'}}}
+        connector.handler.get_plugin_info = AsyncMock(return_value={'manifest': manifest})
 
         result = await connector.get_plugin_info('author', 'plugin')
 
         connector.handler.get_plugin_info.assert_called_once_with('author', 'plugin')
         assert result == {
-            'manifest': {'metadata': {'name': 'plugin'}},
+            'manifest': manifest,
+            'compatibility': {'status': 'unspecified', 'current': __version__, 'min': None, 'max': None},
             'permission_status': {'compatibility_mode': True, 'pending_confirmation': False},
         }
 

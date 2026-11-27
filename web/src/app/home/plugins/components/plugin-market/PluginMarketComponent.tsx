@@ -43,7 +43,11 @@ import {
 } from '@/app/infra/http';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { PluginV4, PluginV4Status } from '@/app/infra/entities/plugin';
+import {
+  installableVersion,
+  PluginV4,
+  PluginV4Status,
+} from '@/app/infra/entities/plugin';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { toast } from 'sonner';
 import { ApiRespMarketplacePlugins } from '@/app/infra/entities/api';
@@ -275,7 +279,7 @@ function MarketPageContent({
         likeCount: plugin.like_count || 0,
         iconURL,
         githubURL: plugin.repository,
-        version: plugin.latest_version,
+        version: installableVersion(plugin) || plugin.latest_version,
         certificationStatus: plugin.certification_status,
         components: plugin.components || {},
         tags: plugin.tags || [],

@@ -1008,7 +1008,9 @@ class DingTalkClient:
                 open_failures = 0
 
                 uri = '%s?ticket=%s' % (connection['endpoint'], urllib.parse.quote_plus(connection['ticket']))
-                async with websockets.connect(uri, max_size=_MAX_GATEWAY_MESSAGE_BYTES) as websocket:
+                async with websockets.connect(
+                    uri, max_size=_MAX_GATEWAY_MESSAGE_BYTES, **httpclient.websocket_connect_kwargs(uri)
+                ) as websocket:
                     self.client.websocket = websocket
                     keepalive_task = asyncio.create_task(self._keepalive(websocket))
                     try:

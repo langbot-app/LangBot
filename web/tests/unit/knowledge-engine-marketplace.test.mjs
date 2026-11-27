@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import ts from 'typescript';
+import { loadTs } from './load-ts.mjs';
+
+const pluginEntities = loadTs(
+  new URL('../../src/app/infra/entities/plugin/index.ts', import.meta.url),
+);
 
 function setup({
   tasks = [{ runtime: { done: true } }],
@@ -52,6 +57,7 @@ function setup({
   };
   const deps = {
     '@/app/infra/http': { getCloudServiceClient: async () => cloud },
+    '@/app/infra/entities/plugin': pluginEntities,
     '@/app/infra/http/HttpClient': { httpClient: http },
     '@/app/infra/http/workspaceContext': {
       getActiveWorkspaceUuid: () => workspace,

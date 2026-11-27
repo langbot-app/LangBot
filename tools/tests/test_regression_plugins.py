@@ -40,7 +40,8 @@ class SourcePluginsTests(unittest.TestCase):
             (root / 'runner.lbpkg').write_bytes(content)
             manifest = {'plugins': [{'id': 'test/Runner', 'version': '1.2.3', 'archive': 'runner.lbpkg'}]}
             with plugins.package_marketplace(root, manifest) as url:
-                with urllib.request.urlopen(url + '/api/v1/marketplace/plugins/download/test/Runner/1.2.3') as response:
+                download = url + '/api/v1/marketplace/plugins/download/test/Runner/1.2.3?langbot_version=4.11.9'
+                with urllib.request.urlopen(download) as response:
                     self.assertEqual(response.read(), content)
                 with self.assertRaises(urllib.error.HTTPError) as error:
                     urllib.request.urlopen(url + '/runner.lbpkg')

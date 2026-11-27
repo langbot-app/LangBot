@@ -23,6 +23,8 @@ from ..core import app
 from ..telemetry import usage
 from . import handler
 from . import runtime_ops
+from langbot import __version__
+from .compatibility import compatibility, incompatible_package, compatible_release
 from .errors import (
     PluginRuntimeNotConnectedError,
     PluginInstallationFailedError,
@@ -148,7 +150,7 @@ async def _marketplace_get(
     allow_not_found: bool = False,
     task_context: taskmgr.TaskContext | None = None,
 ) -> tuple[int, bytes]:
-    async with client.stream('GET', url) as response:
+    async with client.stream('GET', httpx.URL(url).copy_merge_params({'langbot_version': __version__})) as response:
         if allow_not_found and response.status_code == 404:
             return response.status_code, b''
         if response.is_error:
@@ -184,7 +186,10 @@ def _select_marketplace_plugin_version(
     requested_version: str | None,
     plugin_author: str,
     plugin_name: str,
+    detail: dict | None = None,
 ) -> str:
+    if requested_version is None and detail is not None and 'compatible_version' in detail:
+        return compatible_release(detail)
     if not isinstance(versions, list) or not versions:
         raise ValueError(f'Plugin {plugin_author}/{plugin_name} has no versions')
 
@@ -2014,18 +2019,22 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 )
                 return None, None
 
-            _versions_status, versions_body = await _marketplace_get(
-                client,
-                f'{space_url}/api/v1/marketplace/plugins/{plugin_author}/{plugin_name}/versions',
-                max_bytes=_MARKETPLACE_METADATA_MAX_BYTES,
-            )
-            versions_payload = _decode_json_object(
-                versions_body,
-                subject='Marketplace plugin versions',
-            )
-            versions = versions_payload.get('data', {}).get('versions', [])
+            detail_url = f'{space_url}/api/v1/marketplace/plugins/{plugin_author}/{plugin_name}'
+            _, body = await _marketplace_get(client, detail_url, max_bytes=_MARKETPLACE_METADATA_MAX_BYTES)
+            detail = _decode_json_object(body, subject='Marketplace plugin detail').get('data', {}).get('plugin', {})
+            versions = []
+            if 'compatible_version' not in detail:
+                _, versions_body = await _marketplace_get(
+                    client, f'{detail_url}/versions', max_bytes=_MARKETPLACE_METADATA_MAX_BYTES
+                )
+                versions = (
+                    _decode_json_object(versions_body, subject='Marketplace plugin versions')
+                    .get('data', {})
+                    .get('versions', [])
+                )
             version = _select_marketplace_plugin_version(
                 versions,
+                detail=detail,
                 requested_version=None,
                 plugin_author=plugin_author,
                 plugin_name=plugin_name,
@@ -2177,6 +2186,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             raise ValueError('Plugin package name does not match the requested plugin')
         plugin_author, plugin_name = manifest_author, manifest_name
         manifest, _, _ = inspect_plugin_archive_metadata(file_bytes, require_manifest=True)
+        status = compatibility(manifest)
+        if status['status'] in {'invalid', 'incompatible'} and install_info.get('allow_incompatible') is not True:
+            raise incompatible_package(status)
         from ..api.application.plugin_permissions import read_declaration, expand_declaration
 
         expand_declaration(self.ap, read_declaration(manifest))
@@ -2462,6 +2474,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
         plugins.sort(key=sort_key)
 
+        for plugin in plugins:
+            plugin['compatibility'] = compatibility(plugin['manifest']['manifest'])
         return plugins
 
     async def _debug_plugin_binding(
@@ -2527,6 +2541,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             _, setting = await self._setting_for_plugin(author, plugin_name)
             if not setting.enabled:
                 info = self._pending_plugin_info(setting)
+                info['compatibility'] = compatibility(info['manifest']['manifest'])
                 from ..api.application.plugin_permissions import permission_status
 
                 info['permission_status'] = permission_status(self.ap, setting)
@@ -2544,6 +2559,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
             info['permission_status'] = permission_status(self.ap, setting)
             self._apply_setting_install_source(info, setting)
+            info['compatibility'] = compatibility(info['manifest']['manifest'])
         return info
 
     @staticmethod
