@@ -793,6 +793,28 @@ def test_http_bot_plugin_lifecycle(runner_client, runner_e2e_tmpdir):
     assert 'group-probe messaging' not in counts['ran']
     assert 'no mention' not in counts['ran']
 
+    for mode in ('silent', 'notice'):
+        data(
+            client.put(
+                f'/api/v1/platform/bots/{bot}',
+                headers=headers,
+                json={
+                    'command_settings': {
+                        'denied_reply': mode,
+                        'plugin_permissions': {'e2e/agent-runner-qa/qa_boundary_command': 'admins'},
+                    },
+                    'message_policy': {**enabled, 'trigger': {'group-respond-rules': {'enabled': False}}},
+                },
+            )
+        )
+        for kind in ('person', 'group'):
+            for command in ('/status', '/qa_boundary_command query-probe'):
+                reply = send(command, kind)
+                if mode == 'silent':
+                    assert reply == []
+                else:
+                    assert reply in (['Permission denied'], ['没有执行此操作的权限'])
+
 
 def test_legacy_chat_config_http(runner_client):
     client = runner_client

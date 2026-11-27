@@ -153,8 +153,9 @@ async def test_onebot_recall_notifies_selected_plugins_without_consuming_event()
 @pytest.mark.parametrize('permission', ['everyone', 'admins'])
 @pytest.mark.parametrize('admin', [True, False])
 @pytest.mark.parametrize('denied', ['silent', 'notice'])
-async def test_plugin_command_permissions(permission, admin, denied):
-    event = make_message_event('/draw', chat_type='group')
+@pytest.mark.parametrize('chat_type', ['private', 'group'])
+async def test_plugin_command_permissions(permission, admin, denied, chat_type):
+    event = make_message_event('/draw', chat_type=chat_type)
     bot = make_bot(
         {
             'processors': [{'plugin_id': 'author/draw'}],
@@ -168,13 +169,44 @@ async def test_plugin_command_permissions(permission, admin, denied):
     adapter = SimpleNamespace(reply_message=AsyncMock())
     result = await bot._try_handle_plugin_command(event, adapter)
     allowed = permission == 'everyone' or admin
-    assert result is (allowed or denied == 'notice')
+    assert result is True
     assert bot._execute_matched_plugin_command.await_count == int(allowed)
     assert adapter.reply_message.await_count == int(not allowed and denied == 'notice')
     if not allowed:
         denial = bot._record_event_route_trace.await_args.kwargs
         assert (denial['status'], denial['failure_code']) == ('denied', 'command_permission_denied')
         assert denial['details'] == {'denied_reply': denied, 'command_kind': 'plugin'}
+
+
+@pytest.mark.parametrize('kind', ['builtin', 'plugin'])
+@pytest.mark.parametrize('chat_type', ['private', 'group'])
+@pytest.mark.parametrize('mode', ['silent', 'notice'])
+async def test_denied_command_finishes_primary_route(kind, chat_type, mode):
+    bot = make_bot(
+        {
+            'denied_reply': mode,
+            'processors': [{'plugin_id': 'author/draw'}],
+            'plugin_permissions': {'author/draw/draw': 'admins'},
+        },
+        plugin_processors=[{'processor_uuid': 'subscriber', 'enabled': True}],
+    )
+    bot._begin_message = AsyncMock(return_value=(None, False))
+    bot._record_event_route_trace = RuntimeBot._record_event_route_trace.__get__(bot)
+    bot.ap.cmd_mgr.is_admin.return_value = False
+    bot.ap.plugin_connector.list_commands.return_value = [FakeCommandManifest('author/draw', 'draw')]
+    bot._dispatch_eba_event_to_processor = AsyncMock()
+    bot._dispatch_plugin_subscription = AsyncMock(return_value=None)
+    bot._execute_matched_plugin_command = AsyncMock()
+    event = make_message_event('/status' if kind == 'builtin' else '/draw', chat_type=chat_type)
+    adapter = SimpleNamespace(reply_message=AsyncMock())
+    await bot._handle_platform_event_body(event, adapter, execution_id='denial')
+    bot._dispatch_eba_event_to_processor.assert_not_awaited()
+    bot._execute_matched_plugin_command.assert_not_awaited()
+    bot._dispatch_plugin_subscription.assert_awaited_once()
+    assert adapter.reply_message.await_count == int(mode == 'notice')
+    status, routes = bot._persist_monitoring_ingress.await_args.args[-2:]
+    assert status == 'completed'
+    assert [route['failure_code'] for route in routes if isinstance(route, dict)] == ['command_permission_denied']
 
 
 @pytest.mark.parametrize('fails', [False, True])

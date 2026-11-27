@@ -6,7 +6,7 @@ Use the bot’s command prefix (default `/`). `/reset` is an alias for `/new`. E
 
 `/undo` removes the last completed turn from LocalAgent Chat history. `/retry` regenerates a text turn; it does not delete messages already displayed by the platform. Other processors report unsupported operations. `/model` changes only the current Chat session and `/new` restores the configured model.
 
-Set each command, including plugin commands, to `everyone` or `admins`. Add sender IDs from `/whoami` (such as `person_10001`) as administrators in Session Monitoring. An empty list grants nobody admin access. With `silent`, denied messages follow ordinary routing; `notice` sends a permission message instead.
+Set each command, including plugin commands, to `everyone` or `admins`. Add sender IDs from `/whoami` (such as `person_10001`) as administrators in Session Monitoring. An empty list grants nobody admin access. With `silent`, denied messages stop without a reply; `notice` sends a permission message instead.
 
 | Command | System commands | Enabled | Permission |
 |---|---|---|---|

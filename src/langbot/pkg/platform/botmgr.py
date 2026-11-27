@@ -1277,7 +1277,7 @@ class RuntimeBot:
             )
             object.__setattr__(event, '_command_denial', denial)
             if denied_reply == 'silent':
-                return False
+                return True
         async with runtime.admit(query, cmd_text) if runtime is not None else contextlib.nullcontext() as item:
             if item:
                 binding = dict(
@@ -1632,7 +1632,10 @@ class RuntimeBot:
                     results = cmd_results
                     command_handled = True
 
-            if not command_handled:
+            denial = getattr(event, '_command_denial', None)
+            if denial:
+                results.append(denial)
+            if not command_handled or denial:
                 primary_handler = (
                     self._handle_interaction_submission
                     if isinstance(event, platform_events.InteractionCallbackEvent)
@@ -1640,7 +1643,9 @@ class RuntimeBot:
                 )
                 subscriptions = self._get_event_bindings_from_value(getattr(self.bot_entity, 'plugin_processors', []))
                 seen = set()
-                tasks = [self._run_event_delivery(primary_handler, event, adapter, execution_id=execution_id)]
+                tasks = []
+                if not command_handled:
+                    tasks.append(self._run_event_delivery(primary_handler, event, adapter, execution_id=execution_id))
                 if (
                     not isinstance(event, platform_events.MessageReceivedEvent)
                     and getattr(self.ap, 'plugin_connector', None) is not None
@@ -1658,7 +1663,7 @@ class RuntimeBot:
                     )
                 # Start all deliveries together. A slow or failed subscriber cannot block
                 # another subscriber or the primary route from receiving the event.
-                results = await asyncio.gather(*tasks, return_exceptions=True)
+                results.extend(await asyncio.gather(*tasks, return_exceptions=True))
         except BaseException as exc:
             from ..telemetry.execution import describe_exception, is_cancellation
 
@@ -1673,8 +1678,6 @@ class RuntimeBot:
 
         # Recorded after handling so the inbound stage carries the real outcome
         # instead of a hardcoded success.
-        if denial := getattr(event, '_command_denial', None):
-            results = [*results, denial]
         outcome, error_detail = self._summarize_event_delivery(results)
         for result in results:
             if isinstance(result, BaseException):
