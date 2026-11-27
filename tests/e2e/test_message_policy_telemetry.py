@@ -1,4 +1,6 @@
 import json
+import sqlite3
+from contextlib import closing
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -72,9 +74,13 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
                     ).json()
                     assert reply['code'] == 0, reply
                     assert bool(reply['data']['message']) == (command == '/whoami')
+                if enabled:
+                    _check_route_access_policy(client, token, bot, tmp_path)
                 deadline = time.monotonic() + (75 if enabled else 35)
                 while time.monotonic() < deadline:
-                    if any(payload.get('event_type') == 'instance_heartbeat' for payload in received):
+                    if any(payload.get('event_type') == 'instance_heartbeat' for payload in received) and (
+                        not enabled or _access_layers(received) == {'bot', 'route'}
+                    ):
                         break
                     time.sleep(0.25)
         finally:
@@ -93,9 +99,71 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
     assert {('builtin:whoami', 'ok'), ('builtin:status', 'denied')} <= commands
     features = next(payload['features'] for payload in received if payload.get('event_type') == 'instance_heartbeat')
     assert features['commands_disabled_bots'] == 0
+    assert _access_layers(received) == {'bot', 'route'}
     outcomes = {
         (dims['name'], dims['outcome'])
         for metric, dims, count in features['usage']['c']
-        if metric == 'command.run' and count == 1
+        if metric == 'command.run' and count >= 1
     }
     assert outcomes == {('whoami', 'ok'), ('status', 'denied')}
+
+
+def _access_layers(received):
+    return {
+        node['layer']
+        for payload in received
+        for node in payload.get('records', [])
+        if node.get('family') == 'message_policy'
+        and node.get('operation') == 'access-control'
+        and node.get('outcome') == 'discarded'
+    }
+
+
+def _check_route_access_policy(client, token, bot, tmp_path):
+    headers = {'Authorization': 'Bearer ' + token}
+    bot_path = '/api/v1/platform/bots/' + bot
+
+    def api(method, path, **kwargs):
+        result = client.request(method, path, headers=headers, **kwargs).json()
+        assert result['code'] == 0, result
+        return result['data']
+
+    chat = api('POST', '/api/v1/pipelines', json={'name': 'Route QA'})['uuid']
+    route = {'id': 'access', 'event_pattern': 'message.received', 'target_type': 'pipeline', 'target_uuid': chat}
+    bot_policy = {
+        'trigger': {
+            'access-control': {'mode': 'blacklist', 'blacklist': ['person_blocked', 'group_blocked']},
+            'group-respond-rules': {'enabled': False},
+        }
+    }
+    override = {'trigger': {'access-control': {'mode': 'whitelist', 'whitelist': ['person_blocked', 'group_blocked']}}}
+    api('PUT', bot_path, json={'message_policy': bot_policy, 'event_bindings': [{**route, 'policy': override}]})
+    api('PUT', bot_path, json={'event_bindings': [route]})
+    assert api('GET', bot_path)['bot']['event_bindings'][0]['policy'] == override
+    for layer in ('route', 'bot'):
+        if layer == 'bot':
+            api('PUT', bot_path, json={'event_bindings': [{**route, 'policy': None}]})
+            assert 'policy' not in api('GET', bot_path)['bot']['event_bindings'][0]
+        for kind in ('person', 'group'):
+            for session in ('allowed', 'blocked'):
+                allowed = (layer == 'bot') == (session == 'allowed')
+                body = json.dumps(
+                    {'session_type': kind, 'session_id': session, 'message': [{'type': 'Plain', 'text': '/whoami'}]}
+                ).encode()
+                reply = client.post(
+                    '/bots/' + bot + '/sync', content=body, headers=signed_headers(body, 'qa-signer')
+                ).json()
+                assert reply['code'] == 0 and bool(reply['data']['message']) == allowed, (layer, kind, session, reply)
+                if not allowed:
+                    with closing(sqlite3.connect(tmp_path / 'data/langbot.db')) as db:
+                        row = db.execute(
+                            "SELECT metadata_json FROM event_log WHERE bot_id=? AND event_type='message.received' ORDER BY id DESC LIMIT 1",
+                            (bot,),
+                        ).fetchone()
+                    metadata = json.loads(row[0])
+                    (primary,) = metadata['routes']
+                    assert (metadata['status'], primary['policy_layer'], primary['policy_item']) == (
+                        'ignored',
+                        layer,
+                        'access-control',
+                    ), metadata
