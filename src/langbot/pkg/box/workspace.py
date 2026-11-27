@@ -23,17 +23,34 @@ _VENV_DIRS = frozenset({'.venv', 'venv', 'env', '.env'})
 _VENV_BIN_DIRS = frozenset({'bin', 'Scripts'})
 
 
+def _relative_to_host(path: str, host_path: str) -> str | None:
+    """Return ``path`` relative to ``host_path`` with ``/`` separators, or None when it is outside.
+
+    The sandbox always sees POSIX paths, so a Windows host path has to be
+    compared with the native separator and without regard to case, then joined
+    back with ``/``.
+    """
+    normalized_host = os.path.realpath(host_path)
+    normalized_path = os.path.realpath(path)
+    try:
+        rel = os.path.relpath(normalized_path, normalized_host)
+    except ValueError:  # different drives on Windows
+        return None
+    if rel == os.path.curdir:
+        return ''
+    if rel == os.path.pardir or rel.startswith(os.path.pardir + os.path.sep) or os.path.isabs(rel):
+        return None
+    return rel.replace(os.path.sep, '/')
+
+
 def rewrite_mounted_path(path: str, host_path: str | None, *, mount_path: str = '/workspace') -> str:
     """Translate a host path into the path visible inside the sandbox mount."""
     if not host_path or not path:
         return path
-    normalized_host = os.path.realpath(host_path)
-    normalized_path = os.path.realpath(path)
-    if normalized_path.startswith(normalized_host + '/'):
-        return mount_path + normalized_path[len(normalized_host) :]
-    if normalized_path == normalized_host:
-        return mount_path
-    return path
+    rel = _relative_to_host(path, host_path)
+    if rel is None:
+        return path
+    return f'{mount_path}/{rel}' if rel else mount_path
 
 
 def unwrap_venv_path(directory: str) -> str:
@@ -72,15 +89,13 @@ def rewrite_venv_command(command: str, host_path: str | None, *, mount_path: str
     """
     if not host_path or not command:
         return command
-    normalized_host = os.path.realpath(host_path)
-    normalized_command = os.path.realpath(command)
-    if not normalized_command.startswith(normalized_host + '/'):
+    rel = _relative_to_host(command, host_path)
+    if not rel:
         return command
-    rel = normalized_command[len(normalized_host) + 1 :]
-    parts = rel.replace('\\', '/').split('/')
+    parts = rel.split('/')
     if len(parts) >= 3 and parts[0] in _VENV_DIRS and parts[1] in _VENV_BIN_DIRS and parts[2].startswith('python'):
         return 'python'
-    return rewrite_mounted_path(normalized_command, host_path, mount_path=mount_path)
+    return rewrite_mounted_path(command, host_path, mount_path=mount_path)
 
 
 def classify_python_workspace(host_path: str | None) -> str | None:

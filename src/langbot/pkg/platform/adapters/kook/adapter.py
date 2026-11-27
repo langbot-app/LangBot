@@ -226,7 +226,9 @@ class KookAdapter(KookAPIMixin, BasePlatformAdapter):
                 if not self.gateway_url:
                     self.gateway_url = await self._get_gateway_url()
 
-                async with websockets.connect(self.gateway_url) as ws:
+                async with websockets.connect(
+                    self.gateway_url, **httpclient.websocket_connect_kwargs(self.gateway_url)
+                ) as ws:
                     self.ws = ws
                     await self.logger.info('Connected to KOOK WebSocket')
                     self.heartbeat_task = asyncio.create_task(self._heartbeat_loop())

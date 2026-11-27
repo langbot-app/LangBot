@@ -2,6 +2,7 @@
 """Prepare a disposable Linux CI stack from this checkout, then run a regression suite."""
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from hashlib import file_digest
 from html import escape
@@ -130,6 +131,28 @@ def suite_profile(name, run_id, groups=(), api_seed=1, load_settings=None, *, ap
         profile.update({key: value for key, value in load_settings.items() if key != 'box_command_delay_seconds'})
         validate(profile)
     return profile, profile_path
+
+
+def _remove_box_container(container: str) -> str | None:
+    """Remove one run-owned Box container without hanging suite teardown."""
+    try:
+        result = subprocess.run(
+            ['docker', 'rm', '-f', container],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except subprocess.TimeoutExpired:
+        try:
+            subprocess.run(['docker', 'kill', container], check=False, capture_output=True, timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        return 'timed out removing container'
+    if result.returncode:
+        message = (result.stderr or result.stdout or '').strip().replace('\n', ' ')
+        return message[:500] or f'exit code {result.returncode}'
+    return None
 
 
 def mixed_scenarios(box_command_delay_seconds=1):
@@ -334,6 +357,12 @@ def run(args):
             allowed_mount_roots=[str(private / 'box')],
             image='' if host else 'python:3.12-alpine',
         )
+        sqlite_queue = os.environ.get('LANGBOT_REGRESSION_SQLITE_WRITE_QUEUE')
+        if sqlite_queue is not None:
+            require(sqlite_queue in {'on', 'off'}, 'LANGBOT_REGRESSION_SQLITE_WRITE_QUEUE must be on or off')
+            sqlite_config = config.setdefault('database', {}).setdefault('sqlite', {})
+            sqlite_config['experimental_write_queue'] = sqlite_queue == 'on'
+            sqlite_config['experimental_write_timing'] = os.environ.get('LANGBOT_REGRESSION_SQLITE_WRITE_TIMING') == '1'
         config_path.write_text(yaml.safe_dump(config))
         groups = args.scenario_groups
         if groups is None:
@@ -407,9 +436,15 @@ def run(args):
             # Fixed provider/tool latency makes overlap observable; this is not a performance baseline.
             if args.mixload_profile is not None:
                 from tools.regression.mixload_cases import configure_mock_scenarios
+                from tools.regression.mixload_profile import load_mixload
 
                 scenarios = json.loads((ROOT / 'tools/fixtures/mock_llm_scenarios.json').read_text())
-                scenarios = configure_mock_scenarios(scenarios, box_backend=args.box_backend)
+                workload = load_mixload(args.mixload_profile).box_workload
+                scenarios = configure_mock_scenarios(
+                    scenarios,
+                    box_backend=args.box_backend,
+                    box_workload=workload,
+                )
             else:
                 scenarios = mixed_scenarios((args.load_settings or {}).get('box_command_delay_seconds', 1))
             scenario_path = private / 'mixed-scenarios.json'
@@ -629,8 +664,14 @@ def run(args):
             log.close()
         # This is a disposable CI daemon; still delete only this run's mounted sandboxes.
         if not host:
-            for container in owned_box_containers(private / 'box'):
-                subprocess.run(['docker', 'rm', '-f', container], check=True, capture_output=True)
+            cleanup_errors = []
+            containers = owned_box_containers(private / 'box')
+            with ThreadPoolExecutor(max_workers=min(16, max(1, len(containers)))) as pool:
+                for container, error in zip(containers, pool.map(_remove_box_container, containers)):
+                    if error:
+                        cleanup_errors.append(f'{container}: {error}')
+            if cleanup_errors:
+                (root / 'cleanup-errors.json').write_text(json.dumps(cleanup_errors, indent=2) + '\n')
 
 
 def main():

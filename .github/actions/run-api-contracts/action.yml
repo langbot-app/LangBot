@@ -27,6 +27,8 @@ runs:
       env:
         API_FIXED_ONLY: ${{ inputs.fixed-only }}
         LBCTL_BIN: ${{ steps.lbctl.outputs.binary }}
+        SPACE__DISABLE_TELEMETRY: 'true'
+        ANONYMIZED_TELEMETRY: 'False'
       run: |
         args=(--api-seed "$GITHUB_RUN_ID")
         if [[ "$API_FIXED_ONLY" == 'true' ]]; then

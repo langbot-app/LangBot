@@ -47,6 +47,13 @@ turns per group. Each group remains pinned to one scenario; groups are fresh at
 phase boundaries, durable throughout a single phase, and do not silently reuse
 a different scenario's history after reweighting.
 
+For Box-focused diagnosis, set the optional top-level `box_workload` to one of
+`overlap` (the historical one-second wait), `noop` (small write/read), `cpu`
+(fixed SHA-256 iterations), or `io` (fixed 64 KiB write/read). The default is
+`overlap` for compatibility. Compare identical backend and phase geometry. The
+`cpu` workload records a fixed iteration count, not a fixed wall-clock target,
+so use the resource samples and actual execution time when comparing machines.
+
 ## Business receipts
 
 - `chat`: signed HTTP Bot → LocalAgent → its model stream; each group rotates

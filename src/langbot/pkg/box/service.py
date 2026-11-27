@@ -14,6 +14,7 @@ import posixpath
 import re
 import uuid
 import secrets
+import time
 from typing import TYPE_CHECKING
 
 import pydantic
@@ -174,6 +175,10 @@ class BoxService:
         self._reconnect_task: asyncio.Task | None = None
         self._closing = False
         self._available = False
+        # Backend identity is stable for one connected Box Runtime. Avoid a
+        # round-trip for every Runner Box acquisition and clear it on reconnect.
+        self._runtime_backend_info: dict | None = None
+        self._runtime_backend_info_lock = asyncio.Lock()
         self._connector_error: str = ''
         self._reconnecting = False
         # Optional explicit override for shares_filesystem_with_box. None means
@@ -194,6 +199,7 @@ class BoxService:
         return self._cloud_managed
 
     async def initialize(self):
+        self._runtime_backend_info = None
         if not self._enabled:
             # Disabled by config: do NOT connect to a remote runtime, do NOT
             # fork a stdio subprocess. Every consumer of box_service should
@@ -288,6 +294,7 @@ class BoxService:
             return  # Another reconnect loop is already running
         self._reconnecting = True
         self._available = False
+        self._runtime_backend_info = None
         self._connector_error = 'Disconnected from Box runtime'
         self.ap.logger.warning('Box runtime disconnected, sandbox features temporarily disabled.')
         reconnect = self._reconnect_loop(connector)
@@ -316,6 +323,7 @@ class BoxService:
                     if not self._cloud_managed and self.file_transfer_mode != 'network':
                         await self._purge_attachment_dirs()
                     self._available = True
+                    self._runtime_backend_info = None
                     self._connector_error = ''
                     self.ap.logger.info('Box runtime reconnected, sandbox features restored.')
                     return
@@ -762,6 +770,7 @@ class BoxService:
         prepare_artifacts: bool = True,
     ) -> BoxExecutionResult:
         """Execute within the bound Workspace and preserve the raw result for file transfers."""
+        timing_started = time.perf_counter()
         if not self._available:
             raise BoxError(
                 'Box runtime is not available. Configure an available Box backend before using Box features.'
@@ -785,6 +794,7 @@ class BoxService:
         spec_payload.pop('backend', None)
         spec_payload.pop('e2b_config', None)
         execution_context = await self._validated_execution_context(self._query_execution_context(query))
+        placement_ms = (time.perf_counter() - timing_started) * 1000
         artifact_mounts = []
         if prepare_artifacts and self.file_transfer_mode == 'network':
             from ..provider.tools.loaders.skill import get_activated_skills
@@ -829,6 +839,8 @@ class BoxService:
             self._record_error(exc, query)
             raise
         telemetry_features.increment(self.ap, 'sandbox', 'execs', query=query)
+        prepare_ms = (time.perf_counter() - timing_started) * 1000
+        rpc_started = time.perf_counter()
         try:
             try:
                 result = await self.client.execute(
@@ -844,10 +856,12 @@ class BoxService:
                     raise
                 await self.prepare_execution_artifacts(query, execution_context)
                 result = await self.client.execute(spec, action_context=self._action_context(execution_context))
+            rpc_ms = (time.perf_counter() - rpc_started) * 1000
             # A placement may be cut over while a long-running sandbox call is
             # in flight.  Never accept a result produced by the superseded
             # generation.  Runtime-side generation fencing prevents new work;
             # this second Core check closes the response race.
+            post_started = time.perf_counter()
             await self._validated_execution_context(execution_context)
         except BoxError as exc:
             self._record_error(exc, query)
@@ -858,6 +872,14 @@ class BoxService:
             await self._cleanup_exceeded_session(execution_context, spec)
             self._record_error(exc, query)
             raise
+        post_ms = (time.perf_counter() - post_started) * 1000
+        self.ap.logger.info(
+            'box_execute_timing '
+            f'query_id={query.query_id} session_id={spec.session_id} '
+            f'placement_ms={placement_ms:.3f} prepare_ms={prepare_ms:.3f} '
+            f'rpc_ms={rpc_ms:.3f} post_ms={post_ms:.3f} '
+            f'total_ms={(time.perf_counter() - timing_started) * 1000:.3f}'
+        )
         self.ap.logger.info(
             'LangBot Box result: '
             f'query_id={query.query_id} '
@@ -1838,6 +1860,7 @@ class BoxService:
             return
         self._closing = True
         self._available = False
+        self._runtime_backend_info = None
         reconnect_task = self._reconnect_task
         self._reconnect_task = None
         if reconnect_task is not None and reconnect_task is not asyncio.current_task():
@@ -1938,14 +1961,35 @@ class BoxService:
     async def resolve_workspace_selection(self, context: TenantContext) -> dict:
         from .settings import get_settings
 
+        timing_started = time.perf_counter()
         saved = await get_settings(self.ap, require_workspace_uuid(context))
+        settings_ms = (time.perf_counter() - timing_started) * 1000
         if 'backend' not in BoxSpec.model_fields:
             if any(saved.values()):
                 raise BoxValidationError('Workspace sandbox settings require an upgraded Box SDK and Runtime')
             return {'backend': None, 'e2b': {}, 'limits': {}}
         backend = saved['backend']
+        backend_info_ms = 0.0
+        backend_cache_hit = False
         if backend is None and self._available:
-            backend = (await self.client.get_backend_info()).get('name')
+            async with self._runtime_backend_info_lock:
+                if self._runtime_backend_info is None:
+                    backend_started = time.perf_counter()
+                    backend_info = await self.client.get_backend_info()
+                    backend_info_ms = (time.perf_counter() - backend_started) * 1000
+                    if backend_info.get('available') is True and backend_info.get('name'):
+                        self._runtime_backend_info = dict(backend_info)
+                else:
+                    backend_info = self._runtime_backend_info
+                    backend_cache_hit = True
+            backend = backend_info.get('name')
+        self.ap.logger.info(
+            'box_selection_timing '
+            f'workspace_uuid={require_workspace_uuid(context)} '
+            f'settings_ms={settings_ms:.3f} backend_info_ms={backend_info_ms:.3f} '
+            f'backend_cache_hit={backend_cache_hit} '
+            f'total_ms={(time.perf_counter() - timing_started) * 1000:.3f}'
+        )
         return {'backend': backend, 'e2b': saved['e2b'] or {}, 'limits': saved.get('limits') or {}}
 
     async def resolve_workspace_backend(self, context: TenantContext) -> str | None:

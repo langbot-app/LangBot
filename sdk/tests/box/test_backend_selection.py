@@ -295,6 +295,7 @@ async def test_create_session_recreates_disappeared_backend_session(logger):
     with mock.patch("os.getenv", return_value=None):
         first = await runtime.create_session(spec)
         backend._alive = False
+        runtime._sessions[spec.session_id].liveness_checked_at -= 6
         second = await runtime.create_session(spec)
 
     assert first["backend_session_id"] == "docker-1"

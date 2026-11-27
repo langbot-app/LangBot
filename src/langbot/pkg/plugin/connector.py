@@ -105,6 +105,78 @@ _RECONNECT_MAX_DELAY_SEC = 60.0
 _RECONNECT_REQUEST_WAIT_SECONDS = 30.0
 
 
+# Inline media an event payload may carry. The rest of the Runtime frame
+# (MAX_MESSAGE_BYTES) is headroom for the event's other fields.
+_EVENT_INLINE_MEDIA_BUDGET_BYTES = base_connection.MAX_MESSAGE_BYTES - 4 * 1024 * 1024
+_INLINE_MEDIA_KEYS = ('base64', 'file_base64')
+
+
+def _iter_inline_media(payload: Any) -> typing.Iterator[tuple[dict, str]]:
+    stack = [payload]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in _INLINE_MEDIA_KEYS and isinstance(value, str):
+                    yield node, key
+                elif isinstance(value, (dict, list)):
+                    stack.append(value)
+        elif isinstance(node, list):
+            stack.extend(item for item in node if isinstance(item, (dict, list)))
+
+
+def _inline_media_fingerprint(node: dict, key: str) -> str:
+    return json.dumps({k: v for k, v in node.items() if k != key}, sort_keys=True, default=str)
+
+
+def _shed_oversized_inline_media(
+    payload: Any, budget: int = _EVENT_INLINE_MEDIA_BUDGET_BYTES
+) -> dict[tuple[str, str], str]:
+    """Clear inline media from an event payload that would not fit one Runtime frame.
+
+    Message events carry the platform chain twice (``message_chain`` and
+    ``message_event.message_chain``), so a single ~6 MiB file already exceeds
+    the Runtime's 16 MiB frame and used to fail the whole message. Largest
+    payloads are cleared first until the rest fits; components keep their
+    url/name/size so plugins can still tell what was sent.
+
+    Returns the cleared payloads keyed by component fingerprint so
+    ``_restore_inline_media`` can put them back on the returned event.
+    """
+    # Copies of one component (the chain appears twice) are cleared together,
+    # so every view of the event agrees on what was shed.
+    groups: dict[tuple[str, str], list[dict]] = {}
+    total = 0
+    for node, key in _iter_inline_media(payload):
+        if node[key]:
+            groups.setdefault((key, _inline_media_fingerprint(node, key)), []).append(node)
+            total += len(node[key])
+
+    def group_size(item: tuple[tuple[str, str], list[dict]]) -> int:
+        (key, _), nodes = item
+        return sum(len(node[key]) for node in nodes)
+
+    cleared: dict[tuple[str, str], str] = {}
+    for group_key, nodes in sorted(groups.items(), key=group_size, reverse=True):
+        if total <= budget:
+            break
+        key = group_key[0]
+        total -= group_size((group_key, nodes))
+        cleared[group_key] = nodes[0][key]
+        for node in nodes:
+            node[key] = ''
+    return cleared
+
+
+def _restore_inline_media(payload: Any, cleared: dict[tuple[str, str], str]) -> None:
+    """Refill media the Host cleared before dispatch; plugins never saw those bytes."""
+    for node, key in list(_iter_inline_media(payload)):
+        if not node[key]:
+            value = cleared.get((key, _inline_media_fingerprint(node, key)))
+            if value:
+                node[key] = value
+
+
 def _utc_now_iso() -> str:
     """Return the current UTC time as a second-precision RFC 3339 string."""
 
@@ -2849,6 +2921,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         batch_args = {'installation_bindings': batch} if batch is not None else {}
         for binding in bindings:
             event_payload = event_ctx.model_dump(serialize_as_any=False)
+            cleared = _shed_oversized_inline_media(event_payload)
+            if cleared:
+                self.ap.logger.warning(
+                    f'Event {event_ctx.event_name} carried more inline media than one Runtime message allows; '
+                    f'cleared {len(cleared)} inline payload(s) before dispatch to plugins'
+                )
             if query is not None:
                 # Opt in to ``origin_query_uuid`` on plugin actions issued while
                 # handling this event (monitoring attribution only). Older
@@ -2860,6 +2938,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     include_plugins=bound_plugins,
                     **batch_args,
                 )
+            if cleared:
+                _restore_inline_media(result['event_context'], cleared)
             event_ctx = context.EventContext.model_validate(result['event_context'])
             emitted_plugins.extend(result.get('emitted_plugins', []))
             response_sources.extend(result.get('response_sources', []))

@@ -29,6 +29,7 @@ import hashlib
 import logging
 import os
 import sys
+import time
 from typing import Any
 
 import pydantic
@@ -602,30 +603,51 @@ class BoxServerHandler(Handler):
 
         @self.action(LangBotToBoxAction.EXEC)
         async def exec_cmd(data: dict[str, Any]) -> ActionResponse:
+            started = time.perf_counter()
+            validate_ms = 0.0
+            runtime_ms = 0.0
+            response_started: float | None = None
             try:
-                context = self._action_context()
-                spec = BoxSpec.model_validate(data)
-                if self._runtime.admission_required:
-                    result = await self._runtime.execute(spec, action_context=context)
-                else:
-                    spec = spec.model_copy(
-                        update={"session_id": self._session_id(spec.session_id)}
-                    )
+                try:
+                    context = self._action_context()
+                    spec = BoxSpec.model_validate(data)
+                    if not self._runtime.admission_required:
+                        spec = spec.model_copy(
+                            update={"session_id": self._session_id(spec.session_id)}
+                        )
+                    validate_ms = (time.perf_counter() - started) * 1000
+                    runtime_started = time.perf_counter()
                     result = await self._runtime.execute(
                         spec,
                         action_context=context,
                     )
-            except BoxArtifactNotPreparedError as exc:
-                return ActionResponse.error(f"BoxArtifactNotPreparedError: {exc}")
-            except (pydantic.ValidationError, ValueError) as exc:
-                if data.get("e2b_config") is not None:
-                    return ActionResponse.error(
-                        "BoxValidationError: Invalid E2B connection configuration"
-                    )
-                return ActionResponse.error(f"BoxValidationError: {exc}")
-            return ActionResponse.success(
-                self._logical_session_data(_result_to_dict(result))
-            )
+                    runtime_ms = (time.perf_counter() - runtime_started) * 1000
+                except BoxArtifactNotPreparedError as exc:
+                    return ActionResponse.error(f"BoxArtifactNotPreparedError: {exc}")
+                except (pydantic.ValidationError, ValueError) as exc:
+                    if data.get("e2b_config") is not None:
+                        return ActionResponse.error(
+                            "BoxValidationError: Invalid E2B connection configuration"
+                        )
+                    return ActionResponse.error(f"BoxValidationError: {exc}")
+                response_started = time.perf_counter()
+                return ActionResponse.success(
+                    self._logical_session_data(_result_to_dict(result))
+                )
+            finally:
+                response_ms = (
+                    (time.perf_counter() - response_started) * 1000
+                    if response_started is not None
+                    else 0.0
+                )
+                logger.info(
+                    "box_action_timing action=EXEC validate_ms=%.3f "
+                    "runtime_ms=%.3f response_ms=%.3f handler_ms=%.3f",
+                    validate_ms,
+                    runtime_ms,
+                    response_ms,
+                    (time.perf_counter() - started) * 1000,
+                )
 
         @self.action(LangBotToBoxAction.UPLOAD_FILE)
         async def upload_file(data: dict[str, Any]) -> ActionResponse:
