@@ -25,6 +25,31 @@ def _payload(link):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'payload',
+    [
+        {'grant_type': 'password', 'username': 'account@example.test', 'password': 'not-a-real-password'},
+        {'grant_type': 'refresh_token', 'refresh_token': 'not-a-real-token'},
+    ],
+)
+async def test_legacy_oauth_token_requires_encrypted_transport(payload, monkeypatch):
+    password_grant = AsyncMock()
+    refresh_grant = AsyncMock()
+    monkeypatch.setattr(HarnessOAuthService, 'password_grant', password_grant)
+    monkeypatch.setattr(HarnessOAuthService, 'refresh_grant', refresh_grant)
+    app = Quart(__name__)
+    await HarnessRouterGroup(SimpleNamespace(), app).initialize()
+
+    response = await app.test_client().post('/api/v1/harness/oauth/token', json=payload, scheme='https')
+
+    assert response.status_code == 415
+    assert await response.get_json() == {'error': 'encrypted_transport_required'}
+    assert response.headers['Cache-Control'] == 'no-store'
+    password_grant.assert_not_called()
+    refresh_grant.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_instance_binding_is_atomic_and_a_link_cannot_be_redeemed_twice(tmp_path, monkeypatch):
     monkeypatch.setattr(constants, 'instance_id', 'instance-identifier')
     engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "harness.db"}')

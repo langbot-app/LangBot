@@ -133,17 +133,8 @@ class HarnessRouterGroup(group.RouterGroup):
 
         @self.route('/oauth/token', methods=['POST'], auth_type=group.AuthType.NONE)
         async def token():
-            payload = await quart.request.get_json(silent=True)
-            if not isinstance(payload, dict):
-                return self.http_status(400, 'invalid_request', 'Invalid request parameters')
-            service = HarnessOAuthService(self.ap)
-            try:
-                if payload.get('grant_type') == 'refresh_token':
-                    result = await service.refresh_grant(payload.get('refresh_token', ''))
-                else:
-                    result = await service.password_grant(payload.get('binding_id', ''), payload)
-            except ValueError as exc:
-                return self.http_status(401, str(exc), 'Invalid authentication credentials')
-            response = self.success(result)
+            # Do not read credentials or dispatch grants through the retired route.
+            response = quart.jsonify({'error': 'encrypted_transport_required'})
+            response.status_code = 415
             response.headers['Cache-Control'] = 'no-store'
             return response
