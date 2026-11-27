@@ -885,6 +885,22 @@ def test_http_bot_builtin_commands(runner_client, runner_e2e_tmpdir):
     data(client.put(url, headers=headers, json={'command_settings': {'denied_reply': 'notice'}}))
     assert send('/status', 'user', 'qa-group') == '没有执行此操作的权限'
 
+    data(
+        client.put(
+            url,
+            headers=headers,
+            json={'command_settings': {'prefixes': ['/', '!'], 'builtin': {'model': {'enabled': True}}}},
+        )
+    )
+    no_route = '当前没有处理这条消息的处理器'
+    for group in (None, 'qa-group'):
+        assert 'Token 数：' in send('!usage', 'admin', group)
+        assert 'LangBot ' in send('!version', 'admin', group)
+        assert send('!plugins', 'admin', group)
+        for command in ('model', 'tools', 'stop', 'retry', 'undo'):
+            assert send('!' + command, 'admin', group) == no_route
+        assert send('!version', 'user', group) == '没有执行此操作的权限'
+
 
 def test_http_agent_message_policy(runner_client, runner_e2e_tmpdir):
     client = runner_client
