@@ -43,6 +43,36 @@ class ReplayGuard:
         return expiry is not None and expiry >= time.time()
 
 
+def begin_handshake(kid, signing_key, nonce):
+    ephemeral = x25519.X25519PrivateKey.generate()
+    eh = base64.b64encode(_raw_public(ephemeral.public_key())).decode()
+    timestamp = int(time.time())
+    transcript = hs1_transcript(1, kid, timestamp, nonce, eh)
+    return {
+        'v': 1, 'kid': kid, 'e_h': eh, 'ts': timestamp, 'nonce_s': nonce,
+        'sig_h': base64.b64encode(signing_key.sign(transcript)).decode(),
+    }, ephemeral, transcript
+
+
+def finish_handshake(kid, transcript, ephemeral, server_static, client_static, client_signing, hs2):
+    if not isinstance(hs2, dict) or type(hs2.get('v')) is not int or hs2['v'] != 1 or not all(
+        isinstance(hs2.get(field), str) and len(hs2[field]) <= 128 for field in ('e_c', 'sig_c', 'confirm')
+    ):
+        raise ValueError('invalid HS2')
+    client_ephemeral = x25519.X25519PublicKey.from_public_bytes(base64.b64decode(hs2['e_c'], validate=True))
+    transcript += b'\n' + hs2['e_c'].encode('ascii')
+    client_signing.verify(base64.b64decode(hs2['sig_c'], validate=True), b'HTS1/HS2\n' + transcript)
+    shared = (
+        ephemeral.exchange(client_ephemeral)
+        + server_static.exchange(client_ephemeral)
+        + ephemeral.exchange(client_static)
+    )
+    c2h, h2c, confirm = derive(shared, kid, transcript)
+    if not hmac.compare_digest(base64.b64decode(hs2['confirm'], validate=True), hmac.digest(confirm, INFO + transcript, 'sha256')):
+        raise ValueError('invalid HS2 key confirmation')
+    return c2h, h2c
+
+
 class SecureSession:
     """Sequence-checked authenticated JSON frame session."""
 
@@ -118,42 +148,17 @@ async def handshake(
 ):
     """Perform authenticated HS1/HS2 and return an encrypted session."""
     nonce = replay_guard.issue()
-    server_ephemeral = x25519.X25519PrivateKey.generate()
-    eh = base64.b64encode(_raw_public(server_ephemeral.public_key())).decode()
-    timestamp = int(time.time())
-    transcript = hs1_transcript(1, kid, timestamp, nonce, eh)
-    sig_h = server_ed25519_private.sign(transcript)
-    await websocket.send(
-        json.dumps(
-            {
-                'v': 1,
-                'kid': kid,
-                'e_h': eh,
-                'ts': timestamp,
-                'nonce_s': nonce,
-                'sig_h': base64.b64encode(sig_h).decode(),
-            }
-        )
-    )
+    hs1, ephemeral, transcript = begin_handshake(kid, server_ed25519_private, nonce)
+    await websocket.send(json.dumps(hs1))
     try:
         hs2 = json.loads(await websocket.receive())
     finally:
         fresh = replay_guard.consume(nonce)
-    if not fresh or not isinstance(hs2, dict) or hs2.get('v') != 1 or not isinstance(hs2.get('e_c'), str):
+    if not fresh:
         raise ValueError('invalid HS2')
-    client_ephemeral = x25519.X25519PublicKey.from_public_bytes(base64.b64decode(hs2['e_c'], validate=True))
-    transcript += b'\n' + hs2['e_c'].encode('ascii')
-    client_signature = base64.b64decode(hs2.get('sig_c', ''), validate=True)
-    client_ed25519_public.verify(client_signature, b'HTS1/HS2\n' + transcript)
-    shared = (
-        server_ephemeral.exchange(client_ephemeral)
-        + server_x25519_private.exchange(client_ephemeral)
-        + server_ephemeral.exchange(client_x25519_public)
+    c2h, h2c = finish_handshake(
+        kid, transcript, ephemeral, server_x25519_private, client_x25519_public, client_ed25519_public, hs2,
     )
-    c2h, h2c, confirm = derive(shared, kid, transcript)
-    expected = hmac.digest(confirm, INFO + transcript, 'sha256')
-    if not hmac.compare_digest(base64.b64decode(hs2.get('confirm', ''), validate=True), expected):
-        raise ValueError('invalid HS2 key confirmation')
     return SecureSession(websocket, kid, h2c, c2h)
 
 
@@ -169,22 +174,21 @@ class HarnessTransportFactory:
         self.client_key_lookup = client_key_lookup
         self.replay_guard = replay_guard or ReplayGuard()
 
-    async def __call__(self, ap, websocket):
-        import asyncio
-
+    async def load_identity(self, pinned_kid=None):
         from cryptography.fernet import Fernet
         from sqlalchemy import select
         from sqlalchemy.ext.asyncio import async_sessionmaker
 
         from ...entity.persistence.harness_instance_key import HarnessInstanceKey
 
+        ap = self.ap
+        statement = select(HarnessInstanceKey).where(HarnessInstanceKey.status == 'active')
+        if pinned_kid is not None:
+            statement = statement.where(HarnessInstanceKey.kid == pinned_kid)
         async with async_sessionmaker(ap.persistence_mgr.get_db_engine(), expire_on_commit=False)() as db:
             row = (
                 await db.execute(
-                    select(HarnessInstanceKey)
-                    .where(HarnessInstanceKey.status == 'active')
-                    .order_by(HarnessInstanceKey.created_at.desc())
-                    .limit(1)
+                    statement.order_by(HarnessInstanceKey.created_at.desc()).limit(1)
                 )
             ).scalar_one_or_none()
         if row is None:
@@ -198,6 +202,12 @@ class HarnessTransportFactory:
         server_ed = ed25519.Ed25519PrivateKey.from_private_bytes(
             base64.b64decode(private_bundle['ed25519'], validate=True)
         )
+        return row.kid, server_x, server_ed
+
+    async def __call__(self, ap, websocket):
+        import asyncio
+
+        kid, server_x, server_ed = await self.load_identity()
 
         # Public selectors only: these identify which pinned keys must verify HS2.
         # Account credentials are read from encrypted frames after the handshake.
@@ -211,7 +221,7 @@ class HarnessTransportFactory:
         async with asyncio.timeout(30):
             return await handshake(
                 websocket,
-                kid=row.kid,
+                kid=kid,
                 server_x25519_private=server_x,
                 server_ed25519_private=server_ed,
                 client_x25519_public=x25519.X25519PublicKey.from_public_bytes(

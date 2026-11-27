@@ -78,7 +78,9 @@ class HarnessOAuthService:
                     HarnessRegistrationLink.consumed_at.is_not(None),
                     HarnessRegistrationLink.revoked_at.is_(None),
                 )
-                .values(token_hash='')
+                # Keep the unique index valid when multiple pending enrollment
+                # links are consumed for distinct devices.
+                .values(token_hash=_hash(f'consumed:{binding_id}'))
             )
             if consumed.rowcount != 1:
                 return None
@@ -163,6 +165,14 @@ class HarnessOAuthService:
         if account is None:
             raise ValueError('invalid_grant')
         access = await self.ap.workspace_collaboration_service.resolve_account_workspace(account.uuid, workspace_uuid)
+        workspace_uuid = access.workspace.uuid
+        raw_scope = payload.get('scope', 'agent.run resource.view')
+        if not isinstance(raw_scope, str):
+            raise ValueError('invalid_scope')
+        permissions = set(permissions_for_role(access.membership.role))
+        scopes = sorted(scope for scope in set(raw_scope.split()) & SCOPES if SCOPE_PERMISSIONS[scope] in permissions)
+        if not scopes:
+            raise ValueError('insufficient_scope')
         # The instance link remains a pending enrollment until successful account
         # authentication and Workspace authorization. Only now create the durable
         # binding used by grants and management APIs.
@@ -180,69 +190,43 @@ class HarnessOAuthService:
             ).mappings().one_or_none()
             if link is None:
                 raise ValueError('invalid_binding')
-            if await conn.scalar(sa.select(HarnessBinding.id).where(HarnessBinding.id == binding_id)) is None:
-                await conn.execute(
-                    HarnessBinding.__table__.insert().values(
-                        id=binding_id,
-                        instance_uuid=self.instance_uuid,
-                        issuer_workspace_uuid=link['issuer_workspace_uuid'],
-                        created_at=now,
-                    )
-                )
-            await conn.execute(
+            claimed = await conn.execute(
                 HarnessDevice.__table__.update()
-                .where(HarnessDevice.id == device_id, HarnessDevice.binding_id == binding_id)
+                .where(
+                    HarnessDevice.id == device_id,
+                    HarnessDevice.binding_id == binding_id,
+                    HarnessDevice.account_uuid.is_(None),
+                    HarnessDevice.revoked_at.is_(None),
+                )
                 .values(account_uuid=account.uuid)
             )
-        raw_scope = payload.get('scope', 'agent.run resource.view')
-        if not isinstance(raw_scope, str):
-            raise ValueError('invalid_scope')
-        permissions = set(permissions_for_role(access.membership.role))
-        scopes = sorted(scope for scope in set(raw_scope.split()) & SCOPES if SCOPE_PERMISSIONS[scope] in permissions)
-        if not scopes:
-            raise ValueError('insufficient_scope')
-        now = int(time.time())
-        refresh = 'hr_' + secrets.token_urlsafe(48)
-        grant_id = str(uuid.uuid4())
-        access_token = jwt.encode(
-            {
-                'typ': 'langbot_harness_at',
-                'gid': grant_id,
-                'sub': account.uuid,
-                'ws': workspace_uuid,
-                'bid': binding_id,
-                'dev': device_id,
-                'scp': scopes,
-                'iss': self.instance_uuid,
-                'exp': now + ACCESS_TTL,
-                'iat': now,
-            },
-            self.ap.instance_config.data['system']['jwt']['secret'],
-            algorithm='HS256',
-        )
-        async with self.engine.begin() as conn:
+            if claimed.rowcount != 1:
+                raise ValueError('invalid_device')
+            await conn.execute(
+                HarnessBinding.__table__.insert().values(
+                    id=binding_id,
+                    instance_uuid=self.instance_uuid,
+                    issuer_workspace_uuid=link['issuer_workspace_uuid'],
+                    created_at=now,
+                )
+            )
+            refresh = 'hr_' + secrets.token_urlsafe(48)
+            grant = {
+                'id': str(uuid.uuid4()), 'binding_id': binding_id, 'device_id': device_id,
+                'account_uuid': account.uuid, 'workspace_uuid': workspace_uuid, 'scope': ' '.join(scopes),
+            }
+            tokens = await self._mint_from_grant(grant, refresh)
             await conn.execute(
                 HarnessOAuthGrant.__table__.insert().values(
-                    id=grant_id,
-                    binding_id=binding_id,
-                    device_id=device_id,
-                    account_uuid=account.uuid,
-                    workspace_uuid=workspace_uuid,
-                    scope=' '.join(scopes),
+                    **grant,
                     refresh_token_hash=_hash(refresh),
                     refresh_expires_at=now + REFRESH_TTL,
                     created_at=now,
                 )
             )
-        return {
-            'access_token': access_token,
-            'token_type': 'Bearer',
-            'expires_in': ACCESS_TTL,
-            'refresh_token': refresh,
-            'scope': ' '.join(scopes),
-        }
+        return tokens
 
-    async def refresh_grant(self, refresh_token: str) -> dict:
+    async def refresh_grant(self, refresh_token: str, *, binding_id: str, device_id: str) -> dict:
         now = int(time.time())
         token_hash = _hash(refresh_token)
         reused = False
@@ -252,6 +236,8 @@ class HarnessOAuthService:
                     await conn.execute(
                         sa.select(HarnessOAuthGrant.__table__)
                         .where(
+                            HarnessOAuthGrant.binding_id == binding_id,
+                            HarnessOAuthGrant.device_id == device_id,
                             sa.or_(
                                 HarnessOAuthGrant.refresh_token_hash == token_hash,
                                 HarnessOAuthGrant.previous_refresh_token_hash == token_hash,
@@ -295,7 +281,7 @@ class HarnessOAuthService:
                 if binding is None or device is None:
                     raise ValueError('invalid_grant')
                 account = await self.ap.user_service.get_user_by_uuid(row['account_uuid'])
-                if account is None:
+                if account is None or account.status != 'active':
                     raise ValueError('invalid_grant')
                 access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
                     row['account_uuid'], row['workspace_uuid']
@@ -305,9 +291,13 @@ class HarnessOAuthService:
                 if not scopes:
                     raise ValueError('insufficient_scope')
                 new_refresh = 'hr_' + secrets.token_urlsafe(48)
-                await conn.execute(
+                updated = await conn.execute(
                     HarnessOAuthGrant.__table__.update()
-                    .where(HarnessOAuthGrant.id == row['id'])
+                    .where(
+                        HarnessOAuthGrant.id == row['id'],
+                        HarnessOAuthGrant.refresh_token_hash == token_hash,
+                        HarnessOAuthGrant.revoked_at.is_(None),
+                    )
                     .values(
                         refresh_token_hash=_hash(new_refresh),
                         previous_refresh_token_hash=token_hash,
@@ -315,6 +305,8 @@ class HarnessOAuthService:
                         scope=' '.join(scopes),
                     )
                 )
+                if updated.rowcount != 1:
+                    raise ValueError('invalid_grant')
                 row = dict(row)
                 row['scope'] = ' '.join(scopes)
         if reused:

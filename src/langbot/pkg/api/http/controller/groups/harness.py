@@ -1,9 +1,13 @@
-"""Registration endpoints for the Harness client and LangBot WebUI."""
+"""Registration and encrypted RPC endpoints for Harness."""
+
+import asyncio
+import json
 
 import quart
 
 from .....harness.binding import HarnessBindings
 from .....harness.oauth import HarnessOAuthService
+from .....harness.rpc import HarnessRpc, RpcError
 from ...authz import Permission
 from ...context import PrincipalType, RequestContext
 from .. import group
@@ -28,6 +32,47 @@ class HarnessRouterGroup(group.RouterGroup):
         return service if service is not None and (origin is None or origin == service.client_origin) else None
 
     async def initialize(self):
+        rpc = HarnessRpc(self.ap)
+
+        async def read_rpc_payload():
+            limit = 40_960
+            if (quart.request.content_length or 0) > limit:
+                raise RpcError('invalid_request', 413)
+            if not quart.request.is_json:
+                raise RpcError('invalid_request')
+            body = bytearray()
+            try:
+                async with asyncio.timeout(10):
+                    async for chunk in quart.request.body:
+                        if len(body) + len(chunk) > limit:
+                            raise RpcError('invalid_request', 413)
+                        body.extend(chunk)
+            except TimeoutError:
+                raise RpcError('invalid_request', 408) from None
+            try:
+                return json.loads(body)
+            except (ValueError, RecursionError):
+                raise RpcError('invalid_request') from None
+
+        async def run_rpc(handler):
+            try:
+                if self._enrollment_service() is None:
+                    raise RpcError('rpc_unavailable', 404)
+                response = quart.jsonify(await handler(await read_rpc_payload()))
+            except RpcError as exc:
+                response = quart.jsonify({'code': str(exc)})
+                response.status_code = exc.status
+            response.headers['Cache-Control'] = 'no-store'
+            return response
+
+        @self.route('/rpc/handshake', methods=['POST'], auth_type=group.AuthType.NONE)
+        async def rpc_handshake():
+            return await run_rpc(rpc.start)
+
+        @self.route('/rpc', methods=['POST'], auth_type=group.AuthType.NONE)
+        async def rpc_execute():
+            return await run_rpc(rpc.execute)
+
         @self.route('/register', methods=['POST'], auth_type=group.AuthType.NONE)
         async def register():
             service = self._enrollment_service()
