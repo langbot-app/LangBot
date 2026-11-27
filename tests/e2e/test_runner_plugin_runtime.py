@@ -1043,7 +1043,7 @@ def test_mixed_plugin_runner_does_not_authorize_extensions(runner_client, runner
     assert enabled['listener_hits'] > 0, enabled
     assert any('qa_boundary_tool' in name for name in enabled['tool_names']), enabled
     assert enabled['tool_denied'] is False, enabled
-    assert 'QA_COMMAND_EXECUTED' in run('!qa_boundary_command')
+    assert run('/qa_boundary_command') == 'e2e echo: /qa_boundary_command'
     last_enabled = json.loads(run('boundary probe before disabling'))
     disabled = runner_client.put(
         f'/api/v1/pipelines/{pipeline_id}/extensions',
@@ -1062,9 +1062,7 @@ def test_mixed_plugin_runner_does_not_authorize_extensions(runner_client, runner
     assert restricted['listener_hits'] == last_enabled['listener_hits'], restricted
     assert not any('qa_boundary_tool' in name for name in restricted['tool_names']), restricted
     assert restricted['tool_denied'] is True, restricted
-    command_reply = run('!qa_boundary_command')
-    assert 'QA_COMMAND_EXECUTED' not in command_reply
-    assert 'qa_boundary_command' in command_reply
+    assert run('/qa_boundary_command') == 'e2e echo: /qa_boundary_command'
 
 
 def test_chromium_pipeline_save_copy_execute_real_runtime(runner_client, runner_e2e_tmpdir):

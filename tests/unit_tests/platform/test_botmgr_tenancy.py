@@ -414,7 +414,7 @@ async def test_platform_callback_carries_scope_without_holding_database_session(
         enable=True,
         event_bindings=[],
     )
-    logger = SimpleNamespace(info=AsyncMock(), error=AsyncMock())
+    logger = SimpleNamespace(debug=AsyncMock(), info=AsyncMock(), error=AsyncMock())
     runtime = RuntimeBot(
         ap=application,
         bot_entity=entity,
@@ -430,4 +430,4 @@ async def test_platform_callback_carries_scope_without_holding_database_session(
     await listener(event, adapter)
 
     assert persistence_mgr.active_workspace is None
-    logger.info.assert_awaited()
+    logger.debug.assert_awaited()

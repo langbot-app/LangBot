@@ -398,28 +398,6 @@
                 "max-round": 20
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
-          },
-          "trigger": {
-            "group-respond-rules": {
-              "prefix": [
-                "ai "
-              ]
-            }
           }
         }
       }
@@ -455,21 +433,6 @@
                 "timeout": 30,
                 "max-tool-iterations": 5
               }
-            }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
             }
           }
         }
@@ -508,21 +471,6 @@
                 "retrieval-top-k": 5
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
           }
         }
       }
@@ -549,7 +497,31 @@
             "target_type": "pipeline",
             "target_uuid": "${chat_pipeline}",
             "enabled": true,
-            "filters": []
+            "filters": [],
+            "policy": {
+              "trigger": {
+                "group-respond-rules": {
+                  "prefix": [
+                    "ai "
+                  ]
+                }
+              },
+              "safety": {
+                "rate-limit": {
+                  "limitation": 10000
+                }
+              },
+              "output": {
+                "force-delay": {
+                  "min": 0,
+                  "max": 0
+                },
+                "misc": {
+                  "at-sender": false,
+                  "quote-origin": false
+                }
+              }
+            }
           }
         ],
         "plugin_processors": []
@@ -587,21 +559,6 @@
                 "max-tool-iterations": 5
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
           }
         }
       }
@@ -637,28 +594,6 @@
                 "max-round": 20
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
-          },
-          "trigger": {
-            "group-respond-rules": {
-              "prefix": [
-                "ai "
-              ]
-            }
           }
         }
       }
@@ -693,28 +628,6 @@
                 "timeout": 30,
                 "max-round": 20
               }
-            }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
-          },
-          "trigger": {
-            "group-respond-rules": {
-              "prefix": [
-                "ai "
-              ]
             }
           }
         }
@@ -753,28 +666,6 @@
                 "max-round": 20
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
-          },
-          "trigger": {
-            "group-respond-rules": {
-              "prefix": [
-                "ai "
-              ]
-            }
           }
         }
       }
@@ -811,28 +702,6 @@
                 "timeout": 30,
                 "max-round": 20
               }
-            }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
-          },
-          "trigger": {
-            "group-respond-rules": {
-              "prefix": [
-                "ai "
-              ]
             }
           }
         }
@@ -871,28 +740,6 @@
                 "max-round": 20
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
-          },
-          "trigger": {
-            "group-respond-rules": {
-              "prefix": [
-                "ai "
-              ]
-            }
           }
         }
       }
@@ -928,21 +775,6 @@
                 "timeout": 30,
                 "max-tool-iterations": 5
               }
-            }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
             }
           }
         }
@@ -980,21 +812,6 @@
                 "max-tool-iterations": 5
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
           }
         }
       }
@@ -1030,21 +847,6 @@
                 "timeout": 30,
                 "max-tool-iterations": 5
               }
-            }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
             }
           }
         }
@@ -1083,21 +885,6 @@
                 "retrieval-top-k": 5
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
           }
         }
       }
@@ -1124,7 +911,24 @@
             "target_type": "pipeline",
             "target_uuid": "${box_pipeline}",
             "enabled": true,
-            "filters": []
+            "filters": [],
+            "policy": {
+              "safety": {
+                "rate-limit": {
+                  "limitation": 10000
+                }
+              },
+              "output": {
+                "force-delay": {
+                  "min": 0,
+                  "max": 0
+                },
+                "misc": {
+                  "at-sender": false,
+                  "quote-origin": false
+                }
+              }
+            }
           }
         ],
         "plugin_processors": []
@@ -1152,7 +956,24 @@
             "target_type": "pipeline",
             "target_uuid": "${rag_pipeline}",
             "enabled": true,
-            "filters": []
+            "filters": [],
+            "policy": {
+              "safety": {
+                "rate-limit": {
+                  "limitation": 10000
+                }
+              },
+              "output": {
+                "force-delay": {
+                  "min": 0,
+                  "max": 0
+                },
+                "misc": {
+                  "at-sender": false,
+                  "quote-origin": false
+                }
+              }
+            }
           }
         ],
         "plugin_processors": []

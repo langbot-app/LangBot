@@ -84,6 +84,8 @@ def command_version(suite, case, row):
         }
     ]
     body['plugin_processors'] = []
+    body['message_policy'] = {'plugins': {'enable_all': False, 'plugins': COMMAND_PLUGINS}}
+    body['command_settings'] = {'builtin': {'version': {'enabled': False}}}
     owned = {'kind': 'bot', 'name': body['name'], 'state': 'creating'}
     row.setdefault('owned_resources', []).append(owned)
     journal(suite, row)
@@ -117,7 +119,7 @@ def command_version(suite, case, row):
         payload = {
             'session_id': session,
             'session_type': 'person',
-            'message': [{'type': 'Plain', 'text': '!version'}],
+            'message': [{'type': 'Plain', 'text': '/version'}],
         }
         offset = records.stat().st_size
         reply = data(
@@ -137,7 +139,7 @@ def command_version(suite, case, row):
                 and bool(reply.get('reply_to'))
                 and isinstance(parts, list)
                 and all(isinstance(part, dict) and part.get('type') == 'Plain' for part in parts)
-                and ''.join(part.get('text', '') for part in parts) == f'[bot] LangBot Version: {version}',
+                and ''.join(part.get('text', '') for part in parts) == f'LangBot Version: {version}',
                 'Version command did not return the exact Core version in the originating session',
             ),
         )

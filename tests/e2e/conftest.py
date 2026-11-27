@@ -20,9 +20,8 @@ pytestmark = pytest.mark.e2e
 
 
 @pytest.fixture(scope='session')
-def e2e_port():
-    """Port for E2E testing (non-default to avoid conflicts)."""
-    return 15300
+def e2e_port(unused_tcp_port_factory):
+    return unused_tcp_port_factory()
 
 
 @pytest.fixture(scope='session')

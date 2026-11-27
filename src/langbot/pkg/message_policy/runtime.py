@@ -13,7 +13,6 @@ import contextlib
 import dataclasses
 import os
 import random
-import traceback
 import typing
 
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -131,11 +130,11 @@ class MessagePolicyRuntime:
                         )
                         config['strategy'] = 'forward'
             except Exception:
-                traceback.print_exc()
                 self.ap.logger.error(
                     'Failed to load font file ({}), switch to forward message component to send long messages, you can adjust the related settings in the configuration file.'.format(
                         use_font
-                    )
+                    ),
+                    exc_info=True,
                 )
                 config['strategy'] = 'forward'
 

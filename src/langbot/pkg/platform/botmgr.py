@@ -1011,13 +1011,11 @@ class RuntimeBot:
                 if await store.get_event(execution_id):
                     return
                 await self._persist_monitoring_ingress(event, adapter, execution_id)
-        from langbot_plugin.utils.log import log_scope
+        from langbot_plugin.utils.log import log_scope, trace_id
 
-        trace_id = 'M-' + uuid.uuid4().hex
-        object.__setattr__(event, '_message_log_trace', trace_id)
         object.__setattr__(event, '_policy_ingress_id', execution_id)
         with (
-            log_scope(trace=trace_id, workspace=self.execution_context.workspace_uuid),
+            log_scope(workspace=self.execution_context.workspace_uuid),
             ingress(
                 getattr(self, 'ap', None),
                 'completed',
@@ -1026,6 +1024,7 @@ class RuntimeBot:
                 require_route=True,
             ) as binding,
         ):
+            object.__setattr__(event, '_message_log_trace', trace_id.get())
             if binding.created:
                 # The platform is known at ingress, whatever the route does next.
                 binding.state.adapter = adapter.__class__.__name__
@@ -1041,8 +1040,6 @@ class RuntimeBot:
         failure_detail = ''
         cancel_detail = ''
         for result in results:
-            if isinstance(result, dict) and result.get('status') == 'failed':
-                failure_detail = failure_detail or result.get('failure_code') or 'delivery_failed'
             if not isinstance(result, BaseException):
                 continue
             if is_cancellation(result):
@@ -1686,11 +1683,12 @@ class RuntimeBot:
                 except Exception:
                     pass
         self._record_platform_event(event, adapter, outcome, error_detail, node)
+        route_failed = any(isinstance(result, dict) and result.get('status') == 'failed' for result in results)
         await self._persist_monitoring_ingress(
             event,
             adapter,
             execution_id,
-            {'success': 'completed', 'skipped': 'ignored'}.get(outcome, 'failed'),
+            'failed' if route_failed else {'success': 'completed', 'skipped': 'ignored'}.get(outcome, 'failed'),
             results,
         )
 
