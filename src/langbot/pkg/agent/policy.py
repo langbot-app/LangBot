@@ -43,6 +43,7 @@ async def can_use_processor(ap, ctx: RequestContext, processor_uuid: str) -> boo
         sqlalchemy.select(persistence_agent.Agent.access_mode).where(
             persistence_agent.Agent.workspace_uuid == ctx.workspace_uuid,
             persistence_agent.Agent.uuid == processor_uuid,
+            persistence_agent.Agent.kind == 'agent',
         )
     )
     agent = agent_result.first()
@@ -56,6 +57,7 @@ async def can_use_processor(ap, ctx: RequestContext, processor_uuid: str) -> boo
     grant_result = await ap.persistence_mgr.execute_async(
         sqlalchemy.select(
             persistence_agent_access.AgentAccessGrant.subject_type,
+            persistence_agent_access.AgentAccessGrant.subject_id,
             persistence_agent_access.AgentAccessGrant.can_use,
         ).where(
             persistence_agent_access.AgentAccessGrant.workspace_uuid == ctx.workspace_uuid,

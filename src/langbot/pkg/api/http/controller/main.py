@@ -196,6 +196,11 @@ class HTTPController:
             try:
                 transport = await factory(self.ap, quart.websocket)
                 context = await context_resolver(self.ap, transport)
+                if context is None:
+                    # Until the Harness account/OAuth slice lands, reject safely
+                    # rather than use a user/workspace supplied by a frame.
+                    await quart.websocket.close(1008, 'Harness account context is not authenticated')
+                    return
                 await handle_ws(self.ap, transport, context)
             except Exception:
                 self.ap.logger.exception('Harness WebSocket session failed')

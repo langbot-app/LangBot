@@ -5,7 +5,7 @@ import typing
 
 
 class HarnessConnectionRegistry:
-    """Store one authenticated sender per conversation for reply delivery."""
+    """Store authenticated sender connections by unique connection ID."""
 
     def __init__(self):
         self._connections: dict[str, typing.Any] = {}

@@ -672,7 +672,7 @@ class TestBotServiceDeleteBot:
         ap.platform_mgr.remove_bot = AsyncMock()
 
         service = BotService(ap)
-        service.get_bot = AsyncMock(return_value={'uuid': 'bot-uuid'})
+        service.get_bot = AsyncMock(return_value={'uuid': 'bot-uuid', 'adapter': 'telegram'})
 
         # Execute
         await service.delete_bot(WORKSPACE_UUID, 'test-uuid')
@@ -697,6 +697,7 @@ class TestBotServiceDeleteBot:
         ap.platform_mgr.remove_bot = AsyncMock()
 
         service = BotService(ap)
+        service.get_bot = AsyncMock(return_value=None)
         with pytest.raises(WorkspaceNotFoundError, match='Bot not found'):
             await service.delete_bot(WORKSPACE_UUID, 'nonexistent-uuid')
         ap.platform_mgr.remove_bot.assert_not_awaited()

@@ -25,34 +25,35 @@ def test_event_keeps_harness_conversation_in_legacy_source_metadata():
     event = build_event(
         {'conversation_id': 'conversation-123', 'content': 'hello'},
         {'account_uuid': 'account-456', 'display_name': 'Ada Lovelace', 'email': 'ada@example.test'},
+        workspace_uuid='workspace',
+        processor_uuid='processor',
+        connection_id='connection',
     )
     legacy_event = event.to_legacy_event()
     assert event.type == 'message.received'
-    assert event.chat_id == 'conversation-123'
+    assert event.chat_id.startswith('harness-v1-')
+    assert event.legacy_event.sender.id == 'account-456'
     assert event.sender.id == 'account-456'
     assert event.sender.nickname == 'Ada Lovelace'
-    assert legacy_event.source_platform_object == {'harness_conversation_id': 'conversation-123'}
+    assert legacy_event.source_platform_object['harness_conversation_id'] == 'conversation-123'
+    assert legacy_event.source_platform_object['harness_session_id'] == event.chat_id
 
 
 def test_get_launcher_id_reads_legacy_source_platform_object():
     adapter = HarnessAdapter.model_construct(config={}, logger=SimpleNamespace(), listeners={})
-    event = SimpleNamespace(source_platform_object={'harness_conversation_id': 'conversation-123'})
+    event = SimpleNamespace(source_platform_object={'harness_session_id': 'conversation-123'})
     assert adapter.get_launcher_id(event) == 'conversation-123'
     assert adapter.get_launcher_id(SimpleNamespace(source_platform_object=None)) is None
 
 
 @pytest.mark.asyncio
-async def test_lifecycle_waits_until_kill_and_ingress_dispatches_eba_only():
+async def test_lifecycle_waits_until_kill():
     adapter = HarnessAdapter.model_construct(config={}, logger=SimpleNamespace(), listeners={})
     assert adapter.get_supported_events() == ['message.received']
     callback = AsyncMock()
     adapter.register_listener(platform_events.EBAEvent, callback)
     run_task = asyncio.create_task(adapter.run_async())
-    await adapter.ingest_frame(
-        {'conversation_id': 'conv', 'content': 'hi'},
-        {'account_uuid': 'account', 'display_name': 'Person'},
-    )
-    callback.assert_awaited_once()
-    assert isinstance(callback.await_args.args[0], platform_events.MessageReceivedEvent)
+    await asyncio.sleep(0)
+    assert not run_task.done()
     await adapter.kill()
     await run_task

@@ -10,6 +10,10 @@ Run: uv run pytest tests/integration/persistence/test_migrations.py -q
 from __future__ import annotations
 
 import json
+import asyncio
+from datetime import datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 import sqlalchemy
@@ -47,6 +51,113 @@ def _get_script_head() -> str:
 
 
 pytestmark = pytest.mark.integration
+
+
+async def test_harness_provisioning_is_bounded_under_concurrent_retries(sqlite_engine, monkeypatch):
+    from langbot.pkg.api.http.service.bot import BotService
+    from langbot.pkg.entity.persistence.bot import Bot
+    from langbot.pkg.entity.persistence.workspace import Workspace
+    from langbot.pkg.persistence.mgr import PersistenceManager
+    from langbot.pkg.platform.adapters.harness.bindings import workspace_bot_uuid
+
+    async with sqlite_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(
+            Workspace.__table__.insert(),
+            [dict(uuid=w, instance_uuid=f'instance-{w}', name=w, slug=w) for w in ('alpha', 'beta')],
+        )
+
+    async def execute(statement):
+        async with sqlite_engine.begin() as conn:
+            return await conn.execute(statement)
+
+    ap = SimpleNamespace(
+        persistence_mgr=SimpleNamespace(
+            execute_async=execute,
+            get_db_engine=lambda: sqlite_engine,
+            serialize_model=PersistenceManager.serialize_model.__get__(object()),
+        ),
+        platform_mgr=SimpleNamespace(load_bot=AsyncMock()),
+    )
+    monkeypatch.setattr('langbot.pkg.api.http.service.workspace_limits.workspace_limits', AsyncMock(return_value={}))
+    monkeypatch.setattr('langbot.pkg.api.http.service.bot.require_workspace_platform', AsyncMock())
+    service = BotService(ap)
+    for workspace in ('alpha', 'beta'):
+
+        async def provision(index):
+            return await service.create_bot(
+                workspace,
+                {
+                    'name': f'agent-{index}',
+                    'adapter': 'harness-omni',
+                    'adapter_config': {},
+                },
+                bot_uuid=f'old-{workspace}-{index}',
+            )
+
+        assert set(await asyncio.gather(*(provision(i) for i in range(10)))) == {workspace_bot_uuid(workspace)}
+        assert set(await asyncio.gather(*(provision(i) for i in range(10, 100)))) == {workspace_bot_uuid(workspace)}
+    rows = (await execute(sqlalchemy.select(Bot.__table__))).mappings().all()
+    assert {(row['workspace_uuid'], row['uuid']) for row in rows} == {
+        (w, workspace_bot_uuid(w)) for w in ('alpha', 'beta')
+    }
+    assert all(row['enable'] and not row['adapter_config'] and not row['event_bindings'] for row in rows)
+    assert ap.platform_mgr.load_bot.await_count == 2
+
+
+async def test_harness_workspace_bot_upgrade_preserves_legacy_ids(sqlite_engine):
+    from langbot.pkg.entity.persistence.bot import Bot
+    from langbot.pkg.entity.persistence.monitoring import MonitoringSession
+    from langbot.pkg.entity.persistence.workspace import Workspace
+    from langbot.pkg.platform.adapters.harness.bindings import workspace_bot_uuid
+
+    async with sqlite_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        for workspace in ('active', 'disabled'):
+            await conn.execute(
+                Workspace.__table__.insert().values(
+                    uuid=workspace,
+                    instance_uuid=f'instance-{workspace}',
+                    name=workspace,
+                    slug=workspace,
+                )
+            )
+        for i in range(101):
+            await conn.execute(
+                Bot.__table__.insert().values(
+                    uuid=f'old-{i}',
+                    workspace_uuid='active' if i < 100 else 'disabled',
+                    name='Legacy',
+                    description='',
+                    adapter='harness',
+                    adapter_config={'processor_uuid': f'agent-{i}'},
+                    enable=i < 100,
+                    event_bindings=[{'target_uuid': f'agent-{i}'}],
+                )
+            )
+        await conn.execute(
+            MonitoringSession.__table__.insert().values(
+                workspace_uuid='active',
+                bot_id='old-0',
+                session_id='old-session',
+                bot_name='Legacy',
+                pipeline_id='agent-0',
+                pipeline_name='Agent',
+                message_count=3,
+                start_time=datetime(2026, 1, 1),
+                last_activity=datetime(2026, 1, 1),
+            )
+        )
+    await run_alembic_stamp(sqlite_engine, '0058_harness_instance_keys')
+    await run_alembic_upgrade(sqlite_engine)
+    async with sqlite_engine.connect() as conn:
+        rows = (await conn.execute(sqlalchemy.select(Bot.__table__))).mappings().all()
+        history = (await conn.execute(sqlalchemy.select(MonitoringSession.__table__))).one()
+    assert len(rows) == 102
+    assert {row['uuid'] for row in rows if row['enable']} == {workspace_bot_uuid('active')}
+    assert {row['uuid'] for row in rows if not row['enable']} == {f'old-{i}' for i in range(101)}
+    assert all(row['event_bindings'] == [] for row in rows)
+    assert (history.bot_id, history.session_id, history.message_count) == ('old-0', 'old-session', 3)
 
 
 @pytest.fixture

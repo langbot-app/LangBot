@@ -950,10 +950,29 @@ class RuntimeBot:
             getattr(event, 'message_id', None) or getattr(event, 'feedback_id', None) or f'{event_type}:{uuid.uuid4()}'
         )
 
+    async def dispatch_harness_message(self, event: platform_events.MessageReceivedEvent, processor_uuid: str) -> None:
+        """Dispatch a message whose Agent was authorized by Harness ingress."""
+        from .adapters.harness.bindings import HARNESS_ADAPTER, workspace_bot_uuid
+
+        if self.bot_entity.adapter != HARNESS_ADAPTER or self.bot_entity.uuid != workspace_bot_uuid(
+            self.workspace_uuid
+        ):
+            raise ValueError('Harness ingress requires the managed Workspace Bot')
+        current = await self.ap.workspace_service.get_execution_binding(
+            self.workspace_uuid, expected_generation=self.placement_generation
+        )
+        if current.instance_uuid != self.execution_context.instance_uuid:
+            raise ValueError('Harness Bot is not active on this placement')
+        route = {'id': 'harness-agent', 'target_type': 'agent', 'target_uuid': processor_uuid}
+        with language_scope(await get_workspace_language(self.ap, self.workspace_uuid)):
+            await self._run_event_delivery(self._handle_platform_event, event, self.adapter, harness_route=route)
+
     async def _handle_platform_event(
         self,
         event: platform_events.EBAEvent,
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        *,
+        harness_route: dict | None = None,
     ) -> None:
         # One inbound event owns one execution trace; every stage recorded while
         # it is handled (routing, runner, platform API calls) joins that trace.
@@ -986,7 +1005,12 @@ class RuntimeBot:
             # The inbound event is the root workflow step: everything recorded
             # while handling it hangs under this node.
             with trace_mod.stage_scope() as node:
-                await self._handle_platform_event_body(event, adapter, execution_id, node)
+                if harness_route is None:
+                    await self._handle_platform_event_body(event, adapter, execution_id, node)
+                else:
+                    await self._handle_platform_event_body(
+                        event, adapter, execution_id, node, harness_route=harness_route
+                    )
 
     @staticmethod
     def _summarize_event_delivery(results: list[typing.Any]) -> tuple[str, str]:
@@ -1057,6 +1081,8 @@ class RuntimeBot:
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         execution_id: str | None = None,
         node: str = '',
+        *,
+        harness_route: dict | None = None,
     ) -> None:
         results: list[typing.Any] = []
         try:
@@ -1068,9 +1094,16 @@ class RuntimeBot:
                 if isinstance(event, platform_events.InteractionCallbackEvent)
                 else self._dispatch_eba_event_to_processor
             )
-            subscriptions = self._get_event_bindings_from_value(getattr(self.bot_entity, 'plugin_processors', []))
+            subscriptions = (
+                self._get_event_bindings_from_value(getattr(self.bot_entity, 'plugin_processors', []))
+                if harness_route is None
+                else []
+            )
             seen = set()
-            tasks = [self._run_event_delivery(primary_handler, event, adapter, execution_id=execution_id)]
+            route_kwargs = {'event_binding': harness_route} if harness_route is not None else {}
+            tasks = [
+                self._run_event_delivery(primary_handler, event, adapter, execution_id=execution_id, **route_kwargs)
+            ]
             for subscription in subscriptions:
                 processor_uuid = subscription.get('processor_uuid')
                 if not processor_uuid or processor_uuid in seen or not subscription.get('enabled', True):
