@@ -39,8 +39,7 @@ CANCELLED_ERROR = "Run cancellation requested"
 CANCELLED_CODE = "cancelled"
 TIMEOUT_ERROR = "Agent run timed out"
 TIMEOUT_CODE = "runner.timeout"
-# Keep cancellation polling responsive while avoiding a Host ledger read for every short scheduling slice.
-INTERRUPT_CHECK_INTERVAL_SECONDS = 1.0
+INTERRUPT_CHECK_INTERVAL_SECONDS = 0.5
 
 
 class RunCancelledError(Exception):
