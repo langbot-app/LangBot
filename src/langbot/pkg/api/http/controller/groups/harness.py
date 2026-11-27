@@ -1,13 +1,16 @@
 """Registration and encrypted RPC endpoints for Harness."""
 
 import asyncio
+import hmac
 import json
+import os
 
 import quart
 
 from .....harness.binding import HarnessBindings
 from .....harness.oauth import HarnessOAuthService
 from .....harness.rpc import HarnessRpc, RpcError
+from .....harness.rotation import HarnessKeyRotation, RotationError
 from ...authz import Permission
 from ...context import PrincipalType, RequestContext
 from .. import group
@@ -72,6 +75,33 @@ class HarnessRouterGroup(group.RouterGroup):
         @self.route('/rpc', methods=['POST'], auth_type=group.AuthType.NONE)
         async def rpc_execute():
             return await run_rpc(rpc.execute)
+
+        @self.route('/instance/key-rotation', methods=['POST'], auth_type=group.AuthType.NONE)
+        async def rotate_keys():
+            # Instance operators provision this separate secret on the host.
+            # Workspace roles, API keys, account cookies and Harness grants do not authorize rotation.
+            secret = os.environ.get('LANGBOT_HARNESS_ROTATION_TOKEN', '')
+            supplied = quart.request.headers.get('Authorization', '')
+            if (self._service() is None or len(secret) < 32 or quart.request.headers.get('Origin') is not None
+                    or not hmac.compare_digest(supplied.encode(), f'Bearer {secret}'.encode())):
+                return self._unavailable()
+            service = HarnessKeyRotation(self.ap)
+            try:
+                payload = await read_rpc_payload()
+                if (not isinstance(payload, dict) or set(payload) != {'mode', 'kid'}
+                        or payload['mode'] not in ('planned', 'emergency')
+                        or not isinstance(payload['kid'], str) or not 0 < len(payload['kid']) <= 128):
+                    raise RpcError('invalid_request')
+                handler = service.plan if payload['mode'] == 'planned' else service.emergency
+                response = quart.jsonify(await handler(payload['kid']))
+            except RpcError as exc:
+                response = quart.jsonify({'code': str(exc)})
+                response.status_code = exc.status
+            except RotationError as exc:
+                response = quart.jsonify({'code': str(exc)})
+                response.status_code = 409
+            response.headers['Cache-Control'] = 'no-store'
+            return response
 
         @self.route('/register', methods=['POST'], auth_type=group.AuthType.NONE)
         async def register():

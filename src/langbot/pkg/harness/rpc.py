@@ -22,6 +22,7 @@ from .auth import _oauth_context
 from .crypto.suite import open_, seal
 from .crypto.transport import begin_handshake, finish_handshake
 from .oauth import HarnessOAuthService
+from .rotation import HarnessKeyRotation, RotationError, ensure_serving
 
 _SELECTOR = re.compile(r'[A-Za-z0-9_-]{1,128}')
 _MAX_PENDING = 1024
@@ -91,6 +92,8 @@ class HarnessRpc:
     async def _identity(factory, kid):
         try:
             return await factory.load_identity(kid)
+        except RotationError as exc:
+            raise RpcError(str(exc), 410 if str(exc) == 'key_retired' else 404) from None
         except ValueError:
             raise RpcError('key_unavailable', 404) from None
 
@@ -159,15 +162,19 @@ class HarnessRpc:
             or not 0 < len(request['id']) <= 128
         ):
             raise RpcError('invalid_request')
+        try:
+            await ensure_serving(self.ap.persistence_mgr.get_db_engine(), kid)
+        except RotationError as exc:
+            raise RpcError(str(exc), 410) from None
         reply = {'v': 1, 'id': request['id']}
         try:
-            result = await self._dispatch(harness_id, device['id'], request)
+            result = await self._dispatch(harness_id, device['id'], request, kid=kid)
             reply.update(ok=True, result=result)
         except (AuthorizationError, WorkspaceNotFoundError, WorkspaceExecutionUnavailableError):
             reply.update(ok=False, error={'code': 'workspace_forbidden'})
         except ValueError as exc:
             code = str(exc)
-            if not isinstance(exc, RpcError) and code not in _GRANT_ERRORS:
+            if not isinstance(exc, (RpcError, RotationError)) and code not in _GRANT_ERRORS:
                 code = 'invalid_grant'
             reply.update(ok=False, error={'code': code})
         encoded = json.dumps(reply, ensure_ascii=False).encode()
@@ -175,12 +182,24 @@ class HarnessRpc:
             encoded = json.dumps(
                 {'v': 1, 'id': request['id'], 'ok': False, 'error': {'code': 'rpc_response_too_large'}}
             ).encode()
+        try:
+            await ensure_serving(self.ap.persistence_mgr.get_db_engine(), kid)
+        except RotationError as exc:
+            raise RpcError(str(exc), 410) from None
         return {'frame': {**header, 'box': base64.b64encode(seal(h2c, 0, encoded)).decode()}}
 
-    async def _dispatch(self, harness_id, device_id, request):
+    async def _dispatch(self, harness_id, device_id, request, *, kid=None):
         method, params = request.get('method'), request.get('params')
         if not isinstance(params, dict):
             raise RpcError('invalid_request')
+        if method == 'instance.key_rotation.get' and not params:
+            return await HarnessKeyRotation(self.ap).get(harness_id, device_id, kid)
+        if method == 'instance.key_rotation.ack':
+            if set(params) != {'rotation_id', 'new_kid'} or not all(
+                isinstance(value, str) and _SELECTOR.fullmatch(value) for value in params.values()
+            ):
+                raise RpcError('invalid_request')
+            return await HarnessKeyRotation(self.ap).ack(harness_id, device_id, kid, **params)
         service = HarnessOAuthService(self.ap)
         if method == 'oauth.password':
             if set(params) != {'email', 'password', 'workspace_uuid'}:

@@ -26,6 +26,13 @@ _TOKEN_PATTERN = re.compile(r'[A-Za-z0-9_-]{43}')
 _LINK_TTL = 1800
 
 
+async def lock_keys(conn):
+    if conn.dialect.name == 'sqlite':
+        await conn.exec_driver_sql('BEGIN IMMEDIATE')
+    elif conn.dialect.name == 'postgresql':
+        await conn.execute(sa.text('SELECT pg_advisory_xact_lock(47321065498065)'))
+
+
 def _digest(token):
     return hashlib.sha256(token.encode('ascii')).hexdigest()
 
@@ -69,6 +76,8 @@ class HarnessBindings:
         row = (await conn.execute(statement)).mappings().one_or_none()
         if row is not None:
             return row
+        if await conn.scalar(sa.select(sa.exists(sa.select(_KEY.c.kid)))):
+            raise ValueError('key_unavailable')
         material = generate_key_material(_derive_wrapping_key(self.jwt_secret, 1), kid='harness-initial-v1')
         insert = sqlite_insert if conn.dialect.name == 'sqlite' else pg_insert
         await conn.execute(
@@ -83,8 +92,7 @@ class HarnessBindings:
     async def ensure_instance_key(self) -> str:
         """Initialize the persistent instance identity before accepting HTS1 traffic."""
         async with self.engine.begin() as conn:
-            if conn.dialect.name == 'sqlite':
-                await conn.exec_driver_sql('BEGIN IMMEDIATE')
+            await lock_keys(conn)
             return (await self._active_key(conn))['kid']
 
     async def issue(self, ctx, *, label, preferred_auth):
@@ -94,8 +102,7 @@ class HarnessBindings:
         # SQLite requires the first statement in a competing write transaction to
         # be a write; otherwise upgrading a stale read snapshot can fail busy.
         async with self.engine.begin() as conn:
-            if conn.dialect.name == 'sqlite':
-                await conn.exec_driver_sql('BEGIN IMMEDIATE')
+            await lock_keys(conn)
             key = await self._active_key(conn)
             await conn.execute(
                 _LINK.insert().values(
@@ -139,6 +146,7 @@ class HarnessBindings:
         now = int(time.time())
         enrollment_token = secrets.token_urlsafe(32)
         async with self.engine.begin() as conn:
+            await lock_keys(conn)
             result = await conn.execute(
                 _LINK.update()
                 .where(
@@ -147,7 +155,7 @@ class HarnessBindings:
                     _LINK.c.revoked_at.is_(None),
                     _LINK.c.consumed_at.is_(None),
                     _LINK.c.expires_at > now,
-                    sa.exists(sa.select(_KEY.c.kid).where(_KEY.c.kid == _LINK.c.kid, _KEY.c.status == 'active')),
+                    sa.exists(sa.select(_KEY.c.kid).where(_KEY.c.kid == _LINK.c.kid, _KEY.c.status.in_(('active', 'overlap')))),
                 )
                 .values(consumed_at=now, token_hash=_digest(enrollment_token))
                 .returning(_LINK.c.id)
@@ -183,12 +191,17 @@ class HarnessBindings:
             return [dict(row) for row in (await conn.execute(statement.limit(100))).mappings()]
 
     async def revoke(self, ctx, target_id, *, links):
+        from .rotation import finish_if_ready
+
         table = _LINK if links else _BINDING
         filters = self._managed(table, ctx)
         if links:
             filters += (table.c.consumed_at.is_(None),)
         async with self.engine.begin() as conn:
+            await lock_keys(conn)
             result = await conn.execute(
                 table.update().where(*filters, table.c.id == target_id).values(revoked_at=int(time.time()))
             )
+            if result.rowcount == 1 and not links:
+                await finish_if_ready(conn, self.instance_uuid)
             return result.rowcount == 1

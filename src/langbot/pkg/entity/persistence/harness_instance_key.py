@@ -17,3 +17,11 @@ class HarnessInstanceKey(Base):
         sqlalchemy.DateTime(timezone=True), nullable=False, server_default=sqlalchemy.func.now()
     )
     retired_at = sqlalchemy.Column(sqlalchemy.DateTime(timezone=True), nullable=True)
+    transition = sqlalchemy.Column(sqlalchemy.JSON, nullable=True)
+
+
+class HarnessKeyAck(Base):
+    __tablename__ = 'harness_key_acks'
+
+    rotation_id = sqlalchemy.Column(sqlalchemy.String(36), primary_key=True)
+    device_id = sqlalchemy.Column(sqlalchemy.String(36), primary_key=True)

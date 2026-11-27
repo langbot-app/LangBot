@@ -86,6 +86,7 @@ class SecureSession:
         self.seen: set[int] = set()
         self.device_id: str | None = None
         self.binding_id: str | None = None
+        self.check_key = None
 
     async def receive_payload(self):
         frame = json.loads(await self.websocket.receive())
@@ -115,9 +116,13 @@ class SecureSession:
             not isinstance(timestamp, (int, float)) or abs(time.time() - timestamp) > TS_SKEW
         ):
             raise ValueError('HTS1 payload timestamp outside allowed skew')
+        if self.check_key is not None:
+            await self.check_key()
         return payload
 
     async def send_payload(self, payload):
+        if self.check_key is not None:
+            await self.check_key()
         seq = self.send_seq
         self.send_seq += 1
         ciphertext = seal(self.send_key, seq, json.dumps(payload, separators=(',', ':')).encode())
@@ -182,19 +187,26 @@ class HarnessTransportFactory:
         from sqlalchemy.ext.asyncio import async_sessionmaker
 
         from ...entity.persistence.harness_instance_key import HarnessInstanceKey
+        from ..rotation import RotationError, SERVING_KEY_STATES
 
         ap = self.ap
-        statement = select(HarnessInstanceKey).where(HarnessInstanceKey.status == 'active')
+        statement = select(HarnessInstanceKey)
         if pinned_kid is not None:
             statement = statement.where(HarnessInstanceKey.kid == pinned_kid)
+        else:
+            # Legacy clients do not send a pin selector; during overlap they
+            # still need the pre-rotation identity.
+            statement = statement.where(HarnessInstanceKey.status.in_(SERVING_KEY_STATES)).order_by(
+                (HarnessInstanceKey.status == 'overlap').desc(),
+            )
         async with async_sessionmaker(ap.persistence_mgr.get_db_engine(), expire_on_commit=False)() as db:
             row = (
                 await db.execute(
                     statement.order_by(HarnessInstanceKey.created_at.desc()).limit(1)
                 )
             ).scalar_one_or_none()
-        if row is None:
-            raise ValueError('No active Harness instance key')
+        if row is None or row.status not in SERVING_KEY_STATES:
+            raise RotationError('key_retired' if row is not None and row.status == 'retired' else 'key_unavailable')
         jwt_secret = ap.instance_config.data['system']['jwt']['secret']
         from ...api.http.service.totp import _derive_wrapping_key
 
@@ -208,8 +220,12 @@ class HarnessTransportFactory:
 
     async def __call__(self, ap, websocket):
         import asyncio
+        from ..rotation import ensure_serving
 
-        kid, server_x, server_ed = await self.load_identity()
+        pinned = websocket.args.get('pinned_kid')
+        if pinned is not None and not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', pinned):
+            raise ValueError('invalid pinned key selector')
+        kid, server_x, server_ed = await self.load_identity(pinned)
 
         # Public selectors only: these identify which pinned keys must verify HS2.
         # Account credentials are read from encrypted frames after the handshake.
@@ -220,6 +236,11 @@ class HarnessTransportFactory:
         client_keys = await self.client_key_lookup(harness_id, device_kid)
         if client_keys is None:
             raise ValueError('Unregistered Harness device')
+
+        async def check_key():
+            await ensure_serving(ap.persistence_mgr.get_db_engine(), kid)
+
+        await check_key()
         async with asyncio.timeout(30):
             session = await handshake(
                 websocket,
@@ -236,4 +257,6 @@ class HarnessTransportFactory:
             )
         session.device_id = client_keys.get('id')
         session.binding_id = harness_id
+        await check_key()
+        session.check_key = check_key
         return session

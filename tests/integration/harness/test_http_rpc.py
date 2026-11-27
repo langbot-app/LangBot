@@ -18,8 +18,9 @@ from quart import Quart
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.api.http.controller.groups.harness import HarnessRouterGroup
+from langbot.pkg.api.http.controller.main import HTTPController
 from langbot.pkg.api.http.service.user import UserService
-from langbot.pkg.entity.persistence.harness_instance_key import HarnessInstanceKey
+from langbot.pkg.entity.persistence.harness_instance_key import HarnessInstanceKey, HarnessKeyAck
 from langbot.pkg.entity.persistence.harness_oauth import HarnessDevice, HarnessOAuthGrant
 from langbot.pkg.entity.persistence.harness_registration import HarnessBinding, HarnessRegistrationLink
 from langbot.pkg.entity.persistence.user import User
@@ -32,11 +33,14 @@ from langbot.pkg.workspace.service import WorkspaceService
 
 
 @pytest.mark.integration
-async def test_typescript_http_rpc(tmp_path, monkeypatch):
+@pytest.mark.parametrize('scenario', ['oauth', 'planned', 'emergency'])
+async def test_typescript_http_rpc(tmp_path, monkeypatch, scenario):
     transport = os.getenv('HARNESS_TS_RPC_TRANSPORT')
     if not transport:
         pytest.skip('Set HARNESS_TS_RPC_TRANSPORT to the built Harness core rpc-transport.js')
     assert Path(transport).is_file()
+    rotation_token = secrets.token_urlsafe(32)
+    monkeypatch.setenv('LANGBOT_HARNESS_ROTATION_TOKEN', rotation_token)
     monkeypatch.setattr(constants, 'instance_id', 'rpc-test-instance')
     config = Config()
     config.bind = ['127.0.0.1:0']
@@ -71,11 +75,13 @@ async def test_typescript_http_rpc(tmp_path, monkeypatch):
     ap.user_service = UserService(ap)
     stop = asyncio.Event()
     server = None
+    observer_server = None
+    observer_engine = None
     process = None
     try:
         async with engine.begin() as conn:
             for model in (User, Workspace, WorkspaceExecutionState, WorkspaceMembership, HarnessRegistrationLink,
-                          HarnessBinding, HarnessInstanceKey, HarnessDevice, HarnessOAuthGrant):
+                          HarnessBinding, HarnessInstanceKey, HarnessKeyAck, HarnessDevice, HarnessOAuthGrant):
                 await conn.run_sync(model.__table__.create)
         email, password = 'harness-rpc@example.test', secrets.token_urlsafe(32)
         account = await ap.user_service.create_initial_account(email, password)
@@ -99,6 +105,20 @@ async def test_typescript_http_rpc(tmp_path, monkeypatch):
         links = [await bindings.issue(issuer, label='RPC smoke', preferred_auth='local') for _ in range(2)]
         app = Quart(__name__)
         await HarnessRouterGroup(ap, app).initialize()
+        observer_origin = origin
+        if scenario != 'oauth':
+            observer_sockets = config.create_sockets()
+            observer_origin = f'https://127.0.0.1:{observer_sockets.secure_sockets[0].getsockname()[1]}'
+            observer_engine = create_async_engine(engine.url)
+            observer = SimpleNamespace(**vars(ap))
+            observer.persistence_mgr = SimpleNamespace(get_db_engine=lambda: observer_engine, execute_async=execute)
+            await wiring.install(observer)
+            observer_controller = HTTPController(observer)
+            observer_controller.register_harness_route()
+            observer_server = asyncio.create_task(worker_serve(
+                wrap_app(observer_controller.quart_app, config.wsgi_max_body_size, None), config,
+                sockets=observer_sockets, shutdown_trigger=stop.wait,
+            ))
         server = asyncio.create_task(worker_serve(
             wrap_app(app, config.wsgi_max_body_size, None), config, sockets=sockets, shutdown_trigger=stop.wait,
         ))
@@ -107,12 +127,24 @@ async def test_typescript_http_rpc(tmp_path, monkeypatch):
             env={**os.environ, 'NODE_EXTRA_CA_CERTS': config.certfile, 'HARNESS_RPC_TEST': json.dumps({
                 'origin': origin, 'links': [link['url'] for link in links],
                 'email': email, 'password': password, 'workspace': workspace.uuid,
+                'scenario': scenario, 'rotationToken': rotation_token, 'observerOrigin': observer_origin,
             })}, stderr=asyncio.subprocess.PIPE,
         )
         async with asyncio.timeout(30):
             _, stderr = await process.communicate()
         assert process.returncode == 0, stderr.decode()
         async with engine.connect() as conn:
+            if scenario != 'oauth':
+                assert await conn.scalar(sa.select(sa.func.count()).select_from(HarnessBinding)) == 2
+                retired = (await conn.execute(sa.select(HarnessInstanceKey).where(
+                    HarnessInstanceKey.status == 'retired',
+                ))).mappings().all()
+                assert len(retired) == (1 if scenario == 'planned' else 2)
+                assert all(not key['priv_ciphertext'] for key in retired)
+                assert await conn.scalar(sa.select(sa.func.count()).select_from(HarnessKeyAck)) == (
+                    2 if scenario == 'planned' else 0
+                )
+                return
             grants = (await conn.execute(sa.select(HarnessOAuthGrant.__table__))).mappings().all()
             assert len(grants) == 3
             assert all(grant['account_uuid'] == account.uuid for grant in grants)
@@ -132,3 +164,7 @@ async def test_typescript_http_rpc(tmp_path, monkeypatch):
             for sock in sockets.secure_sockets:
                 sock.close()
         await engine.dispose()
+        if observer_server is not None:
+            await observer_server
+        if observer_engine is not None:
+            await observer_engine.dispose()

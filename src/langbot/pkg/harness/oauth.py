@@ -16,6 +16,8 @@ from ..api.authz import permissions_for_role
 from ..entity.persistence.harness_oauth import HarnessDevice, HarnessOAuthGrant
 from ..entity.persistence.harness_registration import HarnessBinding, HarnessRegistrationLink
 from ..utils import constants
+from .binding import _KEY, lock_keys
+from .rotation import SERVING_KEY_STATES, finish_if_ready
 
 ACCESS_TTL = 3600
 REFRESH_TTL = 180 * 24 * 3600
@@ -58,6 +60,7 @@ class HarnessOAuthService:
         device_id = str(uuid.uuid4())
         now = int(time.time())
         async with self.engine.begin() as conn:
+            await lock_keys(conn)
             binding = await conn.execute(
                 sa.select(HarnessRegistrationLink.id, HarnessRegistrationLink.token_hash)
                 .where(
@@ -65,6 +68,9 @@ class HarnessOAuthService:
                     HarnessRegistrationLink.consumed_at.is_not(None),
                     HarnessRegistrationLink.revoked_at.is_(None),
                     HarnessRegistrationLink.instance_uuid == self.instance_uuid,
+                    sa.exists(sa.select(_KEY.c.kid).where(
+                        _KEY.c.kid == HarnessRegistrationLink.kid, _KEY.c.status.in_(SERVING_KEY_STATES),
+                    )),
                 )
             )
             record = binding.one_or_none()
@@ -178,6 +184,7 @@ class HarnessOAuthService:
         # binding used by grants and management APIs.
         now = int(time.time())
         async with self.engine.begin() as conn:
+            await lock_keys(conn)
             link = (
                 await conn.execute(
                     sa.select(HarnessRegistrationLink.__table__).where(
@@ -202,6 +209,10 @@ class HarnessOAuthService:
                 if active is None:
                     raise ValueError('invalid_device')
                 return await self._issue_grant(conn, binding_id, device_id, account.uuid, workspace_uuid, scopes)
+            if not await conn.scalar(sa.select(_KEY.c.kid).where(
+                _KEY.c.kid == link['kid'], _KEY.c.status.in_(SERVING_KEY_STATES),
+            )):
+                raise ValueError('invalid_binding')
             claimed = await conn.execute(
                 HarnessDevice.__table__.update()
                 .where(
@@ -367,6 +378,7 @@ class HarnessOAuthService:
         """Revoke a device and all grants issued to it."""
         now = int(time.time())
         async with self.engine.begin() as conn:
+            await lock_keys(conn)
             result = await conn.execute(
                 HarnessDevice.__table__.update()
                 .where(
@@ -386,4 +398,5 @@ class HarnessOAuthService:
                 )
                 .values(revoked_at=now)
             )
+            await finish_if_ready(conn, self.instance_uuid)
         return True

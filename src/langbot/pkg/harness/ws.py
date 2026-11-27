@@ -105,6 +105,9 @@ async def handle_ws(ap, transport, ctx, *, revalidate=None) -> None:
             continue
         registry = bot.adapter.connections
         reply = _TurnReply()
+        check = getattr(session, 'check_key', None)
+        if check is not None:
+            await check()
         await registry.register(connection_id, reply)
         try:
             await bot.dispatch_harness_message(event, processor)

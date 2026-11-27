@@ -201,8 +201,7 @@ class HTTPController:
             from ....harness.auth import authenticate_session
             from ....harness.ws import handle_ws
 
-            try:
-                transport = await factory(self.ap, quart.websocket)
+            async def run_session(transport):
                 revalidate = None
                 if callable(context_resolver):
                     context = await context_resolver(self.ap, transport)
@@ -214,6 +213,27 @@ class HTTPController:
                     await quart.websocket.close(1008, 'Harness account context is not authenticated')
                     return
                 await handle_ws(self.ap, transport, context, revalidate=revalidate)
+
+            async def watch_key(check):
+                while True:
+                    await asyncio.sleep(0.5)
+                    await check()
+
+            try:
+                transport = await factory(self.ap, quart.websocket)
+                check = getattr(transport, 'check_key', None)
+                if check is None:
+                    await run_session(transport)
+                    return
+                tasks = [asyncio.create_task(run_session(transport)), asyncio.create_task(watch_key(check))]
+                try:
+                    finished, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                    for task in finished:
+                        task.result()
+                finally:
+                    for task in tasks:
+                        task.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
             except Exception as exc:
                 self.ap.logger.warning('Harness WebSocket session rejected (%s: %s)', type(exc).__name__, exc)
                 await quart.websocket.close(1008, 'Harness session failed')
