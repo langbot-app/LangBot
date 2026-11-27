@@ -414,7 +414,9 @@ class PluginWorkerLauncher:
                     *args,
                     stdout=log_file,
                     stderr=asyncio.subprocess.STDOUT,
-                    env=self._direct_dependency_installer_environment(pathlib.Path(pip_tmp)),
+                    env=self._direct_dependency_installer_environment(
+                        pathlib.Path(pip_tmp)
+                    ),
                     cwd=str(pip_tmp),
                 )
             # The OSS operator is the person reading the WebUI error, so surface
@@ -493,18 +495,18 @@ class PluginWorkerLauncher:
             staging,
             requirements,
         )
-        uv_executable = shutil.which('uv') if self.platform == 'win32' else None
+        uv_executable = shutil.which("uv") if self.platform == "win32" else None
         if uv_executable:
             return [
                 uv_executable,
-                'pip',
-                'install',
-                '--python',
+                "pip",
+                "install",
+                "--python",
                 str(self.python_executable),
-                '--target',
+                "--target",
                 str(site_packages_path),
                 *pkgmgr_helper.get_pip_index_args(),
-                '-r',
+                "-r",
                 str(requirements_path),
             ]
         return [

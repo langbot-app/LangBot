@@ -613,7 +613,7 @@ async def test_prepare_dependency_environment_selects_profile_installer(
     assert captured["runtime_fingerprint"] != shared_fingerprint
 
 
-@pytest.mark.parametrize('uv_available', [False, True])
+@pytest.mark.parametrize("uv_available", [False, True])
 async def test_oss_dependency_installer_targets_environment_without_control_secrets(
     tmp_path,
     monkeypatch,
@@ -638,8 +638,8 @@ async def test_oss_dependency_installer_targets_environment_without_control_secr
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.invalid")
     monkeypatch.setattr(
         worker_launcher_module.shutil,
-        'which',
-        lambda name: '/usr/bin/uv' if name == 'uv' and uv_available else None,
+        "which",
+        lambda name: "/usr/bin/uv" if name == "uv" and uv_available else None,
     )
 
     class FakeProcess:
@@ -673,8 +673,8 @@ async def test_oss_dependency_installer_targets_environment_without_control_secr
     kwargs = captured["kwargs"]
     assert process.waited is True
     if uv_available:
-        assert args[:3] == ('/usr/bin/uv', 'pip', 'install')
-        assert args[args.index('--python') + 1] == sys.executable
+        assert args[:3] == ("/usr/bin/uv", "pip", "install")
+        assert args[args.index("--python") + 1] == sys.executable
     else:
         assert args[0] == sys.executable
     assert args[args.index("--target") + 1] == str(

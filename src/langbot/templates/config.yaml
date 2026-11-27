@@ -330,7 +330,7 @@ plugin:
             - https://ghproxy.net/
     enable: true
     # Maximum time for the Runtime transport, handshake, and desired-state replay.
-    connect_timeout_seconds: 360.0
+    connect_timeout_seconds: 180.0
     runtime_ws_url: 'ws://langbot_plugin_runtime:5400/control/ws'
     enable_marketplace: true
     # Console debug endpoint; its port is also passed to Core-managed Runtime
