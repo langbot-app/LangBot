@@ -54,6 +54,7 @@ from ...cloud.directory import directory_projection_limits_from_config
 from ...cloud.directory_projection import DirectoryProjectionService
 from ...cloud.entitlements import EntitlementResolver
 from ...cloud.model_catalog import CloudModelCatalogSyncService
+from ...harness import wiring as harness_wiring
 from ...api.http.context import ExecutionContext, PrincipalContext, PrincipalType
 from ...api.application import ApplicationAPI
 from ...api.http.authz import WorkspaceRequiredError
@@ -339,6 +340,11 @@ class BuildAppStage(stage.BootingStage):
         # 初始化向量数据库管理器
         vectordb_mgr_inst = vectordb_mgr.VectorDBManager(ap)
         ap.vector_db_mgr = vectordb_mgr_inst
+
+        # Attach the Harness WebSocket dependencies before the HTTP controller
+        # registers its routes. Without them the E2EE endpoint still answers but
+        # closes every connection with 1013.
+        await harness_wiring.install(ap)
 
         http_ctrl = http_controller.HTTPController(ap)
         ap.http_ctrl = http_ctrl
