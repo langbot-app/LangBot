@@ -127,6 +127,7 @@ async def test_typescript_http_rpc(tmp_path, monkeypatch, scenario):
             env={**os.environ, 'NODE_EXTRA_CA_CERTS': config.certfile, 'HARNESS_RPC_TEST': json.dumps({
                 'origin': origin, 'links': [link['url'] for link in links],
                 'email': email, 'password': password, 'workspace': workspace.uuid,
+                'browserAccountToken': await ap.user_service.generate_jwt_token(account),
                 'scenario': scenario, 'rotationToken': rotation_token, 'observerOrigin': observer_origin,
             })}, stderr=asyncio.subprocess.PIPE,
         )

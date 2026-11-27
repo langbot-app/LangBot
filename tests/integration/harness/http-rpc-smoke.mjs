@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 
 const { Hts1HttpRpcTransport } = await import(pathToFileURL(process.env.HARNESS_TS_RPC_TRANSPORT));
-const { origin, links, email, password, workspace, scenario, rotationToken, observerOrigin } = JSON.parse(process.env.HARNESS_RPC_TEST);
+const { origin, links, email, password, workspace, scenario, rotationToken, observerOrigin, browserAccountToken } = JSON.parse(process.env.HARNESS_RPC_TEST);
 
 async function post(path, body) {
   return fetch(new URL(path, origin), {
@@ -166,6 +166,9 @@ assert.deepEqual(await repeatedEnvelope.json(), { code: 'invalid_hs2' });
 const { rpc: other } = await enroll(links[1], 'device-two');
 assert.deepEqual(await refresh(other, oldToken), { status: 401, body: { code: 'invalid_grant' } });
 const list = (rpc, token) => rpc.request({ path: '/api/v1/harness/workspaces', method: 'GET', auth: { kind: 'oauth', token } });
+// Space's Core browser callback issues this same account-token format. A
+// valid Core signature and a real enrolled device do not make it a grant.
+assert.deepEqual(await list(first, browserAccountToken), { status: 401, body: { code: 'invalid_grant' } });
 const select = (rpc, token, id) => rpc.request({ path: '/api/v1/harness/workspaces/select', method: 'POST',
   auth: { kind: 'oauth', token }, body: { workspace_uuid: id } });
 assert.equal((await list(other, signedIn.body.access_token)).status, 401);

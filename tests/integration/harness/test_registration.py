@@ -14,6 +14,7 @@ from langbot.pkg.api.http.controller.groups.harness import HarnessRouterGroup
 from langbot.pkg.entity.persistence.harness_instance_key import HarnessInstanceKey
 from langbot.pkg.entity.persistence.harness_oauth import HarnessDevice, HarnessOAuthGrant
 from langbot.pkg.entity.persistence.harness_registration import HarnessBinding, HarnessRegistrationLink
+from langbot.pkg.harness import wiring
 from langbot.pkg.harness.binding import HarnessBindings
 from langbot.pkg.harness.oauth import HarnessOAuthService
 from langbot.pkg.utils import constants
@@ -47,6 +48,26 @@ async def test_legacy_oauth_token_requires_encrypted_transport(payload, monkeypa
     assert response.headers['Cache-Control'] == 'no-store'
     password_grant.assert_not_called()
     refresh_grant.assert_not_called()
+
+
+async def test_cloud_mode_does_not_expose_partial_harness_enrollment(monkeypatch):
+    monkeypatch.setattr(constants, 'instance_id', 'isolated-cloud-instance')
+    ap = SimpleNamespace(
+        deployment=SimpleNamespace(mode='cloud'),
+        instance_config=SimpleNamespace(data={'harness': {
+            'enabled': True, 'instance_origin': 'https://cloud.example', 'client_origin': 'https://harness.example',
+        }}),
+    )
+    await wiring.install(ap)
+    assert not hasattr(ap, 'harness_transport_factory')
+    app = Quart(__name__)
+    await HarnessRouterGroup(ap, app).initialize()
+    client = app.test_client()
+    response = await client.post('/api/v1/harness/register', scheme='https', json={'token': 'x' * 43})
+    assert response.status_code == 404
+    response = await client.post('/api/v1/harness/rpc/handshake', scheme='https', json={})
+    assert response.status_code == 404
+    assert await response.get_json() == {'code': 'rpc_unavailable'}
 
 
 @pytest.mark.asyncio
