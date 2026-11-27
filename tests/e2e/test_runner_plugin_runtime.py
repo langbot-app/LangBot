@@ -322,7 +322,7 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
           label: {en_US: Welcome processor, zh_Hans: Welcome processor}
         spec:
           usages: [event]
-          events: [group.member_joined]
+          events: [group.member_joined, message.received]
           config:
             - name: greeting
               type: string
@@ -339,10 +339,14 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
     (processor_dir / 'welcome.py').write_text(
         textwrap.dedent("""
         from langbot_plugin.api.definition.components.runner import Runner, RunnerContext
-        from langbot_plugin.api.entities.builtin.platform.events import MemberJoinedEvent
+        from langbot_plugin.api.entities.builtin.platform.events import MemberJoinedEvent, MessageReceivedEvent
 
         class WelcomeProcessor(Runner):
             async def initialize(self):
+                @self.handler(MessageReceivedEvent)
+                async def message(ctx: RunnerContext):
+                    await self.plugin.call_tool('event_reply', {'text': ctx.config['greeting']})
+
                 @self.handler(MemberJoinedEvent)
                 async def handle(ctx: RunnerContext):
                     await ctx.log('Handling ' + str(ctx.platform_event.member.id))
@@ -1240,6 +1244,144 @@ def test_http_agent_message_policy(runner_client, runner_e2e_tmpdir):
     assert data(client.get(f'/api/v1/agents/{agent}/runs', headers=headers))['items'] == []
     assert send('agent-probe replace-output') == ['updated output']
     assert send('agent-probe replace-input') == ['e2e echo: updated input']
+
+
+@pytest.mark.parametrize('kind', ['person', 'group'])
+def test_subscription_replies_after_primary_denial(runner_client, runner_e2e_tmpdir, kind):
+    from tools.regression.http_bot import signed_headers
+
+    client = runner_client
+    token = _init_and_auth(client)
+    _ensure_qa_plugin(client, token, runner_e2e_tmpdir / 'agent-runner-qa.zip')
+    headers = {'Authorization': f'Bearer {token}'}
+
+    def create(path, payload):
+        result = client.post('/api/v1/' + path, headers=headers, json=payload).json()
+        assert result['code'] == 0, result
+        return result['data']['uuid']
+
+    agent = create(
+        'agents',
+        {
+            'name': 'Primary',
+            'kind': 'agent',
+            'supported_event_patterns': ['message.*'],
+            'config': {'runner': {'id': QA_RUNNER_ID}, 'runner_config': {QA_RUNNER_ID: {}}},
+        },
+    )
+    processor = create(
+        'agents',
+        {
+            'name': 'Subscriber',
+            'kind': 'event_processor',
+            'component_ref': 'plugin:e2e/agent-runner-qa/welcome',
+            'parameters': {'greeting': 'subscriber reply'},
+        },
+    )
+    bot = create(
+        'platform/bots',
+        {
+            'name': 'Subscription QA',
+            'adapter': 'http_bot',
+            'enable': True,
+            'adapter_config': {'signature_required': True, 'inbound_secret': 'qa-sign', 'callback_timeout': 3},
+            'plugin_processors': [{'processor_uuid': processor}],
+            'event_bindings': [{'event_pattern': 'message.received', 'target_type': 'agent', 'target_uuid': agent}],
+            'message_policy': {
+                'trigger': {'ignore-rules': {'prefix': ['skip:']}, 'group-respond-rules': {'enabled': False}},
+                'output': {'misc': {'at-sender': True}},
+            },
+        },
+    )
+    for text, expected, code in [
+        ('skip: probe', 'ignored', 'message_policy'),
+        ('/status', 'completed', 'command_permission_denied'),
+    ]:
+        body = json.dumps(
+            {
+                'session_id': kind,
+                'session_type': kind,
+                'sender': {'id': 'tester'},
+                'message': [{'type': 'Plain', 'text': text}],
+            }
+        ).encode()
+        result = client.post(f'/bots/{bot}/sync', content=body, headers=signed_headers(body, 'qa-sign')).json()
+        assert result['code'] == 0, result
+        parts = result['data']['message']
+        assert [part['type'] for part in parts] == (['At', 'Plain'] if kind == 'group' else ['Plain'])
+        assert parts[-1]['text'] == 'subscriber reply'
+        with contextlib.closing(sqlite3.connect(runner_e2e_tmpdir / 'data/langbot.db')) as database:
+            row = database.execute(
+                "SELECT metadata_json FROM event_log WHERE bot_id=? AND event_type='message.received' ORDER BY id DESC LIMIT 1",
+                (bot,),
+            ).fetchone()
+        metadata = json.loads(row[0])
+        assert metadata['status'] == expected, metadata
+        primary, subscription = metadata['routes']
+        assert primary['failure_code'] == code
+        assert subscription['target_uuid'] == processor and subscription['status'] == 'delivered'
+        assert client.get(f'/api/v1/agents/{agent}/runs', headers=headers).json()['data']['items'] == []
+
+
+@pytest.mark.parametrize('kind', ['person', 'group'])
+def test_command_rate_limit_window(runner_client, runner_e2e_tmpdir, kind):
+    from concurrent.futures import ThreadPoolExecutor
+    from tools.regression.http_bot import signed_headers
+
+    client = runner_client
+    headers = {'Authorization': 'Bearer ' + _init_and_auth(client)}
+    window = 8
+    result = client.post(
+        '/api/v1/platform/bots',
+        headers=headers,
+        json={
+            'name': 'Rate QA',
+            'adapter': 'http_bot',
+            'enable': True,
+            'adapter_config': {'signature_required': True, 'inbound_secret': 'qa-sign'},
+            'message_policy': {
+                'trigger': {'group-respond-rules': {'enabled': False}},
+                'safety': {
+                    'rate-limit': {'enabled': True, 'strategy': 'drop', 'window-length': window, 'limitation': 2}
+                },
+            },
+        },
+    ).json()
+    assert result['code'] == 0, result
+    bot = result['data']['uuid']
+
+    def send(index):
+        body = json.dumps(
+            {'session_type': kind, 'session_id': 'rate', 'message': [{'type': 'Plain', 'text': f'/whoami {index}'}]}
+        ).encode()
+        reply = client.post('/bots/' + bot, content=body, headers=signed_headers(body, 'qa-sign'))
+        assert reply.status_code == 202, reply.text
+
+    def routes(count):
+        end = time.monotonic() + 12
+        with contextlib.closing(sqlite3.connect(runner_e2e_tmpdir / 'data/langbot.db')) as database:
+            while True:
+                records = [
+                    json.loads(row[0]).get('routes')
+                    for row in database.execute(
+                        "SELECT metadata_json FROM event_log WHERE bot_id=? AND event_type='message.received' ORDER BY id",
+                        (bot,),
+                    )
+                ]
+                if len(records) == count and all(records):
+                    return [record[0] for record in records]
+                assert time.monotonic() < end, records
+                time.sleep(0.1)
+
+    time.sleep(window - time.time() % window + 0.05)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        list(pool.map(send, range(3)))
+    burst = routes(3)
+    assert sum(route['status'] == 'delivered' for route in burst) == 2, burst
+    assert [route['policy_item'] for route in burst if route['status'] == 'discarded'] == ['rate-limit']
+    time.sleep(window - time.time() % window + 0.05)
+    send(3)
+    assert routes(4)[-1]['status'] == 'delivered'
 
 
 def test_event_processor_real_runtime_logs_actions_and_instance_isolation(
