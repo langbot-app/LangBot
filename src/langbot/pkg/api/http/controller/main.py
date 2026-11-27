@@ -45,6 +45,8 @@ class BoundedJSONRequest(quart.Request):
         if method == 'POST' and path == '/api/v1/artifacts':
             # Allow bounded multipart overhead while the route enforces the file byte limit.
             max_content_length = group.MAX_FILE_SIZE + 64 * 1024
+        if method == 'POST' and path in ('/api/v1/harness/register', '/api/v1/harness/registration-links'):
+            max_content_length = 4096
         super().__init__(method, scheme, path, *args, max_content_length=max_content_length, **kwargs)
         self.max_content_length = max_content_length
 
@@ -158,6 +160,11 @@ class HTTPController:
         from hypercorn.asyncio import serve as hypercorn_serve
 
         config = HyperConfig()
+        api_config = self.ap.instance_config.data['api']
+        config.certfile = api_config.get('tls_certfile') or None
+        config.keyfile = api_config.get('tls_keyfile') or None
+        if bool(config.certfile) != bool(config.keyfile):
+            raise ValueError('Both API TLS certificate and key must be configured')
         config.access_log_format = '%(h)s %(r)s %(s)s %(b)s %(D)s'
         from langbot_plugin.utils.log import HTTPStatusFilter
 

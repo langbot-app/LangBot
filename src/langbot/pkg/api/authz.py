@@ -31,6 +31,7 @@ class Permission(enum.StrEnum):
     AUDIT_VIEW = 'audit.view'
     DATA_EXPORT = 'data.export'
     BILLING_LINK_MANAGE = 'billing_link.manage'
+    HARNESS_MANAGE = 'harness.manage'
 
 
 _VIEW_PERMISSIONS = {

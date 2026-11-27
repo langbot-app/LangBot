@@ -1,6 +1,8 @@
 api:
     host: '0.0.0.0'
     port: 5300
+    tls_certfile: ''
+    tls_keyfile: ''
     webhook_prefix: 'http://127.0.0.1:5300'
     extra_webhook_prefix: ''
     # Canonical browser origin when WebUI and API use different origins in
@@ -15,6 +17,10 @@ api:
     # login session and without a database record. Leave empty to disable.
     # Keep this value secret; only enable it on trusted/internal deployments.
     global_api_key: ''
+harness:
+    enabled: false
+    instance_origin: ''
+    client_origin: ''
 workspace:
     invitations:
         # Public WebUI origin used to build invitation links. Leave empty to
