@@ -3,6 +3,7 @@ import base64
 import json
 import time
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 import sqlalchemy as sa
@@ -96,10 +97,22 @@ async def test_instance_binding_is_atomic_and_a_link_cannot_be_redeemed_twice(tm
         assert (await HarnessOAuthService(ap).lookup_device(binding['harness_id'], 'device-1'))['id'] == device[
             'device_id'
         ]
-        assert [row['id'] for row in await service.list_active(issuer, links=False)] == [binding['harness_id']]
-        assert await service.list_active(outsider, links=False) == []
-        assert await service.revoke(issuer, binding['harness_id'], links=False)
+        ap.user_service = SimpleNamespace(authenticate=AsyncMock(side_effect=ValueError('bad credentials')))
+        with pytest.raises(ValueError, match='invalid_grant'):
+            await HarnessOAuthService(ap).password_grant(
+                binding['harness_id'],
+                {
+                    'grant_type': 'password',
+                    'username': 'person@example.test',
+                    'password': 'wrong-password',
+                    'device_id': device['device_id'],
+                    'workspace_uuid': 'workspace-1',
+                },
+            )
+        # Merely redeeming the link and enrolling a device creates only a
+        # pending credential. The account grant path finalizes the binding.
         assert await service.list_active(issuer, links=False) == []
+        assert await service.list_active(outsider, links=False) == []
 
         quart_app = Quart(__name__)
         await HarnessRouterGroup(ap, quart_app).initialize()
@@ -114,5 +127,6 @@ async def test_instance_binding_is_atomic_and_a_link_cannot_be_redeemed_twice(tm
         assert accepted.status_code == 200
         assert accepted.headers['Cache-Control'] == 'no-store'
         assert (await accepted.get_json())['instance_uuid'] == constants.instance_id
+        assert await service.list_active(issuer, links=False) == []
     finally:
         await engine.dispose()

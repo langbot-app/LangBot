@@ -59,12 +59,9 @@ class HarnessOAuthService:
         now = int(time.time())
         async with self.engine.begin() as conn:
             binding = await conn.execute(
-                sa.select(HarnessBinding.id, HarnessRegistrationLink.token_hash)
-                .select_from(HarnessBinding)
-                .join(HarnessRegistrationLink, HarnessRegistrationLink.id == HarnessBinding.id)
+                sa.select(HarnessRegistrationLink.id, HarnessRegistrationLink.token_hash)
                 .where(
-                    HarnessBinding.id == binding_id,
-                    HarnessBinding.revoked_at.is_(None),
+                    HarnessRegistrationLink.id == binding_id,
                     HarnessRegistrationLink.consumed_at.is_not(None),
                     HarnessRegistrationLink.revoked_at.is_(None),
                     HarnessRegistrationLink.instance_uuid == self.instance_uuid,
@@ -104,13 +101,16 @@ class HarnessOAuthService:
                 (
                     await conn.execute(
                         sa.select(HarnessDevice.__table__)
-                        .join(HarnessBinding, HarnessBinding.id == HarnessDevice.binding_id)
                         .where(
                             HarnessDevice.binding_id == binding_id,
                             HarnessDevice.device_kid == device_kid,
                             HarnessDevice.revoked_at.is_(None),
-                            HarnessBinding.revoked_at.is_(None),
-                            HarnessBinding.instance_uuid == self.instance_uuid,
+                            sa.exists(sa.select(HarnessRegistrationLink.id).where(
+                                HarnessRegistrationLink.id == HarnessDevice.binding_id,
+                                HarnessRegistrationLink.instance_uuid == self.instance_uuid,
+                                HarnessRegistrationLink.consumed_at.is_not(None),
+                                HarnessRegistrationLink.revoked_at.is_(None),
+                            )),
                         )
                     )
                 )
@@ -135,13 +135,16 @@ class HarnessOAuthService:
                 (
                     await conn.execute(
                         sa.select(HarnessDevice.__table__)
-                        .join(HarnessBinding, HarnessBinding.id == HarnessDevice.binding_id)
                         .where(
                             HarnessDevice.id == device_id,
                             HarnessDevice.binding_id == binding_id,
                             HarnessDevice.revoked_at.is_(None),
-                            HarnessBinding.revoked_at.is_(None),
-                            HarnessBinding.instance_uuid == self.instance_uuid,
+                            sa.exists(sa.select(HarnessRegistrationLink.id).where(
+                                HarnessRegistrationLink.id == HarnessDevice.binding_id,
+                                HarnessRegistrationLink.instance_uuid == self.instance_uuid,
+                                HarnessRegistrationLink.consumed_at.is_not(None),
+                                HarnessRegistrationLink.revoked_at.is_(None),
+                            )),
                         )
                     )
                 )
@@ -160,6 +163,37 @@ class HarnessOAuthService:
         if account is None:
             raise ValueError('invalid_grant')
         access = await self.ap.workspace_collaboration_service.resolve_account_workspace(account.uuid, workspace_uuid)
+        # The instance link remains a pending enrollment until successful account
+        # authentication and Workspace authorization. Only now create the durable
+        # binding used by grants and management APIs.
+        now = int(time.time())
+        async with self.engine.begin() as conn:
+            link = (
+                await conn.execute(
+                    sa.select(HarnessRegistrationLink.__table__).where(
+                        HarnessRegistrationLink.id == binding_id,
+                        HarnessRegistrationLink.instance_uuid == self.instance_uuid,
+                        HarnessRegistrationLink.consumed_at.is_not(None),
+                        HarnessRegistrationLink.revoked_at.is_(None),
+                    )
+                )
+            ).mappings().one_or_none()
+            if link is None:
+                raise ValueError('invalid_binding')
+            if await conn.scalar(sa.select(HarnessBinding.id).where(HarnessBinding.id == binding_id)) is None:
+                await conn.execute(
+                    HarnessBinding.__table__.insert().values(
+                        id=binding_id,
+                        instance_uuid=self.instance_uuid,
+                        issuer_workspace_uuid=link['issuer_workspace_uuid'],
+                        created_at=now,
+                    )
+                )
+            await conn.execute(
+                HarnessDevice.__table__.update()
+                .where(HarnessDevice.id == device_id, HarnessDevice.binding_id == binding_id)
+                .values(account_uuid=account.uuid)
+            )
         raw_scope = payload.get('scope', 'agent.run resource.view')
         if not isinstance(raw_scope, str):
             raise ValueError('invalid_scope')
@@ -199,9 +233,6 @@ class HarnessOAuthService:
                     refresh_expires_at=now + REFRESH_TTL,
                     created_at=now,
                 )
-            )
-            await conn.execute(
-                HarnessDevice.__table__.update().where(HarnessDevice.id == device_id).values(account_uuid=account.uuid)
             )
         return {
             'access_token': access_token,

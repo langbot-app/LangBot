@@ -161,19 +161,11 @@ class HarnessBindings:
             consumed_link = result.one_or_none()
             if consumed_link is None:
                 return None
-            binding_id, issuer = consumed_link.id, consumed_link.issuer_workspace_uuid
+            binding_id = consumed_link.id
             await conn.execute(
                 _LINK.update()
                 .where(_LINK.c.token_hash == _digest(token), _LINK.c.consumed_at == now)
                 .values(token_hash=_digest(enrollment_token))
-            )
-            await conn.execute(
-                _BINDING.insert().values(
-                    id=binding_id,
-                    instance_uuid=self.instance_uuid,
-                    issuer_workspace_uuid=issuer,
-                    created_at=now,
-                )
             )
         return {
             'harness_id': binding_id,
