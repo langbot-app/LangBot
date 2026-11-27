@@ -1247,6 +1247,9 @@ class RuntimeBot:
         matched = await self._match_plugin_command(event)
         if matched is None:
             return False
+        from ..telemetry import trace as trace_mod
+
+        trace_mod.admit()
         plugin_id, cmd_name, cmd_text, full_cmd_text, cmd_config, processor_uuid = matched
         query = getattr(event, '_entry_query', None)
         runtime = getattr(query, '_message_policy', None)

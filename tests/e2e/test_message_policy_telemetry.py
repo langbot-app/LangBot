@@ -84,7 +84,7 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
                     _check_route_access_policy(client, token, bot, tmp_path)
                     runtime._ensure_qa_plugin(client, token, tmp_path / 'agent-runner-qa.zip')
                     agent_events, completed_events = _check_agent_ingress(client, token, bot, tmp_path)
-                    hook_events = _check_hook_intercepts(client, token, bot, tmp_path)
+                    hook_events, command_hooks = _check_hook_intercepts(client, token, bot, tmp_path)
                 else:
                     unavailable = client.post(
                         '/api/v1/agents',
@@ -109,7 +109,8 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
                             and agent_events <= _agent_drops(received)
                             and completed_events <= _successful_runs(received)
                             and _long_text_usage(received) >= 4
-                            and _hook_usage(received) == {'MessageReceived': 2, 'NormalMessageReceived': 2}
+                            and _hook_usage(received)
+                            == {'MessageReceived': 2, 'NormalMessageReceived': 2, 'CommandSent': 2}
                             and hook_events <= _successful_event_routes(received)
                         )
                     ):
@@ -135,7 +136,7 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
     assert agent_events <= _agent_drops(received)
     assert completed_events <= _successful_runs(received)
     assert _long_text_usage(received) == 4
-    assert _hook_usage(received) == {'MessageReceived': 2, 'NormalMessageReceived': 2}
+    assert _hook_usage(received) == {'MessageReceived': 2, 'NormalMessageReceived': 2, 'CommandSent': 2}
     for event_id in hook_events:
         nodes = [
             node
@@ -145,6 +146,10 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
         ]
         assert any(node['family'] == 'event_route' and node['outcome'] == 'success' for node in nodes), nodes
         assert not any(node['family'] == 'runner' for node in nodes), nodes
+        if event_id in command_hooks:
+            assert [(n['operation'], n['outcome']) for n in nodes if n['family'] == 'command'] == [
+                ('builtin:whoami', 'intercepted')
+            ], nodes
     assert not any(
         node.get('family') == 'runner' and node.get('event_id') in agent_events
         for payload in received
@@ -152,10 +157,12 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
     )
     outcomes = {
         (dims['name'], dims['outcome'])
-        for metric, dims, count in features['usage']['c']
+        for payload in received
+        if payload.get('event_type') == 'instance_heartbeat'
+        for metric, dims, count in payload['features']['usage']['c']
         if metric == 'command.run' and count >= 1
     }
-    assert outcomes == {('whoami', 'ok'), ('status', 'denied')}
+    assert outcomes == {('whoami', 'ok'), ('status', 'denied'), ('whoami', 'intercepted')}
 
 
 def _access_layers(received):
@@ -201,10 +208,11 @@ def _check_hook_intercepts(client, token, bot, tmp_path):
     saved = client.put(url, headers=headers, json={'event_bindings': [route]}).json()
     assert saved['code'] == 0, saved
     ids = set()
+    command_hooks = set()
     for kind in ('person', 'group'):
-        for hook in ('MessageReceived', 'NormalMessageReceived'):
+        for hook in ('MessageReceived', 'NormalMessageReceived', 'CommandSent'):
             name = kind.title() + hook
-            text = 'trace-hook:' + name
+            text = f'/whoami hook-probe {kind}' if hook == 'CommandSent' else 'trace-hook:' + name
             body = json.dumps(
                 {'session_type': kind, 'session_id': 'agent', 'message': [{'type': 'Plain', 'text': text}]}
             ).encode()
@@ -213,7 +221,8 @@ def _check_hook_intercepts(client, token, bot, tmp_path):
             ).json()
             assert reply['code'] == 0, reply
             sequence = [name] if hook == 'MessageReceived' else [kind.title() + 'MessageReceived', name]
-            assert reply['data']['message'] == [{'type': 'Plain', 'text': ' > '.join(sequence)}], reply
+            expected = name + ':1' if hook == 'CommandSent' else ' > '.join(sequence)
+            assert reply['data']['message'] == [{'type': 'Plain', 'text': expected}], reply
             event_id = f'platform:{bot}:{reply["data"]["reply_to"]}'
             with closing(sqlite3.connect(tmp_path / 'data/langbot.db')) as db:
                 row = db.execute(
@@ -228,9 +237,22 @@ def _check_hook_intercepts(client, token, bot, tmp_path):
                 'delivered',
                 hook,
             ), metadata
+            if hook == 'CommandSent':
+                detail = client.get('/api/v1/monitoring/executions/event/' + event_id, headers=headers).json()
+                assert detail['code'] == 0, detail
+                row = detail['data']['row']
+                assert (row['event_id'], row['handling'], row['handled_by'], row['hook']) == (
+                    event_id,
+                    'plugin',
+                    'plugin:e2e/agent-runner-qa',
+                    hook,
+                ), row
+                assert primary['reason'] == f'{name} handled by {row["handled_by"]}', primary
+                assert detail['data']['counts']['events'] == 0
+                command_hooks.add(event_id)
             ids.add(event_id)
-    assert len(ids) == 4
-    return ids
+    assert len(ids) == 6 and len(command_hooks) == 2
+    return ids, command_hooks
 
 
 def _agent_drops(received):
