@@ -1732,6 +1732,71 @@ def _create_boundary_pipeline(client, token):
     return pipeline_id
 
 
+def test_chat_normal_hook_execution_owner(runner_client, runner_e2e_tmpdir):
+    from tools.regression.http_bot import signed_headers
+
+    client = runner_client
+    token = _init_and_auth(client)
+    headers = {'Authorization': 'Bearer ' + token}
+    _ensure_qa_plugin(client, token, runner_e2e_tmpdir / 'agent-runner-qa.zip')
+    chat = _create_boundary_pipeline(client, token)
+    response = client.post(
+        '/api/v1/platform/bots',
+        headers=headers,
+        json={
+            'name': 'Chat hook attribution',
+            'adapter': 'http_bot',
+            'enable': True,
+            'adapter_config': {'signature_required': True, 'inbound_secret': 'qa-sign'},
+            'event_bindings': [
+                {'id': 'chat', 'event_pattern': 'message.received', 'target_type': 'pipeline', 'target_uuid': chat}
+            ],
+            'message_policy': {
+                'trigger': {'group-respond-rules': {'enabled': False}},
+                'output': {'misc': {'at-sender': False}},
+            },
+        },
+    ).json()
+    assert response['code'] == 0, response
+    bot = response['data']['uuid']
+    for kind in ('person', 'group'):
+        for intercepted in (True, False):
+            normal = kind.title() + 'NormalMessageReceived'
+            text = 'trace-hook:chat:' + normal if intercepted else 'ordinary ' + kind
+            body = json.dumps(
+                {'session_type': kind, 'session_id': 'chat-hooks', 'message': [{'type': 'Plain', 'text': text}]}
+            ).encode()
+            reply = client.post(f'/bots/{bot}/sync', content=body, headers=signed_headers(body, 'qa-sign')).json()
+            assert reply['code'] == 0, reply
+            expected = kind.title() + 'MessageReceived > ' + normal if intercepted else 'e2e echo: ' + text
+            assert reply['data']['message'] == [{'type': 'Plain', 'text': expected}], reply
+            event_id = f'platform:{bot}:{reply["data"]["reply_to"]}'
+            with contextlib.closing(sqlite3.connect(runner_e2e_tmpdir / 'data/langbot.db')) as db:
+                (message_id,) = db.execute(
+                    "SELECT id FROM monitoring_messages WHERE event_id=? AND bot_id=? AND role='user'", (event_id, bot)
+                ).fetchone()
+                deadline = time.monotonic() + 10
+                while True:
+                    detail = client.get(f'/api/v1/monitoring/executions/pipeline/{message_id}', headers=headers).json()
+                    assert detail['code'] == 0, detail
+                    row = detail['data']['row']
+                    if row['status'] != 'pending' or time.monotonic() >= deadline:
+                        break
+                    time.sleep(0.05)
+                assert row['status'] == 'success', row
+                runs = db.execute(
+                    "SELECT status FROM agent_run WHERE bot_id=? AND json_extract(metadata_json, '$.ingress_event_id')=?",
+                    (bot, event_id),
+                ).fetchall()
+            assert runs == ([] if intercepted else [('completed',)]), runs
+            assert (row['event_id'], row['handling'], row['handled_by'], row['runner_id']) == (
+                event_id,
+                'plugin' if intercepted else 'ai',
+                'plugin:e2e/agent-runner-qa' if intercepted else 'runner:' + QA_RUNNER_ID,
+                None if intercepted else QA_RUNNER_ID,
+            ), row
+
+
 def test_dashboard_chat_uses_neutral_policy(runner_client, runner_e2e_tmpdir):
     from websockets.sync.client import connect
 
