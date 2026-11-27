@@ -1,3 +1,4 @@
+import json
 import time
 
 import pytest
@@ -5,6 +6,7 @@ import pytest
 from tests.e2e import test_runner_plugin_runtime as runtime
 from tests.e2e import test_llm_request_chain as wire
 from tests.e2e.test_local_runner_fake_provider import LOCAL_RUNNER_ID, _package_local_agent_plugin
+from tools.regression.http_bot import signed_headers
 
 runner_runtime_ports = runtime.runner_runtime_ports
 runner_runtime_process = runtime.runner_runtime_process
@@ -53,7 +55,7 @@ def test_session_model_and_retry(runner_client, runner_e2e_tmpdir, provider_wire
             'name': 'QA',
             'enable': True,
             'adapter': 'http_bot',
-            'adapter_config': {'signature_required': False, 'callback_timeout': 10},
+            'adapter_config': {'signature_required': True, 'inbound_secret': 'qa-signer', 'callback_timeout': 10},
             'command_settings': {'builtin': {'model': {'enabled': True}}},
             'event_bindings': [
                 {'event_pattern': 'message.received', 'target_type': 'pipeline', 'target_uuid': pipeline}
@@ -64,9 +66,13 @@ def test_session_model_and_retry(runner_client, runner_e2e_tmpdir, provider_wire
     api('POST', f'platform/bots/{bot}/admins', json={'launcher_type': 'person', 'launcher_id': 'admin'})
 
     def send(text, sender='admin'):
+        body = json.dumps(
+            {'session_id': sender, 'session_type': 'person', 'message': [{'type': 'Plain', 'text': text}]}
+        ).encode()
         result = client.post(
             f'/bots/{bot}/sync',
-            json={'session_id': sender, 'session_type': 'person', 'message': [{'type': 'Plain', 'text': text}]},
+            content=body,
+            headers=signed_headers(body, 'qa-signer'),
         ).json()
         assert result['code'] == 0, result
         return ''.join(part['text'] for part in result['data']['message'] if part.get('type') == 'Plain')
