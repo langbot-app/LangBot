@@ -213,20 +213,39 @@ class HarnessOAuthService:
 
     async def refresh_grant(self, refresh_token: str) -> dict:
         now = int(time.time())
+        token_hash = _hash(refresh_token)
         async with self.engine.begin() as conn:
             row = (
                 (
                     await conn.execute(
                         sa.select(HarnessOAuthGrant.__table__)
-                        .where(HarnessOAuthGrant.refresh_token_hash == _hash(refresh_token))
+                        .where(
+                            sa.or_(
+                                HarnessOAuthGrant.refresh_token_hash == token_hash,
+                                HarnessOAuthGrant.previous_refresh_token_hash == token_hash,
+                            )
+                        )
                         .with_for_update()
                     )
                 )
                 .mappings()
                 .one_or_none()
             )
-            if row is None or row['revoked_at'] is not None or row['refresh_expires_at'] <= now:
+            if row is None:
                 raise ValueError('invalid_grant')
+            if row['revoked_at'] is not None or row['refresh_expires_at'] <= now:
+                raise ValueError('invalid_grant')
+            # A previous token can only be observed when a rotated token was
+            # replayed. Revoke the whole grant family before returning an
+            # error; this invalidates every access token on the device at the
+            # next request as well as the current refresh chain.
+            if row['previous_refresh_token_hash'] == token_hash:
+                await conn.execute(
+                    HarnessOAuthGrant.__table__.update()
+                    .where(HarnessOAuthGrant.id == row['id'])
+                    .values(revoked_at=now)
+                )
+                raise ValueError('refresh_token_reuse')
             binding = await conn.scalar(
                 sa.select(HarnessBinding.id).where(
                     HarnessBinding.id == row['binding_id'],
@@ -258,6 +277,7 @@ class HarnessOAuthService:
                 .where(HarnessOAuthGrant.id == row['id'])
                 .values(
                     refresh_token_hash=_hash(new_refresh),
+                    previous_refresh_token_hash=token_hash,
                     refresh_generation=row['refresh_generation'] + 1,
                     scope=' '.join(scopes),
                 )
@@ -292,3 +312,28 @@ class HarnessOAuthService:
             'refresh_token': refresh,
             'scope': ' '.join(scopes),
         }
+
+    async def revoke_device(self, device_id: str, account_uuid: str) -> bool:
+        """Revoke a device and all grants issued to it."""
+        now = int(time.time())
+        async with self.engine.begin() as conn:
+            result = await conn.execute(
+                HarnessDevice.__table__.update()
+                .where(
+                    HarnessDevice.id == device_id,
+                    HarnessDevice.account_uuid == account_uuid,
+                    HarnessDevice.revoked_at.is_(None),
+                )
+                .values(revoked_at=now)
+            )
+            if result.rowcount != 1:
+                return False
+            await conn.execute(
+                HarnessOAuthGrant.__table__.update()
+                .where(
+                    HarnessOAuthGrant.device_id == device_id,
+                    HarnessOAuthGrant.revoked_at.is_(None),
+                )
+                .values(revoked_at=now)
+            )
+        return True

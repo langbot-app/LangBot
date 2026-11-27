@@ -77,6 +77,7 @@ async def _oauth_context(ap, token: str, workspace_uuid: str | None = None):
             role=access.membership.role,
             permissions=effective,
             membership_revision=access.membership.projection_revision,
+            harness_device_id=claims['dev'],
         ),
     )
 

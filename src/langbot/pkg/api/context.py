@@ -62,6 +62,7 @@ class RequestContext:
     workspace: WorkspaceContext
     entitlement_revision: int = 0
     allowed_operation_ids: frozenset[str] | None = None
+    harness_device_id: str | None = None
 
     @property
     def workspace_uuid(self) -> str:

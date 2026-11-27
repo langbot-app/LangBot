@@ -102,6 +102,28 @@ class HarnessRouterGroup(group.RouterGroup):
                 return self.http_status(401, 'invalid_device_enrollment', 'Invalid authentication credentials')
             return self.success(result)
 
+        @self.route('/devices/<device_id>/revoke', methods=['POST'], auth_type=group.AuthType.NONE)
+        async def revoke_device(device_id):
+            """Revoke the calling device and evict its OAuth sessions."""
+            authorization = quart.request.headers.get('Authorization', '')
+            token = authorization[7:].strip() if authorization.startswith('Bearer ') else ''
+            if not token:
+                return self.http_status(401, 'invalid_harness_access_token', 'Invalid authentication credentials')
+            try:
+                from .....harness.auth import _oauth_context
+
+                context, _ = await _oauth_context(self.ap, token)
+                if context.harness_device_id != str(device_id):
+                    return self.http_status(403, 'device_forbidden', 'Forbidden')
+                revoked = await HarnessOAuthService(self.ap).revoke_device(
+                    str(device_id), context.account_uuid
+                )
+            except ValueError as exc:
+                return self.http_status(401, str(exc), 'Invalid authentication credentials')
+            if not revoked:
+                return self.http_status(404, 'device_not_found', 'Resource not found')
+            return self.success()
+
         @self.route('/oauth/token', methods=['POST'], auth_type=group.AuthType.NONE)
         async def token():
             payload = await quart.request.get_json(silent=True)

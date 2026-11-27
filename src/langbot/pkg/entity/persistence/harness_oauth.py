@@ -29,6 +29,7 @@ class HarnessOAuthGrant(Base):
     workspace_uuid = sa.Column(sa.String(36), nullable=False, index=True)
     scope = sa.Column(sa.Text, nullable=False)
     refresh_token_hash = sa.Column(sa.String(64), nullable=False, unique=True)
+    previous_refresh_token_hash = sa.Column(sa.String(64), nullable=True, index=True)
     refresh_generation = sa.Column(sa.Integer, nullable=False, default=0)
     refresh_expires_at = sa.Column(sa.BigInteger, nullable=False)
     created_at = sa.Column(sa.BigInteger, nullable=False)
