@@ -87,6 +87,7 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
                 Command:
                   fromDirs:
                     - path: components/commands/
+                    - path: components/identity/
                 EventListener:
                   fromDirs:
                     - path: components/event_listener/
@@ -264,6 +265,23 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
                         await ctx.reply(MessageChain([Plain(text='command:' + await ctx.get_bot_uuid())]))
                         yield CommandReturn()
         """,
+        ),
+        'identity': (
+            'Command',
+            'whoami',
+            'IdentityCommand',
+            {'config': [{'name': 'identity', 'type': 'string', 'default': 'default', 'label': {'en_US': 'Identity'}}]},
+            """
+            from langbot_plugin.api.definition.components.command.command import Command
+            from langbot_plugin.api.entities.builtin.command.context import CommandReturn
+
+            class IdentityCommand(Command):
+                async def initialize(self):
+                    await super().initialize()
+                    @self.subcommand('')
+                    async def handle(self, ctx):
+                        yield CommandReturn(text='plugin:' + ctx.config['identity'])
+            """,
         ),
         'event_listener': (
             'EventListener',
@@ -1530,6 +1548,97 @@ def test_command_rate_limit_window(runner_client, runner_e2e_tmpdir, kind):
     time.sleep(window - time.time() % window + 0.05)
     send(3)
     assert routes(4)[-1]['status'] == 'delivered'
+
+
+def test_command_processor_collision_and_instance_parameters(runner_client, runner_e2e_tmpdir):
+    from tools.regression.http_bot import signed_headers
+
+    client = runner_client
+    token = _init_and_auth(client)
+    headers = {'Authorization': f'Bearer {token}'}
+    _ensure_qa_plugin(client, token, runner_e2e_tmpdir / 'agent-runner-qa.zip')
+    plugin = 'e2e/agent-runner-qa'
+
+    def data(response):
+        result = response.json()
+        assert result['code'] == 0, result
+        return result['data']
+
+    for label in ('first', 'second'):
+        instance = data(
+            client.post(
+                '/api/v1/agents',
+                headers=headers,
+                json={
+                    'name': label,
+                    'kind': 'command_processor',
+                    'component_ref': 'plugin:' + plugin,
+                    'parameters': {'whoami': {'identity': label}},
+                },
+            )
+        )['uuid']
+        processors = [{'processor_uuid': instance}]
+        bot = data(
+            client.post(
+                '/api/v1/platform/bots',
+                headers=headers,
+                json={
+                    'name': label,
+                    'adapter': 'http_bot',
+                    'enable': True,
+                    'adapter_config': {'signature_required': True, 'inbound_secret': 'qa-sign'},
+                    'command_settings': {'processors': processors},
+                    'message_policy': {
+                        'trigger': {'group-respond-rules': {'enabled': False}},
+                        'plugins': {'enable_all': False, 'plugins': [{'author': 'e2e', 'name': 'agent-runner-qa'}]},
+                    },
+                },
+            )
+        )['uuid']
+        runs_url = f'/api/v1/agents/{instance}/runs'
+        for builtin in (True, False):
+            if not builtin:
+                data(
+                    client.put(
+                        f'/api/v1/platform/bots/{bot}',
+                        headers=headers,
+                        json={
+                            'command_settings': {'processors': processors, 'builtin': {'whoami': {'enabled': False}}},
+                        },
+                    )
+                )
+            for kind in ('person', 'group'):
+                body = json.dumps(
+                    {
+                        'session_type': kind,
+                        'session_id': label,
+                        'sender_id': label,
+                        'message': [{'type': 'Plain', 'text': '/whoami'}],
+                    }
+                ).encode()
+                reply = data(client.post(f'/bots/{bot}/sync', content=body, headers=signed_headers(body, 'qa-sign')))
+                text = ''.join(part['text'] for part in reply['message'] if part['type'] == 'Plain')
+                assert (label in text and 'plugin:' not in text) if builtin else text == 'plugin:' + label, text
+                with contextlib.closing(sqlite3.connect(runner_e2e_tmpdir / 'data/langbot.db')) as db:
+                    row = db.execute(
+                        'SELECT metadata_json FROM event_log WHERE bot_id=? AND event_id=?',
+                        (bot, f'platform:{bot}:{reply["reply_to"]}'),
+                    ).fetchone()
+                assert row
+                routes = json.loads(row[0])['routes']
+                assert [(route['target_type'], route['target_uuid'], route['status']) for route in routes] == [
+                    ('builtin_command', 'whoami', 'delivered')
+                    if builtin
+                    else ('plugin_command', plugin + '/whoami', 'delivered')
+                ], routes
+            runs = data(client.get(runs_url, headers=headers))['items']
+            assert len(runs) == (0 if builtin else 2), runs
+            for run in runs:
+                assert run['binding_id'] == 'command_processor:' + instance and run['status'] == 'completed', run
+                events = data(client.get(runs_url + '/' + run['run_id'] + '/events', headers=headers))['items']
+                assert [event['data']['text'] for event in events if event['type'] == 'command.output'] == [
+                    'plugin:' + label
+                ]
 
 
 def test_event_processor_real_runtime_logs_actions_and_instance_isolation(
