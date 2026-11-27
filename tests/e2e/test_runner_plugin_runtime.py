@@ -836,6 +836,120 @@ def test_legacy_chat_config_http(runner_client):
         assert not legacy['config'].keys() & request('GET', '/' + ident)['pipeline']['config'].keys()
 
 
+def test_upgrade_assistant_actions(runner_client, runner_e2e_tmpdir):
+    client = runner_client
+    token = _init_and_auth(client)
+    headers = {'Authorization': f'Bearer {token}'}
+    prefix = '/api/v1/platform/bots'
+    checks = prefix + '/_/upgrade-checks'
+
+    def request(method, path, **kwargs):
+        payload = client.request(method, path, headers=headers, **kwargs).json()
+        assert payload['code'] == 0, payload
+        return payload['data']
+
+    package_dir = runner_e2e_tmpdir / 'essential-build'
+    subprocess.run(
+        [sys.executable, '-m', 'langbot_plugin.cli.__init__', 'build', '-o', str(package_dir)],
+        cwd=find_project_root() / 'plugins/misc/EssentialCommands',
+        check=True,
+    )
+    (package,) = package_dir.iterdir()
+    plugin = 'langbot-team/EssentialCommands'
+    _install_qa_plugin(client, token, package, runner_id=plugin)
+    pipeline = request('POST', '/api/v1/pipelines', json={'name': 'Upgrade assistant'})['uuid']
+    bot = request(
+        'POST',
+        prefix,
+        json={
+            'name': 'Upgrade assistant',
+            'adapter': 'http_bot',
+            'enable': False,
+            'adapter_config': {},
+            'message_policy': {
+                'plugins': {'enable_all': False, 'plugins': [{'author': 'langbot-team', 'name': 'EssentialCommands'}]}
+            },
+            'event_bindings': [
+                {
+                    'id': 'chat',
+                    'event_pattern': 'message.received',
+                    'target_type': 'pipeline',
+                    'target_uuid': pipeline,
+                    'policy': {'output': {'misc': {'at-sender': True}}},
+                }
+            ],
+        },
+    )['uuid']
+    database = runner_e2e_tmpdir / 'data/langbot.db'
+    with contextlib.closing(sqlite3.connect(database)) as connection, connection:
+        (workspace,) = connection.execute('SELECT workspace_uuid FROM bots WHERE uuid=?', (bot,)).fetchone()
+        for stage, report in {
+            '0059': {'route_overrides': [{'bot_uuid': bot, 'route_id': 'chat', 'chat_uuid': pipeline}]},
+            '0060': {'enabled_plugins': {bot: {plugin: [None]}}},
+            'commands': {'original_prefixes': ['!']},
+        }.items():
+            connection.execute(
+                'INSERT INTO workspace_metadata (workspace_uuid,key,value) VALUES (?,?,?) '
+                'ON CONFLICT(workspace_uuid,key) DO UPDATE SET value=excluded.value',
+                (workspace, 'message_policy_upgrade:' + stage, json.dumps(report)),
+            )
+
+    def items():
+        return {
+            item['code']: item for item in request('GET', checks)['items'] if item['params'].get('bot_uuid', bot) == bot
+        }
+
+    deadline = time.monotonic() + 30
+    while True:
+        original = items()
+        if 'help' in original.get('plugin_command_collision', {}).get('params', {}).get('names', []):
+            break
+        if time.monotonic() >= deadline:
+            pytest.fail('EssentialCommands did not register help')
+        time.sleep(0.25)
+    assert set(original) == {
+        'command_prefix_changed',
+        'command_admin_missing',
+        'command_plugin_enabled',
+        'plugin_command_collision',
+        'equivalent_route_policies',
+        'chat_settings_moved',
+    }
+    assert original['plugin_command_collision']['params']['essential_installed']
+    request('POST', checks + '/confirm', json={'id': original['command_admin_missing']['id']})
+    assert {code for code, item in items().items() if item['confirmed']} == {'command_admin_missing'}
+    request('POST', checks + '/confirm-all')
+    assert all(item['confirmed'] for item in items().values())
+    with contextlib.closing(sqlite3.connect(database)) as connection:
+        (saved,) = connection.execute(
+            'SELECT value FROM workspace_metadata WHERE workspace_uuid=? AND key=?',
+            (workspace, 'message_policy_upgrade:confirmed'),
+        ).fetchone()
+        assert {item['id'] for item in original.values()} <= set(json.loads(saved))
+    for code, action in [
+        ('command_prefix_changed', 'restore_prefixes'),
+        ('equivalent_route_policies', 'promote_route_policy'),
+        ('command_plugin_enabled', 'remove_plugin'),
+        ('plugin_command_collision', 'uninstall_essential'),
+    ]:
+        result = request('POST', checks + '/action', json={'id': original[code]['id'], 'action': action})
+        if action == 'uninstall_essential':
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                task = request('GET', f'/api/v1/system/tasks/{result["task_id"]}')['runtime']
+                if task['done']:
+                    assert task['exception'] is None
+                    break
+                time.sleep(0.2)
+            else:
+                pytest.fail('EssentialCommands uninstall did not complete')
+        assert code not in items()
+    stored = request('GET', prefix + '/' + bot)['bot']
+    assert {'!', '！'} <= set(stored['command_settings']['prefixes'])
+    assert stored['message_policy']['plugins']['plugins'] == []
+    assert stored['message_policy']['output']['misc']['at-sender'] is True
+
+
 def test_http_bot_builtin_commands(runner_client, runner_e2e_tmpdir):
     client = runner_client
     token = _init_and_auth(client)
