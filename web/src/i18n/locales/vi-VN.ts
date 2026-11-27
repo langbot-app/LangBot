@@ -259,8 +259,8 @@ const viVN = {
     providerCheckFailed: 'Không thể kiểm tra nhà cung cấp. Vui lòng thử lại.',
     retrySetup: 'Thử lại',
     preparing: 'Đang chuẩn bị trợ lý…',
-    thinking: 'Mô hình đang trả lời · Vòng {{round}}',
-    executing: 'Đang chạy công cụ…',
+    thinking: 'Đang xác định bước tiếp theo…',
+    executing: 'Đang cập nhật không gian làm việc…',
     toolRunning: 'Đang chạy',
     recommendationFailed:
       'Không tải được mô hình đề xuất. Vui lòng chọn mô hình.',
@@ -298,6 +298,7 @@ const viVN = {
       pipelines: 'Tìm Pipeline',
       knowledge_bases: 'Tìm cơ sở tri thức',
       knowledge_engines: 'Tìm knowledge engine',
+      skills: 'Xem kỹ năng khả dụng',
     },
     title: 'Trợ lý không gian làm việc',
     subtitle: 'Xây dựng và quản lý ứng dụng của bạn',
@@ -306,9 +307,18 @@ const viVN = {
     welcome:
       'Hãy cho tôi biết bạn muốn xây dựng gì. Tôi có thể xem không gian làm việc này, đề xuất cấu hình cho bot, Agent, cơ sở tri thức, Pipeline và các tài nguyên khác, rồi áp dụng sau khi bạn xác nhận.',
     discover: 'Có những mô hình, cơ sở tri thức và Pipeline nào khả dụng?',
-    build: 'Giúp tôi tạo ứng dụng hỏi đáp dựa trên cơ sở tri thức.',
+    build: 'Tạo trợ lý IM trả lời câu hỏi khi được nhắc đến trong nhóm.',
     toolResult: 'Kết quả thao tác',
     review: 'Kiểm tra thao tác và tham số cụ thể trước khi xác nhận',
+    planTitle: 'Kế hoạch thiết lập',
+    continuePlan: 'Tiếp tục thiết lập',
+    continueRun: 'Tiếp tục',
+    retryRun: 'Thử lại',
+    roundLimit:
+      'Đã tạm dừng sau các lần kiểm tra lặp lại và lưu tiến độ. Bạn có thể tiếp tục hoặc cho biết điều cần thay đổi.',
+    timeBudget:
+      'Quá trình mất nhiều thời gian hơn dự kiến. Tiến độ đã được lưu; bạn có thể tiếp tục tại đây.',
+    revisePlan: 'Sửa yêu cầu',
     dangerousWarning:
       'Thao tác nhạy cảm: thao tác này có rủi ro cao và có thể không hoàn tác được. Hãy kiểm tra kỹ tham số trước khi xác nhận.',
     parameters: 'Tham số:',
@@ -316,7 +326,15 @@ const viVN = {
     decline: 'Từ chối',
     working: 'Đang xử lý…',
     modelUnavailable:
-      'Mô hình không khả dụng. Kiểm tra cấu hình và quyền truy cập rồi bắt đầu cuộc trò chuyện mới.',
+      'Mô hình không khả dụng. Kiểm tra cấu hình và quyền truy cập hoặc đổi mô hình và thử lại.',
+    modelAuthFailed:
+      'Thông tin xác thực API của mô hình đã chọn không hợp lệ hoặc chưa được ủy quyền. Vui lòng kiểm tra khóa API hoặc chuyển đổi mô hình và thử lại.',
+    modelPermissionDenied:
+      'Quyền truy cập vào mô hình đã chọn bị từ chối. Vui lòng kiểm tra quyền hoặc chuyển đổi mô hình và thử lại.',
+    modelQuotaExceeded:
+      'Mô hình đã chọn không đủ hạn mức. Nạp thêm tín dụng hoặc đổi mô hình và thử lại.',
+    modelRequestFailed:
+      'Yêu cầu tới mô hình đã chọn thất bại. Kiểm tra dịch vụ hoặc đổi mô hình và thử lại.',
     error:
       'Lượt này chưa hoàn tất. Kiểm tra kết quả tài nguyên trước khi bắt đầu cuộc trò chuyện mới; hệ thống không tự động thử lại thay đổi.',
     running:

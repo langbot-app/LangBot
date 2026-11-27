@@ -4,12 +4,15 @@ import copy
 from typing import Literal
 from uuid import UUID
 
+import sqlalchemy
 from pydantic import BaseModel, ConfigDict, Field
 from langbot_plugin.api.entities.builtin.resource.tool import LLMTool
 
+from ....entity.persistence.plugin import PluginSetting
 from ..authz import Permission, require_permission
 from ..context import ExecutionContext
 from .assistant_disclosure import (
+    PresentSetupPlan,
     WorkspaceCall,
     WorkspaceDescribe,
     WorkspaceSearch,
@@ -18,6 +21,7 @@ from .assistant_disclosure import (
     workspace_search,
 )
 from .secrets import redact_secrets
+from .tenant import require_workspace_uuid
 
 
 class Arguments(BaseModel):
@@ -25,7 +29,9 @@ class Arguments(BaseModel):
 
 
 class ListResources(Arguments):
-    kind: Literal['models', 'embedding_models', 'pipelines', 'knowledge_bases', 'knowledge_engines']
+    kind: Literal[
+        'models', 'embedding_models', 'pipelines', 'knowledge_bases', 'knowledge_engines', 'plugins', 'skills', 'bots'
+    ]
 
 
 #: Canonical resource types, mirrored from the trace service action table. The
@@ -181,6 +187,14 @@ class CreateKnowledgeBase(CreatePipeline):
 #: further (e.g. the audit surface needs ``audit.view``, which only the owner
 #: and admin hold) and both are enforced identically when listing and calling.
 TOOLS = {
+    'present_setup_plan': (
+        PresentSetupPlan,
+        'Pause an IM assistant setup for a compact choice panel. Use only after resource discovery. '
+        'Include only decisions that materially change the setup; each field needs real, viable options '
+        'and a recommended default. This tool does not create or modify resources.',
+        False,
+        None,
+    ),
     'list_resources': (
         ListResources,
         'List existing Workspace resources. Discover IDs before using them.',
@@ -301,17 +315,65 @@ async def execute_tool(ap, context, name: str, arguments: dict):
             arguments=args.get('arguments'),
         )
     if name == 'list_resources':
+        if args['kind'] == 'skills':
+            skills = await ap.skill_service.list_skills(context)
+            fields = ('name', 'display_name', 'description', 'revision')
+            return {
+                'total': len(skills),
+                'items': redact_secrets([{key: skill[key] for key in fields if key in skill} for skill in skills]),
+            }
+        if args['kind'] == 'plugins':
+            result = await ap.persistence_mgr.execute_async(
+                sqlalchemy.select(
+                    PluginSetting.plugin_author,
+                    PluginSetting.plugin_name,
+                    PluginSetting.enabled,
+                    PluginSetting.install_source,
+                ).where(PluginSetting.workspace_uuid == require_workspace_uuid(context))
+            )
+            resources = [dict(row) for row in result.mappings().all()]
+            return {'total': len(resources), 'items': resources}
         readers = {
-            'models': ap.llm_model_service.get_llm_models,
-            'embedding_models': ap.embedding_models_service.get_embedding_models,
-            'pipelines': ap.pipeline_service.get_pipelines,
-            'knowledge_bases': ap.knowledge_service.get_knowledge_bases,
-            'knowledge_engines': ap.knowledge_service.list_knowledge_engines,
+            'models': getattr(ap.llm_model_service, 'get_llm_models', None)
+            if hasattr(ap, 'llm_model_service')
+            else None,
+            'embedding_models': getattr(ap.embedding_models_service, 'get_embedding_models', None)
+            if hasattr(ap, 'embedding_models_service')
+            else None,
+            'pipelines': getattr(ap.pipeline_service, 'get_pipelines', None)
+            if hasattr(ap, 'pipeline_service')
+            else None,
+            'knowledge_bases': getattr(ap.knowledge_service, 'get_knowledge_base_summaries', None)
+            if hasattr(ap, 'knowledge_service')
+            else None,
+            'knowledge_engines': getattr(ap.knowledge_service, 'list_knowledge_engines', None)
+            if hasattr(ap, 'knowledge_service')
+            else None,
+            'bots': getattr(ap.bot_service, 'get_bots', None) if hasattr(ap, 'bot_service') else None,
         }
-        resources = await readers[args['kind']](context)
+        reader = readers.get(args['kind'])
+        resources = await reader(context) if reader else []
+        if args['kind'] in ('models', 'embedding_models'):
+            for item in resources:
+                provider = item.get('provider')
+                if isinstance(provider, dict):
+                    item['provider_name'] = provider.get('name')
+                    item['provider_uuid'] = provider.get('uuid')
+                    item['provider_requester'] = provider.get('requester')
         if args['kind'] != 'knowledge_engines':
             # Lists discover resources; get_pipeline / get_knowledge_schema supply configuration details.
-            fields = ('uuid', 'name', 'description', 'abilities', 'knowledge_engine_plugin_id')
+            fields = (
+                'uuid',
+                'name',
+                'description',
+                'abilities',
+                'knowledge_engine_plugin_id',
+                'initialized',
+                'adapter',
+                'provider_name',
+                'provider_uuid',
+                'provider_requester',
+            )
             resources = [{key: item[key] for key in fields if key in item} for item in resources]
         return {'total': len(resources), 'items': redact_secrets(resources)}
     if name == 'list_operation_logs':

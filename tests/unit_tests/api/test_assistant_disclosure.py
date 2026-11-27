@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import json
 import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -21,6 +22,7 @@ from langbot.pkg.api.http.context import (
     WorkspaceContext,
 )
 from langbot.pkg.api.http.service.assistant import AssistantService
+from langbot.pkg.api.http.service import assistant_disclosure
 from langbot.pkg.api.http.service.assistant_disclosure import (
     build_system_prompt,
     format_domains_overview,
@@ -70,6 +72,7 @@ def mock_app():
         ]
     )
     get_bots_mock = AsyncMock(return_value=[{'uuid': 'bot-1', 'name': 'Bot 1', 'pipeline_uuid': 'pipe-1'}])
+    create_bot_mock = AsyncMock(return_value='created-bot-uuid')
 
     host = SimpleNamespace(
         persistence_mgr=SimpleNamespace(tenant_scope=tenant_scope),
@@ -90,6 +93,7 @@ def mock_app():
         ),
         bot_service=SimpleNamespace(
             get_bots=get_bots_mock,
+            create_bot=create_bot_mock,
         ),
     )
     api = ApplicationAPI(host)
@@ -104,9 +108,10 @@ def test_tool_names_not_duplicated():
     names = [tool.name for tool in defs]
 
     assert len(names) == len(set(names)), f'Tool names contain duplicates: {names}'
-    assert len(names) == 10
+    assert len(names) == 11
 
     original_tools = {
+        'present_setup_plan',
         'list_resources',
         'get_pipeline',
         'get_knowledge_schema',
@@ -145,6 +150,27 @@ def test_view_only_member_cannot_search_write_operations(mock_app):
     assert copy_op['risk'] == 'write'
 
 
+def test_plugin_permission_operations_require_management_access(mock_app):
+    view_ops = workspace_search(mock_app, make_context(manage=False), query='plugin.permissions')
+    assert [op['id'] for op in view_ops] == ['plugin.permissions.get']
+    manage_ops = workspace_search(mock_app, make_context(), query='plugin.permissions')
+    assert {op['id'] for op in manage_ops} == {'plugin.permissions.get', 'plugin.permissions.update'}
+    assert is_write('workspace_call', {'operation_id': 'plugin.permissions.update'})
+
+
+@pytest.mark.asyncio
+async def test_created_bot_result_has_local_editor_link(mock_app):
+    result = await workspace_call(
+        mock_app,
+        make_context(),
+        operation_id='bot.create',
+        arguments={'bot_data': {'name': 'Support', 'adapter': 'slack', 'adapter_config': {}}},
+    )
+    assert result['ok'] is True
+    assert result['url'] == '/home/bots?id=created-bot-uuid'
+    mock_app.bot_service.create_bot.assert_awaited_once()
+
+
 # 3. 调用 exposure == 'none' 的操作返回 not_found
 @pytest.mark.asyncio
 async def test_calling_exposure_none_returns_not_found(mock_app):
@@ -176,8 +202,116 @@ async def test_workspace_call_truncation(mock_app):
     res = await workspace_call(mock_app, ctx, operation_id='pipeline.list')
     assert res.get('truncated') is True
     assert 'preview' in res
-    assert len(res['preview']) == 16000
+    assert len(res['preview']) == 6000
     assert 'hint' in res
+    conversation = {'messages': []}
+    AssistantService._append_result(conversation, {'id': 'call-1'}, res)
+    assert json.loads(conversation['messages'][0]['content']) == res
+
+
+@pytest.mark.asyncio
+async def test_large_discovery_catalogs_keep_structured_results(mock_app, monkeypatch):
+    catalogs = {
+        'adapter.list': [
+            {
+                'name': 'qqofficial-omni',
+                'label': {'zh_Hans': 'QQ 官方 API', 'en_US': 'QQ Official API'},
+                'description': {'zh_Hans': 'QQ' * 200},
+                'config': [{'secret': 'x' * 20000}],
+            }
+        ],
+        'plugin.list': {
+            'plugins': [
+                {
+                    'manifest': {'manifest': {'metadata': {'author': 'team', 'name': 'RunnerDemo'}}},
+                    'enabled': True,
+                    'status': 'initialized',
+                    'install_info': {'large': 'x' * 20000},
+                    'components': [
+                        {
+                            'manifest': {
+                                'manifest': {
+                                    'kind': 'Runner',
+                                    'metadata': {'name': 'default'},
+                                    'spec': {'supported_event_patterns': ['group.member_joined']},
+                                }
+                            }
+                        }
+                    ],
+                }
+            ]
+        },
+        'agent.metadata': {
+            'event_processors': [
+                {'id': 'processor-1', 'supported_event_patterns': ['group.member_joined'], 'raw_manifest': 'x' * 20000}
+            ],
+            'runner_config': {
+                'name': 'ai',
+                'stages': [{'name': 'runner', 'config': [{'name': 'model', 'type': 'select', 'default': 'local'}]}],
+            },
+            'host_tools': [{'large': 'x' * 20000}],
+            'kinds': [],
+        },
+    }
+    for operation_id, catalog in catalogs.items():
+        monkeypatch.setattr(
+            assistant_disclosure,
+            'granted_call',
+            AsyncMock(return_value={'ok': True, 'result': catalog}),
+        )
+        result = await workspace_call(mock_app, make_context(), operation_id=operation_id)
+        assert result['ok'] is True
+        assert 'truncated' not in result
+        assert len(json.dumps(result)) < 16000
+        if operation_id == 'adapter.list':
+            assert result['result'][0]['name'] == 'qqofficial-omni'
+            assert 'config' not in result['result'][0]
+        elif operation_id == 'plugin.list':
+            assert result['result']['plugins'][0]['components'][0]['supported_event_patterns'] == [
+                'group.member_joined'
+            ]
+        else:
+            assert result['result']['event_processors'][0]['id'] == 'processor-1'
+            assert result['result']['runner_config']['stages'][0]['config'][0]['name'] == 'model'
+
+
+@pytest.mark.asyncio
+async def test_marketplace_search_keeps_candidates_without_nested_truncation(mock_app, monkeypatch):
+    languages = ('en_US', 'zh_Hans', 'zh_Hant', 'ja_JP', 'es_ES', 'ru_RU', 'th_TH', 'vi_VN')
+    plugins = [
+        {
+            'plugin_id': f'author/plugin-{index}',
+            'author': 'author',
+            'name': f'plugin-{index}',
+            'label': {language: f'Plugin {index}' for language in languages},
+            'description': {language: 'A' * 500 for language in languages},
+            'latest_version': '1.0.0',
+            'components': {'KnowledgeEngine': 1},
+            'runner_usages': [],
+            'install_count': 100,
+            'certification_status': 'issued',
+            'repository': 'https://example.com/repo',
+        }
+        for index in range(10)
+    ]
+    monkeypatch.setattr(
+        assistant_disclosure,
+        'granted_call',
+        AsyncMock(return_value={'ok': True, 'result': {'plugins': plugins, 'total': 10, 'page': 1}}),
+    )
+
+    result = await workspace_call(mock_app, make_context(), operation_id='plugin.marketplace.search')
+
+    assert result['ok'] is True
+    assert [item['plugin_id'] for item in result['result']['plugins']] == [plugin['plugin_id'] for plugin in plugins]
+    assert result['result']['plugins'][0]['description'] == {'zh_Hans': 'A' * 240, 'en_US': 'A' * 240}
+    assert 'repository' not in result['result']['plugins'][0]
+    conversation = {'messages': []}
+    AssistantService._append_result(conversation, {'id': 'call-1'}, result)
+    stored = json.loads(conversation['messages'][0]['content'])
+    assert stored['result']['total'] == 10
+    assert len(stored['result']['plugins']) == 10
+    assert 'truncated' not in stored
 
 
 # 5. workspace_describe 功能测试

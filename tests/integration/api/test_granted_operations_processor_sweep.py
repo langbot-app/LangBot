@@ -193,6 +193,7 @@ def sweep_app(monkeypatch):
     # Plugin connector
     ap.plugin_connector.is_enable_plugin = False
     ap.plugin_connector.require_workspace_context = AsyncMock()
+    ap.plugin_connector.validate_workspace_context = AsyncMock()
     ap.plugin_connector.list_plugins = AsyncMock(return_value=[])
     ap.plugin_connector.get_plugin_info = AsyncMock(
         return_value={'author': 'a', 'name': 'p', 'manifest': {'config': {}}, 'plugin_config': {}}

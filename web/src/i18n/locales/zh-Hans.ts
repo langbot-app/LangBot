@@ -248,8 +248,8 @@ const zhHans = {
     providerCheckFailed: '无法检查模型供应商，请重试。',
     retrySetup: '重试',
     preparing: '正在准备助手…',
-    thinking: '模型响应中 · 第 {{round}} 轮',
-    executing: '正在执行工具…',
+    thinking: '正在梳理下一步…',
+    executing: '正在处理工作区…',
     toolRunning: '执行中',
     recommendationFailed: '推荐模型加载失败，请手动选择模型。',
     expand: '展开工作区助手',
@@ -283,6 +283,7 @@ const zhHans = {
       pipelines: '查询 流水线',
       knowledge_bases: '查询知识库',
       knowledge_engines: '查询知识引擎',
+      skills: '查看可用技能',
     },
     title: '工作区助手',
     subtitle: '构建和管理你的应用',
@@ -291,9 +292,17 @@ const zhHans = {
     welcome:
       '告诉我你想构建什么应用。我可以查看当前工作区，为机器人、Agent、知识库和 流水线 等提供配置方案，由你确认后执行。',
     discover: '当前有哪些可用的模型、知识库和 流水线？',
-    build: '帮我创建一个知识库问答应用。',
+    build: '帮我搭建一个在群里被 @ 时回答问题的 IM 助手。',
     toolResult: '操作结果',
     review: '请检查具体操作及参数，确认后执行',
+    planTitle: '搭建方案',
+    continuePlan: '继续搭建',
+    continueRun: '继续',
+    retryRun: '重试',
+    roundLimit:
+      '发现了重复检查，已暂停并保存进度。你可以继续，或告诉我想调整的地方。',
+    timeBudget: '这次处理时间较长，进度已保存。可以从这里继续。',
+    revisePlan: '修改需求',
     dangerousWarning:
       '敏感操作提示：该操作具有较高风险，执行后可能不可逆，请核对参数后确认。',
     parameters: '参数：',
@@ -301,7 +310,14 @@ const zhHans = {
     decline: '拒绝',
     working: '正在处理…',
     modelUnavailable:
-      '模型暂不可用。请检查模型配置和访问权限，然后开启新对话。',
+      '模型暂不可用。请检查模型配置和访问权限，或切换模型后重试。',
+    modelAuthFailed:
+      '所选模型的 API 凭据无效或未授权。请检查 API 密钥或切换模型后重试。',
+    modelPermissionDenied:
+      '所选模型的访问权限不足。请检查权限或切换模型后重试。',
+    modelQuotaExceeded:
+      '所选模型的额度不足以完成本次请求。请充值或切换模型后重试。',
+    modelRequestFailed: '所选模型请求失败。请检查模型服务或切换模型后重试。',
     error:
       '本轮未完成。请先检查资源和操作结果，再开启新对话；系统不会自动重试变更。',
     running:

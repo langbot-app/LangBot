@@ -9,10 +9,12 @@ import sqlalchemy as sa
 from langbot_plugin.api.entities.builtin.provider.message import Message
 
 from ....entity.persistence.assistant import AssistantConversation as Conversation
+from ....provider.modelmgr.errors import RequesterError
 from ...application.operation_docs import get_operation_doc
 from ..authz import Permission, require_permission
 from ..context import ExecutionContext, PrincipalType
-from .assistant_disclosure import build_system_prompt, is_write
+from .assistant_disclosure import PresentSetupPlan, build_system_prompt, is_write
+from .assistant_context import model_context
 from .assistant_tools import execute_tool, tool_definitions, validate_call
 from .secrets import redact_secrets
 
@@ -113,6 +115,8 @@ class AssistantService:
                             body.approved,
                             str(body.model_uuid) if body.model_uuid else None,
                             on_event=emit,
+                            choices=getattr(body, 'choices', None),
+                            continue_run=getattr(body, 'continue_run', None) is True,
                         )
                     except asyncio.CancelledError:
                         conversation = await self.get(context, conversation_id)
@@ -200,7 +204,7 @@ class AssistantService:
                         }
                 else:
                     calls[call.id] = value
-            if len(calls) > 8 or len(json.dumps(message, ensure_ascii=False)) + len(json.dumps(calls)) > 64000:
+            if len(calls) > 32 or len(json.dumps(message, ensure_ascii=False)) + len(json.dumps(calls)) > 128000:
                 raise AssistantError('response_too_large')
             if content or chunk.all_content is not None:
                 await on_event({'kind': 'text', 'data': {'text': message['content']}})
@@ -252,7 +256,7 @@ class AssistantService:
     @staticmethod
     def _calls(message):
         calls = message.get('tool_calls') or []
-        if len(calls) > 8:
+        if len(calls) > 32:
             raise ValueError('Too many tool calls')
         return calls
 
@@ -280,6 +284,7 @@ class AssistantService:
                     }
                 messages.append(visible)
         pending = []
+        choice_plan = None
         if conversation['status'] == 'approval':
             for call in conversation['messages'][-1].get('tool_calls') or []:
                 function = call['function']
@@ -300,12 +305,16 @@ class AssistantService:
                             'summary': doc.summary,
                         }
                 pending.append(item)
+        elif conversation['status'] == 'choice':
+            call = conversation['messages'][-1]['tool_calls'][0]
+            choice_plan = PresentSetupPlan.model_validate_json(call['function']['arguments']).model_dump()
         return {
             'uuid': conversation['uuid'],
             'revision': conversation['revision'],
             'status': conversation['status'],
             'messages': messages,
             'pending': pending,
+            'choice_plan': choice_plan,
             'error': conversation['error'],
             'model_name': conversation['model_name'],
             'model_uuid': conversation['model_uuid'],
@@ -331,19 +340,52 @@ class AssistantService:
             raise AssistantError('stale_turn')
         conversation.update(status=status, error=error)
 
-    async def turn(self, context, conversation_id, revision, text=None, approved=None, model_uuid=None, on_event=None):
+    async def turn(
+        self,
+        context,
+        conversation_id,
+        revision,
+        text=None,
+        approved=None,
+        model_uuid=None,
+        on_event=None,
+        choices=None,
+        continue_run=False,
+    ):
         require_permission(context, Permission.RUNTIME_OPERATE)
-        if model_uuid is not None and text is None:
+        if model_uuid is not None and text is None and not continue_run:
             raise AssistantError('invalid_input', 400)
         if self._slots.locked():
             raise AssistantError('busy', 429)
         async with self._slots:
             conversation = await self.get(context, conversation_id)
-            expected_status = 'ready' if text is not None else 'approval'
+            investigation_paused = conversation['error'] in {'round_limit', 'no_progress', 'time_budget'}
+            model_error = conversation['error'] in {
+                'model_quota_exceeded',
+                'model_auth_failed',
+                'model_permission_denied',
+                'model_request_failed',
+                'model_unavailable',
+            }
+            system_error = conversation['error'] in {'turn_failed', 'tool_failed'}
+            resumable = (investigation_paused or model_error or system_error) and conversation['status'] in {
+                'paused',
+                'failed',
+            }
+            expected_status = 'approval' if approved is not None else 'choice' if choices is not None else None
+            if continue_run:
+                expected_status = conversation['status'] if resumable else None
+            if text is not None:
+                expected_status = conversation['status'] if conversation['status'] == 'choice' or resumable else 'ready'
             if conversation['status'] != expected_status or conversation['revision'] != revision:
                 raise AssistantError('stale_turn')
-            if text is not None and len(conversation['messages']) >= 100:
-                raise AssistantError('conversation_full')
+            if expected_status == 'choice' and choices is not None:
+                plan = PresentSetupPlan.model_validate_json(
+                    conversation['messages'][-1]['tool_calls'][0]['function']['arguments']
+                )
+                valid = {field.key: {option.id for option in field.options} for field in plan.fields}
+                if set(choices) != set(valid) or any(value not in valid[key] for key, value in choices.items()):
+                    raise AssistantError('invalid_input', 400)
             selected_model = None
             if model_uuid is not None:
                 try:
@@ -366,8 +408,9 @@ class AssistantService:
             if result.rowcount != 1:
                 raise AssistantError('stale_turn')
             conversation['revision'] += 1
+            uncertain_write = False
             try:
-                async with asyncio.timeout(120):
+                async with asyncio.timeout(600):
                     if model_uuid is not None and model_uuid != conversation['model_uuid']:
                         # Provider signatures and response IDs belong to the previous model.
                         for message in conversation['messages']:
@@ -377,6 +420,13 @@ class AssistantService:
                                 call['provider_specific_fields'] = None
                         conversation['model_uuid'] = model_uuid
                         conversation['model_name'] = selected_model.model_entity.name
+                    if expected_status == 'choice':
+                        call = conversation['messages'][-1]['tool_calls'][0]
+                        self._append_result(
+                            conversation,
+                            call,
+                            {'selected': choices} if choices is not None else {'status': 'revised'},
+                        )
                     if text is not None:
                         conversation['messages'].append(Message(role='user', content=text).model_dump(mode='json'))
                     await self._save(context, conversation, 'running')
@@ -396,18 +446,50 @@ class AssistantService:
                         return conversation
                     if approved is not None:
                         calls = self._calls(conversation['messages'][-1])
+                        uncertain_write = any(
+                            is_write(call['function']['name'], json.loads(call['function']['arguments'] or '{}'))
+                            for call in calls
+                        )
                         await self._execute(context, conversation, calls, approved, on_event)
-                    for round_index in range(16):
+                        uncertain_write = False
+                    # Clean up unfulfilled trailing assistant messages from a prior failed turn so the model context remains valid.
+                    while (
+                        conversation['messages']
+                        and conversation['messages'][-1].get('role') == 'assistant'
+                        and conversation['messages'][-1].get('tool_calls')
+                    ):
+                        tool_calls = conversation['messages'][-1].get('tool_calls') or []
+                        completed = {m.get('tool_call_id') for m in conversation['messages'] if m.get('role') == 'tool'}
+                        if not all(call.get('id') in completed for call in tool_calls):
+                            conversation['messages'].pop()
+                        else:
+                            break
+                    round_index = 0
+                    repeated_call = None
+                    repeated_count = 0
+                    while True:
+                        round_index += 1
                         await self._snapshot(conversation, on_event)
                         if on_event is not None:
-                            await on_event({'kind': 'phase', 'data': {'phase': 'thinking', 'round': round_index + 1}})
+                            await on_event({'kind': 'phase', 'data': {'phase': 'thinking', 'round': round_index}})
+                        invocation_messages = [Message(role='system', content=build_system_prompt(self.ap, context))]
+                        if investigation_paused:
+                            invocation_messages.append(
+                                Message(
+                                    role='system',
+                                    content=(
+                                        'This conversation paused after repeated investigation. '
+                                        'Use the saved findings. Do not repeat completed searches or reads. '
+                                        'Present a setup plan, propose the next action, or explain a real blocker.'
+                                    ),
+                                )
+                            )
                         response = await self._invoke(
                             model,
                             dict(
                                 query=None,
                                 model=model,
-                                messages=[Message(role='system', content=build_system_prompt(self.ap, context))]
-                                + [Message.model_validate(message) for message in conversation['messages']],
+                                messages=invocation_messages + model_context(conversation['messages']),
                                 funcs=tool_definitions(context),
                                 extra_args=model.model_entity.extra_args or {},
                                 remove_think=True,
@@ -416,7 +498,7 @@ class AssistantService:
                             on_event,
                         )
                         message = response.model_dump(mode='json')
-                        if len(json.dumps(message, ensure_ascii=False)) > 64000:
+                        if len(json.dumps(message, ensure_ascii=False)) > 128000:
                             raise AssistantError('response_too_large')
                         conversation['messages'].append(message)
                         await self._snapshot(conversation, on_event)
@@ -424,28 +506,71 @@ class AssistantService:
                         if not calls:
                             await self._save(context, conversation, 'ready')
                             return conversation
-                        try:
-                            for call in calls:
-                                function = call['function']
+                        fingerprint = json.dumps(
+                            [(call['function']['name'], call['function']['arguments']) for call in calls],
+                            ensure_ascii=False,
+                        )
+                        repeated_count = repeated_count + 1 if fingerprint == repeated_call else 1
+                        repeated_call = fingerprint
+                        invalid_calls = {}
+                        valid_calls = []
+                        for call in calls:
+                            function = call['function']
+                            try:
                                 validate_call(context, function['name'], json.loads(function['arguments'] or '{}'))
-                        except Exception:
+                                valid_calls.append(call)
+                            except Exception:
+                                invalid_calls[call['id']] = {'error': 'Invalid or unauthorized tool arguments.'}
+                        if invalid_calls and not valid_calls:
                             for call in calls:
                                 self._append_result(
                                     conversation, call, {'error': 'Invalid or unauthorized tool arguments.'}
                                 )
-                            await self._save(context, conversation, 'running')
+                            stalled = repeated_count >= 3
+                            await self._save(
+                                context,
+                                conversation,
+                                'paused' if stalled else 'running',
+                                'no_progress' if stalled else None,
+                            )
+                            if stalled:
+                                return conversation
+                            continue
+                        if invalid_calls:
+                            for call in calls:
+                                if call['id'] in invalid_calls:
+                                    self._append_result(conversation, call, invalid_calls[call['id']])
+                        if any(call['function']['name'] == 'present_setup_plan' for call in valid_calls):
+                            if len(calls) == 1:
+                                await self._save(context, conversation, 'choice')
+                                return conversation
+                            for call in valid_calls:
+                                self._append_result(
+                                    conversation, call, {'error': 'Present the setup plan in a separate tool call.'}
+                                )
+                            stalled = repeated_count >= 3
+                            await self._save(
+                                context,
+                                conversation,
+                                'paused' if stalled else 'running',
+                                'no_progress' if stalled else None,
+                            )
+                            if stalled:
+                                return conversation
                             continue
                         if any(
                             is_write(
                                 call['function']['name'],
                                 json.loads(call['function']['arguments'] or '{}'),
                             )
-                            for call in calls
+                            for call in valid_calls
                         ):
                             await self._save(context, conversation, 'approval')
                             return conversation
-                        await self._execute(context, conversation, calls, True, on_event)
-                    await self._save(context, conversation, 'failed', 'round_limit')
+                        await self._execute(context, conversation, valid_calls, True, on_event)
+                        if repeated_count >= 3:
+                            await self._save(context, conversation, 'paused', 'no_progress')
+                            return conversation
             except asyncio.CancelledError:
                 partial = self._runs.get(conversation_id, {}).get('progress', {}).get('text')
                 if partial:
@@ -453,14 +578,48 @@ class AssistantService:
                 await asyncio.shield(self._save(context, conversation, 'failed', 'result_unknown'))
                 raise
             except TimeoutError:
-                await self._save(context, conversation, 'failed', 'result_unknown')
+                if uncertain_write:
+                    await self._save(context, conversation, 'failed', 'result_unknown')
+                else:
+                    for index in range(len(conversation['messages']) - 1, -1, -1):
+                        message = conversation['messages'][index]
+                        if message.get('role') == 'assistant' and message.get('tool_calls'):
+                            completed = {
+                                item.get('tool_call_id')
+                                for item in conversation['messages'][index + 1 :]
+                                if item.get('role') == 'tool'
+                            }
+                            for call in message['tool_calls']:
+                                if call['id'] not in completed:
+                                    self._append_result(conversation, call, {'error': 'read_timeout'})
+                            break
+                    await self._save(context, conversation, 'paused', 'time_budget')
             except AssistantError as exc:
                 await self._save(context, conversation, 'failed', exc.code)
+            except RequesterError as exc:
+                self.ap.logger.warning(
+                    'Management assistant model request failed; conversation=%s code=%s status=%s request_id=%s',
+                    conversation_id,
+                    exc.code,
+                    exc.status_code,
+                    exc.request_id,
+                )
+                if exc.code == 'quota_exceeded':
+                    error = 'model_quota_exceeded'
+                elif exc.code in {'authentication', 'invalid_key'} or exc.status_code == 401:
+                    error = 'model_auth_failed'
+                elif exc.code == 'permission_denied' or exc.status_code == 403:
+                    error = 'model_permission_denied'
+                else:
+                    error = 'model_request_failed'
+                await self._save(context, conversation, 'failed', error)
             except Exception as exc:
                 self.ap.logger.warning(
-                    'Management assistant turn failed (%s); conversation=%s',
+                    'Management assistant turn failed (%s: %s); conversation=%s',
                     type(exc).__name__,
+                    exc,
                     conversation_id,
+                    exc_info=True,
                 )
                 await self._save(context, conversation, 'failed', 'turn_failed')
             return conversation
@@ -480,6 +639,9 @@ class AssistantService:
 
     async def _execute(self, context, conversation, calls, approved, on_event=None):
         # Validate the complete saved batch before any write, including after approval.
+        read_only_batch = not any(
+            is_write(call['function']['name'], json.loads(call['function']['arguments'] or '{}')) for call in calls
+        )
         if approved:
             for call in calls:
                 func = call['function']
@@ -508,6 +670,11 @@ class AssistantService:
                     result = await execute_tool(self.ap, context, func['name'], json.loads(func['arguments'] or '{}'))
                 except Exception as exc:
                     self.ap.logger.warning('Management assistant tool %s failed (%s)', func['name'], type(exc).__name__)
+                    if read_only_batch:
+                        self._append_result(conversation, call, {'error': 'read_failed'})
+                        await self._save(context, conversation, 'running')
+                        await self._snapshot(conversation, on_event)
+                        continue
                     self._append_result(
                         conversation,
                         call,

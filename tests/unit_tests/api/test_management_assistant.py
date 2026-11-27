@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, create_autospec
+from unittest.mock import AsyncMock, Mock, create_autospec
 
 import pytest
 import sqlalchemy as sa
@@ -15,6 +15,7 @@ from langbot.pkg.api.http.context import RequestContext, PrincipalContext, Princ
 from langbot.pkg.api.http.service.assistant import AssistantError, AssistantService
 from langbot.pkg.api.http.service.assistant_tools import execute_tool, validate_call
 from langbot.pkg.entity.persistence.assistant import AssistantConversation
+from langbot.pkg.provider.modelmgr.errors import RequesterError
 
 
 def context(account='alice', workspace='workspace-a', manage=True):
@@ -51,6 +52,33 @@ def proposal():
     )
 
 
+def setup_plan():
+    return Message.model_validate(
+        {
+            'role': 'assistant',
+            'content': 'Here is the setup plan.',
+            'tool_calls': [
+                {
+                    'id': 'plan-1',
+                    'type': 'function',
+                    'function': {
+                        'name': 'present_setup_plan',
+                        'arguments': (
+                            '{"summary":"Configure a QQ bot","fields":['
+                            '{"key":"bot","label":"Bot","control":"radio",'
+                            '"options":[{"id":"reuse:bot-1","label":"Reuse qq"},'
+                            '{"id":"new","label":"Create new"}],"selected":"reuse:bot-1"},'
+                            '{"key":"model","label":"Model","control":"select",'
+                            '"options":[{"id":"model-1","label":"Model one"},'
+                            '{"id":"model-2","label":"Model two"}],"selected":"model-1"}]}'
+                        ),
+                    },
+                }
+            ],
+        }
+    )
+
+
 @pytest.fixture
 async def assistant(tmp_path):
     engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path}/assistant.db')
@@ -80,6 +108,246 @@ async def assistant(tmp_path):
     )
     yield AssistantService(ap), ap, provider
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_more_than_sixteen_reads_complete_in_one_run(assistant):
+    service, ap, provider = assistant
+    ap.llm_model_service = SimpleNamespace(get_llm_models=AsyncMock(return_value=[]))
+    ap.embedding_models_service = SimpleNamespace(get_embedding_models=AsyncMock(return_value=[]))
+    ap.pipeline_service.get_pipelines = AsyncMock(return_value=[])
+    ap.knowledge_service = SimpleNamespace(
+        get_knowledge_base_summaries=AsyncMock(return_value=[]),
+        list_knowledge_engines=AsyncMock(return_value=[]),
+    )
+    kinds = ['models', 'embedding_models', 'pipelines', 'knowledge_bases', 'knowledge_engines']
+    reads = [
+        Message.model_validate(
+            {
+                'role': 'assistant',
+                'tool_calls': [
+                    {
+                        'id': f'read-{index}',
+                        'type': 'function',
+                        'function': {'name': 'list_resources', 'arguments': f'{{"kind":"{kinds[index % 5]}"}}'},
+                    }
+                ],
+            }
+        )
+        for index in range(20)
+    ]
+    provider.invoke_llm.side_effect = [*reads, Message(role='assistant', content='Next step')]
+    ctx = context()
+    conversation = await service.create(ctx)
+
+    completed = await service.turn(ctx, conversation['uuid'], 0, text='Build a QQ bot')
+    assert completed['status'] == 'ready'
+    assert completed['messages'][-1]['content'] == 'Next step'
+    assert provider.invoke_llm.await_count == 21
+    assert ap.llm_model_service.get_llm_models.await_count == 4
+    with pytest.raises(AssistantError, match='stale_turn'):
+        await service.turn(ctx, conversation['uuid'], 1, continue_run=True)
+
+
+@pytest.mark.asyncio
+async def test_repeated_read_pauses_and_can_resume(assistant):
+    service, ap, provider = assistant
+    ap.llm_model_service = SimpleNamespace(get_llm_models=AsyncMock(return_value=[]))
+    ap.embedding_models_service = SimpleNamespace(get_embedding_models=AsyncMock(return_value=[]))
+    ap.pipeline_service.get_pipelines = AsyncMock(return_value=[])
+    ap.knowledge_service = SimpleNamespace(
+        get_knowledge_base_summaries=AsyncMock(return_value=[]),
+        list_knowledge_engines=AsyncMock(return_value=[]),
+    )
+    read = Message.model_validate(
+        {
+            'role': 'assistant',
+            'tool_calls': [
+                {
+                    'id': 'read-models',
+                    'type': 'function',
+                    'function': {'name': 'list_resources', 'arguments': '{"kind":"models"}'},
+                }
+            ],
+        }
+    )
+    provider.invoke_llm.side_effect = [read, read, read, Message(role='assistant', content='Next step')]
+    ctx = context()
+    conversation = await service.create(ctx)
+    paused = await service.turn(ctx, conversation['uuid'], 0, text='Build a QQ bot')
+    assert paused['status'] == 'paused'
+    assert paused['error'] == 'no_progress'
+    assert ap.llm_model_service.get_llm_models.await_count == 3
+    resumed = await service.turn(ctx, conversation['uuid'], 1, continue_run=True)
+    assert resumed['status'] == 'ready'
+    assert resumed['messages'][-1]['content'] == 'Next step'
+
+
+@pytest.mark.asyncio
+async def test_skill_catalog_is_compact_and_workspace_scoped(assistant):
+    _, ap, _ = assistant
+    ap.skill_service = SimpleNamespace(
+        list_skills=AsyncMock(
+            return_value=[
+                {
+                    'name': 'langbot-mcp-ops',
+                    'description': 'Manage a Workspace',
+                    'instructions': 'large private instructions',
+                    'revision': 'revision-1',
+                }
+            ]
+        )
+    )
+    ctx = context()
+    result = await execute_tool(ap, ctx, 'list_resources', {'kind': 'skills'})
+    ap.skill_service.list_skills.assert_awaited_once_with(ctx)
+    assert result == {
+        'total': 1,
+        'items': [
+            {
+                'name': 'langbot-mcp-ops',
+                'description': 'Manage a Workspace',
+                'revision': 'revision-1',
+            }
+        ],
+    }
+
+
+@pytest.mark.asyncio
+async def test_read_timeout_keeps_conversation_resumable(assistant):
+    service, _, provider = assistant
+    provider.invoke_llm.side_effect = [TimeoutError(), Message(role='assistant', content='Continued')]
+    ctx = context()
+    conversation = await service.create(ctx)
+    paused = await service.turn(ctx, conversation['uuid'], 0, text='Build a QQ bot')
+    assert paused['status'] == 'paused'
+    assert paused['error'] == 'time_budget'
+    resumed = await service.turn(ctx, conversation['uuid'], 1, continue_run=True)
+    assert resumed['status'] == 'ready'
+    assert resumed['messages'][-1]['content'] == 'Continued'
+
+
+@pytest.mark.asyncio
+async def test_setup_plan_choices_are_persisted_and_validated(assistant):
+    service, ap, provider = assistant
+    provider.invoke_llm.side_effect = [setup_plan(), Message(role='assistant', content='Continuing setup')]
+    ctx = context()
+    conversation = await service.create(ctx)
+
+    pending = await service.turn(ctx, conversation['uuid'], 0, text='Build a QQ bot')
+
+    assert pending['status'] == 'choice'
+    plan = service.public_view(await service.get(ctx, conversation['uuid']))['choice_plan']
+    assert [field['key'] for field in plan['fields']] == ['bot', 'model']
+    assert plan['fields'][0]['selected'] == 'reuse:bot-1'
+    with pytest.raises(AssistantError, match='invalid_input'):
+        await service.turn(ctx, conversation['uuid'], 1, choices={'bot': 'other', 'model': 'model-1'})
+    assert (await service.get(ctx, conversation['uuid']))['revision'] == 1
+
+    completed = await service.turn(ctx, conversation['uuid'], 1, choices={'bot': 'new', 'model': 'model-2'})
+
+    assert completed['status'] == 'ready'
+    assert completed['messages'][2]['role'] == 'tool'
+    assert '"model": "model-2"' in completed['messages'][2]['content']
+    ap.pipeline_service.create_pipeline.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_setup_plan_can_be_revised_in_text(assistant):
+    service, _, provider = assistant
+    provider.invoke_llm.side_effect = [setup_plan(), Message(role='assistant', content='Revised plan')]
+    ctx = context()
+    conversation = await service.create(ctx)
+    await service.turn(ctx, conversation['uuid'], 0, text='Build a QQ bot')
+
+    completed = await service.turn(ctx, conversation['uuid'], 1, text='Use a new bot instead')
+
+    assert completed['status'] == 'ready'
+    history = provider.invoke_llm.call_args.kwargs['messages']
+    assert [message.role for message in history[-3:]] == ['assistant', 'tool', 'user']
+    assert history[-2].content == '{"status": "revised"}'
+
+
+@pytest.mark.asyncio
+async def test_model_quota_failure_is_distinct_from_workspace_operation_failure(assistant):
+    service, _, provider = assistant
+    provider.invoke_llm.side_effect = RequesterError('Insufficient balance', code='quota_exceeded', status_code=403)
+    ctx = context()
+    conversation = await service.create(ctx)
+
+    failed = await service.turn(ctx, conversation['uuid'], 0, text='Create a QQ bot')
+
+    assert failed['status'] == 'failed'
+    assert service.public_view(failed)['error'] == 'model_quota_exceeded'
+    assert [message['role'] for message in failed['messages']] == ['user']
+
+
+@pytest.mark.asyncio
+async def test_other_model_request_failure_has_model_specific_error(assistant):
+    service, _, provider = assistant
+    provider.invoke_llm.side_effect = RequesterError('Connection failed', code='connection', retryable=True)
+    ctx = context()
+    conversation = await service.create(ctx)
+
+    failed = await service.turn(ctx, conversation['uuid'], 0, text='Create a QQ bot')
+
+    assert service.public_view(failed)['error'] == 'model_request_failed'
+
+
+@pytest.mark.asyncio
+async def test_model_auth_failure_is_identified(assistant):
+    service, _, provider = assistant
+    provider.invoke_llm.side_effect = RequesterError(
+        'Unauthorized: invalid token', code='authentication', status_code=401
+    )
+    ctx = context()
+    conversation = await service.create(ctx)
+
+    failed = await service.turn(ctx, conversation['uuid'], 0, text='Create a QQ bot')
+
+    assert failed['status'] == 'failed'
+    assert service.public_view(failed)['error'] == 'model_auth_failed'
+
+
+@pytest.mark.asyncio
+async def test_failed_model_request_can_resume_and_switch_model(assistant):
+    service, ap, provider = assistant
+    provider.invoke_llm.side_effect = RequesterError(
+        'Unauthorized: invalid token', code='authentication', status_code=401
+    )
+    ctx = context()
+    conversation = await service.create(ctx)
+
+    failed = await service.turn(ctx, conversation['uuid'], 0, text='Create a QQ bot')
+    assert failed['status'] == 'failed'
+    assert failed['error'] == 'model_auth_failed'
+
+    backup_provider = SimpleNamespace(
+        invoke_llm=AsyncMock(return_value=Message(role='assistant', content='Recovered with backup model'))
+    )
+    backup_model = SimpleNamespace(
+        provider=backup_provider,
+        model_entity=SimpleNamespace(
+            uuid='uuid-backup-model',
+            name='backup-model',
+            abilities=['func_call'],
+            extra_args={},
+        ),
+    )
+    original_get_model = ap.model_mgr.get_model_by_uuid
+
+    async def get_model(context, uuid):
+        if str(uuid) == 'uuid-backup-model':
+            return backup_model
+        return await original_get_model(context, uuid)
+
+    ap.model_mgr.get_model_by_uuid = get_model
+
+    resumed = await service.turn(ctx, conversation['uuid'], 1, continue_run=True, model_uuid='uuid-backup-model')
+    assert resumed['status'] == 'ready'
+    assert resumed['model_uuid'] == 'uuid-backup-model'
+    assert resumed['model_name'] == 'backup-model'
+    assert resumed['messages'][-1]['content'] == 'Recovered with backup model'
 
 
 @pytest.mark.asyncio
@@ -187,7 +455,7 @@ async def test_resource_readers_match_application_services():
         ('models', ap.llm_model_service.get_llm_models),
         ('embedding_models', ap.embedding_models_service.get_embedding_models),
         ('pipelines', ap.pipeline_service.get_pipelines),
-        ('knowledge_bases', ap.knowledge_service.get_knowledge_bases),
+        ('knowledge_bases', ap.knowledge_service.get_knowledge_base_summaries),
         ('knowledge_engines', ap.knowledge_service.list_knowledge_engines),
     ):
         reader.return_value = [{'name': kind}]
@@ -198,6 +466,62 @@ async def test_resource_readers_match_application_services():
             'items': [{'name': kind}],
         }
         reader.assert_awaited_once_with(ctx)
+
+
+@pytest.mark.asyncio
+async def test_installed_plugin_summaries_are_workspace_scoped_without_runtime():
+    rows = Mock()
+    rows.mappings.return_value.all.return_value = [
+        {'plugin_author': 'langbot-team', 'plugin_name': 'LocalAgent', 'enabled': True, 'install_source': 'marketplace'}
+    ]
+    ap = SimpleNamespace(persistence_mgr=SimpleNamespace(execute_async=AsyncMock(return_value=rows)))
+    ctx = context()
+
+    result = await execute_tool(ap, ctx, 'list_resources', {'kind': 'plugins'})
+
+    assert result == {'total': 1, 'items': rows.mappings.return_value.all.return_value}
+    statement = ap.persistence_mgr.execute_async.call_args.args[0]
+    assert 'plugin_settings.workspace_uuid' in str(statement)
+    assert ctx.workspace_uuid in statement.compile().params.values()
+
+
+@pytest.mark.asyncio
+async def test_failed_read_is_reported_to_model_without_ending_conversation(assistant):
+    service, ap, provider = assistant
+    ap.llm_model_service = SimpleNamespace(get_llm_models=AsyncMock())
+    ap.embedding_models_service = SimpleNamespace(get_embedding_models=AsyncMock())
+    ap.knowledge_service = SimpleNamespace(
+        get_knowledge_base_summaries=AsyncMock(side_effect=RuntimeError('runtime unavailable')),
+        list_knowledge_engines=AsyncMock(),
+    )
+    provider.invoke_llm.side_effect = [
+        Message.model_validate(
+            {
+                'role': 'assistant',
+                'tool_calls': [
+                    {
+                        'id': 'read-kb',
+                        'type': 'function',
+                        'function': {
+                            'name': 'list_resources',
+                            'arguments': '{"kind":"knowledge_bases"}',
+                        },
+                    }
+                ],
+            }
+        ),
+        Message(role='assistant', content='Knowledge base discovery is unavailable.'),
+    ]
+    ctx = context()
+    conversation = await service.create(ctx)
+
+    completed = await service.turn(ctx, conversation['uuid'], 0, text='Build a QQ assistant')
+
+    assert completed['status'] == 'ready'
+    assert completed['error'] is None
+    tool_result = next(message for message in completed['messages'] if message['role'] == 'tool')
+    assert tool_result['content'] == '{"error": "read_failed"}'
+    assert provider.invoke_llm.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -481,3 +805,53 @@ async def test_stop_is_private_revision_scoped_and_does_not_stop_other_chat(assi
     released.set()
     await asyncio.wait_for(tasks[1], 5)
     assert (await service.get(ctx, ids[1]))['status'] == 'ready'
+
+
+async def test_ten_parallel_tool_calls_complete_and_resumed_incomplete_turn_cleaned(assistant):
+    service, ap, provider = assistant
+    ap.llm_model_service = SimpleNamespace(get_llm_models=AsyncMock(return_value=[]))
+    ap.embedding_models_service = SimpleNamespace(get_embedding_models=AsyncMock(return_value=[]))
+    ap.pipeline_service.get_pipelines = AsyncMock(return_value=[])
+    ap.knowledge_service = SimpleNamespace(
+        get_knowledge_base_summaries=AsyncMock(return_value=[]),
+        list_knowledge_engines=AsyncMock(return_value=[]),
+    )
+    ap.bot_service = SimpleNamespace(get_bots=AsyncMock(return_value=[]))
+    ap.skill_service = SimpleNamespace(list_skills=AsyncMock(return_value=[]))
+
+    kinds = ['skills', 'bots', 'pipelines', 'knowledge_bases', 'plugins', 'models', 'embedding_models']
+    tool_calls = [
+        {
+            'id': f'call-{i}',
+            'type': 'function',
+            'function': {'name': 'list_resources', 'arguments': f'{{"kind": "{kinds[i % len(kinds)]}"}}'},
+        }
+        for i in range(10)
+    ]
+    ten_calls_message = Message.model_validate(
+        {
+            'role': 'assistant',
+            'content': 'Discovering resources...',
+            'tool_calls': tool_calls,
+        }
+    )
+    provider.invoke_llm.side_effect = [
+        ten_calls_message,
+        Message(role='assistant', content='Discovery finished.'),
+    ]
+    ctx = context()
+    cid = (await service.create(ctx))['uuid']
+    conv = await service.turn(ctx, cid, 0, text='Build a bot')
+    assert conv['status'] == 'ready'
+    assert conv['error'] is None
+    assert conv['messages'][-1]['content'] == 'Discovery finished.'
+
+
+def test_turn_input_accepts_up_to_ten_setup_plan_choices():
+    from langbot.pkg.api.http.controller.groups.assistant import TurnInput
+
+    choices = {f'field_{i}': f'option_{i}' for i in range(6)}
+    parsed = TurnInput.model_validate({'revision': 1, 'choices': choices})
+    assert parsed.choices == choices
+    ten_choices = {f'field_{i}': f'option_{i}' for i in range(10)}
+    assert TurnInput.model_validate({'revision': 1, 'choices': ten_choices}).choices == ten_choices

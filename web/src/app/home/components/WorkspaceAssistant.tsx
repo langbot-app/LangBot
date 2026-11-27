@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, useId, type ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  useId,
+  Fragment,
+  type ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 import {
   Plus,
@@ -7,7 +14,11 @@ import {
   LoaderCircle,
   Square,
   CircleAlert,
+  QrCode,
 } from 'lucide-react';
+import QrCodeLoginDialog, {
+  QrLoginPlatform,
+} from './qrcode-login/QrCodeLoginDialog';
 import {
   RiSparkling2Line,
   RiArrowUpSLine,
@@ -57,12 +68,24 @@ type PendingCall = {
   };
 };
 
+type SetupPlan = {
+  summary: string;
+  fields: {
+    key: string;
+    label: string;
+    control: 'radio' | 'select';
+    selected: string;
+    options: { id: string; label: string; description: string }[];
+  }[];
+};
+
 type Conversation = {
   uuid: string;
   revision: number;
-  status: 'ready' | 'running' | 'approval' | 'failed';
+  status: 'ready' | 'running' | 'approval' | 'choice' | 'paused' | 'failed';
   messages: { role: string; content: string; tool?: AssistantTool }[];
   pending: PendingCall[];
+  choice_plan: SetupPlan | null;
   error: string | null;
   model_name: string | null;
   model_uuid: string | null;
@@ -73,6 +96,175 @@ type Conversation = {
     tool?: Omit<AssistantTool, 'result'>;
   };
 };
+
+function HumanReadableArgs({ args }: { args: unknown }) {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    return null;
+  }
+  const ignoredKeys = new Set([
+    'auto_confirm_permissions',
+    'confirm',
+    'operation_id',
+  ]);
+  const entries = Object.entries(args as Record<string, unknown>).filter(
+    ([key, value]) =>
+      !ignoredKeys.has(key) &&
+      value !== null &&
+      value !== undefined &&
+      value !== '',
+  );
+  if (entries.length === 0) return null;
+
+  const keyLabels: Record<string, string> = {
+    plugin_name: '插件名称',
+    plugin_author: '插件作者',
+    plugin_version: '版本',
+    name: '名称',
+    description: '描述',
+    adapter: '平台适配器',
+    model_uuid: '模型',
+    pipeline_uuid: '流水线',
+    bot_uuid: '机器人',
+    target_type: '目标类型',
+    system_prompt: '人设提示词',
+    plugin_id: '插件标识',
+    enable: '是否启用',
+    enabled: '是否启用',
+  };
+
+  const formatVal = (val: unknown): string => {
+    if (typeof val === 'boolean') return val ? '是' : '否';
+    if (typeof val === 'object') {
+      try {
+        return JSON.stringify(val);
+      } catch {
+        return String(val);
+      }
+    }
+    return String(val);
+  };
+
+  return (
+    <div className="space-y-1 rounded-md bg-background/80 p-2.5 text-xs border border-border/50">
+      <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
+        {entries.map(([key, val]) => (
+          <Fragment key={key}>
+            <span className="text-muted-foreground font-medium shrink-0">
+              {keyLabels[key] || key.replace(/_/g, ' ')}:
+            </span>
+            <span className="text-foreground break-all">{formatVal(val)}</span>
+          </Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SetupPlanPanel({
+  plan,
+  busy,
+  onContinue,
+  onRevise,
+}: {
+  plan: SetupPlan;
+  busy: boolean;
+  onContinue: (choices: Record<string, string>) => void;
+  onRevise: () => void;
+}) {
+  const { t } = useTranslation();
+  const [selected, setSelected] = useState<Record<string, string>>(() =>
+    Object.fromEntries(plan.fields.map((field) => [field.key, field.selected])),
+  );
+
+  return (
+    <div className="space-y-3 rounded-lg border bg-background p-3 text-sm">
+      <div>
+        <p className="font-medium">{t('assistant.planTitle')}</p>
+        <p className="mt-1 break-words text-muted-foreground">{plan.summary}</p>
+      </div>
+      {plan.fields.map((field) => (
+        <div key={field.key} className="space-y-1.5 border-t pt-3">
+          <p className="font-medium">{field.label}</p>
+          {field.control === 'select' ? (
+            <Select
+              value={selected[field.key]}
+              onValueChange={(value) =>
+                setSelected((current) => ({ ...current, [field.key]: value }))
+              }
+              disabled={busy}
+            >
+              <SelectTrigger className="w-full min-w-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {field.options.map((option) => (
+                  <SelectItem key={option.id} value={option.id}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <div
+              role="radiogroup"
+              aria-label={field.label}
+              className="space-y-1"
+            >
+              {field.options.map((option) => (
+                <label
+                  key={option.id}
+                  className="flex min-w-0 cursor-pointer gap-2 py-1"
+                >
+                  <input
+                    type="radio"
+                    name={`setup-${field.key}`}
+                    value={option.id}
+                    checked={selected[field.key] === option.id}
+                    disabled={busy}
+                    onChange={() =>
+                      setSelected((current) => ({
+                        ...current,
+                        [field.key]: option.id,
+                      }))
+                    }
+                    className="mt-1 shrink-0 accent-primary"
+                  />
+                  <span className="min-w-0 break-words">
+                    <span className="block font-medium">{option.label}</span>
+                    {option.description && (
+                      <span className="block text-xs text-muted-foreground">
+                        {option.description}
+                      </span>
+                    )}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          {field.control === 'select' &&
+            field.options.find((option) => option.id === selected[field.key])
+              ?.description && (
+              <p className="text-xs text-muted-foreground">
+                {
+                  field.options.find(
+                    (option) => option.id === selected[field.key],
+                  )?.description
+                }
+              </p>
+            )}
+        </div>
+      ))}
+      <div className="flex flex-wrap gap-2 border-t pt-3">
+        <Button size="sm" disabled={busy} onClick={() => onContinue(selected)}>
+          {t('assistant.continuePlan')}
+        </Button>
+        <Button size="sm" variant="outline" disabled={busy} onClick={onRevise}>
+          {t('assistant.revisePlan')}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export default function WorkspaceAssistant() {
   const workspace = useCurrentWorkspace();
@@ -242,6 +434,29 @@ const ASSISTANT_HEIGHT_STORAGE_KEY = 'langbot-assistant-panel-height';
 const ASSISTANT_POSITION_STORAGE_KEY = 'langbot-assistant-panel-position';
 const ASSISTANT_OPEN_STORAGE_KEY = 'langbot-assistant-panel-open';
 
+const ADAPTER_TO_QR_PLATFORM: Record<string, QrLoginPlatform> = {
+  qqofficial: 'qqofficial',
+  'qqofficial-omni': 'qqofficial',
+  feishu: 'feishu',
+  lark: 'feishu',
+  dingtalk: 'dingtalk',
+  weixin: 'weixin',
+  openclaw_weixin: 'weixin',
+  wecombot: 'wecombot',
+};
+
+function resolveQrPlatform(adapter?: string): QrLoginPlatform | undefined {
+  if (!adapter) return undefined;
+  if (adapter in ADAPTER_TO_QR_PLATFORM) return ADAPTER_TO_QR_PLATFORM[adapter];
+  const lower = adapter.toLowerCase();
+  if (lower.includes('qqofficial') || lower.includes('qq')) return 'qqofficial';
+  if (lower.includes('feishu') || lower.includes('lark')) return 'feishu';
+  if (lower.includes('dingtalk') || lower.includes('ding')) return 'dingtalk';
+  if (lower.includes('weixin') || lower.includes('wechat')) return 'weixin';
+  if (lower.includes('wecom')) return 'wecombot';
+  return undefined;
+}
+
 function AssistantPanel({
   storageKey,
   canUseModels,
@@ -269,6 +484,62 @@ function AssistantPanel({
     }
   }, [open]);
   const [closing, setClosing] = useState(false);
+
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [qrDialogPlatform, setQrDialogPlatform] =
+    useState<QrLoginPlatform>('qqofficial');
+  const [qrTargetBotId, setQrTargetBotId] = useState<string | null>(null);
+  const [qrLoadingBotId, setQrLoadingBotId] = useState<string | null>(null);
+
+  const handleStartQrLogin = async (botId: string) => {
+    try {
+      setQrLoadingBotId(botId);
+      const res = await backendClient.getBot(botId);
+      const adapter = res?.bot?.adapter;
+      const platform = resolveQrPlatform(adapter);
+      if (platform) {
+        setQrDialogPlatform(platform);
+        setQrTargetBotId(botId);
+        setQrDialogOpen(true);
+      } else {
+        toast.info(
+          t('assistant.openBotConfig', {
+            defaultValue: '该机器人类型暂不支持直接扫码，正在打开配置页...',
+          }),
+        );
+        window.open(`/home/bots?id=${botId}`, '_blank');
+      }
+    } catch {
+      window.open(`/home/bots?id=${botId}`, '_blank');
+    } finally {
+      setQrLoadingBotId(null);
+    }
+  };
+
+  const handleQrLoginSuccess = async (credentials: Record<string, string>) => {
+    if (!qrTargetBotId) return;
+    try {
+      const res = await backendClient.getBot(qrTargetBotId);
+      const existing =
+        (res?.bot?.adapter_config as Record<string, unknown>) || {};
+      await backendClient.updateBot(qrTargetBotId, {
+        adapter_config: { ...existing, ...credentials },
+        enable: true,
+      });
+      toast.success(
+        t('assistant.botBindSuccess', {
+          defaultValue: '机器人已成功扫码绑定并启用！',
+        }),
+      );
+    } catch (err) {
+      console.error('Failed to update bot config after QR login', err);
+      toast.error(
+        t('assistant.botBindFailed', {
+          defaultValue: '更新机器人配置失败，请在机器人页面手动确认。',
+        }),
+      );
+    }
+  };
   const [horizontalPosition, setHorizontalPosition] = useState(() => {
     try {
       const saved = Number(
@@ -330,6 +601,18 @@ function AssistantPanel({
   const [sending, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const busy = sending || loading || conversation?.status === 'running';
+  const resumable =
+    (conversation?.error === 'round_limit' ||
+      conversation?.error === 'no_progress' ||
+      conversation?.error === 'time_budget' ||
+      conversation?.error === 'model_quota_exceeded' ||
+      conversation?.error === 'model_auth_failed' ||
+      conversation?.error === 'model_permission_denied' ||
+      conversation?.error === 'model_request_failed' ||
+      conversation?.error === 'model_unavailable' ||
+      conversation?.error === 'turn_failed' ||
+      conversation?.error === 'tool_failed') &&
+    (conversation.status === 'paused' || conversation.status === 'failed');
   const [stopping, setStopping] = useState(false);
   const [sessions, setSessions] = useState<
     { uuid: string; title: string; status: Conversation['status'] }[]
@@ -342,7 +625,6 @@ function AssistantPanel({
   const [liveText, setLiveText] = useState('');
   const [liveTool, setLiveTool] = useState<AssistantTool | null>(null);
   const [phase, setPhase] = useState<'thinking' | 'tool' | null>(null);
-  const [round, setRound] = useState(1);
   const [pendingText, setPendingText] = useState<string | null>(null);
   const controller = useRef(new AbortController());
   const messageList = useRef<HTMLDivElement>(null);
@@ -445,7 +727,6 @@ function AssistantPanel({
             setConversation(latest);
             setLiveText(latest.progress?.text ?? '');
             setPhase(latest.progress?.phase ?? null);
-            setRound(latest.progress?.round ?? 1);
             setLiveTool(
               latest.progress?.tool
                 ? { ...latest.progress.tool, result: { status: 'running' } }
@@ -506,17 +787,26 @@ function AssistantPanel({
     return () => window.cancelAnimationFrame(frame);
   }, [open, conversation, busy, pendingText, liveText, liveTool, panelHeight]);
 
-  async function submit(approved?: boolean) {
+  async function submit(
+    approved?: boolean,
+    choices?: Record<string, string>,
+    continueRun = false,
+  ) {
+    const sendingText =
+      approved === undefined && choices === undefined && !continueRun;
     if (
       !canUseModels ||
       busy ||
-      (approved === undefined &&
+      (continueRun && !resumable) ||
+      (sendingText &&
         (!text.trim() ||
           !modelUuid ||
-          (conversation && conversation.status !== 'ready')))
+          (conversation &&
+            !['ready', 'choice'].includes(conversation.status) &&
+            !resumable)))
     )
       return;
-    const sentText = approved === undefined ? text.trim() : null;
+    const sentText = sendingText ? text.trim() : null;
     const sentRevision = conversation?.revision ?? 0;
     if (sentText) {
       setPendingText(sentText);
@@ -524,7 +814,6 @@ function AssistantPanel({
     }
     setBusy(true);
     setError(false);
-    setRound(1);
     setPhase('thinking');
     try {
       let current = conversation;
@@ -541,9 +830,18 @@ function AssistantPanel({
         current.uuid,
         {
           revision: current.revision,
-          ...(approved === undefined
+          ...(sendingText
             ? { text: sentText!, model_uuid: modelUuid }
-            : { approved }),
+            : continueRun
+              ? {
+                  continue_run: true,
+                  ...(modelUuid && modelUuid !== conversation?.model_uuid
+                    ? { model_uuid: modelUuid }
+                    : {}),
+                }
+              : choices !== undefined
+                ? { choices }
+                : { approved }),
         },
         (event) => {
           if (event.kind === 'snapshot') {
@@ -565,7 +863,6 @@ function AssistantPanel({
               tool?: Omit<AssistantTool, 'result'>;
             };
             setPhase(state.phase);
-            if (state.round) setRound(state.round);
             setLiveTool(
               state.tool
                 ? { ...state.tool, result: { status: 'running' } }
@@ -1027,15 +1324,43 @@ function AssistantPanel({
                                 <ol className="list-decimal">{children}</ol>
                               ),
                               img: () => null,
-                              a: ({ href, children }) => (
-                                <a
-                                  href={href}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
-                                  {children}
-                                </a>
-                              ),
+                              a: ({ href, children }) => {
+                                const match = href?.match(
+                                  /\/home\/bots\?id=([a-f0-9-]+)/i,
+                                );
+                                const botId = match ? match[1] : null;
+                                return (
+                                  <span className="inline-flex items-center gap-1.5 flex-wrap my-0.5 align-middle">
+                                    <a
+                                      href={href}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                    >
+                                      {children}
+                                    </a>
+                                    {botId && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          void handleStartQrLogin(botId);
+                                        }}
+                                        disabled={qrLoadingBotId === botId}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-normal rounded-md border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+                                        title="在工作助手页面直接扫码授权"
+                                      >
+                                        <QrCode className="size-3" />
+                                        <span>
+                                          {qrLoadingBotId === botId
+                                            ? '正在唤起...'
+                                            : '在此扫码授权'}
+                                        </span>
+                                      </button>
+                                    )}
+                                  </span>
+                                );
+                              },
                             }}
                           >
                             {message.content}
@@ -1095,9 +1420,11 @@ function AssistantPanel({
                                 <span className="text-sm font-semibold">
                                   {opLabel}
                                 </span>
-                                <span className="text-xs text-muted-foreground font-mono">
-                                  ({opId})
-                                </span>
+                                {opLabel === opId && (
+                                  <span className="text-xs text-muted-foreground font-mono">
+                                    ({opId})
+                                  </span>
+                                )}
                               </div>
                             ) : (
                               <p className="text-sm font-medium">{call.name}</p>
@@ -1128,16 +1455,7 @@ function AssistantPanel({
                             </span>
                           </div>
                         )}
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1">
-                            {t('assistant.parameters', {
-                              defaultValue: '参数：',
-                            })}
-                          </p>
-                          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded bg-background p-2 text-xs font-mono border">
-                            {JSON.stringify(opArgs, null, 2)}
-                          </pre>
-                        </div>
+                        <HumanReadableArgs args={opArgs} />
                       </div>
                     );
                   })}
@@ -1160,6 +1478,55 @@ function AssistantPanel({
                   </div>
                 </div>
               )}
+              {conversation?.status === 'choice' &&
+                conversation.choice_plan && (
+                  <SetupPlanPanel
+                    key={`${conversation.uuid}:${conversation.revision}`}
+                    plan={conversation.choice_plan}
+                    busy={busy}
+                    onContinue={(choices) => void submit(undefined, choices)}
+                    onRevise={() => input.current?.focus()}
+                  />
+                )}
+              {resumable && (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    {t(
+                      conversation.error === 'time_budget'
+                        ? 'assistant.timeBudget'
+                        : conversation.error === 'model_quota_exceeded'
+                          ? 'assistant.modelQuotaExceeded'
+                          : conversation.error === 'model_auth_failed'
+                            ? 'assistant.modelAuthFailed'
+                            : conversation.error === 'model_permission_denied'
+                              ? 'assistant.modelPermissionDenied'
+                              : conversation.error === 'model_request_failed'
+                                ? 'assistant.modelRequestFailed'
+                                : conversation.error === 'model_unavailable'
+                                  ? 'assistant.modelUnavailable'
+                                  : 'assistant.roundLimit',
+                    )}
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void submit(undefined, undefined, true)}
+                  >
+                    {t(
+                      [
+                        'model_quota_exceeded',
+                        'model_auth_failed',
+                        'model_permission_denied',
+                        'model_request_failed',
+                        'model_unavailable',
+                      ].includes(conversation.error ?? '')
+                        ? 'assistant.retryRun'
+                        : 'assistant.continueRun',
+                    )}
+                  </Button>
+                </div>
+              )}
               {busy && (
                 <p className="flex items-center gap-2 text-sm text-muted-foreground">
                   <LoaderCircle className="size-4 animate-spin" />
@@ -1169,7 +1536,6 @@ function AssistantPanel({
                         phase === 'tool'
                           ? 'assistant.executing'
                           : 'assistant.thinking',
-                        { round },
                       )}
                 </p>
               )}
@@ -1178,13 +1544,21 @@ function AssistantPanel({
                   {t('assistant.recommendationFailed')}
                 </p>
               )}
-              {(error || conversation?.status === 'failed') && (
+              {(error || (conversation?.status === 'failed' && !resumable)) && (
                 <p role="alert" className="text-sm text-destructive">
                   {conversation?.error === 'stopped'
                     ? t('assistant.stopped')
-                    : conversation?.error === 'model_unavailable'
-                      ? t('assistant.modelUnavailable')
-                      : t('assistant.error')}
+                    : conversation?.error === 'model_quota_exceeded'
+                      ? t('assistant.modelQuotaExceeded')
+                      : conversation?.error === 'model_auth_failed'
+                        ? t('assistant.modelAuthFailed')
+                        : conversation?.error === 'model_permission_denied'
+                          ? t('assistant.modelPermissionDenied')
+                          : conversation?.error === 'model_request_failed'
+                            ? t('assistant.modelRequestFailed')
+                            : conversation?.error === 'model_unavailable'
+                              ? t('assistant.modelUnavailable')
+                              : t('assistant.error')}
                 </p>
               )}
               {!busy && conversation?.status === 'running' && (
@@ -1259,7 +1633,9 @@ function AssistantPanel({
                           ref: () => {},
                           disabled:
                             sending ||
-                            (!!conversation && conversation.status !== 'ready'),
+                            (!!conversation &&
+                              conversation.status !== 'ready' &&
+                              !resumable),
                         }}
                         requiredModelAbility="func_call"
                         compactModelSelector
@@ -1289,7 +1665,9 @@ function AssistantPanel({
                         busy ||
                         !text.trim() ||
                         !modelUuid ||
-                        (!!conversation && conversation.status !== 'ready')
+                        (!!conversation &&
+                          !['ready', 'choice'].includes(conversation.status) &&
+                          !resumable)
                       }
                     >
                       <Send className="size-4" />
@@ -1303,6 +1681,12 @@ function AssistantPanel({
           </section>
         )}
       </div>
+      <QrCodeLoginDialog
+        open={qrDialogOpen}
+        onOpenChange={setQrDialogOpen}
+        platform={qrDialogPlatform}
+        onSuccess={handleQrLoginSuccess}
+      />
     </div>,
     document.body,
   );

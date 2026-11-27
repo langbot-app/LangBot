@@ -1261,6 +1261,22 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         risk='read',
         exposure='all',
     ),
+    'plugin.permissions.get': OperationDoc(
+        domain='plugin',
+        label={'zh_Hans': '查看插件权限', 'en_US': 'Get Plugin Permissions'},
+        summary='Inspect declared and granted permissions for an installed plugin.',
+        description="Read a plugin installation's declared operations and capabilities, current grants, and pending confirmation state. Use plugin.list to identify author and plugin_name.",
+        risk='read',
+        exposure='assistant',
+    ),
+    'plugin.permissions.update': OperationDoc(
+        domain='plugin',
+        label={'zh_Hans': '确认插件权限', 'en_US': 'Confirm Plugin Permissions'},
+        summary='Set and confirm exact permissions for an installed plugin.',
+        description='Set only permissions declared by the plugin. Inspect plugin.permissions.get first. Pass the complete desired workspace_operations and capabilities lists; confirm=true activates the installation after the member reviews the exact grants in the assistant UI. Side effect: Changes plugin grants and may activate executable code.',
+        risk='dangerous',
+        exposure='assistant',
+    ),
     'plugin.marketplace.search': OperationDoc(
         domain='plugin',
         label={'zh_Hans': '搜索插件市场', 'en_US': 'Search Plugin Marketplace'},

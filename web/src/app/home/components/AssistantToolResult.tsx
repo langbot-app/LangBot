@@ -37,6 +37,12 @@ export default function AssistantToolResult({
     result && typeof result === 'object' && !Array.isArray(result)
       ? (result as Record<string, unknown>)
       : {};
+  const nested =
+    data.result &&
+    typeof data.result === 'object' &&
+    !Array.isArray(data.result)
+      ? (data.result as Record<string, unknown>)
+      : {};
   const running = data.status === 'running';
   const failed = !!data.error;
   const denied = data.status === 'denied';
@@ -54,8 +60,15 @@ export default function AssistantToolResult({
       ? data.items
       : Array.isArray(data.records)
         ? data.records
-        : null;
-  const total = typeof data.total === 'number' ? data.total : items?.length;
+        : Array.isArray(nested.plugins)
+          ? nested.plugins
+          : null;
+  const total =
+    typeof data.total === 'number'
+      ? data.total
+      : typeof nested.total === 'number'
+        ? nested.total
+        : items?.length;
   const kind = tool?.arguments.kind;
   const label =
     tool?.name === 'list_resources' && typeof kind === 'string'
@@ -74,7 +87,7 @@ export default function AssistantToolResult({
           : 'completed';
   const url =
     typeof data.url === 'string' &&
-    /^\/home\/(pipelines|knowledge)\?id=[\w-]+$/.test(data.url)
+    /^\/home\/(agents|bots|pipelines|knowledge)\?id=[\w-]+$/.test(data.url)
       ? data.url
       : null;
   const name =

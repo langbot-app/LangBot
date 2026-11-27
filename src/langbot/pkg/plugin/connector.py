@@ -1322,6 +1322,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         execution_context, _settings = await self._prepare_workspace_context(context)
         return execution_context
 
+    async def validate_workspace_context(self, context: TenantContext) -> ExecutionContext:
+        """Validate Workspace placement without requiring a connected Plugin Runtime."""
+        return await self._validate_execution_context(context)
+
     def _inspect_plugin_package(
         self,
         file_bytes: bytes,

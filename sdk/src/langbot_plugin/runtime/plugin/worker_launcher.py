@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import importlib.metadata
 import json
@@ -10,6 +11,7 @@ import pathlib
 import re
 import shutil
 import sys
+import tempfile
 from dataclasses import dataclass
 from typing import Any, Callable, Coroutine, Literal, Sequence
 
@@ -400,21 +402,30 @@ class PluginWorkerLauncher:
         )
         tmp_path = self._absolute_runtime_path(staging.tmp_path)
         log_path = tmp_path / _DEPENDENCY_INSTALL_LOG_NAME
-        with log_path.open("wb") as log_file:
-            process = await asyncio.create_subprocess_exec(
-                *args,
-                stdout=log_file,
-                stderr=asyncio.subprocess.STDOUT,
-                env=self._direct_dependency_installer_environment(tmp_path),
-                cwd=str(tmp_path),
-            )
-        # The OSS operator is the person reading the WebUI error, so surface
-        # the redacted pip error lines there instead of a bare exit code.
-        await self._wait_for_dependency_installer(
-            process,
-            log_path,
-            expose_summary=True,
+        # pip adds its own nested target directories; staging paths can exceed MAX_PATH on Windows.
+        install_tmp = (
+            tempfile.TemporaryDirectory(prefix="lbp-pip-")
+            if self.platform == "win32"
+            else contextlib.nullcontext(str(tmp_path))
         )
+        with install_tmp as pip_tmp:
+            with log_path.open("wb") as log_file:
+                process = await asyncio.create_subprocess_exec(
+                    *args,
+                    stdout=log_file,
+                    stderr=asyncio.subprocess.STDOUT,
+                    env=self._direct_dependency_installer_environment(
+                        pathlib.Path(pip_tmp)
+                    ),
+                    cwd=str(pip_tmp),
+                )
+            # The OSS operator is the person reading the WebUI error, so surface
+            # the redacted pip error lines there instead of a bare exit code.
+            await self._wait_for_dependency_installer(
+                process,
+                log_path,
+                expose_summary=True,
+            )
 
     @staticmethod
     async def _wait_for_dependency_installer(
@@ -484,6 +495,20 @@ class PluginWorkerLauncher:
             staging,
             requirements,
         )
+        uv_executable = shutil.which("uv") if self.platform == "win32" else None
+        if uv_executable:
+            return [
+                uv_executable,
+                "pip",
+                "install",
+                "--python",
+                str(self.python_executable),
+                "--target",
+                str(site_packages_path),
+                *pkgmgr_helper.get_pip_index_args(),
+                "-r",
+                str(requirements_path),
+            ]
         return [
             str(self.python_executable),
             "-m",

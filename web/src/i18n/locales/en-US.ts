@@ -269,8 +269,8 @@ const enUS = {
     providerCheckFailed: 'Could not check model providers. Please try again.',
     retrySetup: 'Retry',
     preparing: 'Preparing assistant…',
-    thinking: 'Model responding · Round {{round}}',
-    executing: 'Executing tool…',
+    thinking: 'Working out the next step…',
+    executing: 'Updating the workspace…',
     toolRunning: 'Running',
     recommendationFailed:
       'Could not load a recommended model. Please select a model.',
@@ -307,6 +307,7 @@ const enUS = {
       pipelines: 'Find Pipelines',
       knowledge_bases: 'Find knowledge bases',
       knowledge_engines: 'Find knowledge engines',
+      skills: 'Check available skills',
     },
     title: 'Workspace assistant',
     subtitle: 'Build and manage your apps',
@@ -315,9 +316,19 @@ const enUS = {
     welcome:
       'Tell me what you want to build. I can inspect this Workspace and propose configurations for bots, Agents, knowledge bases, Pipelines and more, then apply them after your confirmation.',
     discover: 'What models, knowledge bases and Pipelines are available?',
-    build: 'Help me create a knowledge-base question-answering application.',
+    build:
+      'Build an IM assistant that answers questions when mentioned in a group.',
     toolResult: 'Operation result',
     review: 'Review the exact operations before executing',
+    planTitle: 'Setup plan',
+    continuePlan: 'Continue setup',
+    continueRun: 'Continue',
+    retryRun: 'Retry',
+    roundLimit:
+      'I paused after repeated checks and saved the progress. Continue here or tell me what to change.',
+    timeBudget:
+      'This is taking longer than expected. Progress is saved; continue from here.',
+    revisePlan: 'Revise requirements',
     dangerousWarning:
       'Sensitive Operation: This operation carries high risk and may be irreversible. Please verify arguments carefully before confirming.',
     parameters: 'Parameters:',
@@ -325,7 +336,15 @@ const enUS = {
     decline: 'Decline',
     working: 'Working…',
     modelUnavailable:
-      'Model unavailable. Check its configuration and access, then start a new conversation.',
+      'Model unavailable. Check its configuration and access, or switch models and try again.',
+    modelAuthFailed:
+      'The selected model API credentials are invalid or unauthorized. Check the API key or switch models and try again.',
+    modelPermissionDenied:
+      'Access to the selected model was denied. Check permissions or switch models and try again.',
+    modelQuotaExceeded:
+      'The selected model has insufficient quota for this request. Add credits or switch models and try again.',
+    modelRequestFailed:
+      'The selected model request failed. Check the model service or switch models and try again.',
     error:
       'This turn did not complete. Check the resource results before starting a new conversation; changes are not retried automatically.',
     running:

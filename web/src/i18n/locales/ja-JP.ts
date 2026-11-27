@@ -270,8 +270,8 @@ const jaJP = {
       'モデルプロバイダーを確認できません。再試行してください。',
     retrySetup: '再試行',
     preparing: '準備中…',
-    thinking: 'モデル応答中 · {{round}} 回目',
-    executing: 'ツール実行中…',
+    thinking: '次の手順を整理しています…',
+    executing: 'ワークスペースを処理しています…',
     toolRunning: '実行中',
     recommendationFailed:
       '推奨モデルを取得できません。モデルを選択してください。',
@@ -308,6 +308,7 @@ const jaJP = {
       pipelines: 'Pipeline 検索',
       knowledge_bases: 'ナレッジベース検索',
       knowledge_engines: 'エンジン検索',
+      skills: '利用可能なスキルを確認',
     },
     title: 'ワークスペースアシスタント',
     subtitle: 'アプリを構築・管理',
@@ -316,9 +317,19 @@ const jaJP = {
     welcome:
       '作りたいアプリを教えてください。現在のワークスペースを確認し、ボット、Agent、ナレッジベース、Pipeline などの設定を提案し、承認後に適用します。',
     discover: '利用できるモデル、ナレッジベース、Pipeline は？',
-    build: 'ナレッジベースを使う質問応答アプリを作りたい。',
+    build:
+      'グループでメンションされたときに回答する IM アシスタントを作成して。',
     toolResult: '操作結果',
     review: '実行する操作とパラメータを確認してください',
+    planTitle: 'セットアップ案',
+    continuePlan: 'セットアップを続行',
+    continueRun: '続行',
+    retryRun: '再試行',
+    roundLimit:
+      '同じ確認が続いたため一時停止し、進捗を保存しました。ここから続行するか、変更点を伝えてください。',
+    timeBudget:
+      '処理に時間がかかっています。進捗は保存済みです。ここから続行できます。',
+    revisePlan: '要件を修正',
     dangerousWarning:
       '注意が必要な操作：この操作はリスクが高く、元に戻せない場合があります。確認する前に引数をよく確認してください。',
     parameters: 'パラメーター：',
@@ -326,7 +337,15 @@ const jaJP = {
     decline: '拒否',
     working: '処理中…',
     modelUnavailable:
-      'モデルを利用できません。設定と権限を確認して、新しい会話を開始してください。',
+      'モデルを利用できません。設定と権限を確認するか、モデルを切り替えて再試行してください。',
+    modelAuthFailed:
+      '選択したモデルのAPI認証情報が無効または未認証です。APIキーを確認するか、モデルを切り替えて再試行してください。',
+    modelPermissionDenied:
+      '選択したモデルへのアクセスが拒否されました。権限を確認するか、モデルを切り替えて再試行してください。',
+    modelQuotaExceeded:
+      '選択したモデルの利用枠が不足しています。残高を追加するかモデルを切り替えて再試行してください。',
+    modelRequestFailed:
+      '選択したモデルへのリクエストが失敗しました。モデルを確認するか切り替えて再試行してください。',
     error:
       '処理が完了しませんでした。新しい会話の前にリソースを確認してください。変更は自動で再試行されません。',
     running:
