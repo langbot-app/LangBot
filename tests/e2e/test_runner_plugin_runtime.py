@@ -887,6 +887,74 @@ def test_aggregated_messages_reach_plugin_separately(runner_client, runner_e2e_t
     assert not any('qa_boundary_command' in text and first in text for text in counts['ran'])
 
 
+def test_missing_agent_route_reports_failure(runner_client, runner_e2e_tmpdir):
+    from uuid import uuid4
+    from tools.regression.http_bot import signed_headers
+
+    client = runner_client
+    token = _init_and_auth(client)
+    _ensure_qa_plugin(client, token, runner_e2e_tmpdir / 'agent-runner-qa.zip')
+    headers = {'Authorization': 'Bearer ' + token}
+
+    def create(path, payload):
+        response = client.post('/api/v1/' + path, headers=headers, json=payload).json()
+        assert response['code'] == 0, response
+        return response['data']['uuid']
+
+    agent = create(
+        'agents',
+        {
+            'name': 'Missing target',
+            'kind': 'agent',
+            'supported_event_patterns': ['message.*'],
+            'config': {'runner': {'id': QA_RUNNER_ID}, 'runner_config': {QA_RUNNER_ID: {}}},
+        },
+    )
+    bot = create(
+        'platform/bots',
+        {
+            'name': 'Stale route',
+            'adapter': 'http_bot',
+            'enable': True,
+            'adapter_config': {'inbound_secret': 'qa-sign', 'signature_required': True},
+            'event_bindings': [{'event_pattern': 'message.received', 'target_type': 'agent', 'target_uuid': agent}],
+            'message_policy': {'trigger': {'group-respond-rules': {'enabled': False}}},
+        },
+    )
+    stale = str(uuid4())
+    with contextlib.closing(sqlite3.connect(runner_e2e_tmpdir / 'data/langbot.db')) as database:
+        with database:
+            assert database.execute('UPDATE agents SET uuid=? WHERE uuid=?', (stale, agent)).rowcount == 1
+        try:
+            for kind in ('person', 'group'):
+                body = json.dumps(
+                    {
+                        'session_type': kind,
+                        'session_id': 'missing',
+                        'message': [{'type': 'Plain', 'text': 'missing ' + kind}],
+                    }
+                ).encode()
+                reply = client.post('/bots/' + bot, content=body, headers=signed_headers(body, 'qa-sign'))
+                assert reply.status_code == 202
+                deadline = time.monotonic() + 15
+                while True:
+                    row = database.execute(
+                        "SELECT metadata_json FROM event_log WHERE bot_id=? AND event_type='message.received' AND input_summary=?",
+                        (bot, 'missing ' + kind),
+                    ).fetchone()
+                    metadata = json.loads(row[0]) if row else {}
+                    if metadata.get('routes'):
+                        break
+                    assert time.monotonic() < deadline, metadata
+                    time.sleep(0.1)
+                assert metadata['status'] == 'failed', metadata
+                (route,) = metadata['routes']
+                assert (route['target_uuid'], route['failure_code']) == (agent, 'processor_not_found'), route
+        finally:
+            with database:
+                database.execute('UPDATE agents SET uuid=? WHERE uuid=?', (agent, stale))
+
+
 def test_legacy_chat_config_http(runner_client):
     client = runner_client
     headers = {'Authorization': f'Bearer {_init_and_auth(client)}'}

@@ -1313,11 +1313,11 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         return await self._runtime_handler().ping()
 
     async def _prepare_workspace_context(
-        self, context: TenantContext
+        self, context: TenantContext, *, synchronize: bool = True
     ) -> tuple[ExecutionContext, list[persistence_plugin.PluginSetting] | None]:
         execution_context = await self._validate_execution_context(context)
         self._execution_context.set(execution_context)
-        if not self.is_enable_plugin:
+        if not self.is_enable_plugin or not synchronize:
             return execution_context, None
         if not self._runtime_available():
             reconnect_task = self._reconnect_task
@@ -2828,7 +2828,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if query is not None:
             from ..pipeline.pool import get_query_execution_context
 
-            _execution_context, settings = await self._prepare_workspace_context(get_query_execution_context(query))
+            _execution_context, settings = await self._prepare_workspace_context(
+                get_query_execution_context(query), synchronize=bound_plugins != []
+            )
         event_ctx = context.EventContext.from_event(event)
 
         if (bound_plugins == [] and query is not None) or not self.is_enable_plugin or not self._runtime_available():
