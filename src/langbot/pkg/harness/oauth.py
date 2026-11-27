@@ -169,9 +169,11 @@ class HarnessOAuthService:
             raise ValueError('insufficient_scope')
         now = int(time.time())
         refresh = 'hr_' + secrets.token_urlsafe(48)
+        grant_id = str(uuid.uuid4())
         access_token = jwt.encode(
             {
                 'typ': 'langbot_harness_at',
+                'gid': grant_id,
                 'sub': account.uuid,
                 'ws': workspace_uuid,
                 'bid': binding_id,
@@ -187,7 +189,7 @@ class HarnessOAuthService:
         async with self.engine.begin() as conn:
             await conn.execute(
                 HarnessOAuthGrant.__table__.insert().values(
-                    id=str(uuid.uuid4()),
+                    id=grant_id,
                     binding_id=binding_id,
                     device_id=device_id,
                     account_uuid=account.uuid,
@@ -270,6 +272,7 @@ class HarnessOAuthService:
         token = jwt.encode(
             {
                 'typ': 'langbot_harness_at',
+                'gid': row['id'],
                 'sub': row['account_uuid'],
                 'ws': row['workspace_uuid'],
                 'bid': row['binding_id'],
