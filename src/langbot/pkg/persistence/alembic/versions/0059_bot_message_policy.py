@@ -121,7 +121,7 @@ def upgrade() -> None:
     reports = {}
     for row in bind.execute(sa.select(bots)).mappings().all():
         values: dict = {}
-        if not bots_had_policy:
+        if not bots_had_policy or _json(row['message_policy']) == {}:
             values['message_policy'] = policy_schema.neutral_policy()
         bindings = _json(row['event_bindings'])
         if isinstance(bindings, list):

@@ -380,6 +380,27 @@ async def test_migrated_route_reproduces_every_legacy_setting(database):
 
 
 @pytest.mark.asyncio
+async def test_retry_after_interrupted_data_conversion(database):
+    await database(_seed)
+
+    def interrupt(conn):
+        with patch.object(policy_schema, 'policy_from_legacy', side_effect=RuntimeError('conversion interrupted')):
+            _run(conn, migration.upgrade)
+
+    with pytest.raises(RuntimeError, match='conversion interrupted'):
+        await database(interrupt)
+
+    def resume(conn):
+        _run(conn, migration.upgrade)
+        assert all(
+            _value(row['message_policy']) == policy_schema.neutral_policy() for row in _rows(conn, 'bots').values()
+        )
+        assert _routes(conn, 'bot-shared')['r-shared']['policy'] == policy_schema.split_legacy_config(CONFIG_A)[1]
+
+    await database(resume)
+
+
+@pytest.mark.asyncio
 async def test_upgrade_is_idempotent(database):
     def scenario(conn):
         _seed(conn)
