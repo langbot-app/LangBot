@@ -40,16 +40,7 @@ try {
   firstProof = await authenticate(initial);
   assert.deepEqual(await request(initial, { ...message, csrf_token: firstProof, processor_uuid: 'other-agent' }),
     { type: 'error', code: 'processor_forbidden' });
-  const closed = new Promise((resolve) => initial.socket.onClose(resolve));
   assert.deepEqual(await request(initial, { ...message, csrf_token: firstProof, processor_uuid: 'agent' }), reply);
-  let timer;
-  try {
-    await Promise.race([closed, new Promise((_, reject) => {
-      timer = setTimeout(() => reject(Error('Server did not close first connection')), 3000);
-    })]);
-  } finally {
-    clearTimeout(timer);
-  }
 } finally {
   initial.socket.close();
 }

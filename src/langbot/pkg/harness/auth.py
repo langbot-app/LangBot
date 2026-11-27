@@ -2,6 +2,7 @@
 
 import asyncio
 import hmac
+import secrets
 import uuid
 
 import jwt
@@ -124,7 +125,12 @@ async def authenticate_session(ap, session):
             raise ValueError('Invalid Harness authentication request')
         token = auth['token']
         if auth.get('kind') == 'oauth':
-            return await _oauth_context(ap, token, workspace_uuid)
+            context, revalidate = await _oauth_context(
+                ap, token, workspace_uuid, device_id=getattr(session, 'device_id', None),
+                binding_id=getattr(session, 'binding_id', None),
+            )
+            await _send_authenticated(session, context)
+            return context, revalidate
         if ap.instance_config.data.get('harness', {}).get('enabled') is True:
             raise ValueError('Harness OAuth authentication is required')
         account = await ap.user_service.get_authenticated_account(token)
@@ -162,8 +168,11 @@ async def authenticate_session(ap, session):
         if not isinstance(csrf, str) or not hmac.compare_digest(csrf, session.authenticated_csrf):
             raise ValueError('Harness session proof is invalid')
 
-    import secrets
+    await _send_authenticated(session, context)
+    return context, revalidate
 
+
+async def _send_authenticated(session, context):
     session.authenticated_csrf = secrets.token_urlsafe(24)
     await session.send_payload(
         {
@@ -173,5 +182,3 @@ async def authenticate_session(ap, session):
             'csrf_token': session.authenticated_csrf,
         }
     )
-
-    return context, revalidate

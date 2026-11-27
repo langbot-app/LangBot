@@ -12,7 +12,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
 from nacl.exceptions import CryptoError
 
-from ..agent.policy import can_use_processor
+from ..agent.policy import can_use_processor, list_usable_processors
 from ..api.authz import AuthorizationError, Permission, has_permission, permissions_for_role
 from ..entity.persistence.agent_run import AgentRun
 from ..platform.adapters.harness.bindings import processor_bot_uuid
@@ -202,12 +202,22 @@ class HarnessRpc:
             return await service.refresh_grant(token, binding_id=harness_id, device_id=device_id)
         if method == 'monitoring.execution.detail':
             return await self._execution_detail(harness_id, device_id, params)
-        if method in ('workspace.list', 'workspace.select'):
-            expected = {'access_token'} if method == 'workspace.list' else {'access_token', 'workspace_uuid'}
+        if method in ('workspace.list', 'workspace.select', 'processor.list'):
+            expected = {'access_token', 'workspace_uuid'} if method == 'workspace.select' else {'access_token'}
             token = params.get('access_token')
             if set(params) != expected or not isinstance(token, str) or not 0 < len(token) <= 8192:
                 raise RpcError('invalid_request')
             context, _ = await _oauth_context(self.ap, token, device_id=device_id, binding_id=harness_id)
+            if method == 'processor.list':
+                processors = []
+                if 'runtime.operate' in context.workspace.permissions:
+                    if getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime':
+                        async with self.ap.persistence_mgr.tenant_scope(context.workspace_uuid):
+                            processors = await list_usable_processors(self.ap, context)
+                    else:
+                        processors = await list_usable_processors(self.ap, context)
+                return {'workspace_uuid': context.workspace_uuid, 'account_uuid': context.account_uuid,
+                        'processors': processors}
             if 'workspace.view' not in context.workspace.permissions:
                 raise RpcError('insufficient_scope')
             if method == 'workspace.list':

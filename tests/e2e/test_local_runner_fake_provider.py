@@ -675,13 +675,16 @@ def test_harness_processor_bots_run_local_agent(
     from langbot.pkg.entity.persistence.agent import Agent
     from langbot.pkg.entity.persistence.agent_access import AgentAccessGrant
     from langbot.pkg.entity.persistence.agent_run import AgentRun
+    from langbot.pkg.entity.persistence.workspace import Workspace, WorkspaceExecutionState, WorkspaceMembership
     from langbot.pkg.harness.binding import HarnessBindings
     from langbot.pkg.platform.adapters.harness.bindings import processor_bot_uuid
+    from langbot.pkg.utils import constants
 
     transport = os.getenv('HARNESS_TS_TRANSPORT')
     if not transport:
         pytest.skip('Set HARNESS_TS_TRANSPORT to the built Harness core transport.js')
-    script = Path(__file__).with_name('harness-runner.mjs').resolve()
+    web_origin = os.getenv('HARNESS_WEB_ORIGIN')
+    script = Path(__file__).with_name('harness-runner-web.mjs' if web_origin else 'harness-runner.mjs').resolve()
     config = yaml.safe_load(local_agent_e2e_config_path.read_text(encoding='utf-8'))
     cert_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, '127.0.0.1')])
@@ -710,7 +713,7 @@ def test_harness_processor_bots_run_local_agent(
     config['harness'] = {
         'enabled': True,
         'instance_origin': f'https://127.0.0.1:{local_agent_e2e_port}',
-        'client_origin': 'https://client.example.test',
+        'client_origin': web_origin or 'https://client.example.test',
     }
 
     async def probe(ap):
@@ -720,12 +723,12 @@ def test_harness_processor_bots_run_local_agent(
         workspace = context.workspace_uuid
         await _inject_llm_model(ap)
         processors = [str(uuid.uuid4()) for _ in range(2)]
-        for processor in processors:
+        for i, processor in enumerate(processors):
             await ap.persistence_mgr.execute_async(
                 sa.insert(Agent).values(
                     uuid=processor,
                     workspace_uuid=workspace,
-                    name=processor,
+                    name=f'Runner agent {i + 1}',
                     access_mode='restricted',
                     config={
                         'runner': {'id': LOCAL_RUNNER_ID},
@@ -742,6 +745,23 @@ def test_harness_processor_bots_run_local_agent(
                     can_use=True,
                 )
             )
+        viewer_workspace = str(uuid.uuid4())
+        hidden_processor = str(uuid.uuid4())
+        await ap.persistence_mgr.execute_async(sa.insert(Workspace).values(
+            uuid=viewer_workspace, instance_uuid=constants.instance_id, name='Viewer workspace',
+            slug='viewer-workspace', source='cloud_projection',
+        ))
+        await ap.persistence_mgr.execute_async(sa.insert(WorkspaceExecutionState).values(
+            workspace_uuid=viewer_workspace, instance_uuid=constants.instance_id, source='cloud',
+        ))
+        await ap.persistence_mgr.execute_async(sa.insert(WorkspaceMembership).values(
+            workspace_uuid=viewer_workspace, account_uuid=account.uuid, role='viewer',
+        ))
+        await ap.persistence_mgr.execute_async(sa.insert(Agent).values([
+            dict(uuid=hidden_processor, name='Restricted agent', workspace_uuid=workspace, access_mode='restricted'),
+            dict(uuid=str(uuid.uuid4()), name='Viewer-only workspace agent', workspace_uuid=viewer_workspace,
+                 access_mode='all_members'),
+        ]))
         bindings = HarnessBindings(ap)
         link = await bindings.issue(
             SimpleNamespace(workspace_uuid=workspace, account_uuid=account.uuid),
@@ -761,7 +781,7 @@ def test_harness_processor_bots_run_local_agent(
         assert not await ap.bot_service.get_bots(context)
         fixture = dict(
             origin=f'https://127.0.0.1:{local_agent_e2e_port}',
-            clientOrigin='https://client.example.test',
+            clientOrigin=config['harness']['client_origin'],
             link=link['url'],
             email=email,
             password=password,
@@ -769,6 +789,8 @@ def test_harness_processor_bots_run_local_agent(
             processors=processors,
             otherWorkspace=str(uuid.uuid4()),
             other=dict(link=other_link['url'], email=other_email, password=other_password),
+            viewerWorkspace=viewer_workspace,
+            hiddenProcessor=hidden_processor,
         )
         proc = await asyncio.create_subprocess_exec(
             'node',
@@ -783,6 +805,15 @@ def test_harness_processor_bots_run_local_agent(
             if proc.returncode is None:
                 proc.kill()
                 await proc.wait()
+        if web_origin and proc.returncode == 0:
+            # The browser receives the last reply before the run is finalized.
+            for _ in range(30):
+                count = await ap.persistence_mgr.execute_async(sa.select(sa.func.count()).select_from(AgentRun).where(
+                    AgentRun.status == 'completed',
+                ))
+                if count.scalar() == 3:
+                    break
+                await asyncio.sleep(0.1)
         bots = await ap.bot_service.get_bots(context)
         runs = (await ap.persistence_mgr.execute_async(sa.select(AgentRun.__table__))).mappings().all()
         assert proc.returncode == 0, (stdout + stderr).decode() + repr(

@@ -6,6 +6,8 @@ title: Harness 绑定预览
 
 工作区所有者或管理员可通过 `POST /api/v1/harness/registration-links` 签发链接。请私下分享链接：有效期为 30 分钟，只能兑换一次。兑换仅启动注册；成功登录并通过工作区授权后才会完成绑定。
 
+在 Harness Web 中打开 **工作区与处理器**，选择有权访问的工作区，再选择 Agent 发送文字消息。列表只显示当前账号有权使用的 Agent。切换工作区会关闭当前聊天连接。
+
 向 Agent 发送第一条获准的聊天消息时，LangBot 会为该 Agent 创建专用的 Harness Bot；后续消息会复用该 Bot。如需删除已有 Harness Bot 的 Agent，请先停止向它发送消息并删除对应 Bot，再删除 Agent。
 
 Harness 聊天回复会包含供 Inspector 使用的 `execution: { source: "agent", id }` 执行引用。客户端可通过加密 HTS1 HTTP RPC 的 `monitoring.execution.detail` 读取记录，并提交访问令牌、当前工作区、处理器、会话和执行 ID。服务端会验证当前授权设备、工作区成员身份、处理器访问权限及执行归属，再返回有大小限制的详情。

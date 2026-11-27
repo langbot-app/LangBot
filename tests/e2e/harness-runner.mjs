@@ -40,6 +40,16 @@ assert.ok(login.body.access_token);
 return { rpc, keys, harnessId, deviceKid, token: login.body.access_token };
 }
 const { rpc, keys, harnessId, deviceKid, token } = await enroll(f, 'runner-check');
+const directory = (token) => rpc.request({ path: '/api/v1/harness/processors', method: 'GET',
+  auth: { kind: 'oauth', token } });
+const listed = await directory(token);
+assert.equal(listed.status, 200);
+assert.equal(listed.body.workspace_uuid, f.workspace);
+assert.deepEqual(listed.body.processors.map(p => p.id), f.processors);
+const viewer = await rpc.request({ path: '/api/v1/harness/workspaces/select', method: 'POST',
+  auth: { kind: 'oauth', token }, body: { workspace_uuid: f.viewerWorkspace } });
+assert.equal(viewer.status, 200);
+assert.deepEqual((await directory(viewer.body.access_token)).body.processors, []);
 const url = new URL('/api/v1/harness/ws', f.origin);
 url.protocol = 'wss:';
 url.search = new URLSearchParams({ harness_id: harnessId, device_kid: deviceKid });
@@ -61,9 +71,12 @@ function request(payload) {
 }
 
 try {
-  socket.send(channel.encode({ type: 'authenticate', workspace_uuid: f.workspace,
-    auth: { kind: 'oauth', token } }));
+  const authenticated = await request({ type: 'authenticate', workspace_uuid: f.workspace,
+    auth: { kind: 'oauth', token } });
+  assert.equal(authenticated.type, 'authenticated');
+  assert.equal(authenticated.workspace_uuid, f.workspace);
   const message = { type: 'message', workspace_uuid: f.workspace, conversation_id: 'runner-check', content: 'Reply through LocalAgent.' };
+  assert.equal((await request({ ...message, processor_uuid: f.hiddenProcessor })).code, 'processor_forbidden');
   assert.equal((await request({ ...message, processor_uuid: 'missing-processor' })).code, 'processor_forbidden');
   assert.equal((await request({ ...message, workspace_uuid: 'other-workspace', processor_uuid: f.processors[0] })).code, 'workspace_forbidden');
   const executions = [];
@@ -76,8 +89,6 @@ try {
     executions.push({execution_id: execution.id, processor_uuid: processor,
       workspace_uuid: f.workspace, conversation_id: message.conversation_id});
   }
-  // The reply precedes ledger finalization. Ingress reads the next frame only after dispatch returns.
-  assert.equal((await request({ ...message, processor_uuid: 'missing-processor' })).code, 'processor_forbidden');
   const detail = await rpc.getExecutionDetail(executions[0], token);
   assert.equal(detail.status, 200, JSON.stringify(detail.body));
   assert.equal(detail.body.run.run_id, executions[0].execution_id);

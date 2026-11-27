@@ -24,9 +24,14 @@ async def can_use_processor(ap, ctx: RequestContext, processor_uuid: str) -> boo
     overrides an allow grant at the same precedence level. Processors default
     to all active members for backwards compatibility.
     """
+    return bool(await list_usable_processors(ap, ctx, processor_uuid=processor_uuid))
+
+
+async def list_usable_processors(ap, ctx: RequestContext, *, processor_uuid: str | None = None) -> list[dict]:
+    """List Agent identities under the same live membership and grant policy as dispatch."""
     account_uuid = ctx.account_uuid
     if not account_uuid:
-        return False
+        return []
 
     membership_result = await ap.persistence_mgr.execute_async(
         sqlalchemy.select(persistence_workspace.WorkspaceMembership.role).where(
@@ -37,42 +42,34 @@ async def can_use_processor(ap, ctx: RequestContext, processor_uuid: str) -> boo
     )
     membership = membership_result.first()
     if membership is None:
-        return False
+        return []
 
-    agent_result = await ap.persistence_mgr.execute_async(
-        sqlalchemy.select(persistence_agent.Agent.access_mode).where(
-            persistence_agent.Agent.workspace_uuid == ctx.workspace_uuid,
-            persistence_agent.Agent.uuid == processor_uuid,
-            persistence_agent.Agent.kind == 'agent',
-        )
+    agent = persistence_agent.Agent
+    query = sqlalchemy.select(agent.uuid, agent.name, agent.access_mode).where(
+        agent.workspace_uuid == ctx.workspace_uuid, agent.kind == 'agent',
     )
-    agent = agent_result.first()
-    if agent is None:
-        return False
-    if agent.access_mode == 'all_members':
-        return True
-    if agent.access_mode != 'restricted':
-        return False
-
-    grant_result = await ap.persistence_mgr.execute_async(
-        sqlalchemy.select(
-            persistence_agent_access.AgentAccessGrant.subject_type,
-            persistence_agent_access.AgentAccessGrant.subject_id,
-            persistence_agent_access.AgentAccessGrant.can_use,
-        ).where(
-            persistence_agent_access.AgentAccessGrant.workspace_uuid == ctx.workspace_uuid,
-            persistence_agent_access.AgentAccessGrant.agent_uuid == processor_uuid,
+    if processor_uuid is not None:
+        query = query.where(agent.uuid == processor_uuid)
+    agents = (await ap.persistence_mgr.execute_async(query.order_by(agent.name, agent.uuid))).all()
+    restricted = [row.uuid for row in agents if row.access_mode == 'restricted']
+    grants = {}
+    if restricted:
+        g = persistence_agent_access.AgentAccessGrant
+        grant_query = sqlalchemy.select(g.agent_uuid, g.subject_type, g.subject_id, g.can_use).where(
+            g.workspace_uuid == ctx.workspace_uuid,
+            g.agent_uuid.in_(restricted),
             sqlalchemy.or_(
-                sqlalchemy.and_(
-                    persistence_agent_access.AgentAccessGrant.subject_type == 'account',
-                    persistence_agent_access.AgentAccessGrant.subject_id == account_uuid,
-                ),
-                sqlalchemy.and_(
-                    persistence_agent_access.AgentAccessGrant.subject_type == 'role',
-                    persistence_agent_access.AgentAccessGrant.subject_id == membership.role,
-                ),
+                sqlalchemy.and_(g.subject_type == 'account', g.subject_id == account_uuid),
+                sqlalchemy.and_(g.subject_type == 'role', g.subject_id == membership.role),
             ),
         )
-    )
-    grants = list(grant_result.all())
-    return _grant_allows(grants, account_uuid, membership.role)
+        result = await ap.persistence_mgr.execute_async(grant_query)
+        for row in result.all():
+            grants.setdefault(row.agent_uuid, []).append(row)
+
+    return [
+        {'id': row.uuid, 'label': row.name} for row in agents
+        if row.access_mode == 'all_members' or (
+            row.access_mode == 'restricted' and _grant_allows(grants.get(row.uuid, []), account_uuid, membership.role)
+        )
+    ]

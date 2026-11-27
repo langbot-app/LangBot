@@ -12,7 +12,9 @@ Migration `0064_harness_processor_bots` disables the old shared row created by `
 
 The TS and Python peers share `tests/unit_tests/harness/protocol-vectors.json` (copied byte-for-byte from Harness core commit `4cca441`; SHA-256 `c324325bfc280f9fc4bdb2e20bac78611976314c8cb769b728d15d0460f11aee`). HS1 signs the server-visible fields as `HTS1/HS1\n{v}\n{kid}\n{ts}\n{nonce_s}\n{e_h}`. HS2 signs `HTS1/HS2\n` plus the HS1 transcript and `\n{e_c}`. Three DH values are ordered ephemeral-ephemeral, client-ephemeral/server-static, client-static/server-ephemeral. Confirmation is HMAC-SHA256 over `langbot-harness-hts1 || full_transcript`. Frame sequence numbers are canonical decimal strings representing uint64; replay state advances only after successful AEAD authentication.
 
-The Runner acceptance below redeems the link and enrolls a client device over HTTPS, obtains an OAuth grant via encrypted HTTP RPC password login, and authenticates the chat channel inside HTS1 (`auth.kind: oauth`). It does not exercise browser 2FA handoff.
+The Harness-only HTTP RPC `processor.list` accepts only `access_token` and returns `{workspace_uuid, account_uuid, processors: [{id, label}]}`. The device and binding must match the token. The workspace comes from the live grant; without `runtime.operate` the list is empty. Discovery and dispatch share the live account/role Agent-grant policy. Discovery does not provision Bots and does not guarantee Runner health. This RPC does not expose Agent configuration and is not available to MCP, plugins or the Workspace assistant.
+
+The Runner acceptance below redeems the link and enrolls a client device over HTTPS, obtains an OAuth grant via encrypted HTTP RPC password login, and authenticates the chat channel inside HTS1 (`auth.kind: oauth`). The server matches the OAuth grant to the device that completed HTS1, then sends an encrypted `authenticated` frame carrying the account and workspace IDs. A turn's final reply is released after EBA dispatch completes, so closing the socket when a reply arrives does not interrupt Runner finalization. The test does not exercise browser 2FA handoff.
 
 Assistant chat replies include `{ execution: { source: 'agent', id } }` from the active Runner trace context. Inspector uses the explicit encrypted RPC method `monitoring.execution.detail` through `Hts1HttpRpcTransport.getExecutionDetail()`. Required params are `access_token`, `workspace_uuid`, `processor_uuid`, `conversation_id`, and `execution_id`; optional params are `section`, `offset`, and `limit` (maximum 50). The server revalidates grant, device and membership, checks live processor access, and matches the run to the deterministic processor Bot and the account/workspace/processor-scoped `person_` conversation before calling `MonitoringService.get_execution_detail()`. Cross-workspace requests return `workspace_forbidden`; unavailable or non-owned runs return `execution_not_found` (404) without disclosing their existence. This is deliberately not a generic Workspace API proxy.
 
@@ -24,7 +26,7 @@ From the repository root:
 uv run pytest tests/unit_tests/harness tests/unit_tests/platform/test_harness_adapter.py tests/unit_tests/agent/test_processor_policy.py tests/integration/persistence/test_migrations.py tests/unit_tests/api/service/test_bot_service.py -q
 ```
 
-With Harness `6f3cf86` checked out as a sibling, run from the LangBot root (Node.js 26):
+With the matching Harness client checked out as a sibling, run from the LangBot root (Node.js 26):
 
 ```sh
 pnpm --dir ../LangBot-Harness install --frozen-lockfile

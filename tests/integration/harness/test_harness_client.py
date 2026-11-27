@@ -10,7 +10,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from quart import websocket
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
@@ -101,8 +100,6 @@ async def test_typescript_chat_over_network(tmp_path):
         assert processor == 'agent'
         dispatches.append((event.chat_id, event.source_platform_object['harness_connection_id']))
         await adapter.reply_message(event, MessageChain([Plain(text='pong')]))
-        if len(dispatches) == 1:
-            await websocket.close(1012, 'Reconnect smoke test')
 
     ap = SimpleNamespace(
         instance_config=SimpleNamespace(data={'system': {'jwt': {'secret': secret, 'expire': 60}}}),

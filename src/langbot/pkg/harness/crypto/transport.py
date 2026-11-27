@@ -84,6 +84,8 @@ class SecureSession:
         self.send_seq = 0
         self.highest = -1
         self.seen: set[int] = set()
+        self.device_id: str | None = None
+        self.binding_id: str | None = None
 
     async def receive_payload(self):
         frame = json.loads(await self.websocket.receive())
@@ -219,7 +221,7 @@ class HarnessTransportFactory:
         if client_keys is None:
             raise ValueError('Unregistered Harness device')
         async with asyncio.timeout(30):
-            return await handshake(
+            session = await handshake(
                 websocket,
                 kid=kid,
                 server_x25519_private=server_x,
@@ -232,3 +234,6 @@ class HarnessTransportFactory:
                 ),
                 replay_guard=self.replay_guard,
             )
+        session.device_id = client_keys.get('id')
+        session.binding_id = harness_id
+        return session
