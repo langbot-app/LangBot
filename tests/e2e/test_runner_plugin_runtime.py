@@ -274,6 +274,13 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
                     @self.handler(events.PersonMessageReceived)
                     async def person(ctx):
                         self.plugin.received.append(str(ctx.event.message_chain))
+                    async def command(ctx):
+                        if ctx.event.params == ['hook-probe', ctx.event.launcher_type]:
+                            count = self.plugin.received.count(ctx.event.text_message)
+                            ctx.event.reply_message_chain = MessageChain([Plain(text=f'{ctx.event.event_name}:{count}')])
+                            ctx.prevent_default()
+                    self.handler(events.PersonCommandSent)(command)
+                    self.handler(events.GroupCommandSent)(command)
                     @self.handler(events.PersonNormalMessageReceived)
                     async def handle(ctx):
                         self.plugin.boundary_listener_hits = getattr(self.plugin, 'boundary_listener_hits', 0) + 1
@@ -714,6 +721,8 @@ def test_host_orchestrator_runs_runner_and_records_ledger(
 
 
 def test_http_bot_plugin_lifecycle(runner_client, runner_e2e_tmpdir):
+    from tools.regression.http_bot import signed_headers
+
     client = runner_client
     token = _init_and_auth(client)
     _ensure_qa_plugin(client, token, runner_e2e_tmpdir / 'agent-runner-qa.zip')
@@ -757,7 +766,7 @@ def test_http_bot_plugin_lifecycle(runner_client, runner_e2e_tmpdir):
                 'adapter': 'http_bot',
                 'name': 'Plugin lifecycle QA',
                 'enable': True,
-                'adapter_config': {'signature_required': False, 'callback_timeout': 2},
+                'adapter_config': {'signature_required': True, 'inbound_secret': 'qa-sign', 'callback_timeout': 2},
                 'event_bindings': [
                     route('discard', '', 'discard-probe', 4, {}),
                     route('pipeline', pipeline, 'disabled', 3, {}),
@@ -775,10 +784,14 @@ def test_http_bot_plugin_lifecycle(runner_client, runner_e2e_tmpdir):
     )['uuid']
 
     def send(text, kind='person'):
+        body = json.dumps(
+            {'session_id': 'lifecycle', 'session_type': kind, 'message': [{'type': 'Plain', 'text': text}]}
+        ).encode()
         reply = data(
             client.post(
                 f'/bots/{bot}/sync',
-                json={'session_id': 'lifecycle', 'session_type': kind, 'message': [{'type': 'Plain', 'text': text}]},
+                content=body,
+                headers=signed_headers(body, 'qa-sign'),
             )
         )
         return [item['text'] for item in reply['message'] if item.get('type') == 'Plain']
@@ -825,6 +838,9 @@ def test_http_bot_plugin_lifecycle(runner_client, runner_e2e_tmpdir):
                     assert reply == []
                 else:
                     assert reply in (['Permission denied'], ['没有执行此操作的权限'])
+
+    for kind, hook in [('person', 'PersonCommandSent'), ('group', 'GroupCommandSent')]:
+        assert send('/whoami hook-probe ' + kind, kind) == [hook + ':1']
 
 
 @pytest.mark.parametrize('kind', ['person', 'group'])

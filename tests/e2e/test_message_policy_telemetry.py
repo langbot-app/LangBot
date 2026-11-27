@@ -53,6 +53,7 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
             collect_coverage=False,
             cli_args=['--standalone-runtime'],
             telemetry_port=receiver.server_port if enabled else None,
+            env_overrides={'LANGBOT_TELEMETRY_HEARTBEAT_SECONDS': '30'},
         )
         try:
             assert proc.start()
@@ -82,7 +83,7 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
                 if enabled:
                     _check_route_access_policy(client, token, bot, tmp_path)
                     runtime._ensure_qa_plugin(client, token, tmp_path / 'agent-runner-qa.zip')
-                    agent_events = _check_agent_ingress(client, token, bot, tmp_path)
+                    agent_events, completed_events = _check_agent_ingress(client, token, bot, tmp_path)
                 else:
                     unavailable = client.post(
                         '/api/v1/agents',
@@ -102,7 +103,12 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
                 while time.monotonic() < deadline:
                     if any(payload.get('event_type') == 'instance_heartbeat' for payload in received) and (
                         not enabled
-                        or (_access_layers(received) == {'bot', 'route'} and agent_events <= _agent_drops(received))
+                        or (
+                            _access_layers(received) == {'bot', 'route'}
+                            and agent_events <= _agent_drops(received)
+                            and completed_events <= _successful_runs(received)
+                            and _long_text_usage(received) >= 2
+                        )
                     ):
                         break
                     time.sleep(0.25)
@@ -124,6 +130,8 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
     assert features['commands_disabled_bots'] == 0
     assert _access_layers(received) == {'bot', 'route'}
     assert agent_events <= _agent_drops(received)
+    assert completed_events <= _successful_runs(received)
+    assert _long_text_usage(received) == 2
     assert not any(
         node.get('family') == 'runner' and node.get('event_id') in agent_events
         for payload in received
@@ -158,6 +166,26 @@ def _agent_drops(received):
     }
 
 
+def _successful_runs(received):
+    return {
+        node['event_id']
+        for payload in received
+        for node in payload.get('records', [])
+        if (node.get('family'), node.get('operation'), node.get('mode'), node.get('outcome'))
+        == ('runner', 'execute', 'agent', 'success')
+    }
+
+
+def _long_text_usage(received):
+    return sum(
+        count
+        for payload in received
+        if payload.get('event_type') == 'instance_heartbeat'
+        for metric, dims, count in payload['features']['usage']['c']
+        if metric == 'output.transform' and dims == {'kind': 'long_text'}
+    )
+
+
 def _check_agent_ingress(client, token, bot, tmp_path):
     headers = {'Authorization': 'Bearer ' + token}
     agent = client.post(
@@ -182,13 +210,20 @@ def _check_agent_ingress(client, token, bot, tmp_path):
                     'event_pattern': 'message.received',
                     'target_type': 'agent',
                     'target_uuid': target,
-                    'policy': {'trigger': {'ignore-rules': {'prefix': ['ignored:']}}},
+                    'policy': {
+                        'trigger': {'ignore-rules': {'prefix': ['ignored:']}},
+                        'output': {
+                            'long-text-processing': {'threshold': 8, 'strategy': 'forward'},
+                            'misc': {'at-sender': False},
+                        },
+                    },
                 }
             ],
         },
     ).json()
     assert updated['code'] == 0, updated
     event_ids = set()
+    completed_events = set()
     for kind in ('person', 'group'):
         body = json.dumps(
             {'session_type': kind, 'session_id': 'agent', 'message': [{'type': 'Plain', 'text': 'ignored: QA'}]}
@@ -210,7 +245,27 @@ def _check_agent_ingress(client, token, bot, tmp_path):
             route['policy_layer'],
         ) == ('ignored', 'agent', target, 'ignore-rules', 'route'), metadata
         event_ids.add(event_id)
-    return event_ids
+        text = f'accepted {kind}'
+        body = json.dumps(
+            {'session_type': kind, 'session_id': 'agent', 'message': [{'type': 'Plain', 'text': text}]}
+        ).encode()
+        reply = client.post('/bots/' + bot + '/sync', content=body, headers=signed_headers(body, 'qa-signer')).json()
+        assert reply['code'] == 0, reply
+        (part,) = reply['data']['message']
+        assert part['type'] == 'Forward' and f'e2e echo: {text}' in str(part), part
+        event_id = f'platform:{bot}:{reply["data"]["reply_to"]}'
+        with closing(sqlite3.connect(tmp_path / 'data/langbot.db')) as db:
+            row = db.execute(
+                'SELECT metadata_json FROM event_log WHERE bot_id=? AND event_id=?', (bot, event_id)
+            ).fetchone()
+        metadata = json.loads(row[0])
+        (route,) = metadata['routes']
+        assert (route['target_uuid'], route['target_type'], route['status']) == (target, 'agent', 'delivered'), metadata
+        assert {'kind': 'long_text', 'strategy': 'forward'} in [
+            action for event in metadata['policy_events'] for action in event.get('actions', [])
+        ]
+        completed_events.add(event_id)
+    return event_ids, completed_events
 
 
 def _check_route_access_policy(client, token, bot, tmp_path):
