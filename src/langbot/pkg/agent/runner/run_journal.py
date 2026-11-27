@@ -205,13 +205,14 @@ class AgentRunJournal:
         metadata: dict[str, typing.Any] | None = None,
     ) -> dict[str, typing.Any] | None:
         """Finalize or update the Host-owned run ledger record."""
-        return await self._get_run_ledger_store().finalize_run(
+        updated = await self._get_run_ledger_store().finalize_run(
             run_id=run_id,
             status=status,
             status_reason=status_reason,
             usage=usage,
             metadata=metadata,
         )
+        return updated
 
     async def get_run(self, run_id: str) -> dict[str, typing.Any] | None:
         """Return the persisted run ledger record."""

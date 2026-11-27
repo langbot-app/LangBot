@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import yaml
 
-from tools.entrypoints.regression_ci import SUITE_BUDGETS, main, mixed_scenarios, suite_profile
+from tools.entrypoints.regression_ci import SUITE_BUDGETS, _remove_box_container, main, mixed_scenarios, suite_profile
 from tools.entrypoints.regression_suite import validate
 
 
@@ -27,6 +27,12 @@ class PipelinePermissionProfileTests(unittest.TestCase):
 
 
 class CIProfileTest(unittest.TestCase):
+    def test_box_cleanup_is_bounded(self):
+        with patch('tools.entrypoints.regression_ci.subprocess.run') as cleanup_run:
+            cleanup_run.side_effect = subprocess.TimeoutExpired(['docker', 'rm', '-f', 'box'], 15)
+            self.assertEqual(_remove_box_container('box'), 'timed out removing container')
+            self.assertEqual(cleanup_run.call_count, 2)
+
     def test_endurance_load_settings_preserve_business_resources_and_oracles(self):
         original, _ = suite_profile('endurance', 'original')
         settings = {

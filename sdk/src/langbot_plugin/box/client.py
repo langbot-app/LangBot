@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import uuid
 import logging
+import time
 from typing import Any
 
 from langbot_plugin.runtime.io.handler import Handler
@@ -237,7 +238,8 @@ class ActionRPCBoxClient(BoxRuntimeClient):
                 if key not in {"artifact_mounts", "local_mounts"} or value
             }
         try:
-            return await self.handler.call_action(
+            rpc_started = time.perf_counter()
+            result = await self.handler.call_action(
                 action,
                 data,
                 timeout=timeout,
@@ -250,6 +252,13 @@ class ActionRPCBoxClient(BoxRuntimeClient):
                     LangBotToBoxAction.PREPARE_ARTIFACT,
                 },
             )
+            if action == LangBotToBoxAction.EXEC:
+                self._logger.info(
+                    "box_rpc_timing action=EXEC "
+                    f"session_id={data.get('session_id', '')} "
+                    f"rpc_ms={(time.perf_counter() - rpc_started) * 1000:.3f}"
+                )
+            return result
         except BoxRuntimeUnavailableError:
             raise
         except Exception as exc:

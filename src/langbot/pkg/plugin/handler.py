@@ -1781,15 +1781,6 @@ class RuntimeConnectionHandler(handler.Handler):
                 if error:
                     return error
 
-            if not await self._resource_exists(
-                persistence_model.LLMModel,
-                persistence_model.LLMModel.uuid,
-                llm_model_uuid,
-                action_context.workspace_uuid,
-            ):
-                return handler.ActionResponse.error(
-                    message=f'LLM model with llm_model_uuid {llm_model_uuid} not found',
-                )
             try:
                 llm_model = await self.ap.model_mgr.get_model_by_uuid(
                     self._execution_context(action_context),
@@ -1865,15 +1856,6 @@ class RuntimeConnectionHandler(handler.Handler):
                 if error:
                     return error
 
-            if not await self._resource_exists(
-                persistence_model.LLMModel,
-                persistence_model.LLMModel.uuid,
-                llm_model_uuid,
-                action_context.workspace_uuid,
-            ):
-                return handler.ActionResponse.error(
-                    message=f'LLM model with llm_model_uuid {llm_model_uuid} not found',
-                )
             try:
                 execution_context = self._execution_context(action_context)
                 llm_model = await self.ap.model_mgr.get_model_by_uuid(
@@ -1969,16 +1951,6 @@ class RuntimeConnectionHandler(handler.Handler):
                     yield error
                     return
 
-            if not await self._resource_exists(
-                persistence_model.LLMModel,
-                persistence_model.LLMModel.uuid,
-                llm_model_uuid,
-                action_context.workspace_uuid,
-            ):
-                yield handler.ActionResponse.error(
-                    message=f'LLM model with llm_model_uuid {llm_model_uuid} not found',
-                )
-                return
             try:
                 execution_context = self._execution_context(action_context)
                 llm_model = await self.ap.model_mgr.get_model_by_uuid(
