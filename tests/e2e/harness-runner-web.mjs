@@ -19,8 +19,14 @@ try {
   let closed;
   const closedSocket = new Promise(resolve => { closed = resolve; });
   let sockets = 0;
+  const socketUrls = [];
+  const harnessRequests = [];
+  page.on('request', request => {
+    if (new URL(request.url()).pathname.startsWith('/api/v1/harness/')) harnessRequests.push(request);
+  });
   await page.routeWebSocket('**/api/v1/harness/ws?**', route => {
     sockets++;
+    socketUrls.push(new URL(route.url()));
     const server = route.connectToServer();
     if (!hold) return;
     route.onClose(() => { server.close(); closed(); });
@@ -117,4 +123,29 @@ try {
   await send('Back in the original workspace on a new connection.');
   await transcript.getByText('Fake LLM response', { exact: true }).nth(2).waitFor();
   assert.equal(sockets, 5);
+  if (f.relayOrigin) {
+    assert.ok(socketUrls.every(url => `https://${url.host}` === f.relayOrigin));
+    const rpcPaths = new Set();
+    const enrollmentPaths = new Set();
+    for (const request of harnessRequests) {
+      const { origin, pathname } = new URL(request.url());
+      if (pathname === '/api/v1/harness/rpc' || pathname === '/api/v1/harness/rpc/handshake') {
+        assert.equal(origin, f.relayOrigin);
+        rpcPaths.add(pathname);
+        if (pathname.endsWith('/rpc')) {
+          const frame = request.postDataJSON();
+          assert.ok(frame.frame.box);
+          assert.deepEqual(Object.keys(frame).sort(), ['device_kid', 'frame', 'harness_id', 'hs2', 'nonce_s', 'pinned_kid', 'v']);
+          // Do not log the body even if an unexpected plaintext field appears.
+          assert.ok(!request.postData().includes(f.password));
+        }
+      } else {
+        assert.equal(origin, f.origin);
+        enrollmentPaths.add(pathname);
+      }
+    }
+    assert.equal(rpcPaths.size, 2);
+    assert.ok(enrollmentPaths.has('/api/v1/harness/register'));
+    assert.ok([...enrollmentPaths].some(path => path.endsWith('/devices')));
+  }
 } finally { await browser.close(); }

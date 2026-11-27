@@ -288,7 +288,8 @@ def local_agent_e2e_tmpdir():
 @pytest.fixture(scope='session')
 def local_agent_e2e_port() -> int:
     """HTTP port for the real LangBot app used by this E2E."""
-    return _free_port()
+    port = os.getenv('HARNESS_E2E_INSTANCE_PORT')
+    return int(port) if port else _free_port()
 
 
 @pytest.fixture(scope='session')
@@ -792,6 +793,25 @@ def test_harness_processor_bots_run_local_agent(
             viewerWorkspace=viewer_workspace,
             hiddenProcessor=hidden_processor,
         )
+        relay_proc = None
+        if web_origin and os.getenv('HARNESS_E2E_RELAY_SERVER'):
+            relay_port = int(os.environ['HARNESS_E2E_RELAY_PORT'])
+            fixture['relayOrigin'] = f'https://127.0.0.1:{relay_port}'
+            relay_proc = await asyncio.create_subprocess_exec(
+                shutil.which('node') or 'node', '--experimental-strip-types', os.environ['HARNESS_E2E_RELAY_SERVER'],
+                '--upstream', fixture['origin'], '--allow-origin', fixture['clientOrigin'],
+                '--tls-cert', str(cert_path), '--tls-key', str(key_path), '--host', '127.0.0.1', '--port', str(relay_port),
+                env={**os.environ, 'NODE_EXTRA_CA_CERTS': str(cert_path)},
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                if not (await asyncio.wait_for(relay_proc.stdout.readline(), 5)).startswith(b'Harness relay listening '):
+                    raise RuntimeError('relay exited before listening')
+            except Exception as exc:
+                if relay_proc.returncode is None:
+                    relay_proc.kill()
+                _, error = await relay_proc.communicate()
+                raise AssertionError(f'Harness relay failed to start: {error.decode()}') from exc
         proc = await asyncio.create_subprocess_exec(
             'node',
             str(script),
@@ -805,6 +825,9 @@ def test_harness_processor_bots_run_local_agent(
             if proc.returncode is None:
                 proc.kill()
                 await proc.wait()
+            if relay_proc is not None and relay_proc.returncode is None:
+                relay_proc.terminate()
+                await relay_proc.wait()
         if web_origin and proc.returncode == 0:
             # The browser receives the last reply before the run is finalized.
             for _ in range(30):
