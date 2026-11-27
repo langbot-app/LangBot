@@ -3953,7 +3953,8 @@ const enUS = {
         notReached: 'Not run',
         hookBy: 'Plugin {{plugin}} intercepted the message in {{hook}}',
         noHook: 'No plugin intercepted it',
-        earlyHookOnly: 'MessageReceived ran and did not intercept; later hooks did not run',
+        earlyHookOnly:
+          'MessageReceived ran and did not intercept; later hooks did not run',
         denied: '/{{name}} denied: not permitted ({{reply}})',
         deniedNotice: 'replied with a notice',
         deniedSilent: 'no reply',

@@ -3968,7 +3968,8 @@ const jaJP = {
         hookBy:
           'プラグイン {{plugin}} が {{hook}} でメッセージを横取りしました',
         noHook: 'プラグインによる横取りなし',
-        earlyHookOnly: 'MessageReceived は実行済みで横取りなし。以降のフックは未実行',
+        earlyHookOnly:
+          'MessageReceived は実行済みで横取りなし。以降のフックは未実行',
         denied: '/{{name}} は権限不足で拒否（{{reply}}）',
         deniedNotice: '権限なしを返信',
         deniedSilent: '返信しない',

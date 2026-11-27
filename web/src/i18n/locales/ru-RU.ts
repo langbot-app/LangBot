@@ -3970,7 +3970,8 @@ const ruRU = {
         notReached: 'Не выполнялось',
         hookBy: 'Плагин {{plugin}} перехватил сообщение в {{hook}}',
         noHook: 'Плагины не перехватывали',
-        earlyHookOnly: 'MessageReceived выполнен без перехвата; последующие хуки не запускались',
+        earlyHookOnly:
+          'MessageReceived выполнен без перехвата; последующие хуки не запускались',
         denied: '/{{name}} отклонена: нет прав ({{reply}})',
         deniedNotice: 'отправлено уведомление',
         deniedSilent: 'без ответа',
