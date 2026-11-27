@@ -147,6 +147,8 @@ async def execute_builtin(bot, event, adapter, name, text, query, session, is_ad
             )
         return t('Regenerating reply') if name == 'retry' else t('Last turn removed')
     if name == 'stop' and (pipeline or binding):
+        if pipeline and not runner_id:
+            return t('No active reply')
         if binding:
             stopped = await ap.agent_run_orchestrator.cancel_active_from_event(envelope, runner_id, is_admin)
         else:

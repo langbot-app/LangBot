@@ -1,4 +1,5 @@
 import json
+from collections import Counter
 import sqlite3
 from contextlib import ExitStack, closing, contextmanager
 import threading
@@ -16,6 +17,15 @@ from tools.regression.http_bot import signed_headers
 @pytest.mark.e2e
 @pytest.mark.parametrize('enabled', [True, False])
 def test_command_telemetry_at_local_receiver(tmp_path, enabled):
+    _run_at_local_receiver(tmp_path, enabled)
+
+
+@pytest.mark.e2e
+def test_builtin_permissions_at_local_receiver(tmp_path):
+    _run_at_local_receiver(tmp_path, True, permission_matrix=True)
+
+
+def _run_at_local_receiver(tmp_path, enabled, *, permission_matrix=False):
     received = []
 
     class Receiver(BaseHTTPRequestHandler):
@@ -71,6 +81,9 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
                 ).json()
                 assert created['code'] == 0, created
                 bot = created['data']['uuid']
+                if permission_matrix:
+                    _check_builtin_permissions(client, token, bot, received)
+                    return
                 for command in ('/whoami', '/status'):
                     body = json.dumps(
                         {'session_type': 'person', 'session_id': 'qa', 'message': [{'type': 'Plain', 'text': command}]}
@@ -163,6 +176,113 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
         if metric == 'command.run' and count >= 1
     }
     assert outcomes == {('whoami', 'ok'), ('status', 'denied'), ('whoami', 'intercepted')}
+
+
+def _check_builtin_permissions(client, token, bot, received):
+    headers = {'Authorization': 'Bearer ' + token}
+    url = '/api/v1/platform/bots/' + bot
+
+    def api(method, path, **kwargs):
+        result = client.request(method, path, headers=headers, **kwargs).json()
+        assert result['code'] == 0, result
+        return result['data']
+
+    public = {'help', 'new', 'stop', 'retry', 'undo', 'whoami'}
+    restricted = {'status', 'usage', 'model', 'tools', 'plugins', 'version'}
+    catalog = api('GET', '/api/v1/platform/bots/_/builtin-commands')['commands']
+    assert {entry['name'] for entry in catalog} == public | restricted
+    api('POST', url + '/admins', json={'launcher_type': 'person', 'launcher_id': 'admin'})
+    api('PUT', '/api/v1/workspaces/current/language', json={'language': 'en_US'})
+    chat = api('POST', '/api/v1/pipelines', json={'name': 'Permission matrix Chat'})['uuid']
+    api(
+        'PUT',
+        url,
+        json={
+            'event_bindings': [
+                {'id': 'chat', 'event_pattern': 'message.received', 'target_type': 'pipeline', 'target_uuid': chat}
+            ]
+        },
+    )
+    expected = {}
+    for mode in ('silent', 'notice'):
+        api(
+            'PUT',
+            url,
+            json={
+                'command_settings': {'denied_reply': mode, 'builtin': {'model': {'enabled': True}}},
+                'message_policy': {
+                    'plugins': {'enable_all': False, 'plugins': []},
+                    'trigger': {'group-respond-rules': {'enabled': False}},
+                    'safety': {'rate-limit': {'enabled': False}},
+                    'output': {'misc': {'at-sender': False}},
+                },
+            },
+        )
+        for kind in ('person', 'group'):
+            for sender in ('user', 'admin'):
+                for name in sorted(public | restricted):
+                    denied = sender != 'admin' and name in restricted
+                    body = json.dumps(
+                        {
+                            'session_type': kind,
+                            'session_id': sender if kind == 'person' else 'qa-group',
+                            'sender': {'id': sender},
+                            'message': [{'type': 'Plain', 'text': '/' + name}],
+                        }
+                    ).encode()
+                    result = client.post(
+                        f'/bots/{bot}/sync', content=body, headers=signed_headers(body, 'qa-signer')
+                    ).json()
+                    assert result['code'] == 0, result
+                    parts = result['data']['message']
+                    if denied:
+                        assert parts == (
+                            [] if mode == 'silent' else [{'type': 'Plain', 'text': 'Permission denied'}]
+                        ), (mode, kind, sender, name, parts)
+                    elif name == 'stop':
+                        assert parts == [{'type': 'Plain', 'text': 'No active reply'}], parts
+                    else:
+                        assert parts and parts[0]['text'] and parts[0]['text'] != 'Permission denied', (
+                            kind,
+                            sender,
+                            name,
+                            parts,
+                        )
+                    event_id = f'platform:{bot}:{result["data"]["reply_to"]}'
+                    row = api('GET', '/api/v1/monitoring/executions/event/' + event_id)['row']
+                    assert (
+                        row['event_id'],
+                        row['status'],
+                        row['handling'],
+                        row['command_kind'],
+                        row['command_name'],
+                        row['command_denied'],
+                    ) == (
+                        event_id,
+                        'denied' if denied and mode == 'notice' else 'completed',
+                        'command',
+                        'builtin',
+                        name,
+                        denied,
+                    ), row
+                    expected[event_id] = (name, 'denied' if denied else 'ok')
+    assert len(expected) == 96
+    deadline = time.monotonic() + 75
+    while True:
+        nodes = [node for batch in received for node in batch.get('records', []) if node.get('event_id') in expected]
+        commands = [(n['event_id'], n['operation'], n['outcome']) for n in nodes if n.get('family') == 'command']
+        counts = Counter()
+        for batch in received:
+            if batch.get('event_type') == 'instance_heartbeat':
+                for metric, dims, count in batch['features']['usage']['c']:
+                    if metric == 'command.run':
+                        counts[dims['name'], dims['outcome']] += count
+        if (len(commands) >= len(expected) and counts.total() >= len(expected)) or time.monotonic() >= deadline:
+            break
+        time.sleep(0.25)
+    assert Counter(commands) == Counter((eid, 'builtin:' + name, outcome) for eid, (name, outcome) in expected.items())
+    assert counts == Counter(expected.values())
+    assert not any(node.get('family') == 'runner' for node in nodes)
 
 
 def _access_layers(received):
