@@ -265,8 +265,12 @@ class ChatMessageHandler(handler.MessageHandler):
                 error_info = f'{traceback.format_exc()}'
                 self.ap.logger.error(f'Conversation({query.query_id}) Request Failed: {error_info}')
 
-                # Handle specific runner errors with appropriate messages
-                if isinstance(e, RunnerNotFoundError):
+                strategy = query.pipeline_config['output']['misc'].get('exception-handling', 'show-hint')
+                if strategy == 'hide':
+                    user_notice = None
+                elif strategy == 'show-error':
+                    user_notice = str(e)
+                elif isinstance(e, RunnerNotFoundError):
                     user_notice = pipeline_notice(
                         query,
                         'runner-not-found-hint',
@@ -286,15 +290,7 @@ class ChatMessageHandler(handler.MessageHandler):
                     else:
                         user_notice = pipeline_notice(query, 'failure-hint', 'Agent runner execution failed.')
                 else:
-                    # Use existing exception handling
-                    exception_handling = query.pipeline_config['output']['misc'].get('exception-handling', 'show-hint')
-
-                    if exception_handling == 'show-error':
-                        user_notice = f'{e}'
-                    elif exception_handling == 'show-hint':
-                        user_notice = pipeline_notice(query, 'failure-hint', 'Request failed.')
-                    else:  # hide
-                        user_notice = None
+                    user_notice = pipeline_notice(query, 'failure-hint', 'Request failed.')
 
                 yield entities.StageProcessResult(
                     result_type=entities.ResultType.INTERRUPT,

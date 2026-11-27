@@ -172,11 +172,16 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
             class DefaultRunner(Runner):
                 async def run(self, ctx: RunnerContext) -> AsyncGenerator[RunnerResult, None]:
                     text = ctx.input.to_text()
+                    if text == 'error-policy-probe':
+                        yield RunnerResult.run_failed(ctx.run_id, 'QA runner failure')
+                        return
                     if text == 'stream-policy-probe':
+                        self.plugin.stream_rewrite_attempted = False
                         await ctx.call_tool('platform_send_message', {'target_type': 'group', 'target_id': 'qa-notifications', 'text': 'proactive text'})
                         async with ctx.reply_stream() as stream:
                             await stream.update('first')
                             await stream.update('first and last')
+                        assert self.plugin.stream_rewrite_attempted
                         yield RunnerResult.run_completed(ctx.run_id, finish_reason='stop')
                         return
                     if text == 'hello from orchestrator e2e':
@@ -291,6 +296,10 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
                             ctx.event.user_message_alter = 'updated input'
                     @self.handler(events.NormalMessageResponded)
                     async def responded(ctx):
+                        if ctx.event.response_text == 'first and last':
+                            ctx.event.reply_message_chain = MessageChain([Plain(text='replacement from observer')])
+                            ctx.prevent_default()
+                            self.plugin.stream_rewrite_attempted = True
                         if ctx.event.response_text == 'e2e echo: agent-probe replace-output':
                             ctx.event.reply_message_chain = MessageChain([Plain(text='updated output')])
                     @self.handler(events.GroupMessageReceived)
@@ -1271,6 +1280,57 @@ def test_agent_stream_policy_callbacks(runner_client, runner_e2e_tmpdir, kind):
         ]
         for chunk in chunks:
             assert [part['type'] for part in chunk['message']] == (['At', 'Plain'] if kind == 'group' else ['Plain'])
+        deadline = time.monotonic() + 15
+        while True:
+            runs = client.get(f'/api/v1/agents/{agent}/runs', headers=headers).json()['data']['items']
+            if runs and runs[0]['status'] == 'completed':
+                break
+            assert time.monotonic() < deadline, runs
+            time.sleep(0.1)
+
+
+def test_chat_runner_failure_policy(runner_client, runner_e2e_tmpdir):
+    from tools.regression.http_bot import signed_headers
+
+    client = runner_client
+    token = _init_and_auth(client)
+    _ensure_qa_plugin(client, token, runner_e2e_tmpdir / 'agent-runner-qa.zip')
+    chat = _create_boundary_pipeline(client, token)
+    for mode in ('show-hint', 'show-error', 'hide'):
+        created = client.post(
+            '/api/v1/platform/bots',
+            headers={'Authorization': 'Bearer ' + token},
+            json={
+                'name': mode,
+                'adapter': 'http_bot',
+                'enable': True,
+                'adapter_config': {'signature_required': True, 'inbound_secret': 'qa-sign', 'callback_timeout': 2},
+                'message_policy': {
+                    'trigger': {'group-respond-rules': {'enabled': False}},
+                    'output': {
+                        'misc': {'exception-handling': mode, 'failure-hint': 'Custom QA hint', 'at-sender': False}
+                    },
+                },
+                'event_bindings': [
+                    {'id': 'chat', 'event_pattern': 'message.received', 'target_type': 'pipeline', 'target_uuid': chat}
+                ],
+            },
+        ).json()
+        assert created['code'] == 0, created
+        bot = created['data']['uuid']
+        for kind in ('person', 'group'):
+            body = json.dumps(
+                {'session_type': kind, 'session_id': mode, 'message': [{'type': 'Plain', 'text': 'error-policy-probe'}]}
+            ).encode()
+            reply = client.post(f'/bots/{bot}/sync', headers=signed_headers(body, 'qa-sign'), content=body).json()
+            assert reply['code'] == 0, reply
+            parts = reply['data']['message']
+            if mode == 'hide':
+                assert not parts, parts
+            elif mode == 'show-error':
+                assert 'QA runner failure' in parts[0]['text'], parts
+            else:
+                assert [part['text'] for part in parts] == ['Custom QA hint'], parts
 
 
 def test_http_agent_message_policy(runner_client, runner_e2e_tmpdir):
