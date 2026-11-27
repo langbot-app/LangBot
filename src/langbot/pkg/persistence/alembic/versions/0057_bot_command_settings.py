@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = '0057_bot_command_settings'
-down_revision = '0056_daily_usage_quota_warning'
+down_revision = '0057_agent_event_index'
 branch_labels = None
 depends_on = None
 
