@@ -214,6 +214,7 @@ class HarnessOAuthService:
     async def refresh_grant(self, refresh_token: str) -> dict:
         now = int(time.time())
         token_hash = _hash(refresh_token)
+        reused = False
         async with self.engine.begin() as conn:
             row = (
                 (
@@ -245,45 +246,49 @@ class HarnessOAuthService:
                     .where(HarnessOAuthGrant.id == row['id'])
                     .values(revoked_at=now)
                 )
-                raise ValueError('refresh_token_reuse')
-            binding = await conn.scalar(
-                sa.select(HarnessBinding.id).where(
-                    HarnessBinding.id == row['binding_id'],
-                    HarnessBinding.instance_uuid == self.instance_uuid,
-                    HarnessBinding.revoked_at.is_(None),
+                reused = True
+            else:
+                binding = await conn.scalar(
+                    sa.select(HarnessBinding.id).where(
+                        HarnessBinding.id == row['binding_id'],
+                        HarnessBinding.instance_uuid == self.instance_uuid,
+                        HarnessBinding.revoked_at.is_(None),
+                    )
                 )
-            )
-            device = await conn.scalar(
-                sa.select(HarnessDevice.id).where(
-                    HarnessDevice.id == row['device_id'],
-                    HarnessDevice.revoked_at.is_(None),
+                device = await conn.scalar(
+                    sa.select(HarnessDevice.id).where(
+                        HarnessDevice.id == row['device_id'],
+                        HarnessDevice.revoked_at.is_(None),
+                    )
                 )
-            )
-            if binding is None or device is None:
-                raise ValueError('invalid_grant')
-            account = await self.ap.user_service.get_user_by_uuid(row['account_uuid'])
-            if account is None:
-                raise ValueError('invalid_grant')
-            access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
-                row['account_uuid'], row['workspace_uuid']
-            )
-            allowed = set(permissions_for_role(access.membership.role))
-            scopes = [scope for scope in row['scope'].split() if SCOPE_PERMISSIONS.get(scope) in allowed]
-            if not scopes:
-                raise ValueError('insufficient_scope')
-            new_refresh = 'hr_' + secrets.token_urlsafe(48)
-            await conn.execute(
-                HarnessOAuthGrant.__table__.update()
-                .where(HarnessOAuthGrant.id == row['id'])
-                .values(
-                    refresh_token_hash=_hash(new_refresh),
-                    previous_refresh_token_hash=token_hash,
-                    refresh_generation=row['refresh_generation'] + 1,
-                    scope=' '.join(scopes),
+                if binding is None or device is None:
+                    raise ValueError('invalid_grant')
+                account = await self.ap.user_service.get_user_by_uuid(row['account_uuid'])
+                if account is None:
+                    raise ValueError('invalid_grant')
+                access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
+                    row['account_uuid'], row['workspace_uuid']
                 )
-            )
-            row = dict(row)
-            row['scope'] = ' '.join(scopes)
+                allowed = set(permissions_for_role(access.membership.role))
+                scopes = [scope for scope in row['scope'].split() if SCOPE_PERMISSIONS.get(scope) in allowed]
+                if not scopes:
+                    raise ValueError('insufficient_scope')
+                new_refresh = 'hr_' + secrets.token_urlsafe(48)
+                await conn.execute(
+                    HarnessOAuthGrant.__table__.update()
+                    .where(HarnessOAuthGrant.id == row['id'])
+                    .values(
+                        refresh_token_hash=_hash(new_refresh),
+                        previous_refresh_token_hash=token_hash,
+                        refresh_generation=row['refresh_generation'] + 1,
+                        scope=' '.join(scopes),
+                    )
+                )
+                row = dict(row)
+                row['scope'] = ' '.join(scopes)
+        if reused:
+            # Raise only after the transaction commits the revocation.
+            raise ValueError('refresh_token_reuse')
         return await self._mint_from_grant(row, new_refresh)
 
     async def _mint_from_grant(self, row, refresh):
