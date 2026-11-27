@@ -1527,6 +1527,80 @@ def _create_boundary_pipeline(client, token):
     return pipeline_id
 
 
+def test_dashboard_chat_uses_neutral_policy(runner_client, runner_e2e_tmpdir):
+    from websockets.sync.client import connect
+
+    from tools.regression.http_bot import signed_headers
+
+    client = runner_client
+    token = _init_and_auth(client)
+    _ensure_qa_plugin(client, token, runner_e2e_tmpdir / 'agent-runner-qa.zip')
+    pipeline = _create_boundary_pipeline(client, token)
+    created = client.post(
+        '/api/v1/platform/bots',
+        headers={'Authorization': f'Bearer {token}'},
+        json={
+            'name': 'Debug policy comparison',
+            'adapter': 'http_bot',
+            'enable': True,
+            'adapter_config': {'signature_required': True, 'inbound_secret': 'qa-sign', 'callback_timeout': 3},
+            'event_bindings': [
+                {'id': 'chat', 'event_pattern': 'message.received', 'target_type': 'pipeline', 'target_uuid': pipeline}
+            ],
+            'message_policy': {
+                'trigger': {'group-respond-rules': {'enabled': False}, 'ignore-rules': {'prefix': ['ignored:']}},
+                'output': {
+                    'long-text-processing': {'strategy': 'forward', 'threshold': 8},
+                    'misc': {'at-sender': False, 'quote-origin': True},
+                },
+            },
+        },
+    ).json()
+    assert created['code'] == 0, created
+    bot = created['data']['uuid']
+    with contextlib.closing(sqlite3.connect(runner_e2e_tmpdir / 'data/langbot.db')) as db:
+        (workspace,) = db.execute('SELECT workspace_uuid FROM bots WHERE uuid=?', (bot,)).fetchone()
+        for kind in ('person', 'group'):
+            uri = f'ws://127.0.0.1:{client.base_url.port}/api/v1/pipelines/{pipeline}/ws/connect?session_type={kind}'
+            with connect(uri, origin=str(client.base_url).rstrip('/'), proxy=None) as dashboard:
+                dashboard.send(json.dumps({'type': 'authenticate', 'token': token, 'workspace_uuid': workspace}))
+                assert json.loads(dashboard.recv(timeout=10))['type'] == 'connected'
+                for text in [f'ignored: {kind}', f'normal {kind}']:
+                    chain = [{'type': 'Plain', 'text': text}]
+                    body = json.dumps({'session_type': kind, 'session_id': 'policy', 'message': chain}).encode()
+                    reply = client.post(
+                        f'/bots/{bot}/sync', headers=signed_headers(body, 'qa-sign'), content=body
+                    ).json()
+                    assert reply['code'] == 0, reply
+                    parts = reply['data']['message']
+                    row = db.execute(
+                        'SELECT metadata_json FROM event_log WHERE bot_id=? AND event_id=?',
+                        (bot, f'platform:{bot}:{reply["data"]["reply_to"]}'),
+                    ).fetchone()
+                    metadata = json.loads(row[0])
+                    if text.startswith('ignored:'):
+                        assert not parts and (metadata['status'], metadata['policy_item']) == (
+                            'ignored',
+                            'ignore-rules',
+                        ), metadata
+                    else:
+                        assert [part['type'] for part in parts] == ['Forward'], (parts, metadata)
+                        actions = [
+                            action for event in metadata.get('policy_events', []) for action in event.get('actions', [])
+                        ]
+                        assert {'kind': 'quote'} in actions and {
+                            'kind': 'long_text',
+                            'strategy': 'forward',
+                        } in actions, metadata
+
+                    dashboard.send(json.dumps({'type': 'message', 'message': chain, 'stream': False}))
+                    frame = json.loads(dashboard.recv(timeout=20))
+                    assert frame['type'] == 'user_message', frame
+                    frame = json.loads(dashboard.recv(timeout=20))
+                    assert frame['type'] == 'response', frame
+                    assert frame['data']['message_chain'] == [{'type': 'Plain', 'text': f'e2e echo: {text}'}], frame
+
+
 def _pipeline_failure_diagnostics(directory, pipeline_id):
     with contextlib.closing(sqlite3.connect(directory / 'data' / 'langbot.db')) as connection:
         messages = connection.execute(
