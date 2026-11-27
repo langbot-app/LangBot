@@ -30,7 +30,7 @@ async def _resolve_user(ap, ctx, processor):
     return await load()
 
 
-async def handle_ws(ap, transport, ctx) -> None:
+async def handle_ws(ap, transport, ctx, *, revalidate=None) -> None:
     """Authorize each message using trusted Workspace/account context."""
     session = await transport.handshake() if hasattr(transport, 'handshake') else transport
     connection_id = uuid.uuid4().hex
@@ -47,12 +47,20 @@ async def handle_ws(ap, transport, ctx) -> None:
                 continue
             processor = frame.get('processor_uuid')
             conversation = frame.get('conversation_id')
+            if frame.get('workspace_uuid', ctx.workspace_uuid) != ctx.workspace_uuid:
+                await session.send_payload({'type': 'error', 'code': 'workspace_forbidden'})
+                continue
+            if frame.get('processor_kind', 'agent') != 'agent':
+                await session.send_payload({'type': 'error', 'code': 'processor_forbidden'})
+                continue
             if not isinstance(processor, str) or not 0 < len(processor) <= 255:
                 await session.send_payload({'type': 'error', 'code': 'processor_required'})
                 continue
             if not isinstance(conversation, str) or not 0 < len(conversation) <= 255:
                 await session.send_payload({'type': 'error', 'code': 'conversation_required'})
                 continue
+            if revalidate is not None:
+                await revalidate(frame)
             error, user = await _resolve_user(ap, ctx, processor)
             if error:
                 await session.send_payload({'type': 'error', 'code': error})

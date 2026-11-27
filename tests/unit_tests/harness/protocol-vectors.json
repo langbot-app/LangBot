@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "conversation_scope": {
+    "instance_id": "instance-1",
+    "account_uuid": "account-A",
+    "workspace_uuid": "workspace-1",
+    "processor_uuid": "processor-7",
+    "storage_key": "[\"instance-1\",\"account-A\",\"workspace-1\",\"processor-7\"]"
+  },
+  "message_request": {
+    "selection": {
+      "instanceId": "instance-1",
+      "accountUuid": "account-A",
+      "workspaceUuid": "workspace-1",
+      "processorUuid": "processor-7",
+      "processorKind": "agent"
+    },
+    "conversation_id": "conversation-9",
+    "message_id": "message-3",
+    "content": "hello",
+    "expected": {
+      "type": "message",
+      "processor_uuid": "processor-7",
+      "processor_kind": "agent",
+      "workspace_uuid": "workspace-1",
+      "conversation_id": "conversation-9",
+      "message_id": "message-3",
+      "content": "hello"
+    }
+  },
+  "hts1_handshake": {
+    "hs1": {
+      "v": 1,
+      "kid": "key-1",
+      "e_h": "AQID",
+      "ts": 1700000000,
+      "nonce_s": "nonce-1",
+      "sig_h": "AA=="
+    },
+    "signed_transcript": "HTS1/HS1\n1\nkey-1\n1700000000\nnonce-1\nAQID",
+    "hs2_fields": ["v", "e_c", "sig_c", "confirm"]
+  },
+  "encrypted_frame": {
+    "v": 1,
+    "kid": "key-1",
+    "seq": "1042",
+    "kind": "ws",
+    "box": "AA=="
+  }
+}

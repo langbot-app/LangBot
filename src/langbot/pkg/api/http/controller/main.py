@@ -180,7 +180,7 @@ class HTTPController:
 
         await hypercorn_serve(traced_app, config, shutdown_trigger=shutdown_trigger)
 
-    async def register_routes(self) -> None:
+    def register_harness_route(self) -> None:
         @self.quart_app.websocket('/api/v1/harness/ws')
         async def harness_websocket():
             # Harness identities and encrypted instance keys are provisioned by
@@ -188,23 +188,31 @@ class HTTPController:
             # ordinary workspace bearer-token middleware on this E2EE route.
             factory = getattr(self.ap, 'harness_transport_factory', None)
             context_resolver = getattr(self.ap, 'harness_context_resolver', None)
-            if not callable(factory) or not callable(context_resolver):
+            if not callable(factory):
                 await quart.websocket.close(1013, 'Harness transport is not configured')
                 return
+            from ....harness.auth import authenticate_session
             from ....harness.ws import handle_ws
 
             try:
                 transport = await factory(self.ap, quart.websocket)
-                context = await context_resolver(self.ap, transport)
+                revalidate = None
+                if callable(context_resolver):
+                    context = await context_resolver(self.ap, transport)
+                else:
+                    context, revalidate = await authenticate_session(self.ap, transport)
                 if context is None:
                     # Until the Harness account/OAuth slice lands, reject safely
                     # rather than use a user/workspace supplied by a frame.
                     await quart.websocket.close(1008, 'Harness account context is not authenticated')
                     return
-                await handle_ws(self.ap, transport, context)
-            except Exception:
-                self.ap.logger.exception('Harness WebSocket session failed')
+                await handle_ws(self.ap, transport, context, revalidate=revalidate)
+            except Exception as exc:
+                self.ap.logger.warning('Harness WebSocket session rejected (%s: %s)', type(exc).__name__, exc)
                 await quart.websocket.close(1008, 'Harness session failed')
+
+    async def register_routes(self) -> None:
+        self.register_harness_route()
 
         @self.quart_app.route('/healthz')
         async def healthz():
