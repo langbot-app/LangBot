@@ -38,7 +38,7 @@ Dify Agent 将 Dify 的 Chat、Agent、Chatflow 或 Workflow 应用接入 LangBo
 
 ## 会话状态
 
-runner 从 `ctx.state.conversation["external.conversation_id"]` 读取 Dify conversation ID。只有合法的 Dify UUID 才会发送给 Dify；LangBot 自己的 conversation ID 不会直接复用，因为 Dify 会拒绝非 UUID 值。
+Dify 的会话归属于创建它的终端用户（`user`），全群共享会话时 runner 以群身份作为 Dify user（见 `user-id-source`），使全群延续同一个 Dify 会话；群内隔离会话和私聊则使用发送者。由于一个 LangBot 会话仍可能出现多个供应商用户（如没有 Host 会话标识的运行，或旧版本写入的状态）， runner 按供应商用户在 `ctx.state.conversation["external.conversation_ids"]` 中分别保存 Dify conversation ID（键为用户标识的哈希，最多保留最近 256 个用户）；该映射尚不存在时才回退读取旧的 `external.conversation_id`。若已保存的 ID 被 Dify 返回 `404 Conversation Not Exists`（已删除或属于其他用户），runner 会自动新建会话重试一次。只有合法的 Dify UUID 才会发送给 Dify；LangBot 自己的 conversation ID 不会直接复用，因为 Dify 会拒绝非 UUID 值。
 
 Dify 返回新 conversation ID 后，runner 通过会话级 `state.updated` 交给 Host 持久化，下一次运行自动恢复。
 
@@ -80,6 +80,7 @@ uv run --no-sync ruff check .
 
 Per-pipeline Runner parameter, not plugin-global configuration. `sender` remains the default.
 A `sender` run whose Host actor is missing or empty is refused before any upstream request, instead of minting a per-run provider user; select `legacy-session` explicitly when a conversation-scoped provider user is intended.
+In a group whose pipeline shares context across the group (Host `conversation.session_id` = `group_<group id>`), `sender` uses that group session as the provider user, because Dify binds a conversation to its `user` and all members must continue one conversation. With per-member group context (`groupmember_...`) and in private chats, `sender` is the message sender.
 Explicit `legacy-session` preserves native provider identity using trusted Host run context only;
 missing identity fails before any upstream request, never falls back to the sender or business params.
 `legacy-session` uses `conversation.launcher_type` (`group`/`person`) plus `_` plus the exact `conversation.launcher_id`. Host must project the native Query.session launcher into those fields, including interaction/resume runs. Older Hosts that leave these fields empty must be upgraded.

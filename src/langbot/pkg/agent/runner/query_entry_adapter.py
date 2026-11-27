@@ -11,7 +11,6 @@ import math
 import typing
 
 from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
-from langbot_plugin.api.entities.builtin.platform import message as platform_message
 from langbot_plugin.api.entities.builtin.runner.event import (
     AgentEventContext,
     ConversationContext,
@@ -35,6 +34,8 @@ from .platform_tools import resolve_agent_platform_tool_names
 from . import events as runner_events
 from ...pipeline.pool import get_query_execution_context
 from ...provider.tools.toolmgr import TOOL_SOURCE_REFS_QUERY_KEY
+from . import input_media
+from ...persistence.session_summary_contract import conversation_scope
 
 
 class QueryEntryAdapter:
@@ -112,7 +113,16 @@ class QueryEntryAdapter:
             return value if isinstance(value, str) and value else None
 
         session = getattr(query, 'session', None)
+        launcher = (
+            session
+            if exact(getattr(session, 'launcher_type', None)) in ('group', 'person')
+            and exact(getattr(session, 'launcher_id', None))
+            else query
+        )
         return LegacyRunnerIdentity(
+            session_id=conversation_scope(query, launcher)
+            if exact(getattr(launcher, 'launcher_type', None)) and getattr(launcher, 'launcher_id', None) is not None
+            else None,
             workspace_id=workspace_id,
             bot_id=exact(getattr(query, 'bot_uuid', None)),
             pipeline_id=exact(getattr(query, 'pipeline_uuid', None)),
@@ -334,7 +344,7 @@ class QueryEntryAdapter:
         # Build session_id from launcher info if available
         session_id = None
         if launcher_type_value and launcher_id:
-            session_id = f'{launcher_type_value}_{launcher_id}'
+            session_id = conversation_scope(query)
 
         # Handle session and conversation_id
         conversation_id = None
@@ -454,177 +464,25 @@ class QueryEntryAdapter:
                 text = str(content)
                 contents.append({'type': 'text', 'text': text})
 
-        if not contents:
-            message_chain = getattr(query, 'message_chain', None) or []
-            for component in message_chain:
-                if isinstance(component, platform_message.Plain):
-                    component_text = getattr(component, 'text', '')
-                    if component_text:
-                        text_parts.append(component_text)
-                        contents.append({'type': 'text', 'text': component_text})
-                elif isinstance(component, platform_message.Image):
-                    image_base64 = getattr(component, 'base64', None)
-                    image_url = getattr(component, 'url', None)
-                    if image_base64:
-                        contents.append({'type': 'image_base64', 'image_base64': image_base64})
-                    elif image_url:
-                        contents.append({'type': 'image_url', 'image_url': {'url': image_url}})
+        media = input_media.remembered_media(query)
+        if media is None or not contents:
+            # Queries that skipped preprocessing render the message chain here.
+            rendered = input_media.render_input(getattr(query, 'message_chain', None), include_quotes=True)
+            input_media.remember_media(query, rendered.media)
+            media = rendered.media
+            if not contents:
+                contents = [item.model_dump(mode='json') for item in rendered.contents]
+                text_parts = [rendered.text] if rendered.text else []
 
         if text_parts:
             text = ''.join(text_parts)
 
-        attachments = cls._build_attachments(query, contents)
-
         input_data: dict[str, typing.Any] = {
             'text': text,
             'contents': contents,
-            'attachments': attachments,
+            'attachments': [item.to_attachment() for item in media],
         }
         return AgentInput.model_validate(input_data)
-
-    @classmethod
-    def _build_attachments(
-        cls,
-        query: pipeline_query.Query,
-        contents: list[dict[str, typing.Any]],
-    ) -> list[dict[str, typing.Any]]:
-        """Extract attachments from query."""
-        attachments: list[dict[str, typing.Any]] = []
-        # Each entry tracks the identity keys of an emitted attachment and the
-        # other sources already merged into it.
-        entries: list[tuple[dict[str, typing.Any], set[tuple[str, str, str]], set[str]]] = []
-
-        def add_attachment(attachment: dict[str, typing.Any]) -> None:
-            keys = cls._attachment_dedupe_keys(attachment)
-            source = str(attachment.get('source') or '')
-            if keys and source:
-                for existing, existing_keys, merged_sources in entries:
-                    # Repeats within one source are distinct user inputs; only a
-                    # different source describing the same media is merged, once.
-                    if source == existing.get('source') or source in merged_sources:
-                        continue
-                    if not keys & existing_keys:
-                        continue
-                    # Platforms often describe one image by both URL and inline
-                    # bytes, while contents carry only one of them. Merge instead
-                    # of emitting a second descriptor for the same media.
-                    for field, value in attachment.items():
-                        if value and not existing.get(field):
-                            existing[field] = value
-                    existing_keys.update(keys)
-                    merged_sources.add(source)
-                    return
-            entries.append((attachment, set(keys), set()))
-            attachments.append(attachment)
-
-        for elem in contents:
-            elem_type = elem.get('type')
-
-            if elem_type == 'image_url':
-                image_url = elem.get('image_url') or {}
-                add_attachment(
-                    {
-                        'type': 'image',
-                        'source': 'url',
-                        'url': image_url.get('url') if isinstance(image_url, dict) else str(image_url),
-                    }
-                )
-            elif elem_type == 'image_base64':
-                add_attachment(
-                    {
-                        'type': 'image',
-                        'source': 'base64',
-                        'content': elem.get('image_base64'),
-                    }
-                )
-            elif elem_type == 'file_url':
-                add_attachment(
-                    {
-                        'type': 'file',
-                        'source': 'url',
-                        'url': elem.get('file_url'),
-                        'name': elem.get('file_name'),
-                    }
-                )
-            elif elem_type == 'file_base64':
-                add_attachment(
-                    {
-                        'type': 'file',
-                        'source': 'base64',
-                        'content': elem.get('file_base64'),
-                        'name': elem.get('file_name'),
-                    }
-                )
-
-        message_chain = getattr(query, 'message_chain', None)
-        if message_chain:
-            try:
-                message_components = iter(message_chain)
-            except TypeError:
-                message_components = iter(())
-
-            for component in message_components:
-                if isinstance(component, platform_message.Image):
-                    image_id = component.image_id or None
-                    image_url = component.url or None
-                    image_base64 = component.base64 or None
-                    add_attachment(
-                        {
-                            'type': 'image',
-                            'source': 'message_chain',
-                            'id': image_id,
-                            'url': image_url,
-                            'content': image_base64,
-                        }
-                    )
-                elif isinstance(component, platform_message.File):
-                    add_attachment(
-                        {
-                            'type': 'file',
-                            'source': 'message_chain',
-                            'id': component.id or None,
-                            'name': component.name or None,
-                            'url': component.url or None,
-                            'content': component.base64 or None,
-                        }
-                    )
-                elif isinstance(component, platform_message.Voice):
-                    add_attachment(
-                        {
-                            'type': 'voice',
-                            'source': 'message_chain',
-                            'id': component.voice_id or None,
-                            'url': component.url or None,
-                            'content': component.base64 or None,
-                        }
-                    )
-
-        return attachments
-
-    @classmethod
-    def _attachment_dedupe_keys(
-        cls,
-        attachment: dict[str, typing.Any],
-    ) -> set[tuple[str, str, str]]:
-        """Return every identity of an attachment that can match another source."""
-        attachment_type = attachment.get('type')
-        if not attachment_type:
-            return set()
-        keys = set()
-        for field in ('id', 'url', 'content'):
-            value = attachment.get(field)
-            if value:
-                if field == 'content':
-                    value = hashlib.sha256(str(value).encode('utf-8')).hexdigest()
-                keys.add((str(attachment_type), field, str(value)))
-        return keys
-        for field in ('id', 'url', 'content'):
-            value = attachment.get(field)
-            if value:
-                if field == 'content':
-                    value = hashlib.sha256(str(value).encode('utf-8')).hexdigest()
-                return str(attachment_type), field, str(value)
-        return None
 
     @classmethod
     def _build_delivery_context(
@@ -634,6 +492,15 @@ class QueryEntryAdapter:
         """Build DeliveryContext from Query."""
         message_chain = getattr(query, 'message_chain', None)
         launcher_type = getattr(query, 'launcher_type', None)
+        # Pipeline filters may replace the working chain with plain text.
+        # Replies must retain the original platform message identity.
+        source_event = getattr(query, 'message_event', None)
+        source_chain = getattr(source_event, 'message_chain', None)
+        message_id = getattr(source_chain, 'message_id', None)
+        if message_id in (None, '', -1):
+            message_id = getattr(message_chain, 'message_id', None)
+        if message_id == -1:
+            message_id = None
         target_type = getattr(launcher_type, 'value', launcher_type)
         target_id = getattr(query, 'launcher_id', None)
         adapter = getattr(query, 'adapter', None)
@@ -652,7 +519,7 @@ class QueryEntryAdapter:
             'reply_target': {
                 'target_type': target_type,
                 'target_id': target_id,
-                'message_id': getattr(message_chain, 'message_id', None),
+                'message_id': message_id,
             },
             'supports_streaming': True,
             'supports_edit': 'edit_message' in supported_apis,
@@ -662,6 +529,10 @@ class QueryEntryAdapter:
                 'supported_apis': supported_apis,
             },
         }
+        source_channel = getattr(getattr(source_event, 'source_platform_object', None), 'channel', None)
+        channel_id = getattr(source_channel, 'id', None)
+        if isinstance(channel_id, (str, int)) and channel_id:
+            delivery_data['reply_target']['chat_id'] = str(channel_id)
         if 'interactions' in DeliveryContext.model_fields and 'send_interaction' in supported_apis:
             get_capabilities = getattr(adapter, 'get_interaction_capabilities', None)
             if callable(get_capabilities):

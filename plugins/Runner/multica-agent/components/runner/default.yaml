@@ -131,6 +131,16 @@ spec:
       type: number
       required: false
       default: 15
+    - name: progress-max-messages
+      label:
+        en_US: Max Progress Messages
+        zh_Hans: 进度消息上限
+      description:
+        en_US: Most progress messages sent per run in "messages" mode (1-20), the answer not included. Some platforms cap replies per user message (QQ Official allows 5), so the default 4 always leaves room for the answer.
+        zh_Hans: “多条消息”模式下每次运行最多发送的进度消息条数（1-20），不含答案。部分平台限制每条用户消息的回复数（QQ 官方机器人为 5 条），默认 4 保证答案一定能发出。
+      type: integer
+      required: false
+      default: 4
   capabilities:
     streaming: true
     tool_calling: false

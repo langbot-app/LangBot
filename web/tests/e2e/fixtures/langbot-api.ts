@@ -749,6 +749,19 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     return fulfillJson(route, { workspaces: state.workspaces });
   }
 
+  if (path === '/api/v1/workspaces/current/sandbox') {
+    return fulfillJson(route, {
+      backend: null,
+      effective_backend: 'docker',
+      enabled: true,
+      backends: [
+        { name: 'docker', available: true, reason: null },
+        { name: 'e2b', available: false, reason: 'environment_unavailable' },
+        { name: 'nsjail', available: false, reason: 'environment_unavailable' },
+      ],
+    });
+  }
+
   if (path === '/api/v1/workspaces/current/language') {
     return fulfillJson(route, {
       language: 'en_US',

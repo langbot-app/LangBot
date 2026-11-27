@@ -1,0 +1,61 @@
+{
+  "candidate_commit": "6a445db5ceabbd801f5282ce06fe7544775fac6e",
+  "registration_fanin": {
+    "command": [
+      "uv",
+      "run",
+      "python",
+      "local_e2e/registration_fanin.py"
+    ],
+    "exit_code": 0,
+    "stdout": "{\"registered\": 6, \"handlers\": 6}\n",
+    "stderr": "Error receiving message: Connection closed\nError receiving message: 标准输出流意外关闭。\nError receiving message: Connection closed\nError receiving message: Connection closed\nError receiving message: Connection closed\nError receiving message: Connection closed\n"
+  },
+  "shared_slots_subprocess": {
+    "command": [
+      "uv",
+      "run",
+      "pytest",
+      "tests/runtime/plugin/test_shared_worker_subprocess.py",
+      "-q"
+    ],
+    "exit_code": 0,
+    "stdout": ".                                                                        [100%]\n1 passed in 1.44s\n",
+    "stderr": ""
+  },
+  "installation_lifecycle": {
+    "command": [
+      "uv",
+      "run",
+      "pytest",
+      "tests/runtime/plugin/test_installation_manager.py",
+      "-q"
+    ],
+    "exit_code": 0,
+    "stdout": "hared-local-e2e/src/langbot_plugin/api/entities/builtin/resource/tool.py:8: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/\n    class LLMTool(pydantic.BaseModel):\n\nsrc/langbot_plugin/api/entities/builtin/provider/session.py:25\n  /home/rock/work/langbot-sdk-shared-local-e2e/src/langbot_plugin/api/entities/builtin/provider/session.py:25: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/\n    class Conversation(pydantic.BaseModel):\n\nsrc/langbot_plugin/api/entities/builtin/provider/session.py:71\n  /home/rock/work/langbot-sdk-shared-local-e2e/src/langbot_plugin/api/entities/builtin/provider/session.py:71: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/\n    class Session(WorkspaceExecutionScope):\n\nsrc/langbot_plugin/api/entities/builtin/command/context.py:13\n  /home/rock/work/langbot-sdk-shared-local-e2e/src/langbot_plugin/api/entities/builtin/command/context.py:13: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/\n    class CommandReturn(pydantic.BaseModel):\n\nsrc/langbot_plugin/api/definition/abstract/platform/adapter.py:15\n  /home/rock/work/langbot-sdk-shared-local-e2e/src/langbot_plugin/api/definition/abstract/platform/adapter.py:15: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/\n    class AbstractMessagePlatformAdapter(pydantic.BaseModel, metaclass=abc.ABCMeta):\n\nsrc/langbot_plugin/api/entities/builtin/pipeline/query.py:17\n  /home/rock/work/langbot-sdk-shared-local-e2e/src/langbot_plugin/api/entities/builtin/pipeline/query.py:17: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/\n    class Query(WorkspaceExecutionScope):\n\nsrc/langbot_plugin/api/entities/events.py:16\n  /home/rock/work/langbot-sdk-shared-local-e2e/src/langbot_plugin/api/entities/events.py:16: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/\n    class BaseEventModel(WorkspaceExecutionScope):\n\nsrc/langbot_plugin/runtime/plugin/container.py:28\n  /home/rock/work/langbot-sdk-shared-local-e2e/src/langbot_plugin/runtime/plugin/container.py:28: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/\n    class PluginContainer(pydantic.BaseModel):\n\nsrc/langbot_plugin/runtime/plugin/container.py:99\n  /home/rock/work/langbot-sdk-shared-local-e2e/src/langbot_plugin/runtime/plugin/container.py:99: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/\n    class ComponentContainer(pydantic.BaseModel):\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n57 passed, 9 warnings in 1.62s\n",
+    "stderr": ""
+  },
+  "stdio_transport": {
+    "command": [
+      "uv",
+      "run",
+      "pytest",
+      "tests/runtime/io/test_connections.py",
+      "tests/runtime/io/test_controllers.py",
+      "-q"
+    ],
+    "exit_code": 0,
+    "stdout": "..........................................                               [100%]\n42 passed in 0.12s\n",
+    "stderr": ""
+  },
+  "assertions": {
+    "six_concurrent_large_registrations": true,
+    "two_workspaces_one_pid_two_slots": true,
+    "config_and_file_isolation": true,
+    "sibling_detach_survives": true,
+    "dedicated_process_separate": true,
+    "lifecycle_failure_cancel_capacity_regressions": true,
+    "one_shot_stdio_control_lane": true
+  },
+  "passed": true
+}

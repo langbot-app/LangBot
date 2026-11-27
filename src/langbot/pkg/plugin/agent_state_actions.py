@@ -14,7 +14,9 @@ from langbot_plugin.entities.io.actions.enums import (
 from ..agent.runner.session_registry import get_session_registry
 
 from .agent_run_support import (
+    _plugin_runtime_action,
     _resolve_state_scope,
+    _get_run_authorization,
     _validate_agent_run_session,
 )
 
@@ -26,6 +28,9 @@ def register(h):
         run_id = data.get('run_id')
         mode = data.get('mode', 'all')
         limit = data.get('limit')
+        claim = data.get('claim', False)
+        if not isinstance(claim, bool):
+            return handler.ActionResponse.error(message='claim must be a boolean')
         caller_plugin_identity = data.get('caller_plugin_identity')
 
         if not run_id:
@@ -55,7 +60,30 @@ def register(h):
             run_id,
             mode=str(mode or 'all'),
             limit=limit,
+            claim=claim,
         )
+        if items and claim:
+            from ..agent.runner.event_log_store import EventLogStore
+
+            store = EventLogStore(h.ap.persistence_mgr.get_db_engine())
+            accepted = []
+            for item in items:
+                event_id = item.get('event', {}).get('event_id')
+                try:
+                    owned = await store.claim_steering_delivery(
+                        event_id,
+                        run_id=run_id,
+                        delivery_id=item['delivery_id'],
+                        lease_expires_at=item['lease_expires_at'],
+                    )
+                except Exception as exc:
+                    # Keep the in-memory lease; a retry can reclaim it after expiry.
+                    return handler.ActionResponse.error(message=f'Steering claim persistence failed: {exc}')
+                if owned:
+                    accepted.append(item)
+                else:
+                    await session_registry.ack_steering(run_id, [item['delivery_id']])
+            items = accepted
         if items:
             try:
                 from ..agent.runner.event_log_store import EventLogStore
@@ -68,6 +96,8 @@ def register(h):
                     subject = item.get('subject') if isinstance(item, dict) else None
                     if not isinstance(event, dict):
                         continue
+                    if not claim:
+                        await store.update_steering_status(str(event.get('event_id')), status='injected')
                     await store.append_event(
                         event_id=None,
                         event_type='steering.injected',
@@ -86,12 +116,14 @@ def register(h):
                         runner_id=session.get('runner_id') if isinstance(session, dict) else None,
                         metadata={
                             'steering': {
-                                'status': 'injected',
+                                'status': 'claimed' if claim else 'injected',
                                 'source_event_id': event.get('event_id'),
                                 'claimed_by_run_id': item.get('claimed_run_id') if isinstance(item, dict) else run_id,
                                 'claimed_runner_id': item.get('runner_id') if isinstance(item, dict) else None,
                                 'claimed_at': item.get('claimed_at') if isinstance(item, dict) else None,
                                 'pull_mode': str(mode or 'all'),
+                                'delivery_id': item.get('delivery_id') if isinstance(item, dict) else None,
+                                'lease_expires_at': item.get('lease_expires_at') if isinstance(item, dict) else None,
                             },
                         },
                     )
@@ -101,6 +133,76 @@ def register(h):
                     exc_info=True,
                 )
         return handler.ActionResponse.success(data={'items': items})
+
+    @h.action(_plugin_runtime_action('STEERING_ACK', 'steering_ack'))
+    async def steering_ack(data: dict[str, Any]) -> handler.ActionResponse:
+        """Acknowledge claimed steering inputs after the runner applies them."""
+        run_id = data.get('run_id')
+        caller_plugin_identity = data.get('caller_plugin_identity')
+        delivery_ids = data.get('delivery_ids')
+        if not run_id:
+            return handler.ActionResponse.error(message='run_id is required')
+        if not isinstance(delivery_ids, list):
+            return handler.ActionResponse.error(message='delivery_ids must be a list')
+        delivery_ids = [str(item) for item in delivery_ids if item]
+        if not delivery_ids:
+            return handler.ActionResponse.success(data={'acknowledged': [], 'unknown': []})
+
+        session, error = await _validate_agent_run_session(
+            run_id,
+            caller_plugin_identity,
+            h.ap,
+            'Steering acknowledge',
+            api_capability='steering_ack',
+            allow_persistent_authorization=True,
+        )
+        if error:
+            return error
+
+        session_registry = get_session_registry()
+        from ..agent.runner.event_log_store import EventLogStore
+
+        try:
+            authorization = _get_run_authorization(session)
+            acknowledged = await EventLogStore(h.ap.persistence_mgr.get_db_engine()).acknowledge_steering_deliveries(
+                delivery_ids,
+                run_id=run_id,
+                conversation_id=authorization.get('conversation_id'),
+                workspace_id=authorization.get('workspace_id'),
+            )
+        except Exception as exc:
+            return handler.ActionResponse.error(message=f'Steering acknowledgement persistence failed: {exc}')
+        await session_registry.ack_steering(run_id, acknowledged)
+        unknown = sorted(set(delivery_ids) - set(acknowledged))
+        if acknowledged:
+            try:
+                from ..agent.runner.event_log_store import EventLogStore
+
+                store = EventLogStore(h.ap.persistence_mgr.get_db_engine())
+                await store.append_event(
+                    event_id=None,
+                    event_type='steering.acknowledged',
+                    source='runner',
+                    bot_id=None,
+                    workspace_id=None,
+                    conversation_id=None,
+                    thread_id=None,
+                    actor_type=None,
+                    actor_id=None,
+                    actor_name=None,
+                    subject_type=None,
+                    subject_id=None,
+                    input_summary=f'acknowledged {len(acknowledged)} steering input(s)',
+                    run_id=run_id,
+                    runner_id=session.get('runner_id') if isinstance(session, dict) else None,
+                    metadata={'steering': {'status': 'acknowledged', 'delivery_ids': acknowledged}},
+                )
+            except Exception as exc:
+                h.ap.logger.warning(
+                    f'Failed to write steering acknowledgement audit for run {run_id}: {exc}',
+                    exc_info=True,
+                )
+        return handler.ActionResponse.success(data={'acknowledged': acknowledged, 'unknown': unknown})
 
     # ================= State APIs (run-scoped, policy-enforced) =================
 

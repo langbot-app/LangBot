@@ -119,6 +119,9 @@ class MonitoringRouterGroup(group.RouterGroup):
                 end_time=end_time,
                 limit=quart.request.args.get('limit', 50),
                 offset=quart.request.args.get('offset', 0),
+                # ``summary=false`` skips the dashboard aggregates for callers
+                # that only need ``total`` (e.g. the WebUI milestone prompt).
+                include_summary=quart.request.args.get('summary', 'true').strip().lower() not in {'false', '0'},
             )
 
             return self.success(data=result)
@@ -353,6 +356,7 @@ class MonitoringRouterGroup(group.RouterGroup):
             start_time_str = quart.request.args.get('startTime')
             end_time_str = quart.request.args.get('endTime')
             user_query = quart.request.args.get('userQuery')
+            launcher_id = quart.request.args.get('launcherId') or quart.request.args.get('groupId')
             is_active_str = quart.request.args.get('isActive')
             limit, offset = self.ap.monitoring_service.normalize_page_window(
                 quart.request.args.get('limit', 100), quart.request.args.get('offset', 0)
@@ -375,6 +379,7 @@ class MonitoringRouterGroup(group.RouterGroup):
                 start_time=start_time,
                 end_time=end_time,
                 user_query=user_query,
+                launcher_id=launcher_id,
                 is_active=is_active,
                 limit=limit,
                 offset=offset,
@@ -756,6 +761,7 @@ class MonitoringRouterGroup(group.RouterGroup):
                     'is_active',
                     'platform',
                     'user_id',
+                    'user_name',
                 ]
             elif export_type == 'feedback':
                 data = await self.ap.monitoring_service.export_feedback(

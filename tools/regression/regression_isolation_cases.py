@@ -11,11 +11,12 @@ from uuid import uuid4
 
 import tools.regression.regression_execution_cases as execution
 from tools.regression.regression_api_checks import owned_resource
-from tools.entrypoints.regression_coverage import checked
-from tools.regression.regression_lifecycle_cases import after_id, ledger
-from tools.regression.regression_local_cases import record_run, require
-from tools.regression.regression_smoke import check_run, completed_run
-from tools.entrypoints.regression_traffic import group_request
+from tools.regression.evidence import checked
+from tools.regression.run_ledger import after_id, ledger
+from tools.regression.regression_local_cases import require
+from tools.regression.run_ledger import record_run
+from tools.regression.run_ledger import check_run, completed_run
+from tools.regression.http_bot import group_request
 
 CASE_NAMES = ('isolation.same_pipeline', 'isolation.cross_pipeline', 'isolation.cancel_neighbor')
 

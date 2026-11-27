@@ -1,0 +1,37 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.14, pytest-9.0.3, pluggy-1.6.0
+rootdir: CHECKOUT
+configfile: pytest.ini
+plugins: langsmith-0.8.18, anyio-4.14.2, asyncio-1.3.0, cov-7.0.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 303 items
+
+tests/unit_tests/api/test_operation_docs.py ...........                  [  3%]
+tests/unit_tests/api/test_skill_artifact_operations.py ......            [  5%]
+tests/unit_tests/api/test_mcp_server.py .........                        [  8%]
+tests/unit_tests/storage/test_artifact_reader.py ..............          [ 13%]
+tests/unit_tests/storage/test_skill_artifact_resources.py .............. [ 17%]
+......                                                                   [ 19%]
+tests/unit_tests/storage/test_skill_resource_cache.py ............       [ 23%]
+tests/unit_tests/storage/test_skill_resource_parallel.py ........        [ 26%]
+tests/unit_tests/test_skill_repository.py ............                   [ 30%]
+tests/unit_tests/test_skill_process_acceptance.py .                      [ 30%]
+tests/unit_tests/provider/test_skill_artifact_tools.py ................. [ 36%]
+                                                                         [ 36%]
+tests/unit_tests/provider/test_skill_tools.py .......................... [ 44%]
+.......                                                                  [ 47%]
+tests/unit_tests/provider/test_litellm_convert_messages.py ..........    [ 50%]
+tests/unit_tests/box/test_runner_box.py .....................            [ 57%]
+tests/integration/storage/test_skill_artifacts.py .ss.ss.ss.ss.ss.ss.ss. [ 64%]
+ss.ss.ss.ss..ssss.ss                                                     [ 71%]
+tests/integration/storage/test_skill_artifact_loader.py .ss              [ 72%]
+tests/integration/storage/test_artifacts.py .ss.ss.ss.ss.ss.ss.ss.ss.ss  [ 81%]
+tests/integration/storage/test_artifact_mcp.py .ss.ss.ss                 [ 84%]
+tests/integration/persistence/test_artifact_skill_migration.py .....     [ 85%]
+tests/integration/persistence/test_migrations.py ......................  [ 93%]
+tests/integration/persistence/test_migration_branch_convergence.py ..... [ 94%]
+.ssssss.s.s.s                                                            [ 99%]
+tools/tests/test_skill_artifact_soak.py ...                              [100%]
+
+- generated xml file: CHECKOUT/.qa/skill-artifact-fixes/regression.xml -
+=========== 240 passed, 63 skipped, 118 warnings in 74.86s (0:01:14) ===========

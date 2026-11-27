@@ -1,0 +1,139 @@
+{
+  "schema": "langbot.public-eval.plan.v1",
+  "dataset": {
+    "schema": "langbot.public-memory-dataset.v1",
+    "dataset_id": "locomo10",
+    "source_url": "https://github.com/snap-research/locomo",
+    "source_revision": "3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376",
+    "source_path": "data/locomo10.json",
+    "local_filename": "locomo10.json",
+    "local_sha256": "79fa87e90f04081343b8c8debecb80a9a6842b76a7aa537dc9fdf651ea698ff4",
+    "local_size_bytes": 2805274,
+    "conversations": 10,
+    "scored_categories": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "evidence_granularities": [
+      "session",
+      "turn"
+    ]
+  },
+  "dataset_sha256": "79fa87e90f04081343b8c8debecb80a9a6842b76a7aa537dc9fdf651ea698ff4",
+  "question_set_sha256": "4c40d67265a0144fe3545cc7bca976ded8c1d7c3eb269aa67609d3a9f5fc35ba",
+  "source_set_sha256": "838a2aa2f6e910ff64fafd523c445cbd950a96dcd83b23e507fd3de16f908601",
+  "seed": 42,
+  "selection": {
+    "per_category": 2,
+    "conversation_limit": 1
+  },
+  "history_format": "timestamped-text-only-v1",
+  "planned_question_ids": [
+    "conv-26/q6",
+    "conv-26/q39",
+    "conv-26/q47",
+    "conv-26/q55",
+    "conv-26/q70",
+    "conv-26/q72",
+    "conv-26/q107",
+    "conv-26/q151"
+  ],
+  "questions": [
+    {
+      "id": "conv-26/q6",
+      "sample_id": "conv-26",
+      "question": "When did Melanie run a charity race?",
+      "category": 2,
+      "category_name": "temporal",
+      "reference_answer": "The sunday before 25 May 2023",
+      "gold_evidence": [
+        "D2:1"
+      ]
+    },
+    {
+      "id": "conv-26/q39",
+      "sample_id": "conv-26",
+      "question": "What activities has Melanie done with her family?",
+      "category": 1,
+      "category_name": "multi_hop",
+      "reference_answer": "Pottery, painting, camping, museum, swimming, hiking",
+      "gold_evidence": [
+        "D8:4",
+        "D8:6",
+        "D9:1",
+        "D6:4",
+        "D1:18",
+        "D3:14"
+      ]
+    },
+    {
+      "id": "conv-26/q47",
+      "sample_id": "conv-26",
+      "question": "Would Melanie be considered an ally to the transgender community?",
+      "category": 3,
+      "category_name": "open_domain",
+      "reference_answer": "Yes, she is supportive",
+      "gold_evidence": []
+    },
+    {
+      "id": "conv-26/q55",
+      "sample_id": "conv-26",
+      "question": "When did Caroline draw a self-portrait?",
+      "category": 2,
+      "category_name": "temporal",
+      "reference_answer": "The week before 23 August 2023",
+      "gold_evidence": [
+        "D13:11"
+      ]
+    },
+    {
+      "id": "conv-26/q70",
+      "sample_id": "conv-26",
+      "question": "What personality traits might Melanie say Caroline has?",
+      "category": 3,
+      "category_name": "open_domain",
+      "reference_answer": "Thoughtful, authentic, driven",
+      "gold_evidence": [
+        "D16:18",
+        "D13:16",
+        "D7:4"
+      ]
+    },
+    {
+      "id": "conv-26/q72",
+      "sample_id": "conv-26",
+      "question": "What book did Melanie read from Caroline's suggestion?",
+      "category": 1,
+      "category_name": "multi_hop",
+      "reference_answer": "\"Becoming Nicole\"",
+      "gold_evidence": [
+        "D7:11",
+        "D17:10"
+      ]
+    },
+    {
+      "id": "conv-26/q107",
+      "sample_id": "conv-26",
+      "question": "What are the new shoes that Melanie got used for?",
+      "category": 4,
+      "category_name": "single_hop",
+      "reference_answer": "Running",
+      "gold_evidence": [
+        "D7:19"
+      ]
+    },
+    {
+      "id": "conv-26/q151",
+      "sample_id": "conv-26",
+      "question": "How did Melanie feel about her family supporting her?",
+      "category": 4,
+      "category_name": "single_hop",
+      "reference_answer": "She appreciated them a lot",
+      "gold_evidence": [
+        "D18:13"
+      ]
+    }
+  ]
+}

@@ -85,9 +85,11 @@ async def clean_database(postgres_engine: AsyncEngine):
     await clean()
 
 
-async def test_upgrade_adds_3072_dimension_index_and_constraint(
+@pytest.mark.parametrize('dimension', [2048, 3072])
+async def test_upgrade_adds_halfvec_dimension_index_and_constraint(
     postgres_engine: AsyncEngine,
     clean_database,
+    dimension: int,
 ) -> None:
     async with postgres_engine.begin() as conn:
         await conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
@@ -103,11 +105,12 @@ async def test_upgrade_adds_3072_dimension_index_and_constraint(
                 "AND conname = 'ck_langbot_vectors_embedding_dimension_enabled'"
             )
         )
-        assert '3072' in constraint
+        assert str(dimension) in constraint
         index_definition = await conn.scalar(
-            text("SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_langbot_vectors_hnsw_cosine_3072'")
+            text(f"SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_langbot_vectors_hnsw_cosine_{dimension}'")
         )
-        assert 'halfvec(3072)' in index_definition
+        # Above 2000 dimensions pgvector can only build HNSW over halfvec.
+        assert f'halfvec({dimension})' in index_definition
         assert 'halfvec_cosine_ops' in index_definition
 
 
@@ -491,6 +494,15 @@ async def test_pgvector_shared_database_is_scoped_indexed_and_ddl_free_at_runtim
         result_b = await adapter.search('opaque-b', [0.2] * 384, scope=scope_b)
         assert result_a['metadatas'][0][0]['text'] == 'workspace-a'
         assert result_b['metadatas'][0][0]['text'] == 'workspace-b'
+
+        # Hybrid retrieval (offered by LangRAG) degrades to the vector half on
+        # pgvector instead of failing; full-text has no vector to serve.
+        hybrid_a = await adapter.search(
+            'opaque-a', [0.1] * 384, search_type='hybrid', query_text='workspace', scope=scope_a
+        )
+        assert hybrid_a == result_a
+        with pytest.raises(ValueError, match="retrieval type to 'vector'"):
+            await adapter.search('opaque-a', [], search_type='full_text', query_text='workspace', scope=scope_a)
 
         # Guessing another knowledge-base UUID while retaining A's Workspace
         # cannot escape either the explicit conditions or PostgreSQL RLS.

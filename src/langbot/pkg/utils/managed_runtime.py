@@ -3,115 +3,44 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
-import os
-import sys
-from typing import TYPE_CHECKING, Awaitable, Callable
+from typing import TYPE_CHECKING, Literal
+
+from . import platform
 
 if TYPE_CHECKING:
     from ..core import app as core_app
 
 
-class ManagedRuntimeConnector:
-    """Base class for connectors that may manage a local runtime subprocess.
+RuntimeTransport = Literal['stdio', 'websocket']
 
-    Provides shared lifecycle helpers: subprocess launch, health-check retry,
-    and graceful termination.  Concrete connectors (plugin, box, …) inherit
-    this and add their own protocol-specific logic.
+
+class ManagedRuntimeConnector:
+    """Base class for connectors that either launch a local runtime or reach an external one.
+
+    The transport rule is shared by every concrete connector (plugin, box, ...)
+    and is the same on Windows, Linux and macOS:
+
+      - an explicit runtime endpoint, Docker, or a ``--standalone-*`` flag means
+        the runtime is an external process, reached over WebSocket;
+      - otherwise Core launches the runtime as a child process and talks to it
+        over the child's stdio pipes.
     """
 
     ap: 'core_app.Application'
-    runtime_subprocess: asyncio.subprocess.Process | None
-    runtime_subprocess_task: asyncio.Task | None
 
     def __init__(self, ap: 'core_app.Application'):
         self.ap = ap
-        self.runtime_subprocess = None
-        self.runtime_subprocess_task = None
         self._lifecycle_lock = asyncio.Lock()
         self._closing = False
 
-    async def _start_runtime_subprocess(
-        self,
-        *args: str,
-        env_overrides: dict[str, str] | None = None,
-    ) -> None:
-        """Launch a local runtime as a subprocess of the current Python interpreter.
+    @staticmethod
+    def select_runtime_transport(*, standalone: bool, endpoint: str = '') -> RuntimeTransport:
+        """Choose how Core connects to its runtime.
 
-        If a subprocess is already running (no *returncode* yet), this is a no-op.
+        Args:
+            standalone: Whether the matching ``--standalone-*`` flag was passed.
+            endpoint: An explicitly configured runtime endpoint, if any.
         """
-        if self.runtime_subprocess is not None and self.runtime_subprocess.returncode is None:
-            return
-
-        python_path = sys.executable
-        env = os.environ.copy()
-        if env_overrides:
-            env.update(env_overrides)
-        self.runtime_subprocess = await asyncio.create_subprocess_exec(
-            python_path,
-            *args,
-            env=env,
-        )
-        self.runtime_subprocess_task = asyncio.create_task(self.runtime_subprocess.wait())
-
-    async def _wait_until_ready(
-        self,
-        check: Callable[[], Awaitable[None]],
-        retries: int = 40,
-        interval: float = 0.25,
-        runtime_name: str = 'runtime',
-    ) -> None:
-        """Repeatedly call *check* until it succeeds or retries are exhausted.
-
-        Between attempts the method sleeps for *interval* seconds.  If the
-        managed subprocess exits before readiness is confirmed, a
-        ``RuntimeError`` is raised immediately.
-        """
-        last_exc: Exception | None = None
-        for _ in range(retries):
-            # Fast-fail if the process already died.
-            if self.runtime_subprocess is not None and self.runtime_subprocess.returncode is not None:
-                raise RuntimeError(
-                    f'local {runtime_name} exited before becoming ready (code {self.runtime_subprocess.returncode})'
-                )
-
-            try:
-                await check()
-                return
-            except Exception as exc:
-                last_exc = exc
-                await asyncio.sleep(interval)
-
-        if last_exc is not None:
-            raise last_exc
-        raise RuntimeError(f'local {runtime_name} did not become ready')
-
-    def _dispose_subprocess(self) -> None:
-        """Terminate the managed subprocess and cancel its wait task."""
-        if self.runtime_subprocess is not None and self.runtime_subprocess.returncode is None:
-            self.ap.logger.info('Terminating managed runtime process...')
-            self.runtime_subprocess.terminate()
-
-        if self.runtime_subprocess_task is not None:
-            self.runtime_subprocess_task.cancel()
-            self.runtime_subprocess_task = None
-
-    async def _close_managed_subprocess(self) -> None:
-        """Terminate, escalate, and reap the optional owned subprocess."""
-        process = self.runtime_subprocess
-        wait_task = self.runtime_subprocess_task
-        if process is not None and process.returncode is None:
-            with contextlib.suppress(ProcessLookupError):
-                process.terminate()
-            try:
-                await asyncio.wait_for(process.wait(), timeout=3)
-            except asyncio.TimeoutError:
-                with contextlib.suppress(ProcessLookupError):
-                    process.kill()
-                await process.wait()
-        if wait_task is not None and wait_task is not asyncio.current_task():
-            if not wait_task.done():
-                wait_task.cancel()
-            await asyncio.gather(wait_task, return_exceptions=True)
-        self.runtime_subprocess = None
-        self.runtime_subprocess_task = None
+        if endpoint or standalone or platform.get_platform() == 'docker':
+            return 'websocket'
+        return 'stdio'

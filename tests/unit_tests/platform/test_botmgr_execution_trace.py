@@ -365,8 +365,16 @@ async def test_unmatched_subscription_cannot_admit_event(kind):
     await assert_no_upload(counters, manager)
 
 
-@pytest.mark.parametrize('failure', [RuntimeError('runner failed'), TimeoutError('timeout'), asyncio.CancelledError()])
-async def test_matched_subscription_keeps_failed_timeout_and_cancelled_execution(failure):
+@pytest.mark.parametrize(
+    ('failure', 'outcome'),
+    [
+        (RuntimeError('runner failed'), 'failed'),
+        (TimeoutError('timeout'), 'failed'),
+        # A stopped run, a superseding message or a shutdown is not a failure.
+        (asyncio.CancelledError(), 'cancelled'),
+    ],
+)
+async def test_matched_subscription_keeps_failed_timeout_and_cancelled_execution(failure, outcome):
     bot, manager, counters = make_bot([], config={'url': 'https://space.example.test', 'execution_trace': 'failures'})
     install_processor(bot)
 
@@ -377,8 +385,46 @@ async def test_matched_subscription_keeps_failed_timeout_and_cancelled_execution
     bot.ap.agent_run_orchestrator.run = run
     await bot._handle_platform_event(message_received_event(), FakeAdapter())
     (chain,) = execution_chains(await flushed_records(counters, manager))
-    assert chain['outcome'] == 'failed'
+    assert chain['outcome'] == outcome
     assert chain['error']
+
+
+async def test_agent_route_failure_reports_the_exception_not_only_the_failure_code():
+    bot, manager, counters = make_bot(
+        [business_route()],
+        agent={'kind': 'agent', 'supported_event_patterns': ['*'], 'component_ref': 'plugin:test/runner/default'},
+    )
+    bot._agent_product_to_binding = Mock(return_value=SimpleNamespace())
+    bot._eba_event_to_agent_envelope = Mock(return_value=SimpleNamespace(delivery=SimpleNamespace()))
+
+    async def run(*args, **kwargs):
+        raise RuntimeError('model endpoint refused the request')
+        yield
+
+    bot.ap.agent_run_orchestrator = SimpleNamespace(
+        run=run, try_claim_steering_from_event=AsyncMock(return_value=False)
+    )
+    await bot._handle_platform_event(message_received_event(), FakeAdapter())
+    records = await flushed_records(counters, manager)
+    (chain,) = execution_chains(records)
+    assert chain['outcome'] == 'failed'
+    assert chain['error'].startswith('RuntimeError: model endpoint refused the request')
+    (route,) = [node for node in execution_nodes(records) if node['family'] == 'event_route']
+    assert route['error'].startswith('RuntimeError: model endpoint refused the request')
+    await counters.shutdown()
+
+
+async def test_invalid_agent_configuration_reports_the_exception():
+    bot, manager, counters = make_bot(
+        [business_route()],
+        agent={'kind': 'agent', 'supported_event_patterns': ['*'], 'component_ref': 'plugin:test/runner/default'},
+    )
+    bot._agent_product_to_binding = Mock(side_effect=KeyError('runner_config'))
+    await bot._handle_platform_event(message_received_event(), FakeAdapter())
+    (chain,) = execution_chains(await flushed_records(counters, manager))
+    assert chain['outcome'] == 'failed'
+    assert chain['error'].startswith("KeyError: 'runner_config'")
+    await counters.shutdown()
     await counters.shutdown()
 
 

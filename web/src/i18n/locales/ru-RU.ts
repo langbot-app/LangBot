@@ -1,7 +1,9 @@
 import pipelineMigration from './pipeline-migration/ru-RU';
 import pluginPermissions from './plugin-permissions/ru-RU';
+import pluginCompat from './plugin-compat/ru-RU';
 const ruRU = {
   pluginPermissions,
+  pluginCompat,
   planRevision: {
     subscribedOn: 'Дата подписки: {{date}}',
     latestQuota: 'Актуальные квоты этого плана',
@@ -118,6 +120,91 @@ const ruRU = {
       managed_sandbox_sessions: 'Управляемые сеансы песочницы',
     },
   },
+  workspaceSandbox: {
+    quotaCheck: 'Квота диска проверяется до и после команд, а не непрерывно.',
+    testRun: 'Пробный запуск',
+    testRunCost:
+      'Создаёт временную песочницу, занимает один слот и может потребовать оплаты.',
+    checkHint:
+      'Проверка и сохранение не создают песочниц. Пробный запуск необязателен.',
+    queryUnsupported:
+      'Сервис не поддерживает запрос шаблона; он не проверен. Можно сохранить или запустить тест.',
+    limitsTitle: 'Лимиты пространства',
+    limitsHelp:
+      'Пустые поля наследуют настройки сервера. Изменения действуют для новых задач.',
+    inherit: 'Наследовать',
+    limitMax: 'Максимум: {{value}}',
+    limitUnsupported: 'Не поддерживается средой или политикой',
+    e2bLimitUnsupported:
+      'Управляется шаблоном или сервисом E2B; настройка недоступна',
+    invalidLimits: 'Введите значения в указанных пределах',
+
+    confirm: 'Подтвердить и сохранить',
+    cancel: 'Отмена',
+    current: 'Активно: {{backend}}',
+    unsaved: 'Не сохранено',
+    configureE2b: 'Настроить E2B',
+    apiUrl: 'URL API',
+    sandboxUrl: 'URL песочницы',
+    template: 'Шаблон',
+    keyConfigured: 'Настроено; оставьте пустым для сохранения',
+    keyRequired: 'Введите API Key',
+    keyHelp:
+      'Сохранённые ключи не возвращаются. При изменении URL введите новый ключ.',
+    noManagedProcesses: 'Эта среда не поддерживает серверы MCP stdio.',
+    label: 'Среда выполнения',
+    description:
+      'Новые задачи используют эту среду. Запущенные задачи продолжают работу в прежней среде.',
+    saved: 'Сохранено для новых задач',
+    saveFailed: 'Не удалось сохранить среду',
+    loadFailed: 'Не удалось проверить среды',
+    refresh: 'Проверить снова',
+    noEnvironment: 'Нет доступных сред',
+    unavailable: 'Выбранная среда недоступна для выполнения новых задач.',
+    templateVerified:
+      'Template verified: temporary sandbox created, executed and deleted',
+    limitLabels: {
+      timeout_sec: 'Тайм-аут команды (сек.)',
+      idle_ttl_sec: 'Очистка при простое (сек.)',
+      max_sessions: 'Максимум песочниц',
+      cpus: 'Ядра CPU',
+      memory_mb: 'Память (MiB)',
+      pids_limit: 'Лимит процессов',
+      workspace_quota_mb: 'Квота диска (MiB)',
+    },
+    reasons: {
+      resource_not_found: 'Requested service resource not found',
+      rate_limited: 'Too many requests; retry later',
+      template_not_found: 'Template not found or not visible to this account',
+      template_query_failed: 'Template query failed; check service status',
+      template_not_ready: 'Template build is not ready',
+      network_error: 'Cannot reach service; check URLs and network',
+      capacity_limited:
+        'Service capacity exhausted or rate limited; retry later',
+      permission_denied: 'Permission denied for the supplied credentials',
+      template_creation_failed:
+        'Sandbox creation failed; check template status and service capacity',
+      template_execution_failed: 'Sandbox created but execution check failed',
+      template_cleanup_failed:
+        'Temporary sandbox cleanup failed; check E2B service',
+
+      environment_unavailable: 'Недоступно',
+      policy_restricted: 'Ограничено платформой',
+      probe_failed: 'Ошибка проверки',
+      docker_missing: 'Docker CLI не установлен',
+      docker_unreachable: 'Docker остановлен или нет доступа',
+      nsjail_missing: 'nsjail не установлен',
+      cgroup_unavailable: 'Ограничения cgroup nsjail не готовы',
+      isolation_unavailable: 'Ошибка изоляции nsjail',
+      sdk_missing: 'E2B SDK не установлен',
+      missing_credentials: 'Не задан ключ API E2B',
+      connection_failed: 'Нет соединения с E2B; проверьте URL и сеть',
+      authentication_failed: 'Ошибка авторизации E2B; проверьте ключ',
+      probe_timeout: 'Истекло время проверки',
+      invalid_configuration: 'URL или учётные данные E2B не заполнены',
+      not_checked: 'Настройки изменены; проверьте снова',
+    },
+  },
   workspaceLanguage: {
     label: 'Язык рабочего пространства',
     description:
@@ -151,6 +238,14 @@ const ruRU = {
     failed: 'Ошибка',
     cancelled: 'Отменено',
     ignored: 'Пропущено',
+  },
+  githubStarPrompt: {
+    title: 'LangBot уже обработал для вас событий: {{total}}',
+    description:
+      'Если LangBot вам полезен, поставьте ему звезду на GitHub — так о нём узнает больше людей.',
+    later: 'Позже',
+    star: 'Star',
+    close: 'Закрыть',
   },
   assistant: {
     movePosition: 'Переместить помощника по горизонтали',
@@ -505,6 +600,11 @@ const ruRU = {
     editionCloud: 'Cloud',
   },
   common: {
+    refresh: 'Обновить',
+    clickToCopy: 'Нажмите, чтобы скопировать',
+    finish: 'Готово',
+    operationFailed: 'Не удалось выполнить операцию',
+    optional: 'Необязательно',
     failureReasonNotRecorded:
       'Причина сбоя не сохранена. Проверьте журнал бота или отправьте сообщение повторно для получения подробностей.',
     loadFailedTitle: 'Не удалось загрузить данные',
@@ -1354,6 +1454,11 @@ const ruRU = {
     collapse: 'Свернуть',
     imagesAttached: 'изображений прикреплено',
     noLogs: 'Журналов пока нет',
+    routeDraftExists: 'Правило для {{id}} уже существует; оно раскрыто ниже.',
+    routeDraftAddedGroup:
+      'Правило для группы {{id}} добавлено в начало. Выберите конвейер и сохраните.',
+    routeDraftAddedPerson:
+      'Правило для пользователя {{id}} добавлено в начало. Выберите конвейер и сохраните.',
     sessionMonitor: {
       resetContext: 'Сбросить контекст',
       resetDescription:
@@ -1361,6 +1466,29 @@ const ruRU = {
       resetSuccess: 'Контекст сброшен.',
       resetError:
         'Не удалось сбросить контекст. Дождитесь завершения активных задач и повторите попытку.',
+      resetScopeMember:
+        'Этот чат хранит отдельный контекст для каждого участника группы, поэтому сбросится только контекст этого участника.',
+      resetScopeGroup:
+        'У этой группы один общий контекст, поэтому сбросится беседа всей группы, а не только этого участника.',
+      inGroup: 'в {{group}}',
+      filterByGroup: 'Та же группа',
+      groupFilterActive: 'Группа {{group}}',
+      clearGroupFilter: 'Показать все сеансы',
+      groupTitle: 'Группа {{group}}',
+      memberLine: 'Участник: {{name}}',
+      lastSenderLine: 'Последний отправитель: {{name}}',
+      privateChat: 'Личный чат',
+      groupChat: 'Групповой чат',
+      groupId: 'ID группы',
+      member: 'Участник',
+      lastSender: 'Последний отправитель',
+      userId: 'ID пользователя',
+      pipeline: 'Конвейер',
+      routeGroup: 'Маршрут для этой группы',
+      routeGroupHint:
+        'Создать правило маршрутизации, отправляющее эту группу в выбранный конвейер',
+      contextShared: 'Общий контекст группы',
+      contextPerMember: 'Контекст для каждого участника',
 
       title: 'Сессии',
       sessions: 'Сессии',
@@ -1853,6 +1981,12 @@ const ruRU = {
     debugging: 'Отладка',
     uploadLocalPlugin: 'Загрузить локальный плагин',
     spaceUpload: {
+      descriptionInstalled:
+        'Загрузить локально установленный плагин {{author}}/{{name}} в маркетплейс.',
+      shareInstalledAction: 'Поделиться в Space',
+      installedPackageTitle: 'Будет загружен установленный пакет',
+      installedPackageHint:
+        'Локально установленный плагин загружается как есть; автор, имя и версия берутся из manifest.',
       menuAction: 'Загрузить в маркетплейс',
       title: 'Загрузить плагин в маркетплейс',
       description:
@@ -2097,6 +2231,10 @@ const ruRU = {
     updating: 'Обновление...',
     updateSuccess: 'Плагин успешно обновлён',
     updateError: 'Ошибка обновления: ',
+    installedVersion: 'Установленная версия v{{version}}',
+    updateToVersion: 'Обновить до v{{version}}',
+    confirmUpdatePluginVersion:
+      'Обновить плагин {{author}}/{{name}} с v{{from}} до v{{to}}?',
     saveConfigSuccessNormal: 'Конфигурация успешно сохранена',
     saveConfigError: 'Ошибка сохранения конфигурации: ',
     config: 'Настройки',
@@ -2132,6 +2270,25 @@ const ruRU = {
     backToReleases: 'Назад к релизам',
     backToRepoUrl: 'Назад к URL репозитория',
     backToAssets: 'Назад к файлам',
+    githubSourceRelease: 'Релиз',
+    githubSourceBranch: 'Ветка',
+    searchBranches: 'Поиск веток...',
+    defaultBranch: 'По умолчанию',
+    noBranchesFound: 'Нет подходящих веток',
+    branchesTruncated: 'Показаны только первые 500 веток',
+    pluginDirectory: 'Каталог плагина',
+    pluginDirectoryPlaceholder: 'Корень репозитория',
+    pluginDirectoryHelp:
+      'Подкаталог с manifest.yaml, если плагин не в корне репозитория',
+    downloadSourceDirect: 'Напрямую к GitHub · {{latency}} мс',
+    downloadSourceMirror: 'Зеркало {{host}} · {{latency}} мс',
+    releasesUnavailable:
+      'Сервер не может получить релизы GitHub. Можно установить из ветки.',
+    noReleasesUseBranch:
+      'В этом репозитории нет релизов. Можно установить из ветки.',
+    useBranchInstead: 'Установить из ветки',
+    fetchBranchesError: 'Не удалось загрузить ветки: ',
+    backToBranches: 'Назад к веткам',
     releaseTag: 'Тег: {{tag}}',
     releaseName: 'Название: {{name}}',
     publishedAt: 'Опубликовано: {{date}}',
@@ -2163,6 +2320,12 @@ const ruRU = {
       depsProgress:
         '{{installed}}/{{total}} установлено · {{remaining}} осталось',
       installComplete: 'Плагин успешно установлен',
+      followUp: {
+        nextSteps: 'Дальнейшие шаги',
+        agents: 'Создайте Agent или обработчик плагина',
+        pipelines: 'Создайте конвейер',
+        knowledge: 'Создайте базу знаний',
+      },
       updateComplete: 'Плагин успешно обновлён',
       installCompletePlugin: 'Плагин успешно установлен',
       installCompleteMCP: 'Сервер MCP успешно установлен',
@@ -2175,6 +2338,13 @@ const ruRU = {
     },
   },
   market: {
+    typeTiles: {
+      all: 'Все расширения',
+      allDesc: 'Плагины, MCP и навыки',
+      pluginDesc: 'Платформы, инструменты, раннеры и др.',
+      mcpDesc: 'Инструменты внешних MCP-серверов',
+      skillDesc: 'Новые навыки для агентов',
+    },
     certifiedPlugin: 'Сертифицированный плагин',
     certificationTooltip:
       'Эта версия прошла проверку изоляции данных и совместимости с общей средой выполнения. Пакет подписан.',
@@ -2822,6 +2992,21 @@ const ruRU = {
     newVersionAvailable: 'Доступна новая версия',
     viewUpdateGuide: 'Руководство по обновлению',
     noReleaseNotes: 'Примечания к выпуску недоступны',
+    latestBadge: 'Последняя',
+    currentBadge: 'Текущая',
+    viewOnWebsite: 'Открыть на сайте',
+    whatsNewInCurrent: 'Что нового в этой версии',
+    releasesIncluded: 'Включено релизов: {{count}}',
+    upToDate: 'У вас последняя версия',
+    showOlderReleases: 'Показать более ранние релизы ({{count}})',
+    viewFullChangelog: 'Полный список изменений',
+    changeTypes: {
+      new: 'Новое',
+      improved: 'Улучшено',
+      changed: 'Изменено',
+      fixed: 'Исправлено',
+      security: 'Безопасность',
+    },
   },
   account: {
     settings: 'Настройки аккаунта',
@@ -2939,6 +3124,32 @@ const ruRU = {
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
+  dailyMessageQuota: {
+    planLimited: '{{count}} сообщений в день',
+    planUnlimited: 'Сообщения в день без ограничений',
+    planHelp:
+      'Сколько сообщений боты могут обработать за сутки (UTC); сброс в 00:00 UTC. Учитываются только сообщения, которые бот действительно обработал. После исчерпания новые сообщения в этот день не обрабатываются, а пользователь получает уведомление.',
+    title: 'Сообщения сегодня',
+    usage: '{{used}} / {{limit}}',
+    remaining: 'Осталось {{count}}',
+    resetsAt: 'Сброс {{time}}',
+    today: 'сегодня {{time}}',
+    tomorrow: 'завтра {{time}}',
+    exhausted: 'Лимит на сегодня исчерпан',
+    exhaustedHint: 'Новые сообщения не обрабатываются до {{time}}',
+    nearLimit: 'Почти исчерпан',
+    upgrade: 'Улучшить тариф',
+    unlimited: 'Без ограничений',
+    settingsTitle: 'Дневной лимит сообщений',
+    settingsDescription:
+      'Сколько сообщений боты могут обработать за день, включая отладочный чат. Считается по суткам UTC; сообщения в группах, не адресованные боту, не учитываются.',
+    unlimitedDescription: 'Ваш тариф не ограничивает число сообщений в день.',
+    errorTitle: 'Дневной лимит сообщений исчерпан',
+    errorBody:
+      'Это рабочее пространство уже обработало {{limit}} сообщений сегодня, поэтому это сообщение не обработано. Лимит сбросится {{time}}.',
+    errorUpgrade: 'Улучшить тариф для большего лимита',
+    unavailable: 'Сейчас не удаётся получить данные за сегодня',
+  },
   workspace: {
     dedicatedSpaceMembersHint:
       'Участников, входящих через аккаунт LangBot, приглашают на странице Cloud в LangBot Space. Приглашение ниже создаёт отдельный аккаунт с паролем в этом экземпляре.',
@@ -3047,7 +3258,22 @@ const ruRU = {
       llm_calls: 'Вызовы модели',
       tool_calls: 'Вызовы инструментов',
       errors: 'Ошибки',
-      payload: 'Подробности',
+      payload: 'Исходные данные',
+      rawEvents: 'Исходные события ({{count}}{{more}})',
+      copyJson: 'Копировать JSON',
+      diagnostics: 'Диагностика',
+      diagnosticsHint:
+        'Выберите пункт, чтобы загрузить вызовы модели, вызовы инструментов, события, связанные запуски или контекст диалога.',
+      chat: {
+        bot: 'Бот',
+        groupChat: 'Групповой чат',
+        privateChat: 'Личный чат',
+        source: 'Источник',
+        groupId: 'ID группы',
+        sender: 'Отправитель',
+        routeGroup: 'Маршрут для этой группы',
+        routePerson: 'Маршрут для этого пользователя',
+      },
       metadata: 'Технические сведения',
       loadMore: 'Загрузить ещё',
       noRecords: 'Нет записей',
@@ -3433,6 +3659,7 @@ const ruRU = {
     nav: {
       workspace: 'Workspace',
       operationTrace: 'Журнал',
+      alerts: 'Оповещения',
       models: 'Модели',
       api: 'API',
       storage: 'Хранилище',
@@ -3524,6 +3751,7 @@ const ruRU = {
       skill: 'Навык',
       knowledge_base: 'База знаний',
       mcp_server: 'MCP-сервер',
+      content: 'Опубликованный контент',
       runtime: 'Среда выполнения',
       system: 'Система',
       resource: 'Ресурс',
@@ -3534,6 +3762,8 @@ const ruRU = {
       error: 'Ошибка',
     },
     actions: {
+      content_publish: 'Публикация в Space',
+      plugin_publish: 'Публикация расширения в Space',
       audit_log_view: 'Просмотр журнала операций',
       settings_update: 'Изменение настроек трассировки',
       settings_view: 'Просмотр настроек трассировки',
@@ -4087,6 +4317,224 @@ const ruRU = {
     collapseDomain: 'Свернуть',
     ungrantableRemoved:
       'Некоторые операции не выбраны или удалены из-за недостатка прав.',
+  },
+  alerts: {
+    enableHint: 'Включить оповещения',
+    cta: {
+      title:
+        'Войдите с аккаунтом LangBot, чтобы бесплатно отправлять оповещения на почту',
+      pointFree: 'Бесплатная официальная отправка, 20 писем в день',
+      pointNoSetup: 'Не нужно настраивать SMTP или Resend',
+      pointPrivate: 'Только на адрес вашего аккаунта LangBot',
+      selfHosted: 'Хотите свой почтовый сервер?',
+      selfHostedLink: 'Настройте SMTP или Resend в config.yaml →',
+    },
+    title: 'Оповещения',
+    description:
+      'Уведомления по почте и через webhook, когда боты, Pipeline или модели постоянно дают сбои',
+    enabled: 'Оповещения включены',
+    firingCount: 'Активных: {{count}}',
+    allClear: 'Всё в порядке',
+    sendTest: 'Отправить тест',
+    saveBeforeTest: 'Сохраните изменения перед отправкой теста',
+    saved: 'Настройки оповещений сохранены',
+    saveFailed: 'Не удалось сохранить настройки: {{error}}',
+    loadFailed: 'Не удалось загрузить оповещения: {{error}}',
+    testSent: 'Тестовое оповещение отправлено, получателей: {{count}}',
+    testPartial: 'Тест отправлен с ошибками; см. журнал отправки',
+    testNoChannel: 'Каналы не настроены; выберите почтовый канал или webhook',
+    testFailed: 'Не удалось отправить тестовое оповещение: {{error}}',
+    disabledInstanceWide:
+      'Оповещения отключены для этого экземпляра (alerts.enabled в config.yaml).',
+    emailTitle: 'Почта',
+    emailDescription: 'Сейчас отправляется через: {{channel}}',
+    recipients: 'Получатели (владельцы и администраторы Workspace)',
+    noRecipients: 'Ни у одного владельца или администратора нет адреса почты.',
+    extraRecipientsCloud: 'Дополнительные получатели (до 10)',
+    extraRecipients:
+      'Дополнительные получатели (только ваш почтовый сервис, до 10)',
+    spaceRecipientsHint:
+      'LangBot Space отправляет письма только администраторам, вошедшим через LangBot Space, на их собственный адрес Space. Бесплатная квота: 20 в день и 200 в месяц на аккаунт.',
+    channel: {
+      auto: 'Автоматически',
+      autoDescription:
+        'Ваш почтовый сервис, если он настроен, иначе LangBot Space',
+      autoDescriptionNoSpace: 'Ваш почтовый сервис, если он настроен',
+      autoDescriptionCloud: 'Отправляется LangBot Cloud',
+      cloud: 'LangBot Cloud',
+      cloudConfigured: 'Официальный почтовый сервис',
+      cloudMissing: 'Почтовый сервис Cloud временно недоступен',
+      instance: 'Ваш почтовый сервис',
+      instanceConfigured: '{{provider}} настроен в config.yaml',
+      instanceMissing:
+        'Не настроен. Задайте раздел email (SMTP или Resend) в config.yaml',
+      space: 'LangBot Space (официально)',
+      spaceAvailable: 'Бесплатная официальная отправка на {{accounts}}',
+      spaceMissing: 'Войдите с аккаунтом LangBot Space, чтобы использовать',
+      off: 'Выключено',
+      offDescription: 'Только показывать здесь и отправлять webhook',
+      none: 'не отправляется (нет доступного канала)',
+      ready: 'Готово',
+      unavailable: 'Недоступно',
+    },
+    rulesTitle: 'Правила',
+    rulesDescription:
+      'Оповещение открывается, когда число сбоев за окно достигает порога.',
+    minutesWithin: 'мин, не менее',
+    failuresOrMore: 'сбоев',
+    notifyResolved: 'Уведомлять о восстановлении',
+    throttleHint:
+      'Каждое оповещение отправляется один раз при открытии, затем напоминание через 6 ч, 12 ч и далее каждые 24 ч, пока сбои продолжаются.',
+    rule: {
+      pipeline_failures: 'Сбои Pipeline',
+      pipeline_failuresDescription: 'Ошибки обработки в одном Pipeline',
+      model_failures: 'Сбои вызовов модели',
+      model_failuresDescription: 'Неудачные запросы к одной модели',
+      bot_offline: 'Бот остановился с ошибкой',
+      bot_offlineDescription:
+        'Оповещает сразу; восстанавливается при повторном запуске бота',
+    },
+    webhooksTitle: 'Webhook',
+    webhooksDescription:
+      'Выбранные webhook получают события alert.fired, alert.reminder и alert.resolved.',
+    noWebhooks: 'Webhook пока нет. Добавьте его в Настройки → API.',
+    webhookDisabled: 'Отключён',
+    incidentsTitle: 'Последние оповещения',
+    noIncidents: 'Оповещений пока нет.',
+    incidentMeta: 'Сбоев: {{count}} · открыто {{time}}',
+    state: {
+      firing: 'Активно',
+      resolved: 'Восстановлено',
+    },
+    deliveriesTitle: 'Журнал отправки',
+    noDeliveries: 'Ещё ничего не отправлено.',
+    kind: {
+      fired: 'Оповещение',
+      reminder: 'Напоминание',
+      resolved: 'Восстановление',
+      test: 'Тест',
+    },
+    via: {
+      email: 'Почта',
+      space: 'LangBot Space',
+      webhook: 'Webhook',
+    },
+    status: {
+      sent: 'Отправлено',
+      failed: 'Ошибка',
+      rate_limited: 'Квота исчерпана',
+      skipped: 'Пропущено',
+    },
+  },
+  promptLibrary: {
+    emptyTitle: 'Шаблоны уже в пути ✨',
+    emptyBody: 'Нажмите «Поделиться» рядом с промптом и станьте первым!',
+    bindToFavorite: 'Привяжите аккаунт для избранного',
+    originalLanguage: 'оригинал',
+    open: 'Библиотека промптов',
+    title: 'Библиотека промптов',
+    description:
+      'Поиск проверенных промптов из LangBot Space. После применения сохраните настройки.',
+    kindMessaging: 'Диалог',
+    kindAgent: 'Агент',
+    searchPlaceholder: 'Поиск по названию, описанию, тегам или тексту',
+    tabAll: 'Все',
+    tabFavorites: 'Избранное',
+    favoritesNeedAccount:
+      'Привяжите LangBot Account, чтобы пользоваться избранным',
+    otherKindHint:
+      'Вы просматриваете промпты «{{kind}}» для другого сценария. Проверьте их перед применением.',
+    noFavorites: 'Избранного пока нет',
+    empty: 'Ничего не найдено',
+    loadFailed: 'Не удалось загрузить библиотеку',
+    favoriteFailed: 'Не удалось обновить избранное',
+    applied: 'Применено. Сохраните, чтобы вступило в силу.',
+    uses: '{{count}} исп.',
+    favorite: 'В избранное',
+    variablesHint: 'Переменные:',
+    append: 'Добавить к текущему',
+    replace: 'Заменить текущий',
+    replaceTitle: 'Заменить текущий промпт?',
+    replaceDescription:
+      'Текущий промпт будет перезаписан (до сохранения можно отменить).',
+    selectHint: 'Выберите промпт слева',
+  },
+  spaceShare: {
+    modeNew: 'Опубликовать как новое',
+    modeUpdate: 'Обновить существующее ({{count}})',
+    pickExisting: 'Выберите, что обновить',
+    unlisted: 'скрыто',
+    identifierHint:
+      'Строчные буквы, цифры, - или _. После публикации не меняется.',
+    bindAccount: 'Привязать аккаунт LangBot',
+    autoTranslateNotice:
+      'Достаточно одного языка. После загрузки мы автоматически переведём текст на другие языки.',
+    shareShort: 'Поделиться',
+    shareToSpace: 'Поделиться в Space',
+    findingsBlockTitle:
+      'Найдены возможные учётные данные — удалите их перед публикацией',
+    findingsWarnTitle: 'Содержит личные или внутренние данные',
+    submitFailed: 'Не удалось отправить',
+    submittedTitle: 'Отправлено на проверку',
+    submittedAgentReview:
+      '{{id}} проходит автоматическую проверку и появится в LangBot Space после одобрения.',
+    submittedManualReview: '{{id}} ожидает ручной проверки.',
+    viewProgress: 'Статус проверки в LangBot Space',
+    needAccountTitle: 'Нужен LangBot Account',
+    needAccount:
+      'Привяжите аккаунт LangBot, чтобы делиться. Материал публикуется от профиля автора этого аккаунта в LangBot Space.',
+    needCreatorTitle: 'Нет профиля автора',
+    needCreator:
+      'Создайте профиль автора в LangBot Space, чтобы делиться. Это нужно сделать один раз.',
+    openCreator: 'Создать профиль автора',
+    acknowledgeWarnings: 'Подтверждаю, что эти данные можно публиковать',
+    displayName: 'Отображаемое имя',
+    identifier: 'Идентификатор',
+    descriptionLabel: 'Описание',
+    changelog: 'Изменения',
+    reviewNotice:
+      'Материалы проверяются перед публикацией в LangBot Space. Повторная публикация с тем же именем создаёт новую версию.',
+    submit: 'Отправить на проверку',
+    promptTitle: 'Поделиться промптом в LangBot Space',
+    promptDescriptionMessaging:
+      'Публикуется как промпт для диалогов в настройках пайплайнов.',
+    promptDescriptionAgent:
+      'Публикуется как промпт агента в настройках агентов.',
+    detectedVariables: 'Найденные переменные:',
+    skillTitle: 'Поделиться Skill в LangBot Space',
+    skillDescription:
+      'Загружает текущий пакет Skill. Проверка смотрит скрипты и внешние запросы.',
+    packageFiles: 'Файлы для отправки',
+    mcpTitle: 'Поделиться MCP-сервером в LangBot Space',
+    mcpDescription:
+      'Только удалённые MCP. Учётные данные не загружаются: они заменяются заполнителями.',
+    mcpPublishedConfig: 'Публикуемая конфигурация',
+    mcpToolsCount: 'Включает {{count}} инструментов',
+    mcpRedactedTitle: 'Удалено учётных данных: {{count}}',
+    mcpRedactedHint:
+      'При установке попросят эти значения. Можно задать понятные названия:',
+    mcpInputLabelPlaceholder: 'Название (по умолч.: {{label}})',
+    mcpNoCredentials:
+      'Учётные данные не найдены; конфигурация публикуется как есть.',
+    mcpNeedsConnection:
+      'Сначала успешно подключитесь — список инструментов публикуется вместе',
+    mcpFillInputsTitle: 'Заполните учётные данные перед включением',
+    mcpFillInputs:
+      'Для этого MCP из сообщества укажите свои значения {{names}}, сохраните и включите.',
+    finding: {
+      openai_key: 'Ключ OpenAI',
+      anthropic_key: 'Ключ Anthropic',
+      github_token: 'Токен GitHub',
+      slack_token: 'Токен Slack',
+      aws_access_key: 'Ключ доступа AWS',
+      google_api_key: 'Ключ Google API',
+      private_key: 'Закрытый ключ',
+      jwt: 'JWT-токен',
+      langbot_key: 'Ключ LangBot',
+      email: 'Адрес эл. почты',
+      phone: 'Номер телефона',
+      private_url: 'Внутренний URL',
+    },
   },
 };
 export default ruRU;

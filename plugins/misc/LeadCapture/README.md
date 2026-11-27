@@ -1,6 +1,6 @@
 # Purchase Intent Lead Capture
 
-Let your AI customer service notice customers who want to buy. After every AI reply, the plugin reads the conversation with a model you choose and against criteria you write, and decides whether the customer has **strong purchase intent**. If so, it appends a contact request to that reply, only once per customer. When the customer leaves a phone number, WeChat ID or email, the plugin sends the **contact details plus the entire conversation with that customer** to your inbox through [Resend](https://resend.com).
+Let your AI customer service notice customers who want to buy. After every AI reply, the plugin reads the conversation with a model you choose and against criteria you write, **scores the customer's purchase intent 0–100** and flags **compliance risk**. At medium intent or above (default ≥ 30) it appends a contact request to that reply, only once per customer. When the customer leaves a phone number, WeChat ID or email, the plugin **extracts lead fields** (company, use case, volume, budget, …) from the whole conversation and sends them with the **contact details, score and the entire conversation** to your inbox through [Resend](https://resend.com).
 
 Works for private chats on any platform (WeChat Official Account, WeCom customer service, Telegram, QQ, …).
 
@@ -38,9 +38,13 @@ Works for private chats on any platform (WeChat Official Account, WeCom customer
 | Setting | What to enter |
 | --- | --- |
 | Model for judging intent | A chat model. It is called once after every AI reply, so a fast, inexpensive model is best |
-| Intent criteria (prompt) | In plain language, what counts as strong purchase intent for your business, e.g. asking about price, plans, contracts, invoices, trials or go-live dates counts; asking about features or small talk does not. A general default is provided |
+| Scoring criteria (prompt) | Which signals add or subtract points; you can paste a keyword/score list. The model scores the whole conversation 0–100 by meaning (including Traditional Chinese and synonyms). A general default is provided |
+| High-intent score | Default 60 |
+| Score to ask for contact | Default 30: medium (30–59) and high intent are asked once; set it equal to the high-intent score to ask only high intent |
+| Compliance risk criteria | Matching conversations (default: fake orders, ticket scalping, cracking, scraping WeChat/banks, VPNs, …) are flagged: **no contact request and no sales email**, listed separately on the page for review |
+| Lead fields to extract | Filled from the whole conversation once contact details arrive (default: company, industry, use case, target sites, monthly volume, budget, go-live date, contact name, title, work email, WeChat/phone, current vendor); shown at the top of the email and on the page |
 | Messages used for judging | How many recent messages to read, default 20, max 100 |
-| Contact request text | Fixed text appended to the AI reply when strong intent is detected |
+| Contact request text | Fixed text appended to the AI reply once the ask score is reached |
 | Thank-you text | Appended to the next AI reply after contact details arrive; leave empty to disable |
 | Resend API key | The `re_…` key from step 1 |
 | Sender address | An address on your verified domain, e.g. `leads@example.com` or `Leads <leads@example.com>` |
@@ -53,6 +57,26 @@ The plugin works inside a Pipeline. Make sure the customer-facing bot routes mes
 ### Step 5: Test it
 
 Chat with the bot from your own account and ask about buying (price, contract, trial). Check that the AI reply ends with the contact request, reply with a phone number and check the inbox.
+
+## Reviewing judgments (plugin page)
+
+The plugin ships a **Lead judgments** page, opened from the plugin pages in the LangBot sidebar.
+
+- **Totals**: conversations, judgments, asked for contact, contact captured, emailed.
+- **Conversation list**: one row per private-chat user, with:
+  - status (not yet / asked / captured);
+  - the latest judgment and its reason;
+  - how many judgments, and how many were strong;
+  - contact and email result.
+
+  Filter by status (including "with errors") or search by user ID or contact.
+- **Details**: click a row to see the conversation's **timeline**:
+  - every judgment, with the result, the reason, what the user said and the AI reply;
+  - the contact request, the captured contact, email attempts and errors.
+
+  The 30 most recent messages are shown below the timeline.
+
+The latest 100 events are kept per conversation. The page is read-only.
 
 ## How contact details are recognized
 

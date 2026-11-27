@@ -11,12 +11,11 @@ import secrets
 import shutil
 import subprocess
 import time
-import urllib.error
-import urllib.request
 
 import yaml
 
-from tools.entrypoints.regression_suite import Suite, number, resolve, validate
+from tools.entrypoints.regression_suite import Suite, add_load_arguments, number, phase_overrides, resolve, validate
+from tools.regression.observations import read_endpoint_snapshot
 from tools.regression.regression_plugins import install_plugins, prepare_published_plugins
 from tools.entrypoints.regression_traffic import owned_box_containers
 
@@ -31,7 +30,7 @@ def write_json(path, data):
     temporary.replace(path)
 
 
-def load_profile(path):
+def load_profile(path, *, load_overrides=None):
     profile = json.loads(path.read_text())
     if not isinstance(profile, dict) or profile.get('version') != 1:
         raise ValueError('job profile version must be 1')
@@ -81,11 +80,15 @@ def load_profile(path):
     suite['vars'].update(
         mock_base_url='http://regression_mock:18080/v1', embedding_base_url='http://regression_mock:18080/v1'
     )
+    for kind in ('box', 'rag'):
+        variable = kind + '_mock_base_url'
+        if variable in suite['vars']:
+            suite['vars'][variable] = f'http://regression_mock_{kind}:18080/v1'
     suite['cli'] = {'config': 'job-generated.yaml'}
     for item in suite.get('resources', []):
         if item['kind'] == 'model' and item.get('type') == 'embedding':
             item['body']['name'] = 'mock-embedding'
-    validate(suite)
+    validate(suite, load_overrides=load_overrides)
     return profile, suite, suite_path.resolve()
 
 
@@ -211,16 +214,12 @@ class Job:
     @staticmethod
     def ready(url):
         deadline = time.monotonic() + 120
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         while time.monotonic() < deadline:
             try:
-                with opener.open(url, timeout=2) as response:
-                    payload = json.load(response)
-                    if response.status == 200 and payload.get('ready') is not False and payload.get('code', 0) == 0:
-                        return
-            except (urllib.error.URLError, TimeoutError, OSError, ValueError):
-                pass
-            time.sleep(0.5)
+                read_endpoint_snapshot(url, timeout_seconds=2, require_ready_json=True)
+                return
+            except (RuntimeError, OSError):
+                time.sleep(0.5)
         raise RuntimeError(f'readiness deadline exceeded: {url}')
 
     def prepare(self):
@@ -301,10 +300,18 @@ class Job:
                 },
             },
         }
+        mock_services = ['regression_mock']
+        for kind in ('box', 'rag'):
+            if kind + '_mock_base_url' in self.suite_profile.get('vars', {}):
+                service = 'regression_mock_' + kind
+                mock_services.append(service)
+                mock = copy.deepcopy(override['services']['regression_mock'])
+                mock['command'][-1] = '/results/' + service + '.jsonl'
+                override['services'][service] = mock
         write_json(self.private / 'compose.override.json', override)
         self.compose('up', '-d', override=True)
         containers = self.project_containers()
-        for service in ('langbot', 'langbot_plugin_runtime', 'langbot_box', 'regression_mock'):
+        for service in ('langbot', 'langbot_plugin_runtime', 'langbot_box', *mock_services):
             if service not in containers:
                 raise RuntimeError(f'missing deployment service: {service}')
         endpoint = self.state['record']['endpoint']
@@ -313,6 +320,8 @@ class Job:
             'mock': f'http://{self.address(containers["regression_mock"])}:18080/healthz',
             'box': f'http://{self.address(containers["langbot_box"])}:5410/readyz',
         }
+        for service in mock_services[1:]:
+            health[service] = f'http://{self.address(containers[service])}:18080/healthz'
         for url in health.values():
             self.ready(url)
         identity = self.cli_call(['--endpoint', endpoint, 'whoami'])
@@ -392,7 +401,9 @@ class Job:
         self.recover_record()
         self.load_redactions()
         if self.state.get('record'):
-            logs = self.compose('logs', '--no-color', '--tail', '10000')
+            logs = self.compose(
+                'logs', '--no-color', '--tail', '10000', override=(self.private / 'compose.override.json').exists()
+            )
             (self.output / 'services.log').write_text(logs)
 
     def cleanup(self):
@@ -417,6 +428,8 @@ class Job:
             if sandboxes:
                 self.checked(['docker', 'rm', '-f', *sandboxes])
             if self.state['bound']:
+                if (self.private / 'compose.override.json').exists():
+                    self.compose('down', '--remove-orphans', override=True)
                 self.cli_call(
                     ['uninstall', '--yes', *(['--purge-data'] if self.profile.get('purge_data', True) else [])]
                 )
@@ -483,11 +496,7 @@ def main():
     parser.add_argument('action', choices=('validate', 'run', 'cleanup'))
     parser.add_argument('--profile', type=Path)
     parser.add_argument('--output', type=Path)
-    parser.add_argument('--duration', type=float)
-    parser.add_argument('--rps', type=float)
-    parser.add_argument('--workers', type=int)
-    parser.add_argument('--groups', type=int)
-    parser.add_argument('--members-per-group', type=int)
+    add_load_arguments(parser)
     args = parser.parse_args()
     try:
         if args.action == 'cleanup':
@@ -505,22 +514,7 @@ def main():
             return
         if args.profile is None:
             raise ValueError('--profile is required for run/validate')
-        profile, suite, path = load_profile(args.profile.resolve())
-        if 'smoke' in suite and any(
-            getattr(args, flag) is not None for flag in ('duration', 'rps', 'workers', 'groups', 'members_per_group')
-        ):
-            raise ValueError('Load overrides are not applicable to smoke mode')
-        for phase in suite.get('phases', []):
-            for flag, field in [
-                ('duration', 'duration_seconds'),
-                ('rps', 'rps'),
-                ('workers', 'workers'),
-                ('groups', 'groups'),
-                ('members_per_group', 'members_per_group'),
-            ]:
-                if getattr(args, flag) is not None:
-                    phase[field] = getattr(args, flag)
-        validate(suite)
+        profile, suite, path = load_profile(args.profile.resolve(), load_overrides=phase_overrides(args))
         if args.action == 'validate':
             print('Job profile valid; no deployment or backend changed.')
             return

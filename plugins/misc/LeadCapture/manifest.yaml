@@ -4,7 +4,7 @@ metadata:
   author: langbot-team
   name: LeadCapture
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/LeadCapture
-  version: 0.1.0
+  version: 0.3.0
   description:
     en_US: "Let an LLM spot customers with strong purchase intent, ask them once for contact details, and email the lead with the full conversation via Resend."
     zh_Hans: "由 LLM 根据对话和提示词判断用户是否有强烈购买意愿，只请求一次联系方式，并通过 Resend 把线索和完整对话发到指定邮箱。"
@@ -41,13 +41,40 @@ spec:
         zh_Hans: 用来判断购买意愿，以及在规则识别不到时识别联系方式。
     - name: intent_prompt
       type: text
-      default: "用户明确表达了购买、下单、试用、报价、签约、采购或与销售沟通的意愿，或在询问价格、套餐、付款方式、发票、合同、交付时间等成交相关细节，视为强烈购买意愿。只是了解产品功能、闲聊或技术咨询，不算强烈购买意愿。"
+      default: "询问价格、套餐、报价、购买、付款方式、发票、合同、采购流程，或提出企业级、大规模、长期合作需求，属于强购买信号（高分）；申请试用、测试、演示、询问如何接入、主动要求联系销售，或说明了具体产品需求和使用场景，属于中等信号；时间紧迫、表明决策人身份或提供公司信息可以加分；只是了解功能、学习研究、个人使用、闲聊，或想要免费资源，应当低分。"
       label:
-        en_US: Intent criteria (prompt)
-        zh_Hans: 购买意愿判断标准（提示词）
+        en_US: Scoring criteria (prompt)
+        zh_Hans: 购买意向评分标准（提示词）
       description:
-        en_US: Describe what counts as strong purchase intent for your business. The plugin adds the conversation and asks for a yes/no answer.
-        zh_Hans: 描述在你们业务里什么算强烈购买意愿。插件会附上对话并要求模型给出是/否结论。
+        en_US: Describe which signals add or subtract points for your business (you can paste a keyword/score list). The model scores the conversation 0–100.
+        zh_Hans: 描述在你们业务里哪些信号加分、哪些扣分（可以直接粘贴关键词和分值清单）。模型会据此给整段对话打 0–100 分。
+    - name: high_score
+      type: integer
+      default: 60
+      label:
+        en_US: High-intent score
+        zh_Hans: 高意向分数线
+      description:
+        en_US: Scores at or above this are high intent.
+        zh_Hans: 达到这个分数视为高意向。
+    - name: ask_score
+      type: integer
+      default: 30
+      label:
+        en_US: Score to ask for contact
+        zh_Hans: 请求联系方式的分数线
+      description:
+        en_US: Scores at or above this (medium and high intent) get the contact request once. Set it equal to the high-intent score to ask only high-intent users.
+        zh_Hans: 达到这个分数（中意向和高意向）就请求一次联系方式。设成和高意向分数线相同，则只问高意向用户。
+    - name: risk_prompt
+      type: text
+      default: "刷单刷量、薅羊毛、抢票秒杀、破解盗号、爬取微信或银行等敏感数据、翻墙或 VPN 等明显违规或高风险用途。"
+      label:
+        en_US: Compliance risk criteria
+        zh_Hans: 合规风险判定
+      description:
+        en_US: Conversations matching these are flagged for review; the plugin never asks them for contact details or emails sales.
+        zh_Hans: 命中这些情形的会话会被标记为合规风险：不请求联系方式、不给销售发邮件，在页面上单独标出以便人工审核。
     - name: history_messages
       type: integer
       default: 20
@@ -75,6 +102,27 @@ spec:
       description:
         en_US: Appended to the next AI reply after contact details are received. Leave empty to disable.
         zh_Hans: 收到联系方式后附加在下一次 AI 回复后面。留空则不发送。
+    - name: lead_fields
+      type: array[string]
+      default:
+        - 公司名称
+        - 行业
+        - 使用场景
+        - 目标网站或数据来源
+        - 预估月请求量或数据量
+        - 预算范围
+        - 上线时间
+        - 联系人姓名
+        - 职位
+        - 企业邮箱
+        - 微信或电话
+        - 现有供应商
+      label:
+        en_US: Lead fields to extract
+        zh_Hans: 需要提取的线索字段
+      description:
+        en_US: After contact details arrive, the model fills these from the whole conversation; they appear at the top of the email and on the page.
+        zh_Hans: 拿到联系方式后，模型从整段对话中提取这些信息，放在邮件开头和页面详情里；没提到的显示「未提及」。
     - name: resend_api_key
       type: secret
       required: true
@@ -106,6 +154,10 @@ spec:
     EventListener:
       fromDirs:
         - path: components/event_listener/
+    Page:
+      fromDirs:
+        - path: components/pages/
+          maxDepth: 2
 execution:
   python:
     path: main.py

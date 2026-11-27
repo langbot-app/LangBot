@@ -4,6 +4,7 @@ import { getActiveWorkspaceUuid } from '@/app/infra/http/workspaceContext';
 import type { IDynamicFormItemOption } from '@/app/infra/entities/form/dynamic';
 import type { PipelineConfigTab } from '@/app/infra/entities/pipeline';
 import {
+  installableVersion,
   supportsRunnerUsage,
   type PluginV4,
   type RunnerUsage,
@@ -240,14 +241,15 @@ async function startRunnerInstall(
   plugin: PluginV4,
   options: InstallRunnerOptions,
 ): Promise<PendingRunnerInstall> {
-  if (!plugin.latest_version) {
+  const version = installableVersion(plugin);
+  if (!version) {
     throw new RunnerMarketplaceError('version-unavailable');
   }
 
   const { task_id: taskId } = await httpClient.installPluginFromMarketplace(
     plugin.author,
     plugin.name,
-    plugin.latest_version,
+    version,
     options.autoConfirmPermissions,
   );
   const pending: PendingRunnerInstall = {

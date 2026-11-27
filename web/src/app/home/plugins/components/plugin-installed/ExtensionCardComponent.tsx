@@ -1,6 +1,7 @@
 import { ExtensionCardVO, ExtensionType } from './ExtensionCardVO';
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { PluginCompatibilityBadge } from '@/app/home/plugins/components/plugin-compatibility/PluginCompatibilityNotice';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import {
@@ -13,11 +14,17 @@ import {
   Sparkles,
   Puzzle,
   Upload,
+  ShieldAlert,
 } from 'lucide-react';
 import { getCloudServiceClientSync, systemInfo } from '@/app/infra/http';
 import { useInstalledPluginIcon } from '@/app/infra/hooks/useInstalledPluginIcon';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -102,12 +109,6 @@ export default function ExtensionCardComponent({
 
   const renderPluginContent = () => (
     <>
-      {cardVO.permission_status?.compatibility_mode && (
-        <Badge variant="outline">{t('pluginPermissions.undeclared')}</Badge>
-      )}
-      {cardVO.permission_status?.pending_confirmation && (
-        <Badge variant="destructive">{t('pluginPermissions.pending')}</Badge>
-      )}
       <div className="text-[0.7rem] text-muted-foreground truncate w-full">
         {cardVO.author} / {cardVO.name}
       </div>
@@ -119,6 +120,7 @@ export default function ExtensionCardComponent({
           v{cardVO.version}
         </Badge>
         {renderTypeBadge(cardVO.type)}
+        <PluginCompatibilityBadge compatibility={cardVO.compatibility} />
         {!cardVO.debug && (
           <>
             {cardVO.install_source === 'github' && (
@@ -300,7 +302,27 @@ export default function ExtensionCardComponent({
             className="flex flex-col items-center justify-between h-full relative z-20 flex-shrink-0"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-center"></div>
+            <div className="flex items-center justify-center">
+              {cardVO.type === 'plugin' &&
+                cardVO.permission_status?.pending_confirmation && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex size-8 items-center justify-center rounded-md text-amber-600 transition-colors hover:bg-amber-500/10 dark:text-amber-400"
+                        aria-label={t('pluginPermissions.pending')}
+                        data-testid="plugin-permission-pending"
+                        onClick={() => onCardClick()}
+                      >
+                        <ShieldAlert className="size-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                      {t('pluginPermissions.pending')}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+            </div>
 
             <div className="flex items-center justify-center">
               <DropdownMenu
@@ -335,6 +357,25 @@ export default function ExtensionCardComponent({
                       <span className="ml-auto w-2 h-2 flex-shrink-0 rounded-full bg-destructive" />
                     </DropdownMenuItem>
                   )}
+                  {cardVO.type === 'plugin' &&
+                    !cardVO.debug &&
+                    (cardVO.install_source === 'local' ||
+                      cardVO.install_source === 'github') &&
+                    onUploadToSpace && (
+                      <DropdownMenuItem
+                        className="flex flex-row items-center justify-start gap-[0.4rem] cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onUploadToSpace(cardVO);
+                          setDropdownOpen(false);
+                        }}
+                      >
+                        <Upload className="w-4 h-4" />
+                        <span>
+                          {t('plugins.spaceUpload.shareInstalledAction')}
+                        </span>
+                      </DropdownMenuItem>
+                    )}
                   {cardVO.type === 'plugin' &&
                     cardVO.install_source === 'marketplace' && (
                       <DropdownMenuItem

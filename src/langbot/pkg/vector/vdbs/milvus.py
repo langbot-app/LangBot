@@ -1,12 +1,18 @@
 from __future__ import annotations
 import asyncio
 from typing import Any, Dict
-from pymilvus import MilvusClient, DataType, CollectionSchema, FieldSchema
-from pymilvus.milvus_client.index import IndexParams
 from langbot.pkg.vector.vdb import VectorDatabase, remember_bounded_set, runtime_cache_limit
 from langbot.pkg.vector.filter_utils import normalize_filter, strip_unsupported_fields
 from langbot.pkg.core import app
 from langbot.pkg.utils import bounded_executor
+
+try:
+    from pymilvus import MilvusClient, DataType, CollectionSchema, FieldSchema
+    from pymilvus.milvus_client.index import IndexParams
+
+    MILVUS_AVAILABLE = True
+except ImportError:
+    MILVUS_AVAILABLE = False
 
 # Milvus schema only stores these metadata fields; filter on other fields is
 # silently dropped with a warning.
@@ -66,6 +72,13 @@ class MilvusVectorDatabase(VectorDatabase):
                  For remote server: "http://localhost:19530"
             token: Optional authentication token for remote connections
         """
+        if not MILVUS_AVAILABLE:
+            raise ImportError(
+                "Milvus support is not installed. Install LangBot with the 'milvus' extra: "
+                "uv sync --extra milvus (source), uvx --from 'langbot[milvus]@latest' langbot (PyPI), "
+                'or use the rockchin/langbot:<tag>-milvus Docker image.'
+            )
+
         self.ap = ap
         self.uri = uri
         self.token = token

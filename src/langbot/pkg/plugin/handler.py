@@ -9,6 +9,7 @@ from typing import Any, Union
 import base64
 import contextlib
 import contextvars
+import copy
 import traceback
 import uuid
 from dataclasses import dataclass
@@ -1082,6 +1083,49 @@ class RuntimeConnectionHandler(handler.Handler):
         )
         return result.first() is not None
 
+    async def _bot_available(self, bot_uuid: str, workspace_uuid: str) -> bool:
+        """Whether a plugin may address ``bot_uuid`` in this Workspace.
+
+        Persisted bots are checked against the ``bots`` table. The WebSocket
+        debug proxy is in-memory only and never has a row, so it is available
+        exactly when this Workspace has a live proxy runtime.
+        """
+        if bot_uuid == constants.WEBSOCKET_PROXY_BOT_UUID:
+            return self.ap.platform_mgr.has_websocket_proxy_bot(workspace_uuid)
+        return await self._resource_exists(
+            persistence_bot.Bot,
+            persistence_bot.Bot.uuid,
+            bot_uuid,
+            workspace_uuid,
+        )
+
+    async def _websocket_proxy_bot_info(self, execution_context: ExecutionContext, bot_uuid: str) -> dict | None:
+        """Bot info for the in-memory debug proxy, shaped like ``get_runtime_bot_info``.
+
+        Built from the live runtime object because the proxy has no ``bots``
+        row. It carries no adapter config and no webhook.
+        """
+        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(execution_context, bot_uuid)
+        if runtime_bot is None:
+            return None
+        entity = runtime_bot.bot_entity
+        return {
+            'uuid': entity.uuid,
+            'workspace_uuid': entity.workspace_uuid,
+            'name': entity.name,
+            'description': entity.description or '',
+            'adapter': entity.adapter,
+            'enable': bool(entity.enable),
+            'event_bindings': [],
+            'plugin_processors': [],
+            'adapter_runtime_values': {
+                'bot_account_id': getattr(runtime_bot.adapter, 'bot_account_id', None),
+                'webhook_url': None,
+                'webhook_full_url': None,
+                'extra_webhook_full_url': None,
+            },
+        }
+
     @staticmethod
     def _config_contains_file_key(value: Any, file_key: str) -> bool:
         if isinstance(value, dict):
@@ -1476,20 +1520,22 @@ class RuntimeConnectionHandler(handler.Handler):
             action_context, _ = await self._require_plugin_action_context()
             execution_context = self._execution_context(action_context)
             bot_uuid = data['bot_uuid']
-            if not await self._resource_exists(
-                persistence_bot.Bot,
-                persistence_bot.Bot.uuid,
-                bot_uuid,
-                action_context.workspace_uuid,
-            ):
+            if not await self._bot_available(bot_uuid, action_context.workspace_uuid):
                 return handler.ActionResponse.error(
                     message=f'Bot with bot_uuid {bot_uuid} not found',
                 )
-            bot = await self.ap.bot_service.get_runtime_bot_info(
-                execution_context,
-                bot_uuid,
-                include_secret=False,
-            )
+            if bot_uuid == constants.WEBSOCKET_PROXY_BOT_UUID:
+                bot = await self._websocket_proxy_bot_info(execution_context, bot_uuid)
+                if bot is None:
+                    return handler.ActionResponse.error(
+                        message=f'Bot with bot_uuid {bot_uuid} not found',
+                    )
+            else:
+                bot = await self.ap.bot_service.get_runtime_bot_info(
+                    execution_context,
+                    bot_uuid,
+                    include_secret=False,
+                )
             return handler.ActionResponse.success(
                 data={
                     'bot': bot,
@@ -1507,13 +1553,13 @@ class RuntimeConnectionHandler(handler.Handler):
             output_lock_acquired = False
             try:
                 if data.get('file_ids') is not None:
-                    from ..box.runner import exported_message, binding_for
+                    from ..box.runner import exported_message, binding_for, mark_exported_files
 
                     query = _resolve_action_query(data, session, self.ap, action_context)
                     output_lock = binding_for(query).lock
                     await output_lock.acquire()
                     output_lock_acquired = True
-                    files = exported_message(query, data['file_ids'])
+                    files = await exported_message(self.ap, query, data['file_ids'])
                     data = {**data, 'params': {**(data.get('params') or {}), 'message': files.model_dump(mode='json')}}
                 tool_name, parameters, message = resolve_platform_api_call(
                     session, data.get('bot_uuid'), data['action'], data.get('params') or {}, data.get('context_tool')
@@ -1535,7 +1581,7 @@ class RuntimeConnectionHandler(handler.Handler):
                     message_chain=message,
                 )
                 if data.get('file_ids') is not None:
-                    exported_message(query, data['file_ids'], consume=True)
+                    mark_exported_files(query, data['file_ids'])
                 return handler.ActionResponse.success(data={'result': _serialize_plugin_api_result(result)})
             except (ValueError, KeyError, TypeError) as exc:
                 return handler.ActionResponse.error(message=str(exc))
@@ -1553,12 +1599,7 @@ class RuntimeConnectionHandler(handler.Handler):
             target_id = data['target_id']
             message_chain = data['message_chain']
 
-            if not await self._resource_exists(
-                persistence_bot.Bot,
-                persistence_bot.Bot.uuid,
-                bot_uuid,
-                action_context.workspace_uuid,
-            ):
+            if not await self._bot_available(bot_uuid, action_context.workspace_uuid):
                 return handler.ActionResponse.error(
                     message=f'Bot with bot_uuid {bot_uuid} not found',
                 )
@@ -1761,7 +1802,11 @@ class RuntimeConnectionHandler(handler.Handler):
 
             if getattr(llm_model.model_entity, 'workspace_uuid', None) not in (None, action_context.workspace_uuid):
                 return handler.ActionResponse.error(message='LLM model belongs to another Workspace')
-            llm_model = model_with_reasoning_level(llm_model, data.get('reasoning_level'))
+            # Token counting preserves the requested input representation without
+            # validating whether a generation reasoning level is supported.
+            if data.get('reasoning_level') is not None:
+                llm_model = copy.copy(llm_model)
+                llm_model.reasoning_config_override = {'level': data['reasoning_level']}
             messages_obj = [provider_message.Message.model_validate(message) for message in messages]
 
             async def _placeholder_func(**kwargs):
@@ -2108,6 +2153,9 @@ class RuntimeConnectionHandler(handler.Handler):
                 result = await self.ap.tool_mgr.execute_func_call(
                     **execute_kwargs,
                 )
+                # Loaders may return Pydantic models (e.g. MCP list[ContentElement]);
+                # the action contract requires plain JSON values.
+                result = _serialize_plugin_api_result(result)
                 if is_runner_call:
                     return handler.ActionResponse.success(data={'result': result})
                 return handler.ActionResponse.success(data={'tool_response': result})
@@ -2754,6 +2802,16 @@ class RuntimeConnectionHandler(handler.Handler):
                 content_bytes = await self.ap.rag_runtime_service.get_file_stream(
                     execution_context,
                     storage_path,
+                    plugin_id=f'{identity.plugin_author}/{identity.plugin_name}',
+                )
+                # Storage I/O may outlive installation/grant revocation. Never start
+                # the binary transfer under stale authority after the await.
+                await self._require_plugin_action_context()
+                await self._require_active_action_context(action_context)
+                from ..api.application.plugin_permissions import authorize_action
+
+                await authorize_action(
+                    self.ap, installation_binding, PluginToRuntimeAction.GET_KNOWLEDEGE_FILE_STREAM.value, data
                 )
                 file_key = await self.send_file(
                     content_bytes,
@@ -2875,6 +2933,13 @@ class RuntimeConnectionHandler(handler.Handler):
                 results = [entry.model_dump(mode='json') for entry in entries]
                 return handler.ActionResponse.success(data={'results': results})
             except Exception as e:
+                # The error only travels back to the calling plugin; log it so
+                # operators can see why retrievals fail (kb.retrieve telemetry
+                # carries no error text).
+                self.ap.logger.warning(
+                    f'Knowledge base retrieval failed: kb={kb_id} '
+                    f'engine={kb.get_knowledge_engine_plugin_id()} {type(e).__name__}: {e}'
+                )
                 return _make_rag_error_response(e, 'RetrievalError', kb_id=kb_id)
 
         @self.action(PluginToRuntimeAction.LIST_PIPELINE_KNOWLEDGE_BASES)
@@ -2993,6 +3058,13 @@ class RuntimeConnectionHandler(handler.Handler):
                 results = [entry.model_dump(mode='json') for entry in entries]
                 return handler.ActionResponse.success(data={'results': results})
             except Exception as e:
+                # The error only travels back to the calling plugin; log it so
+                # operators can see why retrievals fail (kb.retrieve telemetry
+                # carries no error text).
+                self.ap.logger.warning(
+                    f'Knowledge base retrieval failed: kb={kb_id} '
+                    f'engine={kb.get_knowledge_engine_plugin_id()} {type(e).__name__}: {e}'
+                )
                 return _make_rag_error_response(e, 'RetrievalError', kb_id=kb_id)
 
         # ================= Agent History/Event APIs =================
@@ -3029,20 +3101,25 @@ class RuntimeConnectionHandler(handler.Handler):
 
             prompt = getattr(query, 'prompt', None)
             messages = getattr(prompt, 'messages', []) or []
+            from ..pipeline.preproc.prompt_context import PREPROCESSED_SYSTEM_CONTEXT
+
+            system_context = (getattr(query, 'variables', None) or {}).get(PREPROCESSED_SYSTEM_CONTEXT, [])
             return handler.ActionResponse.success(
                 data={
                     'prompt': [
                         message.model_dump(mode='json') if hasattr(message, 'model_dump') else message
                         for message in messages
-                    ],
+                    ]
+                    + system_context,
                 }
             )
 
         agent_pull_actions.register(self)
         runner_actions.register(self)
-        from . import box_actions
+        from . import box_actions, input_attachment_actions
 
         box_actions.register(self)
+        input_attachment_actions.register(self)
         agent_state_actions.register(self)
 
         @self.action(CommonAction.PING)
@@ -3113,6 +3190,19 @@ class RuntimeConnectionHandler(handler.Handler):
             operation_id = data['operation_id']
             if operation_id not in context.allowed_operation_ids:
                 fail('permission_denied', 'Workspace operation has not been granted', denied_operations=[operation_id])
+            if operation_id.startswith('artifact.') and data.get('run_id'):
+                session, error = await _validate_agent_run_session(
+                    data['run_id'], data.get('caller_plugin_identity'), self.ap, 'Artifact'
+                )
+                if error:
+                    return error
+                frozen = {item['id'] for item in session['authorization'].get('workspace_operations', [])}
+                if operation_id not in frozen:
+                    fail(
+                        'permission_denied',
+                        'Workspace operation has not been granted',
+                        denied_operations=[operation_id],
+                    )
             result = await call(self.ap, context, operation_id, data.get('arguments', {}), consumer='processor')
             return handler.ActionResponse.success(data=result)
 
@@ -3221,6 +3311,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 timeout=10,
             )
         self.supports_event_batch = result.get('event_batch') is True
+        self.supports_log_trace = result.get('log_trace') is True
         return result
 
     async def get_storage_analysis(self) -> dict[str, Any]:
@@ -3493,7 +3584,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 timeout=20,
             )
         except Exception:
-            traceback.print_exc()
+            self.ap.logger.exception('Failed to read plugin README for %s/%s', plugin_author, plugin_name)
             return ''
 
         readme_file_key = result.get('readme_file_key')
@@ -3525,7 +3616,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 timeout=20,
             )
         except Exception:
-            traceback.print_exc()
+            self.ap.logger.exception('Failed to read plugin logs for %s/%s', plugin_author, plugin_name)
             return []
 
         return result.get('logs', [])

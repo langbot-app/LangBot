@@ -67,3 +67,13 @@ def test_typed_assistant_and_migration_errors_keep_original_status():
 
     result = error_from_exception(ServiceError('stale_turn'))
     assert (result.code, result.status_code) == ('stale_turn', 409)
+
+
+def test_application_api_exception_handles_string():
+    from langbot.pkg.api.application.contracts import ApplicationAPIException
+
+    exc = ApplicationAPIException('direct message string')
+    assert exc.error.message == 'direct message string'
+    assert exc.error.code == 'application_error'
+    assert str(exc) == 'direct message string'
+

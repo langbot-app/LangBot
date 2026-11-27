@@ -22,7 +22,7 @@
   },
   {
     "id": "langbot-team/LongTermMemory",
-    "version": "0.2.8",
+    "version": "0.2.10",
     "category": "KnowledgeEngine",
     "path": "KnowledgeEngine/LongTermMemory",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/KnowledgeEngine/LongTermMemory"
@@ -36,7 +36,7 @@
   },
   {
     "id": "langbot-team/LocalAgent",
-    "version": "0.2.8",
+    "version": "0.2.15",
     "category": "Runner",
     "path": "Runner/LocalAgent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/LocalAgent"
@@ -50,28 +50,28 @@
   },
   {
     "id": "langbot-team/ACPAgentRunner",
-    "version": "0.1.19",
+    "version": "0.1.22",
     "category": "Runner",
     "path": "Runner/acp-agent-runner",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/acp-agent-runner"
   },
   {
     "id": "langbot-team/ClaudeCodeAgent",
-    "version": "0.1.15",
+    "version": "0.1.16",
     "category": "Runner",
     "path": "Runner/claude-code-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/claude-code-agent"
   },
   {
     "id": "langbot-team/CodexAgent",
-    "version": "0.1.21",
+    "version": "0.1.22",
     "category": "Runner",
     "path": "Runner/codex-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/codex-agent"
   },
   {
     "id": "langbot-team/CozeAgent",
-    "version": "0.2.3",
+    "version": "0.2.5",
     "category": "Runner",
     "path": "Runner/coze-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/coze-agent"
@@ -85,14 +85,14 @@
   },
   {
     "id": "langbot-team/DeerFlowAgent",
-    "version": "0.2.2",
+    "version": "0.2.3",
     "category": "Runner",
     "path": "Runner/deerflow-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/deerflow-agent"
   },
   {
     "id": "langbot-team/DifyAgent",
-    "version": "0.2.6",
+    "version": "0.2.12",
     "category": "Runner",
     "path": "Runner/dify-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/dify-agent"
@@ -106,21 +106,21 @@
   },
   {
     "id": "langbot-team/MulticaAgent",
-    "version": "0.2.0",
+    "version": "0.2.2",
     "category": "Runner",
     "path": "Runner/multica-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/multica-agent"
   },
   {
     "id": "langbot-team/N8nAgent",
-    "version": "0.2.3",
+    "version": "0.2.4",
     "category": "Runner",
     "path": "Runner/n8n-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/n8n-agent"
   },
   {
     "id": "langbot-team/TboxAgent",
-    "version": "0.2.3",
+    "version": "0.2.4",
     "category": "Runner",
     "path": "Runner/tbox-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/tbox-agent"
@@ -162,7 +162,7 @@
   },
   {
     "id": "langbot-team/EssentialCommands",
-    "version": "0.1.11",
+    "version": "0.1.12",
     "category": "misc",
     "path": "misc/EssentialCommands",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/EssentialCommands"
@@ -211,7 +211,7 @@
   },
   {
     "id": "RockChinQ/HelloPlugin",
-    "version": "0.1.5",
+    "version": "0.1.6",
     "category": "misc",
     "path": "misc/HelloPlugin",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/HelloPlugin"
@@ -232,7 +232,7 @@
   },
   {
     "id": "langbot-team/LeadCapture",
-    "version": "0.1.0",
+    "version": "0.3.0",
     "category": "misc",
     "path": "misc/LeadCapture",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/LeadCapture"

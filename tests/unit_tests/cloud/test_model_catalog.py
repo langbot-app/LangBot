@@ -411,8 +411,8 @@ async def test_catalog_run_wakes_immediately_when_directory_changes() -> None:
     sync_started = asyncio.Event()
 
     class _WakeService(CloudModelCatalogSyncService):
-        async def sync_once(self, *, reload_runtime: bool = True):
-            del reload_runtime
+        async def sync_once(self, *, reload_runtime: bool = True, incremental: bool = False):
+            del reload_runtime, incremental
             sync_started.set()
             return {'workspaces': 0, 'created': 0, 'updated': 0, 'deleted': 0}
 
@@ -532,3 +532,94 @@ async def test_background_sync_log_redacts_exception_message(caplog) -> None:
 
     assert secret not in caplog.text
     assert 'Cloud model catalog synchronization failed (RuntimeError)' in caplog.text
+
+
+async def test_incremental_sync_only_reconciles_workspaces_whose_desired_state_changed() -> None:
+    bindings = [
+        SimpleNamespace(workspace_uuid=WORKSPACE_A),
+        SimpleNamespace(workspace_uuid=WORKSPACE_B),
+    ]
+    app = SimpleNamespace(
+        workspace_service=SimpleNamespace(list_active_execution_bindings=lambda: _async_value(bindings)),
+        model_mgr=SimpleNamespace(load_models_from_db=_AsyncCounter()),
+        logger=logging.getLogger(__name__),
+    )
+    provider = _CatalogProvider(_snapshot())
+    service = CloudModelCatalogSyncService(app, provider, INSTANCE_UUID)
+    synced: list[str] = []
+    fail_workspace: str | None = None
+
+    async def sync_workspace(workspace_uuid, *_args):
+        if workspace_uuid == fail_workspace:
+            raise RuntimeError('reconcile failed')
+        synced.append(workspace_uuid)
+        return {'created': 0, 'updated': 0, 'deleted': 0}
+
+    service._sync_workspace = sync_workspace  # type: ignore[method-assign]
+
+    await service.sync_once()
+    assert synced == [WORKSPACE_A, WORKSPACE_B]
+
+    # Nothing changed: an incremental pass touches no Workspace but still counts them.
+    synced.clear()
+    summary = await service.sync_once(incremental=True)
+    assert synced == []
+    assert summary['workspaces'] == 2
+
+    # A key rotation only reconciles the affected Workspace.
+    provider.snapshot = _snapshot(key_a='rotated-key')
+    await service.sync_once(incremental=True)
+    assert synced == [WORKSPACE_A]
+
+    # A catalog change reaches every Workspace.
+    synced.clear()
+    provider.snapshot = _snapshot(key_a='rotated-key', model_id='gpt-renamed')
+    await service.sync_once(incremental=True)
+    assert synced == [WORKSPACE_A, WORKSPACE_B]
+
+    # A failed reconcile is retried by the next incremental pass.
+    synced.clear()
+    provider.snapshot = _snapshot(key_a='second-rotation', model_id='gpt-renamed')
+    fail_workspace = WORKSPACE_A
+    with pytest.raises(RuntimeError, match='reconcile failed'):
+        await service.sync_once(incremental=True)
+    fail_workspace = None
+    await service.sync_once(incremental=True)
+    assert synced == [WORKSPACE_A]
+
+    # A full pass always reconciles every Workspace (drift repair).
+    synced.clear()
+    await service.sync_once()
+    assert synced == [WORKSPACE_A, WORKSPACE_B]
+
+
+async def test_run_uses_incremental_passes_until_the_full_interval_elapses(monkeypatch) -> None:
+    calls: list[bool] = []
+    clock = [1000.0]
+    monkeypatch.setattr('langbot.pkg.cloud.model_catalog.time.monotonic', lambda: clock[0])
+
+    class _RecordingService(CloudModelCatalogSyncService):
+        async def sync_once(self, *, reload_runtime: bool = True, incremental: bool = False):
+            calls.append(incremental)
+            if not incremental:
+                self._last_full_sync_at = clock[0]
+            return {'workspaces': 0, 'created': 0, 'updated': 0, 'deleted': 0}
+
+    app = SimpleNamespace(logger=logging.getLogger(__name__))
+    service = _RecordingService(app, _CatalogProvider(_snapshot()), INSTANCE_UUID, sync_interval_seconds=3600)
+    service._last_full_sync_at = clock[0]
+    task = asyncio.create_task(service.run())
+    try:
+        for _ in range(2):
+            service.request_sync()
+            for _ in range(5):
+                await asyncio.sleep(0)
+        clock[0] += 3600
+        service.request_sync()
+        for _ in range(5):
+            await asyncio.sleep(0)
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert calls == [True, True, False]

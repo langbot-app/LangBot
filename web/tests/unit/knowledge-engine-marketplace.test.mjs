@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import ts from 'typescript';
+import { loadTs } from './load-ts.mjs';
+
+const pluginEntities = loadTs(
+  new URL('../../src/app/infra/entities/plugin/index.ts', import.meta.url),
+);
 
 function setup({
   tasks = [{ runtime: { done: true } }],
@@ -52,6 +57,7 @@ function setup({
   };
   const deps = {
     '@/app/infra/http': { getCloudServiceClient: async () => cloud },
+    '@/app/infra/entities/plugin': pluginEntities,
     '@/app/infra/http/HttpClient': { httpClient: http },
     '@/app/infra/http/workspaceContext': {
       getActiveWorkspaceUuid: () => workspace,
@@ -178,7 +184,7 @@ test('installation persists a scoped task before polling and waits for component
   assert.equal(installed, engine);
   assert.equal(created, 42);
   assert.deepEqual(calls, [
-    ['install', 'qa', 'engine', '2.0.0'],
+    ['install', 'qa', 'engine', '2.0.0', true],
     ['task', 42],
     ['task', 42],
     ['engines'],
@@ -221,7 +227,7 @@ test('failed tasks clear their intent and never query component registration', a
     /Package invalid/,
   );
   assert.deepEqual(calls, [
-    ['install', 'qa', 'engine', '2.0.0'],
+    ['install', 'qa', 'engine', '2.0.0', true],
     ['task', 42],
   ]);
   assert.equal(storage.size, 0);

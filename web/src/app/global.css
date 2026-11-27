@@ -220,3 +220,40 @@ body:has([data-tour-modal='true']) [data-tour-modal='false'] {
     scrollbar-gutter: stable;
   }
 }
+
+/* Route-level loading states: stay invisible for a short moment so fast
+   loads never flash a spinner, then fade in. */
+@keyframes route-loading-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.route-loading-delayed {
+  animation: route-loading-in 240ms ease-out 200ms both;
+}
+
+@keyframes route-loading-breathe {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.94);
+  }
+}
+
+.route-loading-breathe {
+  animation: route-loading-breathe 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-loading-breathe {
+    animation: none;
+  }
+}

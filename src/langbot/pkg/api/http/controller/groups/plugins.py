@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .....i18n import t
+from .....telemetry import usage
 
 import asyncio
 import base64
@@ -22,6 +23,8 @@ from .. import group
 from .....workspace.errors import WorkspaceNotFoundError
 from langbot_plugin.entities.io.errors import ActionCallError
 from .....plugin.github import validate_github_plugin_install_info
+from .....plugin.compatibility import compatibility
+from .....api.application.contracts import ApplicationAPIException
 from .....plugin.archive import inspect_plugin_archive_metadata
 from .....utils import httpclient
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
@@ -160,6 +163,13 @@ class PluginsRouterGroup(group.RouterGroup):
         persisted_config = result.scalar_one_or_none()
         return persisted_config if persisted_config is not None else plugin['plugin_config']
 
+    async def _github_query(self, operation, request_context):
+        try:
+            data = await self.ap.application_api.execute(operation, request_context, await quart.request.get_json())
+            return self.success(data=data)
+        except ApplicationAPIException as exc:
+            return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+
     async def initialize(self) -> None:
         @self.route(
             '/<author>/<plugin_name>/permissions',
@@ -296,6 +306,7 @@ class PluginsRouterGroup(group.RouterGroup):
         )
         async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
             """Metadata and connection state for the "upload to Space" page."""
+            usage.inc(self.ap, request_context.workspace_uuid, 'ugc.share.preview', type='plugin')
             await self._require_authenticated_plugin_runtime_context(request_context)
             plugin = await _resolve_upload_target(author, plugin_name)
             if plugin is None:
@@ -324,9 +335,15 @@ class PluginsRouterGroup(group.RouterGroup):
                 except Exception:
                     self.ap.logger.exception('Failed to retrieve creator profile for space-upload/config')
 
+            is_debug = bool(plugin.get('debug'))
+            install_source = 'debug' if is_debug else str(plugin.get('install_source') or '')
             return self.success(
                 data={
-                    'debug': bool(plugin.get('debug')),
+                    'debug': is_debug,
+                    # LANG-439: locally installed plugins share their installed
+                    # package as-is (metadata locked, no GitHub sync).
+                    'source': install_source,
+                    'shareable': is_debug or install_source in ('local', 'github'),
                     'metadata': {
                         'author': metadata.get('author', author),
                         'name': metadata.get('name', plugin_name),
@@ -353,6 +370,7 @@ class PluginsRouterGroup(group.RouterGroup):
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
             permission=Permission.RESOURCE_MANAGE,
         )
+        @usage.observe_share(self.ap, 'plugin')
         async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
             """Build the debug plugin and publish it to LangBot Space.
 
@@ -374,12 +392,22 @@ class PluginsRouterGroup(group.RouterGroup):
             sync_github = data.get('sync_github') is True
             git_result: dict | None = None
 
+            target = await _resolve_upload_target(author, plugin_name)
+            if target is None:
+                return self.http_status(404, -1, 'plugin not found')
             try:
-                package_result = await self.ap.plugin_connector.get_plugin_package(
-                    author,
-                    plugin_name,
-                    manifest_overrides=overrides,
-                )
+                if target.get('debug'):
+                    package_result = await self.ap.plugin_connector.get_plugin_package(
+                        author,
+                        plugin_name,
+                        manifest_overrides=overrides,
+                    )
+                else:
+                    # An installed local/GitHub plugin is shared byte-for-byte:
+                    # its manifest is part of the reviewed artifact, so
+                    # overrides and GitHub sync do not apply.
+                    package_result = await self.ap.plugin_connector.get_installed_plugin_package(author, plugin_name)
+                    sync_github = False
             except Exception as exc:
                 self.ap.logger.warning('Building package for %s/%s failed: %s', author, plugin_name, exc)
                 message = str(exc)
@@ -442,6 +470,7 @@ class PluginsRouterGroup(group.RouterGroup):
                     changelog=str(data.get('changelog') or ''),
                 )
             except ValueError as exc:
+                quart.g.usage_error = type(exc).__name__
                 return self.http_status(400, -1, str(exc))
 
             quart.g.operation_log_resource_id = f'{author}/{plugin_name}'
@@ -790,84 +819,22 @@ class PluginsRouterGroup(group.RouterGroup):
             return self.success(data=result.get('data'))
 
         @self.route(
+            '/github/refs',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            return await self._github_query('plugin.github.refs', request_context)
+
+        @self.route(
             '/github/releases',
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(request_context: RequestContext) -> str:
-            """Get releases from a GitHub repository URL"""
-            await self._require_authenticated_plugin_runtime_context(request_context)
-            data = await quart.request.json
-            repo_url = data.get('repo_url', '')
-
-            parsed_repo = self._parse_github_repo_url(repo_url)
-            if not parsed_repo:
-                return self.http_status(400, -1, 'Invalid GitHub repository URL')
-
-            owner = parsed_repo['owner']
-            repo = parsed_repo['repo']
-            requested_ref = parsed_repo['ref']
-            requested_subdir = parsed_repo['subdir']
-
-            try:
-                if requested_ref:
-                    return self.success(
-                        data={
-                            'releases': [
-                                {
-                                    'id': 0,
-                                    'tag_name': requested_ref,
-                                    'name': requested_ref,
-                                    'published_at': '',
-                                    'prerelease': False,
-                                    'draft': False,
-                                    'source_type': 'branch',
-                                    'archive_url': f'https://api.github.com/repos/{owner}/{repo}/zipball/{requested_ref}',
-                                }
-                            ],
-                            'owner': owner,
-                            'repo': repo,
-                            'source_subdir': requested_subdir,
-                        }
-                    )
-
-                # Fetch releases from GitHub API
-                url = f'https://api.github.com/repos/{owner}/{repo}/releases'
-                async with httpx.AsyncClient(
-                    trust_env=True,
-                    follow_redirects=True,
-                    timeout=10,
-                    event_hooks=httpclient.httpx_response_limit_hooks(),
-                ) as client:
-                    response = await client.get(url)
-                    response.raise_for_status()
-                    releases = await httpclient.parse_json_response(response)
-
-                # Format releases data for frontend
-                formatted_releases = []
-                for release in releases:
-                    formatted_releases.append(
-                        {
-                            'id': release['id'],
-                            'tag_name': release['tag_name'],
-                            'name': release['name'],
-                            'published_at': release['published_at'],
-                            'prerelease': release['prerelease'],
-                            'draft': release['draft'],
-                        }
-                    )
-
-                return self.success(
-                    data={
-                        'releases': formatted_releases,
-                        'owner': owner,
-                        'repo': repo,
-                        'source_subdir': requested_subdir,
-                    }
-                )
-            except httpx.RequestError:
-                raise
+            return await self._github_query('plugin.github.releases', request_context)
 
         @self.route(
             '/github/release-assets',
@@ -943,8 +910,14 @@ class PluginsRouterGroup(group.RouterGroup):
 
             data = await quart.request.json or {}
             try:
+                if any(key in data for key in ('mirror', 'mirrors', 'github_mirror', 'mirror_url')):
+                    raise ValueError('GitHub sources are configured by the operator')
                 install_info = validate_github_plugin_install_info(
                     {
+                        'source_type': data.get('source_type', 'release'),
+                        'allow_incompatible': data.get('allow_incompatible') is True,
+                        'ref': data.get('ref'),
+                        'source_subdir': data.get('source_subdir', ''),
                         'asset_url': data.get('asset_url'),
                         'asset_id': data.get('asset_id'),
                         'release_id': data.get('release_id'),
@@ -959,7 +932,7 @@ class PluginsRouterGroup(group.RouterGroup):
 
             owner = install_info['owner']
             repo = install_info['repo']
-            release_tag = install_info['release_tag']
+            release_tag = install_info.get('release_tag') or install_info['ref']
             # Name the installed extension in the trace. GitHub installs carry
             # owner/repo in the body, which the audit identity resolver can also
             # read, but publishing it here keeps the trace correct regardless of
@@ -1053,6 +1026,7 @@ class PluginsRouterGroup(group.RouterGroup):
             data = {
                 'plugin_file': file_bytes,
                 'administrator_force': administrator_force,
+                'allow_incompatible': form.get('allow_incompatible', '').lower() == 'true',
             }
 
             ctx = taskmgr.TaskContext.new()
@@ -1104,6 +1078,7 @@ class PluginsRouterGroup(group.RouterGroup):
                         'filename': file.filename or 'local plugin',
                         'size': len(file_bytes),
                         'manifest': manifest,
+                        'compatibility': compatibility(manifest),
                         'metadata': manifest.get('metadata') or {},
                         'component_types': component_types,
                         'component_counts': component_counts,

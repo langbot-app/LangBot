@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { backendClient } from '@/app/infra/http';
+import type { Plugin } from '@/app/infra/entities/plugin';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { ShieldAlert, ShieldCheck } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,7 +22,14 @@ import {
   usePluginInstallTasks,
   InstallStage,
   PluginInstallTask,
+  pluginTaskKey,
 } from './PluginInstallTaskContext';
+import { PluginCompatibilityWarning } from '@/app/home/plugins/components/plugin-compatibility/PluginCompatibilityNotice';
+import PluginInstallFollowUp, {
+  NextStepBanner,
+  NextStepLink,
+  NextStepList,
+} from './PluginInstallFollowUp';
 
 type StageConfig = {
   key: InstallStage;
@@ -83,7 +91,104 @@ function formatSpeed(bytesPerSec: number): string {
   return (bytesPerSec / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
 }
 
-function TaskProgressContent({ task }: { task: PluginInstallTask }) {
+/**
+ * A GitHub install rejected for its declared LangBot range: explain, require
+ * explicit acknowledgement, then resubmit with `allow_incompatible=true`.
+ */
+function IncompatibleInstallRetry({
+  task,
+  onDismiss,
+}: {
+  task: PluginInstallTask;
+  onDismiss: () => void;
+}) {
+  const { t } = useTranslation();
+  const { addTask, removeTask, setSelectedTaskId } = usePluginInstallTasks();
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const resubmit = task.resubmitIncompatible;
+
+  async function handleRetry() {
+    if (!resubmit || !acknowledged) return;
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      const { task_id: taskId } = await resubmit();
+      addTask({
+        taskId,
+        pluginName: task.pluginName,
+        source: task.source,
+        extensionType: task.extensionType,
+        fileSize: task.fileSize,
+      });
+      removeTask(task.id);
+      setSelectedTaskId(pluginTaskKey(taskId, task.source));
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'object' && error && 'msg' in error
+            ? String((error as { msg?: string }).msg || '')
+            : String(error);
+      setRetryError(message || t('plugins.installFailed'));
+      setRetrying(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <PluginCompatibilityWarning
+        compatibility={task.incompatibility}
+        context="install"
+        acknowledged={acknowledged}
+        onAcknowledgedChange={resubmit ? setAcknowledged : undefined}
+      />
+      {retryError && (
+        <p className="text-xs text-red-600 dark:text-red-400 break-all">
+          {retryError}
+        </p>
+      )}
+      <div className="flex items-center justify-end gap-2">
+        {resubmit && (
+          <span className="mr-auto text-xs text-muted-foreground">
+            {retrying
+              ? t('pluginCompat.retrying')
+              : t('pluginCompat.githubRetryHint')}
+          </span>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onDismiss}
+          disabled={retrying}
+        >
+          {t('common.close')}
+        </Button>
+        {resubmit && (
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={!acknowledged || retrying}
+            onClick={handleRetry}
+            data-testid="plugin-compat-install-anyway"
+          >
+            {retrying && <Loader2 className="size-4 animate-spin" />}
+            {t('pluginCompat.installAnyway')}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TaskProgressContent({
+  task,
+  onDismiss,
+}: {
+  task: PluginInstallTask;
+  onDismiss: () => void;
+}) {
   const { t } = useTranslation();
   const { setSelectedTaskId } = usePluginInstallTasks();
 
@@ -99,19 +204,24 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
   const [pendingConfirmation, setPendingConfirmation] = useState<
     boolean | null
   >(task.pendingConfirmation ?? null);
+  const [installedPlugin, setInstalledPlugin] = useState<Plugin | null>(null);
   useEffect(() => {
     if (!isDone || !isPlugin) return;
     let cancelled = false;
     setPendingConfirmation(task.pendingConfirmation ?? null);
+    setInstalledPlugin(null);
     const [author, name] = task.pluginName.split('/');
     if (author && name) {
       void backendClient
         .getPlugin(author, name)
         .then(({ plugin }) => {
-          if (!cancelled)
-            setPendingConfirmation(
-              plugin.permission_status?.pending_confirmation ?? false,
-            );
+          if (cancelled) return;
+          setPendingConfirmation(
+            plugin.permission_status?.pending_confirmation ?? false,
+          );
+          // The post-install follow-up steps depend on the components that
+          // actually shipped, so they come from the installed manifest.
+          setInstalledPlugin(plugin);
         })
         .catch(() => {});
     }
@@ -152,30 +262,44 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
   };
 
   if (isDone) {
+    const title = needsReview
+      ? t('pluginPermissions.pending')
+      : !isPlugin
+        ? t('addExtension.installStage.installed')
+        : task.operation === 'upgrade'
+          ? t('plugins.installProgress.updateComplete')
+          : t('plugins.installProgress.installComplete');
     return (
-      <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900">
-        <CheckCircle2 className="w-5 h-5 shrink-0 text-green-600 dark:text-green-400" />
-        <span className="flex-1 text-sm text-green-700 dark:text-green-300 font-medium break-words">
-          {needsReview
-            ? t('pluginPermissions.pending')
-            : !isPlugin
-              ? t('addExtension.installStage.installed')
-              : task.operation === 'upgrade'
-                ? t('plugins.installProgress.updateComplete')
-                : t('plugins.installProgress.installComplete')}
-        </span>
+      <NextStepBanner
+        tone={needsReview ? 'attention' : 'success'}
+        icon={needsReview ? ShieldAlert : CheckCircle2}
+        title={title}
+      >
         {needsReview && task.pluginName.includes('/') && (
-          <Button asChild variant="outline" size="sm">
-            <Link
+          <NextStepList tone="attention">
+            <NextStepLink
               to={`/home/extensions?id=${encodeURIComponent(task.pluginName)}`}
-              onClick={() => setSelectedTaskId(null)}
+              icon={ShieldCheck}
+              tone="attention"
+              label={t('pluginPermissions.reviewLabel')}
+              onNavigate={() => setSelectedTaskId(null)}
             >
               {t('pluginPermissions.review')}
-            </Link>
-          </Button>
+            </NextStepLink>
+          </NextStepList>
         )}
-      </div>
+        {isPlugin && !needsReview && (
+          <PluginInstallFollowUp
+            plugin={installedPlugin}
+            onNavigate={() => setSelectedTaskId(null)}
+          />
+        )}
+      </NextStepBanner>
     );
+  }
+
+  if (isError && task.incompatibility) {
+    return <IncompatibleInstallRetry task={task} onDismiss={onDismiss} />;
   }
 
   if (isError) {
@@ -269,25 +393,33 @@ export default function PluginInstallProgressDialog() {
           </DialogTitle>
         </DialogHeader>
 
-        {selectedTask && <TaskProgressContent task={selectedTask} />}
+        {selectedTask && (
+          <TaskProgressContent task={selectedTask} onDismiss={handleDismiss} />
+        )}
 
-        <div className="flex justify-end gap-2 mt-2">
-          <Button
-            variant="default"
-            size="sm"
-            onClick={
-              selectedTask?.stage === InstallStage.DONE ||
+        {/* The incompatible-install view renders its own single action row. */}
+        {!(
+          selectedTask?.stage === InstallStage.ERROR &&
+          selectedTask.incompatibility
+        ) && (
+          <div className="flex justify-end gap-2 mt-2">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={
+                selectedTask?.stage === InstallStage.DONE ||
+                selectedTask?.stage === InstallStage.ERROR
+                  ? handleDismiss
+                  : handleClose
+              }
+            >
+              {selectedTask?.stage === InstallStage.DONE ||
               selectedTask?.stage === InstallStage.ERROR
-                ? handleDismiss
-                : handleClose
-            }
-          >
-            {selectedTask?.stage === InstallStage.DONE ||
-            selectedTask?.stage === InstallStage.ERROR
-              ? t('common.close')
-              : t('plugins.installProgress.background')}
-          </Button>
-        </div>
+                ? t('common.close')
+                : t('plugins.installProgress.background')}
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

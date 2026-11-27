@@ -60,8 +60,10 @@ class LifecycleTest(unittest.TestCase):
                             response.read()
                             return
                     except urllib.error.HTTPError as exc:
-                        if exc.code != 503:
-                            return
+                        with exc:
+                            exc.read()
+                            if exc.code != 503:
+                                return
                 errors.append('Callback was never accepted')
             except Exception as exc:
                 errors.append(str(exc))
@@ -122,6 +124,100 @@ class LifecycleTest(unittest.TestCase):
         receipts = self.exercise()
         self.assertEqual([item['status'] for item in receipts], [503, 200, 200])
         self.assertEqual(receipts[0]['body'], receipts[1]['body'])
+
+    def test_retry_after_headers_waits_for_the_first_flushed_receipt(self):
+        receiver = lifecycle.CallbackReceiver('test-secret')
+        first_paused, first_received, release_first = (threading.Event() for _ in range(3))
+        second_attempted, second_status = (threading.Event() for _ in range(2))
+        first_handler, second_acquired, responses, errors, workers = [], [], [], [], []
+
+        class ObservedCondition(threading.Condition):
+            def __enter__(self):
+                if (
+                    first_paused.is_set()
+                    and threading.get_ident() != first_handler[0]
+                    and not second_attempted.is_set()
+                ):
+                    acquired = self.acquire(False)
+                    second_acquired.append(acquired)
+                    second_attempted.set()
+                    if acquired:
+                        return self
+                return super().__enter__()
+
+        receiver.condition = ObservedCondition()
+        handler_class = receiver.server.RequestHandlerClass
+        send_response, end_headers = handler_class.send_response, handler_class.end_headers
+
+        def observe_status(handler, status, *args):
+            if not first_handler:
+                first_handler.append(threading.get_ident())
+            elif threading.get_ident() != first_handler[0]:
+                second_status.set()
+            return send_response(handler, status, *args)
+
+        def pause_after_headers(handler):
+            end_headers(handler)
+            if threading.get_ident() == first_handler[0]:
+                first_paused.set()
+                if not release_first.wait(5):
+                    raise TimeoutError('First callback response was not released')
+
+        body = json.dumps(
+            {
+                'session_id': 'session',
+                'reply_to': 'message',
+                'sequence': 1,
+                'is_final': True,
+                'message': [{'type': 'Plain', 'text': 'LANGBOT_CHAT_OK'}],
+            }
+        ).encode()
+        stamp = str(int(time.time()))
+
+        def post(index):
+            request = urllib.request.Request(
+                receiver.url,
+                data=body,
+                headers={'X-LB-Timestamp': stamp, 'X-LB-Signature': lifecycle.signature('test-secret', body, stamp)},
+            )
+            try:
+                try:
+                    response = urllib.request.urlopen(request, timeout=5)
+                except urllib.error.HTTPError as exc:
+                    response = exc
+                with response:
+                    if index == 0:
+                        first_received.set()
+                    response.read()
+                    responses.append((index, response.status))
+            except Exception as exc:
+                errors.append(exc)
+
+        with (
+            receiver,
+            patch.object(handler_class, 'send_response', observe_status),
+            patch.object(handler_class, 'end_headers', pause_after_headers),
+        ):
+            try:
+                workers.append(threading.Thread(target=post, args=(0,)))
+                workers[0].start()
+                self.assertTrue(first_paused.wait(5))
+                self.assertTrue(first_received.wait(5))
+                self.assertEqual(receiver.records, [])
+                workers.append(threading.Thread(target=post, args=(1,)))
+                workers[1].start()
+                self.assertTrue(second_attempted.wait(5))
+                if second_acquired[0]:
+                    self.assertTrue(second_status.wait(5))
+            finally:
+                release_first.set()
+                for worker in workers:
+                    worker.join(timeout=5)
+        self.assertTrue(all(not worker.is_alive() for worker in workers))
+        self.assertFalse(errors, errors)
+        self.assertEqual(sorted(responses), [(0, 503), (1, 200)])
+        self.assertEqual([item['status'] for item in receiver.records], [503, 200])
+        self.assertEqual(lifecycle.verify_delivery(receiver.records, 'session', retried=True)['finals'], 1)
 
     def test_modified_retry_cannot_pass_and_still_cleans_up(self):
         self.exercise('body')
@@ -251,7 +347,7 @@ class LifecycleTest(unittest.TestCase):
                 with (
                     patch.object(Suite, 'prepare', prepare),
                     patch.object(Suite, 'call', return_value={'workspace_uuid': 'workspace'}),
-                    patch('tools.entrypoints.regression_traffic.group_request', side_effect=group_request),
+                    patch.object(lifecycle, 'group_request', side_effect=group_request),
                     patch.object(lifecycle, 'api', side_effect=public_api),
                 ):
                     result = lifecycle.run_restart_checks(

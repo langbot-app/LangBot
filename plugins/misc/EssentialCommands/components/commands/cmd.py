@@ -32,8 +32,19 @@ class Cmd(Command):
             command_list_str = ''
 
             for command in commands:
-                command_manifest = command['manifest']
-                command_list_str += f"{assume_command_prefix}{command_manifest['metadata']['name']} - {command_manifest['metadata']['description'][language]}\n"
+                if not isinstance(command, dict):
+                    continue
+                command_manifest = command.get('manifest', command)
+                metadata = command_manifest.get('metadata', {}) if isinstance(command_manifest, dict) else {}
+                name = metadata.get('name', '')
+                desc = metadata.get('description', {})
+                if isinstance(desc, dict):
+                    description = desc.get(language) or desc.get('en_US') or (next(iter(desc.values())) if desc else '')
+                elif isinstance(desc, str):
+                    description = desc
+                else:
+                    description = ''
+                command_list_str += f"{assume_command_prefix}{name} - {description}\n"
 
             title = get_text(language, "cmd.title")
             tip = get_text(language, "cmd.tip", command_prefix=assume_command_prefix)
@@ -57,9 +68,18 @@ class Cmd(Command):
 
             command_manual = get_text(language, "cmd.man_not_found", command_name=command_name)
             for command in commands:
-                command_manifest = command['manifest']
-                if command_manifest['metadata']['name'] == command_name:
-                    description = command_manifest['metadata']['description'][language]
+                if not isinstance(command, dict):
+                    continue
+                command_manifest = command.get('manifest', command)
+                metadata = command_manifest.get('metadata', {}) if isinstance(command_manifest, dict) else {}
+                if metadata.get('name') == command_name:
+                    desc = metadata.get('description', {})
+                    if isinstance(desc, dict):
+                        description = desc.get(language) or desc.get('en_US') or (next(iter(desc.values())) if desc else '')
+                    elif isinstance(desc, str):
+                        description = desc
+                    else:
+                        description = ''
                     command_manual = get_text(language, "cmd.man_title", command_name=command_name, description=description)
                     break
 

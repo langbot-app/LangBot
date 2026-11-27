@@ -25,7 +25,9 @@ class ApplicationAPIError:
 
 
 class ApplicationAPIException(Exception):
-    def __init__(self, error: ApplicationAPIError):
+    def __init__(self, error: ApplicationAPIError | str):
+        if isinstance(error, str):
+            error = ApplicationAPIError('application_error', error)
         self.error = error
         super().__init__(error.message)
 

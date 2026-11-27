@@ -136,10 +136,9 @@ for (const entry of ['list', 'sidebar'] as const) {
       await expect(
         dialog.getByText('Plugin updated successfully', { exact: true }),
       ).toBeVisible();
-      await expect(dialog.getByRole('progressbar')).toHaveAttribute(
-        'aria-valuenow',
-        '100',
-      );
+      // The done state swaps the whole progress block for the green summary,
+      // so the bar is gone by then -- assert the summary, not aria-valuenow.
+      await expect(dialog.getByRole('progressbar')).toHaveCount(0);
     } else
       await expect(
         dialog.getByText('Signature rejected fixture', { exact: true }),

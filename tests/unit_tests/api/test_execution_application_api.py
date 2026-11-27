@@ -395,6 +395,8 @@ async def test_resource_families_preserve_frozen_grants(host, monkeypatch, opera
         ('event_get', {'event_id': 'event-a'}),
         ('bind_box', {'box_id': 'box-a'}),
         ('export_box_files', {'paths': ['report.txt']}),
+        ('read_run_file', {'file_id': 'file-1'}),
+        ('commit_run_files', {'file_ids': ['file-1']}),
     ],
 )
 async def test_run_capability_families_cannot_fall_back_to_plugin_access(host, monkeypatch, operation, payload):
@@ -444,10 +446,66 @@ async def test_selected_tool_missing_from_workspace_catalog_cannot_execute(host,
 
 
 @pytest.mark.asyncio
-async def test_runner_admin_operations_do_not_grant_admin_implicitly(host):
+@pytest.mark.parametrize(
+    'action,payload,error',
+    [
+        ('run_stats', {}, 'not authorized'),
+        ('run_retry', {'target_run_id': 'other-run'}, 'run_id is required'),
+        ('run_resume', {'target_run_id': 'other-run'}, 'run_id is required'),
+        ('run_cancel_ack', {'target_run_id': 'other-run'}, 'run_id is required'),
+    ],
+)
+async def test_runner_admin_operations_do_not_grant_admin_implicitly(host, action, payload, error):
     with pytest.raises(ApplicationAPIException) as exc:
-        await host.api.invoke('execution.run_stats', ExecutionAPIContext(host.binding))
-    assert 'not authorized' in exc.value.error.message
+        await host.api.invoke('execution.' + action, ExecutionAPIContext(host.binding), payload)
+    assert error in exc.value.error.message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'action,payload',
+    [
+        ('steering_ack', {'delivery_ids': ['delivery']}),
+        ('run_retry', {}),
+        ('run_resume', {'from_sequence': 0}),
+        ('run_cancel_ack', {'cleanup_confirmed': True}),
+    ],
+)
+@pytest.mark.parametrize('denial', ['workspace', 'plugin', 'capability'])
+async def test_recovery_operations_preserve_run_authorization(host, monkeypatch, action, payload, denial):
+    session = run_session(host)
+    if denial == 'workspace':
+        session['authorization']['workspace_id'] = 'foreign-workspace'
+    elif denial == 'plugin':
+        session['plugin_identity'] = 'other/plugin'
+    stub_run(monkeypatch, session)
+    with pytest.raises(ApplicationAPIException) as exc:
+        await host.api.invoke('execution.' + action, ExecutionAPIContext(host.binding, run_id='run-a'), payload)
+    if denial == 'capability':
+        assert exc.value.error.code == 'application_error'
+        assert 'not authorized' in exc.value.error.message
+    else:
+        assert exc.value.error.code == 'permission_denied'
+        assert 'does not belong' in exc.value.error.message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'action,payload',
+    [
+        ('steering_pull', {'claim': 'true'}),
+        ('steering_ack', {'delivery_ids': ['']}),
+        ('run_resume', {'from_sequence': -1}),
+        ('run_cancel_ack', {'cleanup_confirmed': 'true'}),
+        ('run_cancel_ack', {'expected_retry_count': -1}),
+        ('run_cancel_ack', {'expected_retry_count': True}),
+        ('run_cancel_ack', {'expected_retry_count': '1'}),
+    ],
+)
+async def test_recovery_operations_reject_invalid_inputs(host, action, payload):
+    with pytest.raises(ApplicationAPIException) as exc:
+        await host.api.invoke('execution.' + action, ExecutionAPIContext(host.binding, run_id='run-a'), payload)
+    assert exc.value.error.code == 'invalid_input'
 
 
 @pytest.mark.asyncio
@@ -601,3 +659,39 @@ async def test_granted_bot_tool_is_not_limited_by_model_selection(host, monkeypa
         },
     )
     assert result['result']['message_id'] == 'sent'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('run_id', [None, 'run-a'], ids=['plugin', 'runner'])
+async def test_call_tool_serializes_mcp_content_elements(host, monkeypatch, run_id):
+    """MCP tools return ContentElement models; call_tool must emit JSON, not fail output validation (#2999)."""
+    from langbot_plugin.api.entities.builtin.provider.message import ContentElement
+
+    host.ap.tool_mgr.get_resolved_tool_catalog = AsyncMock(
+        return_value=[{'name': 'tool-a', 'source': 'mcp', 'source_id': 'server-a'}]
+    )
+    host.ap.tool_mgr.execute_func_call = AsyncMock(
+        return_value=[ContentElement.from_text('hello'), ContentElement.from_image_base64('data:image/png;base64,AAAA')]
+    )
+    host.ap.query_pool = SimpleNamespace(cached_queries={})
+    payload = {'tool_name': 'tool-a', 'parameters': {}}
+    if run_id:
+        session = run_session(host)
+        session['authorization']['authorized_ids'] = {'tool': {'tool-a'}}
+        session['authorization']['resources'] = {
+            'tools': [{'tool_name': 'tool-a', 'source': 'mcp', 'source_id': 'server-a'}]
+        }
+        stub_run(monkeypatch, session)
+    else:
+        monkeypatch.setattr(
+            'langbot.pkg.api.application.plugin_permissions.load_installation', AsyncMock(return_value=host.setting)
+        )
+        host.handler._resource_exists = AsyncMock(return_value=True)
+
+    result = await host.api.invoke('execution.call_tool', ExecutionAPIContext(host.binding, run_id), payload)
+
+    value = result['result'] if run_id else result['tool_response']
+    assert value[0]['type'] == 'text'
+    assert value[0]['text'] == 'hello'
+    assert value[1]['type'] == 'image_base64'
+    host.ap.tool_mgr.execute_func_call.assert_awaited_once()

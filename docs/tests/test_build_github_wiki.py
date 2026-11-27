@@ -58,16 +58,30 @@ description: "ignored"
     def test_build_creates_flat_pages_and_navigation(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            for language in wiki.LANGUAGES:
-                path = root / language / "guide.mdx"
+            fixtures = {
+                "en": ("guide", "English Guide", "Install with English instructions."),
+                "zh": ("insight/guide", "中文指南", "查看中文安装说明。"),
+                "ja": ("insight/guide", "日本語ガイド", "日本語の手順を確認する。"),
+            }
+            for locale, (route, title, body) in fixtures.items():
+                path = root / locale / f"{route}.mdx"
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(f"---\ntitle: {language} Guide\n---\nContent\n", encoding="utf-8")
+                path.write_text(f"---\ntitle: {title}\n---\n{body}\n", encoding="utf-8")
             output = root / "out"
             count = wiki.build(root, output)
-            self.assertEqual(count, 3)
-            self.assertTrue((output / "zh-guide.md").is_file())
-            self.assertIn("[zh Guide](zh-guide)", (output / "_Sidebar.md").read_text())
-            self.assertTrue((output / "Home.md").is_file())
+            self.assertEqual(count, len(fixtures))
+            home = (output / "Home.md").read_text(encoding="utf-8")
+            sidebar = (output / "_Sidebar.md").read_text(encoding="utf-8")
+            pages = {"Home.md", "_Sidebar.md", "_Footer.md"}
+            for locale, (route, title, body) in fixtures.items():
+                with self.subTest(locale=locale):
+                    slug = f"{locale}-{route.replace('/', '-')}"
+                    page = f"{slug}.md"
+                    pages.add(page)
+                    self.assertEqual((output / page).read_text(encoding="utf-8"), f"# {title}\n\n{body}\n")
+                    self.assertIn(f"[{title}]({slug})", home)
+                    self.assertIn(f"[{title}]({slug})", sidebar)
+            self.assertEqual({path.name for path in output.iterdir()}, pages)
 
     def test_sidebar_follows_docs_navigation_hierarchy(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

@@ -64,6 +64,7 @@ class PluginCasesTests(unittest.TestCase):
             pipeline['body']['extensions_preferences'],
             {
                 'enable_all_plugins': False,
+                'workspace_operations': [],
                 'plugins': [
                     {'author': 'langbot-team', 'name': name}
                     for name in ('LocalAgent', 'LangRAG', 'GeneralParsers', 'EssentialCommands')

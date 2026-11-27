@@ -397,6 +397,62 @@ class TestSessionRegistryBasic:
         assert [item['event']['event_id'] for item in second] == ['event_2']
 
     @pytest.mark.asyncio
+    async def test_claimed_steering_is_retried_until_acknowledged(self):
+        """Claimed steering survives a repeated pull and is removed only by ack."""
+        registry = AgentRunSessionRegistry()
+        await registry.register(
+            run_id='run_steering_claim',
+            runner_id='plugin:test/my-runner/default',
+            query_id=1,
+            plugin_identity='test/my-runner',
+            resources=make_resources(),
+            conversation_id='conv_1',
+            available_apis={'steering_pull': True, 'steering_ack': True},
+        )
+        await registry.enqueue_steering(
+            'run_steering_claim',
+            {'event': {'event_id': 'event_claimed'}},
+        )
+
+        first = await registry.pull_steering('run_steering_claim', claim=True)
+        assert len(first) == 1
+        delivery_id = first[0]['delivery_id']
+        assert await registry.pull_steering('run_steering_claim', claim=True) == []
+        acknowledged, unknown = await registry.ack_steering('run_steering_claim', [delivery_id, 'missing'])
+        assert acknowledged == [delivery_id]
+        assert unknown == ['missing']
+        assert await registry.pull_steering('run_steering_claim', claim=True) == []
+
+    @pytest.mark.asyncio
+    async def test_restore_steering_rehydrates_after_session_restart(self):
+        """Durable pending input can be restored into a replacement run session."""
+        registry = AgentRunSessionRegistry()
+        await registry.register(
+            run_id='run_steering_restarted',
+            runner_id='plugin:test/my-runner/default',
+            query_id=1,
+            plugin_identity='test/my-runner',
+            resources=make_resources(),
+            conversation_id='conv_1',
+            available_apis={'steering_pull': True, 'steering_ack': True},
+        )
+        assert (
+            await registry.restore_steering(
+                'run_steering_restarted',
+                [
+                    {
+                        'event': {'event_id': 'event_recovered'},
+                        'input': {'text': 'recover me'},
+                    }
+                ],
+            )
+            == 1
+        )
+
+        claimed = await registry.pull_steering('run_steering_restarted', claim=True)
+        assert claimed[0]['event']['event_id'] == 'event_recovered'
+
+    @pytest.mark.asyncio
     async def test_enqueue_steering_rejects_when_queue_is_full(self):
         """A full steering queue does not claim more queries."""
         registry = AgentRunSessionRegistry()

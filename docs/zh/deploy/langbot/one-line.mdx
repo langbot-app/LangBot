@@ -1,0 +1,64 @@
+---
+title: "一行命令安装（推荐）"
+description: "一行命令安装 lbctl 并部署 LangBot：自动准备 Python、支持原生或 Docker 部署、开机自启、一键升级。"
+---
+
+<Info>
+这是自部署 LangBot 的推荐方式，支持 Windows、macOS、Linux。不想自己部署？可以直接使用 [LangBot Cloud](https://cloud.langbot.app)。
+</Info>
+
+## 安装
+
+macOS / Linux：
+
+```bash
+curl -fsSL https://langbot.app/install.sh | bash
+```
+
+Windows（PowerShell）：
+
+```powershell
+irm https://langbot.app/install.ps1 | iex
+```
+
+脚本会先安装 [lbctl](https://github.com/langbot-app/langbot-cli)（LangBot 命令行工具），再由它部署 LangBot：
+
+- **原生部署（默认推荐）**：自动下载并配置 Python，不需要提前安装任何依赖，也不需要管理员权限。
+- **Docker 部署**：检测到 Docker 时可以选择，也可以用 `--driver docker` 指定。国内网络会自动选择可用的镜像源。
+- 安装完成后默认开启开机/登录自启，并显示「LangBot 已就绪」面板。
+
+完成后访问 `http://localhost:5300`，创建管理员账号即可开始使用。
+
+### 常用参数
+
+```bash
+# 指定部署方式、端口，跳过所有交互
+curl -fsSL https://langbot.app/install.sh | bash -s -- --driver native --port 5300 --yes
+```
+
+Windows 下通过环境变量传参，例如 `$env:LANGBOT_DRIVER="docker"`、`$env:LANGBOT_PORT="5300"`、`$env:LANGBOT_YES="1"`。
+
+## 日常管理
+
+```bash
+lbctl status              # 查看运行状态和版本
+lbctl logs                # 查看日志
+lbctl doctor              # 诊断环境问题
+lbctl stop / start / restart
+lbctl upgrade --yes       # 升级到最新 LangBot
+lbctl update              # 更新 lbctl 本身
+lbctl autostart disable   # 关闭开机自启
+lbctl uninstall --yes     # 卸载（默认保留数据）
+lbctl list                # 列出本机所有实例
+```
+
+`lbctl` 默认按系统语言输出中文或英文，可用 `--lang en` / `--lang zh-Hans` 指定。
+
+完整用法（升级细节、接入已有 Docker 部署、多实例、命令行管理资源等）见[使用 lbctl 管理 LangBot](/zh/deploy/lbctl)。
+
+## 其他部署方式
+
+- [Docker Compose](/zh/deploy/langbot/docker)：适合需要自行管理容器编排的场景
+- [Kubernetes](/zh/deploy/langbot/kubernetes)
+- [宝塔](/zh/deploy/langbot/one-click/bt)、[1Panel](/zh/deploy/langbot/one-click/1panel) 面板一键部署
+- [包管理器（uvx）](/zh/deploy/langbot/package)：适合开发调试，不推荐日常部署

@@ -25,6 +25,9 @@ metadata:
     ru_RU: Подключает LangBot к PowerContext Server для изолированного поиска контекста, фиксации источников и явных операций с памятью.
   icon: assets/icon.svg
 spec:
+  permissions:
+    capabilities: []
+    workspace_operations: []
   config:
     - name: server_url
       type: string

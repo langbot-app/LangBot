@@ -6,27 +6,29 @@ import re
 
 import pytest
 
+from langbot.pkg.api.application.api import ApplicationAPI
 from langbot.pkg.api.application.contracts import Operation
 from langbot.pkg.api.application.operation_docs import DOMAINS, OPERATION_DOCS, OperationDoc, get_operation_doc
-from langbot.pkg.api.application.service_operations import operations as service_operations
-from langbot.pkg.api.application.auxiliary import operations as auxiliary_operations
-from langbot.pkg.api.application.plugin_operations import operations as plugin_operations
-from langbot.pkg.api.application.platform_setup import operations as platform_operations
-from langbot.pkg.api.application.connection_operations import operations as connection_operations
-from langbot.pkg.api.application.workspace_streams import operations as workspace_streams
 from langbot.pkg.api.context import PrincipalType
 
 
 @pytest.fixture(scope='module')
-def all_application_operations() -> list[Operation]:
-    return [
-        *service_operations(),
-        *auxiliary_operations(),
-        *plugin_operations(),
-        *platform_operations(),
-        *connection_operations(),
-        *workspace_streams(),
-    ]
+def application_api() -> ApplicationAPI:
+    return ApplicationAPI(None)
+
+
+@pytest.fixture(scope='module')
+def all_application_operations(application_api: ApplicationAPI) -> list[Operation]:
+    # Inspect the actual default registry for checks that need the typed specs.
+    return list(application_api._operations.values())
+
+
+@pytest.fixture(scope='module')
+def catalog_by_id(application_api: ApplicationAPI) -> dict[str, dict]:
+    catalog = application_api.operation_catalog()
+    by_id = {item['id']: item for item in catalog}
+    assert len(by_id) == len(catalog), 'The published catalog must not duplicate operation IDs'
+    return by_id
 
 
 @pytest.fixture(scope='module')
@@ -47,6 +49,7 @@ def in_scope_operation_ids(operations_by_id: dict[str, Operation]) -> set[str]:
             or op_id == 'stats.basic'
             or op_id == 'task.get'
             or op_id == 'workspace.language.get'
+            or op_id.startswith('workspace.sandbox.')
             or op_id.startswith('bot.')
             or op_id.startswith('adapter.')
             or op_id.startswith('agent.')
@@ -60,41 +63,26 @@ def in_scope_operation_ids(operations_by_id: dict[str, Operation]) -> set[str]:
             or op_id.startswith('model.')
             or op_id.startswith('provider.')
             or op_id.startswith('requester.')
+            or op_id.startswith('artifact.')
         ):
             in_scope.add(op_id)
     return in_scope
 
 
-def test_in_scope_operations_coverage(in_scope_operation_ids: set[str], operations_by_id: dict[str, Operation]):
-    assert len(in_scope_operation_ids) == 165
-    assert len(OPERATION_DOCS) == 165
-
-    # Check all in-scope operations are documented
-    missing = in_scope_operation_ids - set(OPERATION_DOCS.keys())
+def test_in_scope_operations_coverage(in_scope_operation_ids: set[str], catalog_by_id: dict[str, dict]):
+    published_ids = set(catalog_by_id)
+    assert in_scope_operation_ids <= published_ids, 'Registered documented operations must be published'
+    missing = in_scope_operation_ids - OPERATION_DOCS.keys()
     assert not missing, f'Missing documentation for operations: {missing}'
-
-    # Check there are no extra operation IDs in OPERATION_DOCS
-    extra = set(OPERATION_DOCS.keys()) - in_scope_operation_ids
-    assert not extra, f'Extra undocumented or out-of-scope operation IDs in OPERATION_DOCS: {extra}'
-
-    # Check all documented IDs actually exist in ApplicationAPI operations
-    unknown = set(OPERATION_DOCS.keys()) - set(operations_by_id.keys())
-    assert not unknown, f'Unknown operation IDs in OPERATION_DOCS: {unknown}'
+    extra = OPERATION_DOCS.keys() - in_scope_operation_ids
+    assert not extra, f'Unknown or out-of-scope operation docs: {extra}'
 
 
-def test_out_of_scope_operations_are_none(
-    in_scope_operation_ids: set[str], all_application_operations: list[Operation]
-):
-    out_of_scope_ops = [op for op in all_application_operations if op.operation_id not in in_scope_operation_ids]
-    assert len(out_of_scope_ops) == 72
-
-    for op in out_of_scope_ops:
-        doc = get_operation_doc(op.operation_id, side_effect=op.side_effect)
-        assert doc.exposure == 'none', f"Out of scope operation {op.operation_id} must have exposure='none'"
-        as_dict = op.as_dict()
-        assert as_dict['exposure'] == 'none', (
-            f"Out of scope operation {op.operation_id} as_dict must have exposure='none'"
-        )
+def test_out_of_scope_operations_are_none(in_scope_operation_ids: set[str], catalog_by_id: dict[str, dict]):
+    out_of_scope_ids = catalog_by_id.keys() - in_scope_operation_ids
+    assert out_of_scope_ids, 'The catalog must exercise the default non-exposure policy'
+    for op_id in out_of_scope_ids:
+        assert catalog_by_id[op_id]['exposure'] == 'none', f'Out of scope operation {op_id} was exposed'
 
 
 def test_summary_and_description_constraints():
@@ -130,9 +118,12 @@ def test_restricted_exposure_operations(all_application_operations: list[Operati
         if (
             op_id.startswith('assistant.')
             or op_id.startswith('api_key.')
+            or op_id.startswith('workspace.sandbox.')
             or op_id.startswith('workspace.member.')
             or op_id.startswith('workspace.invitation.')
             or op_id.startswith('provider.codex.')
+            or op_id.startswith('artifact.publication.')
+            or op_id == 'artifact.skill_resource.create'
         ):
             assert doc.exposure == 'none', f"Operation {op_id} must have exposure='none'"
 
@@ -142,6 +133,16 @@ def test_restricted_exposure_operations(all_application_operations: list[Operati
         if op_id in {'mcp.server.create', 'mcp.server.update'}:
             assert doc.exposure == 'assistant', f"Operation {op_id} must have exposure='assistant'"
             assert doc.risk == 'dangerous', f"Operation {op_id} must have risk='dangerous'"
+
+
+def test_artifact_plugin_exposure_is_explicit(operations_by_id):
+    from langbot.pkg.api.context import PrincipalType
+
+    allowed = {'artifact.' + name for name in ('create', 'get', 'read', 'read_content', 'retain', 'release', 'delete')}
+    for op_id, op in operations_by_id.items():
+        if op_id.startswith('artifact.'):
+            assert (PrincipalType.PLUGIN in op.principals) == (op_id in allowed)
+            assert (get_operation_doc(op_id, side_effect=op.side_effect).exposure == 'all') == (op_id in allowed)
 
 
 def test_principals_exposure_consistency(all_application_operations: list[Operation]):
@@ -163,23 +164,15 @@ def test_domains_metadata(all_application_operations: list[Operation]):
         assert 'summary' in meta and meta['summary']
 
 
-def test_as_dict_incorporates_metadata(all_application_operations: list[Operation]):
-    for op in all_application_operations:
-        data = op.as_dict()
-        assert 'domain' in data
-        assert 'label' in data
-        assert 'summary' in data
-        assert 'description' in data
-        assert 'risk' in data
-        assert 'exposure' in data
-
-        doc = get_operation_doc(op.operation_id, side_effect=op.side_effect)
-        assert data['domain'] == doc.domain
-        assert data['label'] == doc.label
-        assert data['summary'] == doc.summary
-        assert data['description'] == doc.description
-        assert data['risk'] == doc.risk
-        assert data['exposure'] == doc.exposure
+def test_published_catalog_incorporates_metadata(
+    operations_by_id: dict[str, Operation], catalog_by_id: dict[str, dict]
+):
+    assert catalog_by_id.keys() == operations_by_id.keys()
+    fields = ('domain', 'label', 'summary', 'description', 'risk', 'exposure')
+    for op_id, data in catalog_by_id.items():
+        op = operations_by_id[op_id]
+        doc = get_operation_doc(op_id, side_effect=op.side_effect)
+        assert {field: data[field] for field in fields} == {field: getattr(doc, field) for field in fields}, op_id
 
 
 def test_parameter_descriptions_in_service_contracts(operations_by_id: dict[str, Operation]):
@@ -232,15 +225,14 @@ def test_permission_management_operations_are_not_exposed(operations_by_id: dict
 
 
 def test_referenced_operation_ids_exist(
-    all_application_operations: list[Operation], operations_by_id: dict[str, Operation]
+    catalog_by_id: dict[str, dict],
 ):
-    catalog_op_ids = set(operations_by_id.keys())
-    assert len(catalog_op_ids) == 237
+    catalog_op_ids = catalog_by_id.keys()
 
     # 1. Parameter descriptions in input schema
     param_references: list[tuple[str, str]] = []
-    for op in all_application_operations:
-        schema = op.as_dict().get('input_schema', {})
+    for op_id, data in catalog_by_id.items():
+        schema = data.get('input_schema', {})
         props = schema.get('properties', {})
         for prop_name, prop_def in props.items():
             desc = prop_def.get('description', '')
@@ -248,7 +240,7 @@ def test_referenced_operation_ids_exist(
                 continue
             for match in re.findall(r'get it from\s+([a-zA-Z0-9_.]+)', desc, re.IGNORECASE):
                 op_ref = match.rstrip('.,;: )')
-                param_references.append((f'{op.operation_id}.{prop_name}', op_ref))
+                param_references.append((f'{op_id}.{prop_name}', op_ref))
 
     assert param_references, 'Expected parameter descriptions to contain operation references'
     for source, op_ref in param_references:

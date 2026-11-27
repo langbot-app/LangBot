@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: {{ tool_name }}
+  label:
+    en_US: {{ tool_label }}
+    zh_Hans: {{ tool_label }}
+    th_TH: {{ tool_label }}
+    vi_VN: {{ tool_label }}
+    es_ES: {{ tool_label }}
+  description:
+    en_US: '{{ tool_description }}'
+    zh_Hans: '{{ tool_description }}'
+    th_TH: '{{ tool_description }}'
+    vi_VN: '{{ tool_description }}'
+    es_ES: '{{ tool_description }}'
+spec:
+  parameters: {}
+  llm_prompt: '{{ tool_description }}'
+execution:
+  python:
+    path: {{ tool_name }}.py
+    attr: {{ tool_attr }}

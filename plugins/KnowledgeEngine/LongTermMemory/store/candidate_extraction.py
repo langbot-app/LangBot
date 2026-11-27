@@ -7,6 +7,31 @@ import re
 from langbot_plugin.api.entities.builtin.provider.message import Message
 
 
+_FENCED_JSON = re.compile(r"\A```(?:json)?[ \t]*\n(?P<body>.*?)\n?```\Z", re.DOTALL | re.IGNORECASE)
+
+
+def _load_json_array_text(content: str):
+    """Parse the model reply as JSON, tolerating one wrapping markdown fence.
+
+    Many chat models (e.g. grok-4.7) wrap JSON in a ```json fence even when told
+    not to. The fence carries no data, so unwrap exactly one around the whole
+    reply; every schema and evidence check below stays strict. Errors describe
+    the reply's shape only, never its text, because it quotes user messages.
+    """
+    text = content.strip()
+    fenced = _FENCED_JSON.match(text)
+    if fenced:
+        text = fenced.group("body").strip()
+    if not text:
+        raise ValueError("candidate model returned an empty response")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"candidate model returned non-JSON text ({len(text)} chars, starts with {text[:1]!r})"
+        ) from exc
+
+
 async def extract_candidates(
     plugin, model_uuid, text, recorded_at, sender_id, max_candidates
 ):
@@ -52,7 +77,7 @@ async def extract_candidates(
         )
     if not isinstance(content, str) or len(content) > 16000:
         raise ValueError("candidate response must be bounded JSON text")
-    entries = json.loads(content)
+    entries = _load_json_array_text(content)
     if not isinstance(entries, list) or len(entries) > max_candidates:
         raise ValueError("candidate response must be a bounded list")
     candidates = []

@@ -143,6 +143,8 @@ seq=3 is_final=true   "Fixed — please try again."
 
 Stitch by `session_id` + `sequence`; the turn is complete when `is_final: true` arrives.
 
+A streamed reply (`stream: true`) arrives as several callbacks, each carrying the **full text of that reply so far**, not a delta. Replace the previous `stream: true` part with the newest one instead of appending it; the last one (`is_final: true`) holds the complete reply.
+
 ## Reset a session
 
 Start a fresh conversation for a `session_id` (drops history):
@@ -157,7 +159,7 @@ Signed exactly like an inbound message.
 
 ## Synchronous convenience mode
 
-If you don't need streaming/multi-part and just want one reply back on the same HTTP call, POST to `/sync`. LangBot waits for the turn to finish and returns all reply parts **collapsed** into one array:
+If you don't need streaming/multi-part and just want one reply back on the same HTTP call, POST to `/sync`. LangBot waits for the turn to finish and returns all reply parts **collapsed** into one array. Each reply appears once, with its final content (streamed snapshots are not repeated):
 
 ```
 POST /bots/{bot_uuid}/sync

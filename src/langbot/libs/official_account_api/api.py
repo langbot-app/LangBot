@@ -7,6 +7,7 @@ from quart import Quart, request
 import hashlib
 import hmac
 from typing import Callable
+from langbot.libs.official_account_api.access_token import AccessToken
 from langbot.libs.official_account_api.oaevent import OAEvent
 
 import asyncio
@@ -23,6 +24,36 @@ xml_template = """
 """
 
 _MAX_CALLBACK_BODY_BYTES = 1024 * 1024
+
+
+class _InstantReplyMixin:
+    instant_reply: Callable[[dict], str | None] | None
+
+    def _instant_reply_xml(self, message_data: dict | None) -> str | None:
+        if not message_data or self.instant_reply is None:
+            return None
+        content = self.instant_reply(message_data)
+        if content is None:
+            return None
+        return xml_template.format(
+            to_user=message_data.get('FromUserName') or '',
+            from_user=message_data.get('ToUserName') or '',
+            create_time=int(time.time()),
+            content=str(content).replace(']]>', ']]]]><![CDATA[>'),
+        )
+
+
+def _callback_error_response():
+    """Return a response for a callback that raised.
+
+    Both handlers swallow the exception to keep serving later callbacks, but a
+    bare fall-through returns ``None``, which Quart reports as
+    ``TypeError: The response value returned by the view function cannot be None``
+    and turns into a 500. An explicit 400 lets WeChat retry and tells the
+    operator that this particular callback was rejected.
+    """
+
+    return 'error', 400
 
 
 async def _read_callback_xml(client, req):
@@ -58,7 +89,7 @@ async def _read_callback_xml(client, req):
     return body.decode('utf-8')
 
 
-class OAClient:
+class OAClient(_InstantReplyMixin):
     _STATE_TTL_SECONDS = 600
     _STATE_MAX = 4096
     _MAX_CONTENT_CHARS = 200000
@@ -72,6 +103,7 @@ class OAClient:
         logger: None,
         unified_mode: bool = False,
         api_base_url: str = 'https://api.weixin.qq.com',
+        access_token: AccessToken | None = None,
     ):
         self.token = token
         self.aes = EncodingAESKey
@@ -79,6 +111,10 @@ class OAClient:
         self.appsecret = Appsecret
         self.base_url = api_base_url
         self.access_token = ''
+        self.api_token = access_token or AccessToken(AppID, Appsecret, api_base_url)
+        # Optional resolver returning a fixed reply for a callback payload, answered
+        # inside the callback without dispatching the event (custom menu buttons).
+        self.instant_reply: Callable[[dict], str | None] | None = None
         self.unified_mode = unified_mode
         self.app = Quart(__name__)
         self.app.config['MAX_CONTENT_LENGTH'] = _MAX_CALLBACK_BODY_BYTES
@@ -196,6 +232,9 @@ class OAClient:
                 xml_msg = await _read_callback_xml(self, req)
 
                 message_data = await self.get_message(xml_msg)
+                instant = self._instant_reply_xml(message_data)
+                if instant is not None:
+                    return instant
                 if message_data:
                     event = OAEvent.from_payload(message_data)
                     if event:
@@ -234,6 +273,7 @@ class OAClient:
         except Exception:
             await self.logger.error(f'handle_callback_request失败: {traceback.format_exc()}')
             traceback.print_exc()
+            return _callback_error_response()
 
     async def get_message(self, xml_msg: str):
         root = await asyncio.to_thread(ET.fromstring, xml_msg)
@@ -304,7 +344,7 @@ class OAClient:
         self._prune_state()
 
 
-class OAClientForLongerResponse:
+class OAClientForLongerResponse(_InstantReplyMixin):
     _MAX_USERS = 4096
     _MAX_MESSAGES_PER_USER = 20
     _MAX_CONTENT_CHARS = 200000
@@ -320,6 +360,7 @@ class OAClientForLongerResponse:
         unified_mode: bool = False,
         api_base_url: str = 'https://api.weixin.qq.com',
         customer_service: bool = False,
+        access_token: AccessToken | None = None,
     ):
         self.token = token
         self.aes = EncodingAESKey
@@ -327,6 +368,10 @@ class OAClientForLongerResponse:
         self.appsecret = Appsecret
         self.base_url = api_base_url
         self.access_token = ''
+        self.api_token = access_token or AccessToken(AppID, Appsecret, api_base_url)
+        # Optional resolver returning a fixed reply for a callback payload, answered
+        # inside the callback without dispatching the event (custom menu buttons).
+        self.instant_reply: Callable[[dict], str | None] | None = None
         self.unified_mode = unified_mode
         self.app = Quart(__name__)
         self.app.config['MAX_CONTENT_LENGTH'] = _MAX_CALLBACK_BODY_BYTES
@@ -347,7 +392,9 @@ class OAClientForLongerResponse:
         self.loading_message = LoadingMessage
         from .customer_service import CustomerServiceReplies
 
-        self.customer_service = CustomerServiceReplies(AppID, Appsecret, api_base_url) if customer_service else None
+        self.customer_service = (
+            CustomerServiceReplies(AppID, Appsecret, api_base_url, self.api_token) if customer_service else None
+        )
         self._callback_responses = {}
         self.msg_queue = {}
         self.user_msg_queue = {}
@@ -455,6 +502,10 @@ class OAClientForLongerResponse:
                         self._callback_responses.pop(next(iter(self._callback_responses)))
                     return response
 
+                instant = self._instant_reply_xml(await self.get_message(xml_msg))
+                if instant is not None:
+                    return remember(instant)
+
                 if self.msg_queue.get(from_user) and self.msg_queue[from_user][0]['content']:
                     queue_top = self.msg_queue[from_user].pop(0)
                     queue_content = queue_top['content']
@@ -519,6 +570,7 @@ class OAClientForLongerResponse:
         except Exception:
             await self.logger.error(f'handle_callback_request失败: {traceback.format_exc()}')
             traceback.print_exc()
+            return _callback_error_response()
 
     async def get_message(self, xml_msg: str):
         root = await asyncio.to_thread(ET.fromstring, xml_msg)

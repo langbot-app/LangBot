@@ -23,7 +23,7 @@ LangBot 的插件系统由三层进程协作：
 
 1. **LangBot 主进程**：运行业务逻辑（消息处理流水线、平台适配、模型调用），通过 `PluginRuntimeConnector` 连接 Runtime。
 2. **Plugin Runtime**：插件的"编排层"，负责发现、启动、管理所有插件子进程，接收主进程的指令并分发到对应插件。
-3. **插件子进程**：每个插件独立运行在自己的 Python 进程中，通过 stdio 管道与 Runtime 通信。
+3. **插件子进程**：每个插件独立运行在自己的 Python 进程中，在 Linux / macOS 上通过 stdio 管道与 Runtime 通信；在 Windows 上由 Runtime 以子进程启动后，通过 WebSocket 连回 Runtime。
 
 ### 为什么要三层而不是两层？
 
@@ -31,7 +31,9 @@ LangBot 的插件系统由三层进程协作：
 
 - **本地开发**：主进程通过 stdio 直接启动 Runtime 子进程（零配置）
 - **Docker 生产环境**：Runtime 作为独立容器运行，主进程通过 WebSocket 连接
-- **Windows 兼容**：由于 Windows 的 asyncio 不完整支持 stdio 子进程，Windows 上自动降级为 WebSocket 通信
+- **独立部署**：使用 `--standalone-runtime` 时，Runtime 由开发者单独启动，主进程同样通过 WebSocket 连接
+
+主进程与 Runtime 之间的传输只看 Runtime 由谁启动：主进程自己拉起的子进程一律走 stdio（Windows、Linux、macOS 相同），外部进程一律走 WebSocket。
 
 这意味着同一套代码，不改配置，就能适配从开发到生产的全部场景。
 
@@ -449,7 +451,7 @@ MCP 是一个标准化的 AI 工具调用协议。LangBot 的 Tool 组件和 MCP
 
 - stdio 无需网络栈，延迟更低
 - 进程生命周期管理更简单（父进程退出时子进程自动清理）
-- WebSocket 只在不支持 stdio 的场景（Docker、Windows）使用
+- WebSocket 只在 Runtime 是外部进程（Docker、`--standalone-runtime`）时使用；Windows 上 Runtime 与插件 worker 之间也使用 WebSocket
 
 ## 总结
 

@@ -1,6 +1,9 @@
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import {
   Activity,
+  BellRing,
   CheckCircle2,
   Timer,
   TriangleAlert,
@@ -10,6 +13,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import type { ExecutionSummary } from '@/app/infra/entities/api/monitoring-executions';
 import { formatRunDuration } from '@/app/home/agents/components/processor-run-timing';
+import { backendClient, useCurrentWorkspace } from '@/app/infra/http';
 import { MetricCard } from './MetricCard';
 
 interface ExecutionOverviewCardsProps {
@@ -27,6 +31,52 @@ function Stat({ label, value }: { label: string; value: string }) {
       </div>
       <div className="text-xs text-muted-foreground">{label}</div>
     </div>
+  );
+}
+
+/**
+ * Nudges admins toward alerts when the dashboard already shows failures but
+ * the Workspace has not turned alerts on. Opens Settings → Alerts in place.
+ */
+function EnableAlertsHint({ failed }: { failed: number }) {
+  const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentWorkspace = useCurrentWorkspace();
+  const canView = (currentWorkspace?.permissions ?? []).includes('audit.view');
+  const settingsAction = searchParams.get('action');
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    if (!canView || failed <= 0 || settingsAction) return;
+    let active = true;
+    backendClient
+      .getAlertSummary()
+      .then((summary) => {
+        if (active) setShow(summary.enabled_instance_wide && !summary.enabled);
+      })
+      .catch(() => {
+        if (active) setShow(false);
+      });
+    return () => {
+      active = false;
+    };
+    // Re-check when the settings dialog closes (its ?action= is removed).
+  }, [canView, failed, settingsAction]);
+
+  if (!canView || failed <= 0 || !show) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const params = new URLSearchParams(searchParams);
+        params.set('action', 'showAlerts');
+        setSearchParams(params);
+      }}
+      className="inline-flex w-fit items-center gap-1.5 rounded-md border border-red-500/25 bg-red-500/5 px-2 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-500/10 dark:text-red-400"
+    >
+      <BellRing className="size-3.5" />
+      {t('alerts.enableHint')}
+    </button>
   );
 }
 
@@ -114,7 +164,9 @@ export default function ExecutionOverviewCards({
             </Badge>
           </span>
         }
-      />
+      >
+        {!loading && <EnableAlertsHint failed={overview?.failed ?? 0} />}
+      </MetricCard>
 
       <MetricCard
         label={t('monitoring.execution.cards.latency')}

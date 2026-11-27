@@ -67,3 +67,9 @@ invalid response, timeout, real-ledger cancellation and no implicit export.
 The opt-in `test_live_explicit_export.py` additionally needs dedicated
 `BOX_LIVE_API_KEY` and `BOX_LIVE_MODEL` configuration. Its absence is a skip,
 not evidence of a live-model acceptance run.
+
+## ACP relay and reply identity
+
+The ACP relay creates its WebSocket listener in an empty Context and captures `copy_context()` when each job registers its tool surface. MCP requests enter that job context only after socket ownership and job lookup succeed, and are dispatched concurrently so a slow tool call does not block pings or other jobs on the same daemon socket. Existing tool revocation and SDK invocation checks remain intact; no Core audit bypass is required. MCP descriptors sent to ACP always use `[{name, value}]` arrays for HTTP `headers` and stdio `env`, including when empty.
+
+Pipeline delivery prefers the original inbound event's Source ID over the rewritten working chain, falls back to the working Source when needed, and normalizes the missing-source sentinel to `None`. This keeps exported file replies bound to the platform callback cached by the adapter.

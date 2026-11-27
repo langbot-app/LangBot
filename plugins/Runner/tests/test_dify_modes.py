@@ -71,3 +71,29 @@ def test_chatflow_answer_snapshot_and_message_end_complete_once(app_type):
 
         results = collect(runner._run_chat_or_agent(ctx(), Client(), {}, "hi", "user", "", [], app_type, False))
         assert final_texts(results) == ["23"]
+
+
+@pytest.mark.parametrize("output_key", ["result", "text", "output", "answer", "custom_key"])
+def test_workflow_terminal_custom_output_keys(output_key):
+    with load_runner("dify-agent") as (_, runner):
+
+        class Client:
+            async def workflow_run(self, **kwargs):
+                yield {"event": "workflow_started", "data": {"workflow_run_id": "workflow"}}
+                yield {"event": "workflow_finished", "data": {"outputs": {output_key: "extracted output"}}}
+
+        results = collect(runner._run_workflow(ctx(), Client(), {}, "hi", "user", [], False))
+        assert final_texts(results) == ["extracted output"]
+        assert kind(results[-1]) == "run.completed"
+
+
+def test_chatflow_workflow_finished_fallback():
+    with load_runner("dify-agent") as (_, runner):
+
+        class Client:
+            async def chat_messages(self, **kwargs):
+                yield {"event": "workflow_started", "data": {"workflow_run_id": "workflow"}}
+                yield {"event": "workflow_finished", "data": {"outputs": {"result": "chatflow final answer"}}}
+
+        results = collect(runner._run_chat_or_agent(ctx(), Client(), {}, "hi", "user", "", [], "chatflow", False))
+        assert final_texts(results) == ["chatflow final answer"]

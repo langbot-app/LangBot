@@ -123,7 +123,10 @@ export default function SurveyWidget() {
 
   if (submitted) {
     return (
-      <div className="fixed bottom-6 right-6 z-50 w-80 bg-card border rounded-xl shadow-lg p-6 animate-in slide-in-from-bottom-4">
+      <div
+        data-survey-widget
+        className="fixed bottom-6 right-6 z-50 w-80 bg-card border rounded-xl shadow-lg p-6 animate-in slide-in-from-bottom-4"
+      >
         <div className="text-center">
           <div className="text-3xl mb-2">🎉</div>
           <p className="text-sm font-medium">
@@ -141,6 +144,7 @@ export default function SurveyWidget() {
     return (
       <button
         onClick={() => setCollapsed(false)}
+        data-survey-widget
         className="fixed bottom-6 right-6 z-50 w-12 h-12 bg-primary text-primary-foreground rounded-full shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
       >
         <MessageSquare className="w-5 h-5" />
@@ -149,7 +153,10 @@ export default function SurveyWidget() {
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-[340px] bg-card border rounded-xl shadow-lg animate-in slide-in-from-bottom-4">
+    <div
+      data-survey-widget
+      className="fixed bottom-6 right-6 z-50 w-[340px] bg-card border rounded-xl shadow-lg animate-in slide-in-from-bottom-4"
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b">
         <div className="flex items-center gap-2">

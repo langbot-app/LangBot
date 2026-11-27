@@ -2,11 +2,11 @@
 
 This file guides code agents working in the LangBot main repository. `CLAUDE.md` is a symlink to this file; edit `AGENTS.md`.
 
-Read `ARCHITECTURE.md` before non-trivial backend, frontend, runtime, plugin, Box, MCP, persistence, or cross-repo SDK changes. This file is the working checklist; `ARCHITECTURE.md` is the system map.
+Read `ARCHITECTURE.md` before non-trivial backend, frontend, runtime, plugin, Box, MCP, persistence, or SDK (`sdk/`) changes. This file is the working checklist; `ARCHITECTURE.md` is the system map.
 
 ## Repository Layout
 
-This is a monorepo: Core, WebUI, public docs, official plugins and agent skills share one checkout but not one release.
+This is a monorepo: Core, WebUI, public docs, the plugin SDK, official plugins and agent skills share one checkout but not one release.
 
 | Path | Contents | Notes |
 | --- | --- | --- |
@@ -14,6 +14,7 @@ This is a monorepo: Core, WebUI, public docs, official plugins and agent skills 
 | `web/` | WebUI: Vite + React Router 7 + shadcn/ui + Tailwind | `pnpm`; dev server `3000`, backend `5300`. |
 | `docs/` | **Public user/developer documentation**, published at https://langbot.app/docs/ | Fumapress, Node.js 24, `zh`/`en`/`ja` trees. Write for users and plugin authors; keep the three languages in step. |
 | `dev-docs/` | **Internal design notes, contracts, reviews and test reports** for maintainers and agents | Not published. `architecture/` (Application API, i18n, ...), `event-based-agents/` (standard events/platform APIs and per-adapter records), `review/`, OpenAPI snapshots. |
+| `sdk/` | Plugin SDK, `lbp` CLI, Plugin Runtime (`lbp rt`) and Box Runtime (`lbp box`), published to PyPI as `langbot-plugin` | Independent package (Python `>=3.10`, hatchling), own tests/CI (`sdk-*.yml`) and releases via `sdk/vX.Y.Z` tags. Core source installs use `sdk/` through `uv`; standalone Core PyPI packages retain the exact published dependency. See `sdk/AGENTS.md` and `sdk/RELEASING.md`. |
 | `plugins/` | Official plugins (`Runner/`, `KnowledgeEngine/`, `misc/`), indexed by `plugins/catalog.json` | Independent packages, CI and Marketplace releases; never bundled in Core artifacts. See `plugins/AGENTS.md`. |
 | `skills/` | Agent skills (`skills/skills/<name>/SKILL.md`) and the `lbs` QA harness | Single source of truth for LangBot agent skills. See `skills/AGENTS.md`. |
 | `tests/` | Core unit, integration, e2e and manual tests | |
@@ -21,9 +22,9 @@ This is a monorepo: Core, WebUI, public docs, official plugins and agent skills 
 | `scripts/` | Maintenance scripts, including catalog export and SDK code generation | |
 | `docker/`, `packaging/`, `examples/`, `res/` | Deployment manifests, distro packages, integration examples, static resources | |
 
-Choose `docs/` or `dev-docs/` by reader: anything a user or plugin author needs goes in `docs/`; design rationale, internal contracts and evidence go in `dev-docs/`. Do not duplicate content between them; link instead. The former `langbot-app/langbot-docs` and `langbot-app/langbot-plugins` repositories are archives: never edit or target them.
+Choose `docs/` or `dev-docs/` by reader: anything a user or plugin author needs goes in `docs/`; design rationale, internal contracts and evidence go in `dev-docs/`. Do not duplicate content between them; link instead. The former `langbot-app/langbot-docs`, `langbot-app/langbot-plugins` and `langbot-app/langbot-plugin-sdk` repositories are archives: never edit or target them.
 
-Related repositories: `langbot-plugin-sdk` (SDK, `lbp` CLI, Plugin Runtime, Box; usually at `../langbot-plugin-sdk/`, pinned as `langbot-plugin`) and [`langbot-cli`](https://github.com/langbot-app/langbot-cli) (`lbctl`, the Service API client).
+Related repository: [`langbot-cli`](https://github.com/langbot-app/langbot-cli) (`lbctl`, the Service API client).
 
 Other references: dev environment `docs/zh/develop/dev-config.mdx`, Plugin Runtime debugging `docs/zh/develop/plugin-runtime.mdx`, API-key auth `dev-docs/API_KEY_AUTH.md`, Box internals `dev-docs/review/box-architecture.md`.
 
@@ -47,18 +48,28 @@ uv run pytest tests/integration/persistence -q
 uv run pytest tests/manual/mcp_smoke.py
 ```
 
-## Cross-Repo SDK Work
+## Before-Merge Acceptance
 
-When changing SDK contracts (shared entities, plugin APIs, action protocol, `lbp rt`, `lbp box`):
+Agents must choose and run the existing acceptance paths that exercise the changed boundary before recommending merge. Start with the [test asset map and evidence checklist](dev-docs/CROSS_COMPONENT_TESTING.md#test-assets-for-developers-and-agents). PR unit/smoke checks alone do not establish cross-component behavior. The [cross-component test guide](dev-docs/CROSS_COMPONENT_TESTING.md) lists the commands and environment requirements:
+
+- Shared SDK entities, APIs or Runtime protocol: Core with the in-tree SDK and representative official plugin consumers, retaining their declared SDK support and released-SDK checks.
+- File transfer, installation grants or Box routing: full HTTP → installed Plugin Runtime Runner → Box → HTTP file delivery, plus the affected real Box backend.
+- Skill/content persistence: PostgreSQL/MinIO publication and media contracts, restricted-role RLS, two Core processes with restart and cache removal.
+
+Select by changed behavior; do not mechanically run every backend. Missing environments, unrun cases and skip/xfail are unverified acceptance, not passes. Record the candidate SHA, SDK source/version, actual backend/service configuration (without secrets), commands, results and untested scope in the PR. Use the approved developer Linux environment; developer self-testing does not mean running on the agent's Mac. These are acceptance instructions, not changes to branch protection, required checks or branch freshness rules.
+
+## SDK Work (`sdk/`)
+
+Core declares `langbot-plugin==X` in package metadata and resolves it to the editable local `sdk/` source for `uv sync`. Checkouts, Docker, release ZIPs and fnOS carry this source, so coordinated Core/SDK changes do not require a prior SDK release. Standalone Core PyPI installs still resolve the published dependency. When changing SDK contracts (shared entities, plugin APIs, action protocol, `lbp rt`, `lbp box`), change `sdk/` and the Core bridge in the same PR and test them together:
 
 ```bash
-# from langbot-plugin-sdk, with LangBot's .venv active
-uv pip install .
-# from LangBot, keep the locally installed SDK
-uv run --no-sync main.py                       # add --standalone-runtime / --standalone-box
-# in langbot-plugin-sdk for standalone debugging
-uv run --no-sync lbp rt                        # or: lbp box
+uv sync --dev
+uv run main.py                                 # add --standalone-runtime / --standalone-box
+uv run lbp rt                                  # or: lbp box, for standalone debugging
+cd sdk && uv run pytest -q                     # SDK's own environment (Python >=3.10)
 ```
+
+CI mirrors this: Core jobs use the same local source, `sdk-tests.yml` tests the SDK alone, and the main Core job proves in-tree SDK provenance and retains the affected cross-component contracts. Official plugin checks preserve their independent released-SDK and candidate-SDK paths. Before publishing the standalone Core PyPI package, release the SDK (`sdk/vX.Y.Z` tag → PyPI), update the Core pin and pass `scripts/check_sdk_release_pin.py`. Docker/source deployments do not require that SDK publication. Never create a GitHub Release for the SDK. Details: `sdk/RELEASING.md`.
 
 Config keys in `data/config.yaml` / `src/langbot/templates/config.yaml`: `plugin.runtime_ws_url` (Docker default `langbot_plugin_runtime:5400/control/ws`), `box.enabled` / `box.backend` / `box.runtime.endpoint` (Docker default `langbot_box:5410`), `api.global_api_key`.
 
@@ -89,7 +100,7 @@ When adding or changing a Workspace capability:
    - **Plugins**: exposure, principals, risk, wildcard eligibility, and the manifest permission a plugin must declare;
    - **`lbctl`** compatibility in `langbot-cli`.
    Existing HTTP/MCP entrypoints are still being migrated onto this boundary; do not add a second implementation beside it.
-3. If the plugin-visible catalog changed, regenerate the SDK typed proxy with `uv run python scripts/generate_plugin_workspace_api.py` (writes `../langbot-plugin-sdk/src/langbot_plugin/api/proxies/workspace_domains.py`; `--check` detects drift) and ship it in the SDK.
+3. If the plugin-visible catalog changed, regenerate the SDK typed proxy with `uv run python scripts/generate_plugin_workspace_api.py` (writes `sdk/src/langbot_plugin/api/proxies/workspace_domains.py`; `--check` detects drift) and ship it in an SDK release.
 4. Update `docs/*/plugin/dev/apis/workspace.mdx` and `permissions.mdx` when operations, risks or permissions change.
 5. Verify through every adopted transport: denied access, missing resources, invalid input, cancellation and secret handling.
 
@@ -97,7 +108,7 @@ Plugin-/run-callable actions belong in the `ExecutionAPI` catalog; never add a s
 
 ## Platform Adapters: Standard Events and APIs
 
-EBA adapters live in `src/langbot/pkg/platform/adapters/<platform>/` (legacy ones in `pkg/platform/sources/`). Standard definitions: `dev-docs/event-based-agents/01-event-system.md` (events) and `02-platform-api.md` (entities and APIs), implemented in the SDK under `langbot_plugin/api/entities/builtin/platform/`.
+EBA adapters live in `src/langbot/pkg/platform/adapters/<platform>/`. `pkg/platform/sources/` holds the legacy single-file adapters and is **frozen**: do not update, fix or extend them, and never add new adapters there. New platforms and all adapter work go into `adapters/<platform>/` (port a platform that only exists in `sources/` instead of patching it). Standard definitions: `dev-docs/event-based-agents/01-event-system.md` (events) and `02-platform-api.md` (entities and APIs), implemented in the SDK under `langbot_plugin/api/entities/builtin/platform/`.
 
 - Align with the standard definitions first. Map native events to a standard event (`message.received`, `message.edited`, `group.member_joined`, `bot.muted`, ...) and native operations to a standard API (`send_message`, `reply_message`, `get_group_info`, ...) whenever the semantics match, even if the platform names or shapes differ. Use `platform.specific` events and `call_platform_api` actions only for capabilities with no standard equivalent.
 - Extend existing standard messages/APIs before inventing new ones (example: Slack threads ride on the standard message APIs).
@@ -107,7 +118,7 @@ EBA adapters live in `src/langbot/pkg/platform/adapters/<platform>/` (legacy one
 
 ## Plugin Development
 
-- SDK, `lbp` CLI and Plugin Runtime: `langbot-plugin-sdk`. Author docs: `docs/en/plugin/dev/` (`basic-info`, `permissions`, `components/*` for EventListener, Command, Tool, Runner, KnowledgeEngine, KnowledgeRetriever, Parser, Page, and `apis/*` for common, messages, platform, workspace, agent-run, llm-requests, pipeline-events).
+- SDK, `lbp` CLI and Plugin Runtime: `sdk/` (package `langbot-plugin`). Author docs: `docs/en/plugin/dev/` (`basic-info`, `permissions`, `components/*` for EventListener, Command, Tool, Runner, KnowledgeEngine, KnowledgeRetriever, Parser, Page, and `apis/*` for common, messages, platform, workspace, agent-run, llm-requests, pipeline-events).
 - API catalogs: plugins call Workspace operations through `self.plugin.workspace.<domain>.<op>()` (runners: `ctx.api.workspace`), limited to operations declared in `spec.permissions` and granted by a member. `self.plugin.workspace.list()` returns the granted catalog at runtime; the full catalogs come from `ApplicationAPI.operation_catalog()` and `scripts/export_execution_catalog.py`. Runners expose only `ctx.resources.workspace_operations` to models.
 - Reference implementations: `plugins/` (start from `plugins/catalog.json`; `misc/HelloPlugin` is the minimal example, `Runner/LocalAgent` the full Runner).
 - Workflow and pitfalls: the `langbot-plugin-dev` skill. Release rules: `plugins/RELEASING.md`.
@@ -123,7 +134,7 @@ EBA adapters live in `src/langbot/pkg/platform/adapters/<platform>/` (legacy one
 
 - Local stdio Plugin Runtime disconnects do not auto-reconnect; restart LangBot if that path breaks.
 - Orphan runtime processes on `5400`/`5401` commonly break plugin debugging.
-- Use `uv run --no-sync` after locally installing the SDK, or `uv` may restore the pinned package.
+- Standard root `uv sync` and `uv run` use `sdk/`. Use isolated environments for published-SDK compatibility checks.
 - A false Box "no backend" often means Docker is running but the current user lacks Docker socket permission.
 - Do not confuse external MCP servers LangBot connects to (`pkg/provider/tools/loaders/mcp.py`) with LangBot's own `/mcp` server (`pkg/api/mcp/`).
 

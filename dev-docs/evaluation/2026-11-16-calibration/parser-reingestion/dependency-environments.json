@@ -1,0 +1,82 @@
+[
+  {
+    "environment": "a8aa9aca01b0dead0541ac1555b6165f6cd3cb96abea8a6a30e1ce70b4465a0d",
+    "metadata": {
+      "artifact_digest": "7a4bc661c409fb54baba7cd7b9146a323c73b72e64d6606272d8a6b0788226fc",
+      "digest": "a8aa9aca01b0dead0541ac1555b6165f6cd3cb96abea8a6a30e1ce70b4465a0d",
+      "requirements_digest": "723347f5f658b7236874c4ac05136dc3f440d738d708a8d66234b3611ba7010e",
+      "runtime_fingerprint": "49d654069cd8470e41e6fee58897ae42b5f42224dca7314ae05c67e9a72d862c",
+      "schema_version": 3
+    },
+    "versions": {
+      "soupsieve": "4.1",
+      "typing-extensions": "4.16.0",
+      "pypdf2": "3.0.1",
+      "markdown": "3.11.3",
+      "beautifulsoup4": "4.15.0",
+      "lxml": "6.1.3",
+      "chardet": "7.7.0",
+      "python-docx": "1.2.0"
+    }
+  },
+  {
+    "environment": "21b7d8ae08f77a97c0ea5d1abf80487747df2d60b195ff0dae56bc3231dce627",
+    "metadata": {
+      "artifact_digest": "7a4bc661c409fb54baba7cd7b9146a323c73b72e64d6606272d8a6b0788226fc",
+      "digest": "21b7d8ae08f77a97c0ea5d1abf80487747df2d60b195ff0dae56bc3231dce627",
+      "requirements_digest": "723347f5f658b7236874c4ac05136dc3f440d738d708a8d66234b3611ba7010e",
+      "runtime_fingerprint": "0242cddea34beaa87f1001037e5cbbf7471c5963762e6af025d9dce7f2835132",
+      "schema_version": 3
+    },
+    "versions": {
+      "soupsieve": "4.1.1",
+      "typing-extensions": "4.16.0",
+      "pypdf2": "3.0.1",
+      "markdown": "3.11.3",
+      "beautifulsoup4": "4.15.0",
+      "lxml": "6.1.3",
+      "chardet": "7.7.0",
+      "python-docx": "1.2.0"
+    }
+  },
+  {
+    "environment": "c37691f72de43e049c85660a480e002cd45147cd640affa365d3015aa657565e",
+    "metadata": {
+      "artifact_digest": "7a4bc661c409fb54baba7cd7b9146a323c73b72e64d6606272d8a6b0788226fc",
+      "digest": "c37691f72de43e049c85660a480e002cd45147cd640affa365d3015aa657565e",
+      "requirements_digest": "723347f5f658b7236874c4ac05136dc3f440d738d708a8d66234b3611ba7010e",
+      "runtime_fingerprint": "4a1d807e6bd61d97ae9f17c12c227331928bc9c40ba780c55c1600ce9554534b",
+      "schema_version": 3
+    },
+    "versions": {
+      "soupsieve": "4.1",
+      "typing-extensions": "4.16.0",
+      "pypdf2": "3.0.1",
+      "markdown": "3.11.3",
+      "beautifulsoup4": "4.15.0",
+      "lxml": "6.1.3",
+      "chardet": "7.7.0",
+      "python-docx": "1.2.0"
+    }
+  },
+  {
+    "environment": "8bc1777c5ee0bf268f73b9f5b169045c3af4340acad4c8106899a984b697bf44",
+    "metadata": {
+      "artifact_digest": "453a6f60095fc58e9300cd05e390660ca27801eed6d59af2bca15c328ff114c6",
+      "digest": "8bc1777c5ee0bf268f73b9f5b169045c3af4340acad4c8106899a984b697bf44",
+      "requirements_digest": "723347f5f658b7236874c4ac05136dc3f440d738d708a8d66234b3611ba7010e",
+      "runtime_fingerprint": "0242cddea34beaa87f1001037e5cbbf7471c5963762e6af025d9dce7f2835132",
+      "schema_version": 3
+    },
+    "versions": {
+      "soupsieve": "4.1.1",
+      "typing-extensions": "4.16.0",
+      "pypdf2": "3.0.1",
+      "markdown": "3.11.3",
+      "beautifulsoup4": "4.15.0",
+      "lxml": "6.1.3",
+      "chardet": "7.7.0",
+      "python-docx": "1.2.0"
+    }
+  }
+]

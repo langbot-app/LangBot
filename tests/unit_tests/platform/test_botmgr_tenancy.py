@@ -175,6 +175,9 @@ async def test_concurrent_websocket_proxy_creation_reuses_one_runtime(lazy):
     assert len({id(runtime) for runtime in runtimes}) == 1
     assert manager.websocket_proxy_bots == {WORKSPACE_A: runtimes[0]}
     assert loader.call_count == int(lazy)
+    assert manager.has_websocket_proxy_bot(WORKSPACE_A) is True
+    assert manager.has_websocket_proxy_bot(WORKSPACE_B) is False
+    assert runtimes[0].bot_entity.uuid == 'websocket-proxy-bot'
 
 
 @pytest.mark.asyncio
@@ -221,6 +224,9 @@ async def test_websocket_proxy_cache_evicts_oldest_idle_workspace():
     created_adapters[0].kill.assert_awaited_once_with()
     assert manager.websocket_proxy_bots == {WORKSPACE_B: second}
     assert WORKSPACE_A not in manager._proxy_last_accessed
+    # Plugin bot guards rely on this: an evicted proxy is no longer addressable.
+    assert manager.has_websocket_proxy_bot(WORKSPACE_B) is True
+    assert manager.has_websocket_proxy_bot(WORKSPACE_A) is False
 
 
 @pytest.mark.asyncio

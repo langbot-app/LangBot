@@ -10,13 +10,6 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Trash2, Plus, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
@@ -43,7 +36,6 @@ export default function BotAdminsDialog({
   onAdminsChange,
 }: BotAdminsDialogProps) {
   const { t } = useTranslation();
-  const [newType, setNewType] = useState('person');
   const [newId, setNewId] = useState('');
   const [adding, setAdding] = useState(false);
 
@@ -51,7 +43,7 @@ export default function BotAdminsDialog({
     if (!newId.trim()) return;
     setAdding(true);
     try {
-      await httpClient.addBotAdmin(botId, newType, newId.trim());
+      await httpClient.addBotAdmin(botId, 'person', newId.trim());
       toast.success(t('bots.admins.addSuccess'));
       setNewId('');
       onAdminsChange();
@@ -90,19 +82,6 @@ export default function BotAdminsDialog({
         <div className="space-y-4">
           {/* Add row */}
           <div className="flex gap-2 items-center">
-            <Select value={newType} onValueChange={setNewType}>
-              <SelectTrigger className="w-28 shrink-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="person">
-                  {t('bots.admins.typePerson')}
-                </SelectItem>
-                <SelectItem value="group">
-                  {t('bots.admins.typeGroup')}
-                </SelectItem>
-              </SelectContent>
-            </Select>
             <Input
               className="flex-1"
               placeholder={t('bots.admins.placeholderId')}
@@ -131,9 +110,6 @@ export default function BotAdminsDialog({
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b bg-muted/40">
-                      <th className="text-left px-3 py-2 font-medium text-muted-foreground w-28">
-                        {t('bots.admins.launcherType')}
-                      </th>
                       <th className="text-left px-3 py-2 font-medium text-muted-foreground">
                         {t('bots.admins.launcherId')}
                       </th>
@@ -146,13 +122,6 @@ export default function BotAdminsDialog({
                         key={admin.id}
                         className="border-b last:border-0 hover:bg-muted/30"
                       >
-                        <td className="px-3 py-2">
-                          <span className="px-1.5 py-0.5 rounded bg-muted text-xs">
-                            {admin.launcher_type === 'person'
-                              ? t('bots.admins.typePerson')
-                              : t('bots.admins.typeGroup')}
-                          </span>
-                        </td>
                         <td className="px-3 py-2 font-mono">
                           {admin.launcher_id}
                         </td>

@@ -11,9 +11,9 @@ from langbot_plugin.api.entities.permissions import PluginPermissions
 
 
 def test_example_runner_manifest_and_build(tmp_path, monkeypatch):
-    plugin_dir = Path(__file__).resolve().parents[4] / 'langbot-plugin-sdk/examples/workspace_runner_plugin'
+    plugin_dir = Path(__file__).resolve().parents[3] / 'sdk/examples/workspace_runner_plugin'
     if not plugin_dir.exists():
-        pytest.skip('Build test requires the sibling SDK checkout')
+        pytest.skip('Build test requires the in-tree SDK (sdk/)')
     manifest = yaml.safe_load((plugin_dir / 'manifest.yaml').read_text())
     permissions = PluginPermissions.model_validate(manifest['spec']['permissions'])
     assert set(permissions.workspace_operations) == {'bot.list', 'stats.basic'}

@@ -649,6 +649,7 @@ class TestSkillToolLoader:
             'demo',
             'references/a.md',
             expected_revision='sha256:demo',
+            max_bytes=256 * 1024,
         )
 
 

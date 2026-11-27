@@ -734,7 +734,7 @@ async def _handle_call_platform_api(self, data):
 
 新功能通过提升 SDK minor 版本发布：
 
-- 现有版本：`langbot-plugin-sdk >= x.y.z`
-- 新版本：`langbot-plugin-sdk >= x.(y+1).0`
+- 现有版本：`langbot-plugin >= x.y.z`
+- 新版本：`langbot-plugin >= x.(y+1).0`
 
 插件的 `manifest.yaml` 中的 `min_sdk_version` 决定是否能使用新 API。使用旧 SDK 版本的插件在新 LangBot 上正常运行（兼容层保证），只是无法调用新 API。

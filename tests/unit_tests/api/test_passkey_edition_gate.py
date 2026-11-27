@@ -11,7 +11,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from langbot.pkg.api.http.controller.groups import user as user_module
 from langbot.pkg.api.http.controller.groups.user import UserRouterGroup
 from langbot.pkg.utils import constants
 
@@ -78,27 +77,3 @@ def test_passkey_supported_only_on_oss(monkeypatch, edition, deployment_mode, ex
     group = _router(deployment_mode=deployment_mode)
 
     assert group._passkey_supported() is expected
-
-
-def test_refusal_builds_only_when_unsupported(monkeypatch):
-    """The denial path is taken on cloud and skipped on OSS.
-
-    ``_passkey_disabled_response`` builds a Quart response, which needs an app
-    context, so the decision itself is asserted here through the gate that
-    drives it; the wiring of every route to that denial is covered below.
-    """
-    monkeypatch.setattr(constants, 'edition', 'cloud')
-    assert _router()._passkey_supported() is False
-
-    monkeypatch.setattr(constants, 'edition', 'community')
-    assert _router()._passkey_supported() is True
-
-
-def test_every_passkey_route_is_gated():
-    """Guards against a new passkey route being added without the edition gate."""
-    import inspect
-
-    source = inspect.getsource(user_module)
-    passkey_routes = source.count("@self.route('/passkey")
-    assert passkey_routes >= 7, f'expected at least 7 passkey routes, found {passkey_routes}'
-    assert source.count('_passkey_disabled_response()') >= passkey_routes

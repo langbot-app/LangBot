@@ -35,12 +35,12 @@ class Output(BaseModel):
     __pydantic_extra__: dict[str, JsonValue] = Field(init=False)
 
 
-def _input(name: str, **fields: Any) -> type[Input]:
-    return create_model(name, __base__=Input, **fields)
+def _input(model_name: str, /, **fields: Any) -> type[Input]:
+    return create_model(model_name, __base__=Input, **fields)
 
 
-def _output(name: str, **fields: Any) -> type[Output]:
-    return create_model(name, __base__=Output, **fields)
+def _output(model_name: str, /, **fields: Any) -> type[Output]:
+    return create_model(model_name, __base__=Output, **fields)
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,6 +212,9 @@ EXECUTION_OPERATIONS = (
             target_id=(Text, ...),
             message_chain=(list[Object], ...),
             origin_query_uuid=(Text | None, None),
+            # SDK 0.7.23+ sends the plugin's wait budget; the Runtime strips it,
+            # but an older Runtime forwards it unchanged. The Host ignores it.
+            timeout=(float | None, None),
         ),
         ResultOutput,
         'plugin_or_run',
@@ -458,8 +461,15 @@ EXECUTION_OPERATIONS = (
     ),
     ExecutionOperation(
         'steering_pull',
-        _input('ExecutionSteeringInput', mode=(str, 'all'), limit=(Positive | None, None)),
+        _input('ExecutionSteeringInput', mode=(str, 'all'), limit=(Positive | None, None), claim=(bool, False)),
         ItemsOutput,
+        'run',
+        True,
+    ),
+    ExecutionOperation(
+        'steering_ack',
+        _input('ExecutionSteeringAckInput', delivery_ids=(list[Text], ...)),
+        _output('ExecutionSteeringAckOutput', acknowledged=(list[str], ...), unknown=(list[str], ...)),
         'run',
         True,
     ),
@@ -507,7 +517,57 @@ EXECUTION_OPERATIONS = (
         True,
     ),
     ExecutionOperation(
+        'read_input_attachment',
+        _input('ExecutionReadInputAttachmentInput', ref=(Text, ...)),
+        _output(
+            'ExecutionInputAttachmentOutput',
+            ref=(str, ...),
+            name=(str | None, None),
+            mime_type=(str | None, None),
+            size=(int, ...),
+            content=(str, ...),
+        ),
+        'run',
+    ),
+    ExecutionOperation(
+        'read_input_attachment_content',
+        _input(
+            'ExecutionReadInputContentInput',
+            ref=(Text, ...),
+            mode=(Literal['auto', 'text', 'native', 'pages'], 'auto'),
+            offset=(Nonnegative, 0),
+            max_chars=(Annotated[int, Field(ge=1, le=16384)], 8192),
+            page_start=(Positive, 1),
+            page_end=(Positive | None, None),
+        ),
+        _output('ExecutionInputContentOutput', contents=(list[Object], ...)),
+        'run',
+    ),
+    ExecutionOperation(
         'export_box_files', _input('ExecutionExportBoxInput', paths=(list[str] | None, None)), ItemsOutput, 'run', True
+    ),
+    ExecutionOperation(
+        'read_run_file',
+        _input(
+            'ExecutionReadRunFileInput',
+            file_id=(Text, ...),
+            mode=(Literal['auto', 'text', 'native', 'pages'], 'auto'),
+            offset=(Nonnegative, 0),
+            max_chars=(Annotated[int, Field(ge=1, le=16384)], 8192),
+            page_start=(Positive, 1),
+            page_end=(Positive | None, None),
+        ),
+        _output('ExecutionRunFileContentOutput', contents=(list[Object], ...)),
+        'run',
+    ),
+    ExecutionOperation(
+        'commit_run_files',
+        _input(
+            'ExecutionCommitRunFilesInput', file_ids=(Annotated[list[Text], Field(min_length=1, max_length=100)], ...)
+        ),
+        ItemsOutput,
+        'run',
+        True,
     ),
     ExecutionOperation('run_get', TargetRun, RunOutput, 'runner_admin'),
     ExecutionOperation(
@@ -530,6 +590,44 @@ EXECUTION_OPERATIONS = (
             target_run_id=(Text | None, None),
             reason=(str | None, None),
             status_reason=(str | None, None),
+        ),
+        RunOutput,
+        'runner_admin',
+        True,
+    ),
+    ExecutionOperation(
+        'run_retry',
+        _input(
+            'ExecutionRetryRunInput',
+            target_run_id=(Text | None, None),
+            reason=(str | None, None),
+            status_reason=(str | None, None),
+        ),
+        RunOutput,
+        'runner_admin',
+        True,
+    ),
+    ExecutionOperation(
+        'run_resume',
+        _input(
+            'ExecutionResumeRunInput',
+            target_run_id=(Text | None, None),
+            from_sequence=(Nonnegative | None, None),
+            reason=(str | None, None),
+            status_reason=(str | None, None),
+        ),
+        RunOutput,
+        'runner_admin',
+        True,
+    ),
+    ExecutionOperation(
+        'run_cancel_ack',
+        _input(
+            'ExecutionCancelAckInput',
+            target_run_id=(Text | None, None),
+            reason=(str | None, None),
+            cleanup_confirmed=(bool, True),
+            expected_retry_count=(Nonnegative | None, None),
         ),
         RunOutput,
         'runner_admin',
@@ -787,7 +885,7 @@ class ExecutionAPI:
                     from ...plugin.agent_run_support import _load_persistent_agent_run_session
 
                     session = await get_session_registry().get(context.run_id)
-                    if session is None and operation.scope == 'runner_admin':
+                    if session is None and (operation.scope == 'runner_admin' or operation.action == 'steering_ack'):
                         session = await _load_persistent_agent_run_session(context.run_id, self.ap, operation.action)
                     if (
                         session is None
@@ -805,7 +903,17 @@ class ExecutionAPI:
                     action_handler = getattr(handler, '_raw_actions', {}).get(
                         operation.action, handler.actions[operation.action]
                     )
-                    yield operation, action_handler, data
+                    from ...telemetry import usage
+
+                    retrieval_origin = 'plugin'
+                    if context.run_id is not None:
+                        processor_type = session['authorization'].get('processor_type')
+                        retrieval_origin = 'pipeline' if processor_type == 'pipeline' else 'agent'
+                    usage_token = usage.origin.set(retrieval_origin)
+                    try:
+                        yield operation, action_handler, data
+                    finally:
+                        usage.origin.reset(usage_token)
         finally:
             handler._current_action_context.reset(token)
 

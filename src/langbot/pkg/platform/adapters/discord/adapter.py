@@ -307,6 +307,34 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
         sent = await channel.send(**kwargs)
         return platform_events.MessageResult(message_id=sent.id, raw={'message_id': sent.id})
 
+    async def reply_to_event(
+        self, *, context: dict, target_type: str, target_id: str, message: platform_message.MessageChain
+    ) -> platform_events.MessageResult:
+        if 'quote_origin' not in context:
+            return await self.send_message(target_type, target_id, message)
+        quote_origin = context['quote_origin']
+        if not isinstance(quote_origin, bool):
+            raise ValueError('quote_origin must be a boolean')
+        target = (context.get('delivery') or {}).get('reply_target') or {}
+        message_id = target.get('message_id')
+        if quote_origin and not message_id:
+            raise ValueError('The original Discord message ID is required to quote a recovered reply')
+        channel_id = target.get('chat_id')
+        if not channel_id:
+            if target_type != 'group' or self.bot.get_guild(int(target_id)) is not None:
+                raise ValueError('Discord recovery requires the original channel ID')
+            channel_id = target_id
+        channel = await self._get_channel(channel_id)
+        content, files = await self.message_converter.yiri2target(message)
+        kwargs = {'content': content}
+        if files:
+            kwargs['files'] = files
+        if quote_origin:
+            kwargs['reference'] = discord.MessageReference(message_id=int(message_id), channel_id=int(channel.id))
+            kwargs['mention_author'] = any(isinstance(component, platform_message.At) for component in message.root)
+        sent = await channel.send(**kwargs)
+        return platform_events.MessageResult(message_id=sent.id, raw={'message_id': sent.id})
+
     async def reply_message(
         self,
         message_source: platform_events.MessageEvent,

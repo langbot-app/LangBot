@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: LangBot
+  name: WorkspaceRunnerExample
+  repository: https://github.com/langbot-app/LangBot/tree/master/sdk/examples/workspace_runner_plugin
+  version: 0.1.0
+  description:
+    en_US: Minimal runner plugin that calls workspace operations.
+    zh_Hans: 调用工作区操作的最小 Runner 插件示例。
+  label:
+    en_US: Workspace Runner Example
+    zh_Hans: 工作区 Runner 示例
+spec:
+  permissions:
+    workspace_operations:
+      - bot.list
+      - stats.basic
+    capabilities: []
+  config: []
+  components:
+    Runner:
+      fromDirs:
+        - path: components/runner/
+execution:
+  python:
+    path: main.py
+    attr: WorkspaceRunnerPlugin

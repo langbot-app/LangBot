@@ -6,11 +6,12 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
-from tools.entrypoints.regression_coverage import checked
-from tools.regression.regression_lifecycle_cases import ledger
+from tools.regression.evidence import checked
+from tools.regression.run_ledger import ledger
 from tools.regression.regression_local_cases import api, require
-from tools.regression.regression_resource_cases import cleanup, journal
-from tools.regression.regression_smoke import check_mock_requests, signed_headers
+from tools.regression.resource_cleanup import cleanup, journal
+from tools.regression.http_bot import signed_headers
+from tools.regression.regression_smoke import check_mock_requests
 from tools.entrypoints.regression_suite import resolve
 
 GROUP = 'plugins'
@@ -28,6 +29,7 @@ def add_cases(profile):
     pipeline['body']['name'] = 'regression plugin commands'
     pipeline['body']['extensions_preferences'] = {
         'enable_all_plugins': False,
+        'workspace_operations': [],
         'plugins': copy.deepcopy(COMMAND_PLUGINS),
     }
     profile['resources'].append(pipeline)

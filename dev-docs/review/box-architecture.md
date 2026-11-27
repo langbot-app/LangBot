@@ -142,9 +142,8 @@ BoxService
 
 管理与 Box Runtime 的通信连接：
 
-- **本地 stdio**: Unix/macOS 默认路径，fork `python -m langbot_plugin.cli.__init__ box -s --ws-control-port {port}` 子进程（与 plugin runtime 统一走 `lbp` CLI 入口）
-- **本地 subprocess + WS**: Windows 本地（asyncio ProactorEventLoop 不支持 stdio pipe）
-- **远程 WebSocket**: Docker 部署 / `box.runtime.endpoint` 显式配置时，连接 `ws://{host}:{port}/rpc/ws`
+- **本地 stdio**: Core 自己拉起 Box 时的唯一路径（Windows / Linux / macOS 相同），启动 `python -m langbot_plugin.cli.__init__ box -s --ws-control-port {port}` 子进程（与 plugin runtime 统一走 `lbp` CLI 入口）。SDK 自 0.6.0 起在 Windows 子进程侧用线程阻塞读写 stdio，不再需要 subprocess + WS 分支
+- **远程 WebSocket**: Docker 部署 / `--standalone-box` / `box.runtime.endpoint` 显式配置时，连接 `ws://{host}:{port}/rpc/ws`。选择逻辑与 Plugin Runtime 共用 `ManagedRuntimeConnector.select_runtime_transport()`
 - **同步等待**: `asyncio.Event` + `wait_for(timeout=30s)` 模式确认连接
 - **心跳**: `_heartbeat_loop()` 每 20s 调用 `ping()`，失败仅 DEBUG 日志（断开检测靠 connection close）
 - **重连**: `runtime_disconnect_callback` 由 BoxService 提供，触发 `_reconnect_loop`
@@ -456,9 +455,8 @@ BuildAppStage.run(ap)
   ├─ BoxService(ap)
   ├─ box_service.initialize()
   │    └─ connector.initialize()
-  │         ├─ [stdio] fork box subprocess
-  │         ├─ [subprocess+WS] Windows 本地
-  │         └─ [remote WS] connect URL
+  │         ├─ [stdio] Core 拉起 box 子进程（含 Windows）
+  │         └─ [remote WS] Docker / --standalone-box / endpoint
   │    └─ 启动心跳 _heartbeat_task
   ├─ ap.box_service = box_service
   │

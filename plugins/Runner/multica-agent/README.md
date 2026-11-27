@@ -52,6 +52,7 @@ Set once per installation on the plugin's settings page.
 | poll-interval | number | no | 2 | Seconds between reply checks |
 | progress-mode | select | no | messages | `messages`: each progress update is its own message, the answer comes last; `stream`: one message updated in place; `off`: only the answer (0.1.x behavior) |
 | progress-interval | number | no | 15 | Minimum seconds (5-300) between "still running" updates |
+| progress-max-messages | integer | no | 4 | Most progress messages per run in `messages` mode (1-20), answer not included |
 
 ### Choosing the agent by name
 
@@ -93,9 +94,15 @@ With `progress-mode: messages` and `language: en_US`, a run looks like:
 ```
 
 A queued task reports `⏱ Queued · waited Ns` instead. "Still running" updates are sent
-at most once per `progress-interval`, so a run produces at most
-`3 + timeout / progress-interval` messages. On timeout, cancellation or failure a final
-`⚠️ ...` line is sent before the run fails.
+at most once per `progress-interval`, and a run sends at most `progress-max-messages`
+progress messages (including the closing `⚠️ ...` line on timeout, cancellation or
+failure) plus the answer. Some platforms cap how many replies one user message may
+receive (QQ Official: 5), so keep `progress-max-messages` below that cap; the default 4
+always leaves room for the answer.
+
+In a Pipeline on a platform without streamed replies (QQ, OneBot, ...), each progress
+message is delivered as its own reply only once LangBot Core includes
+langbot-app/LangBot#2954; earlier Core versions deliver just the answer.
 
 `progress-mode: stream` writes the same lines into one message and appends the answer
 at its end. Platforms without streamed replies receive that message once, when the
@@ -105,6 +112,19 @@ run ends; use `messages` there.
 
 - Agent runs can take minutes; when `timeout` expires the run fails but the task
   keeps running in Multica and its reply stays visible there.
+- Transient Multica errors are retried. Reads (agent list, reply checks) are retried
+  on network errors, timeouts, 429 and 5xx, and a failed reply check never ends the
+  run: polling continues until `timeout`. Creating a session or sending a message is
+  resent only when the request provably never reached Multica (connection refused or
+  503), so an agent task is never submitted twice.
+- A reply that was not delivered is not lost. The runner records each submitted task
+  in the conversation state, so if a run ends early (LangBot or the Plugin Runtime
+  restarts, a network outage outlasts `timeout`), the next message in that
+  conversation first delivers the late reply, marked `↩️`, then handles the new
+  message. If the earlier task is still running, its reply follows once the new
+  message's turn is done. Late replies older than 24 hours are dropped; `/multica new`
+  discards a pending one. In `messages` mode a late reply uses one of the
+  `progress-max-messages` slots, keeping the per-message reply cap.
 - If the stored Multica session was deleted or archived, a new one is created and
   the message is resent once.
 - An agent run that fails in Multica is reported as a failed LangBot run with the

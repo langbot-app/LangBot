@@ -20,6 +20,35 @@ def get_load_config_module():
     return import_module('langbot.pkg.core.stages.load_config')
 
 
+def test_content_defaults_preserve_old_config_and_explicit_choices():
+    complete = get_load_config_module()._complete_content_defaults
+    old = complete({})
+    assert old['skills']['persistence'] == 'filesystem'
+    assert old['storage']['use'] == 'local'
+    assert old['box']['file_transfer_mode'] == 'legacy'
+    assert old['box']['workspace_mode'] == 'private'
+    current = complete(
+        {
+            'skills': {'persistence': 'database'},
+            'storage': {'use': 'persistent'},
+            'box': {'file_transfer_mode': 'network'},
+        }
+    )
+    assert current['skills']['persistence'] == 'database'
+    assert current['storage']['use'] == 'persistent'
+    assert current['box']['file_transfer_mode'] == 'network'
+    assert current['box']['workspace_mode'] == 'shared'
+    current['box']['workspace_mode'] = 'private'
+    assert complete(current)['box']['workspace_mode'] == 'private'
+
+
+def test_required_migration_source_env_remains_boolean():
+    module = get_load_config_module()
+    with patch.dict(os.environ, {'SKILLS__MIGRATION__REQUIRE_SOURCE': 'true'}, clear=True):
+        config = module._apply_env_overrides_to_config(module._complete_content_defaults({}))
+    assert config['skills']['migration']['require_source'] is True
+
+
 class TestApplyEnvOverridesToConfig:
     """Tests for _apply_env_overrides_to_config function."""
 
@@ -450,3 +479,63 @@ class TestCertificationKeyRingEnv:
                 except ValueError:
                     continue
             raise AssertionError(f'invalid certification key ring was accepted: {value!r}')
+
+
+class TestEmailConfigMigration:
+    """workspace.invitations.email moved to the shared top-level email section."""
+
+    def test_legacy_section_moves_to_top_level(self):
+        from langbot.pkg.notification.email import migrate_email_config
+
+        cfg = {
+            'workspace': {
+                'invitations': {
+                    'public_web_url': 'https://cloud.example',
+                    'email': {
+                        'provider': 'resend',
+                        'from': 'LangBot <noreply@example.com>',
+                        'resend': {'api_key': 're_secret'},
+                    },
+                }
+            }
+        }
+
+        assert migrate_email_config(cfg) is True
+        assert 'email' not in cfg['workspace']['invitations']
+        assert cfg['workspace']['invitations']['public_web_url'] == 'https://cloud.example'
+        assert cfg['email']['provider'] == 'resend'
+        assert cfg['email']['resend']['api_key'] == 're_secret'
+        # Typed defaults exist so EMAIL__SMTP__PORT keeps an int type.
+        assert cfg['email']['smtp']['port'] == 587
+        assert migrate_email_config(cfg) is False
+
+    def test_configured_new_section_wins_over_legacy(self):
+        from langbot.pkg.notification.email import migrate_email_config
+
+        cfg = {
+            'email': {'provider': 'smtp', 'from': 'a@example.com', 'smtp': {'host': 'smtp.example.com'}},
+            'workspace': {'invitations': {'email': {'provider': 'resend', 'from': 'b@example.com'}}},
+        }
+        migrate_email_config(cfg)
+        assert cfg['email']['provider'] == 'smtp'
+        assert 'email' not in cfg['workspace']['invitations']
+
+    def test_legacy_env_names_alias_new_ones_without_recreating_legacy_keys(self):
+        load_config = get_load_config_module()
+        from langbot.pkg.notification.email import migrate_email_config
+
+        cfg = {'workspace': {'invitations': {}}}
+        migrate_email_config(cfg)
+        env = {
+            'WORKSPACE__INVITATIONS__EMAIL__PROVIDER': 'smtp',
+            'WORKSPACE__INVITATIONS__EMAIL__SMTP__PORT': '2525',
+            'WORKSPACE__INVITATIONS__EMAIL__FROM': 'legacy@example.com',
+            'EMAIL__FROM': 'new@example.com',
+        }
+        with patch.dict(os.environ, env, clear=True):
+            result = load_config._apply_env_overrides_to_config(cfg)
+
+        assert result['email']['provider'] == 'smtp'
+        assert result['email']['smtp']['port'] == 2525
+        assert result['email']['from'] == 'new@example.com'
+        assert 'email' not in result['workspace']['invitations']

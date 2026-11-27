@@ -64,8 +64,32 @@ def validate_github_plugin_install_info(install_info: dict[str, Any]) -> dict[st
     release_tag = str(install_info.get('release_tag') or '').strip()
     if _GITHUB_OWNER_PATTERN.fullmatch(owner) is None:
         raise ValueError('owner must be a valid GitHub repository owner')
-    if _GITHUB_REPO_PATTERN.fullmatch(repo) is None:
+    if _GITHUB_REPO_PATTERN.fullmatch(repo) is None or repo in {'.', '..'}:
         raise ValueError('repo must be a valid GitHub repository name')
+    if any(key in install_info for key in ('mirror', 'mirrors', 'github_mirror', 'mirror_url')):
+        raise ValueError('GitHub sources are configured by the operator')
+    if install_info.get('source_type', 'release') not in ('release', 'branch'):
+        raise ValueError('Unsupported GitHub plugin source type')
+    if install_info.get('source_type') == 'branch':
+        ref = install_info.get('ref')
+        subdir = install_info.get('source_subdir', '')
+        if not isinstance(ref, str) or not ref or len(ref) > 255:
+            raise ValueError('Expected a GitHub branch name')
+        if (
+            not isinstance(subdir, str)
+            or (subdir and any(part in {'', '.', '..'} for part in subdir.split('/')))
+            or any(char in subdir for char in ('\\', ':', '\x00'))
+        ):
+            raise ValueError('Invalid plugin source directory')
+        return {
+            'source_type': 'branch',
+            **({'allow_incompatible': True} if install_info.get('allow_incompatible') is True else {}),
+            'owner': owner,
+            'repo': repo,
+            'ref': ref,
+            'source_subdir': subdir,
+            'github_url': f'https://github.com/{owner}/{repo}',
+        }
     if not release_tag or '\x00' in release_tag or len(release_tag) > 255:
         raise ValueError('release_tag must identify a GitHub release')
 

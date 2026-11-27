@@ -10,7 +10,8 @@ import httpx
 import pytest
 
 from langbot.pkg.api.application.api import ApplicationAPI
-from langbot.pkg.api.application.granted_operations import call
+from langbot.pkg.api.application.granted_operations import call, list_granted
+from langbot.pkg.api.context import PrincipalType
 from langbot.pkg.api.application.operation_docs import OPERATION_DOCS, get_operation_doc
 from langbot.pkg.api.application.processor_context import build_processor_request_context
 
@@ -256,6 +257,7 @@ MIN_READ_PARAMS = {
     'plugin.config.get': {'author': 'a', 'plugin_name': 'p'},
     'plugin.get': {'author': 'a', 'plugin_name': 'p'},
     'plugin.github.assets': {'owner': 'o', 'repo': 'r', 'release_id': 1},
+    'plugin.github.refs': {'repo_url': 'https://github.com/langbot-app/test/tree/main'},
     'plugin.github.releases': {'repo_url': 'https://github.com/langbot-app/test/tree/main'},
     'plugin.logs': {'author': 'a', 'plugin_name': 'p'},
     'plugin.readme': {'author': 'a', 'plugin_name': 'p'},
@@ -272,7 +274,7 @@ MIN_READ_PARAMS = {
 
 
 async def test_processor_sweep_all_in_scope_read_operations(sweep_app):
-    """Execute all 88 read operations with exposure=='all' under processor context."""
+    """Execute every exposed read operation that admits the processor principal."""
     api = sweep_app.application_api
     read_op_ids = [
         op_id
@@ -280,8 +282,9 @@ async def test_processor_sweep_all_in_scope_read_operations(sweep_app):
         if op_id in OPERATION_DOCS
         and get_operation_doc(op_id, side_effect=spec.side_effect).exposure == 'all'
         and not spec.side_effect
+        and (spec.principals is None or PrincipalType.PROCESSOR in spec.principals)
     ]
-    assert len(read_op_ids) == 88
+    assert len(read_op_ids) == 89
 
     proc_ctx = await build_processor_request_context(
         sweep_app,
@@ -300,7 +303,14 @@ async def test_processor_sweep_all_in_scope_read_operations(sweep_app):
         return real_client(*args, **{**kwargs, 'transport': marketplace})
 
     with (
-        patch('langbot.pkg.api.application.plugin_operations._github_json', AsyncMock(return_value={'assets': []})),
+        patch(
+            'langbot.pkg.api.application.plugin_operations.GitHubSources.list_refs',
+            AsyncMock(return_value={'branches': []}),
+        ),
+        patch(
+            'langbot.pkg.api.application.plugin_operations._github_json',
+            AsyncMock(side_effect=lambda url: [] if url.endswith('/releases') else {'assets': []}),
+        ),
         patch('langbot.pkg.api.application.plugin_operations.httpx.AsyncClient', marketplace_client),
     ):
         for op_id in read_op_ids:
@@ -408,3 +418,22 @@ async def test_processor_cannot_call_assistant_only_operation(sweep_app):
     assert result['ok'] is False
     assert result['error']['code'] == 'not_found'
     assert result['error']['code'] == 'not_found'
+
+
+async def test_plugin_artifact_exposure_does_not_grant_processor_identity(sweep_app):
+    operations = [
+        'artifact.' + name for name in ('create', 'get', 'read', 'read_content', 'retain', 'release', 'delete')
+    ]
+    proc_ctx = await build_processor_request_context(
+        sweep_app,
+        workspace_uuid='ws-sweep',
+        processor_kind='agent',
+        processor_uuid='agent-sweep',
+        run_id='run-sweep',
+        operation_ids=operations,
+    )
+    assert list_granted(sweep_app, proc_ctx, consumer='processor', granted=operations) == []
+    for operation in operations:
+        result = await call(sweep_app, proc_ctx, operation, {}, consumer='processor', granted=operations)
+        assert result['ok'] is False
+        assert result['error']['code'] == 'not_found'

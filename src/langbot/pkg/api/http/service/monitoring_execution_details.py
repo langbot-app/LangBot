@@ -54,6 +54,58 @@ def event_preview(payload, fallback='', event_type=''):
     return ''
 
 
+def _entity(value):
+    if isinstance(value, dict):
+        identity = value.get('id')
+        name = value.get('nickname') or value.get('member_name') or value.get('name')
+        return (str(identity) if identity not in (None, '') else None), (str(name) if name else None)
+    if value not in (None, ''):
+        return str(value), None
+    return None, None
+
+
+def chat_context(row, events=()):
+    """Who sent the triggering event and in which chat, for display and routing.
+
+    ``chat_id`` is exactly the value the bot routing ``chat_id`` condition
+    matches, so the UI can offer it for copy/route creation.
+    """
+    from ....persistence.session_summary_contract import parse_group_member_id
+
+    chat = {'type': None, 'id': None, 'name': None, 'sender_id': None, 'sender_name': None}
+    for event in events:
+        data = parsed(event.input_json, None)
+        if not isinstance(data, dict):
+            continue
+        chat_type = data.get('chat_type')
+        chat_type = getattr(chat_type, 'value', chat_type)
+        group_id, group_name = _entity(data.get('group'))
+        sender_id, sender_name = _entity(data.get('sender') or data.get('user'))
+        if chat_type in ('group', 'private', 'person') or group_id:
+            chat.update(
+                type='group' if chat_type == 'group' or (group_id and chat_type is None) else 'person',
+                id=str(data.get('chat_id') or group_id or sender_id or '') or None,
+                name=group_name if chat_type == 'group' or group_id else None,
+                sender_id=sender_id or event.actor_id,
+                sender_name=sender_name or event.actor_name,
+            )
+            break
+    scope = row.get('session_id') or row.get('conversation_id') or ''
+    if not chat['id'] and scope:
+        member = parse_group_member_id(scope)
+        if member:
+            chat.update(type='group', id=member[0], sender_id=chat['sender_id'] or member[1])
+        else:
+            kind, _, identity = scope.partition('_')
+            if kind in ('group', 'person') and identity and '#' not in identity:
+                chat.update(type=kind, id=identity)
+    if not chat['sender_id']:
+        chat['sender_id'] = row.get('user_id')
+    if not chat['sender_name']:
+        chat['sender_name'] = row.get('user_name')
+    return chat if chat['id'] or chat['sender_id'] else None
+
+
 def event_item(row):
     metadata = parsed(row.metadata_json, {})
     return {
@@ -139,6 +191,25 @@ class ExecutionDetailsMixin:
                 ),
             ),
         )
+        group_id = sa.func.substr(conversation, 7)
+        actor_id = sa.func.trim(EventLog.actor_id)
+        monitoring_session = sa.case(
+            (
+                sa.and_(
+                    conversation.like('group\\_%', escape='\\'),
+                    ~conversation.like('%#%', escape='\\'),
+                    EventLog.actor_id.is_not(None),
+                    actor_id != '',
+                ),
+                sa.literal('groupmember_')
+                .concat(sa.func.length(group_id))
+                .concat('_')
+                .concat(group_id)
+                .concat('_')
+                .concat(actor_id),
+            ),
+            else_=conversation,
+        )
         values = {
             'id': EventLog.event_id,
             'workspace_uuid': EventLog.workspace_id,
@@ -152,7 +223,7 @@ class ExecutionDetailsMixin:
                 self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'target_type')), ''
             ),
             'message_content': sa.func.coalesce(EventLog.input_json, EventLog.input_summary, ''),
-            'session_id': conversation,
+            'session_id': monitoring_session,
             'status': sa.func.coalesce(self._execution_json_text(EventLog.metadata_json, 'status'), 'success'),
             'level': sa.literal('info'),
             'platform': self._execution_json_text(EventLog.metadata_json, 'platform'),
@@ -254,7 +325,7 @@ class ExecutionDetailsMixin:
             )
             .values(run_id=run_id, event_id=sa.func.coalesce(models.MonitoringMessage.event_id, event_id))
         )
-        async with self._summary_write_session(workspace) as session:
+        async with self._summary_write_session(workspace, 'monitoring.link_event') as session:
             message = (
                 await session.execute(
                     sa.select(
@@ -316,7 +387,7 @@ class ExecutionDetailsMixin:
         metadata = {'status': status, 'bot_name': bot_name, 'platform': platform}
         if routes is not None:
             metadata['routes'] = safe_routes
-        async with self._summary_write_session(workspace) as session:
+        async with self._summary_write_session(workspace, 'monitoring.ingress') as session:
             await store.append_event(
                 event_id=event_id,
                 event_type=event_type,
@@ -804,6 +875,15 @@ class ExecutionDetailsMixin:
                 transcript_item,
             )
 
+        counts = {}
+        if section in (None, 'overview'):
+            # Cheap totals let collapsed diagnostics show their size up front.
+            for name in ('llm_calls', 'tool_calls', 'events'):
+                query = statements[name][0].order_by(None)
+                counts[name] = (
+                    await self._execution_query(workspace, sa.select(sa.func.count()).select_from(query.subquery()))
+                ).scalar_one()
+
         pages = {}
         for name, (query, convert) in statements.items():
             if name in requested:
@@ -913,9 +993,18 @@ class ExecutionDetailsMixin:
                 'next_offset': offset + min(len(refs), limit),
             }
 
+        ingress = await self._execution_rows(
+            workspace,
+            sa.select(EventLog)
+            .where(*event_conditions, EventLog.input_json.is_not(None))
+            .order_by(EventLog.id.asc())
+            .limit(5),
+        )
         result = {
             'source': row['source'],
             'row': row,
+            'chat': chat_context(row, ingress),
+            'counts': counts,
             'pages': pages,
             'legacy_context': bool(message and not message.event_id),
         }

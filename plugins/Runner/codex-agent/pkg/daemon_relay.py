@@ -586,6 +586,7 @@ class AgentRuntimeDaemonClient:
                                 "pid": os.getpid(),
                                 "cwd": os.getcwd(),
                                 "platform": os.name,
+                                "checkpoint_resume": getattr(self, "checkpoint_resume", False),
                                 **self.metadata,
                             },
                         }

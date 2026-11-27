@@ -93,11 +93,16 @@ async def fetch_latest_versions(space_url: str, plugin_ids: typing.Iterable[str]
     latest: dict[str, str] = {}
     async with httpx.AsyncClient(trust_env=True, timeout=15) as client:
         for plugin_id in plugin_ids:
-            response = await client.get(f'{space_url}/api/v1/marketplace/plugins/{plugin_id}')
+            from langbot import __version__
+
+            response = await client.get(
+                f'{space_url}/api/v1/marketplace/plugins/{plugin_id}', params={'langbot_version': __version__}
+            )
             if response.status_code != 200 or len(response.content) > _METADATA_MAX_BYTES:
                 continue
             try:
-                version = response.json()['data']['plugin']['latest_version']
+                detail = response.json()['data']['plugin']
+                version = detail.get('compatible_version', detail.get('latest_version'))
             except (KeyError, TypeError, json.JSONDecodeError):
                 continue
             if isinstance(version, str) and version:

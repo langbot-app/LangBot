@@ -761,6 +761,51 @@ async def test_stream_completion_delivers_attachments_once(with_text):
 
 
 @pytest.mark.asyncio
+async def test_stream_final_edit_ignores_message_not_modified():
+    adapter = make_adapter()
+    bot = SimpleNamespace(
+        send_message=AsyncMock(return_value=SimpleNamespace(message_id=900)),
+        edit_message_text=AsyncMock(
+            side_effect=telegram.error.BadRequest(
+                'Message is not modified: specified new message content and reply markup are exactly '
+                'the same as a current content and reply markup of the message'
+            )
+        ),
+    )
+    object.__setattr__(adapter, 'bot', bot)
+    adapter.msg_stream_id['stream'] = ('message', 999, True)
+    source = platform_events.MessageReceivedEvent(
+        message_id=88, source_platform_object=make_update({'message': base_message_payload(message_id=88)})
+    )
+    chunk = SimpleNamespace(resp_message_id='stream', msg_sequence=2, tool_calls=None)
+    chain = platform_message.MessageChain([platform_message.Plain(text='same answer')])
+
+    await adapter.reply_message_chunk(source, chunk, chain, is_final=True)
+
+    bot.edit_message_text.assert_awaited_once()
+    assert 'stream' not in adapter.msg_stream_id
+
+
+@pytest.mark.asyncio
+async def test_stream_edit_still_raises_other_bad_requests():
+    adapter = make_adapter()
+    bot = SimpleNamespace(
+        send_message=AsyncMock(return_value=SimpleNamespace(message_id=900)),
+        edit_message_text=AsyncMock(side_effect=telegram.error.BadRequest('Message to edit not found')),
+    )
+    object.__setattr__(adapter, 'bot', bot)
+    adapter.msg_stream_id['stream'] = ('message', 999, True)
+    source = platform_events.MessageReceivedEvent(
+        message_id=88, source_platform_object=make_update({'message': base_message_payload(message_id=88)})
+    )
+    chunk = SimpleNamespace(resp_message_id='stream', msg_sequence=2, tool_calls=None)
+    chain = platform_message.MessageChain([platform_message.Plain(text='answer')])
+
+    with pytest.raises(telegram.error.BadRequest, match='not found'):
+        await adapter.reply_message_chunk(source, chunk, chain, is_final=True)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('reply', [False, True])
 async def test_telegram_send_returns_message_result(reply):
     adapter = make_adapter()
@@ -779,6 +824,53 @@ async def test_telegram_send_returns_message_result(reply):
     assert isinstance(result, platform_events.MessageResult)
     assert result.message_id == 901
     assert result.raw == {'message_ids': [901]}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('quote', [None, False, True])
+@pytest.mark.parametrize('topic', [None, 7])
+async def test_telegram_recovered_reply_preserves_target_quote_and_file(quote, topic):
+    adapter = make_adapter()
+    bot = SimpleNamespace(
+        send_message=AsyncMock(return_value=SimpleNamespace(message_id=901)),
+        send_document=AsyncMock(return_value=SimpleNamespace(message_id=902)),
+    )
+    object.__setattr__(adapter, 'bot', bot)
+    target_id = '-100123' + (f'#{topic}' if topic else '')
+    context = {'delivery': {'reply_target': {'target_type': 'group', 'target_id': target_id, 'message_id': '88'}}}
+    if quote is not None:
+        context['quote_origin'] = quote
+    chain = platform_message.MessageChain(
+        [
+            platform_message.Plain(text='recovered'),
+            platform_message.File(name='result.txt', base64=base64.b64encode(b'evidence').decode()),
+        ]
+    )
+    result = await adapter.reply_to_event(context=context, target_type='group', target_id=target_id, message=chain)
+    for call in (bot.send_message.await_args, bot.send_document.await_args):
+        assert call.kwargs['chat_id'] == -100123
+        assert call.kwargs.get('message_thread_id') == topic
+        assert call.kwargs.get('reply_to_message_id') == (88 if quote else None)
+    assert bot.send_message.await_args.kwargs['text'] == 'recovered'
+    document = bot.send_document.await_args.kwargs['document']
+    assert document.filename == 'result.txt'
+    assert document.input_file_content == b'evidence'
+    assert result.message_id == 902
+
+
+@pytest.mark.asyncio
+async def test_telegram_recovered_quote_requires_original_message():
+    adapter = make_adapter()
+    bot = SimpleNamespace(send_message=AsyncMock())
+    object.__setattr__(adapter, 'bot', bot)
+    with pytest.raises(ValueError, match='message ID is required'):
+        await adapter.reply_to_event(
+            context={'quote_origin': True, 'delivery': {'reply_target': {'target_id': '-100123#7'}}},
+            target_type='group',
+            target_id='-100123#7',
+            message=platform_message.MessageChain([platform_message.Plain(text='recovered')]),
+        )
+    bot.send_message.assert_not_awaited()
 
 
 @pytest.mark.parametrize('until, expected', [(0, None), (1060, 60), (900, 0)])

@@ -1,0 +1,40 @@
+apiVersion: langbot/v1
+kind: Runner
+metadata:
+  name: default
+  label:
+    en_US: Workspace Operation Runner
+    zh_Hans: 工作区操作 Runner
+  description:
+    en_US: Minimal runner plugin that lists and calls workspace operations.
+    zh_Hans: 列出并调用工作区操作的最小 Runner 插件。
+spec:
+  usages:
+    - agent
+    - event
+  events:
+    - "*"
+  supported_event_patterns:
+    - "*"
+  capabilities:
+    streaming: true
+    tool_calling: false
+    knowledge_retrieval: false
+    multimodal_input: false
+    skill_authoring: false
+    interrupt: false
+    steering: false
+    interactions: false
+  permissions:
+    models: []
+    tools: []
+    knowledge_bases: []
+    history: []
+    events: []
+    storage: []
+    interactions: []
+  config: []
+execution:
+  python:
+    path: ./default.py
+    attr: DefaultWorkspaceRunner

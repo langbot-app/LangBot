@@ -24,7 +24,16 @@ import {
   Loader2,
   CircleHelp,
   Package,
+  Check,
+  FolderOpen,
+  GitBranch,
+  Search,
+  Tag,
+  Globe,
+  Zap,
 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
   Tooltip,
@@ -34,12 +43,16 @@ import {
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
-import { getCloudServiceClientSync } from '@/app/infra/http';
+import {
+  getCloudServiceClient,
+  getCloudServiceClientSync,
+} from '@/app/infra/http';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { PluginV4 } from '@/app/infra/entities/plugin';
-import type { Skill } from '@/app/infra/entities/api';
+import { installableVersion, PluginV4 } from '@/app/infra/entities/plugin';
+import { resolveInstallVersion } from './resolve-install-version';
+import type { GithubRefsResp, Skill } from '@/app/infra/entities/api';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { usePluginInstallTasks } from '@/app/home/plugins/components/plugin-install-task';
 import MCPForm from '@/app/home/mcp/components/mcp-form/MCPForm';
@@ -89,6 +102,28 @@ interface GithubSkillMdInfo {
   repo: string;
   ref: string;
   path: string;
+}
+
+function GithubSourceChip({ source }: { source: GithubRefsResp['source'] }) {
+  const { t } = useTranslation();
+  const mirror = source.kind === 'mirror';
+  const Icon = mirror ? Zap : Globe;
+  return (
+    <span
+      className="inline-flex min-w-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+      title={source.host}
+    >
+      <Icon className="size-3 shrink-0" />
+      <span className="truncate">
+        {mirror
+          ? t('plugins.downloadSourceMirror', {
+              host: source.host,
+              latency: source.latency_ms,
+            })
+          : t('plugins.downloadSourceDirect', { latency: source.latency_ms })}
+      </span>
+    </span>
+  );
 }
 
 function isGithubSkillMdUrl(rawUrl: string): boolean {
@@ -185,6 +220,11 @@ function AddExtensionContent() {
   const [pluginInstallStatus, setPluginInstallStatus] =
     useState<PluginInstallStatus>(PluginInstallStatus.ASK_CONFIRM);
   const [installError, setInstallError] = useState<string | null>(null);
+  // Deep-link installs resolve a version compatible with this Core first.
+  const [resolvingInstallVersion, setResolvingInstallVersion] = useState(false);
+  const [installVersionNotice, setInstallVersionNotice] = useState<
+    string | null
+  >(null);
   const [installIconFailed, setInstallIconFailed] = useState(false);
 
   // Marketplace icon URL for the extension being installed, by type.
@@ -244,6 +284,17 @@ function AddExtensionContent() {
   const [githubInstallError, setGithubInstallError] = useState<string | null>(
     null,
   );
+  const [githubSourceType, setGithubSourceType] = useState<
+    'release' | 'branch'
+  >('release');
+  const [githubReleasesError, setGithubReleasesError] = useState<string | null>(
+    null,
+  );
+  const [githubRefs, setGithubRefs] = useState<GithubRefsResp | null>(null);
+  const [githubRefsError, setGithubRefsError] = useState<string | null>(null);
+  const [branchQuery, setBranchQuery] = useState('');
+  const [selectedBranch, setSelectedBranch] = useState('');
+  const [githubSubdir, setGithubSubdir] = useState('');
 
   useEffect(() => {
     // Clear any stale completed tasks on mount
@@ -291,8 +342,60 @@ function AddExtensionContent() {
     setInstallExtensionType(extType);
     setPluginInstallStatus(PluginInstallStatus.ASK_CONFIRM);
     setInstallError(null);
+    setInstallVersionNotice(null);
     setInstallIconFailed(false);
     setModalOpen(true);
+
+    // The link carries the version Space's web page showed, which may not
+    // support this Core. Resolve a compatible one before allowing install.
+    if (extType === 'plugin') {
+      setResolvingInstallVersion(true);
+      const sameTarget = (prev: Record<string, string>) =>
+        prev.plugin_author === author && prev.plugin_name === name;
+      void getCloudServiceClient()
+        .then((client) =>
+          Promise.all([
+            client
+              .getPluginVersions(author, name)
+              .then((resp) => resp.versions)
+              .catch(() => null),
+            client.getPluginDetail(author, name).then((resp) => resp.plugin),
+          ]),
+        )
+        .then(([versions, detail]) => {
+          const resolution = resolveInstallVersion(version, versions, detail);
+          if (resolution.kind === 'none') {
+            setInstallInfo((prev) =>
+              sameTarget(prev) ? { ...prev, plugin_version: '' } : prev,
+            );
+            setInstallError(
+              t('pluginCompat.noCompatibleVersion', {
+                current: systemInfo.version,
+              }),
+            );
+            setPluginInstallStatus(PluginInstallStatus.ERROR);
+            return;
+          }
+          setInstallInfo((prev) =>
+            sameTarget(prev)
+              ? { ...prev, plugin_version: resolution.version }
+              : prev,
+          );
+          if (resolution.kind === 'switched') {
+            setInstallVersionNotice(
+              t('pluginCompat.switchedVersion', {
+                requested: resolution.requested,
+                version: resolution.version,
+              }),
+            );
+          }
+        })
+        .catch(() => {
+          // Space unreachable: keep the linked version; Core still rejects
+          // an incompatible package at install time.
+        })
+        .finally(() => setResolvingInstallVersion(false));
+    }
 
     // The icon is not carried in the URL params, so fetch it from the
     // marketplace record. Without this the confirm dialog falls back to the
@@ -326,7 +429,7 @@ function AddExtensionContent() {
       },
       { replace: true },
     );
-  }, [searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, t]);
 
   useEffect(() => {
     const onComplete = (_taskId: number, success: boolean) => {
@@ -355,21 +458,38 @@ function AddExtensionContent() {
   const handleInstallPlugin = useCallback(
     async (plugin: PluginV4) => {
       if (extensionsReached) return;
+      const isPlugin = (plugin.type || 'plugin') === 'plugin';
+      const version = isPlugin
+        ? installableVersion(plugin)
+        : plugin.latest_version;
       setInstallInfo({
         plugin_author: plugin.author,
         plugin_name: plugin.name,
-        plugin_version: plugin.latest_version,
+        plugin_version: version || '',
         plugin_label: extractI18nObject(plugin.label) || plugin.name,
         plugin_description: extractI18nObject(plugin.description) || '',
         plugin_icon: plugin.icon || '',
       });
       setInstallExtensionType(plugin.type || 'plugin');
-      setPluginInstallStatus(PluginInstallStatus.ASK_CONFIRM);
-      setInstallError(null);
+      setInstallVersionNotice(null);
+      setResolvingInstallVersion(false);
       setInstallIconFailed(false);
+      if (isPlugin && !version) {
+        // Space lists only compatible plugins, but recommendation lists and
+        // stale cards may still surface one without a compatible release.
+        setInstallError(
+          t('pluginCompat.noCompatibleVersion', {
+            current: systemInfo.version,
+          }),
+        );
+        setPluginInstallStatus(PluginInstallStatus.ERROR);
+      } else {
+        setInstallError(null);
+        setPluginInstallStatus(PluginInstallStatus.ASK_CONFIRM);
+      }
       setModalOpen(true);
     },
-    [extensionsReached],
+    [extensionsReached, t],
   );
 
   function handleModalConfirm() {
@@ -527,6 +647,13 @@ function AddExtensionContent() {
     setGithubSkillPreview(null);
     setGithubInstallStatus(GithubInstallStatus.WAIT_INPUT);
     setGithubInstallError(null);
+    setGithubSourceType('release');
+    setGithubReleasesError(null);
+    setGithubRefs(null);
+    setGithubRefsError(null);
+    setBranchQuery('');
+    setSelectedBranch('');
+    setGithubSubdir('');
   }
 
   async function handleGithubAddressSubmit() {
@@ -548,25 +675,152 @@ function AddExtensionContent() {
     setGithubSkillInfo(null);
     setGithubSkillPreview(null);
 
-    try {
-      const result = await httpClient.getGithubReleases(githubURL);
-      setGithubReleases(result.releases);
-      setGithubOwner(result.owner);
-      setGithubRepo(result.repo);
+    // Releases need api.github.com, which is often unreachable from
+    // mainland China; branches go through git info/refs and the mirrors.
+    const [releasesResult, refsResult] = await Promise.allSettled([
+      httpClient.getGithubReleases(githubURL.trim()),
+      httpClient.getGithubRefs(githubURL.trim()),
+    ]);
+    setFetchingReleases(false);
 
-      if (result.releases.length === 0) {
-        toast.warning(t('plugins.noReleasesFound'));
-      } else {
-        setGithubInstallStatus(GithubInstallStatus.SELECT_RELEASE);
-      }
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      setGithubInstallError(errorMessage || t('plugins.fetchReleasesError'));
+    const releases =
+      releasesResult.status === 'fulfilled'
+        ? releasesResult.value.releases
+        : [];
+    // Treat a refs payload without a branch list as unavailable instead of
+    // letting a partial response crash the whole page.
+    const refs =
+      refsResult.status === 'fulfilled' &&
+      Array.isArray(refsResult.value?.branches)
+        ? {
+            ...refsResult.value,
+            tags: Array.isArray(refsResult.value.tags)
+              ? refsResult.value.tags
+              : [],
+          }
+        : null;
+    setGithubReleases(releases);
+    setGithubReleasesError(
+      releasesResult.status === 'rejected'
+        ? describeError(releasesResult.reason)
+        : null,
+    );
+    setGithubRefs(refs);
+    setGithubRefsError(
+      refsResult.status === 'rejected'
+        ? describeError(refsResult.reason)
+        : null,
+    );
+
+    if (!refs && releasesResult.status === 'rejected') {
+      setGithubInstallError(
+        describeError(refsResult.status === 'rejected' && refsResult.reason) ||
+          describeError(releasesResult.reason) ||
+          t('plugins.fetchReleasesError'),
+      );
       setGithubInstallStatus(GithubInstallStatus.ERROR);
-    } finally {
-      setFetchingReleases(false);
+      return;
     }
+
+    const owner =
+      releasesResult.status === 'fulfilled'
+        ? releasesResult.value.owner
+        : refs!.owner;
+    const repo =
+      releasesResult.status === 'fulfilled'
+        ? releasesResult.value.repo
+        : refs!.repo;
+    setGithubOwner(owner);
+    setGithubRepo(repo);
+    setBranchQuery('');
+    if (refs) {
+      const requested = refs.branches.some(
+        (branch) => branch.name === refs.requested_ref,
+      );
+      setSelectedBranch(
+        requested ? refs.requested_ref : refs.default_branch || '',
+      );
+      setGithubSubdir(refs.source_subdir || '');
+    }
+
+    // A /tree/<branch> link or a repository without releases opens on
+    // the branch tab.
+    const preferBranch =
+      !!refs && (!!refs.requested_ref || releases.length === 0);
+    setGithubSourceType(preferBranch ? 'branch' : 'release');
+    setGithubInstallStatus(GithubInstallStatus.SELECT_RELEASE);
+  }
+
+  const filteredBranches = (() => {
+    if (!githubRefs) return [];
+    const query = branchQuery.trim().toLowerCase();
+    const branches = query
+      ? githubRefs.branches.filter((branch) =>
+          branch.name.toLowerCase().includes(query),
+        )
+      : githubRefs.branches;
+    // Pin the branch from the pasted URL, then the default branch, so the
+    // preselected row is always visible without scrolling.
+    const rank = (name: string) =>
+      name === githubRefs.requested_ref
+        ? 0
+        : name === githubRefs.default_branch
+          ? 1
+          : 2;
+    return [...branches].sort((a, b) => rank(a.name) - rank(b.name));
+  })();
+  const selectedBranchSha =
+    githubRefs?.branches.find((branch) => branch.name === selectedBranch)
+      ?.commit_sha ?? '';
+
+  function describeError(error: unknown): string {
+    if (!error) return '';
+    if (error instanceof Error) return error.message;
+    if (typeof error === 'object' && 'msg' in error) {
+      return String((error as { msg?: string }).msg || '');
+    }
+    return String(error);
+  }
+
+  function handleBranchContinue() {
+    if (!selectedBranch) return;
+    setGithubInstallStatus(GithubInstallStatus.ASK_CONFIRM);
+  }
+
+  async function handleGithubBranchConfirm() {
+    if (!selectedBranch) return;
+    setGithubInstallStatus(GithubInstallStatus.INSTALLING);
+    if (!(await checkExtensionsLimit())) {
+      setGithubInstallStatus(GithubInstallStatus.ASK_CONFIRM);
+      return;
+    }
+    const pluginDisplayName = `${githubOwner}/${githubRepo}@${selectedBranch}`;
+    const install = (allowIncompatible: boolean) =>
+      httpClient.installPluginFromGithubBranch(
+        githubOwner,
+        githubRepo,
+        selectedBranch,
+        githubSubdir.trim().replace(/^\/+|\/+$/g, ''),
+        allowIncompatible,
+      );
+    install(false)
+      .then((resp) => {
+        const taskId = resp.task_id;
+        addTask({
+          taskId,
+          pluginName: pluginDisplayName,
+          source: 'github',
+          extensionType: 'plugin',
+          resubmitIncompatible: () => install(true),
+        });
+        setSelectedTaskId(`github-${taskId}`);
+        resetGithubState();
+        setPopoverOpen(false);
+      })
+      .catch((err) => {
+        setGithubInstallError(describeError(err));
+        setGithubInstallStatus(GithubInstallStatus.ERROR);
+      });
   }
 
   async function previewGithubSkillMd() {
@@ -653,14 +907,20 @@ function AddExtensionContent() {
       return;
     }
     const pluginDisplayName = `${githubOwner}/${githubRepo}`;
-    httpClient
-      .installPluginFromGithub(
-        selectedAsset.id,
-        selectedRelease.id,
-        githubOwner,
-        githubRepo,
-        selectedRelease.tag_name,
-      )
+    const asset = selectedAsset;
+    const release = selectedRelease;
+    const owner = githubOwner;
+    const repo = githubRepo;
+    const install = (allowIncompatible: boolean) =>
+      httpClient.installPluginFromGithub(
+        asset.id,
+        release.id,
+        owner,
+        repo,
+        release.tag_name,
+        allowIncompatible,
+      );
+    install(false)
       .then((resp) => {
         const taskId = resp.task_id;
         const taskKey = `github-${taskId}`;
@@ -669,7 +929,8 @@ function AddExtensionContent() {
           pluginName: pluginDisplayName,
           source: 'github',
           extensionType: 'plugin',
-          fileSize: selectedAsset.size,
+          fileSize: asset.size,
+          resubmitIncompatible: () => install(true),
         });
         setSelectedTaskId(taskKey);
         resetGithubState();
@@ -1006,57 +1267,223 @@ function AddExtensionContent() {
 
                 {githubInstallStatus === GithubInstallStatus.SELECT_RELEASE && (
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-medium">
-                        {t('plugins.selectRelease')}
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="min-w-0 truncate text-xs font-medium">
+                        {githubOwner}/{githubRepo}
                       </p>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-6 text-xs px-2"
+                        className="h-6 shrink-0 px-2 text-xs"
                         onClick={() => {
                           setGithubInstallStatus(
                             GithubInstallStatus.WAIT_INPUT,
                           );
                           setGithubReleases([]);
+                          setGithubRefs(null);
                         }}
                       >
                         <ChevronLeft className="w-3 h-3 mr-1" />
                         {t('plugins.backToRepoUrl')}
                       </Button>
                     </div>
-                    <div className="max-h-[300px] overflow-y-auto space-y-1.5">
-                      {githubReleases.map((release) => (
-                        <div
-                          key={release.id}
-                          className="flex cursor-pointer items-center justify-between rounded-md px-2 py-2 text-sm hover:bg-accent"
-                          onClick={() => handleReleaseSelect(release)}
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium truncate text-xs">
-                              {release.name || release.tag_name}
-                            </div>
-                            <div className="text-[11px] text-muted-foreground">
-                              {release.tag_name} &bull;{' '}
-                              {new Date(
-                                release.published_at,
-                              ).toLocaleDateString()}
-                            </div>
+                    <Tabs
+                      value={githubSourceType}
+                      onValueChange={(value) =>
+                        setGithubSourceType(value as 'release' | 'branch')
+                      }
+                    >
+                      <TabsList className="w-full">
+                        <TabsTrigger value="release" className="text-xs">
+                          <Tag className="size-3.5" />
+                          {t('plugins.githubSourceRelease')}
+                        </TabsTrigger>
+                        <TabsTrigger value="branch" className="text-xs">
+                          <GitBranch className="size-3.5" />
+                          {t('plugins.githubSourceBranch')}
+                        </TabsTrigger>
+                      </TabsList>
+
+                      <TabsContent value="release" className="space-y-2">
+                        {githubReleases.length === 0 ? (
+                          <div className="space-y-2 rounded-md border border-dashed px-3 py-4 text-center">
+                            <p className="text-xs text-muted-foreground">
+                              {githubReleasesError
+                                ? t('plugins.releasesUnavailable')
+                                : t('plugins.noReleasesUseBranch')}
+                            </p>
+                            {githubRefs && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => setGithubSourceType('branch')}
+                              >
+                                <GitBranch className="size-3.5" />
+                                {t('plugins.useBranchInstead')}
+                              </Button>
+                            )}
                           </div>
-                          {release.prerelease && (
-                            <span className="text-[10px] bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 px-1.5 py-0.5 rounded ml-2 shrink-0">
-                              Pre
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    {fetchingAssets && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        {t('plugins.loading')}
-                      </p>
-                    )}
+                        ) : (
+                          <>
+                            <div className="max-h-[300px] overflow-y-auto space-y-1.5">
+                              {githubReleases.map((release) => (
+                                <div
+                                  key={release.id}
+                                  className="flex cursor-pointer items-center justify-between rounded-md px-2 py-2 text-sm hover:bg-accent"
+                                  onClick={() => handleReleaseSelect(release)}
+                                >
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium truncate text-xs">
+                                      {release.name || release.tag_name}
+                                    </div>
+                                    <div className="text-[11px] text-muted-foreground">
+                                      {release.tag_name} &bull;{' '}
+                                      {new Date(
+                                        release.published_at,
+                                      ).toLocaleDateString()}
+                                    </div>
+                                  </div>
+                                  {release.prerelease && (
+                                    <span className="text-[10px] bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 px-1.5 py-0.5 rounded ml-2 shrink-0">
+                                      Pre
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                            {fetchingAssets && (
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                {t('plugins.loading')}
+                              </p>
+                            )}
+                          </>
+                        )}
+                      </TabsContent>
+
+                      <TabsContent value="branch" className="space-y-2">
+                        {!githubRefs ? (
+                          <p className="rounded-md border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
+                            {t('plugins.fetchBranchesError')}
+                            {githubRefsError}
+                          </p>
+                        ) : (
+                          <>
+                            <div className="relative">
+                              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                              <Input
+                                className="h-8 pl-8 text-xs md:text-xs"
+                                placeholder={t('plugins.searchBranches')}
+                                value={branchQuery}
+                                onChange={(e) => setBranchQuery(e.target.value)}
+                              />
+                            </div>
+                            <div className="max-h-[220px] space-y-0.5 overflow-y-auto">
+                              {filteredBranches.length === 0 && (
+                                <p className="py-4 text-center text-xs text-muted-foreground">
+                                  {t('plugins.noBranchesFound')}
+                                </p>
+                              )}
+                              {filteredBranches.map((branch) => {
+                                const selected = branch.name === selectedBranch;
+                                return (
+                                  <button
+                                    type="button"
+                                    key={branch.name}
+                                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent ${
+                                      selected ? 'bg-accent' : ''
+                                    }`}
+                                    onClick={() =>
+                                      setSelectedBranch(branch.name)
+                                    }
+                                    onDoubleClick={() => {
+                                      setSelectedBranch(branch.name);
+                                      setGithubInstallStatus(
+                                        GithubInstallStatus.ASK_CONFIRM,
+                                      );
+                                    }}
+                                  >
+                                    <Check
+                                      className={`size-3.5 shrink-0 ${
+                                        selected ? 'text-primary' : 'invisible'
+                                      }`}
+                                    />
+                                    <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                                      {branch.name}
+                                    </span>
+                                    {branch.name ===
+                                      githubRefs.default_branch && (
+                                      <Badge
+                                        variant="secondary"
+                                        className="h-4 shrink-0 px-1.5 text-[10px]"
+                                      >
+                                        {t('plugins.defaultBranch')}
+                                      </Badge>
+                                    )}
+                                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                                      {branch.commit_sha.slice(0, 7)}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {githubRefs.truncated && (
+                              <p className="text-[11px] text-muted-foreground">
+                                {t('plugins.branchesTruncated')}
+                              </p>
+                            )}
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5 text-[11px] font-medium">
+                                <FolderOpen className="size-3.5 text-muted-foreground" />
+                                {t('plugins.pluginDirectory')}
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="inline-flex size-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
+                                      aria-label={t(
+                                        'plugins.pluginDirectoryHelp',
+                                      )}
+                                    >
+                                      <CircleHelp className="size-3" />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent
+                                    side="top"
+                                    className="max-w-[260px]"
+                                  >
+                                    {t('plugins.pluginDirectoryHelp')}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
+                              <Input
+                                className="h-8 font-mono text-xs md:text-xs"
+                                placeholder={t(
+                                  'plugins.pluginDirectoryPlaceholder',
+                                )}
+                                value={githubSubdir}
+                                onChange={(e) =>
+                                  setGithubSubdir(e.target.value)
+                                }
+                              />
+                            </div>
+                            <div className="flex items-center justify-between gap-2 pt-1">
+                              <GithubSourceChip source={githubRefs.source} />
+                              <Button
+                                size="sm"
+                                className="h-8"
+                                onClick={handleBranchContinue}
+                                disabled={!selectedBranch || extensionsReached}
+                              >
+                                {t('common.next')}
+                                <ChevronRight className="size-3.5" />
+                              </Button>
+                            </div>
+                          </>
+                        )}
+                      </TabsContent>
+                    </Tabs>
                   </div>
                 )}
 
@@ -1106,28 +1533,77 @@ function AddExtensionContent() {
                   </div>
                 )}
 
-                {githubInstallStatus === GithubInstallStatus.ASK_CONFIRM && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-medium">
-                        {t('plugins.confirmInstall')}
-                      </p>
+                {githubInstallStatus === GithubInstallStatus.ASK_CONFIRM &&
+                  githubSourceType === 'release' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium">
+                          {t('plugins.confirmInstall')}
+                        </p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs px-2"
+                          onClick={() => {
+                            setGithubInstallStatus(
+                              GithubInstallStatus.SELECT_ASSET,
+                            );
+                            setSelectedAsset(null);
+                          }}
+                        >
+                          <ChevronLeft className="w-3 h-3 mr-1" />
+                          {t('plugins.backToAssets')}
+                        </Button>
+                      </div>
+                      {selectedRelease && selectedAsset && (
+                        <div className="space-y-1 rounded-md bg-muted/40 px-2 py-2 text-xs">
+                          <div>
+                            <span className="font-medium">Repository: </span>
+                            <span>
+                              {githubOwner}/{githubRepo}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="font-medium">Release: </span>
+                            <span>{selectedRelease.tag_name}</span>
+                          </div>
+                          <div>
+                            <span className="font-medium">File: </span>
+                            <span>{selectedAsset.name}</span>
+                          </div>
+                        </div>
+                      )}
                       <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 text-xs px-2"
-                        onClick={() => {
-                          setGithubInstallStatus(
-                            GithubInstallStatus.SELECT_ASSET,
-                          );
-                          setSelectedAsset(null);
-                        }}
+                        className="w-full"
+                        onClick={handleGithubConfirm}
+                        disabled={extensionsReached}
                       >
-                        <ChevronLeft className="w-3 h-3 mr-1" />
-                        {t('plugins.backToAssets')}
+                        {t('common.confirm')}
                       </Button>
                     </div>
-                    {selectedRelease && selectedAsset && (
+                  )}
+
+                {githubInstallStatus === GithubInstallStatus.ASK_CONFIRM &&
+                  githubSourceType === 'branch' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium">
+                          {t('plugins.confirmInstall')}
+                        </p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          onClick={() =>
+                            setGithubInstallStatus(
+                              GithubInstallStatus.SELECT_RELEASE,
+                            )
+                          }
+                        >
+                          <ChevronLeft className="mr-1 h-3 w-3" />
+                          {t('plugins.backToBranches')}
+                        </Button>
+                      </div>
                       <div className="space-y-1 rounded-md bg-muted/40 px-2 py-2 text-xs">
                         <div>
                           <span className="font-medium">Repository: </span>
@@ -1136,24 +1612,35 @@ function AddExtensionContent() {
                           </span>
                         </div>
                         <div>
-                          <span className="font-medium">Release: </span>
-                          <span>{selectedRelease.tag_name}</span>
+                          <span className="font-medium">Branch: </span>
+                          <span>{selectedBranch}</span>
+                          {selectedBranchSha && (
+                            <span className="ml-1.5 font-mono text-[11px] text-muted-foreground">
+                              {selectedBranchSha.slice(0, 7)}
+                            </span>
+                          )}
                         </div>
-                        <div>
-                          <span className="font-medium">File: </span>
-                          <span>{selectedAsset.name}</span>
-                        </div>
+                        {githubSubdir.trim() && (
+                          <div>
+                            <span className="font-medium">Directory: </span>
+                            <span className="break-all font-mono">
+                              {githubSubdir.trim()}
+                            </span>
+                          </div>
+                        )}
                       </div>
-                    )}
-                    <Button
-                      className="w-full"
-                      onClick={handleGithubConfirm}
-                      disabled={extensionsReached}
-                    >
-                      {t('common.confirm')}
-                    </Button>
-                  </div>
-                )}
+                      {githubRefs && (
+                        <GithubSourceChip source={githubRefs.source} />
+                      )}
+                      <Button
+                        className="w-full"
+                        onClick={handleGithubBranchConfirm}
+                        disabled={extensionsReached}
+                      >
+                        {t('common.confirm')}
+                      </Button>
+                    </div>
+                  )}
 
                 {githubInstallStatus === GithubInstallStatus.SKILL_PREVIEW && (
                   <div className="space-y-3">
@@ -1353,6 +1840,20 @@ function AddExtensionContent() {
                   )}
                 </div>
               </div>
+              {resolvingInstallVersion && (
+                <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="size-3.5 animate-spin" />
+                  {t('pluginCompat.resolvingVersion')}
+                </p>
+              )}
+              {installVersionNotice && (
+                <p
+                  className="rounded-md border border-blue-500/25 bg-blue-500/10 px-3 py-2 text-xs text-blue-800 dark:text-blue-200"
+                  data-testid="install-version-switched"
+                >
+                  {installVersionNotice}
+                </p>
+              )}
             </div>
           )}
 
@@ -1381,7 +1882,12 @@ function AddExtensionContent() {
                 >
                   <Button
                     onClick={handleModalConfirm}
-                    disabled={extensionsReached}
+                    disabled={
+                      extensionsReached ||
+                      resolvingInstallVersion ||
+                      (installExtensionType === 'plugin' &&
+                        !installInfo.plugin_version)
+                    }
                   >
                     {t('common.confirm')}
                   </Button>

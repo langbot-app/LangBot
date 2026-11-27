@@ -13,7 +13,6 @@ import uuid
 from typing import Any
 import typing
 import os
-import secrets
 import sys
 import httpx
 import sqlalchemy
@@ -21,11 +20,15 @@ from urllib.parse import urljoin, urlparse
 from langbot_plugin.api.entities.builtin.pipeline.query import provider_session
 
 from ..core import app
+from ..telemetry import usage
 from . import handler
 from . import runtime_ops
+from langbot import __version__
+from .compatibility import compatibility, incompatible_package, compatible_release
 from .errors import (
     PluginRuntimeNotConnectedError,
     PluginInstallationFailedError,
+    PluginNotInstalledError,
     MarketplacePluginVersionNotFoundError,
 )
 from .archive import inspect_plugin_archive_metadata
@@ -99,6 +102,7 @@ _DEFAULT_CONNECT_TIMEOUT_SECONDS = 180.0
 _HEARTBEAT_INTERVAL_SEC = 20.0
 _HEARTBEAT_FAILURE_THRESHOLD = 3
 _RECONNECT_MAX_DELAY_SEC = 60.0
+_RECONNECT_REQUEST_WAIT_SECONDS = 30.0
 
 
 def _utc_now_iso() -> str:
@@ -146,7 +150,7 @@ async def _marketplace_get(
     allow_not_found: bool = False,
     task_context: taskmgr.TaskContext | None = None,
 ) -> tuple[int, bytes]:
-    async with client.stream('GET', url) as response:
+    async with client.stream('GET', httpx.URL(url).copy_merge_params({'langbot_version': __version__})) as response:
         if allow_not_found and response.status_code == 404:
             return response.status_code, b''
         if response.is_error:
@@ -182,7 +186,10 @@ def _select_marketplace_plugin_version(
     requested_version: str | None,
     plugin_author: str,
     plugin_name: str,
+    detail: dict | None = None,
 ) -> str:
+    if requested_version is None and detail is not None and 'compatible_version' in detail:
+        return compatible_release(detail)
     if not isinstance(versions, list) or not versions:
         raise ValueError(f'Plugin {plugin_author}/{plugin_name} has no versions')
 
@@ -354,9 +361,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     policy_data[mode] = overrides
         return PluginWorkerPolicy.model_validate(policy_data)
 
-    def _control_headers(self, *, allow_generate: bool) -> dict[str, str]:
-        if not self._control_token and allow_generate:
-            self._control_token = secrets.token_urlsafe(48)
+    def _control_headers(self) -> dict[str, str]:
+        """Return the control-channel headers for an external WebSocket Runtime."""
         if not self._control_token:
             if self.runtime_profile == 'shared':
                 raise PluginRuntimeNotConnectedError(
@@ -1120,9 +1126,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                         await notify_disconnect()
 
             task_coro: typing.Coroutine[Any, Any, Any]
-            if platform.get_platform() == 'docker' or platform.use_websocket_to_connect_plugin_runtime():
+            transport = self.select_runtime_transport(standalone=platform.use_websocket_to_connect_plugin_runtime())
+            if transport == 'websocket':
                 self.ap.logger.info('use websocket to connect to plugin runtime')
-                control_headers = self._control_headers(allow_generate=False)
+                control_headers = self._control_headers()
                 ws_url = self.ap.instance_config.data.get('plugin', {}).get(
                     'runtime_ws_url',
                     'ws://langbot_plugin_runtime:5400/control/ws',
@@ -1142,41 +1149,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     additional_headers=control_headers,
                 )
                 task_coro = self.ctrl.run(new_connection_callback)
-            elif platform.get_platform() == 'win32':
-                # Windows cannot use the stdio subprocess transport, so launch
-                # a managed runtime and authenticate its WebSocket controller.
-                self.ap.logger.info('(windows) use cmd to launch plugin runtime and communicate via ws')
-                control_headers = self._control_headers(allow_generate=True)
-                control_port, debug_port = self._managed_runtime_ports()
-                await self._start_runtime_subprocess(
-                    '-m',
-                    'langbot_plugin.cli.__init__',
-                    'rt',
-                    '--ws-control-port',
-                    str(control_port),
-                    '--ws-debug-port',
-                    str(debug_port),
-                    env_overrides={PLUGIN_RUNTIME_CONTROL_TOKEN_ENV: self._control_token},
-                )
-                ws_url = f'ws://localhost:{control_port}/control/ws'
-
-                async def connection_failed(
-                    ctrl: ws_client_controller.WebSocketClientController,
-                    exc: Exception | None = None,
-                ) -> None:
-                    del ctrl
-                    connect_errors.append(exc or RuntimeError('WebSocket connection failed'))
-                    self._connected.set()
-
-                self.ctrl = ws_client_controller.WebSocketClientController(
-                    ws_url=ws_url,
-                    make_connection_failed_callback=connection_failed,
-                    additional_headers=control_headers,
-                )
-                task_coro = self.ctrl.run(new_connection_callback)
             else:
                 self.ap.logger.info('use stdio to connect to plugin runtime')
-                _, debug_port = self._managed_runtime_ports()
+                debug_port = self._managed_runtime_debug_port()
                 self.ctrl = stdio_client_controller.StdioClientController(
                     command=sys.executable,
                     args=[
@@ -1272,7 +1247,6 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             self.heartbeat_task = None
         await self._stop_transport()
         await self.runtime_ops_reporter.stop()
-        await self._close_managed_subprocess()
 
     @staticmethod
     def _runtime_port_from_url(url: str, *, default: int) -> int:
@@ -1288,29 +1262,19 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         """Extract the local plugin runtime debug port from its display URL."""
         return PluginRuntimeConnector._runtime_port_from_url(debug_url, default=5401)
 
-    @staticmethod
-    def _runtime_control_port_from_url(control_url: str) -> int:
-        """Extract the local plugin runtime control port from its WebSocket URL."""
-        return PluginRuntimeConnector._runtime_port_from_url(control_url, default=5400)
-
-    def _managed_runtime_ports(self) -> tuple[int, int]:
-        """Resolve control/debug ports for a Core-managed Runtime subprocess.
+    def _managed_runtime_debug_port(self) -> int:
+        """Resolve the debug port for a Core-managed Runtime subprocess.
 
         Docker/standalone deployments keep listening on their own configured
-        ports; this helper only affects the stdio and Windows launch paths,
-        where LangBot starts Runtime itself. The debug port follows
+        ports; this helper only affects the stdio launch path, where LangBot
+        starts Runtime itself. The debug port follows
         ``plugin.display_plugin_debug_url`` so a second Core instance can avoid
         ``Address already in use`` on the default 5401 without editing CLI
-        flags by hand. The control port follows ``plugin.runtime_ws_url`` for
-        the Windows WebSocket path.
+        flags by hand.
         """
         plugin_config = self.ap.instance_config.data.get('plugin') or {}
-        control_url = plugin_config.get('runtime_ws_url') or 'ws://localhost:5400/control/ws'
         debug_url = plugin_config.get('display_plugin_debug_url') or 'ws://localhost:5401/plugin/debug/ws'
-        return (
-            self._runtime_control_port_from_url(str(control_url)),
-            self._runtime_debug_port_from_url(str(debug_url)),
-        )
+        return self._runtime_debug_port_from_url(str(debug_url))
 
     async def initialize_plugins(self):
         pass
@@ -1334,7 +1298,21 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         self._execution_context.set(execution_context)
         if not self.is_enable_plugin:
             return execution_context, None
-        if not hasattr(self, 'handler'):
+        if not self._runtime_available():
+            reconnect_task = self._reconnect_task
+            if reconnect_task is not None and not reconnect_task.done():
+                timeout = min(
+                    self._runtime_connect_timeout(self.ap.instance_config.data.get('plugin', {})),
+                    _RECONNECT_REQUEST_WAIT_SECONDS,
+                )
+                try:
+                    await asyncio.wait_for(asyncio.shield(reconnect_task), timeout=timeout)
+                except asyncio.TimeoutError as exc:
+                    raise PluginRuntimeNotConnectedError(
+                        f'Plugin runtime is reconnecting; not ready after {timeout:g} seconds. '
+                        'Please retry the message shortly.'
+                    ) from exc
+        if not self._runtime_available():
             raise PluginRuntimeNotConnectedError('Plugin runtime is not connected')
         settings = await self._synchronize_workspace(execution_context)
         return execution_context, settings
@@ -1416,7 +1394,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
                     fail('permission_denied', f'Plugin {plugin_author}/{plugin_name} is disabled')
                 return execution_context, setting
-        raise ValueError(f'Plugin {plugin_author}/{plugin_name} is not installed in this Workspace')
+        raise PluginNotInstalledError(f'Plugin {plugin_author}/{plugin_name} is not installed in this Workspace')
 
     async def _target_binding(
         self,
@@ -1458,6 +1436,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     return binding
         raise ValueError(f'Plugin {component_kind} {component_name!r} was not found in this Workspace')
 
+    @usage.observe_install('mcp', 'market')
     async def _install_mcp_from_marketplace(
         self,
         execution_context: ExecutionContext,
@@ -1495,9 +1474,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             self.ap.logger.info(f'MCP server {name} already exists, skipping installation')
             return
 
+        # Community-published MCP servers carry ``${VAR}`` placeholders instead
+        # of credentials (LANG-439). Install them disabled so nothing connects
+        # with a placeholder; the WebUI asks for the values before enabling.
+        required_inputs = mcp_data.get('required_inputs') or []
         server_data = {
             'name': name,
-            'enable': True,
+            'enable': not required_inputs,
             'mode': mode,
             'extra_args': extra_args,
             'readme': readme,
@@ -1522,11 +1505,15 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         self.ap.logger.info(f'Installing skill from marketplace ZIP ({len(file_bytes)} bytes)')
 
         # Install from ZIP using skill service
-        result = await skill_service.install_from_zip_upload(
-            execution_context,
-            file_bytes=file_bytes,
-            filename=filename + '.zip',
-        )
+        token = usage.install_source.set(usage.install_source.get() or 'market')
+        try:
+            result = await skill_service.install_from_zip_upload(
+                execution_context,
+                file_bytes=file_bytes,
+                filename=filename + '.zip',
+            )
+        finally:
+            usage.install_source.reset(token)
         self.ap.logger.info(f'Skill installed successfully: {result}')
 
     def _build_plugin_startup_failure_message(
@@ -1609,6 +1596,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 persistence_plugin.PluginSetting.enabled,
                 persistence_plugin.PluginSetting.permission_grants,
                 persistence_plugin.PluginSetting.permission_snapshot,
+                persistence_plugin.PluginSetting.permission_declaration,
             )
             .where(persistence_plugin.PluginSetting.workspace_uuid == execution_context.workspace_uuid)
             .where(persistence_plugin.PluginSetting.plugin_author == plugin_author)
@@ -1653,6 +1641,20 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     isinstance(setting.install_info, dict)
                     and setting.install_info.get('_artifact_storage') == _PLUGIN_ARTIFACT_STORAGE_MARKER
                 )
+                legacy = {'workspace_operations': [], 'capabilities': sorted(LEGACY_CAPABILITIES)}
+                grants = setting.permission_grants if setting.permission_grants is not None else legacy
+                if declaration is not None:
+                    enabled = setting.enabled
+                    snapshot = setting.permission_snapshot
+                elif setting.permission_declaration is None and setting.permission_snapshot is not None:
+                    # A confirmed compatibility-mode installation upgraded to another
+                    # compatibility-mode package keeps running with the full legacy
+                    # grant set; no new permission surface is introduced.
+                    enabled = setting.enabled
+                    grants = legacy
+                    snapshot = legacy
+                else:
+                    enabled, snapshot = False, None
                 await execute(
                     sqlalchemy.update(persistence_plugin.PluginSetting)
                     .where(persistence_plugin.PluginSetting.workspace_uuid == execution_context.workspace_uuid)
@@ -1663,15 +1665,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                         runtime_revision=runtime_revision,
                         install_source=install_source.value,
                         install_info=safe_install_info,
-                        enabled=setting.enabled if declaration is not None else False,
+                        enabled=enabled,
                         permission_declaration=declaration,
-                        permission_grants=setting.permission_grants
-                        if setting.permission_grants is not None
-                        else {
-                            'workspace_operations': [],
-                            'capabilities': sorted(LEGACY_CAPABILITIES),
-                        },
-                        permission_snapshot=setting.permission_snapshot if declaration is not None else None,
+                        permission_grants=grants,
+                        permission_snapshot=snapshot,
                     )
                 )
             return (
@@ -1752,82 +1749,134 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             else:
                 asset_url = normalized['asset_url']
 
-            downloaded = 0
-            chunks: list[bytes] = []
-            start_time = time.time()
-            current_url = asset_url
-            if task_context is not None:
-                task_context.set_current_action('downloading plugin package')
-                task_context.metadata.update({'download_total': 0, 'download_current': 0, 'download_speed': 0})
-
-            for redirect_count in range(_GITHUB_PLUGIN_DOWNLOAD_MAX_REDIRECTS + 1):
-                self._validate_github_download_hop(
-                    current_url,
-                    owner=owner,
-                    repo=repo,
-                    release_tag=release_tag,
-                    asset_id=asset_id,
+            try:
+                package = await self._read_github_asset(
+                    client, asset_url, owner, repo, release_tag, asset_id, task_context
                 )
-                parsed = urlparse(current_url)
-                request_headers = {
-                    'Accept-Encoding': 'identity',
-                    'User-Agent': 'LangBot-Plugin-Installer',
-                }
-                if (parsed.hostname or '').lower() == 'api.github.com':
-                    request_headers.update(
-                        {
-                            'Accept': 'application/octet-stream',
-                            'X-GitHub-Api-Version': '2022-11-28',
-                        }
+            except httpx.HTTPError:
+                from .github_mirror import GitHubSources, fetch, source_url
+                from urllib.parse import quote
+
+                sources = GitHubSources(self.ap)
+                if not any(sources.prefixes):
+                    raise
+                if asset_id is None:
+                    response = await client.get(
+                        f'https://api.github.com/repos/{owner}/{repo}/releases/tags/{quote(release_tag, safe="")}'
                     )
-
-                async with client.stream('GET', current_url, headers=request_headers) as response:
-                    if response.status_code in _HTTP_REDIRECT_STATUSES:
-                        location = response.headers.get('location')
-                        if not location:
-                            raise ValueError('GitHub release asset redirect is missing a location')
-                        if redirect_count >= _GITHUB_PLUGIN_DOWNLOAD_MAX_REDIRECTS:
-                            raise ValueError('GitHub release asset exceeded the redirect limit')
-                        next_url = urljoin(current_url, location)
-                        self._validate_github_download_hop(
-                            next_url,
-                            owner=owner,
-                            repo=repo,
-                            release_tag=release_tag,
-                            asset_id=asset_id,
-                        )
-                        current_url = next_url
-                        continue
-
                     response.raise_for_status()
-                    content_length_header = response.headers.get('content-length')
+                    release = await httpclient.parse_json_response(response)
+                    asset = next(
+                        (item for item in release.get('assets', []) if item.get('browser_download_url') == asset_url),
+                        None,
+                    )
+                    if asset is None:
+                        raise ValueError('GitHub release asset metadata not found')
+                browser_url = validate_github_release_asset_url(
+                    asset.get('browser_download_url'), owner=owner, repo=repo, release_tag=release_tag
+                )
+                for prefix, _, _ in await sources.ranked(owner, repo):
+                    if not prefix:
+                        continue
                     try:
-                        content_length = int(content_length_header) if content_length_header is not None else 0
-                    except ValueError as exc:
-                        raise ValueError('GitHub release asset has an invalid content length') from exc
-                    if content_length < 0:
-                        raise ValueError('GitHub release asset has an invalid content length')
-                    if content_length > _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES:
+                        package = await fetch(
+                            client, source_url(prefix, browser_url), sources.hosts, _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES
+                        )
+                        self._verify_release_asset(package, asset)
+                    except (httpx.HTTPError, ValueError):
+                        continue
+                    self.ap.logger.info(f'GitHub release asset downloaded from {urlparse(prefix).hostname}')
+                    return package
+                raise ValueError('No mirror returned the requested release asset')
+            if asset_id is not None:
+                self._verify_release_asset(package, asset)
+            return package
+
+    @staticmethod
+    def _verify_release_asset(package, asset):
+        if len(package) != asset.get('size'):
+            raise ValueError('GitHub release asset size mismatch')
+        digest = asset.get('digest')
+        if digest and digest != 'sha256:' + hashlib.sha256(package).hexdigest():
+            raise ValueError('GitHub release asset digest mismatch')
+
+    async def _read_github_asset(self, client, asset_url, owner, repo, release_tag, asset_id, task_context):
+        downloaded = 0
+        chunks: list[bytes] = []
+        start_time = time.time()
+        current_url = asset_url
+        if task_context is not None:
+            task_context.set_current_action('downloading plugin package')
+            task_context.metadata.update({'download_total': 0, 'download_current': 0, 'download_speed': 0})
+
+        for redirect_count in range(_GITHUB_PLUGIN_DOWNLOAD_MAX_REDIRECTS + 1):
+            self._validate_github_download_hop(
+                current_url,
+                owner=owner,
+                repo=repo,
+                release_tag=release_tag,
+                asset_id=asset_id,
+            )
+            parsed = urlparse(current_url)
+            request_headers = {
+                'Accept-Encoding': 'identity',
+                'User-Agent': 'LangBot-Plugin-Installer',
+            }
+            if (parsed.hostname or '').lower() == 'api.github.com':
+                request_headers.update(
+                    {
+                        'Accept': 'application/octet-stream',
+                        'X-GitHub-Api-Version': '2022-11-28',
+                    }
+                )
+
+            async with client.stream('GET', current_url, headers=request_headers) as response:
+                if response.status_code in _HTTP_REDIRECT_STATUSES:
+                    location = response.headers.get('location')
+                    if not location:
+                        raise ValueError('GitHub release asset redirect is missing a location')
+                    if redirect_count >= _GITHUB_PLUGIN_DOWNLOAD_MAX_REDIRECTS:
+                        raise ValueError('GitHub release asset exceeded the redirect limit')
+                    next_url = urljoin(current_url, location)
+                    self._validate_github_download_hop(
+                        next_url,
+                        owner=owner,
+                        repo=repo,
+                        release_tag=release_tag,
+                        asset_id=asset_id,
+                    )
+                    current_url = next_url
+                    continue
+
+                response.raise_for_status()
+                content_length_header = response.headers.get('content-length')
+                try:
+                    content_length = int(content_length_header) if content_length_header is not None else 0
+                except ValueError as exc:
+                    raise ValueError('GitHub release asset has an invalid content length') from exc
+                if content_length < 0:
+                    raise ValueError('GitHub release asset has an invalid content length')
+                if content_length > _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES:
+                    raise ValueError('GitHub plugin package exceeds the 10 MiB download limit')
+                if task_context is not None:
+                    task_context.metadata['download_total'] = content_length
+
+                async for chunk in response.aiter_bytes(chunk_size=8192):
+                    downloaded += len(chunk)
+                    if downloaded > _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES:
                         raise ValueError('GitHub plugin package exceeds the 10 MiB download limit')
+                    chunks.append(chunk)
                     if task_context is not None:
-                        task_context.metadata['download_total'] = content_length
+                        elapsed = time.time() - start_time
+                        task_context.metadata.update(
+                            {
+                                'download_current': downloaded,
+                                'download_speed': downloaded / elapsed if elapsed > 0 else 0,
+                            }
+                        )
+                return b''.join(chunks)
 
-                    async for chunk in response.aiter_bytes(chunk_size=8192):
-                        downloaded += len(chunk)
-                        if downloaded > _GITHUB_PLUGIN_DOWNLOAD_MAX_BYTES:
-                            raise ValueError('GitHub plugin package exceeds the 10 MiB download limit')
-                        chunks.append(chunk)
-                        if task_context is not None:
-                            elapsed = time.time() - start_time
-                            task_context.metadata.update(
-                                {
-                                    'download_current': downloaded,
-                                    'download_speed': downloaded / elapsed if elapsed > 0 else 0,
-                                }
-                            )
-                    return b''.join(chunks)
-
-            raise ValueError('GitHub release asset exceeded the redirect limit')
+        raise ValueError('GitHub release asset exceeded the redirect limit')
 
     @staticmethod
     def _validate_github_download_hop(
@@ -1909,6 +1958,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 allow_not_found=True,
             )
             if mcp_status == 200:
+                usage.install_source.set('market')
                 mcp_payload = _decode_json_object(mcp_body, subject='Marketplace MCP metadata')
                 mcp_data = mcp_payload.get('data', {}).get('mcp', {})
                 if not isinstance(mcp_data, dict):
@@ -1933,11 +1983,30 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 allow_not_found=True,
             )
             if skill_status == 200:
-                _download_status, skill_package = await _marketplace_get(
-                    client,
-                    f'{space_url}/api/v1/marketplace/skills/download/{plugin_author}/{plugin_name}',
-                    max_bytes=_MARKETPLACE_SKILL_DOWNLOAD_MAX_BYTES,
-                )
+                try:
+                    skill_data = _decode_json_object(_skill_body, subject='Marketplace skill metadata')
+                    source = skill_data.get('data', {}).get('skill', {}).get('source')
+                except Exception:
+                    source = None
+                source = 'community' if source == 'community' else 'market'
+                usage.install_source.set(source)
+                try:
+                    _download_status, skill_package = await _marketplace_get(
+                        client,
+                        f'{space_url}/api/v1/marketplace/skills/download/{plugin_author}/{plugin_name}',
+                        max_bytes=_MARKETPLACE_SKILL_DOWNLOAD_MAX_BYTES,
+                    )
+                except Exception:
+                    usage.inc(
+                        self.ap,
+                        execution_context.workspace_uuid,
+                        'ugc.install',
+                        type='skill',
+                        source=source,
+                        outcome='failed',
+                        unfilled='no',
+                    )
+                    raise
                 await self._install_skill_from_zip(
                     execution_context,
                     skill_package,
@@ -1946,18 +2015,22 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 )
                 return None, None
 
-            _versions_status, versions_body = await _marketplace_get(
-                client,
-                f'{space_url}/api/v1/marketplace/plugins/{plugin_author}/{plugin_name}/versions',
-                max_bytes=_MARKETPLACE_METADATA_MAX_BYTES,
-            )
-            versions_payload = _decode_json_object(
-                versions_body,
-                subject='Marketplace plugin versions',
-            )
-            versions = versions_payload.get('data', {}).get('versions', [])
+            detail_url = f'{space_url}/api/v1/marketplace/plugins/{plugin_author}/{plugin_name}'
+            _, body = await _marketplace_get(client, detail_url, max_bytes=_MARKETPLACE_METADATA_MAX_BYTES)
+            detail = _decode_json_object(body, subject='Marketplace plugin detail').get('data', {}).get('plugin', {})
+            versions = []
+            if 'compatible_version' not in detail:
+                _, versions_body = await _marketplace_get(
+                    client, f'{detail_url}/versions', max_bytes=_MARKETPLACE_METADATA_MAX_BYTES
+                )
+                versions = (
+                    _decode_json_object(versions_body, subject='Marketplace plugin versions')
+                    .get('data', {})
+                    .get('versions', [])
+                )
             version = _select_marketplace_plugin_version(
                 versions,
+                detail=detail,
                 requested_version=None,
                 plugin_author=plugin_author,
                 plugin_name=plugin_name,
@@ -2017,6 +2090,36 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         install_info: dict[str, Any],
         task_context: taskmgr.TaskContext | None = None,
     ) -> None:
+        outcome = 'failed'
+        token = usage.install_source.set(None)
+        try:
+            await self._install_plugin(install_source, install_info, task_context)
+            outcome = 'ok'
+        finally:
+            try:
+                context = self._execution_context.get()
+                if usage.install_source.get() is None:
+                    source = 'market' if install_source.value == 'marketplace' else install_source.value
+                    usage.inc(
+                        self.ap,
+                        getattr(context, 'workspace_uuid', None),
+                        'ugc.install',
+                        type='plugin',
+                        source=source,
+                        outcome=outcome,
+                        unfilled='no',
+                    )
+            except Exception:
+                pass
+            finally:
+                usage.install_source.reset(token)
+
+    async def _install_plugin(
+        self,
+        install_source: PluginInstallSource,
+        install_info: dict[str, Any],
+        task_context: taskmgr.TaskContext | None = None,
+    ) -> None:
         runtime_handler = self._runtime_handler()
         execution_context = await self._current_execution_context()
         plugin_author = str(install_info.get('plugin_author') or '')
@@ -2056,11 +2159,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 raise ValueError('Local plugin package is missing')
             file_bytes = candidate
         elif install_source == PluginInstallSource.GITHUB:
-            file_bytes = await self._download_github_package(
-                install_info,
-                task_context,
-            )
             install_info = validate_github_plugin_install_info(install_info)
+            if install_info.get('source_type') == 'branch':
+                from .github_mirror import GitHubSources
+
+                file_bytes = await GitHubSources(self.ap).branch_package(install_info)
+            else:
+                file_bytes = await self._download_github_package(install_info, task_context)
         else:
             raise ValueError(f'Unsupported plugin install source: {install_source.value}')
 
@@ -2077,6 +2182,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             raise ValueError('Plugin package name does not match the requested plugin')
         plugin_author, plugin_name = manifest_author, manifest_name
         manifest, _, _ = inspect_plugin_archive_metadata(file_bytes, require_manifest=True)
+        status = compatibility(manifest)
+        if status['status'] in {'invalid', 'incompatible'} and install_info.get('allow_incompatible') is not True:
+            raise incompatible_package(status)
         from ..api.application.plugin_permissions import read_declaration, expand_declaration
 
         expand_declaration(self.ap, read_declaration(manifest))
@@ -2320,6 +2428,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 metadata = plugin.get('manifest', {}).get('manifest', {}).get('metadata', {})
                 if plugin_id == f'{metadata.get("author", "")}/{metadata.get("name", "")}':
                     plugin['permission_status'] = permission_status(self.ap, setting)
+                    self._apply_setting_install_source(plugin, setting)
 
         # Filter plugins by component kinds if specified
         if component_kinds is not None:
@@ -2361,6 +2470,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
         plugins.sort(key=sort_key)
 
+        for plugin in plugins:
+            plugin['compatibility'] = compatibility(plugin['manifest']['manifest'])
         return plugins
 
     async def _debug_plugin_binding(
@@ -2426,6 +2537,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             _, setting = await self._setting_for_plugin(author, plugin_name)
             if not setting.enabled:
                 info = self._pending_plugin_info(setting)
+                info['compatibility'] = compatibility(info['manifest']['manifest'])
                 from ..api.application.plugin_permissions import permission_status
 
                 info['permission_status'] = permission_status(self.ap, setting)
@@ -2442,7 +2554,27 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             from ..api.application.plugin_permissions import permission_status
 
             info['permission_status'] = permission_status(self.ap, setting)
+            self._apply_setting_install_source(info, setting)
+            info['compatibility'] = compatibility(info['manifest']['manifest'])
         return info
+
+    @staticmethod
+    def _apply_setting_install_source(info: dict[str, Any], setting) -> None:
+        """Report the install source recorded by Core, not the runtime echo.
+
+        Shared runtime slots build their container inside the plugin process,
+        which never learns the install source, so Cloud reported an empty
+        ``install_source``. The WebUI keys marketplace update detection and
+        the source badge on that field. Debug connections keep their own
+        source. Internal ``_``-prefixed install_info keys stay private.
+        """
+
+        if info.get('debug') or not setting.install_source:
+            return
+        info['install_source'] = setting.install_source
+        info['install_info'] = {
+            key: value for key, value in (setting.install_info or {}).items() if not str(key).startswith('_')
+        }
 
     @staticmethod
     def _pending_plugin_info(setting) -> dict[str, Any]:
@@ -2610,6 +2742,30 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 plugin_name,
                 manifest_overrides=manifest_overrides,
             )
+
+    async def get_installed_plugin_package(self, author: str, plugin_name: str) -> dict[str, Any]:
+        """Return the exact archive an installed local/GitHub plugin runs (LANG-439).
+
+        Every installation persists its verified ``.lbpkg`` by digest, so the
+        shared package is byte-identical to what this Workspace installed.
+        Marketplace installations are refused: they already live on Space.
+        """
+        execution_context, setting = await self._setting_for_plugin(author, plugin_name)
+        if setting.install_source not in (PluginInstallSource.LOCAL.value, PluginInstallSource.GITHUB.value):
+            raise ValueError('Only locally installed or GitHub-installed plugins can be shared to LangBot Space')
+        package = await self._load_artifact_package(execution_context, setting.artifact_digest)
+        if package is None:
+            raise ValueError('The installed plugin package is missing; reinstall the plugin and try again')
+        manifest, _, _ = inspect_plugin_archive_metadata(package, require_manifest=True)
+        metadata = (manifest or {}).get('metadata') or {}
+        version = str(metadata.get('version') or '')
+        return {
+            'package': package,
+            'filename': f'{author}-{plugin_name}-{version or "local"}.lbpkg',
+            'install_source': setting.install_source,
+            'version': version,
+            'artifact_digest': setting.artifact_digest,
+        }
 
     async def git_sync_plugin(
         self,
@@ -2811,6 +2967,31 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 yield command_context.CommandReturn.model_validate(ret)
 
     # Runner methods
+    async def wait_for_runner_plugin(self, plugin_author: str, plugin_name: str) -> None:
+        """Wait for an enabled installation, without granting or enabling it."""
+        if not self.is_enable_plugin:
+            raise ValueError('The plugin system is disabled. Enable it in the instance configuration.')
+        try:
+            _, setting = await self._setting_for_plugin(plugin_author, plugin_name)
+        except ValueError as exc:
+            if str(exc) != f'Plugin {plugin_author}/{plugin_name} is not installed in this Workspace':
+                raise
+            raise ValueError(
+                'The Runner plugin is not installed in this Workspace. Open Plugins to install it; '
+                'if installation failed, check the installation task and runtime logs, then retry.'
+            ) from None
+        if not setting.enabled:
+            from ..api.application.plugin_permissions import permission_status
+
+            if permission_status(self.ap, setting)['pending_confirmation']:
+                raise ValueError('The Runner plugin requires permission confirmation. Open Plugins to review it.')
+            raise ValueError('The Runner plugin is disabled. Open Plugins to enable it.')
+        try:
+            async with asyncio.timeout(30):
+                await self._wait_for_installed_plugin_ready(plugin_author, plugin_name, None)
+        except TimeoutError as exc:
+            raise RuntimeError(self._build_plugin_startup_failure_message(plugin_author, plugin_name, None)) from exc
+
     async def list_runners(self, bound_plugins: list[str] | None = None) -> list[dict[str, Any]]:
         """List all available Runner components.
 
@@ -2938,7 +3119,6 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         process = getattr(ctrl, 'process', None)
         if process is not None and process.returncode is None:
             process.terminate()
-        self._dispose_subprocess()
 
     @staticmethod
     def _parse_plugin_id(plugin_id: str) -> tuple[str, str]:

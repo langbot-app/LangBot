@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "idle_seconds": 6,
+  "chunk_size": 2048,
+  "cases": [
+    {"id": "public-upload-8m-serial", "file_bytes": 8388608, "files": 12, "workers": 1, "attach": false},
+    {"id": "public-upload-8m-c4", "file_bytes": 8388608, "files": 12, "workers": 4, "attach": false},
+    {"id": "public-rag-512k-c4", "file_bytes": 524288, "files": 4, "workers": 4, "attach": true},
+    {"id": "public-rag-2m-c4", "file_bytes": 2097152, "files": 4, "workers": 4, "attach": true},
+    {"id": "public-rag-2m-c4-repeat", "file_bytes": 2097152, "files": 4, "workers": 4, "attach": true}
+  ]
+}

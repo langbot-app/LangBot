@@ -39,8 +39,9 @@ class _Reply:
 class ReplyStreamSession:
     """Ephemeral delivery state owned by one authorized run, never by plugin input."""
 
-    def __init__(self, event, adapter=None, source=None):
+    def __init__(self, event, adapter=None, source=None, *, delivery_adapter=None):
         self.adapter = adapter
+        self._delivery_adapter_override = delivery_adapter
         self.source = source.to_legacy_event() if isinstance(source, events.MessageReceivedEvent) else source
         if not isinstance(self.source, events.MessageEvent):
             self.source = None
@@ -57,6 +58,10 @@ class ReplyStreamSession:
         self._lock = asyncio.Lock()
         self._closed = False
         self._active: set[asyncio.Task] = set()
+
+    @property
+    def _delivery_adapter(self):
+        return self._delivery_adapter_override if self._delivery_adapter_override is not None else self.adapter
 
     async def apply(self, request: ReplyStreamRequest) -> dict:
         task = asyncio.create_task(self._apply(request))
@@ -86,26 +91,26 @@ class ReplyStreamSession:
                 if self.mock_error:
                     raise ValueError(str(self.mock_error))
                 if not self.mock and reply.text and not reply.started and request.operation != 'abort':
-                    if self.adapter is None:
+                    if self._delivery_adapter is None:
                         raise ValueError('This run has no platform delivery adapter')
                     # Set before I/O: an uncertain create must never be retried as another send.
                     reply.started = True
                     target_streaming = (
                         self.source is None
-                        and callable(getattr(self.adapter, 'create_message_card_for_target', None))
-                        and callable(getattr(self.adapter, 'reply_message_chunk_for_target', None))
+                        and callable(getattr(self._delivery_adapter, 'create_message_card_for_target', None))
+                        and callable(getattr(self._delivery_adapter, 'reply_message_chunk_for_target', None))
                     )
                     reply.native = (
                         self.source is not None or target_streaming
-                    ) and await self.adapter.is_stream_output_supported()
+                    ) and await self._delivery_adapter.is_stream_output_supported()
                     if reply.native:
                         if self.source is not None:
-                            await self.adapter.create_message_card(reply.delivery_id, self.source)
+                            await self._delivery_adapter.create_message_card(reply.delivery_id, self.source)
                         else:
                             target_type, target_id = self.target.get('target_type'), self.target.get('target_id')
                             if not target_type or not target_id:
                                 raise ValueError('This event has no reply target')
-                            await self.adapter.create_message_card_for_target(
+                            await self._delivery_adapter.create_message_card_for_target(
                                 reply.delivery_id, str(target_type), str(target_id)
                             )
                 if reply.started and reply.native:
@@ -118,14 +123,16 @@ class ReplyStreamSession:
                     and not self.mock
                 ):
                     if self.source is not None:
-                        await self.adapter.reply_message(
+                        await self._delivery_adapter.reply_message(
                             message_source=self.source, message=self._message(reply.text), quote_origin=False
                         )
                     else:
                         target_type, target_id = self.target.get('target_type'), self.target.get('target_id')
                         if not target_type or not target_id:
                             raise ValueError('This event has no reply target')
-                        await self.adapter.send_message(str(target_type), str(target_id), self._message(reply.text))
+                        await self._delivery_adapter.send_message(
+                            str(target_type), str(target_id), self._message(reply.text)
+                        )
                 if request.operation != 'update':
                     reply.status = 'completed' if request.operation == 'finish' else 'cancelled'
                 reply.result = {
@@ -157,7 +164,7 @@ class ReplyStreamSession:
             is_final=final,
         )
         if self.source is not None:
-            await self.adapter.reply_message_chunk(
+            await self._delivery_adapter.reply_message_chunk(
                 message_source=self.source,
                 bot_message=chunk,
                 message=self._message(reply.text),
@@ -165,7 +172,7 @@ class ReplyStreamSession:
                 is_final=final,
             )
         else:
-            await self.adapter.reply_message_chunk_for_target(
+            await self._delivery_adapter.reply_message_chunk_for_target(
                 message_id=reply.delivery_id, content=reply.text, is_final=final
             )
 

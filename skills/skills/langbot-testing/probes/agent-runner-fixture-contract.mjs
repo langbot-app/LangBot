@@ -144,7 +144,7 @@ async function main() {
   const startedAt = new Date();
   const sdkRepo = resolve(
     root,
-    env.LANGBOT_PLUGIN_SDK_REPO || "../../langbot-plugin-sdk",
+    env.LANGBOT_PLUGIN_SDK_REPO || "../sdk",
   );
   const sdkSrc = resolve(sdkRepo, "src");
   const fixturePath = resolve(

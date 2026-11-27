@@ -15,6 +15,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -212,7 +213,7 @@ def package_marketplace(directory, manifest):
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            package = packages.get(self.path)
+            package = packages.get(urllib.parse.urlsplit(self.path).path)
             if package is None:
                 self.send_error(404)
                 return

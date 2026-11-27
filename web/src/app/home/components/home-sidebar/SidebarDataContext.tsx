@@ -15,6 +15,7 @@ export type {
   PluginPageItem,
   SidebarDataContextValue,
 } from './sidebarDataStore';
+import { installableVersion } from '@/app/infra/entities/plugin';
 
 export function SidebarDataProvider({
   children,
@@ -165,21 +166,23 @@ export function SidebarDataProvider({
   const refreshPlugins = useCallback(async () => {
     const requestId = ++refreshRequestIds.current.plugins;
     try {
-      const [pluginsResp, marketplaceResp] = await Promise.all([
+      const [pluginsResp, marketplacePlugins] = await Promise.all([
         httpClient.getPlugins(),
         getCloudServiceClientSync()
-          .getMarketplacePlugins(1, 100)
-          .catch(() => ({ plugins: [] })),
+          .getAllMarketplacePlugins()
+          .catch(() => []),
       ]);
       if (requestId !== refreshRequestIds.current.plugins) return;
       setQuotaResourceLoaded('plugins', true);
       setPluginCount(pluginsResp.plugins?.length ?? 0);
 
-      // Build marketplace version lookup: "author/name" -> latest_version
+      // Build marketplace version lookup: "author/name" -> newest release
+      // compatible with this Core (latest_version on older Space).
       const marketplaceVersions = new Map<string, string>();
-      for (const mp of marketplaceResp.plugins) {
-        if (mp.latest_version) {
-          marketplaceVersions.set(`${mp.author}/${mp.name}`, mp.latest_version);
+      for (const mp of marketplacePlugins) {
+        const candidate = installableVersion(mp);
+        if (candidate) {
+          marketplaceVersions.set(`${mp.author}/${mp.name}`, candidate);
         }
       }
 

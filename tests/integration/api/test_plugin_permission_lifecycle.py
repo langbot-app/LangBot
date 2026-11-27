@@ -6,7 +6,10 @@ LANGBOT_PERMISSION_E2E=1 .venv/bin/python -m pytest -q -s \
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import json
+import base64
+from importlib.metadata import version
 import os
 from pathlib import Path
 import secrets
@@ -25,7 +28,10 @@ import yaml
 from tests.e2e.utils.config_factory import create_minimal_config, create_test_directories
 
 
-pytestmark = pytest.mark.skipif(os.environ.get('LANGBOT_PERMISSION_E2E') != '1', reason='Opt-in local instance E2E')
+pytestmark = [
+    pytest.mark.p0_permissions,
+    pytest.mark.skipif(os.environ.get('LANGBOT_PERMISSION_E2E') != '1', reason='Opt-in local instance E2E'),
+]
 ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -35,7 +41,7 @@ def free_port():
         return listener.getsockname()[1]
 
 
-def package(path, name, version, operations):
+def package(path, name, version, operations, *, runner=False, gate=False):
     manifest = {
         'apiVersion': 'langbot/v1',
         'kind': 'Plugin',
@@ -99,6 +105,45 @@ def package(path, name, version, operations):
         'assets/icon.svg': '<svg xmlns="http://www.w3.org/2000/svg"/>',
         'README.md': 'Local permission lifecycle probe. No providers or dependencies.\n',
     }
+    if runner:
+        manifest['spec']['components']['Runner'] = {'fromDirs': [{'path': 'components/runner/'}]}
+        sources['manifest.yaml'] = yaml.safe_dump(manifest)
+        component = yaml.safe_load(
+            (ROOT / 'sdk/examples/workspace_runner_plugin/components/runner/default.yaml').read_text()
+        )
+        component['execution']['python']['attr'] = 'ProbeRunner'
+        sources['components/runner/default.yaml'] = yaml.safe_dump(component)
+        sources['components/runner/default.py'] = (
+            'from langbot_plugin.api.definition.components.runner.runner import Runner\n'
+            'from langbot_plugin.api.entities.builtin.runner.result import RunnerResult\n'
+            'from langbot_plugin.api.entities.builtin.provider.message import Message\n'
+            'class ProbeRunner(Runner):\n'
+            '    async def run(self, ctx):\n'
+            '        yield RunnerResult.run_completed(ctx.run_id, Message(role="assistant", content="OPERATIONS_OK"))\n'
+        )
+    if gate:
+        sources['components/pages/probe.py'] = (
+            'from langbot_plugin.api.definition.components.page import Page, PageResponse\n'
+            'class ProbePage(Page):\n'
+            '    async def handle_api(self, request):\n'
+            '        if request.endpoint == "/release":\n'
+            '            self.plugin.gate.set()\n'
+            '        return PageResponse.ok({"started": getattr(self.plugin, "started", False)})\n'
+        )
+        sources['components/runner/default.py'] = (
+            'import asyncio, json\n'
+            'from langbot_plugin.api.definition.components.runner.runner import Runner\n'
+            'from langbot_plugin.api.entities.builtin.runner.result import RunnerResult\n'
+            'from langbot_plugin.api.entities.builtin.provider.message import Message\n'
+            'class ProbeRunner(Runner):\n'
+            '    async def run(self, ctx):\n'
+            '        self.plugin.gate = asyncio.Event()\n'
+            '        self.plugin.started = True\n'
+            '        await self.plugin.gate.wait()\n'
+            '        result = await ctx.api.workspace.call("stats.basic")\n'
+            '        self.plugin.started = False\n'
+            '        yield RunnerResult.run_completed(ctx.run_id, Message(role="assistant", content=json.dumps(result)))\n'
+        )
     with zipfile.ZipFile(path, 'w') as archive:
         for filename, content in sources.items():
             archive.writestr(filename, content)
@@ -133,9 +178,9 @@ class Instance:
             (self.directory / 'http-actions.json').write_text(json.dumps(self.events, indent=2), encoding='utf-8')
         return response
 
-    def install(self, name, version, operations):
+    def install(self, name, version, operations, *, runner=False, gate=False):
         archive = self.directory / f'{name}-{version}.zip'
-        package(archive, name, version, operations)
+        package(archive, name, version, operations, runner=runner, gate=gate)
         with archive.open('rb') as source:
             response = self.request(
                 f'install {name} {version}',
@@ -194,7 +239,9 @@ class Instance:
 
 @pytest.fixture(scope='module')
 def instance():
-    directory = Path(tempfile.mkdtemp(prefix='permissions-e2e-', dir=ROOT.parent / 'attachments'))
+    evidence = ROOT / '.qa' / 'permissions'
+    evidence.mkdir(parents=True, exist_ok=True)
+    directory = Path(tempfile.mkdtemp(prefix='permissions-e2e-', dir=evidence))
     os.chmod(directory, 0o700)
     private = directory / 'instance'
     private.mkdir()
@@ -244,8 +291,9 @@ def instance():
     metadata = {
         'command': command,
         'ports': ports,
-        'root_revision': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
-        'sdk': 'editable sibling SDK',
+        'root_revision': os.environ.get('GITHUB_SHA')
+        or subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+        'sdk': f'langbot-plugin {version("langbot-plugin")}',
         'network': 'loopback-only socket guard; stdio Core/Runtime control; no application mocks',
     }
     metadata['schema_setup'] = 'Normal fresh-instance startup, no precreated database'
@@ -286,6 +334,14 @@ def instance():
                 )
                 assert key_response.status_code == 200, key_response.text
                 running.api_key = {'Authorization': f'Bearer {key_response.json()["data"]["key"]["key"]}'}
+                deadline = time.monotonic() + 60
+                while time.monotonic() < deadline:
+                    readiness = client.get('/api/v1/system/status/plugin-system', headers=running.member)
+                    if readiness.status_code == 200 and readiness.json()['data']['is_connected']:
+                        break
+                    time.sleep(0.3)
+                else:
+                    pytest.fail('Plugin Runtime startup timed out')
                 yield running
     finally:
         if process is not None:
@@ -313,6 +369,7 @@ def instance():
             assert not metadata['remaining_live_processes'], 'Owned process group did not stop'
 
 
+@pytest.mark.contract('permission_lifecycle')
 def test_real_permission_lifecycle(instance):
     contract_errors = []
     instance.install('strict-probe', '0.1.0', ['stats.basic'])
@@ -321,12 +378,9 @@ def test_real_permission_lifecycle(instance):
     assert state['grants']['workspace_operations'] == []
     denied = instance.change('strict-probe', ['stats.basic'], identity='api_key')
     assert denied.status_code == 403 and denied.json()['code'] == 'permission_denied', denied.text
-    denied = instance.change('strict-probe', ['stats.basic'], confirm=True, identity='api_key')
-    assert denied.status_code == 403, denied.text
-    assert denied.json()['code'] == 'permission_denied'
     refused = instance.call('strict-probe')
     assert refused.status_code != 200 or not refused.json().get('data', {}).get('ok'), refused.text
-    confirmed = instance.change('strict-probe', ['stats.basic'], confirm=True)
+    confirmed = instance.change('strict-probe', ['stats.basic'], confirm=True, identity='api_key')
     assert confirmed.status_code == 200, confirmed.text
     state = instance.permissions('strict-probe')
     assert state['enabled'] and not state['pending_confirmation']
@@ -355,6 +409,7 @@ def test_real_permission_lifecycle(instance):
     assert not contract_errors, contract_errors
 
 
+@pytest.mark.contract('permission_legacy')
 def test_real_legacy_confirmation_and_application_denial(instance):
     instance.install('legacy-probe', '0.1.0', None)
     state = instance.permissions('legacy-probe')
@@ -364,10 +419,261 @@ def test_real_legacy_confirmation_and_application_denial(instance):
     invalid = instance.change('legacy-probe', [], confirm=True)
     assert invalid.status_code == 400, invalid.text
     capabilities = [row['id'] for row in state['permissions'] if row['category'] == 'capabilities']
-    confirmed = instance.change('legacy-probe', [], capabilities=capabilities, confirm=True)
+    confirmed = instance.change('legacy-probe', [], capabilities=capabilities, confirm=True, identity='api_key')
     assert confirmed.status_code == 200, confirmed.text
     state = instance.permissions('legacy-probe')
     assert state['enabled'] and state['compatibility_mode'] and not state['pending_confirmation']
     denied = instance.call('legacy-probe', wait_ready=True)
     assert denied.status_code == 200 and denied.json()['data']['ok'] is False, denied.text
     assert denied.json()['data']['error']['code'] == 'permission_denied', denied.text
+
+
+@pytest.mark.contract('permission_transport')
+def test_real_operations_transport(instance):
+    catalog = instance.request('operation catalog', 'GET', '/api/v1/operations', identity='api_key')
+    assert catalog.status_code == 200, catalog.text
+    operations = catalog.json()['operations']
+    print(f'API_KEY_OPERATION_COUNT={len(operations)}', flush=True)
+    assert 'agent.list' in {operation['id'] for operation in operations}
+    listed = instance.request('agent.list', 'POST', '/api/v1/operations/agent.list', identity='api_key', json={})
+    assert listed.status_code == 200 and listed.json()['code'] == 0, listed.text
+    png = base64.b64decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aG1sAAAAASUVORK5CYII='
+    )
+    uploaded = instance.request(
+        'upload operation image',
+        'POST',
+        '/api/v1/files/images',
+        identity='api_key',
+        files={'file': ('pixel.png', png, 'image/png')},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    downloaded = instance.request(
+        'file.image.get',
+        'POST',
+        '/api/v1/operations/file.image.get',
+        identity='api_key',
+        json={'file_key': uploaded.json()['data']['file_key']},
+    )
+    assert downloaded.status_code == 200, downloaded.text
+    assert downloaded.json()['data']['media_type'] == 'image/png'
+    assert base64.b64decode(downloaded.json()['data']['content'], validate=True) == png
+    archive = instance.directory / 'operations-probe.lbpkg'
+    package(archive, 'operations-probe', '0.1.0', [], runner=True)
+    with archive.open('rb') as source:
+        installed = instance.request(
+            'install operations probe',
+            'POST',
+            '/api/v1/plugins/install/local',
+            identity='api_key',
+            files={'file': (archive.name, source, 'application/zip')},
+        )
+    assert installed.status_code == 200, installed.text
+    task_id = installed.json()['data']['task_id']
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline:
+        task = instance.request(
+            'installation status', 'GET', f'/api/v1/system/tasks/{task_id}', identity='api_key', record=False
+        ).json()['data']
+        if task['status'] != 'running':
+            assert task['status'] == 'succeeded', task
+            break
+        time.sleep(0.3)
+    else:
+        pytest.fail('Probe installation timed out')
+    payload = {'author': 'permissionse2e', 'plugin_name': 'operations-probe'}
+    before = instance.request(
+        'pending permissions', 'POST', '/api/v1/operations/plugin.permissions.get', identity='api_key', json=payload
+    )
+    assert before.json()['data']['pending_confirmation'] and not before.json()['data']['enabled']
+    confirmed = instance.request(
+        'confirm via API key',
+        'POST',
+        '/api/v1/operations/plugin.permissions.update',
+        identity='api_key',
+        json={**payload, 'confirm': True},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()['data']['enabled'] and not confirmed.json()['data']['pending_confirmation']
+    deadline = time.monotonic() + 45
+    while time.monotonic() < deadline:
+        metadata = instance.request(
+            'agent metadata', 'POST', '/api/v1/operations/agent.metadata', identity='api_key', json={}, record=False
+        )
+        runners = metadata.json()['data']['event_processors']
+        matching = [runner for runner in runners if 'operations-probe' in json.dumps(runner)]
+        if matching:
+            break
+        time.sleep(0.3)
+    assert matching, metadata.text
+    runner_id = matching[0]['id']
+    created = instance.request(
+        'create debug agent',
+        'POST',
+        '/api/v1/operations/agent.create',
+        identity='api_key',
+        json={
+            'agent_data': {
+                'name': 'Operations probe',
+                'config': {
+                    'runner': {'id': runner_id},
+                    'runner_config': {runner_id: {}},
+                },
+            }
+        },
+    )
+    assert created.status_code == 200, created.text
+    agent_uuid = created.json()['data']['uuid']
+    streamed = instance.request(
+        'agent.debug.stream',
+        'POST',
+        '/api/v1/operations/agent.debug.stream/stream',
+        identity='api_key',
+        json={'agent_uuid': agent_uuid, 'payload': {'text': 'hello'}},
+    )
+    assert streamed.status_code == 200, streamed.text
+    assert 'OPERATIONS_OK' in streamed.text and 'event: done\n' in streamed.text, streamed.text
+    assert 'event: error' not in streamed.text
+    failed = instance.request(
+        'stream error',
+        'POST',
+        '/api/v1/operations/agent.debug.stream/stream',
+        identity='api_key',
+        json={'agent_uuid': 'missing', 'payload': {}},
+    )
+    assert failed.status_code == 200 and 'event: error\n' in failed.text, failed.text
+    assert 'event: done' not in failed.text
+
+
+@pytest.mark.contract('permission_inflight')
+def test_revocation_is_rechecked_after_run_admission(instance):
+    instance.install('gated-probe', '0.1.0', ['stats.basic'], runner=True, gate=True)
+    assert instance.change('gated-probe', ['stats.basic'], confirm=True).status_code == 200
+    deadline = time.monotonic() + 45
+    while True:
+        metadata = instance.request(
+            'runner metadata', 'POST', '/api/v1/operations/agent.metadata', json={}, record=False
+        )
+        matching = [row for row in metadata.json()['data']['event_processors'] if 'gated-probe' in json.dumps(row)]
+        if matching:
+            break
+        assert time.monotonic() < deadline, metadata.text
+        time.sleep(0.2)
+    runner_id = matching[0]['id']
+    created = instance.request(
+        'create gated agent',
+        'POST',
+        '/api/v1/operations/agent.create',
+        json={
+            'agent_data': {
+                'name': 'Revocation probe',
+                'config': {'runner': {'id': runner_id}, 'runner_config': {runner_id: {}}},
+            },
+        },
+    )
+    assert created.status_code == 200, created.text
+    agent_uuid = created.json()['data']['uuid']
+
+    def page(endpoint):
+        response = instance.client.post(
+            '/api/v1/plugins/permissionse2e/gated-probe/page-api',
+            headers=instance.member,
+            json={
+                'page_id': 'probe',
+                'endpoint': endpoint,
+                'method': 'POST',
+                'body': {},
+            },
+        )
+        assert response.status_code == 200, response.text
+        return response.json()['data']
+
+    def turn():
+        return instance.client.post(
+            '/api/v1/operations/agent.debug.stream/stream',
+            headers=instance.member,
+            json={'agent_uuid': agent_uuid, 'payload': {'text': 'permission probe'}},
+        )
+
+    def admitted_turn(*, revoke):
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            response = executor.submit(turn)
+            try:
+                deadline = time.monotonic() + 30
+                while not page('/status')['started']:
+                    assert time.monotonic() < deadline, 'Runner did not reach the controlled admission boundary'
+                    time.sleep(0.1)
+                if revoke:
+                    assert instance.change('gated-probe', []).status_code == 200
+            finally:
+                page('/release')
+            completed = response.result(timeout=30)
+        assert completed.status_code == 200, completed.text
+        frames = [json.loads(line[6:]) for line in completed.text.splitlines() if line.startswith('data: ')]
+        finished = [frame for frame in frames if frame.get('kind') == 'completed']
+        assert len(finished) == 1, completed.text
+        return json.loads(finished[0]['data']['final_text'])
+
+    assert admitted_turn(revoke=False)['ok'] is True
+    denied = admitted_turn(revoke=True)
+    assert denied['ok'] is False and denied['error'], denied
+    # Reconfirmation is required; the previous run must not restore the revoked grant.
+    assert instance.permissions('gated-probe')['grants']['workspace_operations'] == []
+    assert instance.change('gated-probe', ['stats.basic'], confirm=True).status_code == 200
+    assert admitted_turn(revoke=False)['ok'] is True
+
+
+@pytest.mark.contract('permission_key_revocation')
+def test_api_key_scopes_and_revocation_apply_to_http_and_mcp(instance):
+    created = instance.request(
+        'create read-only key',
+        'POST',
+        '/api/v1/apikeys',
+        record=False,
+        json={'name': 'Read-only transport probe', 'scopes': ['resource.view']},
+    )
+    assert created.status_code == 200, created.text
+    key = created.json()['data']['key']
+    headers = {'Authorization': 'Bearer ' + key['key']}
+    mcp_headers = {**headers, 'Accept': 'application/json, text/event-stream'}
+    get = instance.client.get('/api/v1/pipelines', headers=headers)
+    assert get.status_code == 200, get.text
+    denied = instance.client.post('/api/v1/operations/pipeline.create', headers=headers, json={'pipeline_data': {}})
+    assert denied.status_code == 403, denied.text
+    request = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {'name': 'list_pipelines', 'arguments': {}}}
+    allowed = instance.client.post('/mcp', headers=mcp_headers, json=request)
+    assert allowed.status_code == 200 and not allowed.json()['result'].get('isError'), allowed.text
+    request['params'] = {'name': 'create_pipeline', 'arguments': {'pipeline_data': {'name': 'must-not-exist'}}}
+    denied = instance.client.post('/mcp', headers=mcp_headers, json=request)
+    assert denied.status_code == 200 and denied.json()['result']['isError'], denied.text
+    revoked = instance.request('revoke read-only key', 'DELETE', f'/api/v1/apikeys/{key["id"]}', record=False)
+    assert revoked.status_code == 200, revoked.text
+    assert instance.client.get('/api/v1/pipelines', headers=headers).status_code == 401
+    request['params'] = {'name': 'list_pipelines', 'arguments': {}}
+    assert instance.client.post('/mcp', headers=mcp_headers, json=request).status_code == 401
+
+
+@pytest.mark.contract('permission_reinstall')
+def test_reinstalled_plugin_does_not_inherit_the_previous_installation_grants(instance):
+    instance.install('reinstall-probe', '0.1.0', ['stats.basic'])
+    assert instance.change('reinstall-probe', ['stats.basic'], confirm=True).status_code == 200
+    previous = instance.permissions('reinstall-probe')
+    assert instance.call('reinstall-probe', wait_ready=True).json()['data']['ok'] is True
+    removed = instance.request('remove plugin', 'DELETE', '/api/v1/plugins/permissionse2e/reinstall-probe')
+    assert removed.status_code == 200, removed.text
+    task_id = removed.json()['data']['task_id']
+    deadline = time.monotonic() + 60
+    while True:
+        task = instance.request('removal status', 'GET', f'/api/v1/system/tasks/{task_id}', record=False).json()['data']
+        if task['runtime']['done']:
+            assert task['runtime']['exception'] is None, task
+            break
+        assert time.monotonic() < deadline, task
+        time.sleep(0.2)
+    instance.install('reinstall-probe', '0.1.0', ['stats.basic'])
+    current = instance.permissions('reinstall-probe')
+    assert current['installation_uuid'] != previous['installation_uuid']
+    assert current['pending_confirmation'] and not current['enabled']
+    assert current['grants']['workspace_operations'] == []
+    denied = instance.call('reinstall-probe')
+    assert denied.status_code != 200 or not denied.json().get('data', {}).get('ok'), denied.text

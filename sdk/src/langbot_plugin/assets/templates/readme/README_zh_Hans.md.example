@@ -1,0 +1,15 @@
+# {{ plugin_name }}
+
+{{ plugin_description }}
+
+## 安装
+
+通过 LangBot 插件市场安装本插件。
+
+## 配置
+
+在 LangBot 管理面板中配置此插件的参数。
+
+## 使用方法
+
+<!-- TODO: 在此添加插件的使用说明 -->

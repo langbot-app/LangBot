@@ -24,17 +24,20 @@ import { toast } from 'sonner';
 import { useAsyncTask, AsyncTaskStatus } from '@/hooks/useAsyncTask';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import {
+  ArrowRight,
   Loader2,
   Puzzle,
   Search,
   Server,
   ShieldAlert,
+  ShieldCheck,
   Sparkles,
 } from 'lucide-react';
 import {
   pluginTaskKey,
   usePluginInstallTasks,
 } from '@/app/home/plugins/components/plugin-install-task';
+import { installableVersion } from '@/app/infra/entities/plugin';
 
 export interface PluginInstalledComponentRef {
   refreshPluginList: () => void;
@@ -137,13 +140,13 @@ const PluginInstalledComponent = forwardRef<
     try {
       const client = getCloudServiceClientSync();
 
-      const [extensionsResp, marketplaceResp] = await Promise.all([
+      const [extensionsResp, marketplacePlugins] = await Promise.all([
         httpClient.getExtensions().catch(() => ({ extensions: [] })),
-        client.getMarketplacePlugins(1, 100).catch(() => ({ plugins: [] })),
+        client.getAllMarketplacePlugins().catch(() => []),
       ]);
 
       const marketplacePluginMap = new Map<string, any>();
-      marketplaceResp.plugins.forEach((plugin: any) => {
+      marketplacePlugins.forEach((plugin: any) => {
         const key = `${plugin.author}/${plugin.name}`;
         marketplacePluginMap.set(key, plugin);
       });
@@ -161,11 +164,10 @@ const PluginInstalledComponent = forwardRef<
 
           let hasUpdate = false;
           if (plugin.install_source === 'marketplace' && marketplacePlugin) {
-            if (marketplacePlugin.latest_version) {
-              hasUpdate = isNewerVersion(
-                marketplacePlugin.latest_version,
-                meta.version ?? '',
-              );
+            // Only offer an update this Core can actually install.
+            const candidate = installableVersion(marketplacePlugin);
+            if (candidate) {
+              hasUpdate = isNewerVersion(candidate, meta.version ?? '');
             }
           }
 
@@ -181,6 +183,7 @@ const PluginInstalledComponent = forwardRef<
               version: meta.version ?? '',
               enabled: plugin.enabled,
               permission_status: plugin.permission_status,
+              compatibility: plugin.compatibility,
               type: marketplacePlugin?.type || 'plugin',
               // Icon is resolved by ExtensionCardComponent through the shared
               // installed-plugin hook (authenticated fetch in multi-Workspace
@@ -437,11 +440,16 @@ const PluginInstalledComponent = forwardRef<
                 </div>
                 <Button
                   size="sm"
-                  variant="outline"
-                  className="shrink-0"
+                  className="group shrink-0 bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-500 dark:text-amber-950 dark:hover:bg-amber-400"
                   onClick={() => handleExtensionClick(extension)}
+                  aria-label={t('pluginPermissions.reviewLabel')}
                 >
+                  <ShieldCheck aria-hidden="true" />
                   {t('pluginPermissions.review')}
+                  <ArrowRight
+                    className="transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none"
+                    aria-hidden="true"
+                  />
                 </Button>
               </li>
             ))}

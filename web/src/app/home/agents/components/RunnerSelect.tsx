@@ -378,8 +378,11 @@ export default function RunnerSelect({
       setInstallingPluginId(pluginId);
       setInstallError(null);
       try {
+        // Inline installs take the shortest path: the member who picks the
+        // Runner here also confirms its declared permissions.
         const installOptions = {
           scope: installScope,
+          autoConfirmPermissions: true,
           onTaskCreated: (taskId: number) =>
             addTask({
               taskId,

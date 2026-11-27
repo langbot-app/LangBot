@@ -1,16 +1,7 @@
 name: Plugins / LangRAG tests
 
 on:
-  push:
-    paths:
-      - "plugins/pytest.ini"
-      - 'plugins/KnowledgeEngine/LangRAG/**'
-      - '.github/workflows/plugins-langrag-tests.yml'
-  pull_request:
-    paths:
-      - "plugins/pytest.ini"
-      - 'plugins/KnowledgeEngine/LangRAG/**'
-      - '.github/workflows/plugins-langrag-tests.yml'
+  # PRs exercise this consumer via plugins-knowledgeengine-shared-tests.yml; keep isolated manual repro.
   workflow_dispatch:
 
 permissions:

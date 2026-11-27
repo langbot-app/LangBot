@@ -9,6 +9,7 @@ import sqlalchemy
 from langbot_plugin.api.entities.permissions import PluginPermissions
 
 from ...entity.persistence.plugin import PluginSetting
+from ...utils import constants
 from ..authz import Permission, has_permission, require_permission
 from ..context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
 from .contracts import ApplicationAPIError, ApplicationAPIException
@@ -167,7 +168,12 @@ async def authorize_action(ap, binding, action: str, data: dict) -> None:
         fail('permission_denied', 'Plugin installation is not enabled')
     if action in CONTEXT_ACTIONS or action in APPLICATION_ACTIONS:
         return
-    if data.get('bot_uuid'):
+    if data.get('bot_uuid') == constants.WEBSOCKET_PROXY_BOT_UUID:
+        # The debug proxy bot is in-memory only and never has a ``bots`` row;
+        # it is available exactly when this Workspace has a live proxy.
+        if not ap.platform_mgr.has_websocket_proxy_bot(binding.workspace_uuid):
+            fail('permission_denied', 'Bot is not available in this Workspace')
+    elif data.get('bot_uuid'):
         from ...entity.persistence.bot import Bot
 
         result = await ap.persistence_mgr.execute_async(
@@ -231,7 +237,11 @@ def describe_permissions(ap, context, setting) -> dict:
     declaration = expand_declaration(ap, setting.permission_declaration)
     grants = effective_grants(ap, setting)
     snapshot = setting.permission_snapshot
-    can_grant = context.principal.principal_type in {PrincipalType.ACCOUNT, PrincipalType.SUPPORT_ADMIN}
+    can_grant = context.principal.principal_type in {
+        PrincipalType.ACCOUNT,
+        PrincipalType.SUPPORT_ADMIN,
+        PrincipalType.API_KEY,
+    }
     rows = []
     domains = set()
     for category, names in declaration.items():
@@ -298,18 +308,25 @@ async def change_permissions(ap, context, setting, *, workspace_operations, capa
         if not confirm and set(requested[key]) - set(old[key]):
             fail('permission_denied', 'Adding grants requires confirmation')
     if confirm:
-        if context.principal.principal_type not in {PrincipalType.ACCOUNT, PrincipalType.SUPPORT_ADMIN}:
-            fail('permission_denied', 'Only a member can confirm plugin permissions')
+        if context.principal.principal_type not in {
+            PrincipalType.ACCOUNT,
+            PrincipalType.SUPPORT_ADMIN,
+            PrincipalType.API_KEY,
+        }:
+            fail('permission_denied', 'This principal cannot grant permissions')
         if setting.permission_declaration is None and any(
             set(requested[key]) != set(declaration[key]) for key in requested
         ):
             fail('invalid_input', 'Compatibility confirmation requires all legacy capabilities')
+    validate_all = confirm and (
+        setting.permission_declaration is None or context.principal.principal_type == PrincipalType.API_KEY
+    )
     validate_grant_change(
         ap,
         context,
-        [] if confirm and setting.permission_declaration is None else old['workspace_operations'],
+        [] if validate_all else old['workspace_operations'],
         workspace_operations,
-        old_capabilities=[] if confirm and setting.permission_declaration is None else old['capabilities'],
+        old_capabilities=[] if validate_all else old['capabilities'],
         new_capabilities=capabilities,
         principal_type=PrincipalType.PLUGIN,
     )

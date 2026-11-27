@@ -81,7 +81,7 @@ execution:
 ```
 
 `sharedRuntime` without `componentModel: stateless-v1` is not eligible. The normative contract is
-[`langbot-plugin-sdk/docs/stateless-components.md`](https://github.com/langbot-app/langbot-plugin-sdk/blob/main/docs/stateless-components.md):
+[`sdk/docs/stateless-components.md`](../sdk/docs/stateless-components.md):
 component objects are process-wide singletons, `initialize()` runs once per worker and sees no tenant config,
 configuration and credentials are resolved per invocation, tenant state in a process cache is keyed by the full
 installation binding and released in `on_installation_revoked()`, components must be re-entrant, and blocking work

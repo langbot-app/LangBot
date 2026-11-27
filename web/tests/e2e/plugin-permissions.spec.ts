@@ -219,6 +219,11 @@ test('compatibility confirmation grants all 16 capabilities and keeps its warnin
   page,
 }, testInfo) => {
   const { writes } = await mockPermissions(page, { compatibility: true });
+  await page.goto('/home/extensions');
+  await expect(
+    page.getByText('Undeclared permissions', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByTestId('plugin-permission-pending')).toBeVisible();
   await page.goto('/home/extensions?id=qa%2Fpermissions');
   await openPermissions(page);
   await expect(
@@ -254,8 +259,17 @@ test('compatibility confirmation grants all 16 capabilities and keeps its warnin
     fullPage: true,
   });
   await page.goto('/home/extensions');
+  await expect(page.getByTestId('plugin-permission-pending')).toHaveCount(0);
   await expect(
     page.getByText('Undeclared permissions', { exact: true }),
+  ).toHaveCount(0);
+  await page.goto('/home/extensions?id=qa%2Fpermissions');
+  await openPermissions(page);
+  await expect(
+    page.getByText('15 of 16 granted', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/doesn't declare the permissions it needs/),
   ).toBeVisible();
 });
 
@@ -366,7 +380,7 @@ test('completed installation remains pending instead of claiming activation', as
                 current_action: 'Permission confirmation required',
                 metadata: {
                   plugin_name: 'qa/permissions',
-                  pending_confirmation: true,
+                  pending_permission_confirmation: true,
                 },
               },
             },

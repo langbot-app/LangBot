@@ -25,6 +25,7 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
+import pkg.multica_client as client_module  # noqa: E402
 from pkg.multica_client import AsyncMulticaClient  # noqa: E402
 
 spec = importlib.util.spec_from_file_location("multica_runner", PLUGIN_ROOT / "components/runner/default.py")
@@ -51,10 +52,18 @@ class FakeMultica:
         self.outcome = outcome
         self.polls = 0
         self.deleted: set[str] = set()
+        self.faults: dict[tuple[str, str], list] = {}
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content) if request.content else None
         self.requests.append((request.method, request.url.path, body))
+        # Injected failures: (method, path suffix) -> queue of exceptions or status codes.
+        for (method, suffix), queue in self.faults.items():
+            if queue and request.method == method and request.url.path.endswith(suffix):
+                fault = queue.pop(0)
+                if isinstance(fault, int):
+                    return httpx.Response(fault, text="<html>gateway</html>")
+                raise fault(f"injected {fault.__name__}", request=request)
         assert request.headers["authorization"] == "Bearer mul_test"
         assert request.headers["x-workspace-id"] == "ws-1"
         path = request.url.path
@@ -107,7 +116,10 @@ class FakeMultica:
                 return httpx.Response(200, json={"supports_queue": True})
             self.status_polls += 1
             status = "queued" if self.status_polls <= self.queued_polls else "running"
-            return httpx.Response(200, json={"task_id": session["pending"][0], "status": status})
+            queued = [{"task_id": t} for t in session["pending"][1:]]
+            return httpx.Response(
+                200, json={"task_id": session["pending"][0], "status": status, "queued_tasks": queued}
+            )
         return httpx.Response(405)
 
 
@@ -120,6 +132,8 @@ def fake_clock(monkeypatch):
 
     monkeypatch.setattr(runner_module, "_sleep", advance)
     monkeypatch.setattr(runner_module, "_monotonic", lambda: clock["now"])
+    monkeypatch.setattr(client_module, "_sleep", advance)
+    monkeypatch.setattr(runner_module, "_now", lambda: clock["now"])
 
 
 class FakePlugin:
@@ -172,8 +186,13 @@ def kinds(results):
     return [str(getattr(r.type, "value", r.type)) for r in results]
 
 
-def states(results):
+def all_states(results):
     return {r.data["key"]: r.data["value"] for r in results if "state" in kinds([r])[0]}
+
+
+def states(results):
+    """State updates other than the undelivered-task bookkeeping."""
+    return {k: v for k, v in all_states(results).items() if k != "multica.pending_task"}
 
 
 def text_of(results):
@@ -263,7 +282,11 @@ def test_use_command_respects_disabled_switching():
 
 def test_new_command_clears_session():
     results = run(make_runner(FakeMultica()), make_ctx("/multica new", {"multica.session_id": "s"}))
-    assert states(results) == {"multica.session_id": "", "multica.session_agent_id": ""}
+    assert all_states(results) == {
+        "multica.session_id": "",
+        "multica.session_agent_id": "",
+        "multica.pending_task": "",
+    }
 
 
 def test_prefix_must_be_a_whole_word():
@@ -472,12 +495,11 @@ def test_off_mode_sends_only_the_answer():
     assert "message.delta" not in kinds(results)
 
 
-@pytest.mark.parametrize(("timeout", "interval"), [(300, 30), (600, 5), (120, 60)])
+@pytest.mark.parametrize(("timeout", "interval"), [(300, 30), (60, 5), (120, 60)])
 def test_progress_interval_caps_message_count(timeout, interval):
     fake = FakeMultica(reply_after_polls=10**9)
-    ctx = make_ctx(
-        "hi", timeout=timeout, **{"progress-mode": "messages", "poll-interval": 1, "progress-interval": interval}
-    )
+    config = {"progress-mode": "messages", "poll-interval": 1, "progress-interval": interval}
+    ctx = make_ctx("hi", timeout=timeout, **config, **{"progress-max-messages": 20})
     results = run(make_runner(fake), ctx)
     texts = completed_texts(results)
     heartbeats = [t for t in texts if t.startswith("⏱")]
@@ -532,7 +554,7 @@ SAME_IN_EN_AND_ZH: set[str] = set()
 
 def test_manifest_language_option_matches_supported_locales():
     manifest = yaml.safe_load((PLUGIN_ROOT / "manifest.yaml").read_text(encoding="utf-8"))
-    assert manifest["metadata"]["version"] == "0.2.0"
+    assert manifest["metadata"]["version"] == "0.2.2"
     (language,) = [c for c in manifest["spec"]["config"] if c["name"] == "language"]
     assert language["type"] == "select" and language["default"] == "en_US"
     assert [o["name"] for o in language["options"]] == LOCALES
@@ -583,7 +605,8 @@ def test_agent_answer_passes_through_untranslated(locale):
 @pytest.mark.parametrize("locale", LOCALES)
 def test_off_mode_is_unchanged_in_every_locale(locale):
     results = run(make_runner(FakeMultica(reply_after_polls=3), locale), make_ctx("hello"))
-    assert kinds(results) == ["state.updated", "state.updated", "message.completed", "run.completed"]
+    # session, session agent, pending task set, pending task cleared
+    assert kinds(results) == ["state.updated"] * 4 + ["message.completed", "run.completed"]
     assert text_of(results) == "echo:agent-1"
 
 
@@ -633,3 +656,180 @@ def test_find_without_keyword_shows_usage():
     assert (
         text_of(run(make_runner(FakeMultica(), "zh_Hans"), make_ctx("/multica find"))) == "用法：/multica find <关键词>"
     )
+
+
+# ------------------------------------------------------------ 0.2.1: progress message cap
+
+
+@pytest.mark.parametrize("cap", [1, 2, 4])
+def test_progress_max_messages_leaves_room_for_the_answer(cap):
+    fake = FakeMultica(reply_after_polls=60)
+    config = {"progress-mode": "messages", "poll-interval": 2, "progress-interval": 5}
+    results = run(make_runner(fake), make_ctx("hi", timeout=600, **config, **{"progress-max-messages": cap}))
+    texts = completed_texts(results)
+    assert len(texts) == cap + 1
+    assert texts[-1] == "echo:agent-1"
+    assert kinds(results)[-1] == "run.completed"
+
+
+def test_progress_max_messages_defaults_to_qq_official_budget():
+    fake = FakeMultica(reply_after_polls=200)
+    config = {"progress-mode": "messages", "poll-interval": 2, "progress-interval": 5}
+    texts = completed_texts(run(make_runner(fake), make_ctx("hi", timeout=600, **config)))
+    # QQ Official accepts 5 passive replies per user message: 4 progress + the answer.
+    assert len(texts) == 5
+    assert texts[-1] == "echo:agent-1"
+
+
+def test_closing_line_counts_toward_the_cap():
+    fake = FakeMultica(reply_after_polls=10**9)
+    config = {"progress-mode": "messages", "poll-interval": 1, "progress-interval": 5}
+    results = run(make_runner(fake), make_ctx("hi", timeout=60, **config, **{"progress-max-messages": 3}))
+    assert len(completed_texts(results)) == 3
+    assert results[-1].data["code"] == "multica.timeout"
+
+
+def test_cap_does_not_limit_stream_mode():
+    fake = FakeMultica(reply_after_polls=30)
+    config = {"progress-mode": "stream", "poll-interval": 2, "progress-interval": 5}
+    results = run(make_runner(fake), make_ctx("hi", timeout=600, **config, **{"progress-max-messages": 1}))
+    chunks = [r.data["chunk"] for r in results if kinds([r])[0] == "message.delta"]
+    assert len(chunks) > 3
+    assert chunks[-1]["is_final"] is True
+
+
+@pytest.mark.parametrize("value", [0, 21, "many"])
+def test_invalid_progress_max_messages_is_rejected(value):
+    results = run(make_runner(FakeMultica()), make_ctx("hi", **{"progress-max-messages": value}))
+    assert results[-1].data["code"] == "multica.config_invalid"
+
+
+# ------------------------------------------------------------ robustness
+
+
+def posts_to_messages(fake):
+    return [p for m, p, _ in fake.requests if m == "POST" and p.endswith("/messages")]
+
+
+def test_transient_poll_errors_are_retried_inside_the_client():
+    fake = FakeMultica(reply_after_polls=2)
+    fake.faults[("GET", "/messages/page")] = [httpx.ConnectError, 502]
+    results = run(make_runner(fake), make_ctx("hi"))
+    assert kinds(results)[-1] == "run.completed"
+    assert text_of(results) == "echo:agent-1"
+
+
+def test_long_poll_outage_does_not_fail_the_run():
+    fake = FakeMultica(reply_after_polls=2)
+    fake.faults[("GET", "/messages/page")] = [httpx.ConnectError] * 7
+    fake.faults[("GET", "/pending-task")] = [httpx.ReadTimeout] * 3
+    results = run(make_runner(fake), make_ctx("hi"))
+    assert kinds(results)[-1] == "run.completed"
+    assert text_of(results) == "echo:agent-1"
+
+
+def test_outage_until_deadline_times_out_and_promises_late_delivery():
+    fake = FakeMultica(reply_after_polls=10**9)
+    fake.faults[("GET", "/messages/page")] = [httpx.ConnectError] * 1000
+    results = run(make_runner(fake), make_ctx("hi", timeout=30))
+    assert results[-1].data["code"] == "multica.timeout"
+    assert "next message" in results[-1].data["error"]
+    assert all_states(results)["multica.pending_task"]["task_id"]
+
+
+def test_post_is_resent_only_when_it_never_reached_multica():
+    fake = FakeMultica()
+    fake.faults[("POST", "/messages")] = [503, httpx.ConnectError]
+    results = run(make_runner(fake), make_ctx("hi"))
+    assert text_of(results) == "echo:agent-1"
+    # Two refused attempts plus the accepted one; the agent ran once.
+    assert len(posts_to_messages(fake)) == 3
+    assert sum(len(s["messages"]) for s in fake.sessions.values()) == 2
+
+
+def test_post_with_unknown_outcome_is_not_resent():
+    fake = FakeMultica()
+    fake.faults[("POST", "/messages")] = [httpx.ReadTimeout]
+    results = run(make_runner(fake), make_ctx("hi"))
+    assert kinds(results)[-1] == "run.failed"
+    assert len(posts_to_messages(fake)) == 1
+
+
+def run_until_submitted(runner, ctx):
+    """Run until the task is enqueued, then abandon the run like a Plugin Runtime restart."""
+
+    async def collect():
+        out = []
+        gen = runner.run(ctx)
+        async for result in gen:
+            out.append(result)
+            if kinds([result])[0] == "state.updated" and result.data["key"] == "multica.pending_task":
+                await gen.aclose()
+                break
+        return out
+
+    return asyncio.run(collect())
+
+
+def test_reply_lost_to_a_runtime_restart_is_delivered_with_the_next_message():
+    fake = FakeMultica(reply_after_polls=1)
+    runner = make_runner(fake)
+    cut = run_until_submitted(runner, make_ctx("first", progress_mode="off"))
+    state = all_states(cut)
+    assert state["multica.pending_task"]["task_id"]
+
+    # Multica keeps running the task while LangBot is down: the reply lands meanwhile.
+    session = fake.sessions["session-1"]
+    task_id = session["pending"].pop(0)
+    session["messages"].append({"role": "assistant", "content": "first answer", "task_id": task_id})
+
+    results = run(runner, make_ctx("second", state, language="en_US"))
+    texts = completed_texts(results)
+    assert texts[0].startswith("↩️") and texts[0].endswith("first answer")
+    assert texts[-1] == "echo:agent-1"
+    assert all_states(results)["multica.pending_task"] == ""
+
+
+def test_still_running_earlier_task_is_delivered_once_the_new_reply_lands():
+    fake = FakeMultica(reply_after_polls=3)
+    runner = make_runner(fake)
+    state = all_states(run_until_submitted(runner, make_ctx("first")))
+
+    results = run(runner, make_ctx("second", state))
+    texts = completed_texts(results)
+    assert len(texts) == 2
+    assert texts[0].startswith("↩️") and texts[1] == "echo:agent-1"
+    # The earlier task was still running at submission, so it is picked up after the wait.
+    cleared = next(
+        i for i, r in enumerate(results) if r.data.get("key") == "multica.pending_task" and not r.data["value"]
+    )
+    late = next(i for i, r in enumerate(results) if kinds([r])[0] == "message.completed")
+    assert cleared < late
+
+
+def test_late_reply_takes_a_progress_slot_in_messages_mode():
+    fake = FakeMultica(reply_after_polls=10)
+    runner = make_runner(fake)
+    state = all_states(run_until_submitted(runner, make_ctx("first")))
+    session = fake.sessions["session-1"]
+    task_id = session["pending"].pop(0)
+    session["messages"].append({"role": "assistant", "content": "late", "task_id": task_id})
+
+    ctx = make_ctx("second", state, **{"progress-mode": "messages", "progress-interval": 5})
+    texts = completed_texts(run(runner, ctx))
+    # late reply + at most 3 progress lines + answer stays within QQ Official's 5 replies.
+    assert len(texts) <= 5
+    assert texts[-1] == "echo:agent-1"
+
+
+def test_expired_or_unreachable_pending_task_never_blocks_the_new_message():
+    fake = FakeMultica()
+    runner = make_runner(fake)
+    stale = {"task_id": "t-old", "session_id": "session-x", "agent": "Coder", "submitted_at": 0}
+    results = run(runner, make_ctx("hi", {"multica.pending_task": stale}))
+    assert completed_texts(results) == ["echo:agent-1"]
+
+    fresh = dict(stale, submitted_at=1000.0)
+    fake.faults[("GET", "/messages/page")] = [httpx.ConnectError] * 3
+    results = run(runner, make_ctx("hi", {"multica.pending_task": fresh}))
+    assert completed_texts(results)[-1] == "echo:agent-1"

@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.11.4"
+version = "4.11.9"
 description = "Production-grade platform for building agentic IM bots"
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -42,7 +42,7 @@ dependencies = [
     "regex>=2026.1.15",
     "slack-sdk>=3.35.0",
     "alembic>=1.15.0",
-    "sqlalchemy[asyncio]>=2.0.40",
+    "sqlalchemy[asyncio]>=2.0.40,<2.2",
     "sqlmodel>=0.0.24",
     "telegramify-markdown>=0.5.1",
     "tiktoken>=0.9.0",
@@ -50,13 +50,9 @@ dependencies = [
     "websockets>=15.0.1",
     "python-socks>=2.7.1", # dingtalk missing dependency
     "pip>=26.2.0",
-    "ruff>=0.11.9",
-    "pre-commit>=4.2.0",
     "uv>=0.13.4",
-    "mypy>=1.16.0",
-    "pypdf>=6.0.0",
+    "pypdf>=6.21.4,<7", # GHSA-5849-834g-hvw5, GHSA-cggf-277g-3q54; 7.0 has no importer to validate
     "python-docx>=1.1.0",
-    "pandas>=2.2.2",
     "chardet>=5.2.0",
     "xxhash>=3.5.0",
     "markdown>=3.6",
@@ -69,19 +65,21 @@ dependencies = [
     "python-multipart>=0.0.32",
     "Mako>=1.4.2",
     "langchain-text-splitters>=1.1.2",
-    "chromadb>=1.0.0,<2.0.0",
+    "chromadb>=1.5.3,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
-    "langbot-plugin==0.7.22",
+    "langbot-plugin==0.7.27",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "matrix-nio>=0.25.2",
     "tboxsdk>=0.0.10",
     "boto3>=1.35.0",
-    "pymilvus>=2.6.4",
     "pgvector>=0.4.1",
     "botocore>=1.42.39",
-    "litellm>=1.88.6",
-    "valkey-glide>=2.5.2,<3.0.0; sys_platform != 'win32'", # No Windows wheels are published
+    "litellm>=1.108.3", # filelock<5, so filelock advisories can be cleared
+    "pyasn1>=0.6.5", # GHSA-2qm8-x737-gmw5, GHSA-mm57-4v3p-rchx
+    "anyio>=4.14.2", # GHSA-82r6-8w77-94w6 (critical, TLS host name spoofing)
+    "oauthlib>=4.0.1", # GHSA-3jp2-3mrg-2vxc
+    "filelock>=4.2.1", # GHSA-v4x8-3wr5-3wq8 and the rest of the 4.2.0 set
     "webauthn>=3.0.0",
     "httpx[socks]>=0.28.1",
 ]
@@ -114,6 +112,12 @@ classifiers = [
 audio = [
     "pilk>=0.1.0",
 ]
+milvus = [
+    "pymilvus>=2.6.4",
+]
+valkey = [
+    "valkey-glide>=2.5.2,<3.0.0; sys_platform != 'win32'", # No Windows wheels are published
+]
 seekdb = [
     "pyseekdb==1.4.0.post1",
     "pylibseekdb==1.4.0; sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
@@ -141,12 +145,16 @@ include = ["langbot", "langbot.*"]
 [dependency-groups]
 dev = [
     "moto>=5.2.1",
+    "mypy>=1.16.0",
     "pre-commit>=4.2.0",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.0.0",
     "pytest-cov>=7.0.0",
     "ruff>=0.11.9",
 ]
+
+[tool.uv.sources]
+langbot-plugin = { path = "sdk", editable = true }
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.

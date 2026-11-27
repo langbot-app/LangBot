@@ -5,6 +5,10 @@ description: "LangBot のローカルデプロイと実行時によくある問�
 
 このページは、よくある問題の調査手順をまとめるためのものです。現在は Docker デプロイ時の問題を扱います。今後、モデル、ボットアダプター、MCP、Skills などの章を追加できます。
 
+<Tip>
+ワンラインインストール、または [lbctl に移行](/ja/deploy/lbctl)したデプロイでは、まず `lbctl doctor` で環境（Docker、ポート、ディスク、ネットワーク、サンドボックスなど）を自動チェックし、`lbctl logs` でログを確認してください（Docker では `--service langbot_box` や `--service langbot_plugin_runtime` を指定できます）。
+</Tip>
+
 以下のコマンドは `LangBot/docker` ディレクトリで実行する前提です。
 
 ## Docker デプロイ

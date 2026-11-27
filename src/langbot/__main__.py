@@ -76,17 +76,15 @@ async def main_entry(loop: asyncio.AbstractEventLoop):
         missing_deps = await deps.check_deps()
 
         if missing_deps:
-            print('以下依赖包未安装，将自动安装，请完成后重启程序：')
-            print(
-                'These dependencies are missing, they will be installed automatically, '
-                'please restart the program after completion:'
-            )
+            print('以下依赖包未安装，LangBot 无法启动：')
+            print('These dependencies are missing, LangBot cannot start:')
             for dep in missing_deps:
-                print('-', dep)
-            await deps.install_deps(missing_deps)
-            print('已自动安装缺失的依赖包，请重启程序。')
-            print('The missing dependencies have been installed automatically, please restart the program.')
-            sys.exit(0)
+                print('-', deps.required_deps[dep])
+            print('请重新安装 LangBot（推荐使用 lbctl 管理部署），不要在运行中的环境里手动补装。')
+            print(
+                'Please reinstall LangBot (lbctl-managed deployments are recommended) instead of patching this environment.'
+            )
+            sys.exit(1)
 
     # Check configuration files
     from langbot.pkg.core.bootutils import files
@@ -123,6 +121,11 @@ def main():
     # When installed as a package, we need to handle the working directory differently
     # We'll create data directory in current working directory if not exists
     os.makedirs(paths.get_data_root(), exist_ok=True)
+
+    # Must run before anything imports LiteLLM; see tiktoken_cache for why.
+    from langbot.pkg.utils import tiktoken_cache
+
+    tiktoken_cache.ensure_offline_tiktoken_cache(paths.get_data_path('tiktoken_cache'))
 
     loop = asyncio.new_event_loop()
 

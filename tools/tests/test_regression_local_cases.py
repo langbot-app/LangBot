@@ -11,7 +11,7 @@ from tools.regression.regression_local_cases import DEFAULT_GROUPS, ScenarioUnav
 from tools.regression.regression_scenarios import expanded_profile
 from tools.regression.regression_smoke import run_smoke
 from tools.entrypoints.regression_suite import Suite, validate
-from tools.entrypoints.regression_traffic import reconcile_runs
+from tools.regression.run_ledger import reconcile_runs
 
 
 class LocalScenarioTests(unittest.TestCase):

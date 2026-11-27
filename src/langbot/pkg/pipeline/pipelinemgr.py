@@ -242,11 +242,24 @@ class RuntimePipeline:
 
         await self.process_query(query)
 
+    async def deliver_runner_result(self, query: pipeline_query.Query, result: provider_message.Message) -> None:
+        """Use the configured post-processing stages for an explicitly recovered Runner."""
+        processors = [
+            index for index, stage in enumerate(self.stage_containers) if stage.inst_name == 'MessageProcessor'
+        ]
+        if len(processors) != 1:
+            raise ValueError('Runner recovery requires exactly one MessageProcessor stage')
+        await self._assert_execution_active(query)
+        query.resp_messages.append(result)
+        await self._execute_from_stage(processors[0] + 1, query)
+
     async def _check_output(self, query: pipeline_query.Query, result: pipeline_entities.StageProcessResult):
         """检查输出"""
         if result.user_notice or result.debug_notice or result.console_notice or result.error_notice:
             await self._assert_execution_active(query)
         if result.user_notice:
+            if result.structured_error and '_cli_run_status' in query.variables:
+                query.variables['_cli_run_error'] = result.structured_error
             # 处理str类型
 
             if isinstance(result.user_notice, str):
@@ -269,10 +282,17 @@ class RuntimePipeline:
                     is_final=query.resp_messages[-1].is_final,
                 )
             else:
+                reply_options = {}
+                if result.structured_error:
+                    from ..platform.sources.websocket_adapter import WebSocketAdapter
+
+                    if isinstance(query.adapter, WebSocketAdapter):
+                        reply_options['error'] = result.structured_error
                 await query.adapter.reply_message(
                     message_source=query.message_event,
                     message=result.user_notice,
                     quote_origin=query.pipeline_config['output']['misc']['quote-origin'],
+                    **reply_options,
                 )
         if result.debug_notice:
             self.ap.logger.debug(result.debug_notice)
@@ -312,7 +332,7 @@ class RuntimePipeline:
                     bot_name=bot_name,
                     pipeline_id=self.pipeline_entity.uuid,
                     pipeline_name=pipeline_name,
-                    error_type='PipelineError',
+                    error_type=result.structured_error['error_code'] if result.structured_error else 'PipelineError',
                     error_message=result.error_notice,
                     session_id=session_id,
                     stack_trace=result.debug_notice if result.debug_notice else None,
@@ -440,8 +460,10 @@ class RuntimePipeline:
         return event_type[:160] or 'message.received'
 
     async def process_query(self, query: pipeline_query.Query):
+        from langbot_plugin.utils.log import log_scope
+
         workspace_uuid = getattr(query, 'workspace_uuid', None) or getattr(self, 'workspace_uuid', '')
-        with language_scope(await get_workspace_language(self.ap, workspace_uuid)):
+        with log_scope(workspace=workspace_uuid), language_scope(await get_workspace_language(self.ap, workspace_uuid)):
             return await self._process_query_with_language(query)
 
     async def _process_query_with_language(self, query: pipeline_query.Query):
@@ -491,6 +513,7 @@ class RuntimePipeline:
                 with stage_scope() as node:
                     lane_outcome = 'success'
                     lane_error = ''
+                    self._note_adapter_on_trace(query)
                     try:
                         from ..platform.processing_indicator import processing_indicator
 
@@ -523,11 +546,7 @@ class RuntimePipeline:
                         if lane_outcome == 'failed' and not lane_error:
                             state = trace_mod.current()
                             lane_error = (state.failure_reason or state.first_error) if state is not None else ''
-                        config = getattr(query, 'pipeline_config', None)
-                        try:
-                            runner_id = (RunnerConfigResolver.resolve_runner_id(config) or '') if config else ''
-                        except Exception:
-                            runner_id = ''
+                        runner_id = self._engaged_runner()
                         record_execution(
                             self.ap,
                             getattr(self, 'execution_context', None),
@@ -761,6 +780,38 @@ class RuntimePipeline:
         finally:
             self.ap.logger.debug(f'Query {query.query_id} processed')
 
+    @staticmethod
+    def _note_adapter_on_trace(query: pipeline_query.Query) -> None:
+        """Attach the platform adapter the lane serves, whichever handler runs.
+
+        Command queries never reach the chat handler, which used to be the only
+        place that named the adapter on the chain.
+        """
+        try:
+            from ..telemetry.trace import current as current_trace
+
+            state = current_trace()
+            adapter = getattr(query, 'adapter', None)
+            if state is not None and adapter is not None and not state.adapter:
+                state.adapter = adapter.__class__.__name__
+        except Exception:
+            pass
+
+    @staticmethod
+    def _engaged_runner() -> str:
+        """The Runner this chain actually handed work to; '' when none ran.
+
+        The Pipeline configuration always names a Runner, but a command or a
+        lane that broke before the chat handler never engaged it.
+        """
+        try:
+            from ..telemetry.trace import current as current_trace
+
+            state = current_trace()
+            return (state.runner or '') if state is not None else ''
+        except Exception:
+            return ''
+
     def _record_lane_failure(self, query: pipeline_query.Query, reason: str) -> None:
         """Land one failed ``runner/execute`` stage on the owning execution trace."""
         try:
@@ -784,7 +835,7 @@ class RuntimePipeline:
                         family='runner',
                         operation='execute',
                         mode='pipeline',
-                        runner=(RunnerConfigResolver.resolve_runner_id(query.pipeline_config) or ''),
+                        runner=self._engaged_runner(),
                         outcome='failed',
                         error=detail,
                         node=node,
@@ -969,7 +1020,18 @@ class PipelineManager:
 
         # initialize stage containers according to pipeline_entity.stages
         stage_containers: list[StageInstContainer] = []
-        for stage_name in pipeline_entity.stages:
+        stages = list(pipeline_entity.stages)
+        if 'RequireDailyMessageQuota' not in stages:
+            # Stored pipelines predate this stage: meter right before the
+            # rate limiter (or the processor). Pipelines that never reach a
+            # processor have nothing to meter.
+            index = next(
+                (stages.index(name) for name in ('RequireRateLimitOccupancy', 'MessageProcessor') if name in stages),
+                None,
+            )
+            if index is not None:
+                stages.insert(index, 'RequireDailyMessageQuota')
+        for stage_name in stages:
             if stage_name not in self.stage_dict:
                 self.ap.logger.warning(f'Pipeline stage {stage_name} is not registered; skipping')
                 continue

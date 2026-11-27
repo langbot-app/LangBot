@@ -290,3 +290,50 @@ def test_structural_policy_and_visual_degradation_are_independent(policy):
         ('actions[0].style', 'unsupported_style'),
         ('description', 'unsupported_markdown'),
     }
+
+
+class LegacyAdapter:
+    """A pkg/platform/sources adapter: no interaction APIs at all (HTTP Bot, OneBot)."""
+
+    def __init__(self):
+        self.sent = asyncio.Event()
+        self.messages = []
+
+    def get_supported_apis(self):
+        return ['send_message']
+
+    async def send_message(self, target_type, target_id, message):
+        self.messages.append(str(message))
+        self.sent.set()
+
+
+@pytest.mark.asyncio
+async def test_legacy_adapter_without_capabilities_uses_text_fallback(store):
+    adapter = LegacyAdapter()
+    manager = InteractionManager(SimpleNamespace(), store=store)
+    task = asyncio.create_task(
+        manager.request_interaction(
+            session=_session(),
+            adapter=adapter,
+            request_payload=_request(fallback_text='Approve the request?'),
+            timeout=2,
+            on_unsupported='degrade',
+            responders='actor',
+        )
+    )
+    await asyncio.wait_for(adapter.sent.wait(), 1)
+    assert 'Approve the request?' in adapter.messages[0]
+    assert '1 Yes / 2 No' in adapter.messages[0]
+
+    consumed = await manager.consume_text_message(
+        workspace_id='workspace-1',
+        bot_id='bot-1',
+        conversation_id='group_chat-1',
+        actor_id='user-1',
+        text='2',
+    )
+
+    assert consumed
+    result = await asyncio.wait_for(task, 1)
+    assert result['status'] == 'submitted'
+    assert result['submission']['action_id'] == 'no'

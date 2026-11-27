@@ -1,0 +1,172 @@
+---
+title: "使用 lbctl 管理 LangBot"
+description: "用 lbctl 完成 LangBot 的安装、升级、启停、日志、诊断、开机自启、多实例和卸载，并把已有的 Docker Compose 部署接入 lbctl。"
+---
+
+[lbctl](https://github.com/langbot-app/langbot-cli) 是 LangBot 的官方命令行工具。[一行命令安装](/zh/deploy/langbot/one-line)会自动装好它。自部署 LangBot 的日常运维都可以交给 lbctl，不需要再手动执行 `docker compose`、`uvx` 或下载压缩包。
+
+<Info>
+lbctl 默认按系统语言输出中文或英文，可用 `--lang zh-Hans` / `--lang en` 指定。所有命令都可以加 `-o json` 输出机器可读结果，方便脚本和 AI Agent 调用。
+</Info>
+
+## lbctl 可以替代的旧做法
+
+| 要做的事 | 以前的做法 | 现在用 lbctl |
+|---|---|---|
+| 安装 | `uvx langbot`，或 `git clone` 后 `docker compose up` | 一行命令安装，或 `lbctl install`（可加 `--driver docker`） |
+| 升级 LangBot | `git pull` + `docker compose up --force-recreate --pull always`；重新执行 `uvx langbot@latest`；下载 Release 压缩包覆盖 | `lbctl upgrade --yes`（自动备份、健康检查） |
+| 查看运行状态和版本 | `docker compose ps`、打开 WebUI 查看 | `lbctl status` |
+| 查看日志 | `docker logs langbot` | `lbctl logs`、`lbctl logs -f` |
+| 启动 / 停止 / 重启 | `docker compose up -d` / `down` / `restart` | `lbctl start` / `stop` / `restart` |
+| 排查环境问题 | 手动检查 Docker、端口、磁盘、网络 | `lbctl doctor` |
+| 开机自启 | 手写 systemd / launchd / 计划任务 | 安装时自动配置；`lbctl autostart status/enable/disable` |
+| SeekDB、Milvus、Valkey 等可选依赖 | `uv sync --extra ...`，或手动换镜像标签 | `lbctl install --extra seekdb`（或 `milvus`、`valkey`） |
+| 国内镜像源 | 手动修改 PyPI 源或 Docker 镜像地址 | 自动检测地区并选择可用源；也可用 `--region cn` |
+| 运行多个实例 | 复制目录、手动改端口 | `lbctl install --name <实例名> --port <端口>`、`lbctl list` |
+| 卸载 | 手动删除容器和目录 | `lbctl uninstall`（默认保留数据） |
+| 升级 lbctl 本身 | 重新下载 | `lbctl update` |
+| 命令行连接本地实例 | 在 WebUI 创建 API Key，再 `lbctl context add` | 安装后自动连接，直接 `lbctl bot list` |
+
+## 查看状态与诊断
+
+```bash
+lbctl status     # 运行状态、LangBot 和 lbctl 版本、访问地址、部署方式
+lbctl doctor     # 检查 Python/Docker、端口、磁盘、网络、镜像源、沙箱等
+lbctl list       # 列出本机所有 LangBot 实例
+```
+
+遇到问题时，先运行 `lbctl doctor`，它会给出具体的失败项和建议的下一步命令。
+
+## 启动、停止与日志
+
+```bash
+lbctl start
+lbctl stop
+lbctl restart
+
+lbctl logs                            # 最近 200 行
+lbctl logs -f                         # 持续跟踪
+lbctl logs --tail 1000                # 最近 1000 行（最多 5000）
+lbctl logs --service langbot_plugin_runtime   # Docker 部署下查看插件运行时日志
+```
+
+原生部署的日志保存在实例目录的 `logs/langbot.log`，自动轮转。
+
+## 升级 LangBot
+
+```bash
+lbctl upgrade --dry-run    # 只检查并显示升级计划，不做任何修改
+lbctl upgrade --yes        # 升级到最新稳定版
+lbctl upgrade --version v4.11.8 --yes   # 升级到指定版本
+```
+
+升级过程：
+
+- **原生部署**：先准备好新版本的运行环境，再停止服务、备份数据、切换版本，并检查 `/healthz`。新版本启动失败时会自动恢复到原来的版本和数据。
+- **Docker 部署**：先拉取并校验新镜像，再停止服务、备份数据和 Compose 文件、启动新版本，并等待所有服务健康检查通过。
+- 备份保存在数据目录旁的 `backups/` 下，原生部署保留最近 3 份。
+- 已经是最新版本时，`lbctl upgrade --yes` 会直接提示「已是最新版本」，不会做任何改动。
+- 升级 lbctl 本身用 `lbctl update`（只更新命令行工具，不影响 LangBot）。
+
+## 已有的 Docker Compose 部署接入 lbctl
+
+如果你之前按 [Docker 部署文档](/zh/deploy/langbot/docker) 用 `docker compose` 部署，不需要重装，可以先安装 lbctl，再把现有部署「接管」过来：
+
+```bash
+# 只安装 lbctl，不部署新的 LangBot
+curl -fsSL https://langbot.app/install.sh | bash -s -- --lbctl-only
+
+# 在 LangBot/docker 目录下执行，接管现有部署（端口按实际情况修改）
+lbctl --endpoint http://127.0.0.1:5300 adopt \
+  --file "$(pwd)/docker-compose.yaml" --project docker --profile all
+
+lbctl status
+lbctl upgrade --dry-run
+lbctl upgrade --yes
+```
+
+- `--project` 填 Compose 项目名，可以用 `docker compose ls` 查看（在 `LangBot/docker` 目录下启动的默认是 `docker`）；`lbctl context list --discover` 也会列出本机可接管的部署。
+- 接管不会改动你的 Compose 文件。升级时只替换 `langbot`、`langbot_plugin_runtime`、`langbot_box` 三个服务的镜像，端口、挂载、环境变量和其他服务都保持不变。
+- 自动升级要求服务直接使用 `rockchin/langbot:<标签>` 镜像，数据全部位于 Compose 目录下的 `data` 挂载中（SQLite、Chroma 和本地存储）。不满足时 `lbctl upgrade --dry-run` 会说明原因，这种情况请继续按 [更新文档](/zh/deploy/update) 手动升级。
+- 手动修改过 Compose 文件后，重新执行一次 `adopt`。
+- 接管后 `status`、`logs`、`start`、`stop`、`restart`、`doctor`、`upgrade` 都可以直接使用。
+
+<Warning>
+接管已有 Docker 部署后的升级需要 lbctl v0.5.9 及以上版本，可以用 `lbctl version` 查看，用 `lbctl update` 更新。
+</Warning>
+
+## 开机自启
+
+一行命令安装完成后默认开启开机/登录自启：Linux 使用 systemd，macOS 使用 launchd，Windows 使用当前用户的登录启动项（不需要管理员权限），Docker 部署使用 `restart: unless-stopped`。
+
+```bash
+lbctl autostart status
+lbctl autostart disable    # 关闭自启，不会停止正在运行的实例
+lbctl autostart enable
+```
+
+Linux 非 root 用户使用 systemd 用户服务，如果希望退出登录后服务继续运行，请执行 `loginctl enable-linger`。
+
+## 安装选项
+
+```bash
+lbctl install                        # 原生部署（推荐），自动准备 Python
+lbctl install --driver docker        # Docker Compose 部署
+lbctl install --port 5300            # 指定 HTTP 端口
+lbctl install --extra seekdb         # 安装可选依赖：seekdb、milvus、valkey
+lbctl install --version v4.11.8      # 安装指定版本
+lbctl install --region cn            # 指定网络地区：auto、cn、global
+lbctl install --dry-run              # 只检查环境并显示安装计划
+```
+
+- 原生部署使用 lbctl 自己管理的 uv 和 Python，不会使用或修改系统里的 Python。
+- 原生部署安装失败后，用相同的实例名和端口重新执行 `lbctl install` 即可修复，已有数据和版本会保留。
+- 实例默认安装在 `~/.langbot/instances/<实例名>`（root 用户为 `/opt/langbot`，Windows 为 `%LOCALAPPDATA%\LangBot`），可用 `LANGBOT_HOME` 修改。
+
+## 多实例
+
+```bash
+lbctl install --driver docker --name second --port 5310 --project langbot-second
+lbctl list
+lbctl stop --name second
+lbctl start --name second
+```
+
+`start`、`stop`、`restart`、`upgrade`、`uninstall`、`autostart` 可以用 `--name` 选择实例；`status`、`logs`、`doctor` 作用于当前连接，用 `lbctl context list` 查看、`lbctl context use <名称>` 切换。
+
+需要同时运行多个实例时请使用 Docker 部署：原生部署的插件调试端口 5401 和沙箱端口 5410 是独占的。
+
+## 卸载
+
+```bash
+lbctl uninstall --yes               # 停止并移除服务，保留数据和备份
+lbctl uninstall --purge-data --yes  # 同时删除 lbctl 管理的数据目录
+```
+
+## 用命令行管理机器人、插件和模型（可选）
+
+日常配置建议在 WebUI 中完成。lbctl 也可以通过 HTTP API 管理 Workspace 内的资源，适合脚本和 AI Agent。
+
+用 lbctl 安装或接管的本地实例会自动连接（需要 lbctl v0.5.11 及以上）：lbctl 为每个实例生成一个 API Key，写入 `data/config.yaml` 的 `api.global_api_key`，并自动配到该实例的连接上。不需要任何配置，就可以直接使用：
+
+```bash
+lbctl whoami
+lbctl bot list
+lbctl plugin list
+lbctl model list
+lbctl knowledge-base list
+```
+
+- 已有的实例在下一次执行 `lbctl start`、`restart` 或 `upgrade` 时会自动补上 Key；接管（adopt）的部署按提示执行一次 `lbctl restart` 即可生效。
+- Key 只保存在实例目录中（权限 0600），不会出现在 lbctl 的配置文件、`-o json` 输出或日志里。需要把它配给 MCP 客户端等工具时，用 `lbctl auth show-key --yes` 查看。
+- 本机有多个实例时，用 `lbctl context list` 查看各实例的连接，用 `--context <名称>` 指定要操作的实例。
+
+连接远程实例或 LangBot Cloud 时，先在 WebUI 中创建 API Key，再添加连接：
+
+```bash
+export LANGBOT_API_KEY=<你的 API Key>
+lbctl context add remote --endpoint https://your-langbot.example.com --api-key-env LANGBOT_API_KEY
+lbctl --context remote whoami
+```
+
+完整命令见 `lbctl help` 或 [lbctl 仓库](https://github.com/langbot-app/langbot-cli)。

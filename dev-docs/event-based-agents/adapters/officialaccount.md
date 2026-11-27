@@ -58,6 +58,22 @@ Other nonzero codes also raise `OfficialAccountSendError`. Transport failures ra
 | --- | --- | --- |
 | `get_mode` | plugin-e2e-ui, unit | Returned `{"mode": "drop", "longer_response": false}` in live probe. |
 | `get_cached_response_status` | plugin-e2e-ui, unit | Returned `{"pending": false}` in live probe. |
+| `menu.get` | unit | Returns `{"saved": <custom_menu>, "published": <menu/get menu or null>}`; `46003` (no menu) maps to `null`. |
+| `menu.import_console` | unit | Reads `get_current_selfmenu_info`, including web-console menus WeChat disabled after message push was enabled, and converts it to the `custom_menu` model. Material buttons (news/img/voice/video) become `unsupported` with warnings. |
+| `menu.publish` | unit | Without params publishes the saved `custom_menu`; with `menu` publishes a raw WeChat `menu/create` body. Validation errors raise `MenuValidationError` (`ValueError`) before calling WeChat. |
+| `menu.delete` | unit | Calls `menu/delete`. |
+
+### Custom menu
+
+The WebUI menu tab stores the menu in the bot's `adapter_config.custom_menu` and calls the actions above through the account-only Workspace operation `bot.platform_api.call` (`POST /api/v1/platform/bots/<uuid>/platform-api`), which only accepts actions the adapter manifest declares and requires a running bot. WeChat API failures raise `OfficialAccountAPIError` and surface as `platform_api_error` with `{errcode, errmsg}` details.
+
+Button types map to WeChat as follows: `view` and `miniprogram` pass through; `reply` and `ai` become `click` buttons with keys `lb:r:<id>` / `lb:a:<id>` (the text stays in LangBot, so it is not bound by WeChat's 128-byte key limit); `event` becomes a `click` button with a user key, which must not start with `lb:`.
+
+- `reply` clicks are answered inside the WeChat callback in every mode and are not dispatched as events.
+- `ai` clicks are rewritten into a text `message.received` event with the configured text, so Pipelines (which only bind `message.*`) and Agents answer them like a typed message.
+- `event` clicks stay `platform.specific` (`officialaccount.CLICK`); route them with a binding filter on `data.EventKey`.
+
+Menu calls share the adapter's `access_token` cache with customer-service sends, so the two paths never invalidate each other's token.
 
 ## Components
 
@@ -93,7 +109,7 @@ Observed event/API evidence:
 Standalone runtime command:
 
 ```bash
-cd langbot-plugin-sdk
+cd LangBot/sdk
 uv run python -m langbot_plugin.cli.__init__ rt --debug-only --ws-control-port 5400 --ws-debug-port 5401 --skip-deps-check
 ```
 

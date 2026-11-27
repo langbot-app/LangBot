@@ -16,7 +16,7 @@
 [![QQ Group](https://img.shields.io/badge/%E7%A4%BE%E5%8C%BAQQ%E7%BE%A4-966235608-blue)](https://qm.qq.com/q/JLi38whHum)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/langbot-app/LangBot)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/langbot-app/LangBot)](https://github.com/langbot-app/LangBot/releases/latest)
-<img src="https://img.shields.io/badge/python-3.10 ~ 3.13 -blue.svg" alt="python">
+<img src="https://img.shields.io/badge/python-3.11%20~%203.14-blue.svg" alt="python">
 [![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
 [![star](https://gitcode.com/RockChinQ/LangBot/star/badge.svg)](https://gitcode.com/RockChinQ/LangBot)
 
@@ -38,7 +38,7 @@
 LangBot 是一個**開源的生產級平台**，用於建構 AI 驅動的即時通訊機器人。它將大語言模型（LLM）連接到各種聊天平台，幫助你創建能夠對話、執行任務、並整合到現有工作流程中的智能 Agent。
 
 <p align="center">
-<img src="res/dashboard-overview.png" alt="LangBot Web 管理面板儀表板 — 即時監控訊息量、模型調用、成功率與活躍工作階段" width="720"/>
+<img src="res/dashboard-overview-zh.png" alt="LangBot Web 管理面板儀表板 — 即時監控訊息量、模型調用、成功率與活躍工作階段" width="720"/>
 </p>
 
 ### 核心能力
@@ -72,13 +72,21 @@ LangBot 是一個**開源的生產級平台**，用於建構 AI 驅動的即時�
 
 免部署，開箱即用。
 
-### 一鍵啟動
+### 一行指令安裝（自架推薦）
+
+macOS / Linux:
 
 ```bash
-uvx langbot
+curl -fsSL https://langbot.app/install.sh | bash
 ```
 
-> 需要安裝 [uv](https://docs.astral.sh/uv/getting-started/installation/)。訪問 http://localhost:5300 即可使用。
+Windows (PowerShell):
+
+```powershell
+irm https://langbot.app/install.ps1 | iex
+```
+
+> 自動安裝 [lbctl](https://github.com/langbot-app/langbot-cli)（LangBot 命令列工具）並啟動 LangBot：預設原生部署，自動準備 Python，也可選 Docker；無需管理員權限。完成後訪問 http://localhost:5300，之後用 `lbctl upgrade` 一鍵升級。
 
 ### Docker Compose
 

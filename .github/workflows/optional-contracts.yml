@@ -2,75 +2,57 @@ name: Dependency Contracts
 
 on:
   pull_request:
-    types: [opened, ready_for_review, synchronize]
-    paths:
-      - 'src/langbot/**'
-      - 'tests/**'
-      - 'plugins/Runner/**'
-      - 'pyproject.toml'
-      - 'pytest.ini'
-      - 'uv.lock'
-      - '.github/workflows/optional-contracts.yml'
-  push:
-    branches: [master, develop]
-    paths:
-      - 'src/langbot/**'
-      - 'tests/**'
-      - 'plugins/Runner/**'
-      - 'pyproject.toml'
-      - 'pytest.ini'
-      - 'uv.lock'
-      - '.github/workflows/optional-contracts.yml'
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
+    inputs:
+      lbctl_ref:
+        description: 'Ref in langbot-app/langbot-cli (use a commit SHA for a reproducible run)'
+        default: main
+        type: string
+  workflow_call:
 
 permissions:
   contents: read
 
+concurrency:
+  group: optional-contracts-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  changes:
+    name: Select optional contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      compiled_cli: ${{ steps.select.outputs.compiled_cli }}
+      plugin_identity: ${{ steps.select.outputs.plugin_identity }}
+      seekdb: ${{ steps.select.outputs.seekdb }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/classify-test-changes
+        id: select
+
   compiled-cli:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.compiled_cli == 'true'
     name: Compiled CLI HTTP Contract
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
-    env:
-      GOTOOLCHAIN: local
-      CGO_ENABLED: '0'
-
     steps:
       - name: Checkout Core
         uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Checkout official CLI source
-        uses: actions/checkout@v4
+      - uses: ./.github/actions/build-lbctl
+        id: lbctl
         with:
-          repository: langbot-app/langbot-cli
-          # lbctl v0.2.0; advance only after verifying the Core HTTP contract.
-          ref: 3bd20eecd4771b1fe5d0dca61d8b5523182e7bd9
-          path: .contract-sources/langbot-cli
-          persist-credentials: false
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          # Match the pinned CLI's release toolchain.
-          go-version: '1.26.8'
-          cache-dependency-path: .contract-sources/langbot-cli/go.sum
-
-      - name: Build pinned CLI
-        working-directory: .contract-sources/langbot-cli
-        env:
-          LANGBOT_CLI_BIN: ${{ runner.temp }}/langbot-cli/lbctl
-        run: |
-          test "$(git rev-parse HEAD)" = 3bd20eecd4771b1fe5d0dca61d8b5523182e7bd9
-          go mod download
-          go mod verify
-          mkdir -p "$(dirname "$LANGBOT_CLI_BIN")"
-          go build -mod=readonly -trimpath -o "$LANGBOT_CLI_BIN" ./cmd/lbctl
-          test -x "$LANGBOT_CLI_BIN"
-          go version -m "$LANGBOT_CLI_BIN"
+          ref: ${{ inputs.lbctl_ref || 'main' }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -85,7 +67,7 @@ jobs:
 
       - name: Run required compiled CLI contract
         env:
-          LANGBOT_CLI_BIN: ${{ runner.temp }}/langbot-cli/lbctl
+          LANGBOT_CLI_BIN: ${{ steps.lbctl.outputs.binary }}
         run: |
           uv run --no-sync pytest --required-suite compiled_cli \
             -q --tb=short -rs --junitxml=compiled-cli-results.xml
@@ -99,6 +81,8 @@ jobs:
           if-no-files-found: ignore
 
   plugin-identity:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.plugin_identity == 'true'
     name: Official Plugin Identity Contract
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -135,6 +119,8 @@ jobs:
           if-no-files-found: ignore
 
   seekdb:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.seekdb == 'true'
     name: Embedded SeekDB Contract
     runs-on: ubuntu-latest
     timeout-minutes: 10

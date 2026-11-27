@@ -2,16 +2,31 @@
 title: "系统兼容处理"
 ---
 
-LangBot 插件系统运用了`Asyncio`和`Subprocess`等机制，这在unix-like系统（如Linux、MacOS）上运行良好，但在Windows上存在一些问题，导致插件无法正常运行。
+LangBot 插件系统由三层进程组成：LangBot 主程序、Plugin Runtime、每个插件各自的 worker 进程。本文说明各层之间在不同系统上使用什么方式通信。
 
-Windows 上的 Python 异步事件循环默认使用 `ProactorEventLoop`，但该事件循环对 Stdio 的支持性缺失，而非 Docker 环境下 LangBot 依赖 Stdio 与 Plugin Runtime 通信、Plugin Runtime 也依赖 Stdio 与插件通信。
+## LangBot 与 Plugin Runtime
 
-若改为使用`SelectorEventLoop`，则会导致无法正常启动 Plugin Runtime 和插件，因为`SelectorEventLoop`不支持`Subprocess`。
+LangBot 与 Plugin Runtime 之间的传输方式只取决于 Runtime 由谁启动，与操作系统无关：
 
-详细问题参阅：[Python官方文档](https://docs.python.org/zh-cn/3.13/library/asyncio-platforms.html)
+| 部署方式 | 传输方式 |
+|---|---|
+| 直接运行 LangBot（Windows / Linux / macOS） | LangBot 以子进程启动 Plugin Runtime，通过子进程的 stdio 通信 |
+| Docker 部署 | 通过 WebSocket 连接 `plugin.runtime_ws_url`（默认 Compose 服务 `langbot_plugin_runtime:5400`） |
+| 使用 `--standalone-runtime` 启动 | 通过 WebSocket 连接 `plugin.runtime_ws_url`，Runtime 需自行启动 |
 
-## 解决方案
+Box Runtime 遵循同样的规则：直接运行时走 stdio；Docker、`--standalone-box` 或配置了 `box.runtime.endpoint` 时走 WebSocket。
 
-与 Unix-like 系统上的子进程管理与 Stdio 通信绑定的形式不同，LangBot 和 Plugin Runtime 在 Windows 上会自动采用 子进程 + WebSocket 结合的跨进程通信技术，LangBot 通过子进程启动 Plugin Runtime 但通过 WebSocket 与其通信；Plugin Runtime 也通过子进程启动各个已安装插件但通过 WebSocket 通信。
+<Note>
+Windows 上的 asyncio `ProactorEventLoop` 无法把子进程继承来的匿名管道注册到 IOCP，直接使用 `connect_read_pipe` / `connect_write_pipe` 会报 `WinError 6`。自 `langbot-plugin` 0.6.0 起，Runtime 在 Windows 上改用后台线程阻塞读写 stdio，因此 LangBot 在 Windows 上与 Linux / macOS 一样直接使用 stdio，无需额外配置。
+</Note>
 
-这是 LangBot 根据系统标识自动适应的，您无需手动配置。
+## Plugin Runtime 与插件 worker
+
+Plugin Runtime 为每个已安装插件启动一个 worker 子进程：
+
+- **Linux / macOS**：通过 worker 子进程的 stdio 通信。
+- **Windows**：Runtime 以子进程启动 worker，worker 再通过 WebSocket 连回 Runtime 的插件调试端口（`ws://localhost:<端口>/plugin/ws`）。
+
+该调试端口默认是 `5401`，跟随 `plugin.display_plugin_debug_url` 的端口配置。在 Windows 上，请确保该端口未被占用，且本机回环连接未被防火墙拦截；同一台机器运行多个 LangBot 实例时，请为每个实例配置不同的 `display_plugin_debug_url` 端口。
+
+以上均由 LangBot 根据部署方式和系统自动选择，您无需手动配置传输方式。

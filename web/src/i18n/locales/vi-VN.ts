@@ -1,7 +1,9 @@
 import pipelineMigration from './pipeline-migration/vi-VN';
 import pluginPermissions from './plugin-permissions/vi-VN';
+import pluginCompat from './plugin-compat/vi-VN';
 const viVN = {
   pluginPermissions,
+  pluginCompat,
   planRevision: {
     subscribedOn: 'Ngày đăng ký: {{date}}',
     latestQuota: 'Hạn mức mới nhất của gói này',
@@ -117,6 +119,89 @@ const viVN = {
       managed_sandbox_sessions: 'Phiên sandbox được quản lý',
     },
   },
+  workspaceSandbox: {
+    quotaCheck:
+      'Hạn ngạch đĩa được kiểm tra trước và sau lệnh, không liên tục.',
+    testRun: 'Chạy thử',
+    testRunCost: 'Tạo sandbox tạm, dùng một suất và có thể phát sinh phí.',
+    checkHint: 'Kiểm tra và lưu không tạo sandbox. Chạy thử là tùy chọn.',
+    queryUnsupported:
+      'Dịch vụ không hỗ trợ truy vấn mẫu; mẫu chưa được xác minh. Có thể lưu hoặc chạy thử.',
+    limitsTitle: 'Giới hạn không gian',
+    limitsHelp: 'Để trống để kế thừa mặc định. Chỉ áp dụng cho tác vụ mới.',
+    inherit: 'Kế thừa mặc định',
+    limitMax: 'Tối đa: {{value}}',
+    limitUnsupported: 'Môi trường hoặc chính sách không hỗ trợ',
+    e2bLimitUnsupported:
+      'Do mẫu hoặc dịch vụ E2B quản lý; không hỗ trợ cấu hình này',
+    invalidLimits: 'Nhập giá trị trong phạm vi hiển thị',
+
+    confirm: 'Xác nhận và lưu',
+    cancel: 'Hủy',
+    current: 'Đang dùng: {{backend}}',
+    unsaved: 'Chưa lưu',
+    configureE2b: 'Cấu hình E2B',
+    apiUrl: 'URL API',
+    sandboxUrl: 'URL sandbox',
+    template: 'Mẫu',
+    keyConfigured: 'Đã cấu hình; để trống để giữ nguyên',
+    keyRequired: 'Nhập API Key',
+    keyHelp:
+      'Khóa đã lưu không được trả về. Nhập khóa mới khi đổi URL dịch vụ.',
+    noManagedProcesses: 'Môi trường này không hỗ trợ máy chủ MCP stdio.',
+    label: 'Môi trường thực thi',
+    description:
+      'Tác vụ mới dùng môi trường này. Tác vụ đang chạy tiếp tục dùng môi trường cũ.',
+    saved: 'Đã lưu, áp dụng cho tác vụ mới',
+    saveFailed: 'Không thể lưu môi trường',
+    loadFailed: 'Không thể kiểm tra môi trường',
+    refresh: 'Kiểm tra lại',
+    noEnvironment: 'Không có môi trường khả dụng',
+    unavailable: 'Môi trường đã chọn không khả dụng cho tác vụ mới.',
+    templateVerified:
+      'Template verified: temporary sandbox created, executed and deleted',
+    limitLabels: {
+      timeout_sec: 'Thời gian lệnh (giây)',
+      idle_ttl_sec: 'Thu hồi khi rảnh (giây)',
+      max_sessions: 'Số sandbox tối đa',
+      cpus: 'Lõi CPU',
+      memory_mb: 'Bộ nhớ (MiB)',
+      pids_limit: 'Giới hạn tiến trình',
+      workspace_quota_mb: 'Hạn ngạch đĩa (MiB)',
+    },
+    reasons: {
+      resource_not_found: 'Requested service resource not found',
+      rate_limited: 'Too many requests; retry later',
+      template_not_found: 'Template not found or not visible to this account',
+      template_query_failed: 'Template query failed; check service status',
+      template_not_ready: 'Template build is not ready',
+      network_error: 'Cannot reach service; check URLs and network',
+      capacity_limited:
+        'Service capacity exhausted or rate limited; retry later',
+      permission_denied: 'Permission denied for the supplied credentials',
+      template_creation_failed:
+        'Sandbox creation failed; check template status and service capacity',
+      template_execution_failed: 'Sandbox created but execution check failed',
+      template_cleanup_failed:
+        'Temporary sandbox cleanup failed; check E2B service',
+
+      environment_unavailable: 'Không khả dụng',
+      policy_restricted: 'Bị nền tảng hạn chế',
+      probe_failed: 'Kiểm tra thất bại',
+      docker_missing: 'Chưa cài Docker CLI',
+      docker_unreachable: 'Docker chưa chạy hoặc bị từ chối truy cập',
+      nsjail_missing: 'Chưa cài nsjail',
+      cgroup_unavailable: 'Giới hạn cgroup nsjail chưa sẵn sàng',
+      isolation_unavailable: 'Kiểm tra cách ly nsjail thất bại',
+      sdk_missing: 'Chưa cài E2B SDK',
+      missing_credentials: 'Thiếu API Key E2B',
+      connection_failed: 'Không thể kết nối E2B; kiểm tra URL và mạng',
+      authentication_failed: 'Xác thực E2B thất bại; kiểm tra khóa',
+      probe_timeout: 'Kiểm tra hết thời gian',
+      invalid_configuration: 'URL hoặc thông tin xác thực E2B chưa đầy đủ',
+      not_checked: 'Cấu hình đã đổi; hãy kiểm tra lại',
+    },
+  },
   workspaceLanguage: {
     label: 'Ngôn ngữ không gian làm việc',
     description:
@@ -150,6 +235,14 @@ const viVN = {
     failed: 'Thất bại',
     cancelled: 'Đã hủy',
     ignored: 'Đã bỏ qua',
+  },
+  githubStarPrompt: {
+    title: 'LangBot đã xử lý {{total}} sự kiện cho bạn',
+    description:
+      'Nếu LangBot hữu ích với bạn, hãy tặng một Star trên GitHub để nhiều người biết đến hơn.',
+    later: 'Để sau',
+    star: 'Star',
+    close: 'Đóng',
   },
   assistant: {
     movePosition: 'Di chuyển trợ lý theo chiều ngang',
@@ -501,6 +594,11 @@ const viVN = {
     editionCloud: 'Cloud',
   },
   common: {
+    refresh: 'Làm mới',
+    clickToCopy: 'Nhấp để sao chép',
+    finish: 'Hoàn tất',
+    operationFailed: 'Thao tác thất bại',
+    optional: 'Không bắt buộc',
     failureReasonNotRecorded:
       'Chưa lưu nguyên nhân lỗi. Hãy kiểm tra nhật ký bot hoặc gửi lại tin nhắn để biết thêm chi tiết.',
     loadFailedTitle: 'Không thể tải nội dung',
@@ -1331,6 +1429,12 @@ const viVN = {
     collapse: 'Thu gọn',
     imagesAttached: 'hình ảnh đính kèm',
     noLogs: 'Chưa có nhật ký',
+    routeDraftExists:
+      'Đã có quy tắc cho {{id}}; quy tắc được mở rộng bên dưới.',
+    routeDraftAddedGroup:
+      'Đã thêm quy tắc cho nhóm {{id}} ở đầu danh sách. Chọn pipeline rồi lưu.',
+    routeDraftAddedPerson:
+      'Đã thêm quy tắc cho người dùng {{id}} ở đầu danh sách. Chọn pipeline rồi lưu.',
     sessionMonitor: {
       resetContext: 'Đặt lại ngữ cảnh',
       resetDescription:
@@ -1338,6 +1442,29 @@ const viVN = {
       resetSuccess: 'Đã đặt lại ngữ cảnh.',
       resetError:
         'Không thể đặt lại. Hãy đợi các tác vụ đang chạy hoàn tất rồi thử lại.',
+      resetScopeMember:
+        'Cuộc trò chuyện này lưu ngữ cảnh riêng cho từng thành viên nhóm, nên chỉ ngữ cảnh của thành viên này được đặt lại.',
+      resetScopeGroup:
+        'Nhóm này dùng chung một ngữ cảnh, nên cuộc hội thoại của cả nhóm sẽ được đặt lại, không chỉ của thành viên này.',
+      inGroup: 'trong {{group}}',
+      filterByGroup: 'Cùng nhóm',
+      groupFilterActive: 'Nhóm {{group}}',
+      clearGroupFilter: 'Hiện tất cả phiên',
+      groupTitle: 'Nhóm {{group}}',
+      memberLine: 'Thành viên: {{name}}',
+      lastSenderLine: 'Người gửi gần nhất: {{name}}',
+      privateChat: 'Trò chuyện riêng',
+      groupChat: 'Trò chuyện nhóm',
+      groupId: 'ID nhóm',
+      member: 'Thành viên',
+      lastSender: 'Người gửi gần nhất',
+      userId: 'ID người dùng',
+      pipeline: 'Pipeline',
+      routeGroup: 'Định tuyến nhóm này',
+      routeGroupHint:
+        'Tạo quy tắc định tuyến gửi nhóm này đến một pipeline cụ thể',
+      contextShared: 'Ngữ cảnh chung của nhóm',
+      contextPerMember: 'Ngữ cảnh riêng từng thành viên',
 
       title: 'Phiên',
       sessions: 'Phiên',
@@ -1818,6 +1945,12 @@ const viVN = {
     debugging: 'Gỡ lỗi',
     uploadLocalPlugin: 'Tải lên Plugin cục bộ',
     spaceUpload: {
+      descriptionInstalled:
+        'Tải plugin cài cục bộ {{author}}/{{name}} lên chợ tiện ích.',
+      shareInstalledAction: 'Chia sẻ lên Space',
+      installedPackageTitle: 'Gói plugin đã cài sẽ được tải lên',
+      installedPackageHint:
+        'Plugin cài cục bộ được tải lên nguyên gói .lbpkg; tác giả, tên và phiên bản lấy từ manifest.',
       menuAction: 'Tải lên chợ ứng dụng',
       title: 'Tải plugin lên chợ ứng dụng',
       description:
@@ -2065,6 +2198,10 @@ const viVN = {
     updating: 'Đang cập nhật...',
     updateSuccess: 'Cập nhật plugin thành công',
     updateError: 'Cập nhật thất bại: ',
+    installedVersion: 'Phiên bản đã cài v{{version}}',
+    updateToVersion: 'Cập nhật lên v{{version}}',
+    confirmUpdatePluginVersion:
+      'Cập nhật plugin {{author}}/{{name}} từ v{{from}} lên v{{to}}?',
     saveConfigSuccessNormal: 'Lưu cấu hình thành công',
     saveConfigError: 'Lưu cấu hình thất bại: ',
     config: 'Cấu hình',
@@ -2100,6 +2237,25 @@ const viVN = {
     backToReleases: 'Quay lại danh sách phiên bản',
     backToRepoUrl: 'Quay lại URL kho lưu trữ',
     backToAssets: 'Quay lại danh sách tệp',
+    githubSourceRelease: 'Bản phát hành',
+    githubSourceBranch: 'Nhánh',
+    searchBranches: 'Tìm nhánh...',
+    defaultBranch: 'Mặc định',
+    noBranchesFound: 'Không có nhánh phù hợp',
+    branchesTruncated: 'Chỉ hiển thị 500 nhánh đầu tiên',
+    pluginDirectory: 'Thư mục plugin',
+    pluginDirectoryPlaceholder: 'Thư mục gốc kho',
+    pluginDirectoryHelp:
+      'Thư mục con chứa manifest.yaml, nếu plugin không nằm ở thư mục gốc',
+    downloadSourceDirect: 'Kết nối trực tiếp GitHub · {{latency}} ms',
+    downloadSourceMirror: 'Mirror {{host}} · {{latency}} ms',
+    releasesUnavailable:
+      'Máy chủ không truy cập được bản phát hành GitHub. Bạn có thể cài từ một nhánh.',
+    noReleasesUseBranch:
+      'Kho này không có bản phát hành. Bạn có thể cài từ một nhánh.',
+    useBranchInstead: 'Cài từ nhánh',
+    fetchBranchesError: 'Không tải được danh sách nhánh: ',
+    backToBranches: 'Quay lại danh sách nhánh',
     releaseTag: 'Tag: {{tag}}',
     releaseName: 'Tên: {{name}}',
     publishedAt: 'Ngày phát hành: {{date}}',
@@ -2130,6 +2286,12 @@ const viVN = {
       depsInfo: '{{count}} phụ thuộc cần cài đặt',
       depsProgress: 'Đã cài {{installed}}/{{total}} · Còn lại {{remaining}}',
       installComplete: 'Cài đặt plugin thành công',
+      followUp: {
+        nextSteps: 'Bước tiếp theo',
+        agents: 'Tạo Agent hoặc bộ xử lý plugin',
+        pipelines: 'Tạo pipeline',
+        knowledge: 'Tạo cơ sở tri thức',
+      },
       updateComplete: 'Đã cập nhật plugin thành công',
       installCompletePlugin: 'Đã cài đặt plugin thành công',
       installCompleteMCP: 'Đã cài đặt máy chủ MCP thành công',
@@ -2142,6 +2304,13 @@ const viVN = {
     },
   },
   market: {
+    typeTiles: {
+      all: 'Tất cả tiện ích',
+      allDesc: 'Plugin, MCP và kỹ năng',
+      pluginDesc: 'Nền tảng, công cụ, runner và hơn thế',
+      mcpDesc: 'Công cụ từ máy chủ MCP bên ngoài',
+      skillDesc: 'Dạy Agent cách làm việc mới',
+    },
     certifiedPlugin: 'Plugin được chứng nhận',
     certificationTooltip:
       'Phiên bản này đã vượt qua đánh giá về cách ly dữ liệu và khả năng tương thích với môi trường chạy dùng chung. Gói đã được ký.',
@@ -2786,6 +2955,21 @@ const viVN = {
     newVersionAvailable: 'Có phiên bản mới',
     viewUpdateGuide: 'Xem hướng dẫn cập nhật',
     noReleaseNotes: 'Không có ghi chú phát hành',
+    latestBadge: 'Mới nhất',
+    currentBadge: 'Hiện tại',
+    viewOnWebsite: 'Xem trên trang web',
+    whatsNewInCurrent: 'Có gì mới trong phiên bản này',
+    releasesIncluded: 'Gồm {{count}} phiên bản',
+    upToDate: 'Bạn đang dùng phiên bản mới nhất',
+    showOlderReleases: 'Hiển thị {{count}} phiên bản cũ hơn',
+    viewFullChangelog: 'Xem toàn bộ nhật ký thay đổi',
+    changeTypes: {
+      new: 'Mới',
+      improved: 'Cải thiện',
+      changed: 'Thay đổi',
+      fixed: 'Sửa lỗi',
+      security: 'Bảo mật',
+    },
   },
   account: {
     settings: 'Cài đặt tài khoản',
@@ -2901,6 +3085,32 @@ const viVN = {
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
+  dailyMessageQuota: {
+    planLimited: '{{count}} tin nhắn mỗi ngày',
+    planUnlimited: 'Không giới hạn tin nhắn mỗi ngày',
+    planHelp:
+      'Số tin nhắn bot có thể xử lý mỗi ngày, tính theo ngày UTC và đặt lại lúc 00:00 UTC. Chỉ tính tin nhắn bot thực sự xử lý. Khi hết hạn mức, tin nhắn mới trong ngày sẽ không được xử lý và người dùng sẽ được thông báo.',
+    title: 'Tin nhắn hôm nay',
+    usage: '{{used}} / {{limit}}',
+    remaining: 'Còn {{count}}',
+    resetsAt: 'Đặt lại {{time}}',
+    today: 'hôm nay {{time}}',
+    tomorrow: 'ngày mai {{time}}',
+    exhausted: 'Đã hết hạn mức hôm nay',
+    exhaustedHint: 'Tin nhắn mới tạm dừng đến {{time}}',
+    nearLimit: 'Sắp hết',
+    upgrade: 'Nâng cấp gói',
+    unlimited: 'Không giới hạn',
+    settingsTitle: 'Hạn mức tin nhắn mỗi ngày',
+    settingsDescription:
+      'Số tin nhắn bot có thể xử lý mỗi ngày, gồm cả trò chuyện gỡ lỗi. Tính theo ngày UTC; tin nhắn nhóm không kích hoạt bot sẽ không bị tính.',
+    unlimitedDescription: 'Gói của bạn không giới hạn tin nhắn mỗi ngày.',
+    errorTitle: 'Đã hết hạn mức tin nhắn hôm nay',
+    errorBody:
+      'Không gian làm việc này đã xử lý {{limit}} tin nhắn hôm nay nên tin nhắn này không được xử lý. Hạn mức sẽ đặt lại {{time}}.',
+    errorUpgrade: 'Nâng cấp để có hạn mức cao hơn',
+    unavailable: 'Hiện không lấy được mức sử dụng hôm nay',
+  },
   workspace: {
     dedicatedSpaceMembersHint:
       'Thành viên đăng nhập bằng tài khoản LangBot được mời từ trang Cloud trên LangBot Space. Lời mời bên dưới tạo một tài khoản mật khẩu riêng trên instance này.',
@@ -3009,7 +3219,22 @@ const viVN = {
       llm_calls: 'Lần gọi mô hình',
       tool_calls: 'Lần gọi công cụ',
       errors: 'Lỗi',
-      payload: 'Chi tiết',
+      payload: 'Dữ liệu gốc',
+      rawEvents: 'Sự kiện gốc ({{count}}{{more}})',
+      copyJson: 'Sao chép JSON',
+      diagnostics: 'Chẩn đoán',
+      diagnosticsHint:
+        'Chọn một mục để tải lệnh gọi mô hình, lệnh gọi công cụ, sự kiện, lần chạy liên quan hoặc ngữ cảnh hội thoại.',
+      chat: {
+        bot: 'Bot',
+        groupChat: 'Trò chuyện nhóm',
+        privateChat: 'Trò chuyện riêng',
+        source: 'Nguồn',
+        groupId: 'ID nhóm',
+        sender: 'Người gửi',
+        routeGroup: 'Định tuyến nhóm này',
+        routePerson: 'Định tuyến người dùng này',
+      },
       metadata: 'Thông tin kỹ thuật',
       loadMore: 'Tải thêm',
       noRecords: 'Chưa có bản ghi',
@@ -3396,6 +3621,7 @@ const viVN = {
     nav: {
       workspace: 'Workspace',
       operationTrace: 'Nhật ký',
+      alerts: 'Cảnh báo',
       models: 'Mô hình',
       api: 'API',
       storage: 'Lưu trữ',
@@ -3487,6 +3713,7 @@ const viVN = {
       skill: 'Kỹ năng',
       knowledge_base: 'Cơ sở tri thức',
       mcp_server: 'Máy chủ MCP',
+      content: 'Nội dung chia sẻ',
       runtime: 'Môi trường chạy',
       system: 'Hệ thống',
       resource: 'Tài nguyên',
@@ -3497,6 +3724,8 @@ const viVN = {
       error: 'Thất bại',
     },
     actions: {
+      content_publish: 'Chia sẻ nội dung lên Space',
+      plugin_publish: 'Xuất bản tiện ích lên Space',
       audit_log_view: 'Xem nhật ký thao tác',
       settings_update: 'Cập nhật cài đặt truy vết',
       settings_view: 'Xem cài đặt truy vết',
@@ -4045,6 +4274,220 @@ const viVN = {
     collapseDomain: 'Thu gọn',
     ungrantableRemoved:
       'Một số thao tác không được chọn hoặc đã bị gỡ do thiếu quyền.',
+  },
+  alerts: {
+    enableHint: 'Bật cảnh báo',
+    cta: {
+      title: 'Đăng nhập bằng tài khoản LangBot để gửi email cảnh báo miễn phí',
+      pointFree: 'Gửi chính thức miễn phí, 20 thư mỗi ngày',
+      pointNoSetup: 'Không cần cấu hình SMTP hay Resend',
+      pointPrivate: 'Chỉ gửi tới địa chỉ tài khoản LangBot của bạn',
+      selfHosted: 'Muốn dùng máy chủ email riêng?',
+      selfHostedLink: 'Cấu hình SMTP hoặc Resend trong config.yaml →',
+    },
+    title: 'Cảnh báo',
+    description:
+      'Thông báo qua email và webhook khi bot, Pipeline hoặc mô hình liên tục lỗi',
+    enabled: 'Bật cảnh báo',
+    firingCount: '{{count}} đang cảnh báo',
+    allClear: 'Mọi thứ ổn',
+    sendTest: 'Gửi thử',
+    saveBeforeTest: 'Hãy lưu thay đổi trước khi gửi thử',
+    saved: 'Đã lưu cài đặt cảnh báo',
+    saveFailed: 'Không lưu được cài đặt cảnh báo: {{error}}',
+    loadFailed: 'Không tải được cảnh báo: {{error}}',
+    testSent: 'Đã gửi cảnh báo thử tới {{count}} đích',
+    testPartial: 'Gửi thử có lỗi; xem nhật ký gửi',
+    testNoChannel: 'Chưa có kênh nào; hãy chọn kênh email hoặc webhook',
+    testFailed: 'Không gửi được cảnh báo thử: {{error}}',
+    disabledInstanceWide:
+      'Cảnh báo đã bị tắt cho phiên bản này (alerts.enabled trong config.yaml).',
+    emailTitle: 'Email',
+    emailDescription: 'Hiện gửi qua: {{channel}}',
+    recipients: 'Người nhận (chủ sở hữu và quản trị viên Workspace)',
+    noRecipients: 'Không có chủ sở hữu hoặc quản trị viên nào có email.',
+    extraRecipientsCloud: 'Người nhận bổ sung (tối đa 10)',
+    extraRecipients:
+      'Người nhận bổ sung (chỉ dịch vụ email của bạn, tối đa 10)',
+    spaceRecipientsHint:
+      'LangBot Space chỉ gửi cho quản trị viên đăng nhập bằng LangBot Space, tới địa chỉ Space của chính họ. Hạn mức miễn phí: 20 thư/ngày, 200 thư/tháng mỗi tài khoản.',
+    channel: {
+      auto: 'Tự động',
+      autoDescription:
+        'Dùng dịch vụ email của bạn nếu đã cấu hình, nếu không dùng LangBot Space',
+      autoDescriptionNoSpace: 'Dịch vụ email của bạn khi đã cấu hình',
+      autoDescriptionCloud: 'Gửi bởi LangBot Cloud',
+      cloud: 'LangBot Cloud',
+      cloudConfigured: 'Dịch vụ email chính thức',
+      cloudMissing: 'Dịch vụ email của Cloud tạm thời không khả dụng',
+      instance: 'Dịch vụ email của bạn',
+      instanceConfigured: 'Đã cấu hình {{provider}} trong config.yaml',
+      instanceMissing:
+        'Chưa cấu hình. Đặt mục email (SMTP hoặc Resend) trong config.yaml',
+      space: 'LangBot Space (chính thức)',
+      spaceAvailable: 'Gửi chính thức miễn phí tới {{accounts}}',
+      spaceMissing: 'Đăng nhập bằng tài khoản LangBot Space để sử dụng',
+      off: 'Tắt',
+      offDescription: 'Chỉ hiển thị tại đây và gửi webhook',
+      none: 'không gửi (không có kênh khả dụng)',
+      ready: 'Sẵn sàng',
+      unavailable: 'Không khả dụng',
+    },
+    rulesTitle: 'Quy tắc',
+    rulesDescription:
+      'Cảnh báo được mở khi số lỗi trong khoảng thời gian đạt ngưỡng.',
+    minutesWithin: 'phút, ít nhất',
+    failuresOrMore: 'lỗi',
+    notifyResolved: 'Thông báo khi cảnh báo phục hồi',
+    throttleHint:
+      'Mỗi cảnh báo được gửi một lần khi mở, sau đó nhắc lại sau 6 giờ, 12 giờ và mỗi 24 giờ nếu vẫn lỗi.',
+    rule: {
+      pipeline_failures: 'Lỗi Pipeline',
+      pipeline_failuresDescription: 'Lỗi xử lý trong một Pipeline',
+      model_failures: 'Lỗi gọi mô hình',
+      model_failuresDescription: 'Yêu cầu thất bại tới một mô hình',
+      bot_offline: 'Bot dừng do lỗi',
+      bot_offlineDescription: 'Cảnh báo ngay; phục hồi khi bot khởi động lại',
+    },
+    webhooksTitle: 'Webhook',
+    webhooksDescription:
+      'Webhook được chọn sẽ nhận sự kiện alert.fired, alert.reminder và alert.resolved.',
+    noWebhooks: 'Chưa có webhook. Thêm trong Cài đặt → API.',
+    webhookDisabled: 'Đã tắt',
+    incidentsTitle: 'Cảnh báo gần đây',
+    noIncidents: 'Chưa có cảnh báo.',
+    incidentMeta: '{{count}} lỗi · mở lúc {{time}}',
+    state: {
+      firing: 'Đang cảnh báo',
+      resolved: 'Đã phục hồi',
+    },
+    deliveriesTitle: 'Nhật ký gửi',
+    noDeliveries: 'Chưa gửi gì.',
+    kind: {
+      fired: 'Cảnh báo',
+      reminder: 'Nhắc lại',
+      resolved: 'Phục hồi',
+      test: 'Thử',
+    },
+    via: {
+      email: 'Email',
+      space: 'LangBot Space',
+      webhook: 'Webhook',
+    },
+    status: {
+      sent: 'Đã gửi',
+      failed: 'Thất bại',
+      rate_limited: 'Hết hạn mức',
+      skipped: 'Bỏ qua',
+    },
+  },
+  promptLibrary: {
+    emptyTitle: 'Mẫu đang được chuẩn bị ✨',
+    emptyBody: 'Bấm “Chia sẻ” cạnh prompt và trở thành người đầu tiên nhé!',
+    bindToFavorite: 'Liên kết tài khoản để yêu thích',
+    originalLanguage: 'bản gốc',
+    open: 'Thư viện prompt',
+    title: 'Thư viện prompt',
+    description:
+      'Tìm prompt đã được duyệt trên LangBot Space. Nhớ lưu cấu hình sau khi áp dụng.',
+    kindMessaging: 'Hội thoại',
+    kindAgent: 'Agent',
+    searchPlaceholder: 'Tìm theo tên, mô tả, thẻ hoặc nội dung',
+    tabAll: 'Tất cả',
+    tabFavorites: 'Yêu thích',
+    favoritesNeedAccount: 'Liên kết LangBot Account để dùng mục yêu thích',
+    otherKindHint:
+      'Bạn đang xem prompt {{kind}}, được viết cho mục đích khác. Hãy kiểm tra trước khi áp dụng.',
+    noFavorites: 'Chưa có prompt yêu thích',
+    empty: 'Không có prompt phù hợp',
+    loadFailed: 'Tải thư viện prompt thất bại',
+    favoriteFailed: 'Không thể cập nhật yêu thích',
+    applied: 'Đã áp dụng. Lưu để có hiệu lực.',
+    uses: '{{count}} lượt dùng',
+    favorite: 'Yêu thích',
+    variablesHint: 'Biến:',
+    append: 'Thêm vào prompt hiện tại',
+    replace: 'Thay prompt hiện tại',
+    replaceTitle: 'Thay prompt hiện tại?',
+    replaceDescription:
+      'Prompt hiện tại sẽ bị ghi đè (vẫn có thể hủy trước khi lưu).',
+    selectHint: 'Chọn một prompt bên trái để xem',
+  },
+  spaceShare: {
+    modeNew: 'Đăng mới',
+    modeUpdate: 'Cập nhật mục có sẵn ({{count}})',
+    pickExisting: 'Chọn mục cần cập nhật',
+    unlisted: 'đã ẩn',
+    identifierHint: 'Chữ thường, số, - hoặc _. Không đổi được sau khi đăng.',
+    bindAccount: 'Liên kết tài khoản LangBot',
+    autoTranslateNotice:
+      'Chỉ cần viết bằng một ngôn ngữ. Chúng tôi sẽ tự động dịch sang các ngôn ngữ khác sau khi tải lên.',
+    shareShort: 'Chia sẻ',
+    shareToSpace: 'Chia sẻ lên Space',
+    findingsBlockTitle:
+      'Phát hiện thông tin xác thực, hãy xóa trước khi chia sẻ',
+    findingsWarnTitle: 'Có dữ liệu cá nhân hoặc nội bộ',
+    submitFailed: 'Gửi thất bại',
+    submittedTitle: 'Đã gửi duyệt',
+    submittedAgentReview:
+      '{{id}} đang được duyệt tự động và sẽ xuất hiện trên LangBot Space khi được duyệt.',
+    submittedManualReview: '{{id}} đang chờ duyệt thủ công.',
+    viewProgress: 'Xem tiến độ trên LangBot Space',
+    needAccountTitle: 'Cần LangBot Account',
+    needAccount:
+      'Liên kết tài khoản LangBot để đóng góp. Nội dung sẽ được đăng dưới hồ sơ nhà sáng tạo của tài khoản đó trên LangBot Space.',
+    needCreatorTitle: 'Chưa có hồ sơ nhà sáng tạo',
+    needCreator:
+      'Thiết lập hồ sơ nhà sáng tạo trên LangBot Space để đóng góp. Chỉ cần làm một lần.',
+    openCreator: 'Thiết lập hồ sơ nhà sáng tạo',
+    acknowledgeWarnings: 'Tôi xác nhận thông tin này có thể công khai',
+    displayName: 'Tên hiển thị',
+    identifier: 'Định danh',
+    descriptionLabel: 'Mô tả',
+    changelog: 'Nhật ký thay đổi',
+    reviewNotice:
+      'Nội dung được duyệt trước khi công khai trên LangBot Space. Chia sẻ lại cùng tên sẽ tạo phiên bản mới.',
+    submit: 'Gửi duyệt',
+    promptTitle: 'Chia sẻ prompt lên LangBot Space',
+    promptDescriptionMessaging:
+      'Đăng dưới dạng prompt hội thoại để người khác dùng trong cấu hình pipeline.',
+    promptDescriptionAgent:
+      'Đăng dưới dạng prompt Agent để người khác dùng trong cấu hình Agent.',
+    detectedVariables: 'Biến phát hiện:',
+    skillTitle: 'Chia sẻ Skill lên LangBot Space',
+    skillDescription:
+      'Tải gói Skill hiện tại. Quá trình duyệt kiểm tra script và yêu cầu ra ngoài.',
+    packageFiles: 'Tệp sẽ gửi',
+    mcpTitle: 'Chia sẻ máy chủ MCP lên LangBot Space',
+    mcpDescription:
+      'Chỉ hỗ trợ MCP từ xa. Thông tin xác thực không được tải lên mà được thay bằng biến giữ chỗ.',
+    mcpPublishedConfig: 'Cấu hình sẽ đăng',
+    mcpToolsCount: 'Kèm {{count}} công cụ',
+    mcpRedactedTitle: 'Đã xóa {{count}} thông tin xác thực',
+    mcpRedactedHint:
+      'Người cài sẽ được yêu cầu nhập các giá trị này. Đặt nhãn dễ hiểu:',
+    mcpInputLabelPlaceholder: 'Nhãn (mặc định: {{label}})',
+    mcpNoCredentials:
+      'Không có thông tin xác thực; cấu hình được đăng nguyên trạng.',
+    mcpNeedsConnection:
+      'Hãy kết nối thành công trước; danh sách công cụ sẽ được đăng kèm',
+    mcpFillInputsTitle: 'Điền thông tin xác thực trước khi bật',
+    mcpFillInputs:
+      'MCP cộng đồng này cần giá trị của bạn cho {{names}}. Thay thế, lưu rồi bật.',
+    finding: {
+      openai_key: 'Khóa OpenAI',
+      anthropic_key: 'Khóa Anthropic',
+      github_token: 'Token GitHub',
+      slack_token: 'Token Slack',
+      aws_access_key: 'Khóa AWS',
+      google_api_key: 'Khóa Google API',
+      private_key: 'Khóa riêng',
+      jwt: 'Token JWT',
+      langbot_key: 'Khóa LangBot',
+      email: 'Địa chỉ email',
+      phone: 'Số điện thoại',
+      private_url: 'URL nội bộ',
+    },
   },
 };
 export default viVN;

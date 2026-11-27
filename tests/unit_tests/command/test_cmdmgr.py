@@ -7,6 +7,7 @@ Tests CommandManager initialization, execute, and privilege handling.
 from __future__ import annotations
 
 import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 from langbot.pkg.command import operator
@@ -488,3 +489,62 @@ class TestEmptyAndEdgeInputs:
         # Should yield CommandNotFoundError (no such command registered)
         assert len(results) == 1
         assert results[0].error is not None
+
+
+class TestResolvePrivilegeIdentity:
+    """Bot admins are people; group IDs must never grant privilege."""
+
+    def _query(self, **overrides):
+        values = {
+            'workspace_uuid': 'ws-1',
+            'bot_uuid': 'bot-1',
+            'sender_id': 'user-1',
+            'launcher_type': provider_session.LauncherTypes.GROUP,
+            'launcher_id': 'group-1',
+        }
+        values.update(overrides)
+        return SimpleNamespace(**values)
+
+    @pytest.mark.asyncio
+    async def test_group_command_resolves_admin_by_sender_id(self):
+        app = FakeApp()
+        result = Mock()
+        result.first.return_value = object()
+        app.persistence_mgr.execute_async = AsyncMock(return_value=result)
+
+        privilege = await CommandManager(app).resolve_privilege(self._query())
+
+        assert privilege == 2
+        statement = app.persistence_mgr.execute_async.await_args.args[0]
+        values = list(statement.compile().params.values())
+        assert 'person' in values
+        assert 'user-1' in values
+        assert 'group-1' not in values
+
+    @pytest.mark.asyncio
+    async def test_group_without_sender_is_not_admin(self):
+        app = FakeApp()
+        privilege = await CommandManager(app).resolve_privilege(self._query(sender_id=None))
+
+        assert privilege == 1
+        app.persistence_mgr.execute_async.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_private_chat_falls_back_to_launcher_id(self):
+        app = FakeApp()
+        result = Mock()
+        result.first.return_value = object()
+        app.persistence_mgr.execute_async = AsyncMock(return_value=result)
+
+        privilege = await CommandManager(app).resolve_privilege(
+            self._query(
+                sender_id=None,
+                launcher_type=provider_session.LauncherTypes.PERSON,
+                launcher_id='private-user',
+            )
+        )
+
+        assert privilege == 2
+        statement = app.persistence_mgr.execute_async.await_args.args[0]
+        values = list(statement.compile().params.values())
+        assert 'private-user' in values

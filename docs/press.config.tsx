@@ -14,6 +14,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { LocalePreferenceProvider } from "./src/locale-preference-provider";
 
+const RECIPE_TITLE_FILLER = /\b(?:Connect|to|Build|a|AI|Bot|with)\b|^把|接入|^用 |搭建|机器人|を|に接続する|で|の|ボットを作る/g;
+
 const SITE_URL = "https://langbot.app/docs";
 const LOCALES = ["en", "zh", "ja"] as const;
 const MINTLIFY_LOCALE = { en: "en", zh: "cn", ja: "jp" } as const;
@@ -433,7 +435,10 @@ export default defineConfig({
         // opening content so search remains useful without exceeding Pages'
         // hard 25 MiB per-file limit. OpenAPI endpoints intentionally omit the
         // schema body, which is duplicated across every generated operation.
-        const isOpenAPI = page.url.includes("/api-reference/");
+        // Generated integration recipes (/recipes/) are many short, similar
+        // pages: index only their title and description, like OpenAPI pages.
+        const isRecipe = page.url.includes("/recipes/");
+        const isOpenAPI = page.url.includes("/api-reference/") || isRecipe;
         const headings = isOpenAPI
           ? []
           : sourceStructuredData.headings.slice(0, 4).map((heading) => ({
@@ -447,10 +452,15 @@ export default defineConfig({
           headings,
           contents: [{
             heading: undefined,
-            content: [title, description, ...openingContent, page.url].filter(Boolean).join(" "),
+            // Recipe titles share template words ("Connect … to …"); indexing
+            // them would map every recipe under each shared token and push
+            // the search file past the Pages limit. Keep only the names.
+            content: isRecipe
+              ? String(title).replace(RECIPE_TITLE_FILLER, " ").replace(/\s+/g, " ").trim()
+              : [title, description, ...openingContent, page.url].filter(Boolean).join(" "),
           }],
         };
-        return { id: page.url, title, description, url: page.url, structuredData };
+        return { id: page.url, title, description: isRecipe ? undefined : description, url: page.url, structuredData };
       },
     }),
     mintlifyPlugin({ path: "content/fumapress-docs.json", features: { navbar: false } }),

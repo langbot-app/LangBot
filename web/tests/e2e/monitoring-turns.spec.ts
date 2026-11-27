@@ -622,29 +622,40 @@ test.describe('monitoring conversation turn grouping', () => {
       .filter({ hasText: 'Need deployment plan' })
       .click();
     const sheet = page.getByRole('dialog');
-    await expect(sheet.getByText('Event / input (1)')).toBeVisible();
+    await expect(
+      sheet.getByRole('heading', { name: /Event \/ input\s*1$/ }),
+    ).toBeVisible();
     await expect(
       sheet.getByText('Need deployment plan', { exact: true }).first(),
     ).toBeVisible();
-    await expect(sheet.getByText('Delivery records (3)')).toBeVisible();
+    await expect(
+      sheet.getByRole('heading', { name: /Delivery records\s*3$/ }),
+    ).toBeVisible();
     await expect(
       sheet.getByText('Final answer: deployment plan ready').first(),
     ).toBeVisible();
-    await sheet.getByText('Model calls (3)', { exact: true }).click();
+    await sheet.getByRole('tab', { name: /^Model calls/ }).click();
     await expect(sheet.getByText('gpt-5.5').first()).toBeVisible();
-    await sheet.getByText('Tool calls (2)', { exact: true }).click();
+    await expect(
+      sheet.getByRole('tab', { name: /^Model calls\s*3$/ }),
+    ).toBeVisible();
+    await sheet.getByRole('tab', { name: /^Tool calls/ }).click();
     await expect(
       sheet.locator('span.break-all').filter({ hasText: /^repo_search$/ }),
     ).toBeVisible();
+    // Errors are always expanded above the trigger, not behind a disclosure.
     await expect(
-      sheet.getByText('Errors (1)', { exact: true }).locator('..'),
-    ).toHaveAttribute('open', '');
+      sheet.getByRole('heading', { name: /^Errors\s*1$/ }),
+    ).toBeVisible();
     await expect(
       sheet.getByText('Tool retry failed').filter({ visible: true }).first(),
     ).toBeVisible();
-    await sheet.getByText('Conversation context (6)', { exact: true }).click();
+    await sheet.getByRole('tab', { name: /^Conversation context/ }).click();
     await expect(
       sheet.getByText('Rollback plan ready').filter({ visible: true }),
+    ).toBeVisible();
+    await expect(
+      sheet.getByRole('tab', { name: /^Conversation context\s*6$/ }),
     ).toBeVisible();
   });
 });

@@ -6,17 +6,17 @@ import typing
 from .. import stage, entities
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 import langbot_plugin.api.entities.events as events
-import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 from ...pipeline.pool import get_query_execution_context
 
 from ...agent.runner.descriptor import RunnerDescriptor
 from ...agent.runner.config_resolver import RunnerConfigResolver
-from ...agent.runner import config_schema
+from ...agent.runner import config_schema, input_media
 from ...agent.runner.resource_policy import ResourcePolicyProjector
 from ...provider.tools.toolmgr import ToolManager
 from ..extension_preferences import normalize_extension_preferences
+from .prompt_context import PREPROCESSED_SYSTEM_CONTEXT, added_system_context, system_messages
 
 
 DEFAULT_PROMPT_CONFIG = [
@@ -267,7 +267,7 @@ class PreProcessor(stage.PipelineStage):
         # Keep per-request identity separate from cached conversation state.
         query.session = session.model_copy(update={'sender_id': query.sender_id, 'bot_uuid': query.bot_uuid})
         query.session.inherit_execution_scope(get_query_execution_context(query))
-        query.prompt = conversation.prompt.copy()
+        query.prompt = conversation.prompt.copy(deep=True)
         query.messages = await self._resolve_history_messages(
             runner_id,
             conversation,
@@ -343,60 +343,15 @@ class PreProcessor(stage.PipelineStage):
         if not keep_image_inputs:
             self._strip_images_from_history(query)
 
-        content_list: list[provider_message.ContentElement] = []
-
-        plain_text = ''
         quote_msg = query.pipeline_config['trigger'].get('misc', {}).get('combine-quote-message', False)
-
-        for me in query.message_chain:
-            if isinstance(me, platform_message.Plain):
-                content_list.append(provider_message.ContentElement.from_text(me.text))
-                plain_text += me.text
-            elif isinstance(me, platform_message.Image):
-                if keep_image_inputs:
-                    if me.base64:
-                        content_list.append(provider_message.ContentElement.from_image_base64(me.base64))
-                    elif me.url:
-                        content_list.append(provider_message.ContentElement.from_image_url(me.url))
-                else:
-                    content_list.append(provider_message.ContentElement.from_text('[Image]'))
-                    plain_text += '[Image]'
-            elif isinstance(me, platform_message.Voice):
-                # Convert voice input into file content for downstream model upload.
-                if me.base64:
-                    content_list.append(provider_message.ContentElement.from_file_base64(me.base64, 'voice.silk'))
-                elif me.url:
-                    content_list.append(provider_message.ContentElement.from_file_url(me.url, 'voice'))
-            elif isinstance(me, platform_message.File):
-                if me.base64:
-                    content_list.append(provider_message.ContentElement.from_file_base64(me.base64, me.name))
-                elif me.url:
-                    content_list.append(provider_message.ContentElement.from_file_url(me.url, me.name))
-            elif isinstance(me, platform_message.Quote) and quote_msg:
-                for msg in me.origin:
-                    if isinstance(msg, platform_message.Plain):
-                        content_list.append(provider_message.ContentElement.from_text(msg.text))
-                    elif isinstance(msg, platform_message.Image):
-                        if keep_image_inputs:
-                            if msg.base64:
-                                content_list.append(provider_message.ContentElement.from_image_base64(msg.base64))
-                            elif msg.url:
-                                content_list.append(provider_message.ContentElement.from_image_url(msg.url))
-                        else:
-                            content_list.append(provider_message.ContentElement.from_text('[Image]'))
-                            plain_text += '[Image]'
-                    elif isinstance(msg, platform_message.File):
-                        if msg.base64:
-                            content_list.append(provider_message.ContentElement.from_file_base64(msg.base64, msg.name))
-                        elif msg.url:
-                            content_list.append(provider_message.ContentElement.from_file_url(msg.url, msg.name))
-                    elif isinstance(msg, platform_message.Voice):
-                        if msg.base64:
-                            content_list.append(
-                                provider_message.ContentElement.from_file_base64(msg.base64, 'voice.silk')
-                            )
-                        elif msg.url:
-                            content_list.append(provider_message.ContentElement.from_file_url(msg.url, 'voice'))
+        rendered = input_media.render_input(
+            query.message_chain,
+            include_quotes=bool(quote_msg),
+        )
+        # Runner attachments and Box imports address exactly the media rendered here.
+        input_media.remember_media(query, rendered.media)
+        content_list = rendered.contents
+        plain_text = rendered.plain_text
 
         query.variables['user_message_text'] = plain_text
 
@@ -404,10 +359,11 @@ class PreProcessor(stage.PipelineStage):
 
         # Extract configured KB UUIDs into query variables so PromptPreProcessing
         # plugins can still adjust the authorized retrieval set before run_runner.
-        query.variables['_knowledge_base_uuids'] = config_schema.extract_knowledge_base_uuids(
-            descriptor,
-            runner_config,
-        )
+        configured_kb_uuids = config_schema.extract_knowledge_base_uuids(descriptor, runner_config)
+        query.variables['_knowledge_base_uuids'] = configured_kb_uuids
+        # Management commands need the Pipeline binding even when a prompt
+        # hook narrows the effective retrieval list. Plugins cannot set _host_ vars.
+        query.variables['_host_configured_knowledge_base_uuids'] = configured_kb_uuids.copy()
         # Telemetry: the knowledge bases this lane may retrieve from, plus the
         # schema-declared selector fields that selected them.
         try:
@@ -423,6 +379,7 @@ class PreProcessor(stage.PipelineStage):
 
         # Emit PromptPreProcessing before the runner receives the query.
 
+        original_system_messages = system_messages(query.messages)
         event = events.PromptPreProcessing(
             session_name=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
             default_prompt=query.prompt.messages,
@@ -436,6 +393,7 @@ class PreProcessor(stage.PipelineStage):
 
         query.prompt.messages = event_ctx.event.default_prompt
         query.messages = event_ctx.event.prompt
+        query.variables[PREPROCESSED_SYSTEM_CONTEXT] = added_system_context(original_system_messages, query.messages)
 
         if getattr(self.ap, 'skill_mgr', None) is not None:
             skill_execution_context = get_query_execution_context(query)

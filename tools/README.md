@@ -1,6 +1,19 @@
 # LangBot regression tools
 
+Public-dataset quality evaluation uses the [evaluation workflow](evaluation/README.md).
+It prepares pinned question plans, executes installed Pipeline arms, records real
+model inputs, and reports paired answer and evidence metrics.
+
 ## Layout and entrypoints
+
+Daily, API and persistence jobs attach `log-anomalies.md` and `log-anomalies.json` alongside the service logs. Findings are informational, not gate failures. To replay an artifact:
+
+```bash
+uv run python -m tools.entrypoints.log_scan --input daily/{core,runtime,box,services}.log \
+  --allowlist tools/log_scan_allowlist.yaml --output report
+```
+
+Pass `--baseline previous1 previous2` with directories containing earlier JSON reports from the same workload to check warning growth. Without baselines, allowlist limits still apply. For a WARN-only replay, use `--input 'data/logs/*.log.wf'` instead of the full logs to avoid double counting.
 
 Run module entrypoints from the repository root:
 
@@ -18,6 +31,13 @@ The directory boundaries are intentional:
 - `tests/` contains the tool and harness tests. Run them with `python -m unittest discover -s tools/tests -p 'test_*.py' -v`.
 
 Imports use the `tools.entrypoints` and `tools.regression` package paths. Keep commands rooted at the repository so profile and fixture paths resolve consistently.
+
+Common workload primitives live in `regression/http_bot.py` (group requests
+and signing), `regression/run_ledger.py` (read-only RunLedger evidence),
+`regression/resource_cleanup.py` (owned-resource journals and cleanup checks),
+and `regression/evidence.py` (assertion receipts). Import these from runners and
+cases rather than routing through an executable entrypoint. Keep
+scenario-specific expected outcomes and workflows with their scenarios.
 
 Run the deterministic OpenAI Chat Completions endpoint with Python 3.11+, without
 API credentials or third-party dependencies:
@@ -100,8 +120,9 @@ python3 -m tools.entrypoints.regression_traffic \
 
 Add `--container CONTAINER_ID` for Docker CPU/memory/PID statistics. The executing
 account must be able to inspect the selected process trees and Docker daemon.
-Resource collection reuses `scripts/cloud_runtime_soak.py`; it does not require
-cgroup v2. PID resource totals include descendants, so select disjoint trees.
+Traffic and cloud soak share the process and endpoint probes in
+`regression/observations.py`. Traffic collection works without cgroup v2. PID resource totals
+include descendants, so select disjoint trees.
 
 The result directory contains `requests.jsonl`, `resources.jsonl`, `progress.json`,
 and `summary.json`. The requested rate is a target: four workers bound concurrency,
@@ -110,10 +131,76 @@ recorded without retry. A command fails its business check if it returns an erro
 or omits the expected response. Health/resource collection failures also make the
 run fail. API key values are redacted from recorded CLI output.
 
+`--max-requests 96` makes `--duration` the completion budget for all 96 requests,
+including enabled per-request ledger verification. Missing, failed, or late
+requests fail the run; in-flight requests are drained without retry. Cooldown
+and final ledger closeout still run afterward and retain their checks.
+`request_limit` records the limit; `planned_requests` and `delivery_ratio` use
+this fixed count. Omit the option to retain time-based load.
+
 Latency percentiles include the entire CLI invocation and use successful
 requests only. Achieved request rate is `requests / load_elapsed_seconds`.
 `health_samples` counts sampling rounds; `health_failures` counts rounds with
 any failed health probe or process/container resource read.
+
+## Fixed-arrival load and capacity exploration
+
+Load phases can set `arrival_mode: "open-loop"` and a positive `queue_capacity`
+(default 128). Arrivals follow a fixed schedule throughout `duration_seconds`,
+even when responses slow down. A bounded client queue retains waiting arrivals;
+workers still bound in-flight requests, and each group still executes one turn
+at a time. Omit `arrival_mode` to keep the existing paced behavior.
+`max_requests` is available only in paced mode.
+
+Every planned arrival is recorded in `arrivals.jsonl` with an `arrival_id`,
+scheduled time and final outcome. The summary reconciles scheduled arrivals
+against dispatched, dropped, expired and blocked arrivals. A full client queue
+drops an arrival explicitly. The load deadline expires waiting arrivals and
+drains only requests already dispatched. A failed group blocks its later
+arrivals because their conversation history is uncertain. Every undispatched
+arrival makes the run fail, including when `performance_mode` is `observe`.
+
+`requests.jsonl` contains actual requests with their scheduling, dispatch and
+completion times. Each case reports `arrival_p95_seconds` across all dispatched
+outcomes, including ledger verification, alongside the existing successful
+response-time percentiles. `max_arrival_p95_seconds` sets per-case thresholds
+for open-loop phases. Inspect arrival counts and failures together with latency;
+the percentile population excludes arrivals that never reached the service.
+
+The client queue and the Core/Box health queues have separate observations.
+Worker limits and serialized groups can constrain dispatch. Capacity results
+must state those limits, the workload mix, mock delays and the host resource
+envelope. A saturated run remains failed evidence of that tested configuration.
+A later low-rate phase verifies whether service queues and resources recover.
+
+Use the source-stack entrypoint with the checked-in load overrides:
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_ci \
+  --suite endurance --plugins plugins --lbctl /path/to/lbctl \
+  --load-profile tools/profiles/arrival-ramp.json --budget-seconds 900 \
+  --output .qa/arrival-ramp-001
+
+uv run --no-sync python -m tools.entrypoints.regression_ci \
+  --suite endurance --plugins plugins --lbctl /path/to/lbctl \
+  --load-profile tools/profiles/arrival-soak.json --budget-seconds 1200 \
+  --output .qa/arrival-soak-001
+```
+
+`--load-profile` accepts `phases`, `thresholds`, `resource_limits`,
+`performance_mode` and `box_command_delay_seconds`, validated before service
+creation. The Box command delay must be finite and nonnegative, and defaults to
+one second per command. The existing chat/Box/RAG
+resources, plugin installation, run-ledger verification and independent mixed
+evidence checks remain part of the source-stack run. `--budget-seconds` bounds
+execution after preparation. Both options apply to `--suite endurance`.
+The ramp uses 0.8, 4 and 0.8 aggregate arrivals/second; the soak runs 15 minutes at
+0.8 arrivals/second with a four-second delay in each Box command, so different
+Boxes execute concurrently at that arrival rate. The workload fingerprint
+includes the actual generated mock scenario file. Their latency limits are
+exploratory test settings and need
+calibration against measured workloads. Keep the existing Docker-daemon
+prerequisites of the source-stack runner.
 
 ## Configured regression suites
 
@@ -143,6 +230,10 @@ python3 -m tools.entrypoints.regression_suite run \
 The output directory for `run` must be new. CLI options `--duration`, `--rps`, and
 `--workers` override those values in every phase. No additional Python dependency
 is needed.
+
+A load phase may set `max_requests` to a positive integer. It uses the same
+completion-budget semantics as `regression_traffic --max-requests`; otherwise
+the phase keeps its time-based behavior.
 
 The profile controls:
 
@@ -424,12 +515,21 @@ and exact installation/readiness readback. Build logs are preserved alongside it
 The published route remains available when `--plugins` is omitted; see
 [published plugin preparation and replay](published-plugins.md).
 
+The same job also runs `--required-suite shared_provider_concurrency` as a separate
+step, outside the smoke execution budget. Eight conversations each complete two
+turns through real Core, SDK Runtime, LocalAgent and one shared LiteLLM requester;
+only remote generation uses a loopback mock. The contract checks overlapping token
+counts, conversation history and persisted run completion, rejects token-count
+fallback, and always uploads its JUnit result.
+
 Dependency installation, service startup, sandbox image download and plugin
-installation are preparation. After readiness, the gate allows **60 seconds total**
-for API resource creation, 28 cases / 37 requests (two turns per group), verdict
-checks and API cleanup. A missing verdict, failed check or timeout fails the gate.
-The ordinary expanded profile keeps three turns / 43 requests. The entire cold
-workflow takes longer than a minute; it has a separate 15-minute timeout.
+installation are preparation. The PR job uses `--suite scenarios --scenario-groups
+plugins`, including EssentialCommands and FAQManager, under a 300-second execution
+guard. Its required status name remains `Core smoke (60s)` for branch-rule
+compatibility. The base `--suite smoke` retains its 60-second budget for 28 cases /
+37 requests (two turns per group), verdict checks and API cleanup. A missing
+verdict, failed check or timeout fails the gate. The entire cold workflow,
+including the separate concurrency contract, has a 15-minute timeout.
 
 On an existing prepared stack, use:
 
@@ -454,97 +554,101 @@ The existing required check names remain `Regression tools` and `Core smoke (60s
 soak tests use the existing Suite and Job entry points with separately calibrated
 latency, throughput and resource budgets; the one-minute smoke does not replace them.
 
-## Daily regression
+For the optional JSON-configurable transaction mix used for local smoke,
+pressure and soak tests, see [Configurable mixload](mixload.md). It does
+not change the stock Daily job described below.
 
-`Daily Endurance` runs independently of PR checks at 19:23 UTC (03:23
-Asia/Shanghai) on the default branch. GitHub may delay scheduled starts. It also
-supports **Run workflow** with a selected branch. The schedule becomes active
-only after the workflow is merged into the default branch; it is not a required
-merge check.
+## Daily mixed workload and weekly contracts
 
-The workflow reuses the disposable smoke stack and builds plugins from this checkout.
-`--suite daily` consumes 46 base cases plus the selected local groups, requires its first pass, then
-repeats ordered cases within one **1800-second** window. The clock starts before
-creating scenario resources and includes a 120-second reserve for drain/API
-cleanup and a 60-second cooldown. Service and plugin preparation precede this
-clock. A separate 1860-second process guard allows startup and final reporting;
-it does not grant extra scenario time. The whole job retains its 45-minute limit.
+`Daily Endurance` keeps one owned Core/Runtime/Box deployment per run. The
+19:23 UTC schedule (03:23 Asia/Shanghai) runs the mixed business load every day,
+so each day produces comparable throughput, latency and resource observations.
+Manual dispatch can additionally select `workload: contracts` for a finite
+contract pass. The job is independent of PR merge checks.
 
-The scheduled job enables all local groups (including `plugins`) and the optional one-time restart
-checks. Manual dispatch exposes both switches. `--scenario-groups` accepts a
-space-separated selection; supplying the flag with no values runs only base
-cases. `scenarios` and `daily` enable all three groups when the flag is omitted.
+The mixed mode uses the existing `endurance` profile and harness:
 
-| Group | Additional behavior |
+- Three signed HTTP Bots route chat, Box-tool and RAG traffic to separate Pipelines.
+  LocalAgent, LangRAG and GeneralParsers are built from this checkout and installed
+  once. Three independent loopback generation servers back distinct Providers;
+  embedding uses its own Provider and the main mock endpoint, and is not counted
+  as an additional generation backend.
+- The first phase runs 8 groups, 3 rotating members per group, 2 target RPS and
+  8 workers for 180 seconds, followed by 30 seconds of cooldown. The second keeps
+  those conversations and expands to 16 groups, 4 target RPS and 12 workers for
+  300 seconds, followed by 60 seconds of cooldown. The `2/1/1` chat/Box/RAG mix
+  creates at least two Box groups in each phase. Groups are serial internally
+  and concurrent across groups; workers bound in-flight requests rather than
+  generating an unbounded client backlog.
+- Box reuse remains scoped to each group, not to the whole Pipeline. Every exec
+  reports its real hostname. Acceptance checks observed Provider request tokens,
+  group history, source Bots, distinct reused Box identities and overlapping
+  persisted Box tool-event windows. Configured group/worker counts alone cannot
+  establish concurrent execution. Event windows include transport and scheduling,
+  and are not CPU timings.
+
+The configured phases total 570 seconds within the 900-second execution guard;
+service, image and plugin preparation precede that guard. The whole GitHub job
+retains its 45-minute timeout. Edit the existing `groups.json`/`endurance.json`
+profiles for prepared-stack load settings; the generic Suite also accepts
+`--groups`, `--members-per-group`, `--rps`, `--workers` and `--duration` overrides.
+The source CI entrypoint uses the committed endurance profile.
+
+`gate/mixed.json` records the independent mixed-workload verdict and observed
+counts. Each phase retains requests, group membership, HTTP overlap,
+AgentRun reconciliation, live container/session counts and sampled queue
+load/cooldown observations. Missing metrics remain `unknown` and leave mixed acceptance incomplete. Each
+phase must observe all four queue metrics and a zero queue throughout its final
+cooldown window. Every generation Provider must overlap another Provider in
+recorded service time; this does not require a three-way intersection. A sampled
+live Box session or container does not by itself prove busy execution. Business, health,
+resource and mixed-evidence failures still fail the job. Throughput/P95 remain
+observations on hosted runners; no performance threshold is calibrated or changed.
+
+The manual contract mode runs `--suite scenarios` once, under the existing
+300-second execution guard, with the existing optional restart checks. It retains
+the base cases and these selected local groups:
+
+| Group | Behavior retained by the finite contract pass |
 |---|---|
 | `faults` | Cancel/timeout cleanup, model retry side effects, partial stream failure, exhausted fallback, Box path rejection |
 | `resources` | API-key revocation, direct Agent execution, document deletion with a surviving retrieval control |
-| `plugins` | EssentialCommands version command without model/AgentRun execution; FAQManager Page API CRUD and search freshness |
+| `plugins` | EssentialCommands without model/AgentRun execution; FAQManager Page API CRUD and search freshness |
 | `lifecycle` | Signed HTTP callback 5xx retry identity and subsequent delivery |
 
-For example, select resource and callback cases with
-`--suite scenarios --scenario-groups resources lifecycle`. Add
-`--restart-services` to check Core history after restart and a Runtime restart
-during an active request. These checks run only against services owned by this
-disposable runner, once before the fixed-PID resource sampler starts. Their
-elapsed time is deducted from both scenario and outer process budgets; the
-resource baseline never joins measurements from old and new PIDs. Failed restart
-checks retain their own evidence and fail the run before repeated traffic starts.
+Manual `scenario_groups`, `extra_plugins` and `restart_services` inputs apply only
+to contract mode. By default all four groups, EssentialCommands/FAQManager and
+one-time Core/Runtime restart checks are enabled. The short base business pass
+provides the fixtures for these assertions; it is no longer repeatedly traversed
+for 30 minutes. Restart receipts, exact terminal run IDs, coverage and owned API
+cleanup remain part of acceptance. Disabled groups are unexecuted, not passes.
 
-Credential revocation and restart diagnostics use an ephemeral user created
-through the normal initialization/login APIs in the runner's new private database.
-Generic Suite callers must provide `LANGBOT_QA_USER_TOKEN` for credential tests;
-missing prerequisites are skipped and produce an incomplete result. Disabled
-groups remain unexecuted in coverage, and a saved profile cannot execute a case
-whose group is disabled. Expected failed/cancelled/timeout Runs are recorded by
-exact ID and status; extra, missing or nonterminal Runs still fail reconciliation.
+This rotation reduces repeated deployments and business traffic without deleting
+independent assertions. Mixed success does not replace API contracts, live Dify/n8n,
+Skill persistence, upgrade/migration or backend-specific acceptance. Those retain
+their own inputs and execution requirements. Both modes use one Workspace and do
+not establish cross-Workspace isolation or real model/provider capacity.
 
-Fault cases reuse one Box per case and suite, with unique files per invocation.
-This bounds normal sandbox growth while preserving cancellation side-effect
-checks. The callback receiver uses the standard library and loopback; Core and
-the runner must share a network namespace. Document deletion and callback retry
-identity have separate narrow contracts: they do not establish document update
-semantics or exactly-once effects at an arbitrary callback receiver. Plugin
-upgrade rollback and cases needing additional environments remain explicit gaps.
-
-The daily profile uses the existing endurance resource allowances with a
-180-second warmup before baseline sampling. Each pipeline that enables Box uses
-one stable reuse key unique to this CI run, so conversations created by repeated
-cycles reuse that pipeline's sandbox. This measures repeated tool use; it does not test
-cross-group Box file isolation. The profile uses one Workspace and does not
-establish isolation between tenants. Conversation history and AgentRuns still
-accumulate and are reported. Resource excesses remain failures.
-
-Throughput and full-step P95 are observations. Business assertions, unknown
-results, health failures, incomplete evidence and resource limits determine the
-verdict. Summaries include first-pass completion, cycles, plugin installation
-readback, final ledger reconciliation and coverage. Manifests, case results,
-coverage, cycles, execution stages, resource samples and service logs are retained
-for 30 days, including failures. Hosted runners do not provide a controlled
-performance baseline. No automatic comparison between runs is enabled.
-
-To run the same entrypoint on a disposable Linux host with an idle Docker daemon:
+Run either mode on a disposable Linux host with an idle Docker daemon:
 
 ```sh
-uv run --no-sync python -m tools.entrypoints.regression_ci --suite daily --restart-services \
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite endurance \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/mixed-001
+
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite scenarios \
+  --scenario-groups faults resources lifecycle plugins --restart-services \
   --lbctl /path/to/lbctl --plugins plugins \
-  --extra-plugins misc/EssentialCommands misc/FAQManager --output .qa/daily-001
+  --extra-plugins misc/EssentialCommands misc/FAQManager --output .qa/contracts-001
 ```
 
-`--suite smoke` retains the 60-second gate. `--suite scenarios` runs the shared
-expanded profile once under a 300-second guard. `--suite endurance` retains the
-separate ten-minute load profile under a 900-second guard; its CI entry point also
-reports throughput/P95 without applying their thresholds. All suites use
-published plugins when `--plugins` is omitted. Both workflows explicitly select
-`--plugins plugins` so source changes are tested in the same PR. Daily additionally
-selects `misc/EssentialCommands misc/FAQManager`; manual dispatch can change the
-space-separated `extra_plugins` list or leave it empty. `--extra-plugins` requires
-source mode and accepts categorized plugin paths, without removing the three base
-plugins. Missing or incompatible packages fail preparation, with no silent fallback.
-Existing conversation Pipelines allow only the base plugins; plugin-specific cases
-bind their own extensions to avoid changing unrelated prompts/tools. The suite attempts owned API cleanup
-even after failures. The CI owner then stops its service processes and removes
-its Box containers; a process guard timeout can interrupt API cleanup.
+The older `--suite daily` repeated-scenario entry remains available for explicit
+reproduction, but the schedule no longer selects it. `smoke` and `scenarios`
+retain their 60- and 300-second guards. Source mode installs the selected checkout's
+plugins; omitting `--plugins` retains the published package route. Missing or
+incompatible packages fail preparation. All runs preserve ownership-scoped cleanup
+and stop only the processes and sandboxes belonging to that run. GitHub retains
+mode, verdicts, phase records, mock requests and service logs for 30 days,
+including failures; `.private/` credentials are not uploaded.
 
 ## Durable state lifecycle job
 
@@ -565,33 +669,32 @@ retrieval empty; normal Suite cleanup checks the owned configuration resources.
 The business chain has a 270-second budget and a 30-second cleanup reserve;
 plugin installation and initial service startup are outside this budget.
 `gate/suite/cases.json` retains assertions, process replacement receipts, exact
-HTTP statuses and retrieved content. A missing phase or failed assertion fails
+HTTP statuses and retrieved content. Authenticated monitoring requests read back
+each exact completed run and its conversation ID, and verify selected historical
+runs after subsequent process replacements. A missing phase or failed assertion fails
 the job. The job is opt-in and does not change Smoke or the daily schedule. It
 checks graceful process restart durability, not abrupt power loss or migrations.
 
-## Daily API contract job
+## Shared PR and Daily API contract jobs
 
-`daily-endurance.yml` runs API contracts alongside the 30-minute endurance job
-on separate runners, at the existing daily schedule and on manual dispatch.
-The API job uses the GitHub run ID as its shuffle seed, so each daily run explores
-a different order and a rerun keeps the same seed. It has a 15-minute job timeout,
-including preparation, and is not a required PR check. Its summary and separate
-`daily-api-<run_id>-<attempt>` artifact retain failures, order, coverage and cleanup
-evidence for 30 days.
+The PR API job runs one fixed-order pass of all seven chains on related Core
+changes. Daily runs the same chains in fixed order, then in shuffled order
+(14 case rows), using the GitHub run ID as the shuffle seed. Requests within
+each chain keep their create/read/update/delete order. The seed replays chain
+ordering; resource names and credentials are unique to each run.
 
-To replay locally on a disposable Linux/Docker host, pass the recorded seed:
+To run the PR profile or replay Daily on a disposable Linux/Docker host:
 
 ```sh
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite api --api-fixed-only \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/api-pr-001
 uv run --no-sync python -m tools.entrypoints.regression_ci --suite api --api-seed 20261028 \
-  --lbctl /path/to/lbctl --plugins plugins --output .qa/api-001
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/api-daily-001
 ```
 
-This separate suite executes seven independent operation chains once in fixed
-order, then once in seed-shuffled order (14 case rows). Operations within each
-chain retain their create/read/update/delete dependencies. Reuse the seed to
-replay chain ordering; resource names and credentials remain unique. Preparation
-is outside the 600-second execution guard; a completed run ends immediately.
-The default PR smoke and daily scenario groups do not include these cases.
+Both use a 600-second execution guard after preparation, and a 15-minute CI
+job timeout including preparation. GitHub Actions preserves their separate
+`pr-api-<run_id>-<attempt>` and `daily-api-<run_id>-<attempt>` artifacts for 30 days.
 
 The chains cover Provider and LLM/embedding/rerank model CRUD, Pipeline extension
 validation, API key permissions/revocation, Skill files and revision conflicts,
@@ -603,11 +706,26 @@ loopback addresses. This job does not exercise external MCP servers, real model
 inference, concurrent API mutations, or cross-Workspace isolation.
 
 Inspect `gate/gate.json` for the verdict, seed and exact case order;
-`gate/suite/cases.json` for HTTP steps, assertions and cleanup results; and
+`gate/suite/cases.json` for contract IDs, rounds, HTTP steps, named assertions and cleanup; and
 `gate/suite/coverage.json` for observed route templates and behavior contracts.
 An HTTP route hit includes rejected requests and is not proof of all behavior
 behind that route. Invalid MCP modes must return HTTP 400 and leave the original
 configuration unchanged. Any failed contract or cleanup makes the job fail.
+
+## Read a saved regression report
+
+Pass the directory that contains `gate/`. The command reads the existing evidence and
+writes Markdown to stdout. A failed or incomplete run exits with status 1.
+
+```sh
+python -m tools.entrypoints.regression_report api-fixed .qa/api
+python -m tools.entrypoints.regression_report api-daily /path/to/unpacked-daily-api-artifact
+python -m tools.entrypoints.regression_report daily /path/to/unpacked-daily-artifact/daily
+python -m tools.entrypoints.regression_report core-smoke .qa/core-smoke
+```
+
+For Daily, keep `daily-workload.txt` beside the run directory when unpacking the artifact.
+CI also supplies the tested SHA and runner step outcome. Use `--help` for those optional inputs.
 
 ## Concurrent isolation job
 
@@ -660,19 +778,22 @@ The suite is opt-in and adds no daily schedule or PR gate.
 ## Sustained regression and baseline comparison
 
 [`profiles/endurance.json`](profiles/endurance.json) runs
-nine minutes of mixed chat/Box/RAG traffic at 1 request/second across four stable
-groups, followed by one minute without traffic to check recovery. Configure its
+the two-phase 8-to-16-group chat/Box/RAG ramp described above, with cooldown
+after each phase. Configure its
 CLI context, plugin inputs, model endpoints, Core SQLite path and Core/Runtime/Box
 PID files as for smoke. Set `plugins: []` to reuse initialized plugins. Configure
 `observe.box_data_root` to the target deployment's Box mount root; the caller must
 have Docker inspection access. Do not start another Box runtime on a shared daemon.
+The generic Suite and release Job run the profile's business and resource checks.
+The independent wire/Provider/Box concurrency and cooldown verdict is supplied by
+`regression_ci --suite endurance`.
 
 ```sh
 uv run --no-sync python -m tools.entrypoints.regression_suite validate \
   --profile /path/to/endurance.json
 uv run --no-sync python -m tools.entrypoints.regression_suite run \
   --profile /path/to/endurance.json --output .qa/endurance-baseline
-# For an hour including the one-minute cooldown, use --duration 3540.
+# --duration overrides each phase; edit phase durations separately to preserve the ramp.
 ```
 
 This profile checks more than reply text:
@@ -843,3 +964,17 @@ Finite scenarios record successful request rate and full-step P95 as observation
 only configured RPS/P95 thresholds. Business assertions, unresolved results,
 health failures, and process/container resource limits still determine success.
 The default load mode remains `gate` for existing benchmark users.
+
+## CI selection and regression tiers
+
+See the [CI tiers and evidence guide](../dev-docs/CROSS_COMPONENT_TESTING.md#ci-tiers-and-evidence) for PR selection, required smoke, and full daily/manual verification. The CI tooling tests can be run locally with `python -m unittest discover -s tools/tests -p "test_*.py"` in a Python environment with PyYAML.
+
+
+## Optional public RAG experiments
+
+The opt-in Linux launcher runs in a disposable local Core/Runtime with Chroma.
+See [BEIR SciFact retrieval](vdb-benchmark-public.md) for reproducible public
+relevance and HTTP latency, and [WikiText upload/RAG RSS](vdb-benchmark-memory.md)
+for process memory, mapping categories and the separate allocation diagnostic.
+Public inputs are fetched at runtime and hash-verified. Do not commit source
+corpora, model weights, local profiles with secrets, raw traces or results.

@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from unittest.mock import AsyncMock
 
 import pytest
-from langbot_plugin.api.entities.builtin.provider.message import FunctionCall, Message, MessageChunk, ToolCall
+from langbot_plugin.api.entities.builtin.provider.message import (
+    ContentElement,
+    FunctionCall,
+    Message,
+    MessageChunk,
+    ToolCall,
+)
 from langbot_plugin.api.entities.builtin.runner.errors import AgentAPIError, AgentAPIException
 from langbot_plugin.api.entities.builtin.runner.steering import SteeringPullResult
 from langbot_plugin.api.proxies.runner import PermissionDeniedError
@@ -28,8 +35,197 @@ from pkg.context_pipeline import ContextBudget
 from pkg.model_calling import ModelCallError, StreamingModelCaller
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_multimodal_tool_content_reaches_model_without_entering_history(streaming):
+    payload = "data:image/png;base64,cHJpdmF0ZS1pbWFnZS1ieXRlcw=="
+
+    class FakeAPI:
+        def __init__(self):
+            self.calls = []
+            self.call_tool = AsyncMock(
+                return_value=[
+                    {"type": "text", "text": '{"artifact_id":"art_test","mime_type":"image/png"}'},
+                    {"type": "image_base64", "image_base64": payload},
+                ]
+            )
+
+        def response(self, messages):
+            self.calls.append([message.model_copy(deep=True) for message in messages])
+            if len(self.calls) == 1:
+                return Message(
+                    role="assistant",
+                    content="Reading",
+                    tool_calls=[
+                        ToolCall(
+                            id="read-1",
+                            type="function",
+                            function=FunctionCall(name="read_input_attachment_content", arguments="{}"),
+                        )
+                    ],
+                )
+            media = messages[-1]
+            assert media.role == "user" and media.content[0].image_base64 == payload
+            assert messages[-2].role == "tool" and payload not in messages[-2].content
+            return Message(role="assistant", content="The image has been inspected")
+
+        async def invoke_llm(self, *args, **kwargs):
+            return self.response(kwargs["messages"])
+
+        def invoke_llm_stream(self, *args, **kwargs):
+            response = self.response(kwargs["messages"])
+
+            async def stream():
+                yield MessageChunk(
+                    role="assistant", content=response.content, tool_calls=response.tool_calls, is_final=True
+                )
+
+            return stream()
+
+    api = FakeAPI()
+    loop = AgentLoop(
+        model_adapter=LangBotModelAdapter(api),
+        tool_executor=LangBotToolExecutor(api, {"read_input_attachment_content"}),
+        model_ids=["model-1"],
+        messages=[Message(role="user", content="Inspect my image")],
+        tools=[],
+        streaming=streaming,
+        max_tool_iterations=2,
+    )
+    events = [event async for event in loop.run()]
+    assert len(api.calls) == 2
+    assert events[-1].type == AgentLoopEventType.AGENT_END
+    assert payload not in json.dumps([message.model_dump() for message in loop.messages])
+    for event in events:
+        if event.message is not None:
+            assert payload not in event.message.model_dump_json()
+        assert payload not in json.dumps(event.result)
+
+
 async def _collect_events(loop: AgentLoop):
     return [event async for event in loop.run()]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_attachment_tokens_participate_in_budget_and_cannot_be_silently_dropped(streaming):
+    payload = "data:image/png;base64,cHJpdmF0ZS1idWRnZXQ="
+
+    class MediaCounter:
+        def __init__(self):
+            self.saw_media = False
+
+        async def count(self, messages):
+            media = sum(
+                1
+                for message in messages
+                if isinstance(message.content, list)
+                for item in message.content
+                if item.type == "image_base64"
+            )
+            self.saw_media |= bool(media)
+            return 80 * media + 2 * len(messages)
+
+    class NeverModel:
+        async def invoke_turn(self, **kwargs):
+            raise AssertionError("A model must not run after its unread image was removed to fit the budget")
+
+        async def stream_turn(self, **kwargs):
+            raise AssertionError("A model must not run after its unread image was removed to fit the budget")
+            yield
+
+    counter = MediaCounter()
+    loop = AgentLoop(
+        model_adapter=NeverModel(),
+        tool_executor=LangBotToolExecutor(AsyncMock(), set()),
+        model_ids=["model-1"],
+        messages=[Message(role="user", content="Inspect this image")],
+        tools=[],
+        streaming=streaming,
+        max_tool_iterations=2,
+        hooks=LangBotContextHooks(
+            ContextBudget(window_tokens=40, reserve_tokens=0, keep_recent_tokens=0, summary_tokens=0),
+            token_counter=counter,
+        ),
+    )
+    loop._model_only_messages = [Message(role="user", content=[ContentElement.from_image_base64(payload)])]
+    events = await _collect_events(loop)
+    assert counter.saw_media
+    assert events[-1].type == AgentLoopEventType.RUN_FAILED
+    assert "Attachment content was removed by context budgeting" in events[-1].error
+    assert payload not in json.dumps([message.model_dump() for message in loop.messages])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_overflow_recovery_receives_media_and_cannot_retry_after_discarding_it(streaming):
+    payload = "data:image/png;base64,cHJpdmF0ZS1vdmVyZmxvdw=="
+
+    class OverflowModel:
+        calls = 0
+
+        async def invoke_turn(self, *, messages, **kwargs):
+            self.calls += 1
+            assert messages[-1].content[0].image_base64 == payload
+            raise ModelCallError("context length exceeded", retryable=True)
+
+        async def stream_turn(self, **kwargs):
+            await self.invoke_turn(**kwargs)
+            yield
+
+    class DroppingRecovery(AgentLoopHooks):
+        saw_media = False
+
+        async def recover_context_overflow(self, messages, error):
+            self.saw_media = messages[-1].content[0].image_base64 == payload
+            return [Message(role="user", content="retry without the image")]
+
+    model, hooks = OverflowModel(), DroppingRecovery()
+    loop = AgentLoop(
+        model_adapter=model,
+        tool_executor=LangBotToolExecutor(AsyncMock(), set()),
+        model_ids=["model-1"],
+        messages=[Message(role="user", content="Inspect this image")],
+        tools=[],
+        streaming=streaming,
+        max_tool_iterations=2,
+        hooks=hooks,
+    )
+    loop._model_only_messages = [Message(role="user", content=[ContentElement.from_image_base64(payload)])]
+    events = await _collect_events(loop)
+    assert hooks.saw_media and model.calls == 1
+    assert events[-1].type == AgentLoopEventType.RUN_FAILED
+    assert "context length exceeded" in events[-1].error
+    assert payload not in json.dumps([message.model_dump() for message in loop.messages])
+
+
+@pytest.mark.asyncio
+async def test_budget_cannot_keep_one_copy_of_a_twice_read_image_and_restore_the_discarded_copy():
+    media = Message(role="user", content=[ContentElement.from_image_base64("data:image/png;base64,c2FtZQ==")])
+
+    class DropDuplicate(AgentLoopHooks):
+        async def prepare_model_turn(self, messages):
+            assert messages[-2] == messages[-1]
+            return messages[:-1]
+
+    class NeverModel:
+        async def invoke_turn(self, **kwargs):
+            raise AssertionError("Only one of two media copies was budgeted")
+
+    loop = AgentLoop(
+        model_adapter=NeverModel(),
+        tool_executor=LangBotToolExecutor(AsyncMock(), set()),
+        model_ids=["model-1"],
+        messages=[Message(role="user", content="Inspect the two reads")],
+        tools=[],
+        streaming=False,
+        max_tool_iterations=2,
+        hooks=DropDuplicate(),
+    )
+    loop._model_only_messages = [media, media.model_copy(deep=True)]
+    events = await _collect_events(loop)
+    assert events[-1].type == AgentLoopEventType.RUN_FAILED
+    assert "Attachment content was removed by context budgeting" in events[-1].error
 
 
 @pytest.mark.asyncio
@@ -1240,3 +1436,107 @@ async def test_non_streaming_loop_recovers_context_overflow_before_visible_failu
     assert model_adapter.calls[1][0].content == "short retry context"
     assert [event.type for event in events].count(AgentLoopEventType.TURN_START) == 1
     assert AgentLoopEventType.RUN_FAILED not in [event.type for event in events]
+
+
+def _empty_stop_stream_api(contents_by_model: dict[str, str]):
+    """Streaming API double: each model answers with one final stop chunk."""
+
+    class EmptyStopAPI:
+        def __init__(self):
+            self.model_ids: list[str] = []
+
+        async def invoke_llm_stream_events(self, *, llm_model_uuid, **kwargs):
+            self.model_ids.append(llm_model_uuid)
+            yield {
+                "chunk": MessageChunk(
+                    role="assistant",
+                    content=contents_by_model[llm_model_uuid],
+                    is_final=True,
+                    provider_specific_fields={"finish_reason": "stop"},
+                )
+            }
+            yield {"usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}}
+
+    return EmptyStopAPI()
+
+
+@pytest.mark.asyncio
+async def test_streaming_empty_first_answer_fails_run_instead_of_completing():
+    """LANG-427: an empty answer (no text, no tool calls) must not be reported as success."""
+    api = _empty_stop_stream_api({"model-1": ""})
+    loop = AgentLoop(
+        model_adapter=LangBotModelAdapter(api),
+        tool_executor=LangBotToolExecutor(api, set()),
+        model_ids=["model-1"],
+        messages=[Message(role="user", content="你好")],
+        tools=[],
+        streaming=True,
+        max_tool_iterations=10,
+    )
+
+    events = await _collect_events(loop)
+
+    assert events[-1].type == AgentLoopEventType.RUN_FAILED
+    assert events[-1].code == "runner.empty_response"
+    assert events[-1].retryable is True
+    assert "model-1" in events[-1].error
+    assert not any(event.type == AgentLoopEventType.AGENT_END for event in events)
+
+
+@pytest.mark.asyncio
+async def test_streaming_empty_first_answer_falls_back_to_next_model():
+    api = _empty_stop_stream_api({"model-1": "  ", "model-2": "Hello from fallback"})
+    loop = AgentLoop(
+        model_adapter=LangBotModelAdapter(api),
+        tool_executor=LangBotToolExecutor(api, set()),
+        model_ids=["model-1", "model-2"],
+        messages=[Message(role="user", content="你好")],
+        tools=[],
+        streaming=True,
+        max_tool_iterations=10,
+    )
+
+    events = await _collect_events(loop)
+
+    assert api.model_ids == ["model-1", "model-2"]
+    assert events[-1].type == AgentLoopEventType.AGENT_END
+    final = [e.message for e in events if e.type == AgentLoopEventType.MESSAGE_END and e.message is not None]
+    assert final[-1].content == "Hello from fallback"
+    assert all(m.content.strip() for m in loop.messages if m.role == "assistant")
+
+
+@pytest.mark.asyncio
+async def test_non_streaming_empty_first_answer_falls_back_then_fails():
+    class EmptyModelAdapter:
+        def __init__(self):
+            self.calls: list[list[str]] = []
+
+        async def invoke_turn(self, *, model_ids, messages, tools):
+            self.calls.append(list(model_ids))
+            return ModelTurnResult(
+                message=Message(role="assistant", content=""),
+                tool_calls=[],
+                committed_model_id=model_ids[0],
+                usage={"prompt_tokens": 3, "completion_tokens": 0, "total_tokens": 3},
+            )
+
+        async def invoke_committed_turn(self, *, committed_model_id, messages, tools):
+            raise AssertionError("no model should be committed after an empty answer")
+
+    adapter = EmptyModelAdapter()
+    loop = AgentLoop(
+        model_adapter=adapter,
+        tool_executor=LangBotToolExecutor(AsyncMock(), set()),
+        model_ids=["model-1", "model-2"],
+        messages=[Message(role="user", content="你好")],
+        tools=[],
+        streaming=False,
+        max_tool_iterations=10,
+    )
+
+    events = await _collect_events(loop)
+
+    assert adapter.calls == [["model-1", "model-2"], ["model-2"]]
+    assert events[-1].type == AgentLoopEventType.RUN_FAILED
+    assert events[-1].code == "runner.empty_response"
+    assert events[-1].usage["model_calls"] == 2

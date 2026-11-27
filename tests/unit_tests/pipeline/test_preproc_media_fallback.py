@@ -101,7 +101,7 @@ async def test_preprocessor_keeps_image_placeholder_for_text_only_local_agent(mo
 
     assert len(content) == 1
     assert content[0].type == 'text'
-    assert content[0].text == '[Image]'
+    assert content[0].text == '[attachment att-1: image]'
     assert result.new_query.variables['user_message_text'] == '[Image]'
 
 

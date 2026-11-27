@@ -86,6 +86,7 @@ async def main(loop: asyncio.AbstractEventLoop):
             raise run_result
     except Exception:
         traceback.print_exc()
+        raise
     finally:
         if app_inst is not None:
             await app_inst.shutdown()

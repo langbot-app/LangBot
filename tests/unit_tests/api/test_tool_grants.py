@@ -253,12 +253,31 @@ def test_workspace_operations_catalog_and_grantable_flags(test_host):
     for op in member_secret_ops:
         assert op['grantable'] is False
 
-    # Read-only operations requiring only RESOURCE_VIEW are grantable for viewer
+    # Resource permission alone does not authorize an incompatible target principal.
     viewer_view_ops = [
         op for op in member_catalog['workspace_operations'] if op['permission'] == Permission.RESOURCE_VIEW.value
     ]
     for op in viewer_view_ops:
-        assert op['grantable'] is True
+        spec = test_host.application_api._operations[op['id']]
+        processor_allowed = spec.principals is None or PrincipalType.PROCESSOR in spec.principals
+        assert op['grantable'] is processor_allowed
+
+    # Artifact exposure is for explicitly granted installations, never generic processors.
+    artifact_ops = [op for op in ops if op['id'].startswith('artifact.')]
+    assert {op['id'] for op in artifact_ops} == {
+        'artifact.' + name for name in ('create', 'get', 'read', 'read_content', 'retain', 'release', 'delete')
+    }
+    assert all(op['grantable'] is False for op in artifact_ops)
+    with pytest.raises(ApplicationAPIException) as failure:
+        validate_grant_change(test_host, admin_ctx, [], ['artifact.get'])
+    assert failure.value.error.code == 'invalid_input'
+    assert validate_grant_change(
+        test_host,
+        admin_ctx,
+        [],
+        ['artifact.get'],
+        principal_type=PrincipalType.PLUGIN,
+    ) == ['artifact.get']
 
 
 # 8. A processor must not widen grants, even within its own derived permissions

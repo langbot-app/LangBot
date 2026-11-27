@@ -1,4 +1,4 @@
-"""E2E coverage for the official Local Agent runner with fake Host resources.
+"""E2E coverage for the official Local Agent runner and real SDK Runtime.
 
 These tests start the real LangBot application and the real SDK Plugin Runtime,
 load the in-tree official ``plugins/Runner/LocalAgent`` plugin, and verify Local Agent paths
@@ -8,6 +8,7 @@ that must cross Host run-scoped APIs without calling any external provider.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import shutil
@@ -17,6 +18,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -359,8 +361,10 @@ def local_agent_runtime_process(local_agent_e2e_tmpdir, local_agent_runtime_port
     stderr_file.close()
 
 
-async def _inject_fake_llm_model(ap) -> Any:
-    """Register a runtime-only fake model that supports count_tokens/invoke."""
+async def _inject_llm_model(
+    ap, api_requester=None, *, model_name=FAKE_MODEL_UUID, abilities=None, ephemeral_token=None
+) -> Any:
+    """Register a model backed by either the existing fake or an explicit requester."""
     import sqlalchemy
 
     from langbot.pkg.entity.persistence import model as persistence_model
@@ -372,23 +376,27 @@ async def _inject_fake_llm_model(ap) -> Any:
         uuid=FAKE_PROVIDER_UUID,
         workspace_uuid=execution_context.workspace_uuid,
         name='E2E Fake Provider',
-        requester='fake-requester',
-        base_url='https://fake.invalid',
+        requester=api_requester.requester_cfg['requester_name'] if api_requester else 'fake-requester',
+        base_url=api_requester.requester_cfg['base_url'] if api_requester else 'https://fake.invalid',
         api_keys=['fake-key'],
     )
-    fake_requester = FakeProviderAPIRequester(ap, {'base_url': provider_entity.base_url})
+    api_requester = api_requester or FakeProviderAPIRequester(ap, {'base_url': provider_entity.base_url})
     runtime_provider = requester.RuntimeProvider(
         execution_context=execution_context,
         provider_entity=provider_entity,
-        token_mgr=token.TokenManager(name=provider_entity.uuid, tokens=provider_entity.api_keys),
-        requester=fake_requester,
+        # Live manual acceptance may use a secret only in runtime memory; the
+        # disposable test DB deliberately keeps the existing placeholder key.
+        token_mgr=token.TokenManager(
+            name=provider_entity.uuid, tokens=[ephemeral_token] if ephemeral_token else provider_entity.api_keys
+        ),
+        requester=api_requester,
     )
     model_entity = persistence_model.LLMModel(
         uuid=FAKE_MODEL_UUID,
         workspace_uuid=execution_context.workspace_uuid,
-        name=FAKE_MODEL_UUID,
+        name=model_name,
         provider_uuid=provider_entity.uuid,
-        abilities=['func_call'],
+        abilities=abilities if abilities is not None else ['func_call'],
         context_length=8192,
         extra_args={},
     )
@@ -420,7 +428,7 @@ async def _inject_fake_llm_model(ap) -> Any:
     )
     await ap.model_mgr.cache_provider(execution_context, runtime_provider)
     await ap.model_mgr.cache_llm_model(execution_context, runtime_model)
-    return fake_requester
+    return api_requester
 
 
 async def _run_runner(ap, event, binding) -> list[Any]:
@@ -507,7 +515,7 @@ async def _wait_for_local_agent_runner(ap, tmpdir: Path):
 
     for _ in range(60):
         handler = getattr(ap.plugin_connector, 'handler', None)
-        if handler is not None:
+        if handler is not None and ap.plugin_connector._runtime_available():
             await handler.ping()
             break
         await asyncio.sleep(1)
@@ -595,7 +603,7 @@ def test_local_runner_uses_host_fake_provider_and_persists_ledger(
     del local_agent_e2e_config_path, local_agent_runtime_process
 
     async def _run_probe(ap):
-        fake_requester = await _inject_fake_llm_model(ap)
+        fake_requester = await _inject_llm_model(ap)
         event = _event(
             event_id='e2e-local-agent-event-001',
             conversation_id='e2e-local-agent-conversation',
@@ -648,6 +656,215 @@ def test_local_runner_uses_host_fake_provider_and_persists_ledger(
         conn.close()
 
 
+@pytest.mark.shared_provider_concurrency
+@pytest.mark.contract('shared_provider_concurrency')
+def test_local_runner_shared_provider_counts_and_group_history(
+    local_agent_e2e_tmpdir,
+    local_agent_e2e_config_path,
+    local_agent_runtime_process,
+    monkeypatch,
+):
+    """Concurrent real counts must succeed without replacing the model/Host boundary."""
+    del local_agent_e2e_config_path, local_agent_runtime_process
+    monkeypatch.setenv('LITELLM_LOCAL_MODEL_COST_MAP', 'True')
+    from langbot_plugin.api.entities.builtin.provider.message import ContentElement, Message
+    from langbot.pkg.provider.modelmgr.requesters.litellmchat import LiteLLMRequester
+    from tools.entrypoints.mock_llm import MockServer
+
+    record_path = local_agent_e2e_tmpdir / 'shared-provider-requests.jsonl'
+    with MockServer(('127.0.0.1', 0), {'gpt-4o': {'steps': [{'content': 'CONCURRENT_OK'}]}}, record_path) as server:
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+
+        async def probe(ap):
+            real_requester = LiteLLMRequester(
+                ap,
+                {
+                    'requester_name': 'openai-chat-completions',
+                    'custom_llm_provider': 'openai',
+                    'base_url': f'http://127.0.0.1:{server.server_port}/v1',
+                },
+            )
+            await real_requester.initialize()
+            await _inject_llm_model(ap, real_requester, model_name='gpt-4o')
+            context = await ap.plugin_connector._current_execution_context()
+            model = await ap.model_mgr.get_model_by_uuid(context, FAKE_MODEL_UUID)
+            assert model.provider.requester is real_requester
+            # Prepare the local encoding before making concurrency the variable.
+            assert await real_requester.count_tokens(model, [Message(role='user', content='warm encoding')]) > 0
+            count_tokens = real_requester.count_tokens
+            barrier = asyncio.Barrier(2)
+            admissions = active = peak = 0
+            errors = []
+            counted_inputs = []
+            handle_error = real_requester._handle_litellm_error
+
+            def observed_error(error):
+                errors.append(str(error))
+                return handle_error(error)
+
+            monkeypatch.setattr(real_requester, '_handle_litellm_error', observed_error)
+
+            async def observed_count(model, messages, *args, **kwargs):
+                nonlocal admissions, active, peak
+                admissions += 1
+                active += 1
+                peak = max(peak, active)
+                counted_inputs.append(' '.join(_message_text(message) for message in messages))
+                try:
+                    # Hold the first two callers together, not the tokenizer threads.
+                    if admissions <= 2:
+                        await asyncio.wait_for(barrier.wait(), 10)
+                    return await count_tokens(model, messages, *args, **kwargs)
+                except Exception as exc:
+                    errors.append(str(exc))
+                    raise
+                finally:
+                    active -= 1
+
+            monkeypatch.setattr(real_requester, 'count_tokens', observed_count)
+
+            async def conversation(index, turn):
+                token = f'{turn * 100 + index:032x}'
+                previous = 'none' if turn == 1 else f'{100 + index:032x}'
+                text = f'LB_GROUP=shared-{index} LB_TURN={turn} LB_TOKEN={token} LB_PREVIOUS={previous}'
+                event = _event(
+                    event_id=f'e2e-shared-provider-{index}-{turn}',
+                    conversation_id=f'e2e-shared-provider-{index}',
+                    text=text,
+                )
+                # Platform ingress supplies structured text for durable history.
+                event.input.contents = [ContentElement.from_text(text)]
+                messages = await _run_runner(
+                    ap,
+                    event,
+                    _binding(binding_id=f'e2e-shared-provider-binding-{index}', allowed_tool_names=[]),
+                )
+                assert len(messages) == 1
+                assert _content_text(messages[0].content) == f'CONCURRENT_OK GROUP_ACK={token}'
+
+            for turn in (1, 2):
+                results = await asyncio.wait_for(
+                    asyncio.gather(*(conversation(index, turn) for index in range(8)), return_exceptions=True),
+                    120,
+                )
+                assert not errors, errors
+                mock_errors = (
+                    [
+                        row.get('error')
+                        for line in record_path.read_text().splitlines()
+                        if (row := json.loads(line)).get('status') != 200
+                    ]
+                    if record_path.exists()
+                    else []
+                )
+                assert not any(isinstance(result, BaseException) for result in results), (results, mock_errors)
+            assert peak >= 2
+            for turn in (1, 2):
+                for index in range(8):
+                    marker = f'LB_TOKEN={turn * 100 + index:032x} '
+                    assert any(marker in text for text in counted_inputs)
+            logs = await ap.plugin_connector.get_plugin_logs('langbot-team', 'LocalAgent', limit=1000, level='WARNING')
+            assert not any('using conservative local estimates' in entry['text'] for entry in logs), logs
+
+        try:
+            _run_local_agent_probe(local_agent_e2e_tmpdir, probe)
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
+
+    with contextlib.closing(sqlite3.connect(local_agent_e2e_tmpdir / 'data/langbot.db')) as connection:
+        rows = connection.execute(
+            "SELECT event_id, run_id, status FROM agent_run WHERE event_id LIKE 'e2e-shared-provider-%'"
+        ).fetchall()
+        assert len(rows) == len({event_id for event_id, _, _ in rows}) == 16
+        assert all(status == 'completed' for _, _, status in rows)
+        for _, run_id, _ in rows:
+            assert connection.execute(
+                "SELECT count(*) FROM agent_run_event WHERE run_id=? AND type='run.completed'", (run_id,)
+            ).fetchone() == (1,)
+    requests = [json.loads(line) for line in record_path.read_text().splitlines()]
+    assert len(requests) == 16
+    assert all(row['status'] == 200 and row['response_complete'] for row in requests)
+
+
+@pytest.mark.contract('agent_tools')
+def test_local_runner_concurrent_tools_during_sqlite_image_refresh(
+    local_agent_e2e_tmpdir,
+    local_agent_e2e_config_path,
+    local_agent_runtime_process,
+):
+    del local_agent_e2e_config_path, local_agent_runtime_process
+
+    async def probe(ap):
+        from langbot.pkg.persistence.resource_urls import refresh_images
+        from langbot.pkg.platform.adapters.aiocqhttp.image_urls import OneBotImageURLs
+
+        fake = await _inject_llm_model(ap)
+
+        def respond(*, messages, **kwargs):
+            if any(message.role == 'tool' for message in messages):
+                return 'Concurrent tool loop completed'
+            return _scripted_tool_call()
+
+        fake.queue_llm_responses(*([respond] * 8))
+        manager = _FakeToolManager()
+        ap.tool_mgr = manager
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def action(name, **params):
+            assert name == 'get_version_info'
+            entered.set()
+            await release.wait()
+            return {'app_name': 'standard'}
+
+        peer = SimpleNamespace(closed=False, call_action=action)
+        peer.image_urls = OneBotImageURLs(peer)
+        engine = ap.persistence_mgr.get_db_engine()
+        refresh = asyncio.create_task(
+            refresh_images(
+                engine, peer, [{'type': 'Image', 'image_id': 'image.jpg', 'url': 'https://example.com/image.jpg'}]
+            )
+        )
+
+        async def conversation(index):
+            return await _run_runner(
+                ap,
+                _event(
+                    event_id=f'e2e-sqlite-concurrent-{index}',
+                    conversation_id=f'e2e-sqlite-conversation-{index}',
+                    text='Use the lookup tool before answering.',
+                ),
+                _binding(
+                    binding_id=f'e2e-sqlite-binding-{index}',
+                    allowed_tool_names=[E2E_TOOL_NAME],
+                    runner_config={'max-tool-iterations': 2, 'tool-execution-mode': 'serial'},
+                ),
+            )
+
+        try:
+            await asyncio.wait_for(entered.wait(), 5)
+            results = await asyncio.wait_for(asyncio.gather(*(conversation(index) for index in range(4))), 120)
+            assert len(manager.calls) == 4
+            assert all(len(messages) == 1 for messages in results)
+            assert all(_content_text(messages[0].content) == 'Concurrent tool loop completed' for messages in results)
+        finally:
+            release.set()
+            await refresh
+
+    _run_local_agent_probe(local_agent_e2e_tmpdir, probe)
+    with contextlib.closing(sqlite3.connect(str(local_agent_e2e_tmpdir / 'data' / 'langbot.db'))) as connection:
+        runs = connection.execute(
+            "SELECT status FROM agent_run WHERE event_id LIKE 'e2e-sqlite-concurrent-%'"
+        ).fetchall()
+        assert runs == [('completed',)] * 4
+        assert connection.execute(
+            'SELECT count(*) FROM agent_run_event JOIN agent_run USING (run_id) '
+            "WHERE event_id LIKE 'e2e-sqlite-concurrent-%' AND type = 'tool.call.completed'"
+        ).fetchone() == (4,)
+
+
 @pytest.mark.contract('agent_tools')
 def test_local_runner_executes_authorized_tool_loop_through_host_action(
     local_agent_e2e_tmpdir,
@@ -658,7 +875,7 @@ def test_local_runner_executes_authorized_tool_loop_through_host_action(
     del local_agent_e2e_config_path, local_agent_runtime_process
 
     async def _run_probe(ap):
-        fake_requester = await _inject_fake_llm_model(ap)
+        fake_requester = await _inject_llm_model(ap)
         fake_requester.queue_llm_responses(
             _scripted_tool_call(),
             'Tool loop final answer after tool-result:alpha',
@@ -728,7 +945,7 @@ def test_local_runner_retrieves_authorized_rag_context_through_host_action(
     del local_agent_e2e_config_path, local_agent_runtime_process
 
     async def _run_probe(ap):
-        fake_requester = await _inject_fake_llm_model(ap)
+        fake_requester = await _inject_llm_model(ap)
         fake_requester.queue_llm_responses('RAG final answer with RAG_SENTINEL')
         fake_kb = _FakeKnowledgeBase()
         ap.rag_mgr = _FakeRagManager(fake_kb)
@@ -805,7 +1022,7 @@ def test_local_runner_compacts_history_and_persists_checkpoint(
     async def _run_probe(ap):
         from langbot.pkg.agent.runner.transcript_store import TranscriptStore
 
-        fake_requester = await _inject_fake_llm_model(ap)
+        fake_requester = await _inject_llm_model(ap)
         fake_requester.queue_llm_responses(
             'SUMMARY_SENTINEL compacted older history including HIST_SENTINEL',
             'Compaction final answer',
@@ -887,6 +1104,255 @@ def test_local_runner_compacts_history_and_persists_checkpoint(
         conn.close()
 
 
+def test_local_runner_compacts_without_persisting_artifact_bytes(
+    local_agent_e2e_tmpdir,
+    local_agent_e2e_config_path,
+    local_agent_runtime_process,
+    capfd,
+):
+    """Native media reaches the model but never becomes ordinary history."""
+    import base64
+
+    from tests.utils.artifact_media import make_artifact_media
+
+    del local_agent_e2e_config_path, local_agent_runtime_process
+    image, _, pdf, _ = make_artifact_media('local-agent-compact')
+    session = 'local-agent-artifact-compaction'
+    media = (image, pdf)
+    encoded = tuple(base64.b64encode(item.data) for item in media)
+    assert all(len(value) > 256 for value in encoded)
+    # Multiple interior probes catch partial leakage, even if a serialized
+    # document is truncated or the leading payload is on a different DB page.
+    signatures = {
+        item.kind: tuple(value[start : start + 96] for start in range(64, len(value) - 95, 96))
+        for item, value in zip(media, encoded, strict=True)
+    }
+
+    def assert_no_native_payload(label, value):
+        data = value.encode() if isinstance(value, str) else value
+        for kind, probes in signatures.items():
+            assert not any(probe in data for probe in probes), f'{kind} payload leaked into {label}'
+
+    def assert_messages_without_native_payload(label, messages):
+        assert_no_native_payload(label, '\n'.join(message.model_dump_json() for message in messages))
+        for message in messages:
+            if isinstance(message.content, list):
+                assert all(not part.image_base64 and not part.file_base64 for part in message.content), label
+
+    async def probe(ap):
+        from langbot.pkg.agent.runner.transcript_store import TranscriptStore
+        from langbot.pkg.api.authz import Permission
+        from langbot.pkg.api.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
+        from langbot_plugin.api.entities.builtin.provider import message as provider_message
+
+        fake = await _inject_llm_model(ap, abilities=['func_call', 'vision', 'pdf_input'])
+        execution = await ap.plugin_connector._current_execution_context()
+        request = RequestContext(
+            instance_uuid=execution.instance_uuid,
+            placement_generation=execution.placement_generation,
+            request_id=session,
+            auth_type='user-token',
+            principal=PrincipalContext(PrincipalType.ACCOUNT, account_uuid=session),
+            workspace=WorkspaceContext(execution.workspace_uuid, None, None, frozenset(Permission)),
+        )
+        image_asset, pdf_asset = [
+            await ap.artifact_service.create(request, item.filename, item.data, item.mime_type) for item in (image, pdf)
+        ]
+        for entry in (image_asset, pdf_asset):
+            await ap.artifact_service.retain(request, entry['id'])
+
+        agent = await ap.agent_service.create_agent(
+            request,
+            {
+                'name': 'Artifact compaction probe',
+                'kind': 'agent',
+                'config': {
+                    'runner': {'id': LOCAL_RUNNER_ID},
+                    'runner_config': {
+                        LOCAL_RUNNER_ID: {
+                            'model': {'primary': FAKE_MODEL_UUID, 'fallbacks': []},
+                            'context-window-tokens': 5700,
+                            'context-reserve-tokens': 400,
+                            'context-keep-recent-tokens': 160,
+                            'context-summary-tokens': 240,
+                            'context-history-fetch-limit': 24,
+                            'timeout': 60,
+                        },
+                    },
+                    'allowed_platform_tools': [],
+                    'allowed_tools': [],
+                },
+            },
+        )
+
+        def ask_for_native(**kwargs):
+            messages = kwargs['messages']
+            text = ' '.join(_message_text(item) for item in messages)
+            for document in (image_asset, pdf_asset):
+                assert document['id'] in text
+            assert_messages_without_native_payload('model input before an explicit read', messages)
+            return provider_message.Message(
+                role='assistant',
+                content='',
+                tool_calls=[
+                    provider_message.ToolCall(
+                        id=call_id,
+                        type='function',
+                        function=provider_message.FunctionCall(
+                            name='langbot_read_input_attachment',
+                            arguments=json.dumps({'ref': document['id'], 'mode': 'native'}),
+                        ),
+                    )
+                    for call_id, document in (('native-image', image_asset), ('native-pdf', pdf_asset))
+                ],
+            )
+
+        def verify_native_read(**kwargs):
+            messages = kwargs['messages']
+            model_parts = [
+                (message.role, part)
+                for message in messages
+                if isinstance(message.content, list)
+                for part in message.content
+                if part.type in {'image_base64', 'file_base64'}
+            ]
+            assert sorted(part.type for _, part in model_parts) == ['file_base64', 'image_base64']
+            by_type = {part.type: part for role, part in model_parts if role == 'user'}
+            assert set(by_type) == {'image_base64', 'file_base64'}
+            for item, kind in ((image, 'image_base64'), (pdf, 'file_base64')):
+                part = by_type[kind]
+                header, payload = getattr(part, kind).split(',', 1)
+                assert header == f'data:{item.mime_type};base64'
+                assert base64.b64decode(payload, validate=True) == item.data
+            assert by_type['file_base64'].file_name == pdf.filename
+            assert_messages_without_native_payload(
+                'ordinary tool results beside native model-only media',
+                [message for message in messages if message.role == 'tool'],
+            )
+            return 'References noted.'
+
+        fake.queue_llm_responses(ask_for_native, verify_native_read)
+        first = await ap.agent_service.debug_agent(
+            request,
+            agent['uuid'],
+            {
+                'conversation_id': session,
+                'text': 'Keep the documents for the next turn.',
+                'artifact_ids': [image_asset['id'], pdf_asset['id']],
+            },
+        )
+        assert first['final_text'] == 'References noted.'
+        boundary = fake._invoke_count
+        assert boundary == 2
+        tool_events = [event for event in first['execution_events'] if event['type'] == 'tool.call.completed']
+        assert len(tool_events) == 2
+        assert_no_native_payload('first-turn execution events', json.dumps(first['execution_events']))
+
+        store = TranscriptStore(ap.persistence_mgr.get_db_engine())
+        for index in range(12):
+            await store.append_transcript(
+                transcript_id=None,
+                event_id=f'artifact-history-{index}',
+                conversation_id=session,
+                workspace_id=execution.workspace_uuid,
+                role='user' if index % 2 == 0 else 'assistant',
+                content=f'HISTORY PRESSURE {index}. Deterministic history for compaction. ' * 75,
+                thread_id=None,
+                item_type='message',
+            )
+
+        def ask_for_text(**kwargs):
+            flattened = ' '.join(_message_text(item) for item in kwargs['messages'])
+            assert 'Compacted history without file payloads' in flattened
+            assert pdf_asset['id'] in flattened and pdf.marker not in flattened
+            return provider_message.Message(
+                role='assistant',
+                content='',
+                tool_calls=[
+                    provider_message.ToolCall(
+                        id='read-after-compaction',
+                        type='function',
+                        function=provider_message.FunctionCall(
+                            name='langbot_read_input_attachment',
+                            arguments=json.dumps({'ref': pdf_asset['id'], 'mode': 'text'}),
+                        ),
+                    ),
+                ],
+            )
+
+        def verify_tool_read(**kwargs):
+            messages = kwargs['messages']
+            tool_text = ' '.join(_message_text(item) for item in messages if item.role == 'tool')
+            assert pdf.marker in tool_text, tool_text[:250]
+            assert image.marker not in tool_text
+            return provider_message.Message(role='assistant', content='Text read after compaction.')
+
+        fake.queue_llm_responses('Compacted history without file payloads.', ask_for_text, verify_tool_read)
+        final = await ap.agent_service.debug_agent(
+            request,
+            agent['uuid'],
+            {'conversation_id': session, 'text': 'Read the previous document.', 'artifact_ids': [pdf_asset['id']]},
+        )
+        assert final['final_text'] == 'Text read after compaction.'
+        payloads = _invoke_payload_texts(fake)
+        assert 'HISTORY PRESSURE' in ' '.join(payloads[boundary])
+        assert pdf.marker not in ' '.join(payloads[boundary])
+        for index, invocation in enumerate(fake._invoke_payloads[boundary:]):
+            label = 'compaction model input' if index == 0 else 'post-compaction model input'
+            assert_messages_without_native_payload(label, invocation['messages'])
+        assert_no_native_payload('second-turn execution events', json.dumps(final['execution_events']))
+        for meta, fixture in ((image_asset, image), (pdf_asset, pdf)):
+            saved = await ap.artifact_service.read(request, meta['id'])
+            assert saved['content'] == fixture.data
+            assert saved['metadata']['digest'] == fixture.sha256
+        return first['event_id'], final['event_id'], [item['id'] for item in (image_asset, pdf_asset)]
+
+    first_event, second_event, refs = _run_local_agent_probe(local_agent_e2e_tmpdir, probe)
+    with contextlib.closing(sqlite3.connect(local_agent_e2e_tmpdir / 'data' / 'langbot.db')) as conn:
+        rows = conn.execute(
+            'SELECT value_json FROM runner_state WHERE runner_id = ? AND scope = ? '
+            'AND conversation_id = ? AND state_key = ?',
+            (LOCAL_RUNNER_ID, 'conversation', session, 'runner.compaction.checkpoint'),
+        ).fetchall()
+        assert len(rows) == 1
+        checkpoint = json.loads(rows[0][0])
+        assert checkpoint['conversation_id'] == session
+        assert 'Compacted history without file payloads' in checkpoint['summary']
+        run_ids = conn.execute(
+            'SELECT run_id, status FROM agent_run WHERE event_id IN (?, ?)', (first_event, second_event)
+        ).fetchall()
+        assert len(run_ids) == 2 and all(status == 'completed' for _, status in run_ids)
+        journal = conn.execute(
+            'SELECT data_json, metadata_json FROM agent_run_event WHERE run_id IN (?, ?)',
+            tuple(run_id for run_id, _ in run_ids),
+        ).fetchall()
+        assert journal
+        transcript = conn.execute(
+            'SELECT content, content_json, attachment_refs_json, metadata_json FROM transcript WHERE conversation_id = ?',
+            (session,),
+        ).fetchall()
+        assert transcript
+        assert_no_native_payload('run event journal', json.dumps(journal))
+        assert_no_native_payload('conversation transcript', json.dumps(transcript))
+        assert_no_native_payload('compaction checkpoint', rows[0][0])
+        stored = dict(conn.execute('SELECT id, digest FROM artifacts WHERE id IN (?, ?)', refs))
+        assert stored == {refs[0]: image.sha256, refs[1]: pdf.sha256}
+
+        # Committed rows can still be in SQLite's WAL in the shared test suite.
+        # Scan both durable files for payload leakage; query logical rows above
+        # instead of relying on the checkpoint timing to find an artifact ID.
+        db_path = local_agent_e2e_tmpdir / 'data' / 'langbot.db'
+        files = [db_path, db_path.with_name(db_path.name + '-wal')]
+        for file in files:
+            if file.exists():
+                assert_no_native_payload(file.name, file.read_bytes())
+        for log in local_agent_e2e_tmpdir.rglob('*.log'):
+            assert_no_native_payload(log.name, log.read_bytes())
+
+    output = capfd.readouterr()
+    assert_no_native_payload('captured Core logs', output.out + output.err)
+
+
 @pytest.mark.contract('agent_multi_turn')
 def test_local_runner_combines_rag_compaction_and_multi_turn_tool_loop(
     local_agent_e2e_tmpdir,
@@ -899,7 +1365,7 @@ def test_local_runner_combines_rag_compaction_and_multi_turn_tool_loop(
     async def _run_probe(ap):
         from langbot.pkg.agent.runner.transcript_store import TranscriptStore
 
-        fake_requester = await _inject_fake_llm_model(ap)
+        fake_requester = await _inject_llm_model(ap)
 
         async def scripted_response(**kwargs):
             messages = kwargs['messages']
@@ -1197,7 +1663,7 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
             )
         manager = ToolManager(box)
         ap.tool_mgr = manager
-        fake = await _inject_fake_llm_model(ap)
+        fake = await _inject_llm_model(ap)
         if scenario == 'streaming':
             from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
 

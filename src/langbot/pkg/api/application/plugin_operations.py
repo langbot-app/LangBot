@@ -23,6 +23,7 @@ from ...entity.persistence import plugin as persistence_plugin
 from ...i18n import t
 from ...plugin.archive import inspect_plugin_archive_metadata
 from ...plugin.github import validate_github_plugin_install_info
+from ...plugin.github_mirror import GitHubSources
 from ...plugin.management import (
     count_plugin_components,
     normalize_plugin_asset_path,
@@ -150,15 +151,20 @@ class GithubAssetsInput(Input):
 
 
 class GithubInstallInput(Input):
+    allow_incompatible: bool = Field(default=False, description='Use only when explicitly requested by the user.')
     owner: str
     repo: str
-    release_tag: str
+    release_tag: str | None = None
+    source_type: Literal['release', 'branch'] = 'release'
+    ref: str | None = None
+    source_subdir: str = ''
     asset_url: str | None = None
     asset_id: int | None = None
     release_id: int | None = None
 
 
 class MarketplaceInput(Input):
+    allow_incompatible: bool = Field(default=False, description='Use only when explicitly requested by the user.')
     plugin_author: str = Field(min_length=1)
     plugin_name: str = Field(min_length=1)
     plugin_version: str | None = None
@@ -192,6 +198,7 @@ class FileInput(Input):
 
 
 class LocalInstallInput(FileInput):
+    allow_incompatible: bool = Field(default=False, description='Use only when explicitly requested by the user.')
     filename: str = 'local plugin'
     administrator_force: bool = False
 
@@ -335,37 +342,31 @@ async def _github_json(url):
         return await httpclient.parse_json_response(response)
 
 
+async def github_refs(ap, context, payload):
+    await _fence(ap, context)
+    return await GitHubSources(ap).list_refs(payload.repo_url)
+
+
 async def github_releases(ap, context, payload):
     await _fence(ap, context)
     repo = parse_github_repo_url(payload.repo_url)
     if not repo:
         raise ValueError('Invalid GitHub repository URL')
-    owner, name, ref = repo['owner'], repo['repo'], repo['ref']
+    owner, name = repo['owner'], repo['repo']
     # Repository parts become URL path segments, never a caller-selected host/path.
     if (
         re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]{0,38}', owner) is None
         or re.fullmatch(r'[A-Za-z0-9._-]{1,100}', name) is None
     ):
         raise ValueError('Invalid GitHub repository URL')
-    if ref:
-        releases = [
-            {
-                'id': 0,
-                'tag_name': ref,
-                'name': ref,
-                'published_at': '',
-                'prerelease': False,
-                'draft': False,
-                'source_type': 'branch',
-                'archive_url': f'https://api.github.com/repos/{owner}/{name}/zipball/{ref}',
-            }
-        ]
-    else:
+    try:
         data = await _github_json(f'https://api.github.com/repos/{owner}/{name}/releases')
         releases = [
             {key: release[key] for key in ('id', 'tag_name', 'name', 'published_at', 'prerelease', 'draft')}
             for release in data
         ]
+    except httpx.HTTPError:
+        _fail('github_releases_unavailable', 'GitHub releases unavailable; try browsing branches instead', 502)
     return {'releases': releases, 'owner': owner, 'repo': name, 'source_subdir': repo['subdir']}
 
 
@@ -382,6 +383,7 @@ _MARKETPLACE_RESULT_FIELDS = (
     'label',
     'description',
     'latest_version',
+    'compatible_version',
     'tags',
     'components',
     'runner_usages',
@@ -402,6 +404,9 @@ def _marketplace_url(ap) -> str:
 async def marketplace_search(ap, context, payload):
     await _fence(ap, context)
     body = payload.model_dump(exclude_none=True)
+    from langbot import __version__
+
+    body['langbot_version'] = __version__
     if not body.get('tags_filter'):
         body.pop('tags_filter', None)
     url = f'{_marketplace_url(ap)}/api/v1/marketplace/plugins/search'
@@ -546,6 +551,7 @@ async def install_marketplace_task(ap, context, data, task):
         _, setting = await ap.plugin_connector._setting_for_plugin(payload.plugin_author, payload.plugin_name)
         try:
             await auto_confirm_declared(ap, context, setting)
+            task.metadata['pending_permission_confirmation'] = False
         except ApplicationAPIException as exc:
             task.metadata['permission_confirmation_error'] = {'code': exc.error.code, 'details': exc.error.details}
             raise
@@ -568,7 +574,7 @@ async def install_github(ap, context, payload):
         PluginInstallSource.GITHUB,
         data,
         identity,
-        f'Installing plugin from GitHub {identity}@{data["release_tag"]}',
+        f'Installing plugin from GitHub {identity}@{data.get("release_tag") or data["ref"]}',
     )
 
 
@@ -622,13 +628,19 @@ async def install_local(ap, context, payload):
         ap,
         context,
         PluginInstallSource.LOCAL,
-        {'plugin_file': payload.content, 'administrator_force': payload.administrator_force},
+        {
+            'plugin_file': payload.content,
+            'administrator_force': payload.administrator_force,
+            'allow_incompatible': payload.allow_incompatible,
+        },
         payload.filename,
         f'Installing plugin from local {payload.filename}',
     )
 
 
 async def preview_local(ap, context, payload):
+    from ...plugin.compatibility import compatibility
+
     await _fence(ap, context)
     try:
         manifest, requirements, names = await asyncio.to_thread(inspect_plugin_archive_metadata, payload.content)
@@ -639,6 +651,7 @@ async def preview_local(ap, context, payload):
         'filename': payload.filename,
         'size': len(payload.content),
         'manifest': manifest,
+        'compatibility': compatibility(manifest),
         'metadata': manifest.get('metadata') or {},
         'component_types': list(counts),
         'component_counts': counts,
@@ -685,6 +698,7 @@ def operations() -> list[Operation]:
         Operation('plugin.icon', view, icon, PluginInput, BinaryResult),
         Operation('plugin.asset', view, asset, AssetInput, BinaryResult),
         Operation('plugin.page_action', manage, page_action, PageInput, Any, side_effect=True),
+        Operation('plugin.github.refs', view, github_refs, GithubRepoInput, dict),
         Operation('plugin.github.releases', view, github_releases, GithubRepoInput, dict),
         Operation('plugin.github.assets', view, github_assets, GithubAssetsInput, dict),
         Operation(

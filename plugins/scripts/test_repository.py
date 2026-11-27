@@ -21,6 +21,39 @@ spec = importlib.util.spec_from_file_location('core_artifacts', CORE / 'scripts/
 core_artifacts = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(core_artifacts)
 
+SDK_RUNTIME_FILES = (
+    'sdk/pyproject.toml',
+    'sdk/README.md',
+    'sdk/LICENSE',
+    'sdk/src/langbot_plugin/__init__.py',
+    'sdk/src/langbot_plugin/box/client.py',
+    'sdk/src/langbot_plugin/runtime/app.py',
+    'sdk/src/langbot_plugin/assets/templates/.github/workflows/release.yml.example',
+    'sdk/src/langbot_plugin/assets/templates/.vscode/launch.json.example',
+    'sdk/src/langbot_plugin/assets/templates/.gitignore.example',
+    'sdk/src/langbot_plugin/assets/templates/.env.example.example',
+)
+SDK_EXCLUDED_FILES = (
+    'sdk/tests/test_example.py',
+    'sdk/examples/example.py',
+    'sdk/docs/internal.md',
+    'sdk/scripts/helper.py',
+    'sdk/local_e2e/test_example.py',
+    'sdk/data/private.txt',
+    'sdk/.venv/bin/python',
+    'sdk/__pycache__/example.pyc',
+    'sdk/.pytest_cache/state',
+    'sdk/.mypy_cache/state',
+    'sdk/.ruff_cache/state',
+)
+
+
+def write_sdk_fixture(root: Path) -> None:
+    for relative in (*SDK_RUNTIME_FILES, *SDK_EXCLUDED_FILES):
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f'fixture: {relative}')
+
 
 def workflow(name):
     return yaml.safe_load((CORE / '.github/workflows' / name).read_text())
@@ -45,6 +78,7 @@ class RepositoryTests(unittest.TestCase):
             (source / 'plugins/misc/HelloPlugin/main.py').write_text('plugin')
             (source / 'unexpected.lbpkg').write_text('package')
             (source / 'main.py').write_text('core')
+            write_sdk_fixture(source)
             subprocess.run(
                 ['bash', '-c', command],
                 cwd=source,
@@ -53,9 +87,13 @@ class RepositoryTests(unittest.TestCase):
                 capture_output=True,
             )
             artifact = root / 'langbot-test-all.zip'
-            core_artifacts.check_artifact(artifact)
+            core_artifacts.check_artifact(artifact, source=True)
             with zipfile.ZipFile(artifact) as archive:
                 self.assertIn('main.py', archive.namelist())
+                for relative in SDK_RUNTIME_FILES:
+                    self.assertEqual(archive.read(relative).decode(), f'fixture: {relative}')
+                for relative in SDK_EXCLUDED_FILES:
+                    self.assertNotIn(relative, archive.namelist())
 
     def test_fnos_real_staging_command_excludes_sources_and_packages(self):
         script = (CORE / 'packaging/fnos/build.sh').read_text()
@@ -68,6 +106,7 @@ class RepositoryTests(unittest.TestCase):
             (source / 'plugins/Runner/LocalAgent/main.py').write_text('plugin')
             (source / 'unexpected.lbpkg').write_text('package')
             (source / 'main.py').write_text('core')
+            write_sdk_fixture(source)
             (destination / 'app/langbot').mkdir(parents=True)
             subprocess.run(
                 ['bash', '-c', command],
@@ -76,8 +115,12 @@ class RepositoryTests(unittest.TestCase):
                 check=True,
                 capture_output=True,
             )
-            core_artifacts.check_artifact(destination / 'app/langbot')
+            core_artifacts.check_artifact(destination / 'app/langbot', source=True)
             self.assertTrue((destination / 'app/langbot/main.py').is_file())
+            for relative in SDK_RUNTIME_FILES:
+                self.assertEqual((destination / 'app/langbot' / relative).read_text(), f'fixture: {relative}')
+            for relative in SDK_EXCLUDED_FILES:
+                self.assertFalse((destination / 'app/langbot' / relative).exists())
 
     def test_catalog_and_readme_cover_all_plugins(self):
         catalog = check_catalog()
@@ -107,14 +150,45 @@ class RepositoryTests(unittest.TestCase):
             self.assertNotIn('release', events)
             self.assertNotIn('langbot-app/langbot-plugins', text)
             self.assertNotIn('secrets.', text)
+            # Released and candidate SDK plugin consumers need their actual
+            # Core-side integration surface, not all unrelated Core modules.
+            consumer_paths = {
+                'plugins-runner-tests.yml': {
+                    'src/langbot/pkg/agent/**',
+                    'src/langbot/pkg/box/**',
+                    'src/langbot/pkg/pipeline/**',
+                    'src/langbot/pkg/storage/**',
+                },
+                'plugins-knowledgeengine-shared-tests.yml': {
+                    'src/langbot/pkg/rag/**',
+                    'src/langbot/pkg/vector/**',
+                },
+            }.get(path.name, set())
+            if consumer_paths:
+                consumer_paths |= {
+                    'sdk/**',
+                    'src/langbot/pkg/api/application/**',
+                    'src/langbot/pkg/core/stages/**',
+                    'src/langbot/pkg/entity/**',
+                    'src/langbot/pkg/plugin/**',
+                    'src/langbot/pkg/workspace/**',
+                    'scripts/generate_plugin_workspace_api.py',
+                    'pyproject.toml',
+                    'uv.lock',
+                }
+                self.assertIn('pull_request', events, path.name)
             for event in ('push', 'pull_request'):
                 if event in events:
+                    paths = set(events[event]['paths'])
+                    self.assertNotIn('src/langbot/**', paths, path.name)
                     self.assertTrue(
                         all(
-                            pattern.startswith(('plugins/', '.github/workflows/plugins-'))
-                            for pattern in events[event]['paths']
-                        )
+                            pattern.startswith(('plugins/', '.github/workflows/plugins-')) or pattern in consumer_paths
+                            for pattern in paths
+                        ),
+                        path.name,
                     )
+                    self.assertTrue(consumer_paths <= paths, path.name)
             for job in data['jobs'].values():
                 default = job.get('defaults', {}).get('run', {}).get('working-directory', '.')
                 self.assertTrue((CORE / default).is_dir())

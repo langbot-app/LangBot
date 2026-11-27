@@ -7,11 +7,16 @@ from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, Mock
 
 import pytest
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import create_async_engine
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction, RuntimeToLangBotAction
 from langbot_plugin.entities.io.context import ActionContext, InstallationBinding
 
 from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.entity.persistence.bstorage import BinaryStorage
+from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
+from langbot.pkg.persistence.tenant_uow import _validate_scoped_statement_call
 from langbot.pkg.storage.mgr import StorageMgr
 
 from langbot.pkg.provider.tools.errors import ToolExecutionDeniedError
@@ -370,6 +375,46 @@ class TestSetBinaryStorage:
             'test-key',
         )
         assert insert_params['value'] == b'x' * 512
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('dialect', ['sqlite', 'postgresql'])
+    async def test_storage_upsert_passes_tenant_sql_validation(self, app, dialect):
+        app.persistence_mgr.get_db_engine.return_value.dialect.name = dialect
+        runtime_handler = make_handler(app)
+        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
+            self.payload(b'value')
+        )
+
+        assert response.code == 0
+        statements = [call.args[0] for call in app.persistence_mgr.execute_async.await_args_list]
+        assert any(getattr(statement, '_post_values_clause', None) is not None for statement in statements)
+        for statement in statements:
+            _validate_scoped_statement_call((statement,), {})
+
+    @pytest.mark.asyncio
+    async def test_storage_new_key_persists_through_tenant_uow(self, app, tmp_path):
+        engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "binary-storage.db"}')
+        manager = PersistenceManager(app, mode=PersistenceMode.CLOUD_RUNTIME)
+        manager.db = SimpleNamespace(get_engine=lambda: engine)
+        app.persistence_mgr = manager
+        runtime_handler = make_handler(app)
+        try:
+            async with engine.begin() as connection:
+                await connection.run_sync(BinaryStorage.__table__.create)
+
+            for value in (b'first value', b'updated value'):
+                response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
+                    self.payload(value)
+                )
+                assert response.code == 0, response.message
+                async with engine.connect() as connection:
+                    rows = (await connection.execute(sa.select(BinaryStorage.__table__))).mappings().all()
+                assert len(rows) == 1
+                assert rows[0]['workspace_uuid'] == 'workspace-a'
+                assert rows[0]['unique_key'] == canonical_binary_key('plugin', 'test-author/test-plugin', 'test-key')
+                assert rows[0]['value'] == value
+        finally:
+            await engine.dispose()
 
     @pytest.mark.asyncio
     async def test_updates_existing_storage(self, app):
@@ -913,6 +958,9 @@ class TestAgentRunProxyActions:
 
         run_id = 'run_proxy_get_prompt'
         query = self.query()
+        query.variables['_host_prompt_preprocessing_system_context'] = [
+            {'role': 'system', 'content': 'Retrieved historical evidence'},
+        ]
         app.query_pool.cached_queries[900] = query
 
         registry = get_session_registry()
@@ -942,6 +990,7 @@ class TestAgentRunProxyActions:
         assert response.code == 0
         assert response.data['prompt'][0]['role'] == 'system'
         assert response.data['prompt'][0]['content'] == 'effective prompt'
+        assert response.data['prompt'][1] == {'role': 'system', 'content': 'Retrieved historical evidence'}
 
     @pytest.mark.asyncio
     async def test_invoke_llm_restores_query_and_model_options(self, app):
@@ -1067,7 +1116,8 @@ class TestAgentRunProxyActions:
         assert model_requester.LLM_USAGE_QUERY_VARIABLE not in query.variables
 
     @pytest.mark.asyncio
-    async def test_count_tokens_validates_run_authorization_and_calls_provider(self, app):
+    @pytest.mark.parametrize('reasoning_level', [None, 'minimal'])
+    async def test_count_tokens_validates_run_authorization_and_calls_provider(self, app, reasoning_level):
         """COUNT_TOKENS is run-scoped and forwards messages/tools to the model requester."""
         from langbot.pkg.agent.runner.session_registry import get_session_registry
 
@@ -1112,6 +1162,7 @@ class TestAgentRunProxyActions:
                         }
                     ],
                     'extra_args': {'temperature': 0.7},
+                    'reasoning_level': reasoning_level,
                 }
             )
         finally:
@@ -1121,7 +1172,12 @@ class TestAgentRunProxyActions:
         assert response.data == {'tokens': 37}
         requester.count_tokens.assert_awaited_once()
         kwargs = requester.count_tokens.await_args.kwargs
-        assert kwargs['model'] is model
+        if reasoning_level is None:
+            assert kwargs['model'] is model
+        else:
+            assert kwargs['model'] is not model
+            assert kwargs['model'].reasoning_config_override == {'level': reasoning_level}
+            assert not hasattr(model, 'reasoning_config_override')
         assert kwargs['messages'][0].content == 'hello'
         assert [tool.name for tool in kwargs['funcs']] == ['search']
         assert kwargs['extra_args'] == {'temperature': 0.7}
@@ -2076,6 +2132,31 @@ async def test_knowledge_actions_keep_foreign_runs_in_trusted_workspace(knowledg
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'action', [PluginToRuntimeAction.RETRIEVE_KNOWLEDGE, PluginToRuntimeAction.RETRIEVE_KNOWLEDGE_BASE]
+)
+async def test_knowledge_retrieval_failure_is_logged(knowledge_host, action):
+    host = knowledge_host
+    await host.registry.register(
+        run_id='run-a',
+        runner_id='plugin:test-author/test-plugin/runner',
+        query_id=None,
+        plugin_identity='test-author/test-plugin',
+        workspace_id='workspace-a',
+        resources=make_agent_resources(knowledge_bases=[{'kb_id': 'kb-a'}]),
+    )
+    host.app.plugin_connector.call_rag_retrieve.side_effect = RuntimeError('embedding backend unavailable')
+    response = await host.runtime.actions[action.value]({'run_id': 'run-a', 'kb_id': 'kb-a', 'query_text': 'hello'})
+    assert response.code != 0
+    assert 'embedding backend unavailable' in response.message
+    warnings = [call.args[0] for call in host.app.logger.warning.call_args_list]
+    assert any(
+        'kb=kb-a' in line and 'engine=author/engine' in line and 'embedding backend unavailable' in line
+        for line in warnings
+    ), warnings
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('selected', [True, False])
 @pytest.mark.parametrize('scope_source', ['preprocessed', 'custom_runner'])
 async def test_pipeline_knowledge_action_enforces_query_scope(knowledge_host, selected, scope_source):
@@ -2143,3 +2224,205 @@ async def test_pipeline_knowledge_action_enforces_query_scope(knowledge_host, se
         assert 'not configured for this pipeline' in response.message
         host.app.rag_mgr.get_knowledge_base_by_uuid.assert_not_awaited()
         host.app.plugin_connector.call_rag_retrieve.assert_not_awaited()
+
+
+PROXY_BOT_UUID = 'websocket-proxy-bot'
+
+
+def make_proxy_runtime(send_result=None):
+    from langbot.pkg.entity.persistence import bot as persistence_bot
+
+    return SimpleNamespace(
+        bot_entity=persistence_bot.Bot(
+            uuid=PROXY_BOT_UUID,
+            workspace_uuid='workspace-a',
+            name='WebSocket',
+            description='',
+            adapter='websocket',
+            adapter_config={'secret': 'must-not-leak'},
+            enable=True,
+        ),
+        adapter=SimpleNamespace(
+            bot_account_id='websocketbot',
+            send_message=AsyncMock(return_value=send_result or {'message_id': 'sent'}),
+        ),
+    )
+
+
+def make_proxy_app(live: bool):
+    app = Mock()
+    app.logger = Mock()
+    app.persistence_mgr.execute_async = AsyncMock(side_effect=AssertionError('proxy bot must not hit the bots table'))
+    runtime = make_proxy_runtime()
+    app.platform_mgr.has_websocket_proxy_bot = Mock(return_value=live)
+    app.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=runtime if live else None)
+    app.bot_service.get_runtime_bot_info = AsyncMock(side_effect=AssertionError('proxy bot has no bots row'))
+    return app, runtime
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('via', ['send_message', 'call_platform_api'])
+async def test_plugin_send_message_reaches_live_websocket_proxy_bot(via):
+    app, runtime = make_proxy_app(live=True)
+    runtime_handler = make_handler(app)
+    runtime_handler._record_plugin_send = AsyncMock()
+    runtime_handler._resolve_origin_query = AsyncMock(return_value=None)
+    chain = [{'type': 'Plain', 'text': 'hello'}]
+    if via == 'send_message':
+        action = PluginToRuntimeAction.SEND_MESSAGE
+        data = {
+            'bot_uuid': PROXY_BOT_UUID,
+            'target_type': 'person',
+            'target_id': 'websocket_p:s',
+            'message_chain': chain,
+        }
+    else:
+        action = PluginToRuntimeAction.CALL_PLATFORM_API
+        data = {
+            'bot_uuid': PROXY_BOT_UUID,
+            'action': 'send_message',
+            'params': {'target_type': 'person', 'target_id': 'websocket_p:s', 'message': chain},
+        }
+
+    result = await runtime_handler.actions[action.value](data)
+
+    assert result.code == 0, result.message
+    # Checked by both the installation authorization and the action guard.
+    assert app.platform_mgr.has_websocket_proxy_bot.call_args_list == [(('workspace-a',),)] * 2
+    app.platform_mgr.get_bot_by_uuid.assert_awaited_once_with(TEST_EXECUTION_CONTEXT, PROXY_BOT_UUID)
+    runtime.adapter.send_message.assert_awaited_once()
+    assert runtime.adapter.send_message.await_args.args[:2] == ('person', 'websocket_p:s')
+    app.persistence_mgr.execute_async.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('evicted_after_authorization', [False, True])
+async def test_plugin_send_message_rejects_websocket_proxy_bot_without_live_proxy(evicted_after_authorization):
+    app, runtime = make_proxy_app(live=False)
+    if evicted_after_authorization:
+        app.platform_mgr.has_websocket_proxy_bot = Mock(side_effect=[True, False])
+    runtime_handler = make_handler(app)
+
+    result = await runtime_handler.actions[PluginToRuntimeAction.SEND_MESSAGE.value](
+        {
+            'bot_uuid': PROXY_BOT_UUID,
+            'target_type': 'person',
+            'target_id': 'websocket_p:s',
+            'message_chain': [{'type': 'Plain', 'text': 'hello'}],
+        }
+    )
+
+    assert result.code != 0
+    expected = 'Bot with bot_uuid websocket-proxy-bot not found'
+    assert result.message == (expected if evicted_after_authorization else 'Bot is not available in this Workspace')
+    runtime.adapter.send_message.assert_not_awaited()
+    app.persistence_mgr.execute_async.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('live', [True, False])
+async def test_plugin_get_bot_info_for_websocket_proxy_bot(live):
+    app, _ = make_proxy_app(live=live)
+    runtime_handler = make_handler(app)
+
+    result = await runtime_handler.actions[PluginToRuntimeAction.GET_BOT_INFO.value]({'bot_uuid': PROXY_BOT_UUID})
+
+    app.bot_service.get_runtime_bot_info.assert_not_awaited()
+    app.persistence_mgr.execute_async.assert_not_awaited()
+    if not live:
+        assert result.code != 0
+        assert result.message == 'Bot is not available in this Workspace'
+        return
+    assert result.code == 0, result.message
+    bot = result.data['bot']
+    assert bot['uuid'] == PROXY_BOT_UUID
+    assert bot['workspace_uuid'] == 'workspace-a'
+    assert bot['adapter'] == 'websocket'
+    assert bot['enable'] is True
+    assert 'adapter_config' not in bot
+    assert bot['adapter_runtime_values'] == {
+        'bot_account_id': 'websocketbot',
+        'webhook_url': None,
+        'webhook_full_url': None,
+        'extra_webhook_full_url': None,
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('action', [PluginToRuntimeAction.SEND_MESSAGE, PluginToRuntimeAction.GET_BOT_INFO])
+async def test_persisted_bot_lookups_still_require_a_bots_row(action):
+    app = Mock()
+    app.logger = Mock()
+    # Authorized while the row existed, deleted before the action guard ran.
+    app.persistence_mgr.execute_async = AsyncMock(side_effect=[make_result(('deleted-bot',)), make_result(None)])
+    app.platform_mgr.has_websocket_proxy_bot = Mock(side_effect=AssertionError('only for the proxy uuid'))
+    app.platform_mgr.get_bot_by_uuid = AsyncMock(side_effect=AssertionError('must stop at the bots table'))
+    app.bot_service.get_runtime_bot_info = AsyncMock(side_effect=AssertionError('must stop at the bots table'))
+    runtime_handler = make_handler(app)
+    data = {'bot_uuid': 'deleted-bot'}
+    if action == PluginToRuntimeAction.SEND_MESSAGE:
+        data.update(target_type='group', target_id='g', message_chain=[{'type': 'Plain', 'text': 'x'}])
+
+    result = await runtime_handler.actions[action.value](data)
+
+    assert result.code != 0
+    assert result.message == 'Bot with bot_uuid deleted-bot not found'
+    assert app.persistence_mgr.execute_async.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_plugin_actions_reach_real_platform_manager_websocket_proxy():
+    """End to end through the real PlatformManager proxy cache, per Workspace."""
+    from langbot.pkg.platform.botmgr import PlatformManager
+
+    sent = []
+
+    class WebsocketAdapter:
+        bot_account_id = 'websocketbot'
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def register_listener(self, *_args):
+            pass
+
+        async def send_message(self, target_type, target_id, message):
+            sent.append((target_type, target_id, message))
+            return {'message_id': 'sent'}
+
+    app = Mock()
+    app.logger = Mock()
+    app.persistence_mgr.execute_async = AsyncMock(side_effect=AssertionError('proxy bot must not hit the bots table'))
+    app.instance_config = SimpleNamespace(data={'system': {}})
+    runtime_handler = make_handler(app)
+    runtime_handler._record_plugin_send = AsyncMock()
+    runtime_handler._resolve_origin_query = AsyncMock(return_value=None)
+    manager = PlatformManager(app)
+    manager.adapter_dict = {'websocket': WebsocketAdapter}
+    app.platform_mgr = manager
+    send = {
+        'bot_uuid': PROXY_BOT_UUID,
+        'target_type': 'person',
+        'target_id': 'websocket_p:s',
+        'message_chain': [{'type': 'Plain', 'text': 'hello'}],
+    }
+
+    # No debug session opened yet: nothing to address.
+    result = await runtime_handler.actions[PluginToRuntimeAction.SEND_MESSAGE.value](send)
+    assert result.code != 0 and sent == []
+
+    # Another Workspace's proxy is not visible to this plugin.
+    manager.websocket_proxy_bots['workspace-b'] = make_proxy_runtime()
+    result = await runtime_handler.actions[PluginToRuntimeAction.SEND_MESSAGE.value](send)
+    assert result.code != 0 and sent == []
+
+    await manager.get_websocket_proxy_bot(TEST_EXECUTION_CONTEXT)
+    result = await runtime_handler.actions[PluginToRuntimeAction.SEND_MESSAGE.value](send)
+    assert result.code == 0, result.message
+    assert [item[:2] for item in sent] == [('person', 'websocket_p:s')]
+
+    info = await runtime_handler.actions[PluginToRuntimeAction.GET_BOT_INFO.value]({'bot_uuid': PROXY_BOT_UUID})
+    assert info.code == 0, info.message
+    assert info.data['bot']['workspace_uuid'] == 'workspace-a'
+    assert info.data['bot']['adapter_runtime_values']['bot_account_id'] == 'websocketbot'
+    app.persistence_mgr.execute_async.assert_not_awaited()

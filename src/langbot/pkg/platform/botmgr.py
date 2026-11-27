@@ -34,7 +34,7 @@ from ..agent.runner.host_models import (
 )
 from ..agent.runner.resource_policy import ResourcePolicyProjector
 from ..agent.runner.platform_tools import resolve_agent_platform_tool_names
-from ..agent.runner.query_entry_adapter import QueryEntryAdapter
+from ..agent.runner import input_media
 from ..agent.runner.interaction_store import InteractionAlreadySubmittedError, InteractionExpiredError
 from langbot_plugin.api.entities.builtin.runner.interaction import InteractionHandle
 from ..entity.persistence import workspace as persistence_workspace
@@ -44,6 +44,7 @@ from ..api.http.authz import WorkspaceRequiredError
 from ..workspace.errors import WorkspaceInvariantError
 
 from .logger import EventLogger
+from ..utils import constants
 from .adapter_names import canonical_adapter_name
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
@@ -764,28 +765,23 @@ class RuntimeBot:
 
     @classmethod
     def _build_agent_input(cls, event: platform_events.EBAEvent) -> AgentInput:
-        text = platform_events.event_summary(event)
-        contents: list[dict[str, typing.Any]] = []
-
+        rendered = None
         message_chain = getattr(event, 'message_chain', None)
         if message_chain:
-            try:
-                for component in message_chain:
-                    if isinstance(component, platform_message.Image):
-                        if component.url:
-                            contents.append({'type': 'image_url', 'image_url': {'url': component.url}})
-                        elif component.base64:
-                            contents.append({'type': 'image_base64', 'image_base64': component.base64})
-            except TypeError:
-                pass
+            rendered = input_media.render_input(message_chain, include_quotes=True, include_other_text=True)
 
-        if text:
-            contents.insert(0, {'type': 'text', 'text': text})
+        text = (rendered.text if rendered else '') or platform_events.event_summary(event)
+        if rendered and rendered.contents:
+            contents = [item.model_dump(mode='json') for item in rendered.contents]
+        else:
+            contents = [{'type': 'text', 'text': text}] if text else []
 
         return AgentInput(
             text=text,
             contents=contents,
-            attachments=QueryEntryAdapter._build_attachments(event, contents),
+            # The envelope is Host-internal: inline payloads ride along until
+            # prepare_input_files registers them and clears the descriptors.
+            attachments=rendered.attachments(include_content=True) if rendered else [],
         )
 
     def _eba_event_to_agent_envelope(
@@ -994,15 +990,24 @@ class RuntimeBot:
 
     @staticmethod
     def _summarize_event_delivery(results: list[typing.Any]) -> tuple[str, str]:
-        outcome = 'success'
-        error_detail = ''
-        for result in results:
-            if isinstance(result, BaseException):
-                from ..telemetry.execution import describe_exception
+        from ..telemetry.execution import describe_exception, is_cancellation
 
-                outcome = 'failed'
-                error_detail = error_detail or describe_exception(result)
-        return outcome, error_detail
+        failure_detail = ''
+        cancel_detail = ''
+        for result in results:
+            if not isinstance(result, BaseException):
+                continue
+            if is_cancellation(result):
+                # A cancelled delivery (stopped run, superseding message,
+                # shutdown) is not a failed one.
+                cancel_detail = cancel_detail or describe_exception(result)
+            else:
+                failure_detail = failure_detail or describe_exception(result)
+        if failure_detail:
+            return 'failed', failure_detail
+        if cancel_detail:
+            return 'cancelled', cancel_detail
+        return 'success', ''
 
     def _record_platform_event(self, event, adapter, outcome: str, error_detail: str, node: str = '') -> None:
         from ..telemetry.execution import record
@@ -1080,9 +1085,11 @@ class RuntimeBot:
             # another subscriber or the primary route from receiving the event.
             results = await asyncio.gather(*tasks, return_exceptions=True)
         except BaseException as exc:
-            from ..telemetry.execution import describe_exception
+            from ..telemetry.execution import describe_exception, is_cancellation
 
-            self._record_platform_event(event, adapter, 'failed', describe_exception(exc), node)
+            self._record_platform_event(
+                event, adapter, 'cancelled' if is_cancellation(exc) else 'failed', describe_exception(exc), node
+            )
             await self._persist_monitoring_ingress(event, adapter, execution_id, 'failed', [exc])
             raise
 
@@ -1137,6 +1144,7 @@ class RuntimeBot:
                 return
         except Exception as exc:
             from ..telemetry import trace as trace_mod
+            from ..telemetry.execution import describe_exception
 
             # No matching declaration was resolved: log locally without
             # reporting a failed delivery for every unrelated incoming event.
@@ -1151,6 +1159,7 @@ class RuntimeBot:
                     failure_code='runner_failed',
                     reason=str(exc),
                     text=f'Plugin processor {processor_uuid} failed: {exc}',
+                    error=describe_exception(exc),
                 )
         agent = {**agent, 'supported_event_patterns': patterns}
         return await self._dispatch_eba_event_to_processor(
@@ -1333,7 +1342,9 @@ class RuntimeBot:
 
         try:
             binding = self._agent_product_to_binding(agent, event_binding, event_type, self.bot_entity.uuid)
-        except Exception:
+        except Exception as exc:
+            from ..telemetry.execution import describe_exception
+
             return await self._record_event_route_trace(
                 event_type=event_type,
                 status='failed',
@@ -1344,6 +1355,7 @@ class RuntimeBot:
                 failure_code='runner_failed',
                 reason='Agent configuration is invalid',
                 text=f'Failed to build Agent binding for EBA event {event_type}: {traceback.format_exc()}',
+                error=describe_exception(exc),
             )
         if binding is None:
             return await self._record_event_route_trace(
@@ -1465,16 +1477,13 @@ class RuntimeBot:
             else:
                 message_content = str(message_chain)
 
-            sender_name = None
-            if hasattr(message_event, 'sender'):
-                if hasattr(message_event.sender, 'nickname'):
-                    sender_name = message_event.sender.nickname
-                elif hasattr(message_event.sender, 'member_name'):
-                    sender_name = message_event.sender.member_name
+            from ..pipeline.monitoring_helper import build_monitoring_session_id, extract_sender_name
+
+            sender_name = extract_sender_name(message_event)
 
             # Use the same session_id format as monitoring_helper.py
-            session_id = f'{launcher_type}_{launcher_id}'
             platform = launcher_type.value if hasattr(launcher_type, 'value') else str(launcher_type)
+            session_id = build_monitoring_session_id(platform, launcher_id, sender_id)
 
             await self.ap.monitoring_service.record_message(
                 self.execution_context,
@@ -1795,10 +1804,34 @@ class RuntimeBot:
             tenant_scoped_listener(on_eba_event),
         )
 
+    def _observe_alert(self, *, error: Exception | None = None, recovered: bool = False) -> None:
+        """Report adapter crashes and restarts to Workspace alerts."""
+
+        alert_service = getattr(self.ap, 'alert_service', None)
+        bot_entity = getattr(self, 'bot_entity', None)
+        if alert_service is None or bot_entity is None:
+            return
+        workspace_uuid = getattr(self.execution_context, 'workspace_uuid', None)
+        try:
+            if recovered:
+                alert_service.observe_recovery(workspace_uuid, 'bot_offline', bot_entity.uuid)
+            else:
+                alert_service.observe_failure(
+                    workspace_uuid,
+                    'bot_offline',
+                    bot_entity.uuid,
+                    getattr(bot_entity, 'name', None) or bot_entity.uuid,
+                    error_type=type(error).__name__ if error else None,
+                    error_message=str(error) if error else None,
+                )
+        except Exception:
+            pass
+
     async def run(self):
         async def exception_wrapper():
             try:
                 self.task_context.set_current_action('Running...')
+                self._observe_alert(recovered=True)
                 await self.adapter.run_async()
                 self.task_context.set_current_action('Exited.')
             except Exception as e:
@@ -1808,6 +1841,7 @@ class RuntimeBot:
 
                 traceback_str = traceback.format_exc()
                 self.task_context.set_current_action('Exited with error.')
+                self._observe_alert(error=e)
                 await self.logger.error(f'平台适配器运行出错:\n{e}\n{traceback_str}')
 
         self.task_wrapper = self.ap.task_mgr.create_task(
@@ -2073,6 +2107,15 @@ class PlatformManager:
             updates['pipeline_uuid'] = pipeline_uuid
         return dataclasses.replace(context, **updates) if updates else context
 
+    def has_websocket_proxy_bot(self, workspace_uuid: str) -> bool:
+        """Whether this Workspace currently has a live WebSocket debug proxy.
+
+        Never creates one. The proxy is in-memory only, so callers that would
+        otherwise look a bot up in the ``bots`` table use this for its reserved
+        UUID instead.
+        """
+        return workspace_uuid in self.websocket_proxy_bots
+
     async def get_websocket_proxy_bot(
         self,
         context: ExecutionContext | RequestContext,
@@ -2105,18 +2148,18 @@ class PlatformManager:
                 name='websocket-adapter',
                 ap=self.ap,
                 execution_context=execution_context,
-                owner='websocket-proxy-bot',
+                owner=constants.WEBSOCKET_PROXY_BOT_UUID,
             )
             websocket_adapter_inst = websocket_adapter_class({}, websocket_logger, ap=self.ap)
             proxy_context = dataclasses.replace(
                 execution_context,
                 instance_uuid=binding.instance_uuid,
-                bot_uuid='websocket-proxy-bot',
+                bot_uuid=constants.WEBSOCKET_PROXY_BOT_UUID,
             )
             runtime_bot = RuntimeBot(
                 ap=self.ap,
                 bot_entity=persistence_bot.Bot(
-                    uuid='websocket-proxy-bot',
+                    uuid=constants.WEBSOCKET_PROXY_BOT_UUID,
                     workspace_uuid=binding.workspace_uuid,
                     name='WebSocket',
                     description='',

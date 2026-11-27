@@ -8,9 +8,11 @@ from langbot_plugin.api.entities.permissions import Capability
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
 
 from langbot.pkg.api.application.contracts import ApplicationAPIException, Input, Operation
+from langbot.pkg.api.application.execution import EXECUTION_OPERATIONS
 from langbot.pkg.api.application.plugin_capabilities import (
     ACTION_CAPABILITIES,
     APPLICATION_ACTIONS,
+    BINARY_STORAGE_ACTIONS,
     CAPABILITY_ACTIONS,
     CAPABILITY_PERMISSIONS,
     CONTEXT_ACTIONS,
@@ -71,14 +73,15 @@ def installation(declaration=None, grants=None, snapshot=None, enabled=True):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('auto_confirm', [False, True])
-async def test_marketplace_install_confirmation_is_explicit(app, auto_confirm):
+@pytest.mark.parametrize('principal', [PrincipalType.ACCOUNT, PrincipalType.API_KEY])
+async def test_marketplace_install_confirmation_is_explicit(app, auto_confirm, principal):
     declaration = {'workspace_operations': ['stats.basic'], 'capabilities': ['models.invoke']}
     setting = installation(declaration, {}, enabled=False)
     app.plugin_connector.install_plugin = AsyncMock()
     app.plugin_connector._setting_for_plugin = AsyncMock(return_value=(None, setting))
     await install_marketplace_task(
         app,
-        context(),
+        context(principal=principal),
         {
             'plugin_author': 'test',
             'plugin_name': 'Runner',
@@ -93,7 +96,7 @@ async def test_marketplace_install_confirmation_is_explicit(app, auto_confirm):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('principal', [PrincipalType.API_KEY, PrincipalType.PLUGIN])
+@pytest.mark.parametrize('principal', [PrincipalType.PLUGIN])
 async def test_marketplace_install_cannot_auto_confirm_nonmember(app, principal):
     setting = installation({'capabilities': ['models.invoke']}, {}, enabled=False)
     app.plugin_connector.install_plugin = AsyncMock()
@@ -114,6 +117,98 @@ async def test_marketplace_install_cannot_auto_confirm_nonmember(app, principal)
     assert task.metadata['permission_confirmation_error']['code'] == 'permission_denied'
     assert not setting.enabled and setting.permission_grants == {} and setting.permission_snapshot is None
     app.plugin_connector.activate_permission_installation.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('compat', [False, True])
+async def test_api_key_confirms_declared_and_compat_permissions(app, compat):
+    declaration = None if compat else {'workspace_operations': ['stats.basic'], 'capabilities': ['models.invoke']}
+    setting = installation(declaration, {}, enabled=False)
+    ctx = context(principal=PrincipalType.API_KEY)
+    before = describe_permissions(app, ctx, setting)
+    assert before['can_confirm'] and before['pending_confirmation']
+    assert all(row['grantable'] for row in before['permissions'])
+    requested = expand_declaration(app, declaration)
+    result = await change_permissions(app, ctx, setting, **requested, confirm=True)
+    assert result['enabled'] and not result['pending_confirmation']
+    app.plugin_connector.activate_permission_installation.assert_awaited_once_with(ctx, setting)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('existing', [False, True])
+@pytest.mark.parametrize(
+    'category,name,missing',
+    [
+        ('workspace_operations', 'stats.basic', Permission.RESOURCE_VIEW),
+        ('capabilities', 'models.invoke', Permission.RUNTIME_OPERATE),
+    ],
+)
+async def test_api_key_cannot_confirm_permissions_it_lacks(app, existing, category, name, missing):
+    declaration = {'workspace_operations': [], 'capabilities': []}
+    declaration[category] = [name]
+    setting = installation(declaration, declaration if existing else {}, enabled=False)
+    ctx = context(principal=PrincipalType.API_KEY)
+    ctx = replace(ctx, workspace=replace(ctx.workspace, permissions=ctx.workspace.permissions - {missing}))
+    assert not describe_permissions(app, ctx, setting)['permissions'][0]['grantable']
+    with pytest.raises(ApplicationAPIException) as error:
+        await change_permissions(app, ctx, setting, **declaration, confirm=True)
+    assert error.value.error.code == 'permission_denied'
+    app.persistence_mgr.execute_async.assert_not_awaited()
+    app.plugin_connector.activate_permission_installation.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_api_key_confirmation_requires_resource_manage(app):
+    from langbot.pkg.api.authz import PermissionDeniedError
+
+    with pytest.raises(PermissionDeniedError):
+        await change_permissions(
+            app,
+            context('viewer', PrincipalType.API_KEY),
+            installation({}, {}, enabled=False),
+            workspace_operations=[],
+            capabilities=[],
+            confirm=True,
+        )
+    app.persistence_mgr.execute_async.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_api_key_compat_confirmation_requires_all_permissions(app):
+    with pytest.raises(ApplicationAPIException) as error:
+        await change_permissions(
+            app,
+            context(principal=PrincipalType.API_KEY),
+            installation(enabled=False),
+            workspace_operations=[],
+            capabilities=[],
+            confirm=True,
+        )
+    assert error.value.error.code == 'invalid_input'
+    app.persistence_mgr.execute_async.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_api_key_compat_confirmation_respects_permission_ceiling(app):
+    ctx = context(principal=PrincipalType.API_KEY)
+    ctx = replace(ctx, workspace=replace(ctx.workspace, permissions={Permission.RESOURCE_MANAGE}))
+    with pytest.raises(ApplicationAPIException) as error:
+        await change_permissions(
+            app,
+            ctx,
+            installation(enabled=False),
+            workspace_operations=[],
+            capabilities=sorted(LEGACY_CAPABILITIES),
+            confirm=True,
+        )
+    assert error.value.error.code == 'permission_denied'
+    app.persistence_mgr.execute_async.assert_not_awaited()
+
+
+def test_api_key_cannot_grant_processor_operations(app):
+    with pytest.raises(ApplicationAPIException) as error:
+        validate_grant_change(app, context(principal=PrincipalType.API_KEY), [], ['stats.basic'])
+    assert error.value.error.code == 'permission_denied'
 
 
 @pytest.mark.asyncio
@@ -148,7 +243,7 @@ def test_capability_and_action_catalogs_are_complete():
     assert not (set(actions) & CONTEXT_ACTIONS)
     assert set(actions) | CONTEXT_ACTIONS | APPLICATION_ACTIONS == {
         action.value for action in PluginToRuntimeAction if action is not PluginToRuntimeAction.REGISTER_PLUGIN
-    }
+    } | ({operation.action for operation in EXECUTION_OPERATIONS} - BINARY_STORAGE_ACTIONS)
     assert ACTION_CAPABILITIES[PluginToRuntimeAction.CALL_TOOL.value] == 'plugin_tools'
 
 
@@ -180,7 +275,6 @@ def test_wildcard_is_a_confirmation_time_snapshot(app):
 @pytest.mark.parametrize(
     'principal',
     [
-        PrincipalType.API_KEY,
         PrincipalType.PLUGIN,
         PrincipalType.PROCESSOR,
         PrincipalType.SYSTEM,
@@ -239,20 +333,19 @@ async def test_compatibility_requires_all_capabilities_then_allows_revocation(ap
 
 
 @pytest.mark.asyncio
-async def test_api_key_cannot_confirm_even_an_empty_declaration(app):
+async def test_api_key_can_confirm_an_empty_declaration(app):
     setting = installation({'workspace_operations': [], 'capabilities': []}, {}, enabled=False)
-    assert describe_permissions(app, context(principal=PrincipalType.API_KEY), setting)['can_confirm'] is False
+    assert describe_permissions(app, context(principal=PrincipalType.API_KEY), setting)['can_confirm'] is True
     assert describe_permissions(app, context(), setting)['can_confirm'] is True
-    with pytest.raises(ApplicationAPIException) as error:
-        await change_permissions(
-            app,
-            context(principal=PrincipalType.API_KEY),
-            setting,
-            workspace_operations=[],
-            capabilities=[],
-            confirm=True,
-        )
-    assert error.value.error.code == 'permission_denied'
+    result = await change_permissions(
+        app,
+        context(principal=PrincipalType.API_KEY),
+        setting,
+        workspace_operations=[],
+        capabilities=[],
+        confirm=True,
+    )
+    assert result['enabled'] and not result['pending_confirmation']
 
 
 @pytest.mark.asyncio
@@ -367,3 +460,51 @@ def test_described_operations_carry_domain_metadata(app):
     assert 'domain' not in capability
     assert [domain['domain'] for domain in described['domains']] == ['stats']
     assert described['domains'][0]['label']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('live', [True, False])
+async def test_websocket_proxy_bot_is_authorized_by_live_runtime_not_bots_table(app, monkeypatch, live):
+    from langbot.pkg.api.application import plugin_permissions
+    from unittest.mock import Mock
+
+    declaration = {'workspace_operations': [], 'capabilities': ['bot.read', 'bot.message.send']}
+    monkeypatch.setattr(
+        plugin_permissions, 'load_installation', AsyncMock(return_value=installation(declaration, declaration))
+    )
+    app.persistence_mgr.execute_async = AsyncMock(side_effect=AssertionError('proxy bot has no bots row'))
+    app.platform_mgr = SimpleNamespace(has_websocket_proxy_bot=Mock(return_value=live))
+    binding = SimpleNamespace(workspace_uuid='workspace', installation_uuid='install')
+    for action, data in [
+        (PluginToRuntimeAction.GET_BOT_INFO.value, {'bot_uuid': 'websocket-proxy-bot'}),
+        (PluginToRuntimeAction.SEND_MESSAGE.value, {'bot_uuid': 'websocket-proxy-bot'}),
+        (
+            PluginToRuntimeAction.CALL_PLATFORM_API.value,
+            {'bot_uuid': 'websocket-proxy-bot', 'action': 'send_message'},
+        ),
+    ]:
+        if live:
+            await plugin_permissions.authorize_action(app, binding, action, data)
+        else:
+            with pytest.raises(ApplicationAPIException) as error:
+                await plugin_permissions.authorize_action(app, binding, action, data)
+            assert error.value.error.code == 'permission_denied'
+    app.platform_mgr.has_websocket_proxy_bot.assert_called_with('workspace')
+    app.persistence_mgr.execute_async.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_websocket_proxy_bot_still_requires_the_send_capability(app, monkeypatch):
+    from langbot.pkg.api.application import plugin_permissions
+
+    declaration = {'workspace_operations': [], 'capabilities': []}
+    monkeypatch.setattr(
+        plugin_permissions, 'load_installation', AsyncMock(return_value=installation(declaration, declaration))
+    )
+    app.platform_mgr = SimpleNamespace(has_websocket_proxy_bot=lambda workspace_uuid: True)
+    binding = SimpleNamespace(workspace_uuid='workspace', installation_uuid='install')
+    with pytest.raises(ApplicationAPIException) as error:
+        await plugin_permissions.authorize_action(
+            app, binding, PluginToRuntimeAction.SEND_MESSAGE.value, {'bot_uuid': 'websocket-proxy-bot'}
+        )
+    assert error.value.error.details['denied_capabilities'] == ['bot.message.send']

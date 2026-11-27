@@ -9,6 +9,12 @@ LangBot の実行設定は `data/config.yaml` にあります。初回起動時�
 通常のセルフホストで変更が必要なのは主に公開 URL、DB/ベクトルストア、オブジェクトストレージ、Box Runtime です。用途を理解していない容量・Cloud 安全上限は既定値を維持してください。
 </Info>
 
+## Workspace のサンドボックス設定
+
+Workspace のサンドボックス設定はデプロイの既定値を上書きします。対応する Core と `lbctl` で `lbctl sandbox config reset --dry-run` を実行して前提条件を確認し、`lbctl sandbox config reset --yes` で Workspace のバックエンド、E2B 接続情報・認証情報、リソース制限を削除します。新しいタスクはデプロイの既定値を継承し、既存タスクは設定スナップショットを保持します。
+
+API は `DELETE /api/v1/workspaces/current/sandbox`、操作 ID は `workspace.sandbox.reset`、必要な権限は `workspace.update` です。応答は `{reset: true}` で保存完了を示します。継承した設定は GET で別途確認でき、繰り返し実行できます。CLI の保存後確認には `workspace.view` も必要です。
+
 ## 完全なデフォルト設定
 
 ```yaml
@@ -23,25 +29,32 @@ api:
     global_api_key: ''
 # Workspace 関連の設定です。
 workspace:
-    # メンバー招待リンクと任意のメール送信設定です。
+    # メンバー招待リンクの設定です。
     invitations:
         # 招待リンクに使う WebUI の公開 URL です。空の場合は api.webui_url、api.webhook_prefix の順にフォールバックします。
         public_web_url: ''
-        # provider が空の場合はリンクだけを生成します。resend または smtp を選べます。
-        email:
-            provider: ''
-            from: ''
-            timeout_seconds: 10
-            resend:
-                api_url: 'https://api.resend.com/emails'
-                api_key: ''
-            smtp:
-                host: ''
-                port: 587
-                username: ''
-                password: ''
-                starttls: true
-                ssl: false
+# 招待メールとアラートメールで共用するインスタンスのメールサービスです。旧バージョンの workspace.invitations.email は起動時にここへ自動移行されます。
+email:
+    # provider が空の場合はメールを送信しません（招待はリンクのみ）。resend または smtp を選べます。
+    provider: ''
+    from: ''
+    timeout_seconds: 10
+    resend:
+        api_url: 'https://api.resend.com/emails'
+        api_key: ''
+    smtp:
+        host: ''
+        port: 587
+        username: ''
+        password: ''
+        starttls: true
+        ssl: false
+# ワークスペースの障害アラート（画面内、メール、LangBot Space、Webhook）です。
+alerts:
+    # false にするとインスタンス全体でルール判定と通知を停止します。
+    enabled: true
+    # 配信と自動復旧チェックの間隔（秒）です。
+    tick_seconds: 30
 # コマンド機能、プレフィックス、権限マッピングです。
 command:
     enable: true
@@ -159,8 +172,8 @@ vdb:
         host: localhost
         port: 6333
         api_key: ''
-    # SeekDB はオプションです。ソース/package デプロイでは `seekdb` extra が必要です。
-    # 公式 Docker/Kubernetes イメージにはすでに含まれています。
+    # SeekDB はオプションです。ソース/package デプロイでは `seekdb` extra、
+    # Docker/Kubernetes デプロイでは -seekdb イメージタグが必要です。
     # 組み込みモードの対応環境は pylibseekdb wheel に依存します。
     seekdb:
         mode: embedded
@@ -171,7 +184,7 @@ vdb:
         user: 'root'
         password: ''
         tenant: ''
-    # Milvus の接続設定です。
+    # Milvus はオプションです。`milvus` extra または -milvus イメージタグが必要です。
     milvus:
         uri: 'http://127.0.0.1:19530'
         token: ''
@@ -180,12 +193,13 @@ vdb:
     pgvector:
         use_business_database: false
         # リリース移行では、ここに指定した次元だけに ANN インデックスを作成します。
-        allowed_dimensions: [384, 512, 768, 1024, 1536]
+        allowed_dimensions: [384, 512, 768, 1024, 1536, 2048, 3072]
         host: '127.0.0.1'
         port: 5433
         database: 'langbot'
         user: 'postgres'
         password: 'postgres'
+    # Valkey Search はオプションです。`valkey` extra（Windows 非対応）または -valkey イメージタグが必要です。
     # Search モジュールを有効にした Valkey が必要です。
     valkey_search:
         host: 'localhost'
@@ -335,7 +349,9 @@ space:
 - `api.port` は HTTP API と WebUI のポートです。`api.webhook_prefix` はプラットフォームのコールバック URL を生成する公開ベース URL で、本番環境では通常 HTTPS リバースプロキシのオリジンを指定します。
 - WebUI と API のオリジンが異なる場合は `api.webui_url` を設定します。OAuth リダイレクトはこのサーバー側設定と `webhook_prefix` のみを信頼し、リクエストの `Host` / `Origin` ヘッダーは信頼しません。
 - `api.global_api_key` は `X-API-Key` または `Authorization: Bearer` で HTTP Service API と組み込み MCP サーバーを認証します。ログインセッションや DB 保存の `lbk_` キーは不要で、空文字列は無効を意味します。
-- `workspace.invitations.public_web_url` は招待リンクの公開 URL です。空の場合は `api.webui_url`、次に `api.webhook_prefix` へフォールバックします。メール配信は `resend` または `smtp` を選び、`provider` が空ならリンクのみを生成します。
+- `workspace.invitations.public_web_url` は招待リンクの公開 URL です。空の場合は `api.webui_url`、次に `api.webhook_prefix` へフォールバックします。
+- `email` は招待と[アラート](/ja/deploy/alerts)で共用するインスタンスのメールサービスです。`resend` または `smtp` を選び、`provider` が空なら招待はリンクのみ、アラートメールは送信しません。旧バージョンの `workspace.invitations.email` は起動時にここへ移行され、`WORKSPACE__INVITATIONS__EMAIL__*` 環境変数も引き続き使えます（同名の `EMAIL__*` が優先）。
+- `alerts.enabled` でインスタンス全体のアラートを無効にできます。詳しくは[アラート](/ja/deploy/alerts)を参照してください。
 
 <Warning>
 グローバル API キー、JWT シークレット、DB/S3 認証情報、メールプロバイダーのシークレット、E2B キーは機密情報です。本番では環境変数を優先し、実値を Git にコミットせず、認証対象のエンドポイントは HTTPS で公開してください。
@@ -354,7 +370,7 @@ space:
 - `database.use` で SQLite または PostgreSQL を選択します。`database.postgresql.url` が空でなければ分割された接続項目より優先され、TLS/クエリオプションも保持できます。
 - PostgreSQL のプールとタイムアウトは共有ランタイム資源を制限します。`database.cloud_migration.operator_dsn_env` は運用者専用のマイグレーション DSN を格納する環境変数名で、ランタイムロールとは分離してください。
 - `vdb.use` で利用するベクトルバックエンドを選びます。実際に選択したバックエンドだけを設定します。
-- `vdb.use: seekdb` は、ソースデプロイでは `uv sync --extra seekdb`、パッケージデプロイでは `uvx --from 'langbot[seekdb]@latest' langbot` が必要です。公式 Docker/Kubernetes イメージには依存関係がすでに含まれており、追加のビルド引数は不要です。
+- SeekDB、Milvus、Valkey Search はオプション依存関係で、デフォルトのインストールにもデフォルトイメージにも含まれません。`vdb.use: seekdb` / `milvus` / `valkey_search` を使う場合、ワンラインインストール（lbctl ネイティブ）では `lbctl install --extra seekdb`（または `milvus`、`valkey`）、ソースデプロイでは `uv sync --extra seekdb`（または `milvus`、`valkey`）、パッケージデプロイでは `uvx --from 'langbot[seekdb]@latest' langbot`（または `[milvus]`、`[valkey]`）を使用し、Docker/Kubernetes では `langbot` サービスのイメージを対応するタグ（例：`rockchin/langbot:latest-seekdb`、`latest-milvus`、`latest-valkey`）に変更してください。Chroma、Qdrant、pgvector は追加の依存関係が不要です。
 - `vdb.pgvector.use_business_database` は `database.postgresql` を再利用します。`allowed_dimensions` はリリースマイグレーションが作成する ANN インデックスの次元を制御します。
 - Valkey Search には Search モジュール入りの Valkey（例: `valkey/valkey-bundle:9.1.0`）が必要です。
 
@@ -384,6 +400,7 @@ space:
 
 - `API__PORT` → `api.port`
 - `WORKSPACE__INVITATIONS__PUBLIC_WEB_URL` → `workspace.invitations.public_web_url`
+- `EMAIL__SMTP__HOST` → `email.smtp.host`
 - `CONCURRENCY__PENDING_QUERIES_PER_WORKSPACE` → `concurrency.pending_queries_per_workspace`
 - `DATABASE__POSTGRESQL__POOL_SIZE` → `database.postgresql.pool_size`
 - `STORAGE__CLEANUP__MAX_FILES_PER_RUN` → `storage.cleanup.max_files_per_run`
