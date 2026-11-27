@@ -4005,6 +4005,7 @@ const esES = {
         notReached: 'No ejecutado',
         hookBy: 'El plugin {{plugin}} interceptó el mensaje en {{hook}}',
         noHook: 'Ningún plugin lo interceptó',
+        earlyHookOnly: 'MessageReceived se ejecutó sin interceptar; los hooks posteriores no se ejecutaron',
         denied: '/{{name}} denegado por falta de permiso ({{reply}})',
         deniedNotice: 'respondió con un aviso',
         deniedSilent: 'sin respuesta',

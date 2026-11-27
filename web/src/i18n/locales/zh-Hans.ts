@@ -3712,6 +3712,7 @@ const zhHans = {
         notReached: '未执行',
         hookBy: '插件 {{plugin}} 在 {{hook}} 拦截了消息',
         noHook: '没有插件拦截',
+        earlyHookOnly: 'MessageReceived 已触发，没有插件拦截；后续钩子未执行',
         denied: '/{{name}} 权限不足，已拒绝（{{reply}}）',
         deniedNotice: '回复无权限提示',
         deniedSilent: '不回复',

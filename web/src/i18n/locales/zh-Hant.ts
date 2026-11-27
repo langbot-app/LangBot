@@ -3712,6 +3712,7 @@ const zhHant = {
         notReached: '未執行',
         hookBy: '外掛 {{plugin}} 在 {{hook}} 攔截了訊息',
         noHook: '沒有外掛攔截',
+        earlyHookOnly: 'MessageReceived 已觸發，沒有外掛攔截；後續鉤子未執行',
         denied: '/{{name}} 權限不足，已拒絕（{{reply}}）',
         deniedNotice: '回覆無權限提示',
         deniedSilent: '不回覆',

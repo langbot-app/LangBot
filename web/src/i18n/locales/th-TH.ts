@@ -3862,6 +3862,7 @@ const thTH = {
         notReached: 'ไม่ได้ทำงาน',
         hookBy: 'ปลั๊กอิน {{plugin}} สกัดข้อความที่ {{hook}}',
         noHook: 'ไม่มีปลั๊กอินสกัด',
+        earlyHookOnly: 'MessageReceived ทำงานแล้วและไม่ได้สกัด ฮุกถัดไปไม่ได้ทำงาน',
         denied: '/{{name}} ถูกปฏิเสธเพราะไม่มีสิทธิ์ ({{reply}})',
         deniedNotice: 'ตอบกลับว่าไม่มีสิทธิ์',
         deniedSilent: 'ไม่ตอบกลับ',

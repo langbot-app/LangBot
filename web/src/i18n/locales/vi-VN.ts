@@ -3919,6 +3919,7 @@ const viVN = {
         notReached: 'Không chạy',
         hookBy: 'Plugin {{plugin}} đã chặn tin nhắn tại {{hook}}',
         noHook: 'Không plugin nào chặn',
+        earlyHookOnly: 'MessageReceived đã chạy và không chặn; các hook sau không chạy',
         denied: '/{{name}} bị từ chối do thiếu quyền ({{reply}})',
         deniedNotice: 'trả lời thông báo không có quyền',
         deniedSilent: 'không trả lời',

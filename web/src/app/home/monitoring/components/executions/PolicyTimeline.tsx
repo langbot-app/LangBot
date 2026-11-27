@@ -163,7 +163,9 @@ function buildSteps(
         }),
       }
     : blocked && !earlyHook
-      ? { key: 'hooks', state: 'skipped', text: T('notReached') }
+      ? // MessageReceived runs before admission, so it has already run here;
+        // only the hooks after admission were skipped.
+        { key: 'hooks', state: 'skipped', text: T('earlyHookOnly') }
       : { key: 'hooks', state: 'ok', text: T('noHook') };
 
   // 3. Processor: system command, plugin command, Chat or Agent.
