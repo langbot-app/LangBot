@@ -110,7 +110,12 @@ def _message_policy_counts(bots):
         counts['non_neutral_policy_bots'] += policy != neutral
         counts['commands_disabled_bots'] += not settings.get('enabled', True)
         counts['custom_prefix_bots'] += settings.get('prefixes', ['/']) != ['/']
-        counts['builtin_disabled_bots'] += any(not builtin_settings(settings, name)['enabled'] for name in DESCRIPTIONS)
+        # Only a built-in that is on by default and turned off counts: /model is
+        # off by default, so "any disabled" would count every bot.
+        counts['builtin_disabled_bots'] += any(
+            builtin_settings({}, name)['enabled'] and not builtin_settings(settings, name)['enabled']
+            for name in DESCRIPTIONS
+        )
         counts['silent_denial_bots'] += settings.get('denied_reply', 'silent') == 'silent'
         counts['all_plugins_bots'] += schema.enabled_plugins(policy) is None
         counts['route_policy_overrides'] += sum(

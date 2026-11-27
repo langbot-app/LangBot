@@ -269,3 +269,27 @@ class TestBuildHeartbeatPayload:
         flat = json.dumps(payload).lower()
         for forbidden in ('api_key', 'password', 'token', 'message_content'):
             assert forbidden not in flat
+
+
+def test_message_policy_counts_only_count_departures_from_command_defaults():
+    heartbeat = get_heartbeat_module()
+
+    def bot(**command_settings):
+        return SimpleNamespace(message_policy={}, event_bindings=[], command_settings=command_settings)
+
+    default = heartbeat._message_policy_counts([bot()])
+    # /model is off by default; a default bot has not turned any built-in off.
+    assert default['builtin_disabled_bots'] == 0
+    assert default['commands_disabled_bots'] == 0
+    assert default['custom_prefix_bots'] == 0
+
+    changed = heartbeat._message_policy_counts(
+        [
+            bot(builtin={'help': {'enabled': False}}),
+            bot(builtin={'model': {'enabled': True}}),
+            bot(enabled=False, prefixes=['!']),
+        ]
+    )
+    assert changed['builtin_disabled_bots'] == 1
+    assert changed['commands_disabled_bots'] == 1
+    assert changed['custom_prefix_bots'] == 1
