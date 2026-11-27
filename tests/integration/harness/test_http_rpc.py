@@ -81,6 +81,18 @@ async def test_typescript_http_rpc(tmp_path, monkeypatch):
         account = await ap.user_service.create_initial_account(email, password)
         assert await ap.user_service.authenticate(email, password)
         workspace = await ap.workspace_service.get_singleton_workspace()
+        async with engine.begin() as conn:
+            for workspace_id, name in (('shared', 'Shared Workspace'), ('private', 'Private Workspace')):
+                await conn.execute(sa.insert(Workspace).values(
+                    uuid=workspace_id, instance_uuid=constants.instance_id, name=name,
+                    slug=workspace_id, source='cloud_projection',
+                ))
+                await conn.execute(sa.insert(WorkspaceExecutionState).values(
+                    workspace_uuid=workspace_id, instance_uuid=constants.instance_id, source='cloud', active_generation=2,
+                ))
+            await conn.execute(sa.insert(WorkspaceMembership).values(
+                workspace_uuid='shared', account_uuid=account.uuid, role='viewer',
+            ))
         await wiring.install(ap)
         bindings = HarnessBindings(ap)
         issuer = SimpleNamespace(workspace_uuid=workspace.uuid, account_uuid=account.uuid)
@@ -101,9 +113,13 @@ async def test_typescript_http_rpc(tmp_path, monkeypatch):
             _, stderr = await process.communicate()
         assert process.returncode == 0, stderr.decode()
         async with engine.connect() as conn:
-            (grant,) = (await conn.execute(sa.select(HarnessOAuthGrant.__table__))).mappings().all()
-            assert grant['account_uuid'] == account.uuid and grant['workspace_uuid'] == workspace.uuid
-            assert grant['refresh_generation'] == 1 and grant['revoked_at'] is not None
+            grants = (await conn.execute(sa.select(HarnessOAuthGrant.__table__))).mappings().all()
+            assert len(grants) == 3
+            assert all(grant['account_uuid'] == account.uuid for grant in grants)
+            assert any(g['workspace_uuid'] == workspace.uuid and g['refresh_generation'] == 1
+                       and g['revoked_at'] is not None for g in grants)
+            assert any(g['workspace_uuid'] == 'shared' and g['refresh_generation'] == 1
+                       and g['revoked_at'] is None for g in grants)
             assert await conn.scalar(sa.select(sa.func.count()).select_from(HarnessBinding)) == 1
     finally:
         if process is not None and process.returncode is None:

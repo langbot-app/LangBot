@@ -56,6 +56,23 @@ assert.deepEqual(await repeatedEnvelope.json(), { code: 'invalid_hs2' });
 
 const other = await enroll(links[1], 'device-two');
 assert.deepEqual(await refresh(other, oldToken), { status: 401, body: { code: 'invalid_grant' } });
+const list = (rpc, token) => rpc.request({ path: '/api/v1/harness/workspaces', method: 'GET', auth: { kind: 'oauth', token } });
+const select = (rpc, token, id) => rpc.request({ path: '/api/v1/harness/workspaces/select', method: 'POST',
+  auth: { kind: 'oauth', token }, body: { workspace_uuid: id } });
+assert.equal((await list(other, signedIn.body.access_token)).status, 401);
+const directory = await list(first, signedIn.body.access_token);
+assert.equal(directory.body.workspace_uuid, workspace);
+assert.deepEqual(directory.body.workspaces.map(item => item.id).sort(), [workspace, 'shared'].sort());
+assert.equal((await select(first, signedIn.body.access_token, 'private')).status, 403);
+const switched = await select(first, signedIn.body.access_token, 'shared');
+assert.equal(switched.status, 200);
+assert.ok(!switched.body.scope.split(' ').includes('agent.run'));
+const scopedRefresh = await refresh(first, switched.body.refresh_token);
+assert.equal(scopedRefresh.status, 200);
+assert.equal((await list(first, scopedRefresh.body.access_token)).body.workspace_uuid, 'shared');
+const resumed = await login(first, workspace);
+assert.equal(resumed.status, 200);
+assert.equal((await list(first, resumed.body.access_token)).body.workspace_uuid, workspace);
 const rotated = await refresh(first, oldToken);
 assert.equal(rotated.status, 200);
 assert.ok(rotated.body.refresh_token && rotated.body.refresh_token !== oldToken);

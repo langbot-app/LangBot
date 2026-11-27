@@ -162,11 +162,11 @@ class HarnessOAuthService:
                 raise ValueError('interaction_required') from exc
             raise ValueError('invalid_grant') from exc
         account = await self.ap.user_service.get_user_by_email(email)
-        if account is None:
+        if account is None or (device['account_uuid'] is not None and device['account_uuid'] != account.uuid):
             raise ValueError('invalid_grant')
         access = await self.ap.workspace_collaboration_service.resolve_account_workspace(account.uuid, workspace_uuid)
         workspace_uuid = access.workspace.uuid
-        raw_scope = payload.get('scope', 'agent.run resource.view')
+        raw_scope = payload.get('scope', 'workspace.view agent.run resource.view')
         if not isinstance(raw_scope, str):
             raise ValueError('invalid_scope')
         permissions = set(permissions_for_role(access.membership.role))
@@ -190,6 +190,18 @@ class HarnessOAuthService:
             ).mappings().one_or_none()
             if link is None:
                 raise ValueError('invalid_binding')
+            if device['account_uuid'] is not None:
+                active = await conn.scalar(sa.select(HarnessBinding.id).where(
+                    HarnessBinding.id == binding_id,
+                    HarnessBinding.instance_uuid == self.instance_uuid,
+                    HarnessBinding.revoked_at.is_(None),
+                ).join(HarnessDevice, HarnessDevice.binding_id == HarnessBinding.id).where(
+                    HarnessDevice.id == device_id, HarnessDevice.account_uuid == account.uuid,
+                    HarnessDevice.revoked_at.is_(None),
+                ))
+                if active is None:
+                    raise ValueError('invalid_device')
+                return await self._issue_grant(conn, binding_id, device_id, account.uuid, workspace_uuid, scopes)
             claimed = await conn.execute(
                 HarnessDevice.__table__.update()
                 .where(
@@ -210,20 +222,30 @@ class HarnessOAuthService:
                     created_at=now,
                 )
             )
-            refresh = 'hr_' + secrets.token_urlsafe(48)
-            grant = {
-                'id': str(uuid.uuid4()), 'binding_id': binding_id, 'device_id': device_id,
-                'account_uuid': account.uuid, 'workspace_uuid': workspace_uuid, 'scope': ' '.join(scopes),
-            }
-            tokens = await self._mint_from_grant(grant, refresh)
-            await conn.execute(
-                HarnessOAuthGrant.__table__.insert().values(
-                    **grant,
-                    refresh_token_hash=_hash(refresh),
-                    refresh_expires_at=now + REFRESH_TTL,
-                    created_at=now,
-                )
-            )
+            return await self._issue_grant(conn, binding_id, device_id, account.uuid, workspace_uuid, scopes)
+
+    async def switch_workspace(self, account_uuid, binding_id, device_id, workspace_uuid):
+        access = await self.ap.workspace_collaboration_service.resolve_account_workspace(account_uuid, workspace_uuid)
+        permissions = permissions_for_role(access.membership.role)
+        if 'workspace.view' not in permissions:
+            raise ValueError('workspace_forbidden')
+        scopes = [scope for scope in ('workspace.view', 'agent.run', 'resource.view')
+                  if SCOPE_PERMISSIONS[scope] in permissions]
+        async with self.engine.begin() as conn:
+            tokens = await self._issue_grant(conn, binding_id, device_id, account_uuid, access.workspace.uuid, scopes)
+        return {**tokens, 'workspace_uuid': access.workspace.uuid}
+
+    async def _issue_grant(self, conn, binding_id, device_id, account_uuid, workspace_uuid, scopes):
+        now = int(time.time())
+        refresh = 'hr_' + secrets.token_urlsafe(48)
+        grant = {
+            'id': str(uuid.uuid4()), 'binding_id': binding_id, 'device_id': device_id,
+            'account_uuid': account_uuid, 'workspace_uuid': workspace_uuid, 'scope': ' '.join(scopes),
+        }
+        tokens = await self._mint_from_grant(grant, refresh)
+        await conn.execute(HarnessOAuthGrant.__table__.insert().values(
+            **grant, refresh_token_hash=_hash(refresh), refresh_expires_at=now + REFRESH_TTL, created_at=now,
+        ))
         return tokens
 
     async def refresh_grant(self, refresh_token: str, *, binding_id: str, device_id: str) -> dict:

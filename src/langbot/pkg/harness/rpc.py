@@ -11,8 +11,9 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
 from nacl.exceptions import CryptoError
 
-from ..api.authz import AuthorizationError
-from ..workspace.errors import WorkspaceNotFoundError
+from ..api.authz import AuthorizationError, permissions_for_role
+from ..workspace.errors import WorkspaceExecutionUnavailableError, WorkspaceNotFoundError
+from .auth import _oauth_context
 from .crypto.suite import open_, seal
 from .crypto.transport import begin_handshake, finish_handshake
 from .oauth import HarnessOAuthService
@@ -128,7 +129,7 @@ class HarnessRpc:
         try:
             result = await self._dispatch(harness_id, device['id'], request)
             reply.update(ok=True, result=result)
-        except (AuthorizationError, WorkspaceNotFoundError):
+        except (AuthorizationError, WorkspaceNotFoundError, WorkspaceExecutionUnavailableError):
             reply.update(ok=False, error={'code': 'workspace_forbidden'})
         except ValueError as exc:
             code = str(exc)
@@ -154,4 +155,22 @@ class HarnessRpc:
             if set(params) != {'refresh_token'} or not isinstance(token, str) or not 0 < len(token) <= 256:
                 raise RpcError('invalid_request')
             return await service.refresh_grant(token, binding_id=harness_id, device_id=device_id)
+        if method in ('workspace.list', 'workspace.select'):
+            expected = {'access_token'} if method == 'workspace.list' else {'access_token', 'workspace_uuid'}
+            token = params.get('access_token')
+            if set(params) != expected or not isinstance(token, str) or not 0 < len(token) <= 8192:
+                raise RpcError('invalid_request')
+            context, _ = await _oauth_context(self.ap, token, device_id=device_id, binding_id=harness_id)
+            if 'workspace.view' not in context.workspace.permissions:
+                raise RpcError('insufficient_scope')
+            if method == 'workspace.list':
+                accesses = await self.ap.workspace_collaboration_service.list_account_workspaces(context.account_uuid)
+                return {'workspace_uuid': context.workspace_uuid, 'workspaces': [
+                    {'id': item.workspace.uuid, 'label': item.workspace.name} for item in accesses
+                    if 'workspace.view' in permissions_for_role(item.membership.role)
+                ]}
+            target = params['workspace_uuid']
+            if not isinstance(target, str) or not 0 < len(target) <= 36:
+                raise RpcError('invalid_request')
+            return await service.switch_workspace(context.account_uuid, harness_id, device_id, target)
         raise RpcError('unsupported_rpc_method')

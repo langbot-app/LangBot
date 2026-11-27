@@ -15,7 +15,9 @@ from ..utils import constants
 from .oauth import SCOPE_PERMISSIONS
 
 
-async def _oauth_context(ap, token: str, workspace_uuid: str | None = None):
+async def _oauth_context(
+    ap, token: str, workspace_uuid: str | None = None, *, device_id: str | None = None, binding_id: str | None = None,
+):
     """Resolve a Harness access token against live grant, device and membership records."""
     try:
         claims = jwt.decode(
@@ -28,6 +30,10 @@ async def _oauth_context(ap, token: str, workspace_uuid: str | None = None):
     except Exception as exc:
         raise ValueError('invalid_harness_access_token') from exc
     if claims.get('typ') != 'langbot_harness_at':
+        raise ValueError('invalid_harness_access_token')
+    if (device_id is not None and claims['dev'] != device_id) or (
+        binding_id is not None and claims['bid'] != binding_id
+    ):
         raise ValueError('invalid_harness_access_token')
     if workspace_uuid is not None and workspace_uuid != claims['ws']:
         raise ValueError('workspace_forbidden')
@@ -49,6 +55,7 @@ async def _oauth_context(ap, token: str, workspace_uuid: str | None = None):
                         HarnessBinding.instance_uuid == constants.instance_id,
                         HarnessBinding.revoked_at.is_(None),
                         HarnessDevice.revoked_at.is_(None),
+                        HarnessDevice.account_uuid == claims['sub'],
                     )
                 )
             )
@@ -58,7 +65,7 @@ async def _oauth_context(ap, token: str, workspace_uuid: str | None = None):
     if row is None:
         raise ValueError('invalid_harness_grant')
     account = await ap.user_service.get_user_by_uuid(claims['sub'])
-    if account is None:
+    if account is None or account.status != 'active':
         raise ValueError('account_not_found')
     access = await ap.workspace_collaboration_service.resolve_account_workspace(account.uuid, claims['ws'])
     role_permissions = set(permissions_for_role(access.membership.role))
