@@ -1601,6 +1601,104 @@ def test_dashboard_chat_uses_neutral_policy(runner_client, runner_e2e_tmpdir):
                     assert frame['data']['message_chain'] == [{'type': 'Plain', 'text': f'e2e echo: {text}'}], frame
 
 
+def test_onebot_native_quote(runner_client, runner_e2e_tmpdir):
+    from websockets.sync.client import connect
+
+    from tests.unit_tests.platform.onebot_mock import OneBotMock
+
+    client = runner_client
+    token = _init_and_auth(client)
+    _ensure_qa_plugin(client, token, runner_e2e_tmpdir / 'agent-runner-qa.zip')
+
+    def create(path, payload):
+        result = client.post('/api/v1/' + path, headers={'Authorization': 'Bearer ' + token}, json=payload).json()
+        assert result['code'] == 0, result
+        return result['data']['uuid']
+
+    chat = _create_boundary_pipeline(client, token)
+    agent = create(
+        'agents',
+        {
+            'kind': 'agent',
+            'name': 'Quote QA',
+            'supported_event_patterns': ['message.*'],
+            'config': {'runner': {'id': QA_RUNNER_ID}, 'runner_config': {QA_RUNNER_ID: {}}},
+        },
+    )
+    peer = OneBotMock()
+    message_id = 7000
+    for route, target in [('pipeline', chat), ('agent', agent)]:
+        for quote in (False, True):
+            bot = create(
+                'platform/bots',
+                {
+                    'name': f'Quote {route} {quote}',
+                    'adapter': 'onebot-v11',
+                    'enable': True,
+                    'adapter_config': {'connection_mode': 'reverse_ws', 'access-token': 'onebot-qa', 'self_id': '42'},
+                    'message_policy': {
+                        'trigger': {'group-respond-rules': {'enabled': False}},
+                        'output': {'misc': {'at-sender': False, 'quote-origin': quote}},
+                    },
+                    'event_bindings': [
+                        {
+                            'id': 'reply',
+                            'event_pattern': 'message.received',
+                            'target_type': route,
+                            'target_uuid': target,
+                        }
+                    ],
+                },
+            )
+            uri = f'ws://127.0.0.1:{client.base_url.port}/bots/{bot}/onebot/v11/ws'
+            with connect(
+                uri,
+                proxy=None,
+                additional_headers={
+                    'Authorization': 'Bearer onebot-qa',
+                    'X-Self-ID': '42',
+                    'X-Client-Role': 'Universal',
+                },
+            ) as socket_peer:
+                for kind in ('private', 'group'):
+                    for text in ['echo', '/whoami'] if route == 'pipeline' else ['echo']:
+                        message_id += 1
+                        incoming = peer.message(
+                            kind,
+                            'friend' if kind == 'private' else 'normal',
+                            [{'type': 'text', 'data': {'text': text}}],
+                        )
+                        socket_peer.send(
+                            json.dumps(
+                                incoming | {'message_id': message_id, 'raw_message': text, 'time': int(time.time())}
+                            )
+                        )
+                        deadline = time.monotonic() + 30
+                        while True:
+                            request = json.loads(socket_peer.recv(timeout=max(0, deadline - time.monotonic())))
+                            socket_peer.send(json.dumps(peer.handle(request) | {'echo': request['echo']}))
+                            if request['action'] in ('send_msg', 'send_private_msg', 'send_group_msg'):
+                                break
+                        parts = request['params']['message']
+                        assert [str(part['data']['id']) for part in parts if part['type'] == 'reply'] == (
+                            [str(message_id)] if quote else []
+                        ), (route, kind, text, request)
+                        reply = ''.join(part['data']['text'] for part in parts if part['type'] == 'text')
+                        assert '10001' in reply if text == '/whoami' else reply == 'e2e echo: echo', request
+                        with contextlib.closing(sqlite3.connect(runner_e2e_tmpdir / 'data/langbot.db')) as db:
+                            row = db.execute(
+                                'SELECT metadata_json FROM event_log WHERE event_id=? AND bot_id=?',
+                                (f'platform:{bot}:{message_id}', bot),
+                            ).fetchone()
+                        assert row, (bot, message_id)
+                        actions = [
+                            action
+                            for event in json.loads(row[0]).get('policy_events', [])
+                            for action in event.get('actions', [])
+                        ]
+                        assert ({'kind': 'quote'} in actions) == quote, row
+
+
 def _pipeline_failure_diagnostics(directory, pipeline_id):
     with contextlib.closing(sqlite3.connect(directory / 'data' / 'langbot.db')) as connection:
         messages = connection.execute(

@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from contextlib import closing
+from contextlib import ExitStack, closing, contextmanager
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -29,10 +29,15 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
             self.end_headers()
             self.wfile.write(reply)
 
-    with ThreadingHTTPServer(('127.0.0.1', 0), Receiver) as receiver:
+    with ThreadingHTTPServer(('127.0.0.1', 0), Receiver) as receiver, ExitStack() as services:
         port = runtime._free_port()
-        config = runtime.create_minimal_config(tmp_path, port)
-        runtime.create_test_directories(tmp_path)
+        if enabled:
+            ports = runtime.runner_runtime_ports.__wrapped__()
+            config = runtime.runner_e2e_config_path.__wrapped__(tmp_path, port, ports)
+            services.enter_context(contextmanager(runtime.runner_runtime_process.__wrapped__)(tmp_path, ports))
+        else:
+            config = runtime.create_minimal_config(tmp_path, port)
+            runtime.create_test_directories(tmp_path)
         settings = yaml.safe_load(config.read_text())
         settings['space'].update(
             url=f'http://127.0.0.1:{receiver.server_port}', execution_trace_sample=1, telemetry_flush_seconds=1
@@ -76,10 +81,28 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
                     assert bool(reply['data']['message']) == (command == '/whoami')
                 if enabled:
                     _check_route_access_policy(client, token, bot, tmp_path)
+                    runtime._ensure_qa_plugin(client, token, tmp_path / 'agent-runner-qa.zip')
+                    agent_events = _check_agent_ingress(client, token, bot, tmp_path)
+                else:
+                    unavailable = client.post(
+                        '/api/v1/agents',
+                        headers={'Authorization': 'Bearer ' + token},
+                        json={
+                            'name': 'Missing Runner',
+                            'kind': 'agent',
+                            'supported_event_patterns': ['message.*'],
+                            'config': {
+                                'runner': {'id': runtime.QA_RUNNER_ID},
+                                'runner_config': {runtime.QA_RUNNER_ID: {}},
+                            },
+                        },
+                    )
+                    assert unavailable.status_code == 400 and runtime.QA_RUNNER_ID in unavailable.json()['msg']
                 deadline = time.monotonic() + (75 if enabled else 35)
                 while time.monotonic() < deadline:
                     if any(payload.get('event_type') == 'instance_heartbeat' for payload in received) and (
-                        not enabled or _access_layers(received) == {'bot', 'route'}
+                        not enabled
+                        or (_access_layers(received) == {'bot', 'route'} and agent_events <= _agent_drops(received))
                     ):
                         break
                     time.sleep(0.25)
@@ -100,6 +123,12 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
     features = next(payload['features'] for payload in received if payload.get('event_type') == 'instance_heartbeat')
     assert features['commands_disabled_bots'] == 0
     assert _access_layers(received) == {'bot', 'route'}
+    assert agent_events <= _agent_drops(received)
+    assert not any(
+        node.get('family') == 'runner' and node.get('event_id') in agent_events
+        for payload in received
+        for node in payload.get('records', [])
+    )
     outcomes = {
         (dims['name'], dims['outcome'])
         for metric, dims, count in features['usage']['c']
@@ -117,6 +146,71 @@ def _access_layers(received):
         and node.get('operation') == 'access-control'
         and node.get('outcome') == 'discarded'
     }
+
+
+def _agent_drops(received):
+    return {
+        node['event_id']
+        for payload in received
+        for node in payload.get('records', [])
+        if (node.get('family'), node.get('operation'), node.get('outcome'), node.get('layer'))
+        == ('message_policy', 'ignore-rules', 'discarded', 'route')
+    }
+
+
+def _check_agent_ingress(client, token, bot, tmp_path):
+    headers = {'Authorization': 'Bearer ' + token}
+    agent = client.post(
+        '/api/v1/agents',
+        headers=headers,
+        json={
+            'kind': 'agent',
+            'name': 'Admission QA',
+            'supported_event_patterns': ['message.*'],
+            'config': {'runner': {'id': runtime.QA_RUNNER_ID}, 'runner_config': {runtime.QA_RUNNER_ID: {}}},
+        },
+    ).json()
+    assert agent['code'] == 0, agent
+    target = agent['data']['uuid']
+    updated = client.put(
+        '/api/v1/platform/bots/' + bot,
+        headers=headers,
+        json={
+            'event_bindings': [
+                {
+                    'id': 'agent',
+                    'event_pattern': 'message.received',
+                    'target_type': 'agent',
+                    'target_uuid': target,
+                    'policy': {'trigger': {'ignore-rules': {'prefix': ['ignored:']}}},
+                }
+            ],
+        },
+    ).json()
+    assert updated['code'] == 0, updated
+    event_ids = set()
+    for kind in ('person', 'group'):
+        body = json.dumps(
+            {'session_type': kind, 'session_id': 'agent', 'message': [{'type': 'Plain', 'text': 'ignored: QA'}]}
+        ).encode()
+        reply = client.post('/bots/' + bot + '/sync', content=body, headers=signed_headers(body, 'qa-signer')).json()
+        assert reply['code'] == 0 and not reply['data']['message'], reply
+        event_id = f'platform:{bot}:{reply["data"]["reply_to"]}'
+        with closing(sqlite3.connect(tmp_path / 'data/langbot.db')) as db:
+            row = db.execute(
+                'SELECT metadata_json FROM event_log WHERE bot_id=? AND event_id=?', (bot, event_id)
+            ).fetchone()
+        metadata = json.loads(row[0])
+        (route,) = metadata['routes']
+        assert (
+            metadata['status'],
+            route['target_type'],
+            route['target_uuid'],
+            route['policy_item'],
+            route['policy_layer'],
+        ) == ('ignored', 'agent', target, 'ignore-rules', 'route'), metadata
+        event_ids.add(event_id)
+    return event_ids
 
 
 def _check_route_access_policy(client, token, bot, tmp_path):

@@ -25,6 +25,7 @@ from langbot_plugin.api.entities.builtin.provider import prompt as provider_prom
 from ....core import app
 from ....agent.runner.config_resolver import RunnerConfigResolver
 from ....agent.runner.config_schema import extract_prompt_config
+from ....agent.runner.errors import RunnerNotFoundError
 from ....agent.runner.execution_context import build_execution_query, project_mcp_resource_config
 from ....agent.runner.host_models import (
     AgentBinding,
@@ -630,7 +631,10 @@ class AgentService:
 
     async def _validate_runner_for_agent(self, context, runner_id):
         if runner_id:
-            descriptor = await self.ap.runner_registry.get(context, runner_id)
+            try:
+                descriptor = await self.ap.runner_registry.get(context, runner_id)
+            except RunnerNotFoundError as exc:
+                raise ValueError(t('Agent runner not found: {runner}', runner=runner_id)) from exc
             if 'agent' not in descriptor.usages:
                 raise ValueError('The selected Runner does not support agent usage')
 
