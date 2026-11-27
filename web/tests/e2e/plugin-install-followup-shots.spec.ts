@@ -164,7 +164,7 @@ test('multi-component install shows one link per distinct next step', async ({
   await expect(page).toHaveURL(/\/home\/agents\?id=new/);
   // Not just the URL: the page really opened its create form.
   await expect(
-    page.getByRole('heading', { name: 'Create event processor' }),
+    page.getByRole('heading', { name: 'Create processor' }),
   ).toBeVisible();
 });
 
@@ -228,28 +228,15 @@ test('parser-only install keeps the banner a single line', async ({ page }) => {
 test('pending permission review wins over the follow-up', async ({ page }) => {
   await installLangBotApiMocks(page, { authenticated: true });
   const dialog = await shoot(page, 'review');
-  // The review renders in the same row shape the follow-up uses, so the two
-  // states look alike; it must be the only row and no follow-up may stack on
-  // top of it.
-  const review = dialog.getByRole('link', {
-    name: /Review permissions|审阅权限|審閱權限/,
-  });
-  await expect(review).toBeVisible();
-  await expect(review).toHaveAttribute(
-    'href',
-    /\/home\/extensions\?id=qa-review%2Freview-followup/,
-  );
+  // Permissions are confirmed right in the dialog; no follow-up may stack on
+  // top of the review until the grant is done.
+  await expect(dialog.getByTestId('install-permission-review')).toBeVisible();
   await expect(dialog.getByRole('list', { name: /Next steps/i })).toHaveCount(
     0,
   );
-  await expect(dialog.getByRole('link')).toHaveCount(1);
-
-  // Clicking opens that plugin's detail page, i.e. the permission review.
-  await review.click();
-  await expect(page).toHaveURL(
-    /\/home\/extensions\?id=qa-review%2Freview-followup/,
-  );
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(
+    dialog.getByRole('link', { name: /Create an Agent/i }),
+  ).toHaveCount(0);
 });
 
 test('the pending-review list button is short but fully labelled', async ({
@@ -314,20 +301,16 @@ test.describe('chinese', () => {
     ['zh-Hans', ['新建 Agent 或插件处理器', '创建聊天']],
     ['zh-Hant', ['建立 Agent 或插件處理器', '建立聊天']],
   ] as const) {
-    test(`${locale} review button stays short with a full label`, async ({
-      page,
-    }) => {
+    test(`${locale} permission review renders in place`, async ({ page }) => {
       await installLangBotApiMocks(page, {
         authenticated: true,
         language: locale,
       });
       const dialog = await shoot(page, 'review', locale);
-      const button = dialog.getByRole('link', {
-        name: locale === 'zh-Hans' ? /审阅权限/ : /審閱權限/,
-      });
-      await expect(button).toBeVisible();
-      // Visible text is the short form; the full phrase lives in the label.
-      await expect(button).toHaveText(locale === 'zh-Hans' ? '审阅' : '審閱');
+      // The review sits inside the dialog in the user's language.
+      const review = dialog.getByTestId('install-permission-review');
+      await expect(review).toBeVisible();
+      await expect(dialog).not.toContainText('pluginPermissions.');
     });
 
     test(`${locale} follow-up copy renders`, async ({ page }) => {

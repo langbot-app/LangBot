@@ -405,11 +405,6 @@ test('completed installation remains pending instead of claiming activation', as
     path: testInfo.outputPath('installed-pending.png'),
     fullPage: true,
   });
-  await dialog
-    .getByRole('link', { name: 'Review permissions', exact: true })
-    .click();
-  await expect(dialog).toHaveCount(0);
-  await expect(
-    page.getByRole('heading', { name: 'Permission fixture', exact: true }),
-  ).toBeVisible();
+  // The review is confirmed in place instead of on another page.
+  await expect(dialog.getByTestId('install-permission-review')).toBeVisible();
 });

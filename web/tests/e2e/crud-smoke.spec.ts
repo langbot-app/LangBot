@@ -318,11 +318,12 @@ test.describe('frontend CRUD smoke flows', () => {
       page.getByRole('heading', { name: /pipeline-ai/ }),
     ).toBeVisible();
 
-    await expect(page.getByText('Runtime', { exact: true })).toBeVisible();
+    // The one-page Chat editor leads with the Runner and model fields.
     await expect(
-      page.locator('[data-slot="card-title"]').filter({
-        hasText: 'Local Agent',
-      }),
+      page.locator('label').filter({ hasText: 'Runner' }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Local Agent', { exact: true }).first(),
     ).toBeVisible();
     await expect(
       page.locator('label').filter({

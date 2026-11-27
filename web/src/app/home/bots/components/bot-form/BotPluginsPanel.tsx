@@ -363,14 +363,6 @@ export default function BotPluginsPanel({
         );
       });
   const enabledRows = listedRows.filter((row) => row.installed);
-  // Commands from the enabled plugins, in list (priority) order.
-  const pluginCommandList = enabledRows.flatMap((row) =>
-    commandsOf(row).map((command) => ({
-      key: `${row.id}/${command}`,
-      command,
-      pluginLabel: row.label,
-    })),
-  );
   const installedVersions = new Map(
     (plugins ?? []).map((plugin) => {
       const metadata = plugin.manifest?.manifest?.metadata;
@@ -430,6 +422,14 @@ export default function BotPluginsPanel({
       []
     );
   }
+  // Commands from the enabled plugins, in list (priority) order.
+  const pluginCommandList = enabledRows.flatMap((row) =>
+    commandsOf(row).map((command) => ({
+      key: `${row.id}/${command}`,
+      command,
+      pluginLabel: row.label,
+    })),
+  );
   function instanceBinding(pluginId: string) {
     return (commands.processors ?? []).find(
       (binding) =>
