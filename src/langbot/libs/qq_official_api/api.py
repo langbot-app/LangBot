@@ -1068,7 +1068,9 @@ class QQOfficialClient:
 
             try:
                 await self.logger.info('Connecting to WebSocket gateway...')
-                ws = await websockets.connect(ws_url, max_size=_MAX_CALLBACK_BODY_BYTES)
+                ws = await websockets.connect(
+                    ws_url, max_size=_MAX_CALLBACK_BODY_BYTES, **httpclient.websocket_connect_kwargs(ws_url)
+                )
                 await self.logger.info('WebSocket connected')
             except Exception as e:
                 await self.logger.error(f'WebSocket connection failed: {e}')
