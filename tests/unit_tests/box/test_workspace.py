@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ntpath
 import os
 import tempfile
 from types import SimpleNamespace
@@ -8,11 +9,13 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.box import workspace as workspace_module
 from langbot.pkg.box.workspace import (
     BoxWorkspaceSession,
     classify_python_workspace,
     infer_workspace_host_path,
     rewrite_mounted_path,
+    rewrite_venv_command,
 )
 from langbot.pkg.utils.python_workspace import wrap_python_command_with_env
 
@@ -27,6 +30,31 @@ _CONTEXT = ExecutionContext(
 def test_rewrite_mounted_path_translates_host_prefix():
     result = rewrite_mounted_path('/tmp/demo/project/app.py', '/tmp/demo/project')
     assert result == '/workspace/app.py'
+
+
+def test_rewrite_mounted_path_translates_windows_host_prefix(monkeypatch):
+    monkeypatch.setattr(workspace_module, 'os', SimpleNamespace(path=ntpath))
+
+    assert rewrite_mounted_path(r'C:\proj\server.py', r'C:\proj') == '/workspace/server.py'
+    assert rewrite_mounted_path(r'C:\proj\sub\cfg.json', 'C:\\proj\\') == '/workspace/sub/cfg.json'
+    assert rewrite_mounted_path(r'c:\PROJ\Server.py', r'C:\proj') == '/workspace/Server.py'
+    assert rewrite_mounted_path(r'C:\proj', r'C:\proj', mount_path='/workspace/.mcp/u1') == '/workspace/.mcp/u1'
+
+
+def test_rewrite_mounted_path_leaves_other_windows_paths_alone(monkeypatch):
+    monkeypatch.setattr(workspace_module, 'os', SimpleNamespace(path=ntpath))
+
+    assert rewrite_mounted_path(r'C:\proj2\x.py', r'C:\proj') == r'C:\proj2\x.py'
+    assert rewrite_mounted_path(r'D:\proj\x.py', r'C:\proj') == r'D:\proj\x.py'
+    assert rewrite_mounted_path(r'C:\other\..\proj2\x.py', r'C:\proj') == r'C:\other\..\proj2\x.py'
+
+
+def test_rewrite_venv_command_handles_windows_host_paths(monkeypatch):
+    monkeypatch.setattr(workspace_module, 'os', SimpleNamespace(path=ntpath))
+
+    assert rewrite_venv_command(r'C:\proj\.venv\Scripts\python.exe', r'C:\proj') == 'python'
+    assert rewrite_venv_command(r'C:\proj\tools\node.exe', r'C:\proj') == '/workspace/tools/node.exe'
+    assert rewrite_venv_command(r'D:\tools\node.exe', r'C:\proj') == r'D:\tools\node.exe'
 
 
 def test_infer_workspace_host_path_unwraps_virtualenv_bin_dir():
