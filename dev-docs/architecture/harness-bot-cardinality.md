@@ -22,14 +22,17 @@ From the repository root:
 uv run pytest tests/unit_tests/harness tests/unit_tests/platform/test_harness_adapter.py tests/unit_tests/agent/test_processor_policy.py tests/integration/persistence/test_migrations.py tests/unit_tests/api/service/test_bot_service.py -q
 ```
 
-The real encrypted WebSocket test additionally uses the built TS client from `LangBot-Harness`:
+The TCP WebSocket smoke test uses the built TS transport from `LangBot-Harness` at `4cca441` (`agent/lang-714-client`). With both repositories checked out as siblings, run from the LangBot root (tested with Node.js 26):
 
 ```sh
-cd LangBot-Harness && pnpm install --frozen-lockfile && pnpm build
-cd ../LangBot
-HARNESS_TS_TRANSPORT=../LangBot-Harness/packages/core/dist/transport.js uv run pytest tests/integration/harness -q
+git -C ../LangBot-Harness fetch origin agent/lang-714-client
+git -C ../LangBot-Harness worktree add --detach ../LangBot-Harness-4cca441 4cca441
+pnpm --dir ../LangBot-Harness-4cca441 install --frozen-lockfile
+pnpm --dir ../LangBot-Harness-4cca441 test
+HARNESS_TS_TRANSPORT="$PWD/../LangBot-Harness-4cca441/packages/core/dist/transport.js" \
+  uv run pytest tests/integration/harness tests/unit_tests/harness -q
 ```
 
 The SQLite tests verify concurrent requests for 100 distinct processor-shaped configurations per Workspace still create one row each, and upgrading 101 legacy rows preserves all IDs and an existing session summary. The injected ingress test covers distinct routes, revocation on an established connection, account and processor isolation for identical wire conversation IDs, and rejection of late replies after disconnect.
 
-End-to-end acceptance uses a real TCP WebSocket, encrypted TS HS1/HS2, LangBot persisted instance keys, account JWT resolution, Workspace membership resolution, per-message processor denial, shared Bot dispatch and an encrypted reply. It uses a representative test dispatch callback rather than a production installed Runner. Production device registration/key lookup, registration-link and Cloud SSO flows, and repeat migration/routing runs on PostgreSQL remain uncovered.
+The smoke test uses the real Quart endpoint over TCP, TS HS1/HS2, persisted instance keys, account JWT validation, per-message processor denial, and encrypted replies. After the server closes the first socket, the same TS factory opens a fresh channel and reauthenticates. The same conversation keeps its internal chat ID but receives a new connection ID and channel proof. The fixture supplies device lookup, Workspace context and the Runner reply callback; production device registration, installed Runner execution, and PostgreSQL acceptance are separate.

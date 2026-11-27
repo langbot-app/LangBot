@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from quart import websocket
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
@@ -95,10 +96,14 @@ async def test_typescript_chat_over_network(tmp_path):
         membership=SimpleNamespace(uuid='membership', role='viewer', projection_revision=0),
     )
     adapter = HarnessAdapter.model_construct(config={}, logger=SimpleNamespace(), listeners={})
+    dispatches = []
 
     async def dispatch(event, processor):
         assert processor == 'agent'
+        dispatches.append((event.chat_id, event.source_platform_object['harness_connection_id']))
         await adapter.reply_message(event, MessageChain([Plain(text='pong')]))
+        if len(dispatches) == 1:
+            await websocket.close(1012, 'Reconnect smoke test')
 
     ap = SimpleNamespace(
         instance_config=SimpleNamespace(data={'system': {'jwt': {'secret': secret, 'expire': 60}}}),
@@ -160,8 +165,11 @@ async def test_typescript_chat_over_network(tmp_path):
         async with asyncio.timeout(12):
             _, stderr = await process.communicate()
         assert process.returncode == 0, stderr.decode()
-        assert ap.workspace_collaboration_service.resolve_account_workspace.await_count == 3
+        assert ap.workspace_collaboration_service.resolve_account_workspace.await_count == 5
         assert ap.platform_mgr.get_bot_by_uuid.await_args.args[1] == workspace_bot_uuid('workspace')
+        first, second = dispatches
+        assert first[0] == second[0]
+        assert first[1] != second[1]
     finally:
         stop.set()
         await server

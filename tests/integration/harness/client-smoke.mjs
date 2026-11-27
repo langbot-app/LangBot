@@ -12,8 +12,7 @@ const factory = createWebSocketSecureSocketFactory(url, {
   timeoutMs: 4000,
 }, (endpoint) => new WebSocket(endpoint, { headers: { Origin: 'http://127.0.0.1' } }));
 
-const { socket, channel } = await factory();
-function request(payload) {
+function request({ socket, channel }, payload) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(Error('Missing encrypted reply')), 3000);
     socket.onFrame((frame) => {
@@ -23,17 +22,43 @@ function request(payload) {
     socket.send(channel.encode(payload));
   });
 }
-try {
-  const authenticated = await request({ type: 'authenticate', auth: { kind: 'user_token', token }, workspace_uuid: 'workspace' });
+
+async function authenticate(connection) {
+  const authenticated = await request(connection, { type: 'authenticate', auth: { kind: 'user_token', token }, workspace_uuid: 'workspace' });
   assert.equal(authenticated.type, 'authenticated');
   assert.equal(authenticated.account_uuid, 'account');
   assert.equal(authenticated.workspace_uuid, 'workspace');
   assert.equal(typeof authenticated.csrf_token, 'string');
-  const message = { type: 'message', conversation_id: 'thread-1', content: 'ping', workspace_uuid: 'workspace' };
-  assert.deepEqual(await request({ ...message, csrf_token: authenticated.csrf_token, processor_uuid: 'other-agent' }),
+  return authenticated.csrf_token;
+}
+
+const message = { type: 'message', conversation_id: 'thread-1', content: 'ping', workspace_uuid: 'workspace' };
+const reply = { type: 'message', role: 'assistant', content: 'pong', final: true, conversation_id: 'thread-1', processor_uuid: 'agent' };
+const initial = await factory();
+let firstProof;
+try {
+  firstProof = await authenticate(initial);
+  assert.deepEqual(await request(initial, { ...message, csrf_token: firstProof, processor_uuid: 'other-agent' }),
     { type: 'error', code: 'processor_forbidden' });
-  assert.deepEqual(await request({ ...message, csrf_token: authenticated.csrf_token, processor_uuid: 'agent' }),
-    { type: 'message', role: 'assistant', content: 'pong', final: true, conversation_id: 'thread-1', processor_uuid: 'agent' });
+  const closed = new Promise((resolve) => initial.socket.onClose(resolve));
+  assert.deepEqual(await request(initial, { ...message, csrf_token: firstProof, processor_uuid: 'agent' }), reply);
+  let timer;
+  try {
+    await Promise.race([closed, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(Error('Server did not close first connection')), 3000);
+    })]);
+  } finally {
+    clearTimeout(timer);
+  }
 } finally {
-  socket.close();
+  initial.socket.close();
+}
+
+const resumed = await factory();
+try {
+  const secondProof = await authenticate(resumed);
+  assert.notEqual(secondProof, firstProof);
+  assert.deepEqual(await request(resumed, { ...message, csrf_token: secondProof, processor_uuid: 'agent' }), reply);
+} finally {
+  resumed.socket.close();
 }
