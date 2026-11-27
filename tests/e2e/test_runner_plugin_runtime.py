@@ -178,7 +178,7 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
                         yield RunnerResult.run_completed(ctx.run_id, finish_reason='stop')
                         return
                     if text == 'error-policy-probe':
-                        yield RunnerResult.run_failed(ctx.run_id, 'QA runner failure')
+                        yield RunnerResult.run_failed(ctx.run_id, 'QA runner failure at http://internal.invalid/api token=qa-private-value\\nTraceback (most recent call last): QA diagnostic')
                         return
                     if text == 'stream-policy-probe':
                         self.plugin.stream_rewrite_attempted = False
@@ -1365,8 +1365,26 @@ def test_chat_runner_failure_policy(runner_client, runner_e2e_tmpdir):
             parts = reply['data']['message']
             if mode == 'hide':
                 assert not parts, parts
+                ingress = f'platform:{bot}:{reply["data"]["reply_to"]}'
+                with contextlib.closing(sqlite3.connect(runner_e2e_tmpdir / 'data/langbot.db')) as db:
+                    (run_id,) = db.execute(
+                        "SELECT run_id FROM agent_run WHERE bot_id=? AND json_extract(metadata_json,'$.ingress_event_id')=?",
+                        (bot, ingress),
+                    ).fetchone()
+                detail = client.get(
+                    f'/api/v1/monitoring/executions/agent/{run_id}', headers={'Authorization': 'Bearer ' + token}
+                ).json()
+                assert detail['code'] == 0, detail
+                row = detail['data']['row']
+                assert row['status'] == 'failed' and 'QA runner failure' in row['status_reason'], row
+                assert any(event['type'] == 'run.failed' for event in detail['data']['events']), detail
             elif mode == 'show-error':
-                assert 'QA runner failure' in parts[0]['text'], parts
+                assert parts == [
+                    {
+                        'type': 'Plain',
+                        'text': f'Agent runner {QA_RUNNER_ID} execution failed: QA runner failure at [URL] token=***',
+                    }
+                ], parts
             else:
                 assert [part['text'] for part in parts] == ['Custom QA hint'], parts
 

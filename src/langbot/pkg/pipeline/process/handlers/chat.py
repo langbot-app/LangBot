@@ -5,6 +5,7 @@ from ....i18n import pipeline_notice
 import uuid
 import typing
 import traceback
+import re
 
 
 from .. import handler
@@ -269,7 +270,18 @@ class ChatMessageHandler(handler.MessageHandler):
                 if strategy == 'hide':
                     user_notice = None
                 elif strategy == 'show-error':
-                    user_notice = str(e)
+                    from ....telemetry.execution import redact_text
+
+                    first_line = (
+                        str(e)
+                        .partition('\n')[0]
+                        .partition('\r')[0]
+                        .partition('Traceback (most recent call last)')[0]
+                        .strip()
+                    )
+                    user_notice = redact_text(
+                        re.sub(r'(?i)\b(?:https?|wss?)://\S+', '[URL]', first_line)
+                    ) or pipeline_notice(query, 'failure-hint', 'Request failed.')
                 elif isinstance(e, RunnerNotFoundError):
                     user_notice = pipeline_notice(
                         query,

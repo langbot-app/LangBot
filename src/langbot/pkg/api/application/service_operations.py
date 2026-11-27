@@ -899,6 +899,9 @@ def _contract(operation_id, method):
 
 def _operation(operation_id, service_name, method, permission, side_effect):
     input_type, output_type = _contract(operation_id, method)
+    reports_ignored_keys = operation_id in {'pipeline.create', 'pipeline.update'}
+    if reports_ignored_keys:
+        output_type = output_type | dict
 
     async def invoke(ap, context, payload):
         arguments = payload.model_dump()
@@ -911,6 +914,16 @@ def _operation(operation_id, service_name, method, permission, side_effect):
             require_permission(context, secret_permission)
         service = getattr(ap, service_name)
         result = await getattr(service, method.__name__)(context, **arguments)
+        if reports_ignored_keys:
+            from ...message_policy.schema import ignored_config_keys
+
+            ignored = ignored_config_keys(arguments['pipeline_data'].get('config'))
+            if ignored:
+                return (
+                    {'uuid': result, 'ignored_keys': ignored}
+                    if operation_id == 'pipeline.create'
+                    else {'ignored_keys': ignored}
+                )
         if result is None and operation_id.endswith('.get') and output_type != type(None):
             # Optional defaults (e.g. starred model) are intentionally nullable.
             if operation_id not in {'model.llm.starred.get', 'model.llm.default.get'}:

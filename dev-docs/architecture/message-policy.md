@@ -14,6 +14,8 @@ The settings around the AI (trigger, safety, general output) and plugin enableme
 
 ## Runtime
 
+Chat Runner failures follow `output.misc.exception-handling`. `show-error` returns the first line of the actual error with credentials and endpoint URLs redacted; `hide` sends no reply. Both previously sent a fixed hint. The default `show-hint` behaviour is unchanged. A hidden reply does not suppress the failure reason or execution timeline in monitoring.
+
 - `MessagePolicyManager` (`ap.message_policy_mgr`) compiles a `MessagePolicyRuntime` per (Workspace, bot, route id) and caches it until the bot entity changes (`invalidate_bot`). Long text, content filter and rate limit build internal state at compile time, which is why a runtime is compiled instead of only rewriting `query.pipeline_config`. The rate limiter is shared by the application; its counters are keyed per session.
 - `bind_query` attaches the runtime to the entry Query and overlays the effective policy onto `query.pipeline_config` under the old keys (`overlay_policy`) so legacy plugins reading those keys keep working. The route id travels in `query.variables['_message_route_id']`; when it is missing the first route of that bot pointing at the same pipeline supplies the override.
 - Call sites:
