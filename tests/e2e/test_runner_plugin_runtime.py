@@ -172,6 +172,13 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
             class DefaultRunner(Runner):
                 async def run(self, ctx: RunnerContext) -> AsyncGenerator[RunnerResult, None]:
                     text = ctx.input.to_text()
+                    if text == 'stream-policy-probe':
+                        await ctx.call_tool('platform_send_message', {'target_type': 'group', 'target_id': 'qa-notifications', 'text': 'proactive text'})
+                        async with ctx.reply_stream() as stream:
+                            await stream.update('first')
+                            await stream.update('first and last')
+                        yield RunnerResult.run_completed(ctx.run_id, finish_reason='stop')
+                        return
                     if text == 'hello from orchestrator e2e':
                         logging.getLogger(__name__).warning('Runner trace probe')
                     content = f'{ctx.config.get("prefix", "e2e echo")}: {text}'
@@ -1096,6 +1103,86 @@ def test_http_bot_builtin_commands(runner_client, runner_e2e_tmpdir):
         for command in ('model', 'tools', 'stop', 'retry', 'undo'):
             assert send('!' + command, 'admin', group) == no_route
         assert send('!version', 'user', group) == '没有执行此操作的权限'
+
+
+@pytest.mark.parametrize('kind', ['person', 'group'])
+def test_agent_stream_policy_callbacks(runner_client, runner_e2e_tmpdir, kind):
+    from datetime import datetime
+    from tools.regression.http_bot import signed_headers
+    from tools.regression.regression_lifecycle_cases import CallbackReceiver
+
+    client = runner_client
+    token = _init_and_auth(client)
+    _ensure_qa_plugin(client, token, runner_e2e_tmpdir / 'agent-runner-qa.zip')
+    headers = {'Authorization': f'Bearer {token}'}
+
+    def create(path, payload):
+        reply = client.post('/api/v1/' + path, headers=headers, json=payload).json()
+        assert reply['code'] == 0, reply
+        return reply['data']['uuid']
+
+    agent = create(
+        'agents',
+        {
+            'kind': 'agent',
+            'name': 'Streaming QA',
+            'supported_event_patterns': ['message.*'],
+            'config': {
+                'runner': {'id': QA_RUNNER_ID},
+                'runner_config': {QA_RUNNER_ID: {}},
+                'allowed_platform_tools': ['event_reply', 'platform_send_message'],
+            },
+        },
+    )
+    with CallbackReceiver('qa-sign') as receiver:
+        bot = create(
+            'platform/bots',
+            {
+                'name': 'Streaming QA',
+                'adapter': 'http_bot',
+                'enable': True,
+                'adapter_config': {
+                    'signature_required': True,
+                    'inbound_secret': 'qa-sign',
+                    'callback_url': receiver.url,
+                },
+                'message_policy': {
+                    'trigger': {'group-respond-rules': {'enabled': False}},
+                    'output': {
+                        'long-text-processing': {'threshold': 2, 'strategy': 'forward'},
+                        'force-delay': {'min': 1, 'max': 1},
+                        'misc': {'at-sender': True, 'quote-origin': True},
+                    },
+                },
+                'event_bindings': [{'event_pattern': 'message.received', 'target_type': 'agent', 'target_uuid': agent}],
+            },
+        )
+        body = json.dumps(
+            {
+                'session_type': kind,
+                'session_id': 'stream',
+                'sender': {'id': 'user'},
+                'message': [{'type': 'Plain', 'text': 'stream-policy-probe'}],
+            }
+        ).encode()
+        reply = client.post('/bots/' + bot, content=body, headers=signed_headers(body, 'qa-sign')).json()
+        assert reply['code'] == 0, reply
+        records = receiver.wait_final(reply['data']['accepted_message_id'], 30)
+        chunks = [record['payload'] for record in records if record['status'] == 200]
+        sent = receiver.wait_final('', 10)[-1]['payload']
+        assert sent['session_id'] == 'qa-notifications' and not sent['stream']
+        assert [(part['type'], part['text']) for part in sent['message']] == [('Plain', 'proactive text')]
+        delay = datetime.fromisoformat(chunks[0]['timestamp']) - datetime.fromisoformat(sent['timestamp'])
+        assert delay.total_seconds() >= 1
+        assert [chunk['is_final'] for chunk in chunks] == [False, False, True]
+        assert all(chunk['stream'] for chunk in chunks)
+        assert [[part['text'] for part in chunk['message'] if part['type'] == 'Plain'] for chunk in chunks] == [
+            ['first'],
+            ['first and last'],
+            ['first and last'],
+        ]
+        for chunk in chunks:
+            assert [part['type'] for part in chunk['message']] == (['At', 'Plain'] if kind == 'group' else ['Plain'])
 
 
 def test_http_agent_message_policy(runner_client, runner_e2e_tmpdir):
