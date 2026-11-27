@@ -172,6 +172,10 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
             class DefaultRunner(Runner):
                 async def run(self, ctx: RunnerContext) -> AsyncGenerator[RunnerResult, None]:
                     text = ctx.input.to_text()
+                    if getattr(ctx.platform_event, 'type', None) == 'group.member_joined':
+                        await ctx.call_tool('event_reply', {'text': 'Welcome to the group'})
+                        yield RunnerResult.run_completed(ctx.run_id, finish_reason='stop')
+                        return
                     if text == 'error-policy-probe':
                         yield RunnerResult.run_failed(ctx.run_id, 'QA runner failure')
                         return
@@ -1773,6 +1777,106 @@ def test_onebot_native_quote(runner_client, runner_e2e_tmpdir):
                             for action in event.get('actions', [])
                         ]
                         assert ({'kind': 'quote'} in actions) == quote, row
+
+
+def test_onebot_policy_only_applies_to_messages(runner_client, runner_e2e_tmpdir):
+    from websockets.sync.client import connect
+    from tests.unit_tests.platform.onebot_mock import OneBotMock
+
+    client = runner_client
+    token = _init_and_auth(client)
+    _ensure_qa_plugin(client, token, runner_e2e_tmpdir / 'agent-runner-qa.zip')
+
+    def create(path, payload):
+        result = client.post('/api/v1/' + path, headers={'Authorization': 'Bearer ' + token}, json=payload).json()
+        assert result['code'] == 0, result
+        return result['data']['uuid']
+
+    agent = create(
+        'agents',
+        {
+            'name': 'Event scope',
+            'kind': 'agent',
+            'supported_event_patterns': ['*'],
+            'config': {
+                'runner': {'id': QA_RUNNER_ID},
+                'runner_config': {QA_RUNNER_ID: {}},
+                'allowed_platform_tools': ['event_reply'],
+            },
+        },
+    )
+    bot = create(
+        'platform/bots',
+        {
+            'name': 'Event scope',
+            'enable': True,
+            'adapter': 'onebot-v11',
+            'adapter_config': {'connection_mode': 'reverse_ws', 'access-token': 'qa-token', 'self_id': '42'},
+            'event_bindings': [
+                {'event_pattern': pattern, 'target_type': 'agent', 'target_uuid': agent}
+                for pattern in ('message.received', 'group.member_joined')
+            ],
+            'message_policy': {
+                'trigger': {'access-control': {'mode': 'blacklist', 'blacklist': ['group_20001']}},
+                'output': {
+                    'misc': {'at-sender': True},
+                    'long-text-processing': {'strategy': 'forward', 'threshold': 1},
+                },
+            },
+        },
+    )
+    peer = OneBotMock()
+    uri = f'ws://127.0.0.1:{client.base_url.port}/bots/{bot}/onebot/v11/ws'
+    with connect(
+        uri,
+        proxy=None,
+        additional_headers={'Authorization': 'Bearer qa-token', 'X-Self-ID': '42', 'X-Client-Role': 'Universal'},
+    ) as wire:
+        wire.send(json.dumps(peer.message('group', 'normal')))
+        wire.send(
+            json.dumps(
+                {
+                    'time': int(time.time()),
+                    'post_type': 'notice',
+                    'notice_type': 'group_increase',
+                    'sub_type': 'approve',
+                    'group_id': 20001,
+                    'self_id': 42,
+                    'user_id': 10001,
+                    'operator_id': 10002,
+                }
+            )
+        )
+        deadline = time.monotonic() + 30
+        with contextlib.closing(sqlite3.connect(runner_e2e_tmpdir / 'data/langbot.db')) as db:
+            delivered = []
+            while time.monotonic() < deadline:
+                try:
+                    request = json.loads(wire.recv(timeout=0.2))
+                except TimeoutError:
+                    pass
+                else:
+                    wire.send(json.dumps(peer.handle(request) | {'echo': request['echo']}))
+                    if request['action'] in ('send_msg', 'send_group_msg'):
+                        delivered.append(request['params']['message'])
+                rows = {
+                    kind: json.loads(raw)
+                    for kind, raw in db.execute(
+                        'SELECT event_type,metadata_json FROM event_log WHERE bot_id=? AND event_id LIKE ?',
+                        (bot, 'platform:%'),
+                    )
+                }
+                if (
+                    delivered
+                    and rows.get('group.member_joined', {}).get('routes')
+                    and rows.get('message.received', {}).get('routes')
+                ):
+                    break
+        assert rows['message.received']['routes'][0]['policy_item'] == 'access-control', rows
+        assert rows['group.member_joined']['routes'][0]['status'] == 'delivered', rows
+        assert not rows['group.member_joined'].get('policy_events'), rows
+        (parts,) = delivered
+        assert parts == [{'type': 'text', 'data': {'text': 'Welcome to the group'}}], parts
 
 
 def _pipeline_failure_diagnostics(directory, pipeline_id):
