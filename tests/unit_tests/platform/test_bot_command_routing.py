@@ -786,6 +786,8 @@ async def test_bot_command_execution_records_a_processor_run(monkeypatch, error,
     calls = []
 
     class FakeRecorder:
+        run_id = 'command:test'
+
         def __init__(self, ap, workspace_uuid):
             calls.append(('init', workspace_uuid))
 

@@ -22,10 +22,15 @@ def test_command_telemetry_at_local_receiver(tmp_path, enabled):
 
 @pytest.mark.e2e
 def test_builtin_permissions_at_local_receiver(tmp_path):
-    _run_at_local_receiver(tmp_path, True, permission_matrix=True)
+    _run_at_local_receiver(tmp_path, True, permission_matrix=_check_builtin_permissions)
 
 
-def _run_at_local_receiver(tmp_path, enabled, *, permission_matrix=False):
+@pytest.mark.e2e
+def test_plugin_permissions_at_local_receiver(tmp_path):
+    _run_at_local_receiver(tmp_path, True, permission_matrix=_check_plugin_permissions)
+
+
+def _run_at_local_receiver(tmp_path, enabled, *, permission_matrix=None):
     received = []
 
     class Receiver(BaseHTTPRequestHandler):
@@ -82,7 +87,9 @@ def _run_at_local_receiver(tmp_path, enabled, *, permission_matrix=False):
                 assert created['code'] == 0, created
                 bot = created['data']['uuid']
                 if permission_matrix:
-                    _check_builtin_permissions(client, token, bot, received)
+                    if permission_matrix is _check_plugin_permissions:
+                        runtime._ensure_qa_plugin(client, token, tmp_path / 'agent-runner-qa.zip')
+                    permission_matrix(client, token, bot, received)
                     return
                 for command in ('/whoami', '/status'):
                     body = json.dumps(
@@ -267,6 +274,96 @@ def _check_builtin_permissions(client, token, bot, received):
                     ), row
                     expected[event_id] = (name, 'denied' if denied else 'ok')
     assert len(expected) == 96
+    _assert_command_telemetry(received, {eid: ('builtin', name, outcome) for eid, (name, outcome) in expected.items()})
+
+
+def _check_plugin_permissions(client, token, bot, received):
+    def api(method, path, **kwargs):
+        result = client.request(method, path, headers={'Authorization': 'Bearer ' + token}, **kwargs).json()
+        assert result['code'] == 0, result
+        return result['data']
+
+    plugin = 'e2e/agent-runner-qa'
+    ref = plugin + '/whoami'
+    url = '/api/v1/platform/bots/' + bot
+    instance = api(
+        'POST',
+        '/api/v1/agents',
+        json={
+            'kind': 'command_processor',
+            'name': 'Permission probe',
+            'component_ref': 'plugin:' + plugin,
+            'parameters': {'whoami': {'identity': 'configured'}},
+        },
+    )['uuid']
+    api('POST', url + '/admins', json={'launcher_type': 'person', 'launcher_id': 'admin'})
+    api('PUT', '/api/v1/workspaces/current/language', json={'language': 'en_US'})
+    expected = {}
+    run_ids = set()
+    for operation in ('plugin', 'processor'):
+        for mode in ('silent', 'notice'):
+            api(
+                'PUT',
+                url,
+                json={
+                    'command_settings': {
+                        'denied_reply': mode,
+                        'builtin': {'whoami': {'enabled': False}},
+                        'plugin_permissions': {ref: 'admins'},
+                        'processors': [{'processor_uuid': instance}] if operation == 'processor' else [],
+                    },
+                    'message_policy': {
+                        'plugins': {'enable_all': False, 'plugins': [{'author': 'e2e', 'name': 'agent-runner-qa'}]},
+                        'trigger': {'group-respond-rules': {'enabled': False}},
+                        'output': {'misc': {'at-sender': False}},
+                    },
+                },
+            )
+            for kind in ('person', 'group'):
+                for sender in ('admin', 'user'):
+                    denied = sender != 'admin'
+                    body = json.dumps(
+                        {
+                            'session_type': kind,
+                            'session_id': sender if kind == 'person' else 'qa-group',
+                            'sender': {'id': sender},
+                            'message': [{'type': 'Plain', 'text': '/whoami'}],
+                        }
+                    ).encode()
+                    reply = client.post(
+                        '/bots/' + bot + '/sync', content=body, headers=signed_headers(body, 'qa-signer')
+                    ).json()
+                    assert reply['code'] == 0, reply
+                    text = 'plugin:configured' if operation == 'processor' else 'plugin:default'
+                    parts = [{'type': 'Plain', 'text': 'Permission denied' if denied else text}]
+                    assert reply['data']['message'] == ([] if denied and mode == 'silent' else parts), reply
+                    eid = f'platform:{bot}:{reply["data"]["reply_to"]}'
+                    detail = api('GET', '/api/v1/monitoring/executions/event/' + eid, params={'section': 'inputs'})
+                    row = detail['row']
+                    assert (
+                        row['event_id'],
+                        row['handling'],
+                        row['command_kind'],
+                        row['command_name'],
+                        row['command_denied'],
+                    ) == (eid, 'command', 'plugin', 'whoami', denied), row
+                    (entry,) = detail['pages']['inputs']['items']
+                    (route,) = entry['metadata']['routes']
+                    assert (route['target_uuid'], route['status']) == (ref, 'denied' if denied else 'delivered'), route
+                    if operation == 'processor' and not denied:
+                        assert route['run_id'] and route['run_id'] not in run_ids, route
+                        run_ids.add(route['run_id'])
+                    else:
+                        assert not route['run_id'], route
+                    expected[eid] = (operation, 'plugin', 'denied' if denied else 'ok')
+    runs = api('GET', f'/api/v1/agents/{instance}/runs')['items']
+    assert len(expected) == 16 and len(run_ids) == 4
+    assert {run['run_id'] for run in runs} == run_ids
+    assert all(run['binding_id'] == 'command_processor:' + instance and run['status'] == 'completed' for run in runs)
+    _assert_command_telemetry(received, expected)
+
+
+def _assert_command_telemetry(received, expected):
     deadline = time.monotonic() + 75
     while True:
         nodes = [node for batch in received for node in batch.get('records', []) if node.get('event_id') in expected]
@@ -276,11 +373,14 @@ def _check_builtin_permissions(client, token, bot, received):
             if batch.get('event_type') == 'instance_heartbeat':
                 for metric, dims, count in batch['features']['usage']['c']:
                     if metric == 'command.run':
-                        counts[dims['name'], dims['outcome']] += count
+                        counts[dims['kind'], dims['name'], dims['outcome']] += count
         if (len(commands) >= len(expected) and counts.total() >= len(expected)) or time.monotonic() >= deadline:
             break
         time.sleep(0.25)
-    assert Counter(commands) == Counter((eid, 'builtin:' + name, outcome) for eid, (name, outcome) in expected.items())
+    assert Counter(commands) == Counter(
+        (eid, 'builtin:' + name if kind == 'builtin' else kind, outcome)
+        for eid, (kind, name, outcome) in expected.items()
+    )
     assert counts == Counter(expected.values())
     assert not any(node.get('family') == 'runner' for node in nodes)
 

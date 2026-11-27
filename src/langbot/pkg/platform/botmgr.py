@@ -1273,7 +1273,7 @@ class RuntimeBot:
                 binding=getattr(event, '_selected_route', None),
                 status='denied',
                 target_type='plugin_command' if plugin_id else 'builtin_command',
-                target_uuid=cmd_name,
+                target_uuid=f'{plugin_id}/{cmd_name}' if plugin_id else cmd_name,
                 failure_code='command_permission_denied',
                 text=f'Command {cmd_name} denied ({denied_reply})',
                 details={'denied_reply': denied_reply, 'command_kind': 'plugin' if plugin_id else 'builtin'},
@@ -1520,6 +1520,7 @@ class RuntimeBot:
                 target_uuid=f'{plugin_id}/{command_name}',
                 failure_code='command_execution_failed',
                 reason=str(exc),
+                run_id=run_recorder.run_id,
                 text=f'Plugin command {plugin_id}/{command_name} failed: {exc}',
             )
             await run_recorder.finish(error=str(exc))
@@ -1534,6 +1535,7 @@ class RuntimeBot:
             target_type='plugin_command',
             target_uuid=f'{plugin_id}/{command_name}',
             text=f'Plugin command {plugin_id}/{command_name}: {"failed" if command_error else "delivered"}',
+            run_id=run_recorder.run_id,
         )
 
     async def _begin_message(self, event, adapter):
