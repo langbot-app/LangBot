@@ -70,6 +70,7 @@ async def _oauth_context(ap, token: str, workspace_uuid: str | None = None):
         placement_generation=access.execution.placement_generation,
         request_id=str(uuid.uuid4()),
         auth_type='harness-oauth',
+        harness_device_id=claims['dev'],
         principal=PrincipalContext(principal_type=PrincipalType.ACCOUNT, account_uuid=account.uuid),
         workspace=WorkspaceContext(
             workspace_uuid=access.workspace.uuid,
@@ -77,7 +78,6 @@ async def _oauth_context(ap, token: str, workspace_uuid: str | None = None):
             role=access.membership.role,
             permissions=effective,
             membership_revision=access.membership.projection_revision,
-            harness_device_id=claims['dev'],
         ),
     )
 
