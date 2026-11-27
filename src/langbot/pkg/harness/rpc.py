@@ -7,11 +7,16 @@ import secrets
 import time
 from dataclasses import dataclass
 
+import sqlalchemy as sa
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
 from nacl.exceptions import CryptoError
 
-from ..api.authz import AuthorizationError, permissions_for_role
+from ..agent.policy import can_use_processor
+from ..api.authz import AuthorizationError, Permission, has_permission, permissions_for_role
+from ..entity.persistence.agent_run import AgentRun
+from ..platform.adapters.harness.bindings import processor_bot_uuid
+from ..platform.adapters.harness.event_converter import harness_session_id
 from ..workspace.errors import WorkspaceExecutionUnavailableError, WorkspaceNotFoundError
 from .auth import _oauth_context
 from .crypto.suite import open_, seal
@@ -21,8 +26,30 @@ from .oauth import HarnessOAuthService
 _SELECTOR = re.compile(r'[A-Za-z0-9_-]{1,128}')
 _MAX_PENDING = 1024
 _MAX_BOX = 32_768
-_GRANT_ERRORS = {'invalid_grant', 'invalid_device', 'invalid_binding', 'interaction_required',
-                 'refresh_token_reuse', 'workspace_forbidden', 'insufficient_scope'}
+_MAX_REPLY_BYTES = 256 * 1024
+_INSPECTOR_SECTIONS = frozenset(
+    {
+        'overview',
+        'inputs',
+        'outputs',
+        'deliveries',
+        'conversation',
+        'events',
+        'llm_calls',
+        'tool_calls',
+        'errors',
+    }
+)
+_GRANT_ERRORS = {
+    'invalid_grant',
+    'invalid_device',
+    'invalid_binding',
+    'interaction_required',
+    'refresh_token_reuse',
+    'workspace_forbidden',
+    'insufficient_scope',
+    'execution_not_found',
+}
 
 
 class RpcError(ValueError):
@@ -103,7 +130,8 @@ class HarnessRpc:
         frame = payload.get('frame')
         header = {'v': 1, 'kid': kid, 'kind': 'rpc', 'seq': '0'}
         if (
-            not isinstance(frame, dict) or type(frame.get('v')) is not int
+            not isinstance(frame, dict)
+            or type(frame.get('v')) is not int
             or any(frame.get(key) != value for key, value in header.items())
         ):
             raise RpcError('invalid_request')
@@ -112,7 +140,10 @@ class HarnessRpc:
             raise RpcError('invalid_request')
         try:
             c2h, h2c = finish_handshake(
-                kid, challenge.transcript, challenge.ephemeral, server_static,
+                kid,
+                challenge.transcript,
+                challenge.ephemeral,
+                server_static,
                 x25519.X25519PublicKey.from_public_bytes(base64.b64decode(device['x25519_pub'], validate=True)),
                 ed25519.Ed25519PublicKey.from_public_bytes(base64.b64decode(device['ed25519_pub'], validate=True)),
                 payload.get('hs2'),
@@ -121,8 +152,11 @@ class HarnessRpc:
         except (InvalidSignature, CryptoError, ValueError, RecursionError):
             raise RpcError('invalid_hs2') from None
         if (
-            not isinstance(request, dict) or type(request.get('v')) is not int or request['v'] != 1
-            or not isinstance(request.get('id'), str) or not 0 < len(request['id']) <= 128
+            not isinstance(request, dict)
+            or type(request.get('v')) is not int
+            or request['v'] != 1
+            or not isinstance(request.get('id'), str)
+            or not 0 < len(request['id']) <= 128
         ):
             raise RpcError('invalid_request')
         reply = {'v': 1, 'id': request['id']}
@@ -136,7 +170,12 @@ class HarnessRpc:
             if not isinstance(exc, RpcError) and code not in _GRANT_ERRORS:
                 code = 'invalid_grant'
             reply.update(ok=False, error={'code': code})
-        return {'frame': {**header, 'box': base64.b64encode(seal(h2c, 0, json.dumps(reply).encode())).decode()}}
+        encoded = json.dumps(reply, ensure_ascii=False).encode()
+        if len(encoded) > _MAX_REPLY_BYTES:
+            encoded = json.dumps(
+                {'v': 1, 'id': request['id'], 'ok': False, 'error': {'code': 'rpc_response_too_large'}}
+            ).encode()
+        return {'frame': {**header, 'box': base64.b64encode(seal(h2c, 0, encoded)).decode()}}
 
     async def _dispatch(self, harness_id, device_id, request):
         method, params = request.get('method'), request.get('params')
@@ -146,15 +185,23 @@ class HarnessRpc:
         if method == 'oauth.password':
             if set(params) != {'email', 'password', 'workspace_uuid'}:
                 raise RpcError('invalid_request')
-            return await service.password_grant(harness_id, {
-                'grant_type': 'password', 'device_id': device_id, 'username': params['email'],
-                'password': params['password'], 'workspace_uuid': params['workspace_uuid'],
-            })
+            return await service.password_grant(
+                harness_id,
+                {
+                    'grant_type': 'password',
+                    'device_id': device_id,
+                    'username': params['email'],
+                    'password': params['password'],
+                    'workspace_uuid': params['workspace_uuid'],
+                },
+            )
         if method == 'oauth.refresh':
             token = params.get('refresh_token')
             if set(params) != {'refresh_token'} or not isinstance(token, str) or not 0 < len(token) <= 256:
                 raise RpcError('invalid_request')
             return await service.refresh_grant(token, binding_id=harness_id, device_id=device_id)
+        if method == 'monitoring.execution.detail':
+            return await self._execution_detail(harness_id, device_id, params)
         if method in ('workspace.list', 'workspace.select'):
             expected = {'access_token'} if method == 'workspace.list' else {'access_token', 'workspace_uuid'}
             token = params.get('access_token')
@@ -165,12 +212,74 @@ class HarnessRpc:
                 raise RpcError('insufficient_scope')
             if method == 'workspace.list':
                 accesses = await self.ap.workspace_collaboration_service.list_account_workspaces(context.account_uuid)
-                return {'workspace_uuid': context.workspace_uuid, 'workspaces': [
-                    {'id': item.workspace.uuid, 'label': item.workspace.name} for item in accesses
-                    if 'workspace.view' in permissions_for_role(item.membership.role)
-                ]}
+                return {
+                    'workspace_uuid': context.workspace_uuid,
+                    'workspaces': [
+                        {'id': item.workspace.uuid, 'label': item.workspace.name}
+                        for item in accesses
+                        if 'workspace.view' in permissions_for_role(item.membership.role)
+                    ],
+                }
             target = params['workspace_uuid']
             if not isinstance(target, str) or not 0 < len(target) <= 36:
                 raise RpcError('invalid_request')
             return await service.switch_workspace(context.account_uuid, harness_id, device_id, target)
         raise RpcError('unsupported_rpc_method')
+
+    async def _execution_detail(self, harness_id, device_id, params):
+        required = {
+            'access_token': 8192,
+            'workspace_uuid': 36,
+            'processor_uuid': 36,
+            'conversation_id': 255,
+            'execution_id': 255,
+        }
+        if set(params) - required.keys() - {'section', 'offset', 'limit'} or any(
+            not isinstance(params.get(key), str) or not 0 < len(params[key]) <= size for key, size in required.items()
+        ):
+            raise RpcError('invalid_request')
+        section, offset, limit = params.get('section', 'overview'), params.get('offset', 0), params.get('limit', 20)
+        if (
+            not isinstance(section, str)
+            or section not in _INSPECTOR_SECTIONS
+            or type(offset) is not int
+            or not 0 <= offset <= 10_000
+            or type(limit) is not int
+            or not 1 <= limit <= 50
+        ):
+            raise RpcError('invalid_request')
+        ctx, _ = await _oauth_context(
+            self.ap,
+            params['access_token'],
+            params['workspace_uuid'],
+            binding_id=harness_id,
+            device_id=device_id,
+        )
+        if not has_permission(ctx, Permission.RESOURCE_VIEW):
+            raise RpcError('insufficient_scope')
+        workspace, processor = ctx.workspace_uuid, params['processor_uuid']
+        conversation = 'person_' + harness_session_id(workspace, ctx.account_uuid, processor, params['conversation_id'])
+        async with self.ap.persistence_mgr.tenant_scope(workspace):
+            if not await can_use_processor(self.ap, ctx, processor):
+                raise RpcError('execution_not_found')
+            matched = await self.ap.persistence_mgr.execute_async(
+                sa.select(AgentRun.run_id).where(
+                    AgentRun.workspace_id == workspace,
+                    AgentRun.bot_id == processor_bot_uuid(workspace, processor),
+                    AgentRun.conversation_id == conversation,
+                    AgentRun.run_id == params['execution_id'],
+                )
+            )
+            if matched.scalar_one_or_none() is None:
+                raise RpcError('execution_not_found')
+            try:
+                return await self.ap.monitoring_service.get_execution_detail(
+                    ctx,
+                    'agent',
+                    params['execution_id'],
+                    section=section,
+                    offset=offset,
+                    limit=limit,
+                )
+            except ValueError:
+                raise RpcError('execution_not_found') from None

@@ -8,6 +8,7 @@ from langbot_plugin.api.definition.abstract.platform.event_logger import Abstrac
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
 
+from ....telemetry.trace import current_run
 from .connection_registry import HarnessConnectionRegistry
 
 
@@ -72,6 +73,7 @@ class HarnessAdapter(AbstractPlatformAdapter):
                 'final': True,
                 'conversation_id': source['harness_conversation_id'],
                 'processor_uuid': source['harness_processor_uuid'],
+                **({'execution': {'source': 'agent', 'id': run_id}} if (run_id := current_run()) else {}),
             }
         )
         return platform_events.MessageResult(message_id='harness-reply', raw={})

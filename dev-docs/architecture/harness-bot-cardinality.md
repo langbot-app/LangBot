@@ -14,6 +14,8 @@ The TS and Python peers share `tests/unit_tests/harness/protocol-vectors.json` (
 
 The Runner acceptance below redeems the link and enrolls a client device over HTTPS, obtains an OAuth grant via encrypted HTTP RPC password login, and authenticates the chat channel inside HTS1 (`auth.kind: oauth`). It does not exercise browser 2FA handoff.
 
+Assistant chat replies include `{ execution: { source: 'agent', id } }` from the active Runner trace context. Inspector uses the explicit encrypted RPC method `monitoring.execution.detail` through `Hts1HttpRpcTransport.getExecutionDetail()`. Required params are `access_token`, `workspace_uuid`, `processor_uuid`, `conversation_id`, and `execution_id`; optional params are `section`, `offset`, and `limit` (maximum 50). The server revalidates grant, device and membership, checks live processor access, and matches the run to the deterministic processor Bot and the account/workspace/processor-scoped `person_` conversation before calling `MonitoringService.get_execution_detail()`. Cross-workspace requests return `workspace_forbidden`; unavailable or non-owned runs return `execution_not_found` (404) without disclosing their existence. This is deliberately not a generic Workspace API proxy.
+
 ## Reproduction
 
 From the repository root:
@@ -28,6 +30,7 @@ With Harness `6f3cf86` checked out as a sibling, run from the LangBot root (Node
 pnpm --dir ../LangBot-Harness install --frozen-lockfile
 pnpm --dir ../LangBot-Harness/packages/core build
 HARNESS_TS_TRANSPORT="$PWD/../LangBot-Harness/packages/core/dist/transport.js" \
+HARNESS_TS_RPC_TRANSPORT="$PWD/../LangBot-Harness/packages/core/dist/rpc-transport.js" \
   uv run --frozen pytest -q tests/e2e/test_local_runner_fake_provider.py::test_harness_processor_bots_run_local_agent
 ```
 

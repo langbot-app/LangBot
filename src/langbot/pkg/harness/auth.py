@@ -11,12 +11,18 @@ from ..api.authz import permissions_for_role
 from ..api.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
 from ..entity.persistence.harness_oauth import HarnessDevice, HarnessOAuthGrant
 from ..entity.persistence.harness_registration import HarnessBinding
+from ..entity.persistence.user import AccountStatus
 from ..utils import constants
 from .oauth import SCOPE_PERMISSIONS
 
 
 async def _oauth_context(
-    ap, token: str, workspace_uuid: str | None = None, *, device_id: str | None = None, binding_id: str | None = None,
+    ap,
+    token: str,
+    workspace_uuid: str | None = None,
+    *,
+    device_id: str | None = None,
+    binding_id: str | None = None,
 ):
     """Resolve a Harness access token against live grant, device and membership records."""
     try:
@@ -65,7 +71,7 @@ async def _oauth_context(
     if row is None:
         raise ValueError('invalid_harness_grant')
     account = await ap.user_service.get_user_by_uuid(claims['sub'])
-    if account is None or account.status != 'active':
+    if account is None or account.status != AccountStatus.ACTIVE:
         raise ValueError('account_not_found')
     access = await ap.workspace_collaboration_service.resolve_account_workspace(account.uuid, claims['ws'])
     role_permissions = set(permissions_for_role(access.membership.role))
@@ -93,7 +99,7 @@ async def _oauth_context(
     )
 
     async def revalidate(message):
-        current, _ = await _oauth_context(ap, token, context.workspace_uuid)
+        current, _ = await _oauth_context(ap, token, context.workspace_uuid, binding_id=binding_id, device_id=device_id)
         return current
 
     return context, revalidate

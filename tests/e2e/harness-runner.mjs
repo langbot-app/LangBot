@@ -5,17 +5,17 @@ const transportUrl = pathToFileURL(process.env.HARNESS_TS_TRANSPORT);
 const { createWebSocketSecureSocketFactory } = await import(transportUrl);
 const { Hts1HttpRpcTransport } = await import(new URL('./rpc-transport.js', transportUrl));
 const f = JSON.parse(process.env.HARNESS_RUNNER_FIXTURE);
-const pin = JSON.parse(Buffer.from(new URL(f.link).hash.slice(1), 'base64url'));
 const origin = f.clientOrigin;
 const post = (path, body) => fetch(new URL(path, f.origin), {
   method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin }, body: JSON.stringify(body),
 });
+async function enroll({link, email, password}, deviceKid) {
+const pin = JSON.parse(Buffer.from(new URL(link).hash.slice(1), 'base64url'));
 const enrollment = await post('/api/v1/harness/register', { token: pin.token });
 const enrollmentBody = await enrollment.json();
 assert.equal(enrollment.status, 200, `Enrollment failed: ${enrollmentBody.code}`);
 assert.equal(pin.base_url, f.origin);
 const { harness_id: harnessId, enrollment_token } = enrollmentBody;
-const deviceKid = 'runner-check';
 const x = await crypto.subtle.generateKey('X25519', true, ['deriveBits']);
 const ed = await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify']);
 const raw = async (key) => Buffer.from(await crypto.subtle.exportKey('raw', key)).toString('base64');
@@ -33,10 +33,13 @@ const keys = {
 };
 const rpc = new Hts1HttpRpcTransport({ baseUrl: f.origin, kid: pin.kid, harnessId, deviceKid }, keys);
 const login = await rpc.request({ path: '/oauth/token', method: 'POST', body: {
-  grant_type: 'password', email: f.email, password: f.password, workspace_uuid: f.workspace,
+  grant_type: 'password', email, password, workspace_uuid: f.workspace,
 } });
 assert.equal(login.status, 200, `Encrypted login failed: ${login.body?.code}`);
 assert.ok(login.body.access_token);
+return { rpc, keys, harnessId, deviceKid, token: login.body.access_token };
+}
+const { rpc, keys, harnessId, deviceKid, token } = await enroll(f, 'runner-check');
 const url = new URL('/api/v1/harness/ws', f.origin);
 url.protocol = 'wss:';
 url.search = new URLSearchParams({ harness_id: harnessId, device_kid: deviceKid });
@@ -59,17 +62,40 @@ function request(payload) {
 
 try {
   socket.send(channel.encode({ type: 'authenticate', workspace_uuid: f.workspace,
-    auth: { kind: 'oauth', token: login.body.access_token } }));
+    auth: { kind: 'oauth', token } }));
   const message = { type: 'message', workspace_uuid: f.workspace, conversation_id: 'runner-check', content: 'Reply through LocalAgent.' };
   assert.equal((await request({ ...message, processor_uuid: 'missing-processor' })).code, 'processor_forbidden');
   assert.equal((await request({ ...message, workspace_uuid: 'other-workspace', processor_uuid: f.processors[0] })).code, 'workspace_forbidden');
+  const executions = [];
   for (const processor of [...f.processors, f.processors[0]]) {
-    const reply = await request({ ...message, processor_uuid: processor });
+    const { execution, ...reply } = await request({ ...message, processor_uuid: processor });
     assert.deepEqual(reply, { type: 'message', role: 'assistant', content: 'Fake LLM response', final: true,
       conversation_id: message.conversation_id, processor_uuid: processor });
+    assert.equal(execution?.source, 'agent');
+    assert.ok(execution.id);
+    executions.push({execution_id: execution.id, processor_uuid: processor,
+      workspace_uuid: f.workspace, conversation_id: message.conversation_id});
   }
   // The reply precedes ledger finalization. Ingress reads the next frame only after dispatch returns.
   assert.equal((await request({ ...message, processor_uuid: 'missing-processor' })).code, 'processor_forbidden');
+  const detail = await rpc.getExecutionDetail(executions[0], token);
+  assert.equal(detail.status, 200, JSON.stringify(detail.body));
+  assert.equal(detail.body.run.run_id, executions[0].execution_id);
+  assert.equal(detail.body.run.status, 'completed');
+  assert.match(JSON.stringify(detail.body.pages.outputs.items), /Fake LLM response/);
+  const events = await rpc.getExecutionDetail({...executions[0], section: 'events', limit: 1}, token);
+  assert.equal(events.status, 200);
+  assert.equal(events.body.pages.events.items.length, 1);
+  assert.ok(events.body.pages.events.has_more);
+  assert.deepEqual(await rpc.getExecutionDetail({...executions[0], workspace_uuid: f.otherWorkspace}, token),
+    { status: 403, body: { code: 'workspace_forbidden' } });
+  assert.deepEqual(await rpc.getExecutionDetail({...executions[0], processor_uuid: f.processors[1]}, token),
+    { status: 404, body: { code: 'execution_not_found' } });
+  const other = await enroll(f.other, 'other-account');
+  assert.deepEqual(await other.rpc.getExecutionDetail(executions[0], other.token),
+    { status: 404, body: { code: 'execution_not_found' } });
+  assert.deepEqual(await other.rpc.getExecutionDetail(executions[0], token),
+    { status: 401, body: { code: 'invalid_grant' } });
 } finally {
   socket.close();
 }

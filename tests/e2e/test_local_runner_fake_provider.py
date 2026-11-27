@@ -673,6 +673,7 @@ def test_harness_processor_bots_run_local_agent(
     from cryptography.x509.oid import NameOID
 
     from langbot.pkg.entity.persistence.agent import Agent
+    from langbot.pkg.entity.persistence.agent_access import AgentAccessGrant
     from langbot.pkg.entity.persistence.agent_run import AgentRun
     from langbot.pkg.harness.binding import HarnessBindings
     from langbot.pkg.platform.adapters.harness.bindings import processor_bot_uuid
@@ -725,16 +726,36 @@ def test_harness_processor_bots_run_local_agent(
                     uuid=processor,
                     workspace_uuid=workspace,
                     name=processor,
+                    access_mode='restricted',
                     config={
                         'runner': {'id': LOCAL_RUNNER_ID},
                         'runner_config': {LOCAL_RUNNER_ID: _binding().runner_config},
                     },
                 )
             )
+            await ap.persistence_mgr.execute_async(
+                sa.insert(AgentAccessGrant).values(
+                    workspace_uuid=workspace,
+                    agent_uuid=processor,
+                    subject_type='account',
+                    subject_id=account.uuid,
+                    can_use=True,
+                )
+            )
         bindings = HarnessBindings(ap)
         link = await bindings.issue(
             SimpleNamespace(workspace_uuid=workspace, account_uuid=account.uuid),
             label='Manual Runner acceptance',
+            preferred_auth='local',
+        )
+        collaboration = ap.workspace_collaboration_service
+        access = await collaboration.resolve_account_workspace(account.uuid, workspace)
+        other_email, other_password = 'other@example.test', secrets.token_urlsafe(32)
+        invitation = await collaboration.create_invitation(workspace, access.membership, other_email, 'viewer')
+        await ap.user_service.register_invited_account(invitation.token, other_email, other_password)
+        other_link = await bindings.issue(
+            SimpleNamespace(workspace_uuid=workspace, account_uuid=account.uuid),
+            label='Inspector isolation check',
             preferred_auth='local',
         )
         assert not await ap.bot_service.get_bots(context)
@@ -746,6 +767,8 @@ def test_harness_processor_bots_run_local_agent(
             password=password,
             workspace=workspace,
             processors=processors,
+            otherWorkspace=str(uuid.uuid4()),
+            other=dict(link=other_link['url'], email=other_email, password=other_password),
         )
         proc = await asyncio.create_subprocess_exec(
             'node',

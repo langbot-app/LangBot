@@ -11,6 +11,11 @@ from langbot_plugin.api.entities.builtin.platform import events as platform_even
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
 
 
+def harness_session_id(workspace_uuid: str, account_uuid: str, processor_uuid: str, conversation_id: str) -> str:
+    scope = json.dumps([workspace_uuid, account_uuid, processor_uuid, conversation_id], separators=(',', ':'))
+    return 'harness-v1-' + hashlib.sha256(scope.encode()).hexdigest()
+
+
 def build_event(
     frame: dict[str, typing.Any],
     identity: dict[str, str],
@@ -32,8 +37,7 @@ def build_event(
         raise ValueError('authenticated account identity is required')
 
     timestamp = time.time()
-    scope = json.dumps([workspace_uuid, account_uuid, processor_uuid, conversation_id], separators=(',', ':'))
-    session_id = 'harness-v1-' + hashlib.sha256(scope.encode()).hexdigest()
+    session_id = harness_session_id(workspace_uuid, account_uuid, processor_uuid, conversation_id)
     source = {
         'harness_conversation_id': conversation_id,
         'harness_session_id': session_id,
