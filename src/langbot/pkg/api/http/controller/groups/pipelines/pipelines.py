@@ -136,9 +136,13 @@ class PipelinesRouterGroup(group.RouterGroup):
         )
         async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
             try:
-                return self.success(
-                    data=await self.ap.pipeline_service.copy_pipeline_result(request_context, pipeline_uuid)
-                )
+                payload = await quart.request.get_json(silent=True)
+                result = await self.ap.pipeline_service.copy_pipeline_result(request_context, pipeline_uuid)
+                if isinstance(payload, dict):
+                    result['ignored_keys'] = sorted(
+                        set(result['ignored_keys']) | set(ignored_config_keys(payload.get('config')))
+                    )
+                return self.success(data=result)
             except ApplicationAPIException as exc:
                 return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
             except ValueError as e:

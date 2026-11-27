@@ -794,6 +794,26 @@ def test_http_bot_plugin_lifecycle(runner_client, runner_e2e_tmpdir):
     assert 'no mention' not in counts['ran']
 
 
+def test_legacy_chat_config_http(runner_client):
+    client = runner_client
+    headers = {'Authorization': f'Bearer {_init_and_auth(client)}'}
+    legacy = {'config': {'trigger': {}, 'safety': {}}}
+
+    def request(method, path, **kwargs):
+        body = client.request(method, '/api/v1/pipelines' + path, headers=headers, **kwargs).json()
+        assert body['code'] == 0, body
+        return body['data']
+
+    created = request('POST', '', json={'name': 'Legacy settings', **legacy})
+    path = '/' + created['uuid']
+    updated = request('PUT', path, json=legacy)
+    copied = request('POST', path + '/copy', json=legacy)
+    for result in [created, updated, copied]:
+        assert result['ignored_keys'] == ['safety', 'trigger']
+    for ident in [created['uuid'], copied['uuid']]:
+        assert not legacy['config'].keys() & request('GET', '/' + ident)['pipeline']['config'].keys()
+
+
 def test_http_bot_builtin_commands(runner_client, runner_e2e_tmpdir):
     client = runner_client
     token = _init_and_auth(client)
