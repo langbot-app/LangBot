@@ -4,4 +4,6 @@ title: Harness enrollment preview
 
 On the `feat/harness` preview branch, self-hosted LangBot instances can issue one-time enrollment links to Harness over direct HTTPS. Configure `harness.enabled`, `harness.instance_origin`, `harness.client_origin`, and the HTTPS certificate and key (`api.tls_certfile`, `api.tls_keyfile`). The certificate must be trusted by the client.
 
-A Workspace owner or administrator can issue a link through `POST /api/v1/harness/registration-links`. Share the URL privately: it expires after 30 minutes and can be redeemed only once. Redeeming a link binds the instance without granting access to a Workspace. This preview covers instance enrollment only.
+A Workspace owner or administrator can issue a link through `POST /api/v1/harness/registration-links`. Share the URL privately: it expires after 30 minutes and can be redeemed only once. Redemption starts enrollment; the binding is completed only after successful sign-in and Workspace authorization.
+
+The first authorized chat message to an Agent creates its managed Harness Bot. Later messages reuse that Bot. To remove an Agent that has a Harness Bot, stop sending messages to it and delete its Harness Bot before deleting the Agent.

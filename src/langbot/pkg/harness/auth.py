@@ -34,23 +34,27 @@ async def _oauth_context(ap, token: str, workspace_uuid: str | None = None):
     scopes = claims['scp'] if isinstance(claims['scp'], list) else []
     async with ap.persistence_mgr.get_db_engine().connect() as conn:
         row = (
-            await conn.execute(
-                sa.select(HarnessOAuthGrant.__table__)
-                .join(HarnessBinding, HarnessBinding.id == HarnessOAuthGrant.binding_id)
-                .join(HarnessDevice, HarnessDevice.id == HarnessOAuthGrant.device_id)
-                .where(
-                    HarnessOAuthGrant.id == claims['gid'],
-                    HarnessOAuthGrant.account_uuid == claims['sub'],
-                    HarnessOAuthGrant.workspace_uuid == claims['ws'],
-                    HarnessOAuthGrant.binding_id == claims['bid'],
-                    HarnessOAuthGrant.device_id == claims['dev'],
-                    HarnessOAuthGrant.revoked_at.is_(None),
-                    HarnessBinding.instance_uuid == constants.instance_id,
-                    HarnessBinding.revoked_at.is_(None),
-                    HarnessDevice.revoked_at.is_(None),
+            (
+                await conn.execute(
+                    sa.select(HarnessOAuthGrant.__table__)
+                    .join(HarnessBinding, HarnessBinding.id == HarnessOAuthGrant.binding_id)
+                    .join(HarnessDevice, HarnessDevice.id == HarnessOAuthGrant.device_id)
+                    .where(
+                        HarnessOAuthGrant.id == claims['gid'],
+                        HarnessOAuthGrant.account_uuid == claims['sub'],
+                        HarnessOAuthGrant.workspace_uuid == claims['ws'],
+                        HarnessOAuthGrant.binding_id == claims['bid'],
+                        HarnessOAuthGrant.device_id == claims['dev'],
+                        HarnessOAuthGrant.revoked_at.is_(None),
+                        HarnessBinding.instance_uuid == constants.instance_id,
+                        HarnessBinding.revoked_at.is_(None),
+                        HarnessDevice.revoked_at.is_(None),
+                    )
                 )
             )
-        ).mappings().one_or_none()
+            .mappings()
+            .one_or_none()
+        )
     if row is None:
         raise ValueError('invalid_harness_grant')
     account = await ap.user_service.get_user_by_uuid(claims['sub'])
@@ -82,7 +86,8 @@ async def _oauth_context(ap, token: str, workspace_uuid: str | None = None):
     )
 
     async def revalidate(message):
-        await _oauth_context(ap, token, context.workspace_uuid)
+        current, _ = await _oauth_context(ap, token, context.workspace_uuid)
+        return current
 
     return context, revalidate
 
@@ -107,6 +112,8 @@ async def authenticate_session(ap, session):
         token = auth['token']
         if auth.get('kind') == 'oauth':
             return await _oauth_context(ap, token, workspace_uuid)
+        if ap.instance_config.data.get('harness', {}).get('enabled') is True:
+            raise ValueError('Harness OAuth authentication is required')
         account = await ap.user_service.get_authenticated_account(token)
         access = await ap.workspace_collaboration_service.resolve_account_workspace(account.uuid, workspace_uuid)
         context = RequestContext(

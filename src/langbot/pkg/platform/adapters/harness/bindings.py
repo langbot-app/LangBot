@@ -1,4 +1,4 @@
-"""Identity and configuration of the managed Workspace Harness Bot."""
+"""Stable identities for managed Harness Bots and historical projections."""
 
 import uuid
 
@@ -10,15 +10,26 @@ def workspace_bot_uuid(workspace_uuid: str) -> str:
     return str(uuid.uuid5(HARNESS_NAMESPACE, f'workspace/{workspace_uuid}'))
 
 
-def workspace_bot_config(workspace_uuid: str) -> dict:
+def processor_bot_uuid(workspace_uuid: str, processor_uuid: str) -> str:
+    return str(uuid.uuid5(uuid.UUID(workspace_bot_uuid(workspace_uuid)), processor_uuid))
+
+
+def processor_bot_config(workspace_uuid: str, processor_uuid: str) -> dict:
     return {
-        'uuid': workspace_bot_uuid(workspace_uuid),
+        'uuid': processor_bot_uuid(workspace_uuid, processor_uuid),
         'workspace_uuid': workspace_uuid,
         'name': 'LangBot Harness',
         'description': 'Managed by LangBot Harness.',
         'adapter': HARNESS_ADAPTER,
         'adapter_config': {},
         'enable': True,
-        'event_bindings': [],
         'plugin_processors': [],
+        'event_bindings': [
+            {
+                'id': 'harness-agent',
+                'event_pattern': 'message.received',
+                'target_type': 'agent',
+                'target_uuid': processor_uuid,
+            }
+        ],
     }

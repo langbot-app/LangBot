@@ -4,4 +4,6 @@ title: Harness 绑定预览
 
 在 `feat/harness` 预览分支，自部署 LangBot 可签发一次性注册链接，由 Harness 通过 HTTPS 直连兑换。请配置 `harness.enabled`、`harness.instance_origin`、`harness.client_origin` 以及 HTTPS 证书和私钥（`api.tls_certfile`、`api.tls_keyfile`）。客户端必须信任该证书。
 
-工作区所有者或管理员可通过 `POST /api/v1/harness/registration-links` 签发链接。请私下分享链接：有效期为 30 分钟，只能兑换一次。兑换会绑定实例，不会授予工作区访问权限。此预览仅包含实例绑定。
+工作区所有者或管理员可通过 `POST /api/v1/harness/registration-links` 签发链接。请私下分享链接：有效期为 30 分钟，只能兑换一次。兑换仅启动注册；成功登录并通过工作区授权后才会完成绑定。
+
+向 Agent 发送第一条获准的聊天消息时，LangBot 会为该 Agent 创建专用的 Harness Bot；后续消息会复用该 Bot。如需删除已有 Harness Bot 的 Agent，请先停止向它发送消息并删除对应 Bot，再删除 Agent。

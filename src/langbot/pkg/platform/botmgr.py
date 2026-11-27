@@ -952,12 +952,12 @@ class RuntimeBot:
 
     async def dispatch_harness_message(self, event: platform_events.MessageReceivedEvent, processor_uuid: str) -> None:
         """Dispatch a message whose Agent was authorized by Harness ingress."""
-        from .adapters.harness.bindings import HARNESS_ADAPTER, workspace_bot_uuid
+        from .adapters.harness.bindings import HARNESS_ADAPTER, processor_bot_uuid
 
-        if self.bot_entity.adapter != HARNESS_ADAPTER or self.bot_entity.uuid != workspace_bot_uuid(
-            self.workspace_uuid
+        if self.bot_entity.adapter != HARNESS_ADAPTER or self.bot_entity.uuid != processor_bot_uuid(
+            self.workspace_uuid, processor_uuid
         ):
-            raise ValueError('Harness ingress requires the managed Workspace Bot')
+            raise ValueError('Harness ingress requires the managed processor Bot')
         current = await self.ap.workspace_service.get_execution_binding(
             self.workspace_uuid, expected_generation=self.placement_generation
         )
@@ -1404,7 +1404,11 @@ class RuntimeBot:
             )
 
         envelope = self._eba_event_to_agent_envelope(event, adapter, execution_id)
-        if target_type == 'agent' and isinstance(event, platform_events.MessageReceivedEvent):
+        if (
+            target_type == 'agent'
+            and isinstance(event, platform_events.MessageReceivedEvent)
+            and event.adapter_name != 'harness-omni'
+        ):
             envelope.delivery.supports_streaming = True
         if target_type == 'event_processor':
             envelope.data = event.model_dump(mode='json', exclude={'source_platform_object', 'legacy_event'})

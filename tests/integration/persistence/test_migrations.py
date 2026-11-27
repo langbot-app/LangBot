@@ -55,16 +55,25 @@ pytestmark = pytest.mark.integration
 
 async def test_harness_provisioning_is_bounded_under_concurrent_retries(sqlite_engine, monkeypatch):
     from langbot.pkg.api.http.service.bot import BotService
+    from langbot.pkg.entity.persistence.agent import Agent
     from langbot.pkg.entity.persistence.bot import Bot
     from langbot.pkg.entity.persistence.workspace import Workspace
     from langbot.pkg.persistence.mgr import PersistenceManager
-    from langbot.pkg.platform.adapters.harness.bindings import workspace_bot_uuid
+    from langbot.pkg.platform.adapters.harness.bindings import processor_bot_uuid
 
     async with sqlite_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.execute(
             Workspace.__table__.insert(),
             [dict(uuid=w, instance_uuid=f'instance-{w}', name=w, slug=w) for w in ('alpha', 'beta')],
+        )
+        await conn.execute(
+            sqlalchemy.insert(Agent),
+            [
+                dict(uuid=f'{w}-agent-{i}', workspace_uuid=w, name=f'Agent {i}')
+                for w in ('alpha', 'beta')
+                for i in range(2)
+            ],
         )
 
     async def execute(statement):
@@ -81,76 +90,37 @@ async def test_harness_provisioning_is_bounded_under_concurrent_retries(sqlite_e
     )
     monkeypatch.setattr('langbot.pkg.api.http.service.workspace_limits.workspace_limits', AsyncMock(return_value={}))
     monkeypatch.setattr('langbot.pkg.api.http.service.bot.require_workspace_platform', AsyncMock())
-    service = BotService(ap)
+    services = [BotService(ap), BotService(ap)]
     for workspace in ('alpha', 'beta'):
 
         async def provision(index):
-            return await service.create_bot(
+            return await services[index % 2].create_bot(
                 workspace,
                 {
                     'name': f'agent-{index}',
                     'adapter': 'harness-omni',
                     'adapter_config': {},
                 },
-                bot_uuid=f'old-{workspace}-{index}',
+                harness_processor_uuid=f'{workspace}-agent-{(index // 2) % 2}',
             )
 
-        assert set(await asyncio.gather(*(provision(i) for i in range(10)))) == {workspace_bot_uuid(workspace)}
-        assert set(await asyncio.gather(*(provision(i) for i in range(10, 100)))) == {workspace_bot_uuid(workspace)}
+        expected = {processor_bot_uuid(workspace, f'{workspace}-agent-{i}') for i in range(2)}
+        assert set(await asyncio.gather(*(provision(i) for i in range(16)))) == expected
+        assert set(await asyncio.gather(*(provision(i) for i in range(16, 32)))) == expected
     rows = (await execute(sqlalchemy.select(Bot.__table__))).mappings().all()
     assert {(row['workspace_uuid'], row['uuid']) for row in rows} == {
-        (w, workspace_bot_uuid(w)) for w in ('alpha', 'beta')
+        (w, processor_bot_uuid(w, f'{w}-agent-{i}')) for w in ('alpha', 'beta') for i in range(2)
     }
-    assert all(row['enable'] and not row['adapter_config'] and not row['event_bindings'] for row in rows)
-    assert ap.platform_mgr.load_bot.await_count == 2
+    assert all(row['enable'] and not row['adapter_config'] and len(row['event_bindings']) == 1 for row in rows)
+    assert ap.platform_mgr.load_bot.await_count == 4
 
 
-async def test_harness_provisioning_interleaves_workspaces_without_unique_errors(sqlite_engine, monkeypatch):
+async def test_harness_cannot_be_created_by_generic_bot_service(sqlite_engine):
     from langbot.pkg.api.http.service.bot import BotService
-    from langbot.pkg.entity.persistence.bot import Bot
-    from langbot.pkg.entity.persistence.workspace import Workspace
-    from langbot.pkg.persistence.mgr import PersistenceManager
-    from langbot.pkg.platform.adapters.harness.bindings import workspace_bot_uuid
 
-    async with sqlite_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.execute(
-            Workspace.__table__.insert(),
-            [dict(uuid=w, instance_uuid=f'instance-{w}', name=w, slug=w) for w in ('alpha', 'beta')],
-        )
-
-    async def execute(statement):
-        async with sqlite_engine.begin() as conn:
-            return await conn.execute(statement)
-
-    ap = SimpleNamespace(
-        persistence_mgr=SimpleNamespace(
-            execute_async=execute,
-            get_db_engine=lambda: sqlite_engine,
-            serialize_model=PersistenceManager.serialize_model.__get__(object()),
-        ),
-        platform_mgr=SimpleNamespace(load_bot=AsyncMock()),
-    )
-    monkeypatch.setattr('langbot.pkg.api.http.service.workspace_limits.workspace_limits', AsyncMock(return_value={}))
-    monkeypatch.setattr('langbot.pkg.api.http.service.bot.require_workspace_platform', AsyncMock())
-    service = BotService(ap)
-
-    async def provision(workspace, index):
-        return await service.create_bot(
-            workspace,
-            {'name': f'agent-{workspace}-{index}', 'adapter': 'harness-omni', 'adapter_config': {}},
-            bot_uuid=f'old-{workspace}-{index}',
-        )
-
-    calls = [(workspace, index) for index in range(100) for workspace in ('alpha', 'beta')]
-    results = await asyncio.gather(*(provision(workspace, index) for workspace, index in calls))
-    assert results[::2] == [workspace_bot_uuid('alpha')] * 100
-    assert results[1::2] == [workspace_bot_uuid('beta')] * 100
-    rows = (await execute(sqlalchemy.select(Bot.__table__))).mappings().all()
-    assert {(row['workspace_uuid'], row['uuid']) for row in rows} == {
-        ('alpha', workspace_bot_uuid('alpha')),
-        ('beta', workspace_bot_uuid('beta')),
-    }
+    service = BotService(None)
+    with pytest.raises(ValueError, match='provisioned for authorized processors'):
+        await service.create_bot('alpha', {'name': 'Harness', 'adapter': 'harness-omni', 'adapter_config': {}})
 
 
 async def test_harness_workspace_bot_upgrade_preserves_legacy_ids(sqlite_engine):
@@ -202,8 +172,8 @@ async def test_harness_workspace_bot_upgrade_preserves_legacy_ids(sqlite_engine)
         rows = (await conn.execute(sqlalchemy.select(Bot.__table__))).mappings().all()
         history = (await conn.execute(sqlalchemy.select(MonitoringSession.__table__))).one()
     assert len(rows) == 102
-    assert {row['uuid'] for row in rows if row['enable']} == {workspace_bot_uuid('active')}
-    assert {row['uuid'] for row in rows if not row['enable']} == {f'old-{i}' for i in range(101)}
+    assert not any(row['enable'] for row in rows)
+    assert {row['uuid'] for row in rows} == {f'old-{i}' for i in range(101)} | {workspace_bot_uuid('active')}
     assert all(row['event_bindings'] == [] for row in rows)
     assert (history.bot_id, history.session_id, history.message_count) == ('old-0', 'old-session', 3)
 

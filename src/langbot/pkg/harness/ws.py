@@ -1,12 +1,12 @@
-"""Authenticated Harness ingress for the shared Workspace Bot."""
+"""Authenticated Harness ingress for processor-specific Bots."""
 
 import uuid
 
 import sqlalchemy
 
 from ..agent.policy import can_use_processor
+from ..api.http.service.bot_errors import BotApplyError
 from ..entity.persistence.user import AccountStatus, User
-from ..platform.adapters.harness.bindings import workspace_bot_uuid
 from ..platform.adapters.harness.event_converter import build_event
 
 
@@ -34,7 +34,7 @@ async def handle_ws(ap, transport, ctx, *, revalidate=None) -> None:
     """Authorize each message using trusted Workspace/account context."""
     session = await transport.handshake() if hasattr(transport, 'handshake') else transport
     connection_id = uuid.uuid4().hex
-    registry = None
+    registries = set()
     try:
         while True:
             frame = await session.receive_payload()
@@ -60,22 +60,33 @@ async def handle_ws(ap, transport, ctx, *, revalidate=None) -> None:
                 await session.send_payload({'type': 'error', 'code': 'conversation_required'})
                 continue
             if revalidate is not None:
-                await revalidate(frame)
+                current = await revalidate(frame)
+                if current is not None:
+                    ctx = current
+            if ctx.auth_type == 'harness-oauth' and 'runtime.operate' not in ctx.workspace.permissions:
+                await session.send_payload({'type': 'error', 'code': 'processor_forbidden'})
+                continue
             error, user = await _resolve_user(ap, ctx, processor)
             if error:
                 await session.send_payload({'type': 'error', 'code': error})
                 if error == 'account_not_found':
                     return
                 continue
-            bot = await ap.platform_mgr.get_bot_by_uuid(ctx, workspace_bot_uuid(ctx.workspace_uuid))
+            try:
+                if getattr(getattr(ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime':
+                    async with ap.persistence_mgr.tenant_scope(ctx.workspace_uuid):
+                        bot = await ap.bot_service.ensure_harness_processor_bot(ctx, processor)
+                else:
+                    bot = await ap.bot_service.ensure_harness_processor_bot(ctx, processor)
+            except (ValueError, BotApplyError):
+                bot = None
             if bot is None or not bot.enable:
                 await session.send_payload({'type': 'error', 'code': 'processor_not_running'})
                 continue
-            if registry is not bot.adapter.connections:
-                if registry is not None:
-                    await registry.unregister(connection_id, session)
-                registry = bot.adapter.connections
+            registry = bot.adapter.connections
+            if registry not in registries:
                 await registry.register(connection_id, session)
+                registries.add(registry)
             event = build_event(
                 frame,
                 {'account_uuid': ctx.account_uuid, 'display_name': user.user, 'email': user.normalized_email},
@@ -85,5 +96,5 @@ async def handle_ws(ap, transport, ctx, *, revalidate=None) -> None:
             )
             await bot.dispatch_harness_message(event, processor)
     finally:
-        if registry is not None:
+        for registry in registries:
             await registry.unregister(connection_id, session)

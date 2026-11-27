@@ -304,10 +304,10 @@ def local_agent_runtime_ports() -> tuple[int, int]:
 @pytest.fixture(scope='session')
 def local_agent_e2e_config_path(local_agent_e2e_tmpdir, local_agent_e2e_port, local_agent_runtime_ports):
     """Create a plugin-enabled config and install the Local Agent plugin fixture."""
+    import yaml
+
     config_path = create_minimal_config(local_agent_e2e_tmpdir, port=local_agent_e2e_port)
     create_test_directories(local_agent_e2e_tmpdir)
-
-    import yaml
 
     with open(config_path, encoding='utf-8') as f:
         config = yaml.safe_load(f)
@@ -654,6 +654,132 @@ def test_local_runner_uses_host_fake_provider_and_persists_ledger(
         assert transcript_rows[1][3] == LOCAL_RUNNER_ID
     finally:
         conn.close()
+
+
+def test_harness_processor_bots_run_local_agent(
+    local_agent_e2e_tmpdir, local_agent_e2e_port, local_agent_e2e_config_path, local_agent_runtime_process
+):
+    """Fresh Workspace, real startup/HTS1/EBA/Runner, deterministic model replies."""
+    import ipaddress
+    import secrets
+    import uuid
+    from datetime import datetime, timedelta, timezone
+
+    import sqlalchemy as sa
+    import yaml
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    from langbot.pkg.entity.persistence.agent import Agent
+    from langbot.pkg.entity.persistence.agent_run import AgentRun
+    from langbot.pkg.harness.binding import HarnessBindings
+    from langbot.pkg.platform.adapters.harness.bindings import processor_bot_uuid
+
+    transport = os.getenv('HARNESS_TS_TRANSPORT')
+    if not transport:
+        pytest.skip('Set HARNESS_TS_TRANSPORT to the built Harness core transport.js')
+    script = Path(__file__).with_name('harness-runner.mjs').resolve()
+    config = yaml.safe_load(local_agent_e2e_config_path.read_text(encoding='utf-8'))
+    cert_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, '127.0.0.1')])
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(subject)
+        .public_key(cert_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.now(timezone.utc) - timedelta(minutes=1))
+        .not_valid_after(datetime.now(timezone.utc) + timedelta(days=1))
+        .add_extension(
+            x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address('127.0.0.1'))]),
+            critical=False,
+        )
+        .sign(cert_key, hashes.SHA256())
+    )
+    cert_path, key_path = local_agent_e2e_tmpdir / 'harness.crt', local_agent_e2e_tmpdir / 'harness.key'
+    cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    key_path.write_bytes(
+        cert_key.private_bytes(
+            serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL, serialization.NoEncryption()
+        )
+    )
+    config['api']['tls_certfile'], config['api']['tls_keyfile'] = str(cert_path), str(key_path)
+    config['harness'] = {
+        'enabled': True,
+        'instance_origin': f'https://127.0.0.1:{local_agent_e2e_port}',
+        'client_origin': 'https://client.example.test',
+    }
+
+    async def probe(ap):
+        email, password = 'owner@example.test', secrets.token_urlsafe(32)
+        account = await ap.user_service.create_initial_account(email, password)
+        context = await ap.plugin_connector._current_execution_context()
+        workspace = context.workspace_uuid
+        await _inject_llm_model(ap)
+        processors = [str(uuid.uuid4()) for _ in range(2)]
+        for processor in processors:
+            await ap.persistence_mgr.execute_async(
+                sa.insert(Agent).values(
+                    uuid=processor,
+                    workspace_uuid=workspace,
+                    name=processor,
+                    config={
+                        'runner': {'id': LOCAL_RUNNER_ID},
+                        'runner_config': {LOCAL_RUNNER_ID: _binding().runner_config},
+                    },
+                )
+            )
+        bindings = HarnessBindings(ap)
+        link = await bindings.issue(
+            SimpleNamespace(workspace_uuid=workspace, account_uuid=account.uuid),
+            label='Manual Runner acceptance',
+            preferred_auth='local',
+        )
+        assert not await ap.bot_service.get_bots(context)
+        fixture = dict(
+            origin=f'https://127.0.0.1:{local_agent_e2e_port}',
+            clientOrigin='https://client.example.test',
+            link=link['url'],
+            email=email,
+            password=password,
+            workspace=workspace,
+            processors=processors,
+        )
+        proc = await asyncio.create_subprocess_exec(
+            'node',
+            str(script),
+            env={**os.environ, 'NODE_EXTRA_CA_CERTS': str(cert_path), 'HARNESS_RUNNER_FIXTURE': json.dumps(fixture)},
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), 40)
+        finally:
+            if proc.returncode is None:
+                proc.kill()
+                await proc.wait()
+        bots = await ap.bot_service.get_bots(context)
+        runs = (await ap.persistence_mgr.execute_async(sa.select(AgentRun.__table__))).mappings().all()
+        assert proc.returncode == 0, (stdout + stderr).decode() + repr(
+            [(row['status'], row['status_reason']) for row in runs]
+        )
+        assert {bot['uuid'] for bot in bots} == {processor_bot_uuid(workspace, p) for p in processors}
+        runs = [row for row in runs if row['event_id'].startswith('platform:')]
+        assert len(runs) == 3
+        assert all(row['status'] == 'completed' and row['runner_id'] == LOCAL_RUNNER_ID for row in runs)
+        assert len({row['conversation_id'] for row in runs}) == 2
+        assert all(row['conversation_id'].startswith('person_') for row in runs)
+        await ap.bot_service.delete_bot(context, processor_bot_uuid(workspace, processors[0]))
+        await ap.agent_service.delete_agent(context, processors[0])
+
+    original_config = local_agent_e2e_config_path.read_bytes()
+    local_agent_e2e_config_path.write_text(yaml.safe_dump(config), encoding='utf-8')
+    try:
+        _run_local_agent_probe(local_agent_e2e_tmpdir, probe)
+    finally:
+        local_agent_e2e_config_path.write_bytes(original_config)
 
 
 @pytest.mark.shared_provider_concurrency

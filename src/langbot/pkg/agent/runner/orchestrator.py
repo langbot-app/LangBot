@@ -682,10 +682,15 @@ class AgentRunOrchestrator:
                                         )
                                         auto_reply_stream_open = True
                             elif has_completed_message:
-                                reply_text = result.content
-                                if isinstance(reply_text, str):
-                                    reply_text = _visible_auto_reply_text(reply_text)
-                                    if auto_reply_prefix and result.content.startswith(auto_reply_prefix):
+                                content = result.content
+                                full_text = (
+                                    ''.join(part.text or '' for part in content if part.type == 'text')
+                                    if isinstance(content, list)
+                                    else content
+                                )
+                                if isinstance(full_text, str):
+                                    reply_text = _visible_auto_reply_text(full_text)
+                                    if auto_reply_prefix and full_text.startswith(auto_reply_prefix):
                                         visible_prefix = _visible_auto_reply_text(auto_reply_prefix)
                                         if reply_text.startswith(visible_prefix):
                                             reply_text = reply_text[len(visible_prefix) :]

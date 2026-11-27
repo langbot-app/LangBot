@@ -28,7 +28,6 @@ from langbot.pkg.entity.persistence.user import User
 from langbot.pkg.entity.persistence.workspace import Workspace, WorkspaceMembership
 from langbot.pkg.harness.crypto.transport import HarnessTransportFactory
 from langbot.pkg.platform.adapters.harness.adapter import HarnessAdapter
-from langbot.pkg.platform.adapters.harness.bindings import workspace_bot_uuid
 from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
 
 
@@ -112,8 +111,8 @@ async def test_typescript_chat_over_network(tmp_path):
             resolve_account_workspace=AsyncMock(return_value=workspace_access)
         ),
         persistence_mgr=SimpleNamespace(get_db_engine=lambda: engine, execute_async=execute),
-        platform_mgr=SimpleNamespace(
-            get_bot_by_uuid=AsyncMock(
+        bot_service=SimpleNamespace(
+            ensure_harness_processor_bot=AsyncMock(
                 return_value=SimpleNamespace(enable=True, adapter=adapter, dispatch_harness_message=dispatch)
             )
         ),
@@ -166,7 +165,7 @@ async def test_typescript_chat_over_network(tmp_path):
             _, stderr = await process.communicate()
         assert process.returncode == 0, stderr.decode()
         assert ap.workspace_collaboration_service.resolve_account_workspace.await_count == 5
-        assert ap.platform_mgr.get_bot_by_uuid.await_args.args[1] == workspace_bot_uuid('workspace')
+        assert ap.bot_service.ensure_harness_processor_bot.await_args.args[1] == 'agent'
         first, second = dispatches
         assert first[0] == second[0]
         assert first[1] != second[1]

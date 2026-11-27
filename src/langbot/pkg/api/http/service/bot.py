@@ -17,7 +17,11 @@ from .tenant import TenantContext, require_workspace_uuid, scope_statement
 from ....utils import httpclient
 from ....platform.sources import http_bot_signing
 from ....platform.adapter_names import canonical_adapter_name
-from ....platform.adapters.harness.bindings import HARNESS_ADAPTER, workspace_bot_config, workspace_bot_uuid
+from ....platform.adapters.harness.bindings import (
+    HARNESS_ADAPTER,
+    processor_bot_config,
+    processor_bot_uuid,
+)
 from ....cloud.plan_policy import require_workspace_platform
 from ....agent.runner.errors import RunnerNotFoundError
 from ....i18n import t
@@ -48,6 +52,7 @@ class BotService:
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
         self._default_pipeline_lock = asyncio.Lock()
+        self._harness_provision_lock = asyncio.Lock()
 
     def _get_adapter_component(self, adapter_name: str) -> engine.Component | None:
         """Return the discovered platform adapter component for an adapter name."""
@@ -792,7 +797,39 @@ class BotService:
 
         return persistence_bot
 
-    async def create_bot(self, context: TenantContext, bot_data: dict, *, bot_uuid: str | None = None) -> str:
+    async def ensure_harness_processor_bot(self, context: TenantContext, processor_uuid: str):
+        """Provision only after ingress authorizes the Workspace and processor."""
+        workspace_uuid = require_workspace_uuid(context)
+        bot_uuid = processor_bot_uuid(workspace_uuid, processor_uuid)
+        async with self._harness_provision_lock:
+            runtime = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
+            if runtime is not None:
+                if runtime.bot_entity.adapter != HARNESS_ADAPTER:
+                    raise ValueError('Harness processor Bot UUID collision')
+                return runtime
+            config = processor_bot_config(workspace_uuid, processor_uuid)
+            await self.create_bot(context, config, harness_processor_uuid=processor_uuid)
+            runtime = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
+            if runtime is not None:
+                return runtime
+            # A prior create may have committed before loading, or another
+            # process may already have inserted the deterministic row.
+            persisted = await self.get_bot(context, bot_uuid, include_secret=True)
+            if persisted and persisted['enable']:
+                try:
+                    return await self.ap.platform_mgr.load_bot(context, persisted)
+                except Exception as exc:
+                    raise BotApplyError(bot_error_message(exc, persisted), bot_uuid) from exc
+        return None
+
+    async def create_bot(
+        self,
+        context: TenantContext,
+        bot_data: dict,
+        *,
+        bot_uuid: str | None = None,
+        harness_processor_uuid: str | None = None,
+    ) -> str:
         """Create bot"""
         workspace_uuid = require_workspace_uuid(context)
         if not isinstance(bot_data, dict):
@@ -806,15 +843,18 @@ class BotService:
             else:
                 raise ValueError('bot_data.adapter_config is required and must be an object')
         is_harness = canonical_adapter_name(bot_data['adapter']) == HARNESS_ADAPTER
+        managed_config = None
         if is_harness:
+            if harness_processor_uuid is None:
+                raise ValueError('Harness Bots are provisioned for authorized processors at ingress')
             if bot_data.get('adapter_config'):
                 raise ValueError('Managed Harness Bot configuration is server-owned')
-            shared_uuid = workspace_bot_uuid(workspace_uuid)
-            existing = await self.get_bot(context, shared_uuid, include_secret=True)
+            managed_config = processor_bot_config(workspace_uuid, harness_processor_uuid)
+            existing = await self.get_bot(context, managed_config['uuid'], include_secret=True)
             if existing is not None:
                 if existing['adapter'] != HARNESS_ADAPTER:
-                    raise ValueError('Workspace Harness Bot UUID collision')
-                return shared_uuid
+                    raise ValueError('Harness processor Bot UUID collision')
+                return managed_config['uuid']
         # Check limitation
         from .workspace_limits import workspace_limits
 
@@ -825,18 +865,16 @@ class BotService:
             if len(existing_bots) >= max_bots:
                 raise ValueError(f'Maximum number of bots ({max_bots}) reached')
 
-        if is_harness:
+        if managed_config is not None:
             # The primary key arbitrates concurrent creates without adding rows.
-            bot_data = {**workspace_bot_config(workspace_uuid), 'enable': bool(bot_data.get('enable', True))}
+            bot_data = {**managed_config, 'enable': bool(bot_data.get('enable', True))}
             bot_data.pop('workspace_uuid')
         bot_data = await self._prepare_bot_data(context, bot_data, include_uuid=True)
         await require_workspace_platform(self.ap, workspace_uuid, bot_data['adapter'])
-        bot_data['uuid'] = workspace_bot_uuid(workspace_uuid) if is_harness else bot_uuid or str(uuid.uuid4())
+        bot_data['uuid'] = managed_config['uuid'] if managed_config is not None else bot_uuid or str(uuid.uuid4())
         bot_data['workspace_uuid'] = workspace_uuid
         if not is_harness and not bot_data.get('event_bindings'):
             bot_data['event_bindings'] = await self._build_default_event_bindings(context)
-        else:
-            bot_data['event_bindings'] = await self._normalize_event_bindings(context, bot_data['event_bindings'])
         bot_data.setdefault('plugin_processors', [])
         # The column is NOT NULL; a caller that omits the optional description
         # must not get a 500 from the database constraint.
@@ -853,14 +891,14 @@ class BotService:
                 # ``uq_bots_workspace_uuid`` constraint (rather than the
                 # historical UUID index).  The row is deterministic, so any
                 # conflict means another request already provisioned this
-                # Workspace's shared Bot; the read below verifies its owner
+                # processor Bot; the read below verifies its Workspace
                 # and adapter before returning it.
                 insert(persistence_bot.Bot).values(bot_data).on_conflict_do_nothing()
             )
             if result.rowcount == 0:
                 existing = await self.get_bot(context, bot_data['uuid'])
                 if existing is None or existing['adapter'] != HARNESS_ADAPTER:
-                    raise ValueError('Workspace Harness Bot UUID collision')
+                    raise ValueError('Harness processor Bot UUID collision')
                 return bot_data['uuid']
         else:
             await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_bot.Bot).values(bot_data))
@@ -880,18 +918,26 @@ class BotService:
         workspace_uuid = require_workspace_uuid(context)
         update_data = await self._prepare_bot_data(context, bot_data, include_uuid=False)
         update_data.pop('workspace_uuid', None)
-        if 'adapter' in update_data or update_data.get('enable'):
+        if {'adapter', 'adapter_config', 'enable', 'event_bindings', 'plugin_processors'}.intersection(update_data):
             current = await self.get_bot(context, bot_uuid, include_secret=True)
             if current is None:
                 raise WorkspaceNotFoundError('Bot not found')
             if update_data.get('adapter') == HARNESS_ADAPTER and current['adapter'] != HARNESS_ADAPTER:
-                raise ValueError('Create the managed Workspace Harness Bot instead')
+                raise ValueError('Harness Bots are provisioned for authorized processors at ingress')
             if current['adapter'] in {'harness', HARNESS_ADAPTER}:
+                if {'adapter_config', 'event_bindings', 'plugin_processors'}.intersection(update_data):
+                    raise ValueError('Managed Harness Bot configuration is server-owned')
                 if update_data.get('adapter', current['adapter']) != current['adapter']:
                     raise ValueError('Cannot change the adapter of a managed Harness Bot')
-                if update_data.get('enable') and bot_uuid != workspace_bot_uuid(workspace_uuid):
-                    raise ValueError('Cannot enable a retired Harness Bot')
-            await require_workspace_platform(self.ap, workspace_uuid, update_data.get('adapter', current['adapter']))
+                if update_data.get('enable'):
+                    routes = current.get('event_bindings') or []
+                    processor = routes[0].get('target_uuid') if len(routes) == 1 else None
+                    if not processor or bot_uuid != processor_bot_uuid(workspace_uuid, processor):
+                        raise ValueError('Cannot enable a retired Harness Bot')
+            if 'adapter' in update_data or update_data.get('enable'):
+                await require_workspace_platform(
+                    self.ap, workspace_uuid, update_data.get('adapter', current['adapter'])
+                )
 
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
@@ -930,6 +976,9 @@ class BotService:
             raise ValueError('A binding ID and target UUID are required')
         if target_type not in {'agent', 'pipeline'}:
             raise ValueError('Unsupported event binding target type')
+        bot = await self.get_bot(context, bot_uuid)
+        if bot is not None and bot['adapter'] == HARNESS_ADAPTER:
+            raise ValueError('Managed Harness Bot configuration is server-owned')
         model = persistence_bot.Bot
         # Compare the database representation in SQL. PostgreSQL JSON has no
         # equality operator, and re-encoding the value can change its whitespace.
@@ -1002,8 +1051,13 @@ class BotService:
         current = await self.get_bot(context, bot_uuid, include_secret=False)
         if current is None:
             raise WorkspaceNotFoundError('Bot not found')
-        if current.get('adapter') in {'harness', HARNESS_ADAPTER}:
-            raise ValueError('Managed Harness Bots cannot be deleted')
+        if current.get('adapter') == 'harness':
+            raise ValueError('Historical Harness Bots cannot be deleted')
+        if current.get('adapter') == HARNESS_ADAPTER:
+            routes = current.get('event_bindings') or []
+            processor = routes[0].get('target_uuid') if len(routes) == 1 else None
+            if not processor or bot_uuid != processor_bot_uuid(require_workspace_uuid(context), processor):
+                raise ValueError('Historical Harness Bots cannot be deleted')
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
                 sqlalchemy.delete(persistence_bot.Bot).where(persistence_bot.Bot.uuid == bot_uuid),

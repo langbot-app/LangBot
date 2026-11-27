@@ -1,0 +1,75 @@
+import assert from 'node:assert/strict';
+import { pathToFileURL } from 'node:url';
+
+const transportUrl = pathToFileURL(process.env.HARNESS_TS_TRANSPORT);
+const { createWebSocketSecureSocketFactory } = await import(transportUrl);
+const { Hts1HttpRpcTransport } = await import(new URL('./rpc-transport.js', transportUrl));
+const f = JSON.parse(process.env.HARNESS_RUNNER_FIXTURE);
+const pin = JSON.parse(Buffer.from(new URL(f.link).hash.slice(1), 'base64url'));
+const origin = f.clientOrigin;
+const post = (path, body) => fetch(new URL(path, f.origin), {
+  method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin }, body: JSON.stringify(body),
+});
+const enrollment = await post('/api/v1/harness/register', { token: pin.token });
+const enrollmentBody = await enrollment.json();
+assert.equal(enrollment.status, 200, `Enrollment failed: ${enrollmentBody.code}`);
+assert.equal(pin.base_url, f.origin);
+const { harness_id: harnessId, enrollment_token } = enrollmentBody;
+const deviceKid = 'runner-check';
+const x = await crypto.subtle.generateKey('X25519', true, ['deriveBits']);
+const ed = await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify']);
+const raw = async (key) => Buffer.from(await crypto.subtle.exportKey('raw', key)).toString('base64');
+const device = await post(`/api/v1/harness/bindings/${harnessId}/devices`, {
+  enrollment_token, device_kid: deviceKid, x25519_pub: await raw(x.publicKey), ed25519_pub: await raw(ed.publicKey),
+});
+assert.equal(device.status, 200);
+const key = (value, name, usages) => crypto.subtle.importKey('raw', Buffer.from(value, 'base64'), name, false, usages);
+const keys = {
+  expectedKid: pin.kid,
+  serverStaticKey: await key(pin.pub_x25519, 'X25519', []),
+  serverSigningKey: await key(pin.pub_ed25519, 'Ed25519', ['verify']),
+  clientStaticKey: x.privateKey,
+  clientSigningKey: ed.privateKey,
+};
+const rpc = new Hts1HttpRpcTransport({ baseUrl: f.origin, kid: pin.kid, harnessId, deviceKid }, keys);
+const login = await rpc.request({ path: '/oauth/token', method: 'POST', body: {
+  grant_type: 'password', email: f.email, password: f.password, workspace_uuid: f.workspace,
+} });
+assert.equal(login.status, 200, `Encrypted login failed: ${login.body?.code}`);
+assert.ok(login.body.access_token);
+const url = new URL('/api/v1/harness/ws', f.origin);
+url.protocol = 'wss:';
+url.search = new URLSearchParams({ harness_id: harnessId, device_kid: deviceKid });
+const { socket, channel } = await createWebSocketSecureSocketFactory(url.href, {
+  ...keys,
+  timeoutMs: 5000,
+}, (endpoint) => new WebSocket(endpoint, { headers: { Origin: origin } }))();
+
+function request(payload) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(Error(`Missing encrypted reply for ${payload.processor_uuid}`)), 8000);
+    socket.onFrame((frame) => {
+      clearTimeout(timer);
+      try { resolve(channel.decode(frame)); } catch (error) { reject(error); }
+    });
+    socket.onClose(() => { clearTimeout(timer); reject(Error('WebSocket closed')); });
+    socket.send(channel.encode(payload));
+  });
+}
+
+try {
+  socket.send(channel.encode({ type: 'authenticate', workspace_uuid: f.workspace,
+    auth: { kind: 'oauth', token: login.body.access_token } }));
+  const message = { type: 'message', workspace_uuid: f.workspace, conversation_id: 'runner-check', content: 'Reply through LocalAgent.' };
+  assert.equal((await request({ ...message, processor_uuid: 'missing-processor' })).code, 'processor_forbidden');
+  assert.equal((await request({ ...message, workspace_uuid: 'other-workspace', processor_uuid: f.processors[0] })).code, 'workspace_forbidden');
+  for (const processor of [...f.processors, f.processors[0]]) {
+    const reply = await request({ ...message, processor_uuid: processor });
+    assert.deepEqual(reply, { type: 'message', role: 'assistant', content: 'Fake LLM response', final: true,
+      conversation_id: message.conversation_id, processor_uuid: processor });
+  }
+  // The reply precedes ledger finalization. Ingress reads the next frame only after dispatch returns.
+  assert.equal((await request({ ...message, processor_uuid: 'missing-processor' })).code, 'processor_forbidden');
+} finally {
+  socket.close();
+}

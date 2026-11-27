@@ -4,4 +4,6 @@ title: Harness 登録プレビュー
 
 `feat/harness` プレビューブランチでは、セルフホスト版の LangBot が、Harness から HTTPS で直接引き換えられる一度限りの登録リンクを発行できます。`harness.enabled`、`harness.instance_origin`、`harness.client_origin`、HTTPS 証明書と秘密鍵（`api.tls_certfile`、`api.tls_keyfile`）を設定してください。クライアントが証明書を信頼している必要があります。
 
-ワークスペースの所有者または管理者は、`POST /api/v1/harness/registration-links` でリンクを発行できます。リンクは非公開で共有してください。有効期限は 30 分で、一度だけ引き換えられます。引き換えによりインスタンスが登録されますが、ワークスペースへのアクセス権は付与されません。このプレビューはインスタンス登録のみを対象としています。
+ワークスペースの所有者または管理者は、`POST /api/v1/harness/registration-links` でリンクを発行できます。リンクは非公開で共有してください。有効期限は 30 分で、一度だけ引き換えられます。引き換えは登録の開始にすぎません。サインインとワークスペースの認可に成功すると、紐付けが完了します。
+
+Agent 宛ての最初の認可済みチャットメッセージで、専用の Harness Bot が作成され、以降のメッセージでも再利用されます。Harness Bot のある Agent を削除する場合は、その Agent へのメッセージ送信を停止し、先に対応する Harness Bot を削除してください。

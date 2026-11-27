@@ -9,10 +9,10 @@ metadata:
     zh_Hant: LangBot Harness
     ja_JP: LangBot Harness
   description:
-    en_US: LangBot Harness secure channel. One Bot per Workspace.
-    zh_Hans: LangBot Harness 安全通道。每个工作区一个 Bot。
-    zh_Hant: LangBot Harness 安全通道。每個工作區一個 Bot。
-    ja_JP: LangBot Harness セキュアチャネル。ワークスペースごとに一つの Bot を使用します。
+    en_US: LangBot Harness secure channel. One Bot per processor.
+    zh_Hans: LangBot Harness 安全通道。每个处理器一个 Bot。
+    zh_Hant: LangBot Harness 安全通道。每個處理器一個 Bot。
+    ja_JP: LangBot Harness セキュアチャネル。プロセッサーごとに一つの Bot を使用します。
   icon: harness.svg
 
 spec:
