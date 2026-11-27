@@ -143,7 +143,7 @@ class HarnessBindings:
         if not isinstance(token, str) or _TOKEN_PATTERN.fullmatch(token) is None:
             return None
         now = int(time.time())
-        binding_id = str(uuid.uuid4())
+        enrollment_token = secrets.token_urlsafe(32)
         async with self.engine.begin() as conn:
             result = await conn.execute(
                 _LINK.update()
@@ -156,17 +156,30 @@ class HarnessBindings:
                     sa.exists(sa.select(_KEY.c.kid).where(_KEY.c.kid == _LINK.c.kid, _KEY.c.status == 'active')),
                 )
                 .values(consumed_at=now)
-                .returning(_LINK.c.issuer_workspace_uuid)
+                .returning(_LINK.c.id, _LINK.c.issuer_workspace_uuid)
             )
-            issuer = result.scalar_one_or_none()
-            if issuer is None:
+            consumed_link = result.one_or_none()
+            if consumed_link is None:
                 return None
+            binding_id, issuer = consumed_link.id, consumed_link.issuer_workspace_uuid
+            await conn.execute(
+                _LINK.update()
+                .where(_LINK.c.token_hash == _digest(token), _LINK.c.consumed_at == now)
+                .values(token_hash=_digest(enrollment_token))
+            )
             await conn.execute(
                 _BINDING.insert().values(
-                    id=binding_id, instance_uuid=self.instance_uuid, issuer_workspace_uuid=issuer, created_at=now
+                    id=binding_id,
+                    instance_uuid=self.instance_uuid,
+                    issuer_workspace_uuid=issuer,
+                    created_at=now,
                 )
             )
-        return {'harness_id': binding_id, 'instance_uuid': self.instance_uuid}
+        return {
+            'harness_id': binding_id,
+            'instance_uuid': self.instance_uuid,
+            'enrollment_token': enrollment_token,
+        }
 
     def _managed(self, table, ctx):
         return (

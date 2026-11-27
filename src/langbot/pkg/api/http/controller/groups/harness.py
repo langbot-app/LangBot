@@ -3,6 +3,7 @@
 import quart
 
 from .....harness.binding import HarnessBindings
+from .....harness.oauth import HarnessOAuthService
 from ...authz import Permission
 from ...context import PrincipalType, RequestContext
 from .. import group
@@ -83,3 +84,37 @@ class HarnessRouterGroup(group.RouterGroup):
         @self.route('/bindings/<uuid:binding_id>', methods=['DELETE'], permission=Permission.HARNESS_MANAGE)
         async def revoke_binding(request_context: RequestContext, binding_id):
             return await revoke(request_context, binding_id, links=False)
+
+        @self.route('/bindings/<uuid:binding_id>/devices', methods=['POST'], auth_type=group.AuthType.NONE)
+        async def register_device(binding_id):
+            service = self._service()
+            payload = await quart.request.get_json(silent=True)
+            if service is None or not isinstance(payload, dict):
+                return self._unavailable()
+            enrollment_token = payload.pop('enrollment_token', None)
+            if not isinstance(enrollment_token, str) or len(enrollment_token) > 256:
+                return self.http_status(401, 'invalid_device_enrollment', 'Invalid authentication credentials')
+            try:
+                result = await HarnessOAuthService(self.ap).register_device(str(binding_id), enrollment_token, payload)
+            except ValueError:
+                return self.http_status(400, 'invalid_device_key', 'Invalid request parameters')
+            if result is None:
+                return self.http_status(401, 'invalid_device_enrollment', 'Invalid authentication credentials')
+            return self.success(result)
+
+        @self.route('/oauth/token', methods=['POST'], auth_type=group.AuthType.NONE)
+        async def token():
+            payload = await quart.request.get_json(silent=True)
+            if not isinstance(payload, dict):
+                return self.http_status(400, 'invalid_request', 'Invalid request parameters')
+            service = HarnessOAuthService(self.ap)
+            try:
+                if payload.get('grant_type') == 'refresh_token':
+                    result = await service.refresh_grant(payload.get('refresh_token', ''))
+                else:
+                    result = await service.password_grant(payload.get('binding_id', ''), payload)
+            except ValueError as exc:
+                return self.http_status(401, str(exc), 'Invalid authentication credentials')
+            response = self.success(result)
+            response.headers['Cache-Control'] = 'no-store'
+            return response

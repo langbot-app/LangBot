@@ -11,8 +11,10 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.api.http.controller.groups.harness import HarnessRouterGroup
 from langbot.pkg.entity.persistence.harness_instance_key import HarnessInstanceKey
+from langbot.pkg.entity.persistence.harness_oauth import HarnessDevice, HarnessOAuthGrant
 from langbot.pkg.entity.persistence.harness_registration import HarnessBinding, HarnessRegistrationLink
 from langbot.pkg.harness.binding import HarnessBindings
+from langbot.pkg.harness.oauth import HarnessOAuthService
 from langbot.pkg.utils import constants
 
 
@@ -41,7 +43,13 @@ async def test_instance_binding_is_atomic_and_a_link_cannot_be_redeemed_twice(tm
     )
     try:
         async with engine.begin() as conn:
-            for model in (HarnessRegistrationLink, HarnessBinding, HarnessInstanceKey):
+            for model in (
+                HarnessRegistrationLink,
+                HarnessBinding,
+                HarnessInstanceKey,
+                HarnessDevice,
+                HarnessOAuthGrant,
+            ):
                 await conn.run_sync(model.__table__.create)
         service = HarnessBindings(ap)
         issuer = SimpleNamespace(workspace_uuid='issuer', account_uuid='admin')
@@ -74,6 +82,20 @@ async def test_instance_binding_is_atomic_and_a_link_cannot_be_redeemed_twice(tm
         results = await asyncio.gather(*(service.redeem(payload['token']) for _ in range(8)))
         (binding,) = [result for result in results if result is not None]
         assert binding['instance_uuid'] == constants.instance_id
+        device = await HarnessOAuthService(ap).register_device(
+            binding['harness_id'],
+            next(result for result in results if result is not None)['enrollment_token'],
+            {
+                'device_kid': 'device-1',
+                'x25519_pub': base64.b64encode(b'x' * 32).decode(),
+                'ed25519_pub': base64.b64encode(b'e' * 32).decode(),
+                'platform': 'test',
+            },
+        )
+        assert device['device_kid'] == 'device-1'
+        assert (await HarnessOAuthService(ap).lookup_device(binding['harness_id'], 'device-1'))['id'] == device[
+            'device_id'
+        ]
         assert [row['id'] for row in await service.list_active(issuer, links=False)] == [binding['harness_id']]
         assert await service.list_active(outsider, links=False) == []
         assert await service.revoke(issuer, binding['harness_id'], links=False)
