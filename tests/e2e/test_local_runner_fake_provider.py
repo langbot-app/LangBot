@@ -658,7 +658,7 @@ def test_local_runner_uses_host_fake_provider_and_persists_ledger(
 
 
 def test_harness_processor_bots_run_local_agent(
-    local_agent_e2e_tmpdir, local_agent_e2e_port, local_agent_e2e_config_path, local_agent_runtime_process
+    local_agent_e2e_tmpdir, local_agent_e2e_port, local_agent_e2e_config_path, local_agent_runtime_process, monkeypatch
 ):
     """Fresh Workspace, real startup/HTS1/EBA/Runner, deterministic model replies."""
     import ipaddress
@@ -685,6 +685,10 @@ def test_harness_processor_bots_run_local_agent(
     if not transport:
         pytest.skip('Set HARNESS_TS_TRANSPORT to the built Harness core transport.js')
     web_origin = os.getenv('HARNESS_WEB_ORIGIN')
+    rotation = bool(web_origin and os.getenv('HARNESS_ROTATION_BROWSER'))
+    expected_web_runs = 5 if rotation else 4
+    if rotation:
+        monkeypatch.setenv('LANGBOT_HARNESS_ROTATION_TOKEN', secrets.token_urlsafe(32))
     script = Path(__file__).with_name('harness-runner-web.mjs' if web_origin else 'harness-runner.mjs').resolve()
     config = yaml.safe_load(local_agent_e2e_config_path.read_text(encoding='utf-8'))
     cert_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -793,6 +797,8 @@ def test_harness_processor_bots_run_local_agent(
             viewerWorkspace=viewer_workspace,
             hiddenProcessor=hidden_processor,
         )
+        if rotation:
+            fixture['rotationToken'] = os.environ['LANGBOT_HARNESS_ROTATION_TOKEN']
         relay_proc = None
         if web_origin and os.getenv('HARNESS_E2E_RELAY_SERVER'):
             relay_port = int(os.environ['HARNESS_E2E_RELAY_PORT'])
@@ -834,7 +840,7 @@ def test_harness_processor_bots_run_local_agent(
                 count = await ap.persistence_mgr.execute_async(sa.select(sa.func.count()).select_from(AgentRun).where(
                     AgentRun.status == 'completed',
                 ))
-                if count.scalar() == 4:
+                if count.scalar() == expected_web_runs:
                     break
                 await asyncio.sleep(0.1)
         bots = await ap.bot_service.get_bots(context)
@@ -844,7 +850,7 @@ def test_harness_processor_bots_run_local_agent(
         )
         assert {bot['uuid'] for bot in bots} == {processor_bot_uuid(workspace, p) for p in processors}
         runs = [row for row in runs if row['event_id'].startswith('platform:')]
-        assert len(runs) == (4 if web_origin else 3)
+        assert len(runs) == (expected_web_runs if web_origin else 3)
         assert all(row['status'] == 'completed' and row['runner_id'] == LOCAL_RUNNER_ID for row in runs)
         assert len({row['conversation_id'] for row in runs}) == 2
         assert all(row['conversation_id'].startswith('person_') for row in runs)

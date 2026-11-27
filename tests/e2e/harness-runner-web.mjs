@@ -42,7 +42,64 @@ try {
   await page.locator('#bind-password').fill(f.password);
   await page.locator('#bind-workspace').fill(f.workspace);
   await page.getByRole('button', { name: 'Sign in and bind' }).click();
-  await page.getByRole('button', { name: 'Workspace & processor' }).click();
+  const checkKey = () => page.getByRole('button', { name: 'Check instance key' }).click();
+  const readPin = () => page.evaluate(() => new Promise((resolve, reject) => {
+    const open = indexedDB.open('langbot-harness-registry', 1);
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const request = db.transaction('instances').objectStore('instances').getAll();
+      request.onsuccess = () => { db.close(); resolve(request.result[0]); };
+      request.onerror = () => { db.close(); reject(request.error); };
+    };
+  }));
+  async function rotate(mode, kid) {
+    const response = await fetch(`${f.origin}/api/v1/harness/instance/key-rotation`, {
+      method: 'POST', headers: { Authorization: `Bearer ${f.rotationToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode, kid }),
+    });
+    assert.equal(response.status, 200);
+    return response.json();
+  }
+  async function verifyPin(pin) {
+    await page.getByLabel('Independently verified pin (JSON)').fill(JSON.stringify(pin));
+    await page.getByRole('button', { name: 'Verify and use this pin' }).click();
+  }
+  async function resume() {
+    await page.getByRole('button', { name: 'Workspace & processor' }).click();
+    await page.locator('#resume-email').fill(f.email);
+    await page.locator('#resume-password').fill(f.password);
+    await page.locator('#resume-workspace').fill(f.workspace);
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  }
+  let plannedKid;
+  if (f.rotationToken) {
+    await page.getByRole('button', { name: 'Check instance key' }).waitFor();
+    const old = await readPin();
+    const { fields } = await rotate('planned', old.kid);
+    plannedKid = fields.new_kid;
+    const fingerprint = createHash('sha256').update(Buffer.from(fields.pub_x25519, 'base64'))
+      .update(Buffer.from(fields.pub_ed25519, 'base64')).digest('hex');
+    const trusted = { instance_uuid: fields.instance_uuid, base_url: fields.base_url, kid: plannedKid, fingerprint };
+    await checkKey();
+    await page.getByText('The old signature alone is not sufficient.', { exact: false }).waitFor();
+    assert.equal((await readPin()).kid, old.kid);
+    await verifyPin({ ...trusted, fingerprint: '0'.repeat(64) });
+    await page.getByText('The supplied pin is invalid or does not match.', { exact: false }).waitFor();
+    assert.equal((await readPin()).kid, old.kid);
+    if (process.env.HARNESS_ROTATION_SCREENSHOTS) await page.screenshot({ path: `${process.env.HARNESS_ROTATION_SCREENSHOTS}-unverified.png` });
+    await verifyPin(trusted);
+    await page.getByText('New key saved and acknowledged.', { exact: false }).waitFor();
+    const saved = await readPin();
+    assert.equal(saved.kid, plannedKid);
+    assert.equal(saved.rotationAck, undefined);
+    assert.equal(saved.deviceId, old.deviceId);
+    if (process.env.HARNESS_ROTATION_SCREENSHOTS) await page.screenshot({ path: `${process.env.HARNESS_ROTATION_SCREENSHOTS}-planned.png` });
+    await page.reload();
+    assert.equal((await readPin()).kid, plannedKid);
+  }
+  if (f.rotationToken) await resume();
+  else await page.getByRole('button', { name: 'Workspace & processor' }).click();
   const agents = page.locator('#chat-processor');
   const choose = async (id) => {
     await agents.locator(`option[value="${id}"]`).waitFor({ state: 'attached' });
@@ -123,6 +180,29 @@ try {
   await send('Back in the original workspace on a new connection.');
   await transcript.getByText('Fake LLM response', { exact: true }).nth(2).waitFor();
   assert.equal(sockets, 5);
+  if (f.rotationToken) {
+    assert.ok(socketUrls.every(url => url.searchParams.get('pinned_kid') === plannedKid));
+    const replacement = await rotate('emergency', plannedKid);
+    await checkKey();
+    await page.getByText('Connection is blocked until you verify a replacement pin.', { exact: false }).waitFor();
+    assert.equal((await readPin()).keyRetired, true);
+    await page.reload();
+    await page.getByText('Connection is blocked until you verify a replacement pin.', { exact: false }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Workspace & processor' }).count(), 0);
+    if (process.env.HARNESS_ROTATION_SCREENSHOTS) await page.screenshot({ path: `${process.env.HARNESS_ROTATION_SCREENSHOTS}-retired.png` });
+    await verifyPin({ ...replacement, base_url: 'https://wrong.example' });
+    await page.getByText('The supplied pin is invalid or does not match.', { exact: false }).waitFor();
+    assert.equal((await readPin()).kid, plannedKid);
+    await verifyPin(replacement);
+    await page.getByText('Replacement key verified and saved.', { exact: false }).waitFor();
+    assert.equal((await readPin()).kid, replacement.kid);
+    if (process.env.HARNESS_ROTATION_SCREENSHOTS) await page.screenshot({ path: `${process.env.HARNESS_ROTATION_SCREENSHOTS}-recovered.png` });
+    await resume();
+    await choose(f.processors[0]);
+    await send('Recovered on the independently verified key.');
+    await transcript.getByText('Fake LLM response', { exact: true }).nth(3).waitFor();
+    assert.equal(socketUrls.at(-1).searchParams.get('pinned_kid'), replacement.kid);
+  }
   if (f.relayOrigin) {
     assert.ok(socketUrls.every(url => `https://${url.host}` === f.relayOrigin));
     const rpcPaths = new Set();
