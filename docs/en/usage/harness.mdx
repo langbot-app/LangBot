@@ -6,6 +6,8 @@ On the `feat/harness` preview branch, self-hosted LangBot instances can issue on
 
 A Workspace owner or administrator can issue a link through `POST /api/v1/harness/registration-links`. Share the URL privately: it expires after 30 minutes and can be redeemed only once. Redemption starts enrollment; the binding is completed only after successful sign-in and Workspace authorization.
 
+If your account uses authenticator-based two-factor authentication, choose **Open browser authorization** after entering your password. Enter the six-digit code on the LangBot instance's HTTPS page, approve, and return to the same Harness window to finish binding. The request expires after three minutes. If you cancel, you can start a new request once that window has elapsed.
+
 In Harness Web, open **Workspace & processor**, choose an authorized workspace, and select an Agent to send a text message. The list includes only Agents your account is allowed to use. Switching workspaces closes the current chat connection.
 
 The first authorized chat message to an Agent creates its managed Harness Bot. Later messages reuse that Bot. To remove an Agent that has a Harness Bot, stop sending messages to it and delete its Harness Bot before deleting the Agent.

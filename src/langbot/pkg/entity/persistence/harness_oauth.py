@@ -19,6 +19,22 @@ class HarnessDevice(Base):
     revoked_at = sa.Column(sa.BigInteger, nullable=True)
 
 
+class HarnessHandoff(Base):
+    __tablename__ = 'harness_handoffs'
+
+    ticket_hash = sa.Column(sa.String(64), primary_key=True)
+    instance_uuid = sa.Column(sa.String(36), nullable=False)
+    binding_id = sa.Column(sa.String(36), nullable=False)
+    device_id = sa.Column(sa.String(64), nullable=False)
+    account_uuid = sa.Column(sa.String(36), nullable=False, unique=True)
+    workspace_uuid = sa.Column(sa.String(36), nullable=False)
+    password_digest = sa.Column(sa.String(64), nullable=False)
+    credential_uuid = sa.Column(sa.String(36), nullable=False)
+    expires_at = sa.Column(sa.BigInteger, nullable=False, index=True)
+    attempts = sa.Column(sa.Integer, nullable=False)
+    state = sa.Column(sa.String(12), nullable=False)
+
+
 class HarnessOAuthGrant(Base):
     __tablename__ = 'harness_oauth_grants'
 

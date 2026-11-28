@@ -45,7 +45,7 @@ class BoundedJSONRequest(quart.Request):
         if method == 'POST' and path == '/api/v1/artifacts':
             # Allow bounded multipart overhead while the route enforces the file byte limit.
             max_content_length = group.MAX_FILE_SIZE + 64 * 1024
-        if method == 'POST' and path in ('/api/v1/harness/register', '/api/v1/harness/registration-links'):
+        if method == 'POST' and path in ('/api/v1/harness/register', '/api/v1/harness/registration-links', '/oauth/handoff'):
             max_content_length = 4096
         super().__init__(method, scheme, path, *args, max_content_length=max_content_length, **kwargs)
         self.max_content_length = max_content_length
@@ -188,6 +188,10 @@ class HTTPController:
         await hypercorn_serve(traced_app, config, shutdown_trigger=shutdown_trigger)
 
     def register_harness_route(self) -> None:
+        from ....harness.handoff_browser import register_handoff_route
+
+        register_handoff_route(self.quart_app, self.ap)
+
         @self.quart_app.websocket('/api/v1/harness/ws')
         async def harness_websocket():
             # Harness identities and encrypted instance keys are provisioned by

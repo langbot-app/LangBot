@@ -456,7 +456,7 @@ class UserService:
         totp_service = getattr(self.ap, 'totp_service', None)
         if totp_service is not None and await totp_service.is_enrolled(user_obj.uuid):
             if not totp_code:
-                raise totp_service_module.TotpRequiredError('A second factor is required')
+                raise totp_service_module.TotpRequiredError('A second factor is required', account=user_obj)
             # Recovery codes are accepted here as well, so a lost authenticator
             # does not lock an Account out of its own instance.
             await totp_service.verify_code(user_obj.uuid, totp_code, allow_recovery=True)

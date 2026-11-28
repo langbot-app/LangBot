@@ -21,6 +21,7 @@ from ..workspace.errors import WorkspaceExecutionUnavailableError, WorkspaceNotF
 from .auth import _oauth_context
 from .crypto.suite import open_, seal
 from .crypto.transport import begin_handshake, finish_handshake
+from .handoff import HandoffRequired, HarnessHandoffs
 from .oauth import HarnessOAuthService
 from .rotation import HarnessKeyRotation, RotationError, ensure_serving
 
@@ -46,6 +47,8 @@ _GRANT_ERRORS = {
     'invalid_device',
     'invalid_binding',
     'interaction_required',
+    'authorization_pending',
+    'handoff_already_pending',
     'refresh_token_reuse',
     'workspace_forbidden',
     'insufficient_scope',
@@ -170,6 +173,8 @@ class HarnessRpc:
         try:
             result = await self._dispatch(harness_id, device['id'], request, kid=kid)
             reply.update(ok=True, result=result)
+        except HandoffRequired as exc:
+            reply.update(ok=False, error={'code': 'interaction_required', 'details': exc.details})
         except (AuthorizationError, WorkspaceNotFoundError, WorkspaceExecutionUnavailableError):
             reply.update(ok=False, error={'code': 'workspace_forbidden'})
         except ValueError as exc:
@@ -201,6 +206,10 @@ class HarnessRpc:
                 raise RpcError('invalid_request')
             return await HarnessKeyRotation(self.ap).ack(harness_id, device_id, kid, **params)
         service = HarnessOAuthService(self.ap)
+        if method == 'oauth.handoff.poll':
+            if set(params) != {'handoff_ticket'}:
+                raise RpcError('invalid_request')
+            return await HarnessHandoffs(self.ap).poll(service, params['handoff_ticket'], harness_id, device_id, kid)
         if method == 'oauth.password':
             if set(params) != {'email', 'password', 'workspace_uuid'}:
                 raise RpcError('invalid_request')
