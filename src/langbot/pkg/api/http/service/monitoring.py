@@ -2071,11 +2071,10 @@ class MonitoringService(ExecutionDetailsMixin):
         # ---- Time-bucketed series ----
         # Aggregate before materialization. Requests may omit their time window,
         # so fetching every historical call and bucketing in Python is unsafe.
-        engine = self.ap.persistence_mgr.get_db_engine()
-        bucket_expression = self._token_bucket_expression(
+        bucket_expression = time_bucket(
+            self.ap.persistence_mgr,
             LLMCall.timestamp,
-            bucket=bucket,
-            dialect_name=engine.dialect.name,
+            bucket=bucket if bucket in {'hour', 'day'} else 'hour',
         )
         bucket_limit = self._timeseries_bucket_limit()
         series_query = (

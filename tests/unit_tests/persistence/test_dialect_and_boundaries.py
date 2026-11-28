@@ -172,29 +172,83 @@ async def test_lock_rows_for_write_emits_validated_update_for_both_dialects():
     assert 'UPDATE artifacts SET id=artifacts.id' in _compile(stmt, 'postgresql')
 
 
+@pytest.mark.asyncio
+async def test_lock_helpers_reject_empty_where_predicates():
+    executor = SimpleNamespace(execute=AsyncMock())
+    with pytest.raises(ValueError, match='at least one WHERE predicate'):
+        await lock_rows_for_write(executor, Artifact)
+    with pytest.raises(ValueError, match='at least one WHERE predicate'):
+        await reserve_write_lock(executor, 'sqlite', Artifact)
+    with pytest.raises(ValueError, match='at least one WHERE predicate'):
+        await reserve_write_lock(executor, 'postgresql', Artifact)
+    executor.execute.assert_not_awaited()
+
+
 def test_is_unique_violation_classifies_postgres_and_sqlite_errors():
+    class _PGDiag:
+        def __init__(self, constraint_name: str | None = None, message_detail: str | None = None):
+            self.constraint_name = constraint_name
+            self.message_detail = message_detail
+
     class _PGError(Exception):
-        def __init__(self, sqlstate: str, constraint_name: str | None = None):
-            super().__init__(f'pg error {sqlstate} {constraint_name}')
+        def __init__(
+            self,
+            sqlstate: str,
+            constraint_name: str | None = None,
+            *,
+            diag_constraint: str | None = None,
+            detail: str | None = None,
+        ):
+            super().__init__(f'pg error {sqlstate} {constraint_name or diag_constraint}')
             self.sqlstate = sqlstate
             self.constraint_name = constraint_name
+            self.detail = detail
+            self.diag = _PGDiag(diag_constraint, detail) if (diag_constraint or detail) else None
 
     class _SQLiteError(Exception):
-        def __init__(self, code: int, name: str, msg: str):
+        def __init__(self, code: int, name: str | None, msg: str):
             super().__init__(msg)
             self.sqlite_errorcode = code
             self.sqlite_errorname = name
 
-    pg_dup = IntegrityError('INSERT', {}, _PGError('23505', 'uq_bot_admin'))
+    full_insert_sql = (
+        'INSERT INTO bot_admins (id, workspace_uuid, bot_uuid, launcher_type, launcher_id) VALUES (?, ?, ?, ?, ?)'
+    )
+    target_columns = ('workspace_uuid', 'bot_uuid', 'launcher_type', 'launcher_id')
+
+    pg_dup = IntegrityError(full_insert_sql, {}, _PGError('23505', 'uq_bot_admin'))
     assert is_unique_violation(pg_dup, constraints=('uq_bot_admin',)) is True
     assert is_unique_violation(pg_dup, constraints=('uq_other',)) is False
 
-    pg_fk = IntegrityError('INSERT', {}, _PGError('23503', 'fk_bot_admins_workspace_bot'))
+    # Case-insensitive diag.constraint_name match
+    pg_diag_dup = IntegrityError(full_insert_sql, {}, _PGError('23505', diag_constraint='UQ_BOT_ADMIN'))
+    assert is_unique_violation(pg_diag_dup, constraints=('uq_bot_admin',)) is True
+
+    # Same-table PG PK collision must not match target constraint or columns via [SQL: ...]
+    pg_pk_dup = IntegrityError(
+        full_insert_sql,
+        {'launcher_id': 'uq_bot_admin'},
+        _PGError('23505', diag_constraint='bot_admins_pkey', detail='Key (id)=(1) already exists.'),
+    )
+    assert is_unique_violation(pg_pk_dup, constraints=('uq_bot_admin',), columns=target_columns) is False
+    assert is_unique_violation(pg_pk_dup, columns=target_columns) is False
+
+    pg_detail_cols = IntegrityError(
+        full_insert_sql,
+        {},
+        _PGError(
+            '23505',
+            detail='Key (workspace_uuid, bot_uuid, launcher_type, launcher_id)=(ws, b, person, a) already exists.',
+        ),
+    )
+    assert is_unique_violation(pg_detail_cols, columns=target_columns) is True
+
+    pg_fk = IntegrityError(full_insert_sql, {}, _PGError('23503', 'fk_bot_admins_workspace_bot'))
     assert is_unique_violation(pg_fk, constraints=('uq_bot_admin',)) is False
     assert is_unique_violation(pg_fk) is False
 
     sqlite_dup = IntegrityError(
-        'INSERT',
+        full_insert_sql,
         {},
         _SQLiteError(
             2067,
@@ -202,20 +256,58 @@ def test_is_unique_violation_classifies_postgres_and_sqlite_errors():
             'UNIQUE constraint failed: bot_admins.workspace_uuid, bot_admins.bot_uuid, bot_admins.launcher_type, bot_admins.launcher_id',
         ),
     )
-    assert (
-        is_unique_violation(
-            sqlite_dup,
-            constraints=('uq_bot_admin',),
-            columns=('workspace_uuid', 'bot_uuid', 'launcher_type', 'launcher_id'),
-        )
-        is True
-    )
+    assert is_unique_violation(sqlite_dup, constraints=('uq_bot_admin',), columns=target_columns) is True
     assert is_unique_violation(sqlite_dup, columns=('nonexistent_col',)) is False
 
+    # Counterexample 1: same-table SQLite PK collision (1555) must NOT match via [SQL: ...]
+    sqlite_pk_dup = IntegrityError(
+        full_insert_sql,
+        {'launcher_id': 'uq_bot_admin'},
+        _SQLiteError(1555, 'SQLITE_CONSTRAINT_PRIMARYKEY', 'UNIQUE constraint failed: bot_admins.id'),
+    )
+    assert is_unique_violation(sqlite_pk_dup, constraints=('uq_bot_admin',), columns=target_columns) is False
+
+    # Counterexample 2: parameter pollution with generic sqlite_code == 19 (no errorname) must NOT match
+    polluted_params = {
+        'launcher_id': (
+            'UNIQUE constraint failed: bot_admins.workspace_uuid, bot_admins.bot_uuid, '
+            'bot_admins.launcher_type, bot_admins.launcher_id uq_bot_admin'
+        )
+    }
+    sqlite_generic_fk = IntegrityError(
+        full_insert_sql,
+        polluted_params,
+        _SQLiteError(19, None, 'FOREIGN KEY constraint failed'),
+    )
+    assert is_unique_violation(sqlite_generic_fk, constraints=('uq_bot_admin',), columns=target_columns) is False
+    assert is_unique_violation(sqlite_generic_fk) is False
+
+    # Counterexample 3: fallback path without sqlite_code/sqlstate must still ignore [parameters: ...]
+    fallback_fk = IntegrityError(
+        full_insert_sql,
+        polluted_params,
+        RuntimeError('FOREIGN KEY constraint failed'),
+    )
+    assert is_unique_violation(fallback_fk, constraints=('uq_bot_admin',), columns=target_columns) is False
+
     sqlite_fk = IntegrityError(
-        'INSERT', {}, _SQLiteError(787, 'SQLITE_CONSTRAINT_FOREIGNKEY', 'FOREIGN KEY constraint failed')
+        full_insert_sql,
+        {},
+        _SQLiteError(787, 'SQLITE_CONSTRAINT_FOREIGNKEY', 'FOREIGN KEY constraint failed'),
     )
     assert is_unique_violation(sqlite_fk) is False
+
+
+@pytest.mark.asyncio
+async def test_workspace_metadata_does_not_synthesize_execute_async_on_mock_uow():
+    from unittest.mock import MagicMock
+
+    uow = MagicMock()
+    uow.execute = AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: 'zh_Hans'))
+    value = await get_workspace_metadata(uow, 'ws-1', 'message_language')
+    assert value == 'zh_Hans'
+    uow.execute.assert_awaited_once()
+    assert 'execute_async' not in uow.__dict__
 
 
 @pytest.mark.asyncio

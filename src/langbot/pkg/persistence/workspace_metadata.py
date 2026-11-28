@@ -11,10 +11,24 @@ from ..entity.persistence.metadata import WorkspaceMetadata
 from .dialect import upsert_insert
 
 
+def _use_execute_async(executor: typing.Any) -> bool:
+    from .mgr import PersistenceManager
+
+    if isinstance(executor, PersistenceManager):
+        return True
+    # Avoid dynamic attribute synthesis on MagicMock/AsyncMock UoW doubles.
+    raw_dict = getattr(executor, '__dict__', None)
+    if isinstance(raw_dict, dict):
+        if 'execute' in raw_dict:
+            return False
+        if 'execute_async' in raw_dict:
+            return True
+    return hasattr(type(executor), 'execute_async') and not hasattr(type(executor), 'execute')
+
+
 async def _execute(executor: typing.Any, statement: typing.Any):
-    execute_async = getattr(executor, 'execute_async', None)
-    if callable(execute_async):
-        return await execute_async(statement)
+    if _use_execute_async(executor):
+        return await executor.execute_async(statement)
     return await executor.execute(statement)
 
 
