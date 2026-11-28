@@ -14,6 +14,7 @@ from ....command.permissions import PERMISSION_FIELDS, normalize_permissions
 from ....entity.persistence import agent as persistence_agent
 from ....entity.persistence import bot as persistence_bot
 from ....entity.persistence import pipeline as persistence_pipeline
+from ....persistence.dialect import is_unique_violation
 from ....workspace.errors import WorkspaceNotFoundError
 from .bot_errors import BotApplyError, bot_error_message
 from .tenant import TenantContext, require_workspace_uuid, scope_statement
@@ -1818,14 +1819,25 @@ class BotService:
         workspace_uuid = require_workspace_uuid(context)
         if await self.get_bot(context, bot_uuid, include_secret=False) is None:
             raise WorkspaceNotFoundError('Bot not found')
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.insert(persistence_bot.BotAdmin).values(
-                workspace_uuid=workspace_uuid,
-                bot_uuid=bot_uuid,
-                launcher_type=launcher_type,
-                launcher_id=launcher_id,
+        try:
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.insert(persistence_bot.BotAdmin).values(
+                    workspace_uuid=workspace_uuid,
+                    bot_uuid=bot_uuid,
+                    launcher_type=launcher_type,
+                    launcher_id=launcher_id,
+                )
             )
-        )
+        except sqlalchemy.exc.IntegrityError as exc:
+            if is_unique_violation(
+                exc,
+                constraints=('uq_bot_admin',),
+                columns=('workspace_uuid', 'bot_uuid', 'launcher_type', 'launcher_id'),
+            ):
+                raise ApplicationAPIException(
+                    ApplicationAPIError('bot_admin_exists', 'Bot admin already exists', 409)
+                ) from None
+            raise
         return result.inserted_primary_key[0]
 
     async def delete_bot_admin(self, context: TenantContext, bot_uuid: str, admin_id: int) -> None:

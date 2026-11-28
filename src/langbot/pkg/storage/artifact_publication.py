@@ -11,6 +11,7 @@ from ..api.context import ExecutionContext, PrincipalContext, PrincipalType, Req
 from ..entity.persistence.agent import Agent
 from ..entity.persistence.artifact_publication import ArtifactPublication
 from ..entity.persistence.pipeline import LegacyPipeline
+from ..persistence.dialect import upsert_insert
 
 
 class ArtifactPublicationService:
@@ -96,16 +97,9 @@ class ArtifactPublicationService:
         await self.ap.artifact_service.resolve_manager_context(ExecutionContext.from_request(context), context)
         async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
             await self._producer(uow, context, producer_type, producer_id)
-            dialect = self.ap.persistence_mgr.get_db_engine().dialect.name
-            if dialect == 'postgresql':
-                from sqlalchemy.dialects.postgresql import insert
-            elif dialect == 'sqlite':
-                from sqlalchemy.dialects.sqlite import insert
-            else:
-                raise ValueError('Output publication requires PostgreSQL or SQLite')
             revision = str(uuid.uuid4())
             await uow.execute(
-                insert(ArtifactPublication)
+                upsert_insert(self.ap.persistence_mgr, ArtifactPublication)
                 .values(
                     workspace_uuid=context.workspace_uuid,
                     producer_type=producer_type,

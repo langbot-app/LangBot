@@ -15,8 +15,8 @@ from dataclasses import dataclass
 
 import pydantic
 import sqlalchemy
-import sqlalchemy.dialects.postgresql
-import sqlalchemy.dialects.sqlite
+
+from ..persistence.dialect import upsert_insert
 
 from langbot_plugin.runtime.io import handler
 from langbot_plugin.runtime.io.connection import Connection
@@ -2308,24 +2308,19 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
                 return handler.ActionResponse.success(data={})
 
-            dialect_name = self.ap.persistence_mgr.get_db_engine().dialect.name
-            insert = {
-                'postgresql': sqlalchemy.dialects.postgresql.insert,
-                'sqlite': sqlalchemy.dialects.sqlite.insert,
-            }.get(dialect_name)
-            if insert is None:
-                return handler.ActionResponse.error(message=f'Unsupported storage database dialect: {dialect_name}')
+            try:
+                insert_statement = upsert_insert(self.ap.persistence_mgr, persistence_bstorage.BinaryStorage)
+            except ValueError as exc:
+                return handler.ActionResponse.error(message=str(exc))
             await self.ap.persistence_mgr.execute_async(
-                insert(persistence_bstorage.BinaryStorage)
-                .values(
+                insert_statement.values(
                     workspace_uuid=action_context.workspace_uuid,
                     unique_key=unique_key,
                     key=key,
                     owner_type=owner_type,
                     owner=owner,
                     value=value,
-                )
-                .on_conflict_do_update(
+                ).on_conflict_do_update(
                     index_elements=['workspace_uuid', 'unique_key'],
                     set_={'value': value},
                 )

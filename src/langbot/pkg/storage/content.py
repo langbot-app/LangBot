@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import sqlalchemy as sa
 
 from ..entity.persistence.content import ContentAlias, ContentObject
+from ..persistence.dialect import lock_rows_for_write, reserve_write_lock, upsert_insert
 from ..persistence.tenant_uow import PersistenceScopeKind, TenantScopeRequiredError
 from .provider import HARD_MAX_STORAGE_OBJECT_BYTES, normalize_read_limit
 from .providers.s3storage import S3StorageProvider
@@ -154,15 +155,10 @@ class ContentStore:
             value=value if backend == 'database' else None,
         )
         # The same immutable bytes may be published concurrently by two Core instances.
-        dialect = self.ap.persistence_mgr.get_db_engine().dialect.name
-        if dialect == 'postgresql':
-            from sqlalchemy.dialects.postgresql import insert
-        elif dialect == 'sqlite':
-            from sqlalchemy.dialects.sqlite import insert
-        else:
-            raise ValueError('Persistent content requires PostgreSQL or SQLite')
         inserted = await uow.execute(
-            insert(ContentObject).values(**values).on_conflict_do_nothing(index_elements=['ref'])
+            upsert_insert(self.ap.persistence_mgr, ContentObject)
+            .values(**values)
+            .on_conflict_do_nothing(index_elements=['ref'])
         )
         if locator is not None and inserted.rowcount == 0:
             self._delete_after_transaction(provider, object_key, committed=True)
@@ -241,15 +237,8 @@ class ContentStore:
         await self._validate(context)
         async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
             ref = await self._put(uow, context.workspace_uuid, owner_type, owner, object_key, value)
-            dialect = self.ap.persistence_mgr.get_db_engine().dialect.name
-            if dialect == 'postgresql':
-                from sqlalchemy.dialects.postgresql import insert
-            elif dialect == 'sqlite':
-                from sqlalchemy.dialects.sqlite import insert
-            else:
-                raise ValueError('Persistent content requires PostgreSQL or SQLite')
             await uow.execute(
-                insert(ContentAlias)
+                upsert_insert(self.ap.persistence_mgr, ContentAlias)
                 .values(workspace_uuid=context.workspace_uuid, key=object_key, content_ref=ref)
                 .on_conflict_do_update(index_elements=['workspace_uuid', 'key'], set_={'content_ref': ref})
             )
@@ -274,14 +263,15 @@ class ContentStore:
             from .artifacts import DEFAULT_TTL_SECONDS, _now
             import datetime as dt
 
-            if self.ap.persistence_mgr.get_db_engine().dialect.name == 'sqlite':
-                # Reserve SQLite's writer before discovering pins, avoiding a
-                # read-snapshot upgrade race with another Core retaining the asset.
-                await uow.execute(
-                    sa.update(Artifact)
-                    .where(Artifact.workspace_uuid == context.workspace_uuid, Artifact.id == '')
-                    .values(id=Artifact.id)
-                )
+            # Reserve writer serialization before discovering pins so concurrent
+            # retainers cannot race with alias removal.
+            await reserve_write_lock(
+                uow,
+                self.ap.persistence_mgr,
+                Artifact,
+                Artifact.workspace_uuid == context.workspace_uuid,
+                Artifact.id == '',
+            )
             pins = (
                 (
                     await uow.execute(
@@ -296,10 +286,11 @@ class ContentStore:
                 .all()
             )
             for artifact_id in sorted(pins):
-                await uow.execute(
-                    sa.update(Artifact)
-                    .where(Artifact.workspace_uuid == context.workspace_uuid, Artifact.id == artifact_id)
-                    .values(id=Artifact.id)
+                await lock_rows_for_write(
+                    uow,
+                    Artifact,
+                    Artifact.workspace_uuid == context.workspace_uuid,
+                    Artifact.id == artifact_id,
                 )
                 await uow.execute(
                     sa.delete(ArtifactReference).where(

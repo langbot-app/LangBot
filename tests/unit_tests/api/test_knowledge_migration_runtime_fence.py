@@ -10,6 +10,7 @@ import sqlalchemy
 
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.api.http.controller.groups.knowledge.migration import KnowledgeMigrationRouterGroup
+from langbot.pkg.persistence.mgr import PersistenceManager
 from langbot.pkg.persistence.tenant_uow import _validate_scoped_statement_call
 from langbot.pkg.workspace.errors import WorkspaceInvariantError, WorkspaceNotFoundError
 
@@ -79,13 +80,11 @@ async def test_legacy_table_discovery_uses_scoped_structured_queries(database_na
     result = Mock()
     result.first.return_value = ('knowledge_bases_backup',) if exists else None
     execute_async = AsyncMock(return_value=result)
+    persistence_mgr = object.__new__(PersistenceManager)
+    persistence_mgr.db = SimpleNamespace(name=database_name)
+    persistence_mgr.execute_async = execute_async
     router = object.__new__(KnowledgeMigrationRouterGroup)
-    router.ap = SimpleNamespace(
-        persistence_mgr=SimpleNamespace(
-            db=SimpleNamespace(name=database_name),
-            execute_async=execute_async,
-        )
-    )
+    router.ap = SimpleNamespace(persistence_mgr=persistence_mgr)
 
     assert await router._table_exists('knowledge_bases_backup') is exists
 
@@ -129,16 +128,16 @@ async def test_legacy_restore_emits_only_scoped_structured_statements():
         list_knowledge_engines=AsyncMock(return_value=[]),
         rag_on_kb_create=AsyncMock(),
     )
+    persistence_mgr = object.__new__(PersistenceManager)
+    persistence_mgr.db = SimpleNamespace(name='sqlite')
+    persistence_mgr.execute_async = execute_async
     router = object.__new__(KnowledgeMigrationRouterGroup)
     router.ap = SimpleNamespace(
         workspace_service=SimpleNamespace(
             get_local_execution_binding=AsyncMock(return_value=CONTEXT),
         ),
         plugin_connector=connector,
-        persistence_mgr=SimpleNamespace(
-            db=SimpleNamespace(name='sqlite'),
-            execute_async=execute_async,
-        ),
+        persistence_mgr=persistence_mgr,
         rag_mgr=SimpleNamespace(load_knowledge_bases_from_db=AsyncMock()),
         logger=Mock(),
     )
@@ -253,16 +252,16 @@ async def test_legacy_restore_accepts_sqlite_string_dates_and_text_json_columns(
                 list_knowledge_engines=AsyncMock(return_value=[]),
                 rag_on_kb_create=AsyncMock(),
             )
+            persistence_mgr = object.__new__(PersistenceManager)
+            persistence_mgr.db = SimpleNamespace(name='sqlite')
+            persistence_mgr.execute_async = connection.execute
             router = object.__new__(KnowledgeMigrationRouterGroup)
             router.ap = SimpleNamespace(
                 workspace_service=SimpleNamespace(
                     get_local_execution_binding=AsyncMock(return_value=CONTEXT),
                 ),
                 plugin_connector=connector,
-                persistence_mgr=SimpleNamespace(
-                    db=SimpleNamespace(name='sqlite'),
-                    execute_async=connection.execute,
-                ),
+                persistence_mgr=persistence_mgr,
                 rag_mgr=SimpleNamespace(load_knowledge_bases_from_db=AsyncMock()),
                 logger=Mock(),
             )

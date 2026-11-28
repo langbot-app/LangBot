@@ -9,9 +9,9 @@ from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING, Any
 
 import sqlalchemy
-from sqlalchemy.dialects import postgresql, sqlite
 
 from ..entity.persistence.cloud_directory import DirectoryProjectionInbox, DirectoryProjectionState
+from ..persistence.dialect import upsert_insert
 from ..entity.persistence.user import AccountSource, AccountStatus, User
 from ..entity.persistence.workspace import (
     MembershipRole,
@@ -400,13 +400,10 @@ class DirectoryProjectionService:
                 'last_applied_at': now,
                 'lease_expires_at': lease_expires_at,
             }
-            dialect_name = self.ap.persistence_mgr.get_db_engine().dialect.name
-            if dialect_name == 'postgresql':
-                insert_state = postgresql.insert(DirectoryProjectionState)
-            elif dialect_name == 'sqlite':
-                insert_state = sqlite.insert(DirectoryProjectionState)
-            else:  # pragma: no cover - Cloud supports PostgreSQL; tests use SQLite.
-                raise DirectoryProjectionUnavailableError('Directory projection database is unsupported')
+            try:
+                insert_state = upsert_insert(self.ap.persistence_mgr, DirectoryProjectionState)
+            except ValueError as exc:  # pragma: no cover - Cloud supports PostgreSQL; tests use SQLite.
+                raise DirectoryProjectionUnavailableError('Directory projection database is unsupported') from exc
             await session.execute(
                 insert_state.values(**state_values).on_conflict_do_nothing(
                     index_elements=[DirectoryProjectionState.instance_uuid]

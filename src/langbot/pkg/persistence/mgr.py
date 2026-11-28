@@ -14,6 +14,7 @@ import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
 import sqlalchemy
 
 from . import database, sqlite_migration_backup
+from .dialect import table_exists_query
 from .write_admission import write_slot
 from ..entity.persistence import base, metadata, model as persistence_model
 from ..entity.persistence import workspace as persistence_workspace
@@ -1807,6 +1808,12 @@ class PersistenceManager:
                 f'{backup.backup_path} at revision {source_revision}.'
             )
             raise
+
+    async def table_exists(self, table_name: str) -> bool:
+        """Check whether ``table_name`` exists using a scoped structured query."""
+
+        result = await self.execute_async(table_exists_query(self, table_name))
+        return result.first() is not None
 
     async def execute_async(self, *args, **kwargs) -> sqlalchemy.engine.cursor.CursorResult:
         active = self._get_active_transaction()

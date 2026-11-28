@@ -6,12 +6,13 @@ import json
 import uuid
 
 import pydantic
-import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from langbot_plugin.box.errors import BoxValidationError
 
-from ..entity.persistence.metadata import WorkspaceMetadata
+from ..persistence.workspace_metadata import (
+    delete_workspace_metadata,
+    get_workspace_metadata_map,
+    upsert_workspace_metadata,
+)
 
 BACKEND_KEY = 'sandbox_backend'
 E2B_KEY = 'sandbox_e2b'
@@ -23,13 +24,7 @@ async def get_settings(ap, workspace_uuid: str) -> dict:
     if getattr(ap, 'persistence_mgr', None) is None:
         return {'backend': None, 'e2b': None, 'limits': None}
     async with ap.persistence_mgr.tenant_uow(workspace_uuid) as uow:
-        result = await uow.execute(
-            sa.select(WorkspaceMetadata.key, WorkspaceMetadata.value).where(
-                WorkspaceMetadata.workspace_uuid == workspace_uuid,
-                WorkspaceMetadata.key.in_([BACKEND_KEY, E2B_KEY, LIMITS_KEY]),
-            )
-        )
-        values = dict(result.all())
+        values = await get_workspace_metadata_map(uow, workspace_uuid, (BACKEND_KEY, E2B_KEY, LIMITS_KEY))
     return {
         'backend': values.get(BACKEND_KEY),
         'e2b': json.loads(values[E2B_KEY]) if values.get(E2B_KEY) else None,
@@ -59,12 +54,8 @@ async def set_backend(
         values[LIMITS_KEY] = json.dumps(entry)
     try:
         async with ap.persistence_mgr.tenant_uow(workspace_uuid) as uow:
-            insert = pg_insert if ap.persistence_mgr.get_db_engine().dialect.name == 'postgresql' else sqlite_insert
             for key, value in values.items():
-                statement = insert(WorkspaceMetadata).values(workspace_uuid=workspace_uuid, key=key, value=value)
-                await uow.execute(
-                    statement.on_conflict_do_update(index_elements=['workspace_uuid', 'key'], set_={'value': value})
-                )
+                await upsert_workspace_metadata(uow, workspace_uuid, key, value, target=ap.persistence_mgr)
     except Exception:
         # Database errors can include the private credential payload in SQL parameters.
         raise BoxValidationError('Sandbox settings could not be stored') from None
@@ -73,12 +64,7 @@ async def set_backend(
 async def reset_settings(ap, workspace_uuid: str) -> None:
     try:
         async with ap.persistence_mgr.tenant_uow(workspace_uuid) as uow:
-            await uow.execute(
-                sa.delete(WorkspaceMetadata).where(
-                    WorkspaceMetadata.workspace_uuid == workspace_uuid,
-                    WorkspaceMetadata.key.in_([BACKEND_KEY, E2B_KEY, LIMITS_KEY]),
-                )
-            )
+            await delete_workspace_metadata(uow, workspace_uuid, (BACKEND_KEY, E2B_KEY, LIMITS_KEY))
     except Exception:
         raise BoxValidationError('Sandbox settings could not be reset') from None
 

@@ -11,10 +11,9 @@ from functools import partial
 
 import sqlalchemy
 from langbot_plugin.skill_store import SkillRevisionConflictError, SkillRevisionNotFoundError, SkillStore
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from ..entity.persistence.skill import SkillRegistry, SkillVersion
+from ..persistence.dialect import upsert_insert
 from ..utils.bounded_executor import BlockingWorkCapacityError, run_blocking_atomic
 
 
@@ -333,10 +332,6 @@ class DatabaseSkillRepository:
             if len(publication['file_bytes']) > MAX_PUBLICATION_BYTES:
                 raise ValueError('Skill publication archive exceeds the 64 MiB database persistence limit')
         async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
-            dialect = self.ap.persistence_mgr.get_db_engine().dialect.name
-            if dialect not in {'sqlite', 'postgresql'}:
-                raise ValueError('Persistent Skills require PostgreSQL or SQLite')
-            insert = sqlite_insert if dialect == 'sqlite' else pg_insert
             for publication in publications:
                 skill = json.loads(
                     json.dumps(
@@ -357,7 +352,7 @@ class DatabaseSkillRepository:
                 base = bases[name]
                 if base is None:
                     statement = (
-                        insert(SkillRegistry)
+                        upsert_insert(self.ap.persistence_mgr, SkillRegistry)
                         .values(uuid=str(uuid.uuid4()), **values)
                         .on_conflict_do_nothing(index_elements=['workspace_uuid', 'instance_uuid', 'name'])
                     )
@@ -454,8 +449,6 @@ class DatabaseSkillRepository:
 
     async def publish_migrated_registry(self, context, skills, uow):
         """Expose the original current pointers only with the final import marker."""
-        dialect = self.ap.persistence_mgr.get_db_engine().dialect.name
-        insert = sqlite_insert if dialect == 'sqlite' else pg_insert
         for source in skills:
             skill = self._migration_skill(source)
             name, revision = skill['name'], skill['revision']
@@ -471,7 +464,7 @@ class DatabaseSkillRepository:
             if version is None or version.skill_json != skill:
                 raise ValueError(f'Skill migration has no verified current version for {name}')
             await uow.execute(
-                insert(SkillRegistry)
+                upsert_insert(self.ap.persistence_mgr, SkillRegistry)
                 .values(
                     uuid=str(uuid.uuid4()),
                     workspace_uuid=context.workspace_uuid,
