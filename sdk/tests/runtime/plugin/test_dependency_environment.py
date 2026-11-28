@@ -19,26 +19,30 @@ from langbot_plugin.runtime.plugin.dependency_environment import (
 )
 
 
-def _package(requirements: str = "third-party-demo==1.0.0\n") -> bytes:
+def _package(
+    requirements: str = "third-party-demo==1.0.0\n", version: str = "1.0.0"
+) -> bytes:
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as archive:
         archive.writestr(
             "manifest.yaml",
-            """
+            f"""
 kind: Plugin
 metadata:
   author: tester
   name: dependency-demo
-  version: 1.0.0
-spec: {}
+  version: {version}
+spec: {{}}
 """,
         )
         archive.writestr("requirements.txt", requirements)
     return output.getvalue()
 
 
-def _artifact(tmp_path, requirements: str = "third-party-demo==1.0.0\n"):
-    package = _package(requirements)
+def _artifact(
+    tmp_path, requirements: str = "third-party-demo==1.0.0\n", *, version: str = "1.0.0"
+):
+    package = _package(requirements, version)
     digest = hashlib.sha256(package).hexdigest()
     artifact_store = PluginArtifactStore(tmp_path / "plugin-runtime")
     return artifact_store.install_package(package, digest)
@@ -138,6 +142,82 @@ async def test_concurrent_preparation_runs_installer_once(tmp_path):
 
     assert first == second
     assert install_count == 1
+
+
+async def test_code_only_releases_share_one_tree_but_keep_their_artifact_binding(
+    tmp_path,
+):
+    first = _artifact(tmp_path)
+    second = _artifact(tmp_path, version="1.0.1")
+    store = PluginDependencyEnvironmentStore(tmp_path / "plugin-runtime")
+    caches = []
+
+    async def install(staging, requirements):
+        caches.append(staging.pip_cache_path)
+        await asyncio.sleep(0)
+        _publish_fake_distribution(staging, requirements)
+
+    options = dict(
+        runtime_fingerprint="runtime", installer=install, package_cache_scope="a" * 64
+    )
+    old, new = await asyncio.gather(
+        store.prepare(first, **options), store.prepare(second, **options)
+    )
+    reopened = PluginDependencyEnvironmentStore(store.base_path)
+    assert await reopened.prepare(second, **options) == new
+    assert first.digest != second.digest
+    assert old.artifact_digest == first.digest and new.artifact_digest == second.digest
+    assert old.site_packages_path == new.site_packages_path
+    assert caches == [store.base_path / "pip-cache" / ("a" * 64)]
+
+    changed = _artifact(tmp_path, "# new declaration\nthird-party-demo==1.0.0\n")
+    rebuilt = await store.prepare(changed, **options)
+    assert rebuilt.root_path != old.root_path
+    assert caches[0] == caches[1]
+    changed_source = await store.prepare(
+        second, **{**options, "package_cache_scope": "b" * 64}
+    )
+    assert changed_source.root_path != old.root_path and caches[0] != caches[2]
+    changed_runtime = await store.prepare(
+        second, **{**options, "runtime_fingerprint": "other"}
+    )
+    assert changed_runtime.root_path != old.root_path
+
+
+async def test_schema_three_remains_available_offline_only_to_its_original_artifact(
+    tmp_path,
+):
+    store = PluginDependencyEnvironmentStore(tmp_path / "plugin-runtime")
+    original = _artifact(tmp_path)
+    calls = []
+
+    async def install(staging, requirements):
+        calls.append(staging.pip_cache_path)
+        _publish_fake_distribution(staging, requirements)
+
+    options = dict(runtime_fingerprint="runtime", installer=install)
+    legacy = await store.prepare(original, **options)
+    options["package_cache_scope"] = "a" * 64
+    assert await store.prepare(original, **options) == legacy
+    other = await store.prepare(_artifact(tmp_path, version="1.0.1"), **options)
+    assert other.root_path != legacy.root_path
+    assert len(calls) == 2 and calls[0] is None and calls[1] is not None
+
+
+async def test_direct_references_stay_bound_to_the_artifact(tmp_path):
+    req = "third-party-demo @ https://example.invalid/demo.whl\n"
+    store = PluginDependencyEnvironmentStore(tmp_path / "plugin-runtime")
+
+    async def install(staging, requirements):
+        assert staging.pip_cache_path is None
+        _publish_fake_distribution(staging, ("third-party-demo==1.0.0",))
+
+    options = dict(
+        runtime_fingerprint="runtime", installer=install, package_cache_scope="a" * 64
+    )
+    first = await store.prepare(_artifact(tmp_path, req), **options)
+    second = await store.prepare(_artifact(tmp_path, req, version="1.0.1"), **options)
+    assert first.root_path != second.root_path
 
 
 async def test_failure_removes_staging_and_does_not_poison_digest(tmp_path):

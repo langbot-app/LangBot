@@ -24,6 +24,7 @@ from langbot_plugin.runtime.plugin.artifact import PluginArtifact
 
 
 _ENVIRONMENT_SCHEMA_VERSION = 3
+_RELEASE_CACHE_SCHEMA_VERSION = 4
 _READY_MARKER = ".ready.json"
 _MAX_REQUIREMENTS_BYTES = 1024 * 1024
 _MAX_REQUIREMENT_COUNT = 1024
@@ -112,6 +113,7 @@ class DependencyEnvironmentStaging:
     scratch_path: pathlib.Path
     jail_root_path: pathlib.Path
     tmp_path: pathlib.Path
+    pip_cache_path: pathlib.Path | None = None
 
 
 DependencyInstaller = Callable[
@@ -120,7 +122,7 @@ DependencyInstaller = Callable[
 
 
 class PluginDependencyEnvironmentStore:
-    """Atomically prepare and publish immutable per-artifact dependency trees."""
+    """Atomically prepare and publish immutable plugin dependency trees."""
 
     def __init__(
         self,
@@ -142,23 +144,36 @@ class PluginDependencyEnvironmentStore:
         runtime_fingerprint: str,
         installer: DependencyInstaller,
         execution_mode: str | None = None,
+        package_cache_scope: str | None = None,
     ) -> PluginDependencyEnvironment:
         requirements, requirements_digest = self._read_requirements(
             artifact, execution_mode=execution_mode
         )
-        digest = self._environment_digest(
-            artifact.digest,
-            requirements_digest,
-            runtime_fingerprint,
-        )
-        expected = self._metadata(
-            digest=digest,
+        # A direct reference can name mutable source or an artifact-specific file.
+        if package_cache_scope is not None:
+            if not _SHA256_PATTERN.fullmatch(package_cache_scope):
+                raise ValueError("Invalid package cache scope")
+            if any(Requirement(value).url for value in requirements):
+                package_cache_scope = None
+        legacy = self._metadata(
             artifact_digest=artifact.digest,
             requirements_digest=requirements_digest,
             runtime_fingerprint=runtime_fingerprint,
         )
-
+        expected = legacy
+        if package_cache_scope is not None:
+            expected = self._metadata(
+                artifact_digest=artifact.digest,
+                requirements_digest=requirements_digest,
+                runtime_fingerprint=runtime_fingerprint,
+                package_cache_scope=package_cache_scope,
+            )
+        digest = str(expected["digest"])
         ready = self.get_ready(digest, expected=expected)
+        if ready is None and package_cache_scope is not None:
+            # Old markers lack the package source and platform. They remain valid
+            # for their original artifact but cannot seed a different release.
+            ready = self.get_ready(str(legacy["digest"]), expected=legacy)
         if ready is not None:
             self._record_cache_hit()
             return ready
@@ -178,6 +193,7 @@ class PluginDependencyEnvironmentStore:
                     expected=expected,
                     requirements=requirements,
                     installer=installer,
+                    package_cache_scope=package_cache_scope,
                 )
             except BaseException:
                 if self.metrics is not None:
@@ -216,8 +232,23 @@ class PluginDependencyEnvironmentStore:
             return None
         if not isinstance(metadata, dict) or metadata.get("digest") != digest:
             return None
-        if expected is not None and metadata != expected:
-            return None
+        if expected is not None:
+            if "package_cache_scope" in expected:
+                # On disk the artifact digest identifies the first publisher.
+                # Bind the returned handle to the requesting verified artifact
+                # only after matching the complete dependency identity.
+                if not _SHA256_PATTERN.fullmatch(
+                    str(metadata.get("artifact_digest", ""))
+                ):
+                    return None
+                if metadata != {
+                    **expected,
+                    "artifact_digest": metadata["artifact_digest"],
+                }:
+                    return None
+                metadata = expected
+            elif metadata != expected:
+                return None
         if not site_packages_path.is_dir():
             return None
         if root_mode & 0o222 or site_mode & 0o222:
@@ -242,6 +273,7 @@ class PluginDependencyEnvironmentStore:
         expected: dict[str, object],
         requirements: Sequence[str],
         installer: DependencyInstaller,
+        package_cache_scope: str | None,
     ) -> PluginDependencyEnvironment:
         def create_staging() -> DependencyEnvironmentStaging:
             self.environments_path.mkdir(
@@ -261,6 +293,11 @@ class PluginDependencyEnvironmentStore:
                 scratch_path=temporary_root / ".scratch",
                 jail_root_path=temporary_root / ".scratch" / "root",
                 tmp_path=temporary_root / ".scratch" / "tmp",
+                pip_cache_path=(
+                    self.base_path / "pip-cache" / package_cache_scope
+                    if package_cache_scope is not None
+                    else None
+                ),
             )
             try:
                 staging.site_packages_path.mkdir(mode=0o700)
@@ -548,36 +585,32 @@ class PluginDependencyEnvironmentStore:
             os.close(descriptor)
 
     @staticmethod
-    def _environment_digest(
-        artifact_digest: str,
-        requirements_digest: str,
-        runtime_fingerprint: str,
-    ) -> str:
-        payload = {
-            "artifact_digest": artifact_digest,
-            "requirements_digest": requirements_digest,
-            "runtime_fingerprint": runtime_fingerprint,
-            "schema_version": _ENVIRONMENT_SCHEMA_VERSION,
-        }
-        encoded = json.dumps(
-            payload,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-        return hashlib.sha256(encoded).hexdigest()
-
-    @staticmethod
     def _metadata(
         *,
-        digest: str,
         artifact_digest: str,
         requirements_digest: str,
         runtime_fingerprint: str,
+        package_cache_scope: str | None = None,
     ) -> dict[str, object]:
-        return {
-            "artifact_digest": artifact_digest,
-            "digest": digest,
+        identity: dict[str, object] = {
             "requirements_digest": requirements_digest,
             "runtime_fingerprint": runtime_fingerprint,
-            "schema_version": _ENVIRONMENT_SCHEMA_VERSION,
+        }
+        if package_cache_scope is None:
+            identity.update(
+                schema_version=_ENVIRONMENT_SCHEMA_VERSION,
+                artifact_digest=artifact_digest,
+            )
+        else:
+            identity.update(
+                schema_version=_RELEASE_CACHE_SCHEMA_VERSION,
+                package_cache_scope=package_cache_scope,
+            )
+        encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+        return {
+            **identity,
+            "digest": hashlib.sha256(encoded).hexdigest(),
+            "artifact_digest": artifact_digest,
         }
