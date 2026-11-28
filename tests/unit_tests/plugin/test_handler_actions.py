@@ -313,6 +313,42 @@ class TestInitializePluginSettings:
         )
         assert after == before
 
+    @pytest.mark.asyncio
+    async def test_logs_leveled_exception_when_persistence_fails(self, app, capsys):
+        """INITIALIZE_PLUGIN_SETTINGS logs a leveled traceback and preserves ActionResponse.error."""
+        import io
+        import logging
+        from langbot_plugin.utils.log import ServiceFormatter
+        from tools.regression.service_logs import records as parse_service_logs
+
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.setFormatter(ServiceFormatter('CORE'))
+        logger = logging.Logger('test-init-plugin-settings', level=logging.INFO)
+        logger.addHandler(handler)
+        app.logger = logger
+
+        runtime_handler = make_handler(app)
+        app.persistence_mgr.execute_async.side_effect = RuntimeError('db write failed')
+
+        response = await runtime_handler.actions[RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value](
+            {
+                'plugin_author': 'test-author',
+                'plugin_name': 'test-plugin',
+                'install_source': 'local',
+                'install_info': {'path': '/test'},
+            }
+        )
+
+        assert response.code != 0
+        assert response.message == 'Failed to initialize plugin settings: db write failed'
+        assert capsys.readouterr().err == ''
+        parsed = [rec for rec in parse_service_logs(stream.getvalue().splitlines(), 'core') if rec.level == 'ERROR']
+        assert len(parsed) == 1
+        assert 'Failed to initialize plugin settings for test-author/test-plugin' in parsed[0].msg
+        assert 'RuntimeError: db write failed' in parsed[0].msg
+        assert any('Traceback (most recent call last):' in line for line in parsed[0].continuation)
+
 
 class TestSetBinaryStorage:
     """Tests for set_binary_storage action handler with size limit validation."""
@@ -1630,6 +1666,80 @@ class TestAgentRunProxyActions:
         assert response.code != 0
         assert 'Failed to execute tool langbot_mcp_read_resource' in response.message
         assert 'MCP resource agent reads are disabled' in response.message
+
+    @pytest.mark.asyncio
+    async def test_call_tool_and_get_tool_detail_log_leveled_exceptions(self, app, capsys):
+        """CALL_TOOL and GET_TOOL_DETAIL emit structured ERROR tracebacks without raw stderr output."""
+        import io
+        import logging
+        from langbot_plugin.utils.log import ServiceFormatter
+        from langbot.pkg.agent.runner.session_registry import get_session_registry
+        from tools.regression.service_logs import records as parse_service_logs
+
+        stream = io.StringIO()
+        log_handler = logging.StreamHandler(stream)
+        log_handler.setFormatter(ServiceFormatter('CORE'))
+        logger = logging.Logger('test-tool-actions', level=logging.INFO)
+        logger.addHandler(log_handler)
+        app.logger = logger
+        app.tool_mgr.execute_func_call.side_effect = RuntimeError('tool exploded')
+        app.tool_mgr.get_tool_detail.side_effect = RuntimeError('detail lookup failed')
+
+        run_id = 'run_proxy_tool_logging'
+        app.query_pool.cached_queries[908] = self.query()
+        registry = get_session_registry()
+        await registry.unregister(run_id)
+        await registry.register(
+            workspace_id='workspace-a',
+            run_id=run_id,
+            runner_id='plugin:test/runner/default',
+            query_id=908,
+            plugin_identity='test/runner',
+            resources=make_agent_resources(
+                tools=[
+                    {
+                        'tool_name': 'test/search',
+                        'source': 'mcp',
+                        'source_id': 'bound-mcp',
+                    }
+                ]
+            ),
+        )
+        runtime_handler = make_handler(app)
+
+        try:
+            call_response = await runtime_handler.actions[PluginToRuntimeAction.CALL_TOOL.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'tool_name': 'test/search',
+                    'parameters': {'q': 'hello'},
+                }
+            )
+            detail_response = await runtime_handler.actions[PluginToRuntimeAction.GET_TOOL_DETAIL.value](
+                {
+                    'run_id': run_id,
+                    'caller_plugin_identity': 'test/runner',
+                    'tool_name': 'test/search',
+                }
+            )
+        finally:
+            await registry.unregister(run_id)
+
+        assert call_response.code != 0
+        assert call_response.message == 'Failed to execute tool test/search: tool exploded'
+        assert detail_response.code != 0
+        assert detail_response.message == 'Failed to get tool detail for test/search: detail lookup failed'
+        assert capsys.readouterr().err == ''
+
+        parsed = [rec for rec in parse_service_logs(stream.getvalue().splitlines(), 'core') if rec.level == 'ERROR']
+        assert len(parsed) == 2
+        assert 'Failed to execute tool test/search' in parsed[0].msg
+        assert 'RuntimeError: tool exploded' in parsed[0].msg
+        assert any('Traceback (most recent call last):' in line for line in parsed[0].continuation)
+        assert 'Failed to get tool detail for test/search' in parsed[1].msg
+        assert 'RuntimeError: detail lookup failed' in parsed[1].msg
+        assert any('Traceback (most recent call last):' in line for line in parsed[1].continuation)
 
     @pytest.mark.asyncio
     async def test_call_tool_falls_back_to_host_execution_query(self, app):

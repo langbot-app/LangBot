@@ -193,3 +193,31 @@ async def test_two_plugins_with_same_tool_forward_only_authorized_plugin():
         bound_plugins=['authorized/plugin'],
         query_uuid='query-a',
     )
+
+
+@pytest.mark.asyncio
+async def test_plugin_tool_loader_logs_leveled_exception_without_raw_stderr(capsys):
+    import io
+    import logging
+    from langbot_plugin.utils.log import ServiceFormatter
+    from tools.regression.service_logs import records as parse_service_logs
+
+    stream = io.StringIO()
+    log_handler = logging.StreamHandler(stream)
+    log_handler.setFormatter(ServiceFormatter('CORE'))
+    logger = logging.Logger('test-plugin-tool-loader', level=logging.INFO)
+    logger.addHandler(log_handler)
+
+    connector = SimpleNamespace(call_tool=AsyncMock(side_effect=RuntimeError('rpc disconnected')))
+    loader = PluginToolLoader(SimpleNamespace(plugin_connector=connector, logger=logger))
+    query = SimpleNamespace(session=SimpleNamespace(), query_id=7, query_uuid='query-a')
+
+    result = await loader.invoke_tool('shared_tool', {}, query)
+
+    assert result == 'error occurred when executing function shared_tool: rpc disconnected'
+    assert capsys.readouterr().err == ''
+    parsed = [rec for rec in parse_service_logs(stream.getvalue().splitlines(), 'core') if rec.level == 'ERROR']
+    assert len(parsed) == 1
+    assert 'Failed to execute plugin tool shared_tool' in parsed[0].msg
+    assert 'RuntimeError: rpc disconnected' in parsed[0].msg
+    assert any('Traceback (most recent call last):' in line for line in parsed[0].continuation)

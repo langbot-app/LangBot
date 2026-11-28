@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-import traceback
 import asyncio
 import contextlib
+import logging
 import os
+import sys
+
+from langbot_plugin.utils.log import ServiceFormatter
 
 from . import app
 from . import stage
@@ -53,11 +56,30 @@ async def make_app(loop: asyncio.AbstractEventLoop) -> app.Application:
     return ap
 
 
+def _log_boot_failure(app_inst: app.Application | None) -> None:
+    """Log a fatal Core exception with severity even before SetupLoggerStage runs."""
+    logger = getattr(app_inst, 'logger', None) or logging.getLogger('langbot')
+    if isinstance(logger, logging.Logger) and not logger.hasHandlers():
+        fallback = logging.StreamHandler(sys.stderr)
+        fallback.setFormatter(ServiceFormatter('CORE', sys.stderr))
+        logger.addHandler(fallback)
+        try:
+            logger.exception('LangBot core failed')
+        finally:
+            fallback.flush()
+            logger.removeHandler(fallback)
+            fallback.close()
+        return
+    logger.exception('LangBot core failed')
+
+
 async def main(loop: asyncio.AbstractEventLoop):
     app_inst: app.Application | None = None
     runtime_loop = asyncio.get_running_loop()
     shutdown_requested = asyncio.Event()
     run_task: asyncio.Task | None = None
+    shutdown_attempted = False
+    failed = False
     try:
         import signal
 
@@ -75,7 +97,15 @@ async def main(loop: asyncio.AbstractEventLoop):
         shutdown_task = asyncio.create_task(shutdown_requested.wait())
         done, pending = await asyncio.wait((run_task, shutdown_task), return_when=asyncio.FIRST_COMPLETED)
         if shutdown_task in done:
-            await app_inst.shutdown()
+            shutdown_attempted = True
+            try:
+                await app_inst.shutdown()
+            except BaseException:
+                if not run_task.done():
+                    run_task.cancel()
+                with contextlib.suppress(BaseException):
+                    await asyncio.gather(run_task, return_exceptions=True)
+                raise
             if not run_task.done():
                 run_task.cancel()
         for task in pending:
@@ -85,8 +115,15 @@ async def main(loop: asyncio.AbstractEventLoop):
         if isinstance(run_result, BaseException) and not isinstance(run_result, asyncio.CancelledError):
             raise run_result
     except Exception:
-        traceback.print_exc()
-        raise
+        failed = True
+        _log_boot_failure(app_inst)
+        raise SystemExit(1) from None
     finally:
-        if app_inst is not None:
-            await app_inst.shutdown()
+        if app_inst is not None and not shutdown_attempted:
+            shutdown_attempted = True
+            try:
+                await app_inst.shutdown()
+            except Exception:
+                _log_boot_failure(app_inst)
+                if not failed:
+                    raise SystemExit(1) from None
