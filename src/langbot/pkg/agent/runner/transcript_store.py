@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from ...persistence.datetime_utils import as_naive_utc
+from ...persistence.write_admission import run_write_tx
 
 from ...entity.persistence.transcript import Transcript
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
@@ -96,7 +97,7 @@ class TranscriptStore:
         if content and len(content) > self.MAX_CONTENT_LENGTH:
             content = content[: self.MAX_CONTENT_LENGTH - 3] + '...'
 
-        async with self._session_factory() as session:
+        async def _write(session: AsyncSession) -> None:
             item = Transcript(
                 transcript_id=transcript_id,
                 event_id=event_id,
@@ -118,7 +119,8 @@ class TranscriptStore:
             session.add(item)
             await session.flush()
             item.seq = item.id or await self._get_next_seq(conversation_id)
-            await session.commit()
+
+        await run_write_tx(self.engine, _write, session_factory=self._session_factory, slot_operation='ledger')
 
         return transcript_id
 
@@ -383,12 +385,16 @@ class TranscriptStore:
         before: datetime.datetime,
     ) -> int:
         """Delete Transcript rows created before the supplied timestamp."""
-        async with self._session_factory() as session:
+
+        async def _write(session):
             result = await session.execute(
                 sqlalchemy.delete(Transcript).where(Transcript.created_at < as_naive_utc(before))
             )
-            await session.commit()
             return result.rowcount or 0
+
+        return await run_write_tx(
+            self.engine, _write, session_factory=self._session_factory, slot_operation='maintenance'
+        )
 
     async def _get_next_seq(self, conversation_id: str) -> int:
         """Fallback next sequence number for stores that cannot expose autoincrement IDs."""

@@ -390,6 +390,8 @@ class AgentRunOrchestrator:
         explicit_event_reply_sent = False
         explicit_reply_text: str | None = None
         pending_explicit_replies: dict[str, str] = {}
+        reply_delivered = False
+        finalizing_completed = False
         # A run reached without a platform ingress (WebUI debug, service API)
         # owns its own chain; a run inside an ingress reuses that chain.
         trace_binding: trace_mod.TraceBinding | None = None
@@ -413,7 +415,7 @@ class AgentRunOrchestrator:
                 authorization=run_authorization,
             )
             if recovery:
-                await self.journal._get_run_ledger_store().authorize_recovery_run(
+                await self.journal.authorize_recovery_run(
                     run_id,
                     authorization={
                         **run_authorization,
@@ -421,6 +423,7 @@ class AgentRunOrchestrator:
                         'recovery_checkpoint': recovery['request']['events'],
                     },
                     deadline_at=context.get('runtime', {}).get('deadline_at'),
+                    context=context,
                 )
             monitoring_id = (execution_query.variables or {}).get('_monitoring_message_id')
             if monitoring_id and monitoring_id != run_id:
@@ -480,11 +483,13 @@ class AgentRunOrchestrator:
                 binding=binding,
                 run_id=run_id,
                 runner_id=descriptor.id,
+                context=context,
             )
             if event.event_type == 'message.received' and event.conversation_id:
                 await self.journal.write_user_transcript(
                     event=event,
                     event_log_id=event_log_id,
+                    context=context,
                 )
 
             async def timed_runner_results():
@@ -587,6 +592,8 @@ class AgentRunOrchestrator:
                             )
                             if auto_reply_deferred and result_data.get('tool_name') == 'event_reply':
                                 explicit_event_reply_sent = True
+                            if auto_reply_deferred:
+                                reply_delivered = True
                             explicit_reply_text = pending_explicit_replies.pop(
                                 str(result_data.get('tool_call_id') or ''), None
                             )
@@ -707,6 +714,7 @@ class AgentRunOrchestrator:
                                             )
                                         )
                                         auto_reply_stream_open = True
+                                        reply_delivered = True
                             elif has_completed_message:
                                 reply_text = result.content
                                 if isinstance(reply_text, str):
@@ -727,6 +735,7 @@ class AgentRunOrchestrator:
                                                 text=reply_text,
                                             )
                                         )
+                                        reply_delivered = True
                                 auto_reply_stream_id = uuid4()
                                 auto_reply_stream_text = ''
                                 auto_reply_stream_open = False
@@ -743,18 +752,24 @@ class AgentRunOrchestrator:
                                 )
                             )
                             auto_reply_stream_open = False
+                            if auto_reply_stream_text.strip():
+                                reply_delivered = True
 
                         if terminal_status is not None:
                             # A terminal event ends execution; transport cleanup may still wait.
+                            finalizing_completed = terminal_status == 'completed'
                             finalized = await self._finalize_run(
                                 run_id=run_id,
                                 status=terminal_status,
                                 status_reason=terminal_reason,
                                 usage=terminal_usage,
                             )
+                            finalizing_completed = False
 
                         if result is not None:
                             yield result
+                            if has_completed_message:
+                                reply_delivered = True
 
                         if terminal_status is not None:
                             break
@@ -794,12 +809,15 @@ class AgentRunOrchestrator:
                             )
                             await self.result_normalizer.normalize(cancelled_result, descriptor)
             if finalized is None:
+                effective_status = terminal_status or 'completed'
+                finalizing_completed = effective_status == 'completed'
                 finalized = await self._finalize_run(
                     run_id=run_id,
-                    status=terminal_status or 'completed',
+                    status=effective_status,
                     status_reason=terminal_reason,
                     usage=terminal_usage,
                 )
+                finalizing_completed = False
             ledger_status = finalized.get('status') if isinstance(finalized, dict) else None
             if isinstance(ledger_status, str) and ledger_status != (terminal_status or 'completed'):
                 # Another writer finished the run first; report what the run
@@ -814,19 +832,25 @@ class AgentRunOrchestrator:
             }.get(terminal_status or '', 'unknown')
             execution_error = '' if execution_outcome == 'success' else (terminal_reason or execution_outcome)
         except (asyncio.CancelledError, GeneratorExit):
-            if finalized is None:
+            if finalized is None and not finalizing_completed:
                 execution_outcome = 'cancelled'
                 execution_error = 'cancelled'
-                await self._finalize_run(
-                    run_id=run_id,
-                    status='cancelled',
-                    status_reason='consumer_cancelled',
-                    usage=terminal_usage,
-                )
-            else:
+                try:
+                    await self._finalize_run(
+                        run_id=run_id,
+                        status='cancelled',
+                        status_reason='consumer_cancelled',
+                        usage=terminal_usage,
+                    )
+                except Exception as finalize_exc:
+                    self.ap.logger.warning(f'Failed to finalize cancelled run {run_id}: {finalize_exc}')
+            elif finalized is not None:
                 status = finalized.get('status', 'unknown')
                 execution_outcome = 'success' if status == 'completed' else status
                 execution_error = '' if execution_outcome == 'success' else (finalized.get('status_reason') or status)
+            else:
+                execution_outcome = 'cancelled'
+                execution_error = 'cancelled'
             raise
         except Exception as exc:
             if finalized is None:
@@ -845,13 +869,20 @@ class AgentRunOrchestrator:
 
             execution_error = describe_exception(exc)
             failed_usage = terminal_usage
-            if finalized is None:
-                await self._finalize_run(
-                    run_id=run_id,
-                    status=execution_outcome,
-                    status_reason=terminal_reason if execution_outcome == 'cancelled' else str(exc),
-                    usage=failed_usage,
+            if finalized is None and not finalizing_completed:
+                failure_metadata = (
+                    {'reply_delivered': True} if reply_delivered and execution_outcome != 'completed' else None
                 )
+                try:
+                    await self._finalize_run(
+                        run_id=run_id,
+                        status=execution_outcome,
+                        status_reason=terminal_reason if execution_outcome == 'cancelled' else str(exc),
+                        usage=failed_usage,
+                        metadata=failure_metadata,
+                    )
+                except Exception as finalize_exc:
+                    self.ap.logger.warning(f'Failed to finalize failed run {run_id}: {finalize_exc}')
             raise
         finally:
             record_execution(
@@ -1033,10 +1064,7 @@ class AgentRunOrchestrator:
             return None
         if not await self._session_registry.cancel_task(target_run_id, reason='stop_command'):
             return None
-        from .run_ledger_store import RunLedgerStore
-
-        store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
-        await store.request_cancel(
+        await self.journal.request_cancel(
             run_id=target_run_id,
             status_reason='cancelled by stop command',
         )
@@ -1144,9 +1172,7 @@ class AgentRunOrchestrator:
             await self._session_registry.complete_steering_enqueue(target_run_id, event.event_id, persisted=False)
             raise
         if not published:
-            from .event_log_store import EventLogStore
-
-            released = await EventLogStore(self.ap.persistence_mgr.get_db_engine()).update_steering_status(
+            released = await self.journal.update_steering_status(
                 event.event_id, status='dropped', owner_run_id=target_run_id
             )
             if not released:
@@ -1216,10 +1242,7 @@ class AgentRunOrchestrator:
         """Rebuild unacknowledged steering inputs after a run restart."""
         if not event.conversation_id or not descriptor.supports_steering():
             return []
-        from .event_log_store import EventLogStore
-
-        store = EventLogStore(self.ap.persistence_mgr.get_db_engine())
-        records = await store.list_pending_steering(
+        records = await self.journal.list_pending_steering(
             conversation_id=event.conversation_id,
             runner_id=descriptor.id,
             bot_id=event.bot_id,
@@ -1234,7 +1257,7 @@ class AgentRunOrchestrator:
                 continue
             if source_run_id and await self._session_registry.get(str(source_run_id)) is not None:
                 continue
-            if not await store.reserve_steering_recovery(str(record['event_id']), run_id=run_id):
+            if not await self.journal.reserve_steering_recovery(str(record['event_id']), run_id=run_id):
                 continue
             metadata = record.get('metadata') if isinstance(record.get('metadata'), dict) else {}
             steering = metadata.get('steering') if isinstance(metadata.get('steering'), dict) else {}
@@ -1306,12 +1329,6 @@ class AgentRunOrchestrator:
         context: RunnerContextPayload,
     ) -> dict[str, typing.Any]:
         return await self.invoker._next_with_deadline(gen, descriptor, context)
-
-    def _remaining_deadline_seconds(
-        self,
-        context: RunnerContextPayload,
-    ) -> float | None:
-        return self.invoker._remaining_deadline_seconds(context)
 
     def _is_deadline_exhausted(self, context: RunnerContextPayload) -> bool:
         return self.invoker._is_deadline_exhausted(context)

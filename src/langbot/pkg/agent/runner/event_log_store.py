@@ -9,11 +9,12 @@ import uuid
 import time
 
 import sqlalchemy
-from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from ...persistence.datetime_utils import as_naive_utc
+from ...persistence.dialect import json_path_text, upsert_insert
+from ...persistence.write_admission import run_write_tx
 
 from ...entity.persistence.event_log import EventLog
 from ...entity.persistence.agent_run import AgentRun
@@ -54,9 +55,7 @@ class EventLogStore:
 
     def _steering_field(self, name: str, column=None):
         column = EventLog.metadata_json if column is None else column
-        if self.engine.dialect.name == 'postgresql':
-            return sqlalchemy.cast(column, sqlalchemy.JSON)['steering'][name].as_string()
-        return sqlalchemy.func.json_extract(column, f'$.steering.{name}')
+        return json_path_text(self.engine, column, 'steering', name)
 
     async def append_event(
         self,
@@ -140,15 +139,17 @@ class EventLogStore:
         if session is not None:
             await self._append_in_transaction(session, values, input_json)
         else:
-            async with self._session_factory() as owned:
-                await self._append_in_transaction(owned, values, input_json)
-                await owned.commit()
+            await run_write_tx(
+                self.engine,
+                lambda owned: self._append_in_transaction(owned, values, input_json),
+                session_factory=self._session_factory,
+                slot_operation='ledger',
+            )
         return event_id
 
     async def _append_in_transaction(self, session, values, input_json):
-        insert = {'postgresql': postgresql.insert, 'sqlite': sqlite.insert}[self.engine.dialect.name]
         result = await session.execute(
-            insert(EventLog).values(**values).on_conflict_do_nothing(index_elements=['event_id'])
+            upsert_insert(self.engine, EventLog).values(**values).on_conflict_do_nothing(index_elements=['event_id'])
         )
         if result.rowcount:
             return
@@ -264,7 +265,8 @@ class EventLogStore:
 
     async def reserve_steering_recovery(self, event_id: str, *, run_id: str) -> bool:
         """Atomically assign a pending source event to one replacement run."""
-        async with self._session_factory() as session:
+
+        async def _write(session):
             row = (
                 await session.execute(sqlalchemy.select(EventLog).where(EventLog.event_id == event_id))
             ).scalar_one_or_none()
@@ -299,14 +301,16 @@ class EventLogStore:
                 .values(metadata_json=json.dumps(metadata))
                 .execution_options(synchronize_session=False)
             )
-            await session.commit()
             return result.rowcount == 1
+
+        return await run_write_tx(self.engine, _write, session_factory=self._session_factory, slot_operation='ledger')
 
     async def claim_steering_delivery(
         self, event_id: str, *, run_id: str, delivery_id: str, lease_expires_at: int
     ) -> bool:
         """Fence delivery across replacement runs and Host processes."""
-        async with self._session_factory() as session:
+
+        async def _write(session):
             row = (
                 await session.execute(sqlalchemy.select(EventLog).where(EventLog.event_id == event_id))
             ).scalar_one_or_none()
@@ -334,8 +338,9 @@ class EventLogStore:
                 .values(metadata_json=json.dumps(metadata))
                 .execution_options(synchronize_session=False)
             )
-            await session.commit()
             return result.rowcount == 1
+
+        return await run_write_tx(self.engine, _write, session_factory=self._session_factory, slot_operation='ledger')
 
     async def update_steering_status(
         self,
@@ -348,7 +353,8 @@ class EventLogStore:
         owner_run_id: str | None = None,
     ) -> bool:
         """Update durable steering delivery state for one source event."""
-        async with self._session_factory() as session:
+
+        async def _write(session):
             row = (
                 await session.execute(sqlalchemy.select(EventLog).where(EventLog.event_id == event_id))
             ).scalar_one_or_none()
@@ -380,8 +386,9 @@ class EventLogStore:
                 .values(metadata_json=json.dumps(metadata))
                 .execution_options(synchronize_session=False)
             )
-            await session.commit()
             return result.rowcount == 1
+
+        return await run_write_tx(self.engine, _write, session_factory=self._session_factory, slot_operation='ledger')
 
     async def acknowledge_steering_deliveries(
         self,
@@ -395,7 +402,8 @@ class EventLogStore:
         requested = {str(item) for item in delivery_ids if item}
         if not requested:
             return []
-        async with self._session_factory() as session:
+
+        async def _write(session):
             query = sqlalchemy.select(EventLog).where(
                 EventLog.event_type == 'message.received', self._steering_field('delivery_id').in_(requested)
             )
@@ -423,8 +431,9 @@ class EventLogStore:
                 if updated.rowcount != 1:
                     raise ValueError('Concurrent steering update; retry acknowledgement')
                 acknowledged.append(steering['delivery_id'])
-            await session.commit()
             return sorted(acknowledged)
+
+        return await run_write_tx(self.engine, _write, session_factory=self._session_factory, slot_operation='ledger')
 
     async def page_events(
         self,
@@ -555,12 +564,16 @@ class EventLogStore:
         before: datetime.datetime,
     ) -> int:
         """Delete EventLog rows created before the supplied timestamp."""
-        async with self._session_factory() as session:
+
+        async def _write(session):
             result = await session.execute(
                 sqlalchemy.delete(EventLog).where(EventLog.created_at < as_naive_utc(before))
             )
-            await session.commit()
             return result.rowcount or 0
+
+        return await run_write_tx(
+            self.engine, _write, session_factory=self._session_factory, slot_operation='maintenance'
+        )
 
     def _row_to_dict(self, row: EventLog) -> dict[str, typing.Any]:
         """Convert an EventLog row to dict."""
