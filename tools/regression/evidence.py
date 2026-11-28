@@ -9,7 +9,7 @@ def checked(row, name, action):
     assertions = row.setdefault('assertions', {})
     try:
         result = action()
-    except Exception:
+    except ValueError:
         assertions[name] = 'failed'
         raise
     assertions[name] = 'passed'
