@@ -503,15 +503,14 @@ function EventFields({
   const events = (trigger.events as string[]) ?? [];
   // Which of the workspace's bots can emit an event; empty when there are none.
   const botAdapters = [...new Set(resources.bots.map((bot) => bot.adapter))];
-  const supportNote = (event: string) => {
-    if (!botAdapters.length) return '';
-    const names = botAdapters
-      .filter((name) => resources.adapters[name]?.events.includes(event))
-      .map((name) => resources.adapters[name]?.label ?? name);
-    return names.length
-      ? names.join(' · ')
-      : t('workflows.triggers.event.unsupported');
-  };
+  // Adapter names of your bots that emit an event; null when unknown (no bots).
+  const supporters = (event: string) =>
+    botAdapters.length
+      ? botAdapters
+          .filter((name) => resources.adapters[name]?.events.includes(event))
+          .map((name) => resources.adapters[name]?.label ?? name)
+      : null;
+  let anyUnsupported = false;
   const toggle = (pattern: string, checked: boolean) =>
     update({
       events: checked
@@ -560,15 +559,17 @@ function EventFields({
                 )}
               </div>
               {group.events.map((event) => {
-                const note =
+                const names =
                   group.namespace === '_adapter'
-                    ? specific
+                    ? (specific
                         .find((item) => item.event === event)
                         ?.adapters.map(
                           (name) => resources.adapters[name]?.label ?? name,
-                        )
-                        .join(' · ')
-                    : supportNote(event);
+                        ) ?? [])
+                    : supporters(event);
+                const unsupported = names !== null && names.length === 0;
+                if (unsupported) anyUnsupported = true;
+                const note = names?.join(' · ');
                 return (
                   <label
                     key={event}
@@ -583,7 +584,13 @@ function EventFields({
                         toggle(event, checked === true)
                       }
                     />
-                    <span className="min-w-0">
+                    <span
+                      className={
+                        unsupported
+                          ? 'min-w-0 text-muted-foreground'
+                          : 'min-w-0'
+                      }
+                    >
                       {eventPatternLabel(event, t)}
                       {note && (
                         <span className="block truncate text-xs text-muted-foreground">
@@ -598,6 +605,11 @@ function EventFields({
           );
         })}
       </div>
+      {anyUnsupported && (
+        <p className="text-xs text-muted-foreground">
+          {t('workflows.triggers.event.unsupported')}
+        </p>
+      )}
       <p className="text-xs text-muted-foreground">
         {t('workflows.triggers.event.hint')}
       </p>

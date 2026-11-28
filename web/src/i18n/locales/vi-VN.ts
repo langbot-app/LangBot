@@ -5510,7 +5510,8 @@ const viVN = {
         hint: 'Trong tuyến sự kiện của bot, trỏ các sự kiện này về đây',
         all: 'Tất cả',
         adapterGroup: 'Sự kiện riêng của nền tảng',
-        unsupported: 'Không bot nào của bạn gửi sự kiện này',
+        unsupported:
+          'Sự kiện màu xám không bot hiện tại nào gửi. Bạn vẫn chọn được; chúng hoạt động khi kết nối nền tảng hỗ trợ.',
       },
       webhook: {
         botHint: 'Gửi tin qua bot này',

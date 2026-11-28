@@ -3,6 +3,7 @@ import type { WorkflowStep, WorkflowTrigger } from '@/app/infra/entities/api';
 import { triggerSummary } from './TriggersEditor';
 import { parseTemplate } from '../lib/template';
 import type { EditorResources } from './EditorContext';
+import { extractI18nObject } from '@/i18n/I18nProvider';
 
 type Label = (path: string) => { text: string };
 
@@ -76,6 +77,18 @@ export function stepSummary(
               (item) => item.uuid === config.target_uuid,
             )?.name;
       return target ?? t('workflows.summary.noTarget');
+    }
+    case 'platform': {
+      const action = String(config.action ?? '');
+      const tool = resources.platformTools.find((item) => item.name === action);
+      if (tool) return extractI18nObject(tool.label);
+      if (action === 'call_platform_api') {
+        const name = (config.params as { action?: string } | undefined)?.action;
+        return name || t('workflows.platform.actions.custom');
+      }
+      return action
+        ? t(`workflows.platform.actions.${action}`)
+        : t('workflows.stepDesc.platform');
     }
     default:
       return t(`workflows.stepDesc.${step.type}`);

@@ -5552,7 +5552,8 @@ const enUS = {
         hint: "In the bot's event routes, point these events at this workflow",
         all: 'All',
         adapterGroup: 'Platform-specific events',
-        unsupported: 'None of your bots send this event',
+        unsupported:
+          'Grayed events are not sent by any of your current bots. You can still pick them; they work once you connect a platform that sends them.',
       },
       webhook: {
         botHint: 'Messages from Send / Reply go through this bot',

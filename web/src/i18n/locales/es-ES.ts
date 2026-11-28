@@ -5619,7 +5619,8 @@ const esES = {
         hint: 'En las rutas del bot, dirige estos eventos a este flujo',
         all: 'Todos',
         adapterGroup: 'Eventos propios de la plataforma',
-        unsupported: 'Ninguno de tus bots envía este evento',
+        unsupported:
+          'Los eventos en gris no los envía ninguno de tus bots actuales. Puedes elegirlos; funcionarán al conectar una plataforma que los envíe.',
       },
       webhook: {
         botHint: 'Los envíos salen por este bot',
