@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from ...persistence.datetime_utils import as_naive_utc
+from ...persistence.dialect import is_unique_violation
 from ...persistence.write_admission import (
     WRITE_RETRY_BASE_DELAY_SECONDS,
     WRITE_RETRY_MAX_ATTEMPTS,
@@ -58,18 +59,16 @@ class TerminalRunTransitionError(ValueError):
 
 def _is_duplicate_sequence(exc: BaseException) -> bool:
     """Return True when the (run_id, sequence) unique index rejected an insert."""
-    if not isinstance(exc, sqlalchemy.exc.IntegrityError):
-        return False
-    message = str(exc)
-    return any(marker in message for marker in _DUPLICATE_SEQUENCE_MARKERS)
+    return is_unique_violation(
+        exc,
+        constraints=_DUPLICATE_SEQUENCE_MARKERS,
+        columns=('run_id', 'sequence'),
+    )
 
 
 def _is_duplicate_run_id(exc: BaseException) -> bool:
     """Return True when the agent_run.run_id unique index rejected an insert."""
-    if not isinstance(exc, sqlalchemy.exc.IntegrityError):
-        return False
-    message = str(exc)
-    return any(marker in message for marker in _DUPLICATE_RUN_ID_MARKERS)
+    return is_unique_violation(exc, constraints=_DUPLICATE_RUN_ID_MARKERS, columns=('run_id',))
 
 
 def _utc_now() -> datetime.datetime:

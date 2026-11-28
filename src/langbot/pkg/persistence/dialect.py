@@ -191,6 +191,21 @@ def json_text(target: typing.Any, column: typing.Any, key: str):
     return expression[key].as_string()
 
 
+def json_path_text(target: typing.Any, column: typing.Any, *path: str):
+    """Extract a nested string field from a text-backed JSON column."""
+
+    if not path:
+        raise ValueError('json_path_text requires at least one path component')
+    expression = (
+        sqlalchemy.type_coerce(column, sqlalchemy.JSON)
+        if resolve_dialect_name(target) == 'sqlite'
+        else sqlalchemy.cast(column, sqlalchemy.JSON)
+    )
+    for key in path:
+        expression = expression[key]
+    return expression.as_string()
+
+
 def _iter_exception_chain(exc: BaseException) -> typing.Iterator[BaseException]:
     seen: set[int] = set()
     current: BaseException | None = exc

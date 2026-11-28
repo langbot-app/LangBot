@@ -9,11 +9,11 @@ import uuid
 import time
 
 import sqlalchemy
-from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from ...persistence.datetime_utils import as_naive_utc
+from ...persistence.dialect import json_path_text, upsert_insert
 from ...persistence.write_admission import run_write_tx
 
 from ...entity.persistence.event_log import EventLog
@@ -55,9 +55,7 @@ class EventLogStore:
 
     def _steering_field(self, name: str, column=None):
         column = EventLog.metadata_json if column is None else column
-        if self.engine.dialect.name == 'postgresql':
-            return sqlalchemy.cast(column, sqlalchemy.JSON)['steering'][name].as_string()
-        return sqlalchemy.func.json_extract(column, f'$.steering.{name}')
+        return json_path_text(self.engine, column, 'steering', name)
 
     async def append_event(
         self,
@@ -150,9 +148,8 @@ class EventLogStore:
         return event_id
 
     async def _append_in_transaction(self, session, values, input_json):
-        insert = {'postgresql': postgresql.insert, 'sqlite': sqlite.insert}[self.engine.dialect.name]
         result = await session.execute(
-            insert(EventLog).values(**values).on_conflict_do_nothing(index_elements=['event_id'])
+            upsert_insert(self.engine, EventLog).values(**values).on_conflict_do_nothing(index_elements=['event_id'])
         )
         if result.rowcount:
             return
