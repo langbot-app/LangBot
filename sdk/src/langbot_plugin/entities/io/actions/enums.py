@@ -176,6 +176,9 @@ class RuntimeToPluginAction(ActionType):
 
     PAGE_API = "page_api"
 
+    # Public plugin webhook ingress (Webhook component).
+    WEBHOOK_REQUEST = "webhook_request"
+
     # Plugin source packaging / GitHub synchronisation, used by the
     # "upload a debug plugin to LangBot Space" flow. The plugin process owns
     # its working directory, so it builds the package and performs git work
@@ -245,6 +248,9 @@ class LangBotToRuntimeAction(ActionType):
 
     # Page API
     PAGE_API = "page_api"
+
+    # Public plugin webhook ingress (Webhook component).
+    WEBHOOK_REQUEST = "webhook_request"
 
     # Plugin source packaging / GitHub synchronisation for the upload flow.
     BUILD_PLUGIN_PACKAGE = "build_plugin_package"

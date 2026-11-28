@@ -3,9 +3,11 @@ import wxoaMenu from './wxoa-menu/zh-Hans';
 import pipelineMigration from './pipeline-migration/zh-Hans';
 import pluginPermissions from './plugin-permissions/zh-Hans';
 import pluginCompat from './plugin-compat/zh-Hans';
+import pluginWebhooks from './plugin-webhooks/zh-Hans';
 const zhHans = {
   pluginPermissions,
   pluginCompat,
+  pluginWebhooks,
   planRevision: {
     subscribedOn: '订阅日期：{{date}}',
     latestQuota: '该计划最新配额',
@@ -2385,6 +2387,7 @@ const zhHans = {
       KnowledgeEngine: '知识引擎',
       Parser: '解析器',
       Page: '页面',
+      Webhook: 'Webhook',
       Runner: '运行器',
     },
     uploadLocal: '本地上传',
@@ -2819,6 +2822,7 @@ const zhHans = {
       KnowledgeEngine: '知识引擎',
       Parser: '解析器',
       Page: '页面',
+      Webhook: 'Webhook',
       Runner: '运行器',
     },
     filterByType: '类型',

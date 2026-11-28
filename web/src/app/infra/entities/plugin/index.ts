@@ -28,6 +28,17 @@ export interface PluginComponent {
   };
 }
 
+/** One public URL exposed by a plugin's Webhook component. */
+export interface PluginWebhook {
+  name: string;
+  label: I18nObject;
+  description: I18nObject;
+  webhook_url: string;
+  webhook_full_url: string;
+  extra_webhook_full_url: string;
+  enabled: boolean;
+}
+
 // A single log line captured from a running plugin's stderr.
 export interface PluginLogEntry {
   ts: number;

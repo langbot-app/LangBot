@@ -12,6 +12,11 @@ from langbot_plugin.api.definition.components.knowledge_engine.engine import (
 )
 from langbot_plugin.api.definition.components.page import Page, PageRequest
 from langbot_plugin.api.definition.components.parser.parser import Parser
+from langbot_plugin.api.definition.components.webhook import (
+    Webhook,
+    WebhookRequest,
+    WebhookResponse,
+)
 from langbot_plugin.api.definition.components.tool.tool import Tool
 from langbot_plugin.api.entities.builtin.rag.context import (
     RetrievalResponse,
@@ -927,3 +932,75 @@ async def test_event_listener_calls_carry_the_event_origin_only_while_handling(
     # Older Hosts never set the hint and must not receive an unknown field.
     assert seen == (["query-opaque-9"] if host_accepts_origin else [None])
     assert current_event_origin() is None
+
+
+class FakeWebhook(Webhook):
+    def __init__(self, result=None, error: Exception | None = None):
+        super().__init__()
+        self.requests: list[WebhookRequest] = []
+        self.result = result
+        self.error = error
+
+    async def handle(self, request):
+        self.requests.append(request)
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+
+async def test_plugin_runtime_handler_webhook_request_invokes_component():
+    import base64
+
+    handler, _initialized = _handler()
+    webhook = FakeWebhook(WebhookResponse.json({"ok": True}, status=202))
+    handler.plugin_container.components = [
+        FakeComponentContainer(Webhook.__kind__, "orders", webhook)
+    ]
+    request = WebhookRequest(
+        method="POST", path="/paid", headers={"x-sig": "1"}, body=b'{"id":7}'
+    )
+
+    async with ProtocolSession(handler) as session:
+        response = await session.request(
+            RuntimeToPluginAction.WEBHOOK_REQUEST.value,
+            {"webhook_name": "orders", "request": request.to_wire()},
+        )
+
+    wire = response["data"]["response"]
+    assert wire["status"] == 202
+    assert wire["headers"] == {"content-type": "application/json"}
+    assert base64.b64decode(wire["body_base64"]) == b'{"ok": true}'
+    assert webhook.requests[0].path == "/paid"
+    assert webhook.requests[0].json_body() == {"id": 7}
+
+
+async def test_plugin_runtime_handler_webhook_request_reports_failures():
+    handler, _initialized = _handler()
+    handler.plugin_container.components = [
+        FakeComponentContainer(Webhook.__kind__, "idle", NoneComponent()),
+        FakeComponentContainer(
+            Webhook.__kind__, "broken", FakeWebhook(error=RuntimeError("boom"))
+        ),
+        FakeComponentContainer(Page.__kind__, "orders", FakePage()),
+    ]
+
+    async with ProtocolSession(handler) as session:
+        uninitialized = await session.request(
+            RuntimeToPluginAction.WEBHOOK_REQUEST.value,
+            {"webhook_name": "idle", "request": {}},
+            seq_id=1,
+        )
+        broken = await session.request(
+            RuntimeToPluginAction.WEBHOOK_REQUEST.value,
+            {"webhook_name": "broken", "request": {}},
+            seq_id=2,
+        )
+        wrong_kind = await session.request(
+            RuntimeToPluginAction.WEBHOOK_REQUEST.value,
+            {"webhook_name": "orders", "request": {}},
+            seq_id=3,
+        )
+
+    assert uninitialized["data"] == {"error": "webhook_not_initialized"}
+    assert broken["data"] == {"error": "webhook_handler_failed"}
+    assert wrong_kind["data"] == {"error": "webhook_not_found"}

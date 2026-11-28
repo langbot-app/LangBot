@@ -6,6 +6,7 @@ import PluginForm from '@/app/home/plugins/components/plugin-installed/plugin-fo
 import PluginReadme from '@/app/home/plugins/components/plugin-installed/plugin-readme/PluginReadme';
 import PluginLogs from '@/app/home/plugins/components/plugin-installed/plugin-logs/PluginLogs';
 import PluginComponentList from '@/app/home/plugins/components/plugin-installed/PluginComponentList';
+import PluginWebhooks from '@/app/home/plugins/components/plugin-installed/PluginWebhooks';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
@@ -376,6 +377,9 @@ export default function PluginDetailContent({ id }: { id: string }) {
   // Only a plugin that is not loaded at all is "starting"; once mounted its
   // own panels report their state (runtime: unmounted → mounted → initialized).
   const pluginReady = !awaitingPermission && pluginInfo.status !== 'unmounted';
+  const hasWebhooks = pluginInfo.components.some(
+    (component) => component.manifest.manifest.kind === 'Webhook',
+  );
 
   return (
     <>
@@ -447,6 +451,13 @@ export default function PluginDetailContent({ id }: { id: string }) {
               />
             ) : (
               <PluginNotReady awaitingPermission={awaitingPermission} />
+            )}
+            {hasWebhooks && (
+              <PluginWebhooks
+                key={`webhooks-${panelsKey}`}
+                pluginAuthor={pluginAuthor}
+                pluginName={pluginName}
+              />
             )}
             <PluginPermissions
               author={pluginAuthor}

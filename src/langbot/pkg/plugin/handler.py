@@ -3637,6 +3637,25 @@ class RuntimeConnectionHandler(handler.Handler):
         )
         return result
 
+    async def handle_webhook_request(
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        webhook_name: str,
+        request: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Forward one public webhook request to the plugin via runtime."""
+        return await self.call_action(
+            LangBotToRuntimeAction.WEBHOOK_REQUEST,
+            {
+                'plugin_author': plugin_author,
+                'plugin_name': plugin_name,
+                'webhook_name': webhook_name,
+                'request': request,
+            },
+            timeout=35,
+        )
+
     async def cleanup_plugin_data(self, plugin_author: str, plugin_name: str) -> None:
         """Cleanup plugin settings and binary storage"""
         action_context = self.require_outbound_installation_context()

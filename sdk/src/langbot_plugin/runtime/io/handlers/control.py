@@ -71,6 +71,7 @@ TENANT_SCOPED_CONTROL_ACTIONS = frozenset(
         LangBotToRuntimeAction.LIST_PARSERS.value,
         LangBotToRuntimeAction.PARSE_DOCUMENT.value,
         LangBotToRuntimeAction.PAGE_API.value,
+        LangBotToRuntimeAction.WEBHOOK_REQUEST.value,
         LangBotToRuntimeAction.BUILD_PLUGIN_PACKAGE.value,
         LangBotToRuntimeAction.GIT_SYNC_PLUGIN.value,
         LangBotToRuntimeAction.LIST_RUNNERS.value,
@@ -315,6 +316,23 @@ class ControlConnectionHandler(handler.Handler):
                 data["endpoint"],
                 data["method"],
                 data.get("body"),
+            )
+            return handler.ActionResponse.success(result)
+
+        @self.action(LangBotToRuntimeAction.WEBHOOK_REQUEST)
+        async def webhook_request(
+            data: dict[str, Any],
+        ) -> handler.ActionResponse:
+            for field in ("plugin_author", "plugin_name", "webhook_name", "request"):
+                if field not in data:
+                    return handler.ActionResponse.error(
+                        f"Missing required field: {field}"
+                    )
+            result = await self.context.plugin_mgr.handle_webhook_request(
+                data["plugin_author"],
+                data["plugin_name"],
+                data["webhook_name"],
+                data["request"],
             )
             return handler.ActionResponse.success(result)
 

@@ -883,7 +883,8 @@
                       "en/plugin/dev/components/tool",
                       "en/plugin/dev/components/knowledge-engine",
                       "en/plugin/dev/components/parser",
-                      "en/plugin/dev/components/page"
+                      "en/plugin/dev/components/page",
+                      "en/plugin/dev/components/webhook"
                     ]
                   },
                   "en/plugin/dev/style",
@@ -1392,7 +1393,8 @@
                       "zh/plugin/dev/components/tool",
                       "zh/plugin/dev/components/knowledge-engine",
                       "zh/plugin/dev/components/parser",
-                      "zh/plugin/dev/components/page"
+                      "zh/plugin/dev/components/page",
+                      "zh/plugin/dev/components/webhook"
                     ]
                   },
                   "zh/plugin/dev/style",
@@ -1899,7 +1901,8 @@
                       "ja/plugin/dev/components/tool",
                       "ja/plugin/dev/components/knowledge-engine",
                       "ja/plugin/dev/components/parser",
-                      "ja/plugin/dev/components/page"
+                      "ja/plugin/dev/components/page",
+                      "ja/plugin/dev/components/webhook"
                     ]
                   },
                   "ja/plugin/dev/style",

@@ -1,0 +1,128 @@
+---
+title: "コンポーネント：Webhook"
+---
+
+Webhook コンポーネントは、プラグインに公開 HTTP URL を提供します。外部システム（受注システム、CI、監視アラート、フォームサービスなど）はイベント発生時にこの URL へリクエストを送信でき、プラグインはそれを受けて LangBot API を呼び出せます。たとえばユーザーへ[プロアクティブメッセージを送信](/ja/plugin/dev/apis/common#プロアクティブメッセージの送信)できます。
+
+## ユースケース
+
+- **イベント通知**：出荷、チケット更新、アラートなどを該当ユーザーやグループへ転送する
+- **サードパーティのコールバック**：GitHub や決済サービスなど独自形式の Webhook を受け取り、生のリクエストボディで署名を検証する
+- **外部トリガー**：スクリプトから URL を呼び出してプラグインの処理を実行する
+
+## URL の形式
+
+インストール後、各 Webhook コンポーネントには固定の URL が割り当てられます：
+
+```text
+{webhook_prefix}/plugins/webhooks/{インストール ID}/{コンポーネント名}[/{サブパス}]
+```
+
+- `webhook_prefix` は Bot の Webhook コールバックと同じ設定項目（`api.webhook_prefix`）です。外部システムからアクセスできる必要があります。
+- サブパスは任意です。`/plugins/webhooks/.../notify/github/push` の場合、プラグインは `/github/push` を `request.path` として受け取ります。
+- URL はプラグイン詳細ページの **Webhook URL** カードに表示され、コピーできます。プラグインをアンインストールして再インストールすると新しい URL になります。
+
+<img width="420" src="/images/en/plugin/dev/components/plugin-webhook-urls.png" />
+
+## Webhook コンポーネントの追加
+
+`manifest.yaml` にコンポーネント検出の設定を追加します：
+
+```yaml
+spec:
+  permissions:
+    capabilities:
+    - bot.message.send   # プロアクティブメッセージを送る場合に宣言
+  components:
+    Webhook:
+      fromDirs:
+      - path: components/webhooks/
+```
+
+`components/webhooks/notify.yaml` を作成します。`metadata.name` は URL に含まれるため、英数字、`_`、`-`、`.` のみ使用できます。`spec` フィールドは必須で、設定項目がない場合は `{}` と書きます：
+
+```yaml
+apiVersion: v1
+kind: Webhook
+metadata:
+  name: notify
+  label:
+    en_US: Order notifications
+    ja_JP: 注文通知
+  description:
+    en_US: Point your order system here.
+    ja_JP: 受注システムのコールバック URL にこのアドレスを設定します。
+spec: {}
+execution:
+  python:
+    path: notify.py
+    attr: NotifyWebhook
+```
+
+## リクエストの処理
+
+`Webhook` を継承して `handle` を実装します。次の例では共有トークンを検証し、注文のユーザーへメッセージを送ります：
+
+```python
+import hmac
+
+from langbot_plugin.api.definition.components.webhook import (
+    Webhook,
+    WebhookRequest,
+    WebhookResponse,
+)
+from langbot_plugin.api.entities.builtin.platform import message as platform_message
+
+
+class NotifyWebhook(Webhook):
+    async def handle(self, request: WebhookRequest) -> WebhookResponse:
+        token = self.get_plugin_config().get("token", "")
+        if not token or not hmac.compare_digest(request.headers.get("x-token", ""), token):
+            return WebhookResponse.json({"error": "unauthorized"}, status=401)
+
+        event = request.json_body()
+        await self.plugin.send_message(
+            bot_uuid=event["bot_uuid"],
+            target_type="person",
+            target_id=event["user"],
+            message_chain=platform_message.MessageChain(
+                [platform_message.Plain(text=f"注文 {event['order']} を発送しました")]
+            ),
+        )
+        return WebhookResponse.json({"delivered": True}, status=202)
+```
+
+`handle` はプラグインのインストールに紐付いて実行されるため、イベントリスナーと同様に `send_message`、プラグインストレージ、`invoke_llm` などの API を使えます。
+
+### WebhookRequest
+
+| フィールド | 説明 |
+| --- | --- |
+| `method` | 大文字の HTTP メソッド：`GET`、`POST`、`PUT`、`PATCH`、`DELETE` |
+| `path` | コンポーネント名以降のサブパス（空、または `/` で始まる） |
+| `query` | クエリパラメータ（重複するキーは最後の値） |
+| `headers` | 小文字名のリクエストヘッダー。`Cookie` は転送されません |
+| `body` | 署名検証用の生のリクエストボディ（`bytes`） |
+| `remote_addr` | LangBot から見たクライアントアドレス（リバースプロキシの場合あり） |
+
+補助メソッド：`request.json_body()` はボディを JSON として解析し、`request.text()` はテキストとしてデコードします。
+
+### WebhookResponse
+
+`WebhookResponse.json(data, status)`、`WebhookResponse.text(text, status)`、`WebhookResponse.empty(204)` を返すか、`WebhookResponse(status=..., headers=..., body=...)` を直接作成します。`None`、`str`、`bytes`、JSON シリアライズ可能な値を返した場合は自動的に変換されます。
+
+## セキュリティと制限
+
+<Warning>
+Webhook URL は公開されており、URL を知っていれば誰でも呼び出せます。共有トークンや、サードパーティが提供する HMAC 署名（`request.body` で計算）などで、プラグイン側で必ず送信元を検証してください。
+</Warning>
+
+- リクエストボディの上限は 1 MiB で、超えると LangBot が `413` を返します。
+- レスポンスボディの上限は 1 MiB です。処理が約 30 秒を超えると `504` になります。
+- プラグインが無効な場合は `403`、存在しない URL は `404`、処理エラーは `502` を返します。
+- `Set-Cookie` などのヘッダーは呼び出し元へ返されません。
+- プロアクティブメッセージは各プラットフォームの規則に従います。たとえば WeChat 公式アカウントは、ユーザーの最後の操作から 48 時間以内しかカスタマーサービスメッセージを送れません。
+
+## 外部アカウントとチャットユーザーの対応付け
+
+外部システムは通常、自身のユーザー ID しか知りません。一般的には、ユーザーがチャットで[コマンド](/ja/plugin/dev/components/command)を実行してアカウントを連携し、プラグインが外部 ID と `bot_uuid`、セッション種別、セッション ID の対応をプラグインストレージに保存します。プッシュを受け取ったら対応するセッションを調べてメッセージを送信します。

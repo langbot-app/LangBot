@@ -164,6 +164,20 @@ class FakePluginManager:
         )
         return {"data": {"ok": True}, "error": None}
 
+    async def handle_webhook_request(
+        self, plugin_author, plugin_name, webhook_name, request
+    ):
+        self.calls.append(
+            (
+                "handle_webhook_request",
+                plugin_author,
+                plugin_name,
+                webhook_name,
+                request,
+            )
+        )
+        return {"response": {"status": 200, "headers": {}, "body_base64": ""}}
+
     async def install_plugin(self, install_source, install_info):
         self.calls.append(("install_plugin", install_source.value, install_info))
         yield {"current_action": "downloaded"}
@@ -1546,3 +1560,36 @@ async def test_event_batch_scope_chain_and_lifecycle(transition):
         assert calls == ([first, second] if transition == "continue" else [first])
     finally:
         handler._current_action_context.reset(token)
+
+
+async def test_control_handler_webhook_request_validates_and_delegates():
+    handler, manager = _handler()
+
+    async with ProtocolSession(handler) as session:
+        missing = await session.request(
+            LangBotToRuntimeAction.WEBHOOK_REQUEST.value,
+            {"plugin_author": "tester", "plugin_name": "demo"},
+            seq_id=1,
+        )
+        delegated = await session.request(
+            LangBotToRuntimeAction.WEBHOOK_REQUEST.value,
+            {
+                "plugin_author": "tester",
+                "plugin_name": "demo",
+                "webhook_name": "orders",
+                "request": {"method": "POST"},
+            },
+            seq_id=2,
+        )
+
+    assert missing["code"] != 0
+    assert "webhook_name" in missing["message"]
+    assert delegated["code"] == 0
+    assert delegated["data"]["response"]["status"] == 200
+    assert manager.calls[-1] == (
+        "handle_webhook_request",
+        "tester",
+        "demo",
+        "orders",
+        {"method": "POST"},
+    )

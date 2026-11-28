@@ -1,9 +1,11 @@
 import pipelineMigration from './pipeline-migration/th-TH';
 import pluginPermissions from './plugin-permissions/th-TH';
 import pluginCompat from './plugin-compat/th-TH';
+import pluginWebhooks from './plugin-webhooks/th-TH';
 const thTH = {
   pluginPermissions,
   pluginCompat,
+  pluginWebhooks,
   planRevision: {
     subscribedOn: 'วันที่สมัคร: {{date}}',
     latestQuota: 'โควตาล่าสุดของแผนนี้',
@@ -2485,6 +2487,7 @@ const thTH = {
       KnowledgeEngine: 'เครื่องมือความรู้',
       Parser: 'ตัวแยกวิเคราะห์',
       Page: 'หน้า',
+      Webhook: 'Webhook',
       Runner: 'รันเนอร์',
     },
     uploadLocal: 'อัปโหลดจากเครื่อง',
@@ -2932,6 +2935,7 @@ const thTH = {
       KnowledgeEngine: 'เครื่องมือความรู้',
       Parser: 'ตัวแยกวิเคราะห์',
       Page: 'หน้า',
+      Webhook: 'Webhook',
       Runner: 'รันเนอร์',
     },
     filterByType: 'ประเภท',

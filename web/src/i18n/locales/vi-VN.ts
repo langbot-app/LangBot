@@ -1,9 +1,11 @@
 import pipelineMigration from './pipeline-migration/vi-VN';
 import pluginPermissions from './plugin-permissions/vi-VN';
 import pluginCompat from './plugin-compat/vi-VN';
+import pluginWebhooks from './plugin-webhooks/vi-VN';
 const viVN = {
   pluginPermissions,
   pluginCompat,
+  pluginWebhooks,
   planRevision: {
     subscribedOn: 'Ngày đăng ký: {{date}}',
     latestQuota: 'Hạn mức mới nhất của gói này',
@@ -2524,6 +2526,7 @@ const viVN = {
       KnowledgeEngine: 'Công cụ tri thức',
       Parser: 'Trình phân tích',
       Page: 'Trang',
+      Webhook: 'Webhook',
       Runner: 'Trình chạy',
     },
     uploadLocal: 'Tải lên cục bộ',
@@ -2979,6 +2982,7 @@ const viVN = {
       KnowledgeEngine: 'Công cụ tri thức',
       Parser: 'Trình phân tích',
       Page: 'Trang',
+      Webhook: 'Webhook',
       Runner: 'Trình chạy',
     },
     filterByType: 'Loại',

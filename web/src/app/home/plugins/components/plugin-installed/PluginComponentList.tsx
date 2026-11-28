@@ -7,6 +7,7 @@ import {
   FileText,
   PanelTop,
   Bot,
+  Webhook,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
@@ -33,6 +34,7 @@ export default function PluginComponentList({
     Parser: <FileText className="w-5 h-5" />,
     Page: <PanelTop className="w-5 h-5" />,
     Runner: <Bot className="w-5 h-5" />,
+    Webhook: <Webhook className="w-5 h-5" />,
   };
 
   const componentKindList = Object.keys(components || {});

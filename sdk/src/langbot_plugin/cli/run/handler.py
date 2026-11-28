@@ -39,6 +39,11 @@ from langbot_plugin.api.definition.components.page import (
     PageResponse,
 )
 from langbot_plugin.api.definition.components.parser.parser import Parser
+from langbot_plugin.api.definition.components.webhook import (
+    Webhook,
+    WebhookRequest,
+    WebhookResponse,
+)
 from langbot_plugin.utils import packaging as packaging_util
 from langbot_plugin.api.entities.builtin.rag.context import RetrievalContext
 from langbot_plugin.api.entities.builtin.rag.models import (
@@ -378,6 +383,27 @@ class PluginRuntimeHandler(Handler):
             return ActionResponse.success(
                 PageResponse.fail(f"Page '{page_id}' not found").model_dump()
             )
+
+        @self.action(RuntimeToPluginAction.WEBHOOK_REQUEST)
+        async def webhook_request(data: dict[str, typing.Any]) -> ActionResponse:
+            """Handle one public webhook request routed by LangBot."""
+            webhook_name = data.get("webhook_name", "")
+            for component in self.plugin_container.components:
+                if component.manifest.kind != Webhook.__kind__:
+                    continue
+                if component.manifest.metadata.name != webhook_name:
+                    continue
+                if not isinstance(component.component_instance, Webhook):
+                    return ActionResponse.success({"error": "webhook_not_initialized"})
+                request = WebhookRequest.from_wire(data.get("request") or {})
+                try:
+                    result = await component.component_instance.handle(request)
+                    response = WebhookResponse.coerce(result).to_wire()
+                except Exception:
+                    logger.exception("Webhook %s failed", webhook_name)
+                    return ActionResponse.success({"error": "webhook_handler_failed"})
+                return ActionResponse.success({"response": response})
+            return ActionResponse.success({"error": "webhook_not_found"})
 
         @self.action(RuntimeToPluginAction.EMIT_EVENT)
         async def emit_event(data: dict[str, typing.Any]) -> ActionResponse:
