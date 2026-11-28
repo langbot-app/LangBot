@@ -7,7 +7,7 @@ Use `self.plugin` for models, tools, knowledge bases, and storage. For the curre
 See [LLM request configuration](/en/plugin/dev/apis/llm-requests) for retries, timeouts, numeric reasoning budgets, prompt caching, headers and stream cancellation.
 
 <Info>
-Most methods on this page need a capability that your plugin declares in `manifest.yaml` and a Workspace member grants after installation, for example `models.invoke` for `invoke_llm` or `bot.message.send` for `send_message`. Calls without the grant fail with `permission_denied`. See [Plugin permissions](/en/plugin/dev/permissions#capabilities) for which capability each method needs. To manage Agents, Pipelines, bots and other Workspace resources, use the [Workspace API](/en/plugin/dev/apis/workspace).
+Most methods on this page need a capability that your plugin declares in `manifest.yaml` and a Workspace member grants after installation, for example `models.invoke` for `invoke_llm` or `bot.message.send` for `send_message`. Calls without the grant fail with `permission_denied`. See [Plugin permissions](/en/plugin/dev/permissions#capabilities) for which capability each method needs. To manage Agents, Chats, bots and other Workspace resources, use the [Workspace API](/en/plugin/dev/apis/workspace).
 </Info>
 
 ## LangBot API
@@ -434,7 +434,7 @@ Use this in conjunction with configuration fields of type [``file or array[file`
 
 ## Knowledge Base API
 
-These APIs are accessible via `self.plugin` in regular components, allowing you to list and retrieve from all knowledge bases in the LangBot instance without pipeline restrictions.
+These APIs are accessible via `self.plugin` in regular components, allowing you to list and retrieve from all knowledge bases in the LangBot instance without Chat restrictions.
 
 ### List All Knowledge Bases
 
@@ -492,7 +492,7 @@ for entry in results:
 ```
 
 <Tip>
-These APIs do not require a `query_id` and can be used in regular components (including Tool components). They can access all knowledge bases without being restricted to the current pipeline's configuration.
+These APIs do not require a `query_id` and can be used in regular components (including Tool components). They can access all knowledge bases without being restricted to the current Chat's configuration.
 </Tip>
 
 ## RAG API

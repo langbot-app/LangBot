@@ -91,6 +91,7 @@ _HOST_RESERVED_QUERY_VAR_KEYS = frozenset(
         '_activated_skills',
         '_fallback_model_uuids',
         '_routed_by_rule',
+        '_message_route_id',
     }
 )
 
@@ -1360,11 +1361,11 @@ class RuntimeConnectionHandler(handler.Handler):
 
             plugin = _plugin_handler_ref(plugin_identity)
             try:
-                await query.adapter.reply_message(
-                    query.message_event,
-                    message_chain_obj,
-                    quote_origin,
-                )
+                policy = getattr(query, '_message_policy', None)
+                if policy is not None and hasattr(query, '_listener_plugins'):
+                    await policy.send_command_reply(query, message_chain_obj, quote_origin)
+                else:
+                    await query.adapter.reply_message(query.message_event, message_chain_obj, quote_origin)
             except Exception as exc:
                 await MonitoringHelper.record_plugin_reply(self.ap, query, plugin, message_chain_obj, error=exc)
                 raise
@@ -1467,15 +1468,9 @@ class RuntimeConnectionHandler(handler.Handler):
                     message=f'Query with query_id {query_id} not found',
                 )
 
-            from ..agent.runner.context_reset import reset_runner_context
-            from ..agent.runner.query_entry_adapter import QueryEntryAdapter
+            from ..agent.runner.context_reset import reset_conversation
 
-            conversation_id = QueryEntryAdapter._build_conversation_context(query).conversation_id
-            async with self.ap.persistence_mgr.tenant_uow(action_context.workspace_uuid):
-                await reset_runner_context(
-                    self.ap.persistence_mgr, action_context.workspace_uuid, query.bot_uuid, conversation_id
-                )
-            query.session.using_conversation = None
+            await reset_conversation(self.ap, query)
 
             return handler.ActionResponse.success(
                 data={},
@@ -3699,6 +3694,20 @@ class RuntimeConnectionHandler(handler.Handler):
             )
 
         return result['tool_response']
+
+    async def list_plugin_registrations(self, include_plugins):
+        from langbot_plugin.entities.io.errors import ActionCallError
+
+        action = getattr(LangBotToRuntimeAction, 'LIST_PLUGIN_REGISTRATIONS', None)
+        if action is None:
+            return None
+        try:
+            result = await self.call_action(action, {'include_plugins': include_plugins}, timeout=10)
+        except ActionCallError as exc:
+            if f'Action {action.value} not found' in str(exc):
+                return None
+            raise
+        return result['plugins']
 
     async def list_commands(self, include_plugins: list[str] | None = None) -> list[dict[str, Any]]:
         """List commands"""

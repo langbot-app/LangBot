@@ -3,7 +3,7 @@ title: "Connect n8n to Telegram"
 description: "Step-by-step guide to running your n8n app as a Telegram bot with LangBot: n8n setup, bot credentials, networking, testing and troubleshooting."
 ---
 
-This recipe puts your n8n app behind a Telegram bot. LangBot receives messages from Telegram, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+This recipe puts your n8n app behind a Telegram bot. LangBot receives messages from Telegram, runs them through a Chat, and sends the answer back, so you do not write any platform code.
 
 n8n runs the workflow; LangBot handles the chat platform, sessions and delivery and calls your workflow through a webhook for every message.
 
@@ -23,9 +23,9 @@ Telegram uses long polling: LangBot only needs outbound access to `api.telegram.
 2. Answer with an **AI Agent** node (streaming) or a **Respond to Webhook** node whose response key matches LangBot's output key.
 3. Click **Active** to enable the workflow and copy its production webhook URL.
 
-## 2. Create a pipeline
+## 2. Create a Chat
 
-Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows. If the runner is not listed, install the official runner plugin from **Plugins** or the [LangBot Space marketplace](https://space.langbot.app/market).
+Open **Chats** in the LangBot WebUI, create a Chat (or edit the default one) and set **AI** as follows. If the runner is not listed, install the official runner plugin from **Plugins** or the [LangBot Space marketplace](https://space.langbot.app/market).
 
 | Field | Value |
 | --- | --- |
@@ -40,16 +40,16 @@ Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default 
 
 ## 4. Bind and test
 
-Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+Open the bot, select the Chat you created, save and make sure the bot is enabled.
 
-Press **Start** in a private chat with the bot and send a message. In groups, the message must match the pipeline's trigger rules (for example, mention the bot or reply to it).
+Press **Start** in a private chat with the bot and send a message. In groups, the message must match the trigger rules in the bot's message policy (for example, mention the bot or reply to it).
 
 ## Troubleshooting
 
 - Empty replies: the key in **Respond to Webhook** must match the output key configured in LangBot.
 - The test URL only works while the n8n editor is listening; use the production URL of an active workflow.
 - Only one running instance may poll a token. If replies are missing, make sure the same bot is not enabled in another LangBot instance or script.
-- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+- Check **Monitoring** in the WebUI: every message, Chat run and error is recorded there.
 
 ## FAQ
 
@@ -63,7 +63,7 @@ Yes. Enable streaming on the bot; the AI back end must also stream. See the [pla
 
 ### Can the same n8n setup serve other platforms too?
 
-Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+Yes. A Chat can be bound to many bots, so one configuration can answer on several platforms at once.
 
 ## Related guides
 

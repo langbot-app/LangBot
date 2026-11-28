@@ -3,7 +3,7 @@ title: "把 Langflow 接入Discord"
 description: "使用 LangBot 把 Langflow 应用接入Discord：Langflow 配置、机器人凭据、网络要求、测试与常见问题。"
 ---
 
-本文把你的 Langflow 应用接到Discord机器人上。LangBot 接收Discord消息，交给流水线处理后把答案发回去，你不需要写任何平台对接代码。
+本文把你的 Langflow 应用接到Discord机器人上。LangBot 接收Discord消息，交给聊天处理后把答案发回去，你不需要写任何平台对接代码。
 
 Langflow 用拖拽方式搭建 Agent 和流程。LangBot 在每条消息到来时通过 Langflow API 运行你的流程。
 
@@ -23,9 +23,9 @@ Discord 机器人主动连接 Discord Gateway，不需要公网 Webhook 地址�
 2. 在 **Settings** 中创建 API Key。
 3. 在 **Share → API access** 的示例代码中找到 **Flow ID**。
 
-## 2. 创建流水线
+## 2. 创建聊天
 
-在 LangBot WebUI 打开 **流水线**，新建流水线（或编辑默认流水线），按下表配置 **AI** 能力。如果列表里没有对应运行器，请先在 **插件** 或 [LangBot Space 插件市场](https://space.langbot.app/market) 安装官方运行器插件。
+在 LangBot WebUI 打开 **聊天**，新建聊天（或编辑默认聊天），按下表配置 **AI** 能力。如果列表里没有对应运行器，请先在 **插件** 或 [LangBot Space 插件市场](https://space.langbot.app/market) 安装官方运行器插件。
 
 | 配置项 | 填写 |
 | --- | --- |
@@ -41,7 +41,7 @@ Discord 机器人主动连接 Discord Gateway，不需要公网 Webhook 地址�
 
 ## 4. 绑定并测试
 
-打开机器人，选择刚才创建的流水线，保存并确认机器人已启用。
+打开机器人，选择刚才创建的聊天，保存并确认机器人已启用。
 
 在服务器频道中发送一条满足触发规则的消息，再从机器人资料页发起私信测试。
 
@@ -50,7 +50,7 @@ Discord 机器人主动连接 Discord Gateway，不需要公网 Webhook 地址�
 - 连接被拒绝：只有 Langflow 与 LangBot 在同一主机、同一网络命名空间时，`http://localhost:7860` 才可用。
 - Gateway 登录失败：检查 Token 是否为最新，两个特权 Intent 是否都已开启并保存。
 - Discord 限制单条消息长度，较长的流式回复会拆成多条消息发送。
-- 在 WebUI 的 **监控** 页面可以看到每条消息、每次流水线运行和错误详情。
+- 在 WebUI 的 **监控** 页面可以看到每条消息、每次聊天运行和错误详情。
 
 ## 常见问题
 
@@ -64,7 +64,7 @@ Discord 机器人主动连接 Discord Gateway，不需要公网 Webhook 地址�
 
 ### 同一套 Langflow 配置能同时用在其他平台吗？
 
-可以。一条流水线可以绑定多个机器人，同一套配置能同时在多个平台上回复。
+可以。一个聊天可以绑定多个机器人，同一套配置能同时在多个平台上回复。
 
 ## 相关文档
 

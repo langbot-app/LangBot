@@ -106,11 +106,11 @@ test.describe('frontend CRUD smoke flows', () => {
     await page.goto('/home/agents?id=new');
     await expect(
       page.locator('[data-processor-kind="pipeline"]'),
-    ).toContainText('流水线');
+    ).toContainText('聊天');
     await expect(
       page.locator('[data-processor-kind="pipeline"]'),
     ).toContainText(
-      '流水线只处理消息事件，由 AI 直接生成回复，并提供知识库、插件等实用功能。',
+      '聊天只处理消息事件，由 AI 直接生成回复，并提供知识库、插件等实用功能。',
     );
   });
 
@@ -136,7 +136,7 @@ test.describe('frontend CRUD smoke flows', () => {
     await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
 
     await page.goto('/home/agents?id=new');
-    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Chat/ }).click();
     await page.locator('#agent-create-form').getByRole('combobox').click();
     await page.getByRole('option', { name: /Local Agent/ }).click();
     await page.locator('input[name="name"]').fill('Viewer Pipeline');
@@ -252,7 +252,7 @@ test.describe('frontend CRUD smoke flows', () => {
       '--processor-node-stroke-opacity',
       '0.5',
     );
-    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Chat/ }).click();
     await page.locator('#agent-create-form').getByRole('combobox').click();
     await page.getByRole('option', { name: /Local Agent/ }).click();
     await expect(pipelineTypeCard).toHaveAttribute('aria-checked', 'true');
@@ -286,8 +286,15 @@ test.describe('frontend CRUD smoke flows', () => {
     ).toHaveValue('Routes urgent customer issues to operators.');
     await page.keyboard.press('Escape');
 
-    await page.getByRole('button', { name: 'Management' }).click();
-    await page.getByRole('button', { name: /^Delete$/ }).click();
+    await page
+      .locator('[data-policy-setting="manage"]')
+      .getByRole('button')
+      .first()
+      .click();
+    await page
+      .locator('[data-policy-setting="manage"]')
+      .getByRole('button', { name: /^Delete$/ })
+      .click();
     await confirmDelete(page, '/api/v1/pipelines/pipeline-1');
 
     await expect(page).toHaveURL(/\/home\/agents$/);
@@ -310,13 +317,13 @@ test.describe('frontend CRUD smoke flows', () => {
     await expect(
       page.getByRole('heading', { name: /pipeline-ai/ }),
     ).toBeVisible();
-    await page.getByRole('tab', { name: /^AI$/ }).click();
 
-    await expect(page.getByText('Runtime', { exact: true })).toBeVisible();
+    // The one-page Chat editor leads with the Runner and model fields.
     await expect(
-      page.locator('[data-slot="card-title"]').filter({
-        hasText: 'Local Agent',
-      }),
+      page.locator('label').filter({ hasText: 'Runner' }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Local Agent', { exact: true }).first(),
     ).toBeVisible();
     await expect(
       page.locator('label').filter({
@@ -551,10 +558,9 @@ test.describe('bot advanced flows', () => {
     await createPlaywrightBot(page, 'Route Status Bot');
 
     await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
-    await expect(page.getByText('Supported events')).toBeVisible();
-    await expect(page.getByText('5 event types')).toBeVisible();
-    await expect(page.getByText('Messages · 2')).toBeVisible();
-    await expect(page.getByText('Groups · 2')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /Supported events/ }),
+    ).toBeVisible();
     await expect(page.getByText('Internal server error')).toHaveCount(0);
     await expect(
       page.getByText('Events that match no route are ignored.'),
@@ -576,13 +582,17 @@ test.describe('bot advanced flows', () => {
       page.getByRole('button', { name: /^Delete$/ }),
     ).toBeInViewport();
 
-    await routingCard.getByRole('button', { name: 'View all' }).click();
+    await routingCard.getByRole('button', { name: /Supported events/ }).click();
+    const eventsDialog = page.getByRole('dialog');
+    await expect(eventsDialog.getByText('5 event types')).toBeVisible();
     await expect(
-      routingCard.getByText('Messages', { exact: true }),
+      eventsDialog.getByText('Messages', { exact: true }),
     ).toBeVisible();
     await expect(
-      routingCard.getByText('Groups', { exact: true }),
+      eventsDialog.getByText('Groups', { exact: true }),
     ).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(eventsDialog).toHaveCount(0);
 
     await routingCard.getByRole('button', { name: 'Add behavior' }).click();
     await page.getByRole('menuitem', { name: /Reply to messages/ }).click();
@@ -821,7 +831,7 @@ test.describe('bot advanced flows', () => {
     await installLangBotApiMocks(page, { authenticated: true });
 
     await page.goto('/home/agents?id=new');
-    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Chat/ }).click();
     await page.locator('#agent-create-form').getByRole('combobox').click();
     await page.getByRole('option', { name: /Local Agent/ }).click();
     await page.locator('input[name="name"]').fill('Dirty state target');
@@ -896,7 +906,6 @@ test.describe('pipeline advanced flows', () => {
     });
 
     await page.goto('/home/agents?id=pipeline-scope');
-    await page.getByRole('tab', { name: /^AI$/ }).click();
     await expect(
       page.getByRole('button', { name: 'Edit tools' }),
     ).toBeVisible();
@@ -920,7 +929,7 @@ test.describe('pipeline advanced flows', () => {
 
     // Create a pipeline
     await page.goto('/home/agents?id=new');
-    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Chat/ }).click();
     await page.locator('#agent-create-form').getByRole('combobox').click();
     await page.getByRole('option', { name: /Local Agent/ }).click();
     await page.locator('input[name="name"]').fill('Tab Test Pipeline');
@@ -963,7 +972,7 @@ test.describe('pipeline advanced flows', () => {
 
     // Create a pipeline
     await page.goto('/home/agents?id=new');
-    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Chat/ }).click();
     await page.locator('#agent-create-form').getByRole('combobox').click();
     await page.getByRole('option', { name: /Local Agent/ }).click();
     await page.locator('input[name="name"]').fill('Dirty Form Pipeline');
@@ -979,7 +988,6 @@ test.describe('pipeline advanced flows', () => {
       page.getByRole('heading', { name: /Dirty Form Pipeline Updated/ }),
     ).toBeVisible();
     await expect(saveButton).toBeDisabled();
-    await page.getByRole('tab', { name: /^AI$/ }).click();
     const instruction = page.locator('textarea[name="instruction"]');
     await expect(instruction).toHaveValue('Original instruction');
     await instruction.fill('Updated instruction');
@@ -987,7 +995,6 @@ test.describe('pipeline advanced flows', () => {
     await save(page);
     await expect(saveButton).toBeDisabled();
     await page.reload();
-    await page.getByRole('tab', { name: /^AI$/ }).click();
     await expect(page.locator('textarea[name="instruction"]')).toHaveValue(
       'Updated instruction',
     );
@@ -999,7 +1006,7 @@ test.describe('pipeline advanced flows', () => {
     await installLangBotApiMocks(page, { authenticated: true });
 
     await page.goto('/home/agents?id=new');
-    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Chat/ }).click();
     await page.locator('#agent-create-form').getByRole('combobox').click();
     await page.getByRole('option', { name: /Local Agent/ }).click();
 
@@ -1249,9 +1256,6 @@ test.describe('agent runner resource selectors', () => {
           ? '/home/agents?id=agent-empty'
           : '/home/pipelines?id=agent-empty',
       );
-      await page
-        .getByRole('tab', { name: kind === 'agent' ? /^Runner$/ : /^AI$/ })
-        .click();
 
       const runnerSelect = page.getByRole('combobox', {
         name: 'Runner',
@@ -1390,7 +1394,6 @@ test.describe('agent runner resource selectors', () => {
     );
 
     await page.goto('/home/agents?id=pipeline-runner-selector');
-    await page.getByRole('tab', { name: /^AI$/ }).click();
 
     const runnerSelect = page.getByRole('combobox', { name: 'Runner' });
     await runnerSelect.click();
@@ -1434,7 +1437,6 @@ test.describe('agent runner resource selectors', () => {
     });
 
     await page.goto('/home/agents?id=agent-scope');
-    await page.getByRole('tab', { name: /^Runner$/ }).click();
     await page.getByRole('button', { name: 'Edit tools' }).click();
 
     const dialog = page.getByRole('dialog');
@@ -1479,7 +1481,6 @@ test.describe('agent and pipeline save concurrency', () => {
 
     await page.goto('/home/agents?id=agent-save-race');
     const saveButton = page.getByRole('button', { name: /^Save$/ });
-    await page.getByRole('tab', { name: 'Events & tools' }).click();
     const eventPatterns = page.getByRole('button', {
       name: 'Add event',
       exact: true,
@@ -1653,7 +1654,7 @@ test.describe('cross-resource flows', () => {
 
     // Create a pipeline first
     await page.goto('/home/agents?id=new');
-    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Chat/ }).click();
     await page.locator('#agent-create-form').getByRole('combobox').click();
     await page.getByRole('option', { name: /Local Agent/ }).click();
     await page.locator('input[name="name"]').fill('Production Pipeline');

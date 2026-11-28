@@ -3,7 +3,7 @@ title: "Connect Langflow to Mattermost"
 description: "Step-by-step guide to running your Langflow app as a Mattermost bot with LangBot: Langflow setup, bot credentials, networking, testing and troubleshooting."
 ---
 
-This recipe puts your Langflow app behind a Mattermost bot. LangBot receives messages from Mattermost, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+This recipe puts your Langflow app behind a Mattermost bot. LangBot receives messages from Mattermost, runs them through a Chat, and sends the answer back, so you do not write any platform code.
 
 Langflow builds agents and flows with a drag-and-drop editor. LangBot runs a flow through the Langflow API for every message.
 
@@ -23,9 +23,9 @@ LangBot only needs to reach your Mattermost server; Mattermost does not need to 
 2. Create an API key under **Settings**.
 3. Copy the **Flow ID** from **Share → API access**.
 
-## 2. Create a pipeline
+## 2. Create a Chat
 
-Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows. If the runner is not listed, install the official runner plugin from **Plugins** or the [LangBot Space marketplace](https://space.langbot.app/market).
+Open **Chats** in the LangBot WebUI, create a Chat (or edit the default one) and set **AI** as follows. If the runner is not listed, install the official runner plugin from **Plugins** or the [LangBot Space marketplace](https://space.langbot.app/market).
 
 | Field | Value |
 | --- | --- |
@@ -37,11 +37,11 @@ Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default 
 ## 3. Create the Mattermost bot
 
 1. Create the bot account in Mattermost (choose `post:all` for direct messages) and copy its token; it is shown only once.
-2. Create a bot with the **Mattermost** adapter, enter the server address and token, and bind a pipeline.
+2. Create a bot with the **Mattermost** adapter, enter the server address and token, and bind a Chat.
 
 ## 4. Bind and test
 
-Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+Open the bot, select the Chat you created, save and make sure the bot is enabled.
 
 Send the bot a direct message, or mention it in a channel it has joined.
 
@@ -49,8 +49,8 @@ Send the bot a direct message, or mention it in a channel it has joined.
 
 - Connection refused: `http://localhost:7860` only works when Langflow runs on the same host and network namespace as LangBot.
 - Administrator-related features are not supported; keep the bot role as `Member`.
-- Disable streaming on the bot if your pipeline or AI provider does not support it.
-- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+- Disable streaming on the bot if your Chat or AI provider does not support it.
+- Check **Monitoring** in the WebUI: every message, Chat run and error is recorded there.
 
 ## FAQ
 
@@ -64,7 +64,7 @@ Yes. Enable streaming on the bot; the AI back end must also stream. See the [pla
 
 ### Can the same Langflow setup serve other platforms too?
 
-Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+Yes. A Chat can be bound to many bots, so one configuration can answer on several platforms at once.
 
 ## Related guides
 

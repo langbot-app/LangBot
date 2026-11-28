@@ -58,14 +58,14 @@ preconditions:
   - "The selected model route supports function/tool calling and repeated tool loop turns, or LANGBOT_E2E_FAKE_PROVIDER_BASE_URL points to scripts/e2e/fake-openai-provider.mjs."
   - "The LangRAG sentinel knowledge base contains azalea-cobalt-7421 and qa-plugin-smoke exposes qa_plugin_echo."
 steps:
-  - "Ensure the local-agent pipeline, LangRAG sentinel KB, and qa-plugin-smoke fixture plugin are available."
+  - "Ensure the local-agent Chat, LangRAG sentinel KB, and qa-plugin-smoke fixture plugin are available."
   - "Temporarily bind the LangRAG KB, shrink the runner context budget, and set max-tool-iterations high enough for two serial plugin tool calls."
   - "Temporarily bind only langbot-team/LocalAgent and qa/plugin-smoke; disable MCP servers and skills to isolate the tool surface."
   - "Reset the person Debug Chat session for the target pipeline."
   - "Send the passcode memory prompt and wait for MEMORY_SET."
   - "Send the long pressure prompt and wait for MULTITOOL_CONTEXT_PRESSURE_READY."
   - "Ask the runner to combine compacted passcode, RAG sentinel, and two qa_plugin_echo results in one final answer."
-  - "Restore the original runner config and pipeline extension bindings."
+  - "Restore the original runner config and Chat extension bindings."
 checks:
   - "UI: All three user messages appear in Debug Chat."
   - "UI: The final Bot message contains MULTITOOL_COMBO_FINAL with the compacted sentinel, azalea-cobalt-7421, and both qa-plugin-smoke tool results."

@@ -1,9 +1,9 @@
 ---
 title: ワークスペース API
-description: プラグインから Agent、パイプライン、ボット、モデル、ナレッジベースなどのワークスペースリソースを参照・管理します。
+description: プラグインから Agent、チャット、ボット、モデル、ナレッジベースなどのワークスペースリソースを参照・管理します。
 ---
 
-ワークスペース API を使うと、プラグインは自分がインストールされているワークスペースを操作できます。Agent やパイプラインの一覧取得と編集、ボットの参照、モデルやナレッジベースの管理、モニタリングデータの読み取りなどです。公開されている操作は LangBot の HTTP API、MCP サーバー、ワークスペースアシスタントとまったく同じなので、メンバーがそれらで行えることは、メンバーが許可した範囲内でプラグインからも自動化できます。
+ワークスペース API を使うと、プラグインは自分がインストールされているワークスペースを操作できます。Agent やチャットの一覧取得と編集、ボットの参照、モデルやナレッジベースの管理、モニタリングデータの読み取りなどです。公開されている操作は LangBot の HTTP API、MCP サーバー、ワークスペースアシスタントとまったく同じなので、メンバーがそれらで行えることは、メンバーが許可した範囲内でプラグインからも自動化できます。
 
 各操作には `pipeline.list` や `knowledge.base.retrieve` のような固定の ID があります。プラグインが呼び出せるのは、[マニフェストで宣言](/ja/plugin/dev/permissions#権限を宣言する)し、かつメンバーがそのインストールに許可した操作だけです。
 
@@ -46,7 +46,7 @@ result = await self.plugin.workspace.call("knowledge.base.retrieve", kb_uuid=kb_
 
 Runner では、実行に紐づいたプロキシを `ctx.api.workspace` として受け取ります。メソッドも、認可に使われるインストールの許可も同じです。違いは、LangBot が各呼び出しを現在の実行に記録する点です。
 
-実行を開始した Agent やパイプラインが、モデルに見せるワークスペース操作を絞り込んでいる場合があります。その選択は `ctx.resources.workspace_operations` で渡されます。ワークスペース操作をツールとしてモデルに提供する Runner は、この中の操作だけを提供し、リストが空なら何も提供しないでください。LangBot 組み込みの LocalAgent もそのように動作します。
+実行を開始した Agent やチャットが、モデルに見せるワークスペース操作を絞り込んでいる場合があります。その選択は `ctx.resources.workspace_operations` で渡されます。ワークスペース操作をツールとしてモデルに提供する Runner は、この中の操作だけを提供し、リストが空なら何も提供しないでください。LangBot 組み込みの LocalAgent もそのように動作します。
 
 ## 戻り値とエラー
 
@@ -116,7 +116,7 @@ Runner では、実行に紐づいたプロキシを `ctx.api.workspace` とし�
 | Create Bot<br/>Create a new chat bot connected to an IM adapter. | `bot.create`<br/>`workspace.bot.create()` | 書き込み | `resource.manage` |
 | Delete Bot<br/>Delete a chat bot and remove its adapter connection. | `bot.delete`<br/>`workspace.bot.delete()` | 高リスク | `resource.manage` |
 | Get Bot<br/>Get detailed configuration and status for a specific bot. | `bot.get`<br/>`workspace.bot.get()` | 読み取り | `resource.view` |
-| Apply Group Filter<br/>Apply group filtering rules to enable or disable pipelines. | `bot.group_filter.apply`<br/>`workspace.bot.group_filter.apply()` | 書き込み | `resource.manage` |
+| Apply Group Filter<br/>Apply group filtering rules to enable or disable Chats. | `bot.group_filter.apply`<br/>`workspace.bot.group_filter.apply()` | 書き込み | `resource.manage` |
 | Preview Group Filter<br/>Preview chat group filtering rules for a bot. | `bot.group_filter.preview`<br/>`workspace.bot.group_filter.preview()` | 読み取り | `resource.manage` |
 | List Bots<br/>List all configured chat bots in the workspace. | `bot.list`<br/>`workspace.bot.list()` | 読み取り | `resource.view` |
 | Bot Logs<br/>Fetch runtime connection logs and events for a bot. | `bot.logs`<br/>`workspace.bot.logs()` | 読み取り | `resource.view` |
@@ -125,7 +125,7 @@ Runner では、実行に紐づいたプロキシを `ctx.api.workspace` とし�
 | Preview Routes<br/>Preview message routing decisions for a simulated event. | `bot.routes.preview`<br/>`workspace.bot.routes.preview()` | 読み取り | `resource.manage` |
 | Routing Status<br/>Get active message routing bindings and rules for a bot. | `bot.routes.status`<br/>`workspace.bot.routes.status()` | 読み取り | `resource.view` |
 | Bot Runtime Status<br/>Inspect live connection state and health of a bot. | `bot.runtime.get`<br/>`workspace.bot.runtime.get()` | 読み取り | `resource.view` |
-| Update Bot<br/>Update settings or pipeline bindings for an existing bot. | `bot.update`<br/>`workspace.bot.update()` | 書き込み | `resource.manage` |
+| Update Bot<br/>Update settings or Chat bindings for an existing bot. | `bot.update`<br/>`workspace.bot.update()` | 書き込み | `resource.manage` |
 
 ### Extension (`extension`)
 
@@ -199,41 +199,41 @@ Runner では、実行に紐づいたプロキシを `ctx.api.workspace` とし�
 | 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
 | --- | --- | --- | --- |
 | Embedding Call Metrics<br/>Query embedding generation metrics and latency statistics. | `monitoring.embedding_calls`<br/>`workspace.monitoring.embedding_calls()` | 読み取り | `resource.view` |
-| Error Logs<br/>Query runtime errors and failures across bots and pipelines. | `monitoring.errors`<br/>`workspace.monitoring.errors()` | 読み取り | `resource.view` |
+| Error Logs<br/>Query runtime errors and failures across bots and Chats. | `monitoring.errors`<br/>`workspace.monitoring.errors()` | 読み取り | `resource.view` |
 | Execution Details<br/>Get detailed traces and step execution events for a specific execution. | `monitoring.execution.detail`<br/>`workspace.monitoring.execution.detail()` | 読み取り | `resource.view` |
-| List Executions<br/>Query execution history records across bots, pipelines, and agents. | `monitoring.executions`<br/>`workspace.monitoring.executions()` | 読み取り | `resource.view` |
+| List Executions<br/>Query execution history records across bots, Chats, and agents. | `monitoring.executions`<br/>`workspace.monitoring.executions()` | 読み取り | `resource.view` |
 | List User Feedback<br/>List user ratings and feedback records on bot responses. | `monitoring.feedback.list`<br/>`workspace.monitoring.feedback.list()` | 読み取り | `resource.view` |
 | Feedback Statistics<br/>Get aggregated positive and negative user feedback metrics. | `monitoring.feedback.stats`<br/>`workspace.monitoring.feedback.stats()` | 読み取り | `resource.view` |
-| In-Flight Executions<br/>Inspect currently active in-flight requests and pipeline runs. | `monitoring.inflight`<br/>`workspace.monitoring.inflight()` | 読み取り | `resource.view` |
+| In-Flight Executions<br/>Inspect currently active in-flight requests and Chat runs. | `monitoring.inflight`<br/>`workspace.monitoring.inflight()` | 読み取り | `resource.view` |
 | LLM Call Metrics<br/>Query model invocation counts, latencies, and token stats. | `monitoring.llm_calls`<br/>`workspace.monitoring.llm_calls()` | 読み取り | `resource.view` |
 | Message Details<br/>Retrieve full metadata and trace details for a single message. | `monitoring.message.detail`<br/>`workspace.monitoring.message.detail()` | 読み取り | `resource.view` |
 | Query Messages<br/>Query processed chat messages across bot sessions. | `monitoring.messages`<br/>`workspace.monitoring.messages()` | 読み取り | `resource.view` |
-| Monitoring Overview<br/>Get aggregated monitoring overview statistics for bots and pipelines. | `monitoring.overview`<br/>`workspace.monitoring.overview()` | 読み取り | `resource.view` |
+| Monitoring Overview<br/>Get aggregated monitoring overview statistics for bots and Chats. | `monitoring.overview`<br/>`workspace.monitoring.overview()` | 読み取り | `resource.view` |
 | Session Analysis<br/>Analyze session metrics, duration, and token usage for a session. | `monitoring.session.analysis`<br/>`workspace.monitoring.session.analysis()` | 読み取り | `resource.view` |
 | Reset Session<br/>Reset a chat session and clear its context window. | `monitoring.session.reset`<br/>`workspace.monitoring.session.reset()` | 高リスク | `resource.manage` |
 | List Sessions<br/>List active and historical chat sessions across bots. | `monitoring.sessions`<br/>`workspace.monitoring.sessions()` | 読み取り | `resource.view` |
 | Token Usage Statistics<br/>Query token consumption metrics aggregated by time buckets. | `monitoring.tokens`<br/>`workspace.monitoring.tokens()` | 読み取り | `resource.view` |
 | Tool Call Metrics<br/>Query tool invocation history and execution performance. | `monitoring.tool_calls`<br/>`workspace.monitoring.tool_calls()` | 読み取り | `resource.view` |
 
-### Pipeline (`pipeline`)
+### Chat (`pipeline`)
 
 | 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
 | --- | --- | --- | --- |
-| Broadcast Chat Message<br/>Broadcast a message to all active pipeline chat clients. | `pipeline.chat.broadcast`<br/>`workspace.pipeline.chat.broadcast()` | 高リスク | `runtime.operate` |
-| Pipeline Connections<br/>Inspect live websocket connection status for pipeline chat. | `pipeline.chat.connections`<br/>`workspace.pipeline.chat.connections()` | 読み取り | `runtime.operate` |
-| Pipeline Chat History<br/>Retrieve debug chat message history for a pipeline session. | `pipeline.chat.history`<br/>`workspace.pipeline.chat.history()` | 読み取り | `runtime.operate` |
-| Reset Chat Session<br/>Clear memory and chat history for a pipeline debug session. | `pipeline.chat.reset`<br/>`workspace.pipeline.chat.reset()` | 高リスク | `runtime.operate` |
-| Copy Pipeline<br/>Duplicate an existing pipeline to create a new copy. | `pipeline.copy`<br/>`workspace.pipeline.copy()` | 書き込み | `resource.manage` |
-| Create Pipeline<br/>Create a new processing pipeline in the workspace. | `pipeline.create`<br/>`workspace.pipeline.create()` | 書き込み | `resource.manage` |
-| Pipeline Defaults<br/>Get template defaults and initial values for new pipelines. | `pipeline.defaults`<br/>`workspace.pipeline.defaults()` | 読み取り | `resource.view` |
-| Delete Pipeline<br/>Permanently delete a pipeline from the workspace. | `pipeline.delete`<br/>`workspace.pipeline.delete()` | 高リスク | `resource.manage` |
-| Get Pipeline Extensions<br/>Get bound plugins, MCP servers, and tools for a pipeline. | `pipeline.extensions.get`<br/>`workspace.pipeline.extensions.get()` | 読み取り | `resource.view` |
-| Update Pipeline Extensions<br/>Update bound plugins, MCP servers, and tools on a pipeline. | `pipeline.extensions.update`<br/>`workspace.pipeline.extensions.update()` | 書き込み | `resource.manage` |
-| Get Pipeline<br/>Get complete definition and node graph of a pipeline. | `pipeline.get`<br/>`workspace.pipeline.get()` | 読み取り | `resource.view` |
-| List Pipelines<br/>List all message processing pipelines in the workspace. | `pipeline.list`<br/>`workspace.pipeline.list()` | 読み取り | `resource.view` |
-| Pipeline Metadata<br/>Get available component types and node specifications. | `pipeline.metadata`<br/>`workspace.pipeline.metadata()` | 読み取り | `resource.view` |
-| Run Pipeline<br/>Execute a pipeline run with custom input data. | `pipeline.run`<br/>`workspace.pipeline.run()` | 書き込み | `runtime.operate` |
-| Update Pipeline<br/>Update topology, nodes, or settings of a pipeline. | `pipeline.update`<br/>`workspace.pipeline.update()` | 書き込み | `resource.manage` |
+| Broadcast Chat Message<br/>Broadcast a message to all active Chat debug clients. | `pipeline.chat.broadcast`<br/>`workspace.pipeline.chat.broadcast()` | 高リスク | `runtime.operate` |
+| Chat Connections<br/>Inspect live websocket connection status for Chat debugging. | `pipeline.chat.connections`<br/>`workspace.pipeline.chat.connections()` | 読み取り | `runtime.operate` |
+| Chat Debug History<br/>Retrieve debug chat message history for a Chat session. | `pipeline.chat.history`<br/>`workspace.pipeline.chat.history()` | 読み取り | `runtime.operate` |
+| Reset Chat Session<br/>Clear memory and chat history for a Chat debug session. | `pipeline.chat.reset`<br/>`workspace.pipeline.chat.reset()` | 高リスク | `runtime.operate` |
+| Copy Chat<br/>Duplicate an existing Chat to create a new copy. | `pipeline.copy`<br/>`workspace.pipeline.copy()` | 書き込み | `resource.manage` |
+| Create Chat<br/>Create a new Chat in the workspace. | `pipeline.create`<br/>`workspace.pipeline.create()` | 書き込み | `resource.manage` |
+| Chat Defaults<br/>Get template defaults and initial values for new Chats. | `pipeline.defaults`<br/>`workspace.pipeline.defaults()` | 読み取り | `resource.view` |
+| Delete Chat<br/>Permanently delete a Chat from the workspace. | `pipeline.delete`<br/>`workspace.pipeline.delete()` | 高リスク | `resource.manage` |
+| Get Chat Extensions<br/>Get bound plugins, MCP servers, and tools for a Chat. | `pipeline.extensions.get`<br/>`workspace.pipeline.extensions.get()` | 読み取り | `resource.view` |
+| Update Chat Extensions<br/>Update bound plugins, MCP servers, and tools on a Chat. | `pipeline.extensions.update`<br/>`workspace.pipeline.extensions.update()` | 書き込み | `resource.manage` |
+| Get Chat<br/>Get complete definition and node graph of a Chat. | `pipeline.get`<br/>`workspace.pipeline.get()` | 読み取り | `resource.view` |
+| List Chats<br/>List all Chats in the workspace. | `pipeline.list`<br/>`workspace.pipeline.list()` | 読み取り | `resource.view` |
+| Chat Metadata<br/>Get available component types and node specifications. | `pipeline.metadata`<br/>`workspace.pipeline.metadata()` | 読み取り | `resource.view` |
+| Run Chat<br/>Execute a Chat run with custom input data. | `pipeline.run`<br/>`workspace.pipeline.run()` | 書き込み | `runtime.operate` |
+| Update Chat<br/>Update topology, nodes, or settings of a Chat. | `pipeline.update`<br/>`workspace.pipeline.update()` | 書き込み | `resource.manage` |
 
 ### Plugin (`plugin`)
 
@@ -289,7 +289,7 @@ Runner では、実行に紐づいたプロキシを `ctx.api.workspace` とし�
 
 | 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
 | --- | --- | --- | --- |
-| Basic Statistics<br/>Get workspace overview counters for bots, models, and pipelines. | `stats.basic`<br/>`workspace.stats.basic()` | 読み取り | `resource.view` |
+| Basic Statistics<br/>Get workspace overview counters for bots, models, and Chats. | `stats.basic`<br/>`workspace.stats.basic()` | 読み取り | `resource.view` |
 
 ### Task (`task`)
 

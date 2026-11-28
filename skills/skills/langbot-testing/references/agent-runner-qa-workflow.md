@@ -26,7 +26,7 @@ test phase.
    - `rtk bin/lbs test run agent-runner-qa-debug-chat --dry-run` when WebUI live
      execution needs deterministic coverage without a model provider. This
      case runs its setup automation first: install the QA Runner fixture,
-     create/update the QA pipeline, write the case-specific pipeline env, then
+     create/update the QA Chat, write the case-specific Chat env, then
      execute Debug Chat.
    - `rtk bin/lbs test run agent-runner-ledger-invariants --dry-run`
    - `rtk bin/lbs test run agent-runner-ledger-contention --dry-run`

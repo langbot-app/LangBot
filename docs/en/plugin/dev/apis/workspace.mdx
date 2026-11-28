@@ -1,9 +1,9 @@
 ---
 title: Workspace API
-description: Read and manage Agents, Pipelines, bots, models, knowledge bases and more from a plugin.
+description: Read and manage Agents, Chats, bots, models, knowledge bases and more from a plugin.
 ---
 
-The Workspace API lets a plugin work with the Workspace it is installed in: list and edit Agents and Pipelines, look up bots, manage models and knowledge bases, read monitoring data, and so on. It exposes the same operations as LangBot's HTTP API, MCP server and Workspace assistant, so a plugin can automate anything a member could do through those interfaces, within the limits the member grants.
+The Workspace API lets a plugin work with the Workspace it is installed in: list and edit Agents and Chats, look up bots, manage models and knowledge bases, read monitoring data, and so on. It exposes the same operations as LangBot's HTTP API, MCP server and Workspace assistant, so a plugin can automate anything a member could do through those interfaces, within the limits the member grants.
 
 Every operation has a stable ID, such as `pipeline.list` or `knowledge.base.retrieve`. A plugin can only call operations it [declares in its manifest](/en/plugin/dev/permissions#declare-permissions) and a member has granted to its installation.
 
@@ -46,7 +46,7 @@ result = await self.plugin.workspace.call("knowledge.base.retrieve", kb_uuid=kb_
 
 A Runner receives a run-bound proxy as `ctx.api.workspace`. It offers the same methods and is authorized by the same installation grants; the difference is that LangBot records each call against the current run.
 
-The Agent or Pipeline that started the run may restrict which workspace operations the model should see. That selection is delivered in `ctx.resources.workspace_operations`. A Runner that exposes workspace operations to a model as tools should offer only those, and offer none when the list is empty. LangBot's built-in LocalAgent does exactly this.
+The Agent or Chat that started the run may restrict which workspace operations the model should see. That selection is delivered in `ctx.resources.workspace_operations`. A Runner that exposes workspace operations to a model as tools should offer only those, and offer none when the list is empty. LangBot's built-in LocalAgent does exactly this.
 
 ## Results and errors
 
@@ -116,7 +116,7 @@ This reference covers every operation a plugin can request in the current LangBo
 | Create Bot<br/>Create a new chat bot connected to an IM adapter. | `bot.create`<br/>`workspace.bot.create()` | Write | `resource.manage` |
 | Delete Bot<br/>Delete a chat bot and remove its adapter connection. | `bot.delete`<br/>`workspace.bot.delete()` | High risk | `resource.manage` |
 | Get Bot<br/>Get detailed configuration and status for a specific bot. | `bot.get`<br/>`workspace.bot.get()` | Read | `resource.view` |
-| Apply Group Filter<br/>Apply group filtering rules to enable or disable pipelines. | `bot.group_filter.apply`<br/>`workspace.bot.group_filter.apply()` | Write | `resource.manage` |
+| Apply Group Filter<br/>Apply group filtering rules to enable or disable Chats. | `bot.group_filter.apply`<br/>`workspace.bot.group_filter.apply()` | Write | `resource.manage` |
 | Preview Group Filter<br/>Preview chat group filtering rules for a bot. | `bot.group_filter.preview`<br/>`workspace.bot.group_filter.preview()` | Read | `resource.manage` |
 | List Bots<br/>List all configured chat bots in the workspace. | `bot.list`<br/>`workspace.bot.list()` | Read | `resource.view` |
 | Bot Logs<br/>Fetch runtime connection logs and events for a bot. | `bot.logs`<br/>`workspace.bot.logs()` | Read | `resource.view` |
@@ -125,7 +125,7 @@ This reference covers every operation a plugin can request in the current LangBo
 | Preview Routes<br/>Preview message routing decisions for a simulated event. | `bot.routes.preview`<br/>`workspace.bot.routes.preview()` | Read | `resource.manage` |
 | Routing Status<br/>Get active message routing bindings and rules for a bot. | `bot.routes.status`<br/>`workspace.bot.routes.status()` | Read | `resource.view` |
 | Bot Runtime Status<br/>Inspect live connection state and health of a bot. | `bot.runtime.get`<br/>`workspace.bot.runtime.get()` | Read | `resource.view` |
-| Update Bot<br/>Update settings or pipeline bindings for an existing bot. | `bot.update`<br/>`workspace.bot.update()` | Write | `resource.manage` |
+| Update Bot<br/>Update settings or Chat bindings for an existing bot. | `bot.update`<br/>`workspace.bot.update()` | Write | `resource.manage` |
 
 ### Extension (`extension`)
 
@@ -199,41 +199,41 @@ This reference covers every operation a plugin can request in the current LangBo
 | Operation | ID and method | Risk | Granting member needs |
 | --- | --- | --- | --- |
 | Embedding Call Metrics<br/>Query embedding generation metrics and latency statistics. | `monitoring.embedding_calls`<br/>`workspace.monitoring.embedding_calls()` | Read | `resource.view` |
-| Error Logs<br/>Query runtime errors and failures across bots and pipelines. | `monitoring.errors`<br/>`workspace.monitoring.errors()` | Read | `resource.view` |
+| Error Logs<br/>Query runtime errors and failures across bots and Chats. | `monitoring.errors`<br/>`workspace.monitoring.errors()` | Read | `resource.view` |
 | Execution Details<br/>Get detailed traces and step execution events for a specific execution. | `monitoring.execution.detail`<br/>`workspace.monitoring.execution.detail()` | Read | `resource.view` |
-| List Executions<br/>Query execution history records across bots, pipelines, and agents. | `monitoring.executions`<br/>`workspace.monitoring.executions()` | Read | `resource.view` |
+| List Executions<br/>Query execution history records across bots, Chats, and agents. | `monitoring.executions`<br/>`workspace.monitoring.executions()` | Read | `resource.view` |
 | List User Feedback<br/>List user ratings and feedback records on bot responses. | `monitoring.feedback.list`<br/>`workspace.monitoring.feedback.list()` | Read | `resource.view` |
 | Feedback Statistics<br/>Get aggregated positive and negative user feedback metrics. | `monitoring.feedback.stats`<br/>`workspace.monitoring.feedback.stats()` | Read | `resource.view` |
-| In-Flight Executions<br/>Inspect currently active in-flight requests and pipeline runs. | `monitoring.inflight`<br/>`workspace.monitoring.inflight()` | Read | `resource.view` |
+| In-Flight Executions<br/>Inspect currently active in-flight requests and Chat runs. | `monitoring.inflight`<br/>`workspace.monitoring.inflight()` | Read | `resource.view` |
 | LLM Call Metrics<br/>Query model invocation counts, latencies, and token stats. | `monitoring.llm_calls`<br/>`workspace.monitoring.llm_calls()` | Read | `resource.view` |
 | Message Details<br/>Retrieve full metadata and trace details for a single message. | `monitoring.message.detail`<br/>`workspace.monitoring.message.detail()` | Read | `resource.view` |
 | Query Messages<br/>Query processed chat messages across bot sessions. | `monitoring.messages`<br/>`workspace.monitoring.messages()` | Read | `resource.view` |
-| Monitoring Overview<br/>Get aggregated monitoring overview statistics for bots and pipelines. | `monitoring.overview`<br/>`workspace.monitoring.overview()` | Read | `resource.view` |
+| Monitoring Overview<br/>Get aggregated monitoring overview statistics for bots and Chats. | `monitoring.overview`<br/>`workspace.monitoring.overview()` | Read | `resource.view` |
 | Session Analysis<br/>Analyze session metrics, duration, and token usage for a session. | `monitoring.session.analysis`<br/>`workspace.monitoring.session.analysis()` | Read | `resource.view` |
 | Reset Session<br/>Reset a chat session and clear its context window. | `monitoring.session.reset`<br/>`workspace.monitoring.session.reset()` | High risk | `resource.manage` |
 | List Sessions<br/>List active and historical chat sessions across bots. | `monitoring.sessions`<br/>`workspace.monitoring.sessions()` | Read | `resource.view` |
 | Token Usage Statistics<br/>Query token consumption metrics aggregated by time buckets. | `monitoring.tokens`<br/>`workspace.monitoring.tokens()` | Read | `resource.view` |
 | Tool Call Metrics<br/>Query tool invocation history and execution performance. | `monitoring.tool_calls`<br/>`workspace.monitoring.tool_calls()` | Read | `resource.view` |
 
-### Pipeline (`pipeline`)
+### Chat (`pipeline`)
 
 | Operation | ID and method | Risk | Granting member needs |
 | --- | --- | --- | --- |
-| Broadcast Chat Message<br/>Broadcast a message to all active pipeline chat clients. | `pipeline.chat.broadcast`<br/>`workspace.pipeline.chat.broadcast()` | High risk | `runtime.operate` |
-| Pipeline Connections<br/>Inspect live websocket connection status for pipeline chat. | `pipeline.chat.connections`<br/>`workspace.pipeline.chat.connections()` | Read | `runtime.operate` |
-| Pipeline Chat History<br/>Retrieve debug chat message history for a pipeline session. | `pipeline.chat.history`<br/>`workspace.pipeline.chat.history()` | Read | `runtime.operate` |
-| Reset Chat Session<br/>Clear memory and chat history for a pipeline debug session. | `pipeline.chat.reset`<br/>`workspace.pipeline.chat.reset()` | High risk | `runtime.operate` |
-| Copy Pipeline<br/>Duplicate an existing pipeline to create a new copy. | `pipeline.copy`<br/>`workspace.pipeline.copy()` | Write | `resource.manage` |
-| Create Pipeline<br/>Create a new processing pipeline in the workspace. | `pipeline.create`<br/>`workspace.pipeline.create()` | Write | `resource.manage` |
-| Pipeline Defaults<br/>Get template defaults and initial values for new pipelines. | `pipeline.defaults`<br/>`workspace.pipeline.defaults()` | Read | `resource.view` |
-| Delete Pipeline<br/>Permanently delete a pipeline from the workspace. | `pipeline.delete`<br/>`workspace.pipeline.delete()` | High risk | `resource.manage` |
-| Get Pipeline Extensions<br/>Get bound plugins, MCP servers, and tools for a pipeline. | `pipeline.extensions.get`<br/>`workspace.pipeline.extensions.get()` | Read | `resource.view` |
-| Update Pipeline Extensions<br/>Update bound plugins, MCP servers, and tools on a pipeline. | `pipeline.extensions.update`<br/>`workspace.pipeline.extensions.update()` | Write | `resource.manage` |
-| Get Pipeline<br/>Get complete definition and node graph of a pipeline. | `pipeline.get`<br/>`workspace.pipeline.get()` | Read | `resource.view` |
-| List Pipelines<br/>List all message processing pipelines in the workspace. | `pipeline.list`<br/>`workspace.pipeline.list()` | Read | `resource.view` |
-| Pipeline Metadata<br/>Get available component types and node specifications. | `pipeline.metadata`<br/>`workspace.pipeline.metadata()` | Read | `resource.view` |
-| Run Pipeline<br/>Execute a pipeline run with custom input data. | `pipeline.run`<br/>`workspace.pipeline.run()` | Write | `runtime.operate` |
-| Update Pipeline<br/>Update topology, nodes, or settings of a pipeline. | `pipeline.update`<br/>`workspace.pipeline.update()` | Write | `resource.manage` |
+| Broadcast Chat Message<br/>Broadcast a message to all active Chat debug clients. | `pipeline.chat.broadcast`<br/>`workspace.pipeline.chat.broadcast()` | High risk | `runtime.operate` |
+| Chat Connections<br/>Inspect live websocket connection status for Chat debugging. | `pipeline.chat.connections`<br/>`workspace.pipeline.chat.connections()` | Read | `runtime.operate` |
+| Chat Debug History<br/>Retrieve debug chat message history for a Chat session. | `pipeline.chat.history`<br/>`workspace.pipeline.chat.history()` | Read | `runtime.operate` |
+| Reset Chat Session<br/>Clear memory and chat history for a Chat debug session. | `pipeline.chat.reset`<br/>`workspace.pipeline.chat.reset()` | High risk | `runtime.operate` |
+| Copy Chat<br/>Duplicate an existing Chat to create a new copy. | `pipeline.copy`<br/>`workspace.pipeline.copy()` | Write | `resource.manage` |
+| Create Chat<br/>Create a new Chat in the workspace. | `pipeline.create`<br/>`workspace.pipeline.create()` | Write | `resource.manage` |
+| Chat Defaults<br/>Get template defaults and initial values for new Chats. | `pipeline.defaults`<br/>`workspace.pipeline.defaults()` | Read | `resource.view` |
+| Delete Chat<br/>Permanently delete a Chat from the workspace. | `pipeline.delete`<br/>`workspace.pipeline.delete()` | High risk | `resource.manage` |
+| Get Chat Extensions<br/>Get bound plugins, MCP servers, and tools for a Chat. | `pipeline.extensions.get`<br/>`workspace.pipeline.extensions.get()` | Read | `resource.view` |
+| Update Chat Extensions<br/>Update bound plugins, MCP servers, and tools on a Chat. | `pipeline.extensions.update`<br/>`workspace.pipeline.extensions.update()` | Write | `resource.manage` |
+| Get Chat<br/>Get complete definition and node graph of a Chat. | `pipeline.get`<br/>`workspace.pipeline.get()` | Read | `resource.view` |
+| List Chats<br/>List all Chats in the workspace. | `pipeline.list`<br/>`workspace.pipeline.list()` | Read | `resource.view` |
+| Chat Metadata<br/>Get available component types and node specifications. | `pipeline.metadata`<br/>`workspace.pipeline.metadata()` | Read | `resource.view` |
+| Run Chat<br/>Execute a Chat run with custom input data. | `pipeline.run`<br/>`workspace.pipeline.run()` | Write | `runtime.operate` |
+| Update Chat<br/>Update topology, nodes, or settings of a Chat. | `pipeline.update`<br/>`workspace.pipeline.update()` | Write | `resource.manage` |
 
 ### Plugin (`plugin`)
 
@@ -289,7 +289,7 @@ This reference covers every operation a plugin can request in the current LangBo
 
 | Operation | ID and method | Risk | Granting member needs |
 | --- | --- | --- | --- |
-| Basic Statistics<br/>Get workspace overview counters for bots, models, and pipelines. | `stats.basic`<br/>`workspace.stats.basic()` | Read | `resource.view` |
+| Basic Statistics<br/>Get workspace overview counters for bots, models, and Chats. | `stats.basic`<br/>`workspace.stats.basic()` | Read | `resource.view` |
 
 ### Task (`task`)
 

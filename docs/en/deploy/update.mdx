@@ -54,3 +54,14 @@ This command will pull the latest LangBot image and rebuild the container.
 ## Manual Deployment
 
 Download the latest release's `langbot-<version>-all.zip` from the Assets section on the [Releases](https://github.com/langbot-app/LangBot/releases) page, extract it to the original deployment directory, and restart.
+
+## Upgrade Notes (Message Policy, System Commands & Chat Rename)
+
+If you are upgrading from 4.11 or earlier (with "Pipelines" and legacy global command config), migrations preserve existing behavior automatically. Review these changes after upgrading:
+
+- **"Pipeline" renamed to "Chat"**: User-facing labels in WebUI and docs now say **Chat** instead of Pipeline; stored data, routes, and underlying API/CLI identifiers stay compatible.
+- **Message policy moved from Chats to bots**: Trigger (group response rules, blacklist/whitelist, ignore rules, message aggregation), safety (content filter, rate limit), and general output settings now live under each bot's **Event routing → Message policy** and apply to Chats, Agents, and plugin commands alike. After upgrading, existing bots start with a neutral bot default (block nothing, change nothing) and copy each routed pipeline's former settings as a route override so behavior stays unchanged.
+- **Plugins are enabled on bots**: Enable plugins under the bot's **Event routing → Plugins & commands** tab to control which plugins run commands and chat event hooks (formerly EventListener). The plugin list inside a Chat now only governs which tools the AI can invoke. Migrations carry over plugin selections from routed pipelines and include command-bound plugins.
+- **Built-in system commands replace `EssentialCommands`**: 12 built-in system commands (`/help`, `/new`/`/reset`, `/stop`, `/retry`, `/undo`, `/whoami`, `/status`, `/usage`, `/model`, `/tools`, `/plugins`, `/version`) are built in and take precedence over same-named plugin commands; the default prefix for new bots is `/`. If your instance previously configured `!` or `！` in `data/config.yaml`, use the Upgrade Check Assistant to keep those prefixes or customize per bot.
+- **Configure bot admins in Session Monitoring**: The legacy `command_settings.admins` configuration is retired. Admin-only system and plugin commands now check the bot's admin list configured in **Sessions** (use `/whoami` to inspect sender IDs such as `person_10001`). An empty admin list grants nobody admin access.
+- **Upgrade Check Assistant**: After upgrading, the **Upgrade checks** banner at the top of the Bots and Chats pages lists prefix changes, colliding plugin commands or an installed `EssentialCommands` plugin, bots missing admins, newly enabled command plugins, equivalent route overrides that can be promoted to the bot default, and moved Chat settings—with one-click actions and confirmations.

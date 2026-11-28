@@ -312,7 +312,7 @@ async def test_workspace_call_write_approval_and_read_direct(assistant_env):
     assert pending_item['arguments']['operation_id'] == 'pipeline.copy'
     assert pending_item['operation']['id'] == 'pipeline.copy'
     assert pending_item['operation']['risk'] == 'write'
-    assert pending_item['operation']['label']['zh_Hans'] == '复制流水线'
+    assert pending_item['operation']['label']['zh_Hans'] == '复制聊天'
 
     # 2. User approves -> executes
     res_approve = await service.turn(ctx, conv['uuid'], 1, approved=True)

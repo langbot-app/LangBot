@@ -543,7 +543,8 @@
                   "en/deploy/settings",
                   "en/deploy/alerts",
                   "en/deploy/update",
-                  "en/deploy/command"
+                  "en/deploy/command",
+                  "en/deploy/system-commands"
                 ]
               },
               {
@@ -1036,7 +1037,8 @@
                   "zh/deploy/settings",
                   "zh/deploy/alerts",
                   "zh/deploy/update",
-                  "zh/deploy/command"
+                  "zh/deploy/command",
+                  "zh/deploy/system-commands"
                 ]
               },
               {
@@ -1557,7 +1559,8 @@
                   "ja/deploy/settings",
                   "ja/deploy/alerts",
                   "ja/deploy/update",
-                  "ja/deploy/command"
+                  "ja/deploy/command",
+                  "ja/deploy/system-commands"
                 ]
               },
               {

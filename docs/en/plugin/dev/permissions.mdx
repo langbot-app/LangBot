@@ -3,7 +3,7 @@ title: Plugin permissions
 description: Declare what your plugin needs, and understand how Workspace members confirm and revoke that access.
 ---
 
-A plugin can do far more than reply to messages: it can call models, read knowledge bases, send messages through any bot, or manage Agents and Pipelines through the [Workspace API](/en/plugin/dev/apis/workspace). Because every installation runs inside one Workspace, LangBot asks plugins to say up front which of these abilities they need, and asks a Workspace member to approve them.
+A plugin can do far more than reply to messages: it can call models, read knowledge bases, send messages through any bot, or manage Agents and Chats through the [Workspace API](/en/plugin/dev/apis/workspace). Because every installation runs inside one Workspace, LangBot asks plugins to say up front which of these abilities they need, and asks a Workspace member to approve them.
 
 The flow has three steps:
 
@@ -96,11 +96,11 @@ Each capability unlocks a group of SDK methods. The member confirming it needs t
 
 Two notes on tools. When your plugin calls another plugin's tool, that tool runs with **its own** installation's grants, not yours. And a capability is checked per tool source: `plugin_tools` alone does not let you call an MCP or sandbox tool.
 
-Calls that act only on the event or run your plugin is currently handling need no capability. Replying to the triggering conversation, reading the current query's variables, or using the tools LangBot provides to a Runner are all authorized by that event or run, not by the installation. See [Agent run API](/en/plugin/dev/apis/agent-run) and [Pipeline event API](/en/plugin/dev/apis/pipeline-events).
+Calls that act only on the event or run your plugin is currently handling need no capability. Replying to the triggering conversation, reading the current query's variables, or using the tools LangBot provides to a Runner are all authorized by that event or run, not by the installation. See [Agent run API](/en/plugin/dev/apis/agent-run) and [Message lifecycle event API](/en/plugin/dev/apis/pipeline-events).
 
 ## Confirming an installation
 
-The following paths are started by the signed-in member and confirm every declared permission right after installing, so they never stop at **Needs approval**: the setup wizard (when automatic approval is checked), installing a Runner or event processor directly from an Agent or Pipeline form, installing a knowledge engine directly from a knowledge base form, and the Pipeline and knowledge base migrations. Automatic confirmation follows the same "who may confirm" rules below; if the member lacks a required permission, the install task fails and says why.
+The following paths are started by the signed-in member and confirm every declared permission right after installing, so they never stop at **Needs approval**: the setup wizard (when automatic approval is checked), installing a Runner or event processor directly from an Agent or Chat form, installing a knowledge engine directly from a knowledge base form, and the Chat and knowledge base migrations. Automatic confirmation follows the same "who may confirm" rules below; if the member lacks a required permission, the install task fails and says why.
 
 On any other path, a newly installed or upgraded plugin that needs confirmation shows **Needs approval** in the plugin list and on its detail page, and stays disabled. A member opens **Plugin permissions** on the detail page, reviews the requested permissions, unchecks anything they do not want to grant, and selects **Grant**. Dangerous capabilities and the ability to send messages are highlighted in the confirmation dialog.
 
@@ -116,11 +116,11 @@ Grants belong to the installation, not to the member. They stay in place if the 
 
 ### Installing with automatic confirmation
 
-The setup wizard and Pipeline migration install official plugins and confirm their declared permissions in one step. They go through the same checks as a manual confirmation: the caller must be a member and must hold every required permission. If any check fails, the plugin is still installed but stays pending. Over HTTP this corresponds to `auto_confirm_permissions: true` on `POST /api/v1/plugins/install/marketplace`; the default is `false`, and API keys cannot use it to bypass member confirmation.
+The setup wizard and Chat migration install official plugins and confirm their declared permissions in one step. They go through the same checks as a manual confirmation: the caller must be a member and must hold every required permission. If any check fails, the plugin is still installed but stays pending. Over HTTP this corresponds to `auto_confirm_permissions: true` on `POST /api/v1/plugins/install/marketplace`; the default is `false`, and API keys cannot use it to bypass member confirmation.
 
 ### Installs requested by plugins and Agents
 
-A plugin, or an Agent or Pipeline through its workspace tools, can find plugins with `plugin.marketplace.search` and install them with `plugin.install.marketplace` once a member has granted those operations. Installing is marked **High risk**, so selecting it for an Agent or Pipeline shows the sensitive-tool warning. These callers can only add new installations from the marketplace:
+A plugin, or an Agent or Chat through its workspace tools, can find plugins with `plugin.marketplace.search` and install them with `plugin.install.marketplace` once a member has granted those operations. Installing is marked **High risk**, so selecting it for an Agent or Chat shows the sensitive-tool warning. These callers can only add new installations from the marketplace:
 
 - `auto_confirm_permissions: true` is rejected with `permission_denied`. The new plugin stays disabled until a member confirms its permissions on the plugin's detail page.
 - Installing a plugin that is already installed fails with `plugin_already_installed`; upgrading or reinstalling stays with members.
@@ -139,9 +139,9 @@ When a plugin is upgraded:
 - Permissions the new version adds stay ungranted until a member confirms them, and the installation shows **Needs approval** again.
 - Permissions the new version no longer declares stop being effective immediately.
 
-## How grants combine with Agent and Pipeline settings
+## How grants combine with Agent and Chat settings
 
-Choosing tools for an Agent or a Pipeline does not grant anything. It only narrows what the model sees. A Runner such as LocalAgent offers the model the intersection of the tools selected in the Agent (or the Pipeline's **Extensions** page) and the operations granted to the Runner's installation. If nothing is selected, the model gets no workspace tools.
+Choosing tools for an Agent or a Chat does not grant anything. It only narrows what the model sees. A Runner such as LocalAgent offers the model the intersection of the tools selected in the Agent (or the Chat's **Extensions** page) and the operations granted to the Runner's installation. If nothing is selected, the model gets no workspace tools.
 
 This is why a member who can edit an Agent may select a workspace operation they could not grant themselves: the selection has no effect unless a member with enough permissions has already granted that operation to the Runner plugin.
 

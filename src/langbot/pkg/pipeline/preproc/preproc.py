@@ -10,7 +10,7 @@ import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 from ...pipeline.pool import get_query_execution_context
 
-from ...agent.runner.descriptor import RunnerDescriptor
+from ...agent.runner.descriptor import RunnerDescriptor, is_local_agent
 from ...agent.runner.config_resolver import RunnerConfigResolver
 from ...agent.runner import config_schema, input_media
 from ...agent.runner.resource_policy import ResourcePolicyProjector
@@ -227,6 +227,15 @@ class PreProcessor(stage.PipelineStage):
         llm_model = None
         if uses_host_models:
             primary_uuid, fallback_uuids = config_schema.extract_model_selection(descriptor, runner_config)
+            override = getattr(session, '_command_model_uuid', None)
+            if override and is_local_agent(descriptor):
+                primary_uuid = override
+                ai = query.pipeline_config['ai']
+                runner_config = {**runner_config, 'model': {'primary': override, 'fallbacks': fallback_uuids}}
+                query.pipeline_config = {
+                    **query.pipeline_config,
+                    'ai': {**ai, 'runner_config': {**ai.get('runner_config', {}), runner_id: runner_config}},
+                }
             llm_model = await self._resolve_llm_model(query, primary_uuid)
             valid_fallbacks = await self._resolve_fallback_models(query, fallback_uuids)
             if valid_fallbacks:
@@ -388,7 +397,7 @@ class PreProcessor(stage.PipelineStage):
         )
 
         # Get bound plugins for filtering
-        bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+        bound_plugins = getattr(query, '_listener_plugins', None)
         event_ctx = await self.ap.plugin_connector.emit_event(event, bound_plugins)
 
         query.prompt.messages = event_ctx.event.default_prompt

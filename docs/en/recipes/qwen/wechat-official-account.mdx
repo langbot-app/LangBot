@@ -3,7 +3,7 @@ title: "Build a WeChat Official Account AI Bot with Qwen"
 description: "Step-by-step guide to running a Qwen-powered AI bot on WeChat Official Account with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
 ---
 
-This recipe puts a Qwen model behind a WeChat Official Account bot. LangBot receives messages from WeChat Official Account, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+This recipe puts a Qwen model behind a WeChat Official Account bot. LangBot receives messages from WeChat Official Account, runs them through a Chat, and sends the answer back, so you do not write any platform code.
 
 Use Alibaba Cloud's Qwen models through Model Studio (DashScope) with LangBot's built-in Agent.
 
@@ -24,9 +24,9 @@ Official Accounts require a public domain with HTTPS and must get a response wit
 3. Enable **Tool Use** if the model supports function calling; MCP tools, Skills and the sandbox need it.
 4. Use a Qwen model ID listed in Model Studio.
 
-## 2. Create a pipeline
+## 2. Create a Chat
 
-Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+Open **Chats** in the LangBot WebUI, create a Chat (or edit the default one) and set **AI** as follows.
 
 | Field | Value |
 | --- | --- |
@@ -42,7 +42,7 @@ Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default 
 
 ## 4. Bind and test
 
-Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+Open the bot, select the Chat you created, save and make sure the bot is enabled.
 
 Follow the account in WeChat and send it a message.
 
@@ -51,7 +51,7 @@ Follow the account in WeChat and send it a message.
 - International accounts use a different DashScope endpoint; copy the OpenAI-compatible URL shown in your console.
 - Users see the loading message but no answer: in `passive` mode (or after `auto` falls back) the user must send another message to retrieve the queued answer.
 - Customer service messages require an enterprise-verified account; identity verification alone is not enough.
-- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+- Check **Monitoring** in the WebUI: every message, Chat run and error is recorded there.
 
 ## FAQ
 
@@ -65,7 +65,7 @@ Check the [platform feature matrix](/en/insight/platform-features) for what this
 
 ### Can the same Qwen setup serve other platforms too?
 
-Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+Yes. A Chat can be bound to many bots, so one configuration can answer on several platforms at once.
 
 ## Related guides
 

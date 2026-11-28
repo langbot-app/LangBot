@@ -57,7 +57,7 @@ setup_provides_env:
   - LANGBOT_FAKE_PROVIDER_PIPELINE_URL
   - LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
 steps:
-  - "Create a QA pipeline with a failing primary model and a healthy fallback model on the controlled provider."
+  - "Create a QA Chat with a failing primary model and a healthy fallback model on the controlled provider."
   - "Send one streaming Debug Chat request with a unique response token."
   - "Inspect provider request records and require both the failed primary request and the successful fallback request."
 checks:

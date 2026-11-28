@@ -140,7 +140,10 @@ async function setup(
     }),
   );
   await page.goto('/home/pipelines?id=preserve');
-  await page.getByRole('tab', { name: 'AI', exact: true }).click();
+  // Chat settings are a single page; wait for the editor instead of an AI tab.
+  await expect(
+    page.getByRole('button', { name: 'Save', exact: true }),
+  ).toBeVisible();
   return { writes, raw, id };
 }
 
@@ -168,7 +171,10 @@ test('explicit reasoning choices persist independently for primary and fallback 
     },
   });
   await page.reload();
-  await page.getByRole('tab', { name: 'AI', exact: true }).click();
+  // Chat settings are a single page; wait for the editor instead of an AI tab.
+  await expect(
+    page.getByRole('button', { name: 'Save', exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole('button', {
       name: 'Reasoning level: Use provider default',

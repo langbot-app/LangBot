@@ -570,6 +570,16 @@ async def test_sdk_recovery_dispatches_new_attempt_and_preserves_source(
         async def process(self, query, stage_name):
             raise AssertionError('Recovery must not execute the MessageProcessor twice')
 
+    from langbot.pkg.message_policy import schema as policy_schema
+    from langbot.pkg.message_policy.manager import MessagePolicyManager
+
+    # Since the message policy refactor, output and safety settings live on the
+    # bot route that the migration derives from this legacy pipeline config.
+    ap.message_policy_mgr = MessagePolicyManager(ap)
+    _, route_override = policy_schema.split_legacy_config(config)
+    route_policy = await ap.message_policy_mgr.compile(policy_schema.resolve_policy(None, route_override))
+    ap.message_policy_mgr.get_runtime = AsyncMock(return_value=route_policy)
+
     ap.pipeline_mgr = PipelineManager(ap)
     ap.pipeline_mgr.stage_dict = {
         'MessageProcessor': UnusedProcessor,
@@ -581,7 +591,7 @@ async def test_sdk_recovery_dispatches_new_attempt_and_preserves_source(
     ap.sess_mgr = SimpleNamespace(get_session=AsyncMock(side_effect=lambda execution_query: execution_query.session))
 
     async def emit_event(event, bound_plugins):
-        assert bound_plugins == ['langbot-team/LocalAgent']
+        assert bound_plugins is None
         assert event.response_text == 'MASKED'
         event.reply_message_chain = message.MessageChain([message.Plain(text='wrapped:' + event.response_text)])
         return EventContext.from_event(event)

@@ -30,6 +30,7 @@ AggregationKey = tuple[
     str | None,
     str,
     int | str,
+    str | None,
 ]
 
 
@@ -48,7 +49,9 @@ class PendingMessage:
     pipeline_uuid: str | None
     routed_by_rule: bool = False
     variables: dict[str, typing.Any] | None = None
+    route_id: str | None = None
     timestamp: float = field(default_factory=time.time)
+    entry_query: typing.Any = None
 
 
 @dataclass
@@ -91,6 +94,7 @@ class MessageAggregator:
         launcher_type: provider_session.LauncherTypes,
         launcher_id: int | str,
         pipeline_uuid: str | None,
+        route_id: str | None = None,
     ) -> AggregationKey:
         """Build a key that cannot alias another Workspace, bot, or pipeline."""
 
@@ -102,14 +106,21 @@ class MessageAggregator:
             pipeline_uuid,
             launcher_type.value,
             launcher_id,
+            route_id,
         )
 
     async def _get_aggregation_config(
         self,
         execution_context: ExecutionContext,
         pipeline_uuid: str | None,
+        bot_uuid: str | None = None,
+        route_id: str | None = None,
     ) -> tuple[bool, float]:
-        """Return aggregation enablement and a clamped debounce delay."""
+        """Return aggregation enablement and a clamped debounce delay.
+
+        Aggregation is part of the message policy of the route the message
+        matched; a message with no Messaging target is never aggregated.
+        """
 
         default_enabled = False
         default_delay = 1.5
@@ -117,16 +128,16 @@ class MessageAggregator:
         if pipeline_uuid is None:
             return default_enabled, default_delay
 
-        pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(
-            execution_context,
-            pipeline_uuid,
-        )
-        if pipeline is None:
+        policy_mgr = getattr(self.ap, 'message_policy_mgr', None)
+        if policy_mgr is None:
             return default_enabled, default_delay
-
-        config = pipeline.pipeline_entity.config or {}
-        trigger_config = config.get('trigger', {})
-        aggregation_config = trigger_config.get('message-aggregation', {})
+        policy = policy_mgr.effective_policy(
+            execution_context,
+            bot_uuid,
+            route_id=route_id,
+            pipeline_uuid=pipeline_uuid,
+        )
+        aggregation_config = policy.get('trigger', {}).get('message-aggregation', {})
         enabled = aggregation_config.get('enabled', default_enabled)
 
         delay_raw = aggregation_config.get('delay', default_delay)
@@ -150,6 +161,7 @@ class MessageAggregator:
         routed_by_rule: bool = False,
         execution_context: ExecutionContext | None = None,
         variables: dict[str, typing.Any] | None = None,
+        route_id: str | None = None,
     ) -> None:
         """Buffer or directly enqueue a message in its trusted Workspace."""
 
@@ -158,7 +170,12 @@ class MessageAggregator:
             bot_uuid=bot_uuid,
             pipeline_uuid=pipeline_uuid,
         )
-        enabled, delay = await self._get_aggregation_config(execution_context, pipeline_uuid)
+        enabled, delay = await self._get_aggregation_config(
+            execution_context,
+            pipeline_uuid,
+            bot_uuid=bot_uuid,
+            route_id=route_id,
+        )
         if variables:
             enabled = False
 
@@ -185,6 +202,7 @@ class MessageAggregator:
                 routed_by_rule=routed_by_rule,
                 execution_context=execution_context,
                 variables=variables,
+                route_id=route_id,
             )
             return
 
@@ -194,8 +212,10 @@ class MessageAggregator:
             launcher_type,
             launcher_id,
             pipeline_uuid,
+            route_id,
         )
         pending_msg = PendingMessage(
+            entry_query=getattr(message_event, '_entry_query', None),
             execution_context=execution_context,
             bot_uuid=bot_uuid,
             launcher_type=launcher_type,
@@ -207,6 +227,7 @@ class MessageAggregator:
             pipeline_uuid=pipeline_uuid,
             routed_by_rule=routed_by_rule,
             variables=variables,
+            route_id=route_id,
         )
 
         force_flush = False
@@ -265,6 +286,7 @@ class MessageAggregator:
                 routed_by_rule=routed_by_rule,
                 execution_context=execution_context,
                 variables=variables,
+                route_id=route_id,
             )
             return
 
@@ -329,6 +351,8 @@ class MessageAggregator:
                 raise WorkspaceInvariantError('Aggregation buffer instance does not match the active Workspace binding')
         except BaseException as exc:
             for pending in buffer.messages:
+                if pending.entry_query is not None:
+                    await self.ap.query_pool.remove_query(pending.entry_query)
                 telemetry_execution.release_handoff(
                     self.ap, pending.variables, error=telemetry_execution.describe_exception(exc)
                 )
@@ -336,6 +360,8 @@ class MessageAggregator:
         # Events folded into the first message's query close as merged into it.
         merged_into = str((message.variables or {}).get(telemetry_execution.HANDOFF_EVENT_KEY) or '')
         for pending in buffer.messages[1:]:
+            if pending.entry_query is not None:
+                await self.ap.query_pool.remove_query(pending.entry_query)
             telemetry_execution.release_handoff(self.ap, pending.variables, merged_into=merged_into)
         await self._enqueue_or_release(
             message.variables,
@@ -350,12 +376,21 @@ class MessageAggregator:
             routed_by_rule=message.routed_by_rule,
             execution_context=message.execution_context,
             variables=message.variables,
+            route_id=message.route_id,
         )
 
     async def _enqueue_or_release(self, handoff, **query) -> None:
         """Enqueue a query; release its telemetry handoff if it never queues."""
         try:
-            await self.ap.query_pool.add_query(**query)
+            existing = getattr(query['message_event'], '_entry_query', None)
+            if existing is None:
+                await self.ap.query_pool.add_query(**query)
+            else:
+                existing.variables.update(query.get('variables') or {})
+                existing.variables['_routed_by_rule'] = query['routed_by_rule']
+                existing.message_chain = query['message_chain']
+                existing.message_event.message_chain = existing.message_chain
+                await self.ap.query_pool.enqueue_registered(existing)
         except BaseException as exc:
             from ..telemetry import execution as telemetry_execution
 
@@ -377,6 +412,7 @@ class MessageAggregator:
             base_msg.launcher_type,
             base_msg.launcher_id,
             base_msg.pipeline_uuid,
+            base_msg.route_id,
         )
         for message in messages[1:]:
             message_key = self._get_aggregation_key(
@@ -385,6 +421,7 @@ class MessageAggregator:
                 message.launcher_type,
                 message.launcher_id,
                 message.pipeline_uuid,
+                message.route_id,
             )
             if message_key != base_key or message.execution_context != base_msg.execution_context:
                 raise ExecutionContextMismatchError('Cannot merge pending messages from different execution scopes')
@@ -397,6 +434,7 @@ class MessageAggregator:
                 merged_chain.append(component)
 
         return PendingMessage(
+            entry_query=base_msg.entry_query,
             execution_context=base_msg.execution_context,
             bot_uuid=base_msg.bot_uuid,
             launcher_type=base_msg.launcher_type,
@@ -408,6 +446,7 @@ class MessageAggregator:
             pipeline_uuid=base_msg.pipeline_uuid,
             routed_by_rule=any(message.routed_by_rule for message in messages),
             variables=base_msg.variables,
+            route_id=base_msg.route_id,
         )
 
     async def flush_all(self) -> None:

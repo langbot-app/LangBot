@@ -12,7 +12,7 @@ export default {
   installDetails: '安装详情',
   stageProgress: '阶段进度',
   downloaded: '已下载 {{size}}',
-  processed: '已处理 {{completed}} / {{total}} 条流水线',
+  processed: '已处理 {{completed}} / {{total}} 个聊天',
   installErrors: {
     plugin_permission_confirmation_required:
       '无法确认插件权限。请有相应权限的成员在插件设置中确认后重试。',
@@ -25,19 +25,19 @@ export default {
     plugin_launch_failed: '插件启动失败，请检查运行时环境后重试。',
   },
   autoDescription:
-    '旧版运行方式已改为插件。迁移全部流水线并保留现有设置，原配置会自动备份；迁移后开始新会话。',
-  viewPipelines: '查看流水线',
+    '旧版运行方式已改为插件。迁移全部聊天并保留现有设置，原配置会自动备份；迁移后开始新会话。',
+  viewPipelines: '查看聊天',
   autoInstall: '自动安装插件并迁移',
   dataOnly: '仅迁移数据',
   dataOnlyHint: '适合离线或内网环境，迁移后请自行安装对应的运行器插件。',
   installing: '正在安装所需插件…',
-  migrating: '正在迁移流水线…',
-  summary: '已迁移 {{migrated}} 条，{{remaining}} 条需要处理。',
+  migrating: '正在迁移聊天…',
+  summary: '已迁移 {{migrated}} 个，{{remaining}} 个需要处理。',
   installFailed:
     '插件安装失败。展开详情查看失败阶段，处理后重试，或选择仅迁移数据。',
 
   activationRetryHint:
-    '检查运行环境后刷新，选中此流水线并确认，即可仅重试激活，不会再次迁移已保存的配置。',
+    '检查运行环境后刷新，选中此聊天并确认，即可仅重试激活，不会再次迁移已保存的配置。',
   details: '迁移详情',
   notices: {
     customRunner:
@@ -49,7 +49,7 @@ export default {
     mixedRunner: '同时存在新旧 Runner 选择，已采用可用的那一项。',
     runnerConfigReplaced:
       '已有的新版 Runner 配置会被迁移结果替换，原值保存在迁移备份中。',
-    runnerAdded: '已将所需 Runner 插件加入此流水线的扩展列表。',
+    runnerAdded: '已将所需 Runner 插件加入此聊天的扩展列表。',
     extensionPrefs: '扩展设置中有无效项，已忽略。',
     runtimeUnavailable:
       '插件运行时未连接，请恢复连接后重试，或选择仅迁移数据。',
@@ -80,18 +80,18 @@ export default {
     pluginVersion: '请安装所需插件版本后刷新。旧版本不支持此次迁移。',
     schemaChanged:
       '已安装 Runner 的配置格式与迁移目标不一致，请检查插件版本后刷新。',
-    runnerExcluded: '此流水线排除了所需 Runner 插件，请先调整扩展设置。',
+    runnerExcluded: '此聊天排除了所需 Runner 插件，请先调整扩展设置。',
     boxTemplateInvalid:
       '沙箱复用模板格式有误，请使用 {变量名}；不支持位置参数、格式转换或属性访问。',
     pendingInteraction: '有会话正在等待输入，请完成或取消后再迁移。',
   },
-  title: '流水线迁移',
-  description: '选择要迁移的流水线。原配置会备份，迁移后将开始新会话。',
-  detected: '{{count}} 条流水线需要检查迁移。',
+  title: '聊天迁移',
+  description: '选择要迁移的聊天。原配置会备份，迁移后将开始新会话。',
+  detected: '{{count}} 个聊天需要检查迁移。',
   review: '检查迁移',
-  readOnly: '只有工作空间管理者可以迁移流水线。',
+  readOnly: '只有工作空间管理者可以迁移聊天。',
   previewError: '无法获取预览，请刷新重试。',
-  submitting: '正在提交所选流水线…',
+  submitting: '正在提交所选聊天…',
   running: '正在迁移。关闭对话框不会取消任务。',
   finished: '任务已结束，请逐条检查下方结果。',
   failed: '任务失败，请逐条检查下方结果。',
@@ -105,10 +105,10 @@ export default {
   pluginHint: '缺少插件？前往扩展安装或启用对应运行器，然后刷新预览。',
   extensions: '打开扩展',
   results: '逐条迁移结果',
-  selection: '已选择 {{count}} 条（最多 50 条）',
-  confirm: '我确认迁移所选流水线。',
+  selection: '已选择 {{count}} 个（最多 50 个）',
+  confirm: '我确认迁移所选聊天。',
   refresh: '刷新预览',
-  execute: '迁移所选流水线',
+  execute: '迁移所选聊天',
   legacyGate: '旧版配置在迁移前保持只读。为避免隐式转换，已禁用保存和调试。',
   states: {
     ready: '可迁移',

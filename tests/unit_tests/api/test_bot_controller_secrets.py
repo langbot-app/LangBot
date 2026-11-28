@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 import quart
+from contextlib import nullcontext
 
 from langbot.pkg.api.http.controller.groups.platform.bots import BotsRouterGroup
 
@@ -69,6 +70,39 @@ async def create_client(*, role: str):
     router = BotsRouterGroup(application, quart_app)
     await router.initialize()
     return quart_app.test_client(), bot_service
+
+
+async def test_registrations_for_runtime_without_query_action():
+    from langbot.pkg.api.http.service.bot import BotService
+    from langbot.pkg.plugin.connector import PluginRuntimeConnector
+    from langbot.pkg.plugin.handler import RuntimeConnectionHandler
+    from langbot_plugin.entities.io.errors import ActionCallError
+
+    handler = object.__new__(RuntimeConnectionHandler)
+    handler.installation_scope = lambda binding: nullcontext()
+
+    async def unknown_action(action, payload, timeout):
+        raise ActionCallError(f'Action {action.value} not found')
+
+    handler.call_action = AsyncMock(side_effect=unknown_action)
+    connector = SimpleNamespace(
+        is_enable_plugin=True,
+        _runtime_available=lambda: True,
+        _runtime_handler=lambda: handler,
+        _operation_bindings=AsyncMock(return_value=['installation']),
+        require_workspace_context=AsyncMock(),
+    )
+    connector.list_plugin_registrations = PluginRuntimeConnector.list_plugin_registrations.__get__(connector)
+    service = BotService(SimpleNamespace(plugin_connector=connector))
+    service.get_bot = AsyncMock(return_value={})
+    client, router_service = await create_client(role='viewer')
+    router_service.get_plugin_registrations = service.get_plugin_registrations
+    response = await client.get(
+        '/api/v1/platform/bots/bot-test/plugin-registrations', headers={'Authorization': 'Bearer test-token'}
+    )
+    assert response.status_code == 200
+    assert (await response.get_json())['data'] == {'plugins': None}
+    handler.call_action.assert_awaited_once()
 
 
 async def test_viewer_list_and_detail_never_receive_adapter_credentials():

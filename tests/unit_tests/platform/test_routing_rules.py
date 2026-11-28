@@ -46,6 +46,7 @@ class TestEventRouteTrace:
         bot.workspace_uuid = TEST_CONTEXT.workspace_uuid
         bot.placement_generation = TEST_CONTEXT.placement_generation
         bot.logger = SimpleNamespace(
+            debug=AsyncMock(),
             info=AsyncMock(),
             warning=AsyncMock(),
             error=AsyncMock(),
@@ -121,7 +122,7 @@ class TestEventRouteTrace:
         assert metadata['event_data']['message_chain'] == [{'type': 'Plain', 'text': 'hello'}]
         assert metadata['event_data']['sender']['id'] == 'user-1'
         assert 'source_platform_object' not in metadata['event_data']
-        bot.logger.info.assert_awaited_once_with(
+        bot.logger.debug.assert_awaited_once_with(
             'Platform adapter received message.received',
             metadata=metadata,
         )

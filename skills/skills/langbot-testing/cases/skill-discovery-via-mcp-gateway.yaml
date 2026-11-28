@@ -21,7 +21,7 @@ env:
   - LANGBOT_ACP_RUNNER_PIPELINE_URL
   - LANGBOT_ACP_RUNNER_PIPELINE_NAME
 preconditions:
-  - "An external-harness runner pipeline (e.g. ACP remote claude-code) is configured with langbot-assets-enabled=true so the LangBot MCP gateway is exposed to the harness."
+  - "An external-harness runner Chat (e.g. ACP remote claude-code) is configured with langbot-assets-enabled=true so the LangBot MCP gateway is exposed to the harness."
   - "The remote harness (claude-code) is reachable and responsive (claude -p returns within the runner timeout)."
   - "At least one pipeline-visible skill exists in the Box skill store (otherwise the count is 0, which is still a valid pass for the discovery surface)."
 automation: scripts/e2e/pipeline-debug-chat.mjs

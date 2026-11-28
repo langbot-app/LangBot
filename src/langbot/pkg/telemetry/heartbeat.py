@@ -85,6 +85,45 @@ async def _workspace_agent_kind_counts(ap: core_app.Application, workspace_uuid:
     return counts
 
 
+def _message_policy_counts(bots):
+    from ..message_policy import schema
+    from ..command.catalog import DESCRIPTIONS
+    from ..command.permissions import builtin_settings
+
+    counts = dict.fromkeys(
+        (
+            'non_neutral_policy_bots',
+            'commands_disabled_bots',
+            'custom_prefix_bots',
+            'builtin_disabled_bots',
+            'silent_denial_bots',
+            'all_plugins_bots',
+            'route_policy_overrides',
+        ),
+        0,
+    )
+    neutral = schema.neutral_policy()
+    for bot in bots:
+        entity = getattr(bot, 'bot_entity', bot)
+        policy = schema.resolve_policy(getattr(entity, 'message_policy', None))
+        settings = getattr(entity, 'command_settings', None) or {}
+        counts['non_neutral_policy_bots'] += policy != neutral
+        counts['commands_disabled_bots'] += not settings.get('enabled', True)
+        counts['custom_prefix_bots'] += settings.get('prefixes', ['/']) != ['/']
+        # Only a built-in that is on by default and turned off counts: /model is
+        # off by default, so "any disabled" would count every bot.
+        counts['builtin_disabled_bots'] += any(
+            builtin_settings({}, name)['enabled'] and not builtin_settings(settings, name)['enabled']
+            for name in DESCRIPTIONS
+        )
+        counts['silent_denial_bots'] += settings.get('denied_reply', 'silent') == 'silent'
+        counts['all_plugins_bots'] += schema.enabled_plugins(policy) is None
+        counts['route_policy_overrides'] += sum(
+            bool(route.get('policy')) for route in getattr(entity, 'event_bindings', None) or []
+        )
+    return counts
+
+
 def _bot_processor_counts(bots) -> tuple[int, int]:
     """Count plugin-processor subscriptions and event bindings across bots."""
     processors = 0
@@ -134,6 +173,7 @@ async def _cloud_workspace_resource_counts(ap: core_app.Application, bindings) -
     counts: dict[str, WorkspaceResourceSnapshot] = {
         binding.workspace_uuid: {
             'workspace_uuid': binding.workspace_uuid,
+            **_message_policy_counts([]),
             'bot_count': 0,
             'pipeline_count': 0,
             'knowledge_base_count': 0,
@@ -155,6 +195,8 @@ async def _cloud_workspace_resource_counts(ap: core_app.Application, bindings) -
     for key, bot in getattr(ap.platform_mgr, '_bots_by_key', {}).items():
         if len(key) >= 2 and key[1] in counts:
             counts[key[1]]['bot_count'] += 1
+            for metric, count in _message_policy_counts([bot]).items():
+                counts[key[1]][metric] += count
             processors, bindings = _bot_processor_counts([bot])
             counts[key[1]]['plugin_processor_count'] += processors
             counts[key[1]]['event_binding_count'] += bindings
@@ -232,6 +274,7 @@ async def build_heartbeat_payload(
         if platform_mgr is not None and getattr(platform_mgr, 'bots', None) is not None:
             enabled_bots = [bot for bot in platform_mgr.bots if getattr(bot, 'enable', False)]
             features['bot_count'] = len(platform_mgr.bots)
+            features.update(_message_policy_counts(platform_mgr.bots))
             adapters = sorted({bot.adapter.__class__.__name__ for bot in enabled_bots if getattr(bot, 'adapter', None)})
             features['adapters'] = adapters
             processors, bindings = _bot_processor_counts(platform_mgr.bots)

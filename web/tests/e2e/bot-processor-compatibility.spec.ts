@@ -87,6 +87,14 @@ async function setup(page: Page, events?: string[]) {
   );
   await page.goto('/home/bots?id=compatibility-bot');
   await expect(
+    page.getByRole('button', { name: 'Add behavior', exact: true }),
+  ).toBeVisible({ timeout: 20_000 });
+}
+
+// Plugin processors live on the bot's Plugins tab.
+async function openPluginsTab(page: Page) {
+  await page.getByRole('tab', { name: 'Plugins' }).click();
+  await expect(
     page.getByRole('button', { name: 'Add plugin processor', exact: true }),
   ).toBeVisible();
 }
@@ -95,6 +103,7 @@ test('partial support warns in existing choices and saved bindings, and changes 
   page,
 }) => {
   await setup(page, ['message.received']);
+  await openPluginsTab(page);
   await page
     .getByRole('button', { name: 'Add plugin processor', exact: true })
     .click();
@@ -139,6 +148,7 @@ test('partial support warns in existing choices and saved bindings, and changes 
   ).toHaveCount(1);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.reload();
+  await openPluginsTab(page);
   await expect(
     page
       .getByRole('region', { name: 'Plugin processor', exact: true })
@@ -171,6 +181,7 @@ test('new component choices warn for missing and wildcard events but allow creat
   page,
 }, testInfo) => {
   await setup(page);
+  await openPluginsTab(page);
   await page
     .getByRole('button', { name: 'Add plugin processor', exact: true })
     .click();
@@ -178,32 +189,31 @@ test('new component choices warn for missing and wildcard events but allow creat
   await dialog
     .getByRole('tab', { name: 'New configuration', exact: true })
     .click();
-  for (const name of ['Community helper', 'Group observer', 'All observer']) {
-    await expect(
-      dialog
-        .getByRole('button', { name: new RegExp(name) })
-        .getByRole('status'),
-    ).toContainText(warning);
+  // One picker; the chosen processor's events and compatibility show below it.
+  const picker = dialog.getByRole('combobox', { name: 'Plugin processor' });
+  const selected = dialog.getByTestId('selected-processor-events');
+  async function choose(name: string) {
+    await picker.click();
+    await page.getByRole('option', { name: new RegExp(name) }).click();
   }
-  await expect(
-    dialog.getByRole('button', { name: /Group observer/ }).getByRole('status'),
-  ).toContainText('(None)');
-  await expect(
-    dialog.getByRole('button', { name: /All observer/ }).getByRole('status'),
-  ).toContainText('(Message received)');
-  const community = dialog.getByRole('button', { name: /Community helper/ });
-  await expect(community.getByRole('listitem')).toHaveText([
+  await choose('Group observer');
+  await expect(selected.getByRole('status')).toContainText('(None)');
+  await choose('All observer');
+  await expect(selected.getByRole('status')).toContainText(
+    '(Message received)',
+  );
+  await choose('Messages only');
+  await expect(selected.getByRole('status')).toHaveCount(0);
+  await choose('Community helper');
+  await expect(selected.getByRole('status')).toContainText(warning);
+  await expect(selected.getByRole('listitem')).toHaveText([
     'Message received',
     'Member joined group',
     'Friend request received',
   ]);
   await expect(
-    community.getByTitle('group.member_joined', { exact: true }).locator('svg'),
+    selected.getByTitle('group.member_joined', { exact: true }).locator('svg'),
   ).toHaveCount(1);
-  await expect(
-    dialog.getByRole('button', { name: /Messages only/ }).getByRole('status'),
-  ).toHaveCount(0);
-  await dialog.getByRole('button', { name: /Community helper/ }).click();
   await dialog.screenshot({
     path: testInfo.outputPath('compatibility-dialog.png'),
   });
@@ -219,6 +229,7 @@ test('new component choices warn for missing and wildcard events but allow creat
     .screenshot({ path: testInfo.outputPath('compatibility-bindings.png') });
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.reload();
+  await openPluginsTab(page);
   await expect(
     page.getByRole('status').filter({ hasText: warning }),
   ).toHaveCount(1);
@@ -232,6 +243,7 @@ test('fully supported processor choices have no compatibility warning', async ({
     'group.member_joined',
     'friend.request_received',
   ]);
+  await openPluginsTab(page);
   await page
     .getByRole('button', { name: 'Add plugin processor', exact: true })
     .click();
@@ -245,13 +257,13 @@ test('fully supported processor choices have no compatibility warning', async ({
   await dialog
     .getByRole('tab', { name: 'New configuration', exact: true })
     .click();
+  await dialog.getByRole('combobox', { name: 'Plugin processor' }).click();
+  await page.getByRole('option', { name: /Community helper/ }).click();
   await expect(
-    dialog.getByRole('button', { name: /Community helper/ }),
-  ).toBeVisible();
+    dialog.getByTestId('selected-processor-events').getByRole('listitem'),
+  ).toHaveCount(3);
   await expect(
-    dialog
-      .getByRole('button', { name: /Community helper/ })
-      .getByRole('status'),
+    dialog.getByTestId('selected-processor-events').getByRole('status'),
   ).toHaveCount(0);
 });
 

@@ -101,7 +101,7 @@ execution:
 
 | コンポーネント種別 | 再利用するもの | 分離のされ方 |
 | --- | --- | --- |
-| Agent / パイプラインの Runner | 各プロセッサ | `ctx.state.*` は既にプロセッサ単位（スコープに `binding_identity`（Agent UUID 由来）を含む） |
+| Agent / チャットの Runner | 各プロセッサ | `ctx.state.*` は既にプロセッサ単位（スコープに `binding_identity`（Agent UUID 由来）を含む） |
 | ナレッジベースの KnowledgeEngine / Parser | 各ナレッジベース | **プラグイン自身がナレッジベース ID で分離する必要があります** |
 | Tool / Command / EventListener / Page | 複数のプロセッサ、会話、ページリクエスト | 呼び出しごとに読み取り、インスタンスに蓄積しない |
 

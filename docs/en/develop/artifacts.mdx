@@ -73,7 +73,7 @@ Agent debug API requests may include `artifact_ids`, up to 20 distinct IDs from 
 
 `ctx.export_box_files(paths)` registers the selected sandbox files as temporary Artifacts. The returned `BoxFile.id` remains a UUID file handle for the exporting run. Export metadata also includes `artifact_id`, `mime_type`, `digest`, `lifecycle` and `expires_at`; `artifact_id` does not grant access through the account Artifact API.
 
-Use `ctx.read_run_file(file_id, mode="auto", offset=0, max_chars=8192, page_start=1, page_end=None)` to read bounded structured content with the modes above. To publish selected outputs, an authenticated account or named API key must first enable a publication policy for the Agent or Pipeline:
+Use `ctx.read_run_file(file_id, mode="auto", offset=0, max_chars=8192, page_start=1, page_end=None)` to read bounded structured content with the modes above. To publish selected outputs, an authenticated account or named API key must first enable a publication policy for the Agent or Chat:
 
 ```http
 PUT /api/v1/artifacts/producers/agent/{agent_id}/publication
@@ -82,7 +82,7 @@ Content-Type: application/json
 {"enabled": true}
 ```
 
-Use `pipeline` for a Pipeline or `event_processor` for an event processor. The server selects the authenticated principal as the recipient; request fields cannot name another recipient. This requires both `resource.view` and `resource.manage`. The policy belongs to that principal; other Workspace members cannot take it over. New and copied producers have no policy. Global and legacy compatibility API keys cannot receive published outputs; use a named Workspace API key.
+Use `pipeline` for a Chat or `event_processor` for an event processor. The server selects the authenticated principal as the recipient; request fields cannot name another recipient. This requires both `resource.view` and `resource.manage`. The policy belongs to that principal; other Workspace members cannot take it over. New and copied producers have no policy. Global and legacy compatibility API keys cannot receive published outputs; use a named Workspace API key.
 
 The Host freezes the policy when a run starts. `ctx.commit_run_files(file_ids)` rechecks the policy and the recipient's current authorization, then adds a persistent recipient pin and returns updated metadata. Missing, changed, disabled or revoked authorization rejects commit. Exporting, reading and replying do not commit files, and the model's default tools do not include commit. Repeating a successful commit does not undo a recipient's later release.
 
@@ -94,7 +94,7 @@ Read the policy with `GET` on the same URL; disable it with `DELETE`. These acti
 
 At run completion, failure or cancellation, the Host attempts bounded cleanup to expire unpublished outputs for maintenance collection. A Core crash, cleanup failure or timeout can defer expiry to their original 24-hour lifetime.
 
-`ctx.reply_files` and Pipeline file replies read the registered Artifact bytes through the existing platform delivery path. There is no separate run-file HTTP download endpoint. See the [Runner API](/en/plugin/dev/apis/agent-run#box-and-attachments) for the complete flow.
+`ctx.reply_files` and Chat file replies read the registered Artifact bytes through the existing platform delivery path. There is no separate run-file HTTP download endpoint. See the [Runner API](/en/plugin/dev/apis/agent-run#box-and-attachments) for the complete flow.
 
 ## Knowledge-base Artifact imports
 

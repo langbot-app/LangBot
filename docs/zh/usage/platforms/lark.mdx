@@ -71,7 +71,7 @@ LangBot 支持一键创建飞书应用并自动填写凭证，无需手动复制
 | 用户进群 | `im.chat.member.user.added_v1` |
 | 用户主动退群或被移出群聊 | `im.chat.member.user.deleted_v1` |
 
-“机器人进群”是另一个事件（`im.chat.member.bot.added_v1`），只订阅它不会收到其他成员的进退群通知。订阅生效后，还需要在 LangBot 的**事件路由**中将对应事件交给 Agent 或插件处理器；流水线只处理消息事件。
+“机器人进群”是另一个事件（`im.chat.member.bot.added_v1`），只订阅它不会收到其他成员的进退群通知。订阅生效后，还需要在 LangBot 的**事件路由**中将对应事件交给 Agent 或插件处理器；聊天只处理消息事件。
 
 ---
 

@@ -16,7 +16,7 @@ LangBotは現在、3種類のDifyアプリケーションをサポートして�
 
 ![Dify Application API Key](/images/zh/deploy/pipelines/dify/dify_sv_api_01.png)
 
-LangBotのパイプライン`AI機能`を設定するために、APIサーバーとAPIキーを保存します。
+LangBotのチャットの`AI機能`を設定するために、APIサーバーとAPIキーを保存します。
 
 <Info title="上記はDifyクラウドサービスバージョンの例です。セルフホストコミュニティバージョンを使用している場合は、LangBotの`base-url`として独自のDifyサービスアドレスを使用し、パスとして`/v1`を追加してください。">
 
@@ -26,7 +26,7 @@ LangBotのパイプライン`AI機能`を設定するために、APIサーバー
 
 ## LangBotの設定
 
-LangBot WebUIページを開き、新しいパイプラインを追加するか、既存のパイプラインのAI機能設定ページに切り替えます。
+LangBot WebUIページを開き、新しいチャットを追加するか、既存のチャットのAI機能設定ページに切り替えます。
 
 ![設定開発項目](/images/zh/deploy/pipelines/dify/dify_sv_api_02.png)
 
@@ -38,6 +38,6 @@ Difyワークフローアプリケーションを使用している場合は、�
 
 ## 出力処理
 
-ワークフローアプリケーションまたはエージェントアプリケーションを使用している場合、LangBotのパイプライン`出力処理`で`track-function-calls`を有効にすると、Difyが各ツール呼び出しを実行する際に`calling function xxx`というメッセージがユーザーに出力されます。
+ワークフローアプリケーションまたはエージェントアプリケーションを使用している場合、LangBotのチャットの`出力処理`で`track-function-calls`を有効にすると、Difyが各ツール呼び出しを実行する際に`calling function xxx`というメッセージがユーザーに出力されます。
 ただし、`chat`アプリケーション(チャットアシスタント -> ワークフローオーケストレーション)の下で`ChatFlow`を使用している場合は、設定に関係なく、Answer(直接返信)ノードによって返されるテキストのみが出力されます。
 </Info>

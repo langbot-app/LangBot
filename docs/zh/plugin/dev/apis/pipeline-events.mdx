@@ -1,8 +1,60 @@
 ---
-title: "流水线事件和 API"
+title: "消息生命周期事件和 API"
 ---
 
-LangBot 插件可注册并处理流水线事件。使用方法见[组件：事件监听器](/zh/plugin/dev/components/event-listener)。
+LangBot 插件可通过[组件：事件监听器](/zh/plugin/dev/components/event-listener)监听机器人收到消息后的各个阶段（消息生命周期）。这些钩子挂在**机器人**上，不论消息最终交给聊天、Agent 还是插件命令处理，都按同一套规则触发。
+
+<Info>
+本页原名「流水线事件」。事件类名和字段没有变化，旧插件无需修改。
+</Info>
+
+## 插件在哪里启用
+
+插件在**机器人**上启用：机器人的「事件路由 → 插件」页签与聊天原来的插件设置一样，可以「启用所有插件」，也可以手动选择插件；单条路由可以覆盖机器人的设置。启用一个插件，就同时启用了它的全部命令和事件监听器；未启用的插件收不到这个机器人的任何事件，命令也不会匹配。
+
+聊天里的插件列表现在只决定 AI 可以调用哪些插件工具，不再决定监听器是否触发。
+
+同一事件按机器人插件列表中的顺序分发给插件；没有注册该事件的插件会被跳过。
+
+## 消息生命周期
+
+机器人收到一条消息（`message.received`）后按以下顺序处理：
+
+```text
+预选路由（只计算命中哪条路由，不执行）
+→ *MessageReceived                （拦截则整条消息结束）
+→ 是插件命令？
+    是 → 入口策略（群响应规则、黑白名单、限速、内容过滤）
+         → *CommandSent           （拦截则不执行命令）
+         → 执行命令 → 出口策略（长文本、延迟、@、引用）
+    否 → 入口策略
+         → 聊天：PromptPreProcessing → *NormalMessageReceived → AI → NormalMessageResponded
+         → Agent：*NormalMessageReceived → Agent → NormalMessageResponded
+         → 出口策略
+```
+
+- 每条消息只创建一个查询（Query）。钩子、命令和后续处理器共用它，所以在任何钩子和命令里都能使用 `reply()`、`get_bot_uuid()` 和查询变量。
+- `*MessageReceived` 在群响应规则等入口策略**之前**触发，插件能看到群里没有 @ 机器人的消息；路由规则判定丢弃的消息也会触发它。
+- 入口和出口策略来自机器人的「消息策略」，详见[机器人](/zh/usage/platforms/readme)。
+
+## 每个钩子在哪些处理器上生效
+
+| 事件 | 聊天 | Agent | 插件命令 |
+| --- | --- | --- | --- |
+| `*MessageReceived` | ✓ | ✓ | ✓ |
+| `*NormalMessageReceived` | ✓ | ✓ | — |
+| `*CommandSent` | — | — | ✓ |
+| `NormalMessageResponded` | ✓ | ✓（流式回复只能旁观） | — |
+| `PromptPreProcessing` | ✓ | — | — |
+| 平台事件通知（见下文） | ✓ | ✓ | ✓ |
+
+已知限制：
+
+- `PromptPreProcessing` 只在聊天中触发，Agent 不会触发。
+- 流式回复在发送过程中已经发给用户，`NormalMessageResponded` 只能收到通知，不能改写或替换已发出的内容。非流式回复可以改写。
+- 插件处理器（事件路由直接交给插件处理的事件）不经过入口拦截，但它的回复会经过同一个出口策略。
+
+机器人的「插件」页签会按当前路由的处理器给每个钩子打上「生效 / 不生效」标签。
 
 ## 可监听的事件列表
 
@@ -10,7 +62,7 @@ LangBot 插件可注册并处理流水线事件。使用方法见[组件：事�
 
 ### \*MessageReceived
 
-接收到群聊或私聊任何消息时触发。
+机器人收到群聊或私聊的任何消息时触发，早于群响应规则和命令匹配。拦截（`prevent_default()`）后这条消息不再继续处理；插件改写的 `message_chain` 会传给后续步骤。
 
 ```python
 class PersonMessageReceived(BaseEventModel):
@@ -61,7 +113,7 @@ class GroupMessageReceived(BaseEventModel):
 
 ### \*NormalMessageReceived
 
-接收到群聊或私聊消息，并判断为需要由 LLM 处理的消息（非命令消息）时触发。
+消息通过入口策略、确定交给聊天或 Agent 处理（不是命令）时触发。插件拦截并回复则替代 AI 回复；改写输入则 AI 收到改写后的内容。
 
 ```python
 class PersonNormalMessageReceived(BaseEventModel):
@@ -134,11 +186,7 @@ class GroupNormalMessageReceived(BaseEventModel):
 
 ### \*CommandSent
 
-<Warning>
-  不再推荐使用，请改为使用[组件：命令](/zh/plugin/dev/components/command)。
-</Warning>
-
-接收到群聊或私聊命令时触发。
+插件命令通过入口策略之后、执行之前触发。拦截则不执行命令，可通过 `reply_message_chain` 给出替代回复。命令本身请使用[组件：命令](/zh/plugin/dev/components/command)实现。
 
 ```python
 class PersonCommandSent(BaseEventModel):
@@ -197,7 +245,7 @@ class GroupCommandSent(BaseEventModel):
 
 ### NormalMessageResponded
 
-消息得到 LLM 响应时触发。
+聊天或 Agent 产生回复后触发。非流式回复在发送前触发，可以改写或替换；流式回复只做旁观通知。
 
 ```python
 class NormalMessageResponded(BaseEventModel):
@@ -237,7 +285,7 @@ class NormalMessageResponded(BaseEventModel):
 
 ### PromptPreProcessing
 
-在构建 LLM 响应的上下文（prompt）时触发。
+聊天构建 LLM 上下文（prompt）时触发。Agent 不触发此事件。
 
 ```python
 class PromptPreProcessing(BaseEventModel):
@@ -263,6 +311,24 @@ class PromptPreProcessing(BaseEventModel):
 
 事件处理后的 `_knowledge_base_uuids` 查询变量决定本次运行的自动检索范围。空列表会关闭自动检索，未设置时沿用配置中的选择。显式检索 API 继续校验运行时冻结的资源授权。记忆插件应先完成自身的查询级检索，再从自动检索范围中移除其知识库。
 
+## 平台事件通知
+
+以下事件在消息平台产生对应事件时通知已启用的插件，**只通知、不能拦截**，也不影响路由。`MessageReceived`（不带 Person/Group 前缀）是 `message.received` 的通用通知，在 `*MessageReceived` 之前发出。
+
+| 事件 | 可产生该事件的平台 |
+| --- | --- |
+| `MessageReceived` | 全部平台 |
+| `MessageDeleted` | OneBot v11、Discord、飞书、LINE、Slack、企业微信客服 |
+| `MessageEdited` | Discord、Slack、Telegram |
+| `MessageReactionReceived` | Discord、飞书、QQ 官方、Slack、Telegram |
+| `GroupMemberJoined` / `GroupMemberLeft` / `BotInvitedToGroup` / `BotRemovedFromGroup` | Discord、飞书、LINE、OneBot v11、QQ 官方、Slack、Telegram |
+| `GroupMemberBanned` | OneBot v11、Telegram |
+| `BotMuted` / `BotUnmuted` | Telegram |
+| `FeedbackReceived` | 钉钉、企业微信智能机器人 |
+| `PlatformSpecificEventReceived` | 钉钉、KOOK、飞书、LINE、微信公众号、OneBot v11、QQ 官方、Slack、Telegram、企业微信、企业微信智能机器人、企业微信客服 |
+
+能否收到取决于平台是否把对应事件推送给机器人。
+
 ## EventListener 上下文
 
 事件处理函数通过 `event_context.event` 读取当前事件。`EventContext` 的完整属性和方法见[上下文 API](/zh/plugin/dev/apis/agent-run#eventlistener)。
@@ -287,7 +353,7 @@ class PromptPreProcessing(BaseEventModel):
 
 #### 在监控中的显示
 
-插件对消息类事件调用 `prevent_default()` 接管消息后，LangBot 的监控页会把这条消息标记为「插件处理 · 作者/插件名」，流水线配置的 Runner 不会再显示为处理者。插件在处理事件时发出的内容也会记入监控：
+插件对消息类事件调用 `prevent_default()` 接管消息后，LangBot 的监控页会把这条消息标记为「插件处理 · 作者/插件名」，聊天或 Agent 不会再显示为处理者。插件在处理事件时发出的内容也会记入监控：
 
 - `event_context.reply()` 发出的回复，记为这条消息的回复；发送失败会记一条 `PluginReplyError` 错误。
 - `self.plugin.send_message()` 发出的消息，记为插件发送的消息；发送失败会记一条 `PluginSendError` 错误。

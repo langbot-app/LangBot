@@ -7,6 +7,9 @@ import React, {
   useEffect,
 } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { showPluginEnablementHint } from './plugin-enablement-hint';
 import { AsyncTask, AsyncTaskCreatedResp } from '@/app/infra/entities/api';
 import type { PluginCompatibility } from '@/app/infra/entities/plugin';
 import {
@@ -67,6 +70,8 @@ export interface PluginInstallTask {
   /** When the current stage began, used to bound in-stage drift. */
   stageStartedAt: number;
   currentAction: string; // raw backend action string
+  /** Installed from a bot's plugin list, which enables it there; no "not enabled" hint. */
+  skipEnablementHint?: boolean;
 }
 
 type OnTaskCompleteCallback = (
@@ -85,6 +90,7 @@ interface PluginInstallTaskContextValue {
     extensionType: 'plugin' | 'mcp' | 'skill';
     fileSize?: number;
     operation?: PluginTaskOperation;
+    skipEnablementHint?: boolean;
     resubmitIncompatible?: ResubmitIncompatibleInstall;
   }) => void;
   removeTask: (id: string) => void;
@@ -234,6 +240,8 @@ export function PluginInstallTaskProvider({
   children: React.ReactNode;
 }) {
   const [tasks, setTasks] = useState<PluginInstallTask[]>([]);
+  const { t: translate } = useTranslation();
+  const navigate = useNavigate();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const intervalRefs = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -270,14 +278,20 @@ export function PluginInstallTaskProvider({
       success: boolean,
       error?: string,
       operation?: PluginTaskOperation,
+      installedPlugin?: string,
     ) => {
       if (notifiedTaskIds.current.has(taskId)) return;
       notifiedTaskIds.current.add(taskId);
       onTaskCompleteCallbacks.current.forEach((cb) => {
         cb(taskId, success, error, operation);
       });
+      if (success && installedPlugin) {
+        showPluginEnablementHint(installedPlugin, translate, () =>
+          navigate('/home/bots'),
+        ).catch(() => {});
+      }
     },
-    [],
+    [navigate, translate],
   );
 
   const pollTask = useCallback(
@@ -344,7 +358,18 @@ export function PluginInstallTaskProvider({
                     };
                   }
 
-                  notifyTaskComplete(taskId, true, undefined, t.operation);
+                  notifyTaskComplete(
+                    taskId,
+                    true,
+                    undefined,
+                    t.operation,
+                    t.extensionType === 'plugin' &&
+                      t.operation === 'install' &&
+                      !t.skipEnablementHint &&
+                      typeof md.plugin_name === 'string'
+                      ? md.plugin_name
+                      : undefined,
+                  );
                   return {
                     ...t,
                     stage: InstallStage.DONE,
@@ -490,6 +515,7 @@ export function PluginInstallTaskProvider({
       extensionType: 'plugin' | 'mcp' | 'skill';
       fileSize?: number;
       operation?: PluginTaskOperation;
+      skipEnablementHint?: boolean;
       resubmitIncompatible?: ResubmitIncompatibleInstall;
     }) => {
       const operation = params.operation ?? 'install';
@@ -515,6 +541,7 @@ export function PluginInstallTaskProvider({
         startedAt: Date.now(),
         stageStartedAt: Date.now(),
         currentAction: '',
+        skipEnablementHint: params.skipEnablementHint,
       };
 
       setTasks((prev) => {

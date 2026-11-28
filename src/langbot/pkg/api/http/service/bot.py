@@ -4,10 +4,13 @@ import uuid
 import typing
 import json
 import asyncio
+import datetime
 import sqlalchemy
 
 from ....core import app
 from ....discover import engine
+from ....command import processor as command_processor
+from ....command.permissions import PERMISSION_FIELDS, normalize_permissions
 from ....entity.persistence import agent as persistence_agent
 from ....entity.persistence import bot as persistence_bot
 from ....entity.persistence import pipeline as persistence_pipeline
@@ -19,8 +22,17 @@ from ....platform.sources import http_bot_signing
 from ....platform.adapter_names import canonical_adapter_name
 from ....cloud.plan_policy import require_workspace_platform
 from ....agent.runner.errors import RunnerNotFoundError
-from ....i18n import t
+from ....message_policy import schema as message_policy_schema
+
 from ...application.contracts import ApplicationAPIError, ApplicationAPIException
+from ....i18n import t, language_scope
+from ....i18n.workspace import get_workspace_language
+from ....platform.command_registration import (
+    PlatformCommandRegistrar,
+    build_command_plan,
+    command_sets,
+    command_set_hash,
+)
 
 
 class BotService:
@@ -42,6 +54,8 @@ class BotService:
         'enable',
         'event_bindings',
         'plugin_processors',
+        'command_settings',
+        'message_policy',
     }
 
     def __init__(self, ap: app.Application) -> None:
@@ -271,6 +285,7 @@ class BotService:
                     'target_type': target_type,
                     'target_uuid': target_uuid,
                     'filters': filters,
+                    'policy': raw_binding.get('policy'),
                     'priority': priority,
                     'enabled': bool(raw_binding.get('enabled', True)),
                     # For draft bindings, current array order is the effective order
@@ -376,6 +391,36 @@ class BotService:
             event_type,
             bot_account_id=self._extract_dry_run_bot_account_id(context, event_data),
         )
+        if event_type == 'message.received' and (bot.get('message_policy') or (selected_binding or {}).get('policy')):
+            blocked, command = await self._preview_message_policy(
+                tenant_context, bot_uuid, bot, selected_binding, event
+            )
+            if command:
+                selected_binding = dict(selected_binding or {}, target_type='plugin_command', target_uuid=command)
+            if blocked:
+                reason = message_policy_schema.drop_reason(bot_uuid, selected_binding, blocked)
+                return self._diagnostic_result(
+                    matched=False,
+                    binding=selected_binding,
+                    failure_code='message_policy',
+                    reason=reason,
+                    diagnostic_steps=[
+                        *diagnostic_steps,
+                        {
+                            'step': 'message_policy',
+                            'matched': False,
+                            'failure_code': 'message_policy',
+                            'reason': reason,
+                        },
+                    ],
+                )
+            if command:
+                return self._diagnostic_result(
+                    matched=True,
+                    binding=selected_binding,
+                    reason='Registered command matched',
+                    diagnostic_steps=diagnostic_steps,
+                )
         if selected_binding is None:
             return self._diagnostic_result(
                 matched=False,
@@ -530,7 +575,7 @@ class BotService:
                 pipeline_uuid = selected.get('uuid')
             else:
                 pipeline_uuid = await self.ap.pipeline_service.create_pipeline(
-                    context, {'name': t('New Pipeline'), 'description': '', 'emoji': '⚙️'}, default=True
+                    context, {'name': t('New Chat'), 'description': '', 'emoji': '⚙️'}, default=True
                 )
         if not pipeline_uuid:
             return []
@@ -565,10 +610,33 @@ class BotService:
             },
         ]
 
-    async def _normalize_event_bindings(self, context: TenantContext, bindings: list[dict] | None) -> list[dict]:
-        """Validate and normalize Bot event bindings."""
+    async def _normalize_event_bindings(
+        self,
+        context: TenantContext,
+        bindings: list[dict] | None,
+        *,
+        current_bindings: typing.Any = None,
+    ) -> list[dict]:
+        """Validate and normalize Bot event bindings.
+
+        A binding may carry a ``policy``: a partial message policy overriding
+        the bot's for messages this route matches. A write that names an
+        existing binding by id but omits ``policy`` keeps the stored override,
+        so clients unaware of policies cannot drop one by saving routes; an
+        explicit ``null`` removes it.
+        """
         if not bindings:
             return []
+
+        current_policies: dict[str, typing.Any] = {}
+        if isinstance(current_bindings, str):
+            try:
+                current_bindings = json.loads(current_bindings)
+            except json.JSONDecodeError:
+                current_bindings = None
+        for binding in current_bindings if isinstance(current_bindings, list) else []:
+            if isinstance(binding, dict) and binding.get('id') and isinstance(binding.get('policy'), dict):
+                current_policies[str(binding['id'])] = binding['policy']
 
         normalized: list[dict] = []
         for index, raw_binding in enumerate(bindings):
@@ -613,19 +681,31 @@ class BotService:
             else:
                 raise ValueError(f'Unsupported event binding target type: {target_type}')
 
-            normalized.append(
-                {
-                    'id': raw_binding.get('id') or str(uuid.uuid4()),
-                    'event_pattern': event_pattern,
-                    'target_type': target_type,
-                    'target_uuid': target_uuid,
-                    'filters': raw_binding.get('filters') or [],
-                    'priority': int(raw_binding.get('priority') or 0),
-                    'enabled': bool(raw_binding.get('enabled', True)),
-                    'description': raw_binding.get('description') or '',
-                    'order': index,
-                }
-            )
+            binding_id = raw_binding.get('id') or str(uuid.uuid4())
+            item = {
+                'id': binding_id,
+                'event_pattern': event_pattern,
+                'target_type': target_type,
+                'target_uuid': target_uuid,
+                'filters': raw_binding.get('filters') or [],
+                'priority': int(raw_binding.get('priority') or 0),
+                'enabled': bool(raw_binding.get('enabled', True)),
+                'description': raw_binding.get('description') or '',
+                'order': index,
+            }
+            if target_type != 'discard':
+                if 'policy' in raw_binding:
+                    policy = message_policy_schema.validate_policy(
+                        message_policy_schema.retain_plugin_selection(
+                            raw_binding['policy'], current_policies.get(str(binding_id))
+                        ),
+                        field=f'event_bindings[{index}].policy',
+                    )
+                else:
+                    policy = current_policies.get(str(binding_id))
+                if policy:
+                    item['policy'] = policy
+            normalized.append(item)
 
         return normalized
 
@@ -660,7 +740,188 @@ class BotService:
             normalized.append({'processor_uuid': processor_uuid, 'enabled': enabled})
         return normalized
 
-    async def _prepare_bot_data(self, context: TenantContext, bot_data: dict, *, include_uuid: bool) -> dict:
+    async def _normalize_command_settings(self, context: TenantContext, settings: typing.Any) -> dict:
+        """Validate command settings for a bot."""
+        if not isinstance(settings, dict):
+            raise ValueError('command_settings must be an object')
+        enabled = settings.get('enabled', True)
+        if not isinstance(enabled, bool):
+            raise ValueError('command_settings.enabled must be a boolean')
+
+        prefixes = settings.get('prefixes', ['/'])
+        if not isinstance(prefixes, list) or len(prefixes) == 0:
+            raise ValueError('command_settings.prefixes must be a non-empty list')
+        normalized_prefixes = []
+        for p in prefixes:
+            if not isinstance(p, str) or not p.strip() or any(c.isspace() for c in p):
+                raise ValueError('Each prefix must be a non-empty string without whitespace')
+            if p not in normalized_prefixes:
+                normalized_prefixes.append(p)
+
+        processors = settings.get('processors', [])
+        if not isinstance(processors, list):
+            raise ValueError('command_settings.processors must be a list')
+
+        normalized_processors = []
+        seen_processors: set[str] = set()
+        seen_plugins: set[str] = set()
+        for item in processors:
+            if not isinstance(item, dict):
+                raise ValueError('Each command processor binding must be an object')
+            processor_uuid = item.get('processor_uuid')
+            if 'plugin_id' in item and not processor_uuid:
+                plugin_id = command_processor.plugin_id_from_component_ref(f'plugin:{item["plugin_id"]}')
+                enabled_binding = item.get('enabled', True)
+                if not plugin_id or plugin_id in seen_plugins or not isinstance(enabled_binding, bool):
+                    raise ValueError('Invalid command plugin binding')
+                seen_plugins.add(plugin_id)
+                normalized_processors.append({'plugin_id': plugin_id, 'enabled': enabled_binding})
+                continue
+            if not isinstance(processor_uuid, str) or not processor_uuid.strip():
+                raise ValueError('Command processor UUID is required')
+            processor_uuid = processor_uuid.strip()
+            if processor_uuid in seen_processors:
+                raise ValueError('A command processor can only be bound once per bot')
+            processor_enabled = item.get('enabled', True)
+            if not isinstance(processor_enabled, bool):
+                raise ValueError('Command processor enabled must be a boolean')
+            agent = await self._get_agent_entity(context, processor_uuid)
+            if agent is None or agent.kind != command_processor.COMMAND_PROCESSOR_KIND:
+                raise ValueError('Command processor not found')
+            plugin_id = command_processor.plugin_id_from_component_ref(agent.component_ref)
+            if plugin_id is None:
+                raise ValueError('Command processor has no plugin')
+            if plugin_id in seen_plugins:
+                # Two instances of one plugin expose the same commands; the later one could never match.
+                raise ValueError('Only one command processor per plugin can be bound to a bot')
+            seen_processors.add(processor_uuid)
+            seen_plugins.add(plugin_id)
+            normalized_processors.append({'processor_uuid': processor_uuid, 'enabled': processor_enabled})
+
+        normalized = {'enabled': enabled, 'prefixes': normalized_prefixes, 'processors': normalized_processors}
+        normalized.update(normalize_permissions(settings))
+        if 'platform_commands' in settings:
+            registration = settings['platform_commands']
+            if not isinstance(registration, dict) or not isinstance(registration.get('enabled'), bool):
+                raise ValueError(t('platform_commands.enabled must be a boolean'))
+            selected = registration.get('selected', [])
+            if not isinstance(selected, list) or any(not isinstance(name, str) or not name for name in selected):
+                raise ValueError(t('platform_commands.selected must be a list of command names'))
+            normalized['platform_commands'] = {
+                'enabled': registration['enabled'],
+                'selected': list(dict.fromkeys(selected)),
+            }
+        return normalized
+
+    async def _preview_message_policy(self, context, bot_uuid, bot, binding, event):
+        from types import SimpleNamespace
+        from langbot_plugin.api.entities.builtin.platform import message
+        from langbot_plugin.api.entities.builtin.platform.events import MessageReceivedEvent
+        from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes
+        from ....platform.botmgr import PlatformManager
+
+        binding = binding or {}
+        launcher = LauncherTypes.GROUP if event.get('chat_type') == 'group' else LauncherTypes.PERSON
+        policy = message_policy_schema.resolve_policy(bot.get('message_policy'), binding.get('policy'))
+        runtime = await self.ap.message_policy_mgr.compile(policy, bot_uuid=bot_uuid, route_id=binding.get('id'))
+        account = self._extract_dry_run_bot_account_id(event.get('context'), event)
+        chain = (
+            message.MessageChain.model_validate(event['message_chain'])
+            if event.get('message_chain')
+            else message.MessageChain([message.Plain(text=str(event.get('message_text') or ''))])
+        )
+        if event.get('is_at_bot') and not event.get('message_chain'):
+            account = account or bot_uuid
+            chain.insert(0, message.At(target=account))
+        query = SimpleNamespace(
+            bot_uuid=bot_uuid,
+            launcher_type=launcher,
+            launcher_id=event.get('chat_id', ''),
+            sender_id=(event.get('sender') or {}).get('id', event.get('user_id', '')),
+            variables={},
+            pipeline_uuid=binding.get('target_uuid') if binding.get('target_type') == 'pipeline' else None,
+            adapter=SimpleNamespace(bot_account_id=account),
+            message_chain=chain,
+            pipeline_config=runtime.policy,
+            _execution_context=PlatformManager._normalize_execution_context(context, bot_uuid=bot_uuid),
+        )
+        command = None
+        text = None
+        settings = bot.get('command_settings') or {}
+        if settings.get('enabled', True) and str(chain).startswith(tuple(settings.get('prefixes') or ['/'])):
+            live_bot = self.ap.platform_mgr.find_runtime_bot(query._execution_context, bot_uuid)
+            if live_bot is not None:
+                sample = MessageReceivedEvent(
+                    chat_type='group' if launcher == LauncherTypes.GROUP else 'private',
+                    chat_id=query.launcher_id,
+                    sender={'id': query.sender_id},
+                    message_chain=chain,
+                )
+                query._listener_plugins = message_policy_schema.enabled_plugins(policy)
+                object.__setattr__(sample, '_entry_query', query)
+                await self.ap.plugin_connector.require_workspace_context(context)
+                match = await live_bot._match_plugin_command(sample)
+                if match:
+                    command, text = f'{match[0]}/{match[1]}', match[2]
+        if not command and binding.get('target_type') not in {'agent', 'pipeline'}:
+            return None, None
+        async with runtime.admit(query, text, preview=True) as blocked:
+            return blocked, command
+
+    async def get_plugin_registrations(self, context, bot_uuid, route_id=None, *, include_disabled=False):
+        """Return the events and commands each plugin registers.
+
+        By default only plugins enabled for the bot (or route) are listed;
+        ``include_disabled`` lists every installed plugin so editors can show
+        what enabling one would add.
+        """
+        bot = await self.get_bot(context, bot_uuid, include_secret=False)
+        if bot is None:
+            return None
+        route = next((r for r in bot.get('event_bindings', []) if r.get('id') == route_id), {})
+        policy = message_policy_schema.resolve_policy(bot.get('message_policy'), route.get('policy'))
+        await self.ap.plugin_connector.require_workspace_context(context)
+        plugins = await self.ap.plugin_connector.list_plugin_registrations(
+            None if include_disabled else message_policy_schema.enabled_plugins(policy)
+        )
+        for registration in (plugins or {}).values():
+            if registration.get('events') is None:
+                registration['event_processors'] = None
+                continue
+            applicability = {}
+            for event in registration['events']:
+                if event == 'PromptPreProcessing':
+                    processors = ['messaging']
+                elif event in {'GroupCommandSent', 'PersonCommandSent'}:
+                    processors = ['command']
+                elif event in {'GroupNormalMessageReceived', 'PersonNormalMessageReceived', 'NormalMessageResponded'}:
+                    processors = ['messaging', 'agent']
+                else:
+                    processors = ['messaging', 'agent', 'command']
+                applicability[event] = processors
+            registration['event_processors'] = applicability
+        return {'plugins': plugins}
+
+    def get_message_policy_metadata(self) -> dict[str, typing.Any]:
+        """Describe the message policy for editors: form metadata and reference values.
+
+        ``default`` is what a new bot starts with; ``neutral`` is what an
+        omitted setting means (admit everything, change nothing).
+        """
+        return {
+            'configs': list(getattr(self.ap, 'message_policy_meta', None) or []),
+            'default': message_policy_schema.default_policy(),
+            'neutral': message_policy_schema.neutral_policy(),
+        }
+
+    async def _prepare_bot_data(
+        self,
+        context: TenantContext,
+        bot_data: dict,
+        *,
+        include_uuid: bool,
+        current_bindings: typing.Any = None,
+    ) -> dict:
         """Normalize Bot write payloads to the current event-routing model."""
         update_data = bot_data.copy()
         if not include_uuid:
@@ -671,11 +932,20 @@ class BotService:
             update_data['adapter'] = canonical_adapter_name(update_data['adapter'])
         if 'event_bindings' in update_data:
             update_data['event_bindings'] = await self._normalize_event_bindings(
-                context, update_data.get('event_bindings')
+                context, update_data.get('event_bindings'), current_bindings=current_bindings
+            )
+        if 'message_policy' in update_data:
+            # Stored complete, so readers never have to guess an omitted value.
+            update_data['message_policy'] = message_policy_schema.resolve_policy(
+                message_policy_schema.validate_policy(update_data['message_policy'])
             )
         if 'plugin_processors' in update_data:
             update_data['plugin_processors'] = await self._normalize_plugin_processors(
                 context, update_data['plugin_processors']
+            )
+        if 'command_settings' in update_data:
+            update_data['command_settings'] = await self._normalize_command_settings(
+                context, update_data['command_settings']
             )
         return update_data
 
@@ -751,7 +1021,87 @@ class BotService:
 
         serialized = self.ap.persistence_mgr.serialize_model(persistence_bot.Bot, bot, masked_columns)
         serialized['adapter'] = canonical_adapter_name(serialized['adapter'])
+        adapter_class = getattr(getattr(self.ap, 'platform_mgr', None), 'adapter_dict', {}).get(serialized['adapter'])
+        if adapter_class is not None and hasattr(adapter_class, 'command_registration_capability'):
+            try:
+                serialized['platform_command_registration'] = await self._platform_command_plan(
+                    context, serialized, adapter_class
+                )
+            except Exception as exc:
+                serialized['platform_command_registration'] = {'error': type(exc).__name__}
         return serialized
+
+    async def _platform_command_plan(self, context, bot: dict, adapter) -> dict:
+        settings = bot.get('command_settings') or {}
+        plugin_ids = []
+        for binding in settings.get('processors', []):
+            if not binding.get('enabled', True):
+                continue
+            if binding.get('plugin_id'):
+                plugin_ids.append(binding['plugin_id'])
+                continue
+            agent = await self._get_agent_entity(context, binding['processor_uuid'])
+            if agent is not None and agent.kind == command_processor.COMMAND_PROCESSOR_KIND:
+                plugin_id = command_processor.plugin_id_from_component_ref(agent.component_ref)
+                if plugin_id and plugin_id not in plugin_ids:
+                    plugin_ids.append(plugin_id)
+        manifests = await self.ap.plugin_connector.list_commands(plugin_ids) if plugin_ids else []
+        language = await get_workspace_language(self.ap, require_workspace_uuid(context))
+        return build_command_plan(settings, manifests, plugin_ids, adapter.command_registration_capability(), language)
+
+    async def sync_platform_commands(self, context: TenantContext, bot_uuid: str) -> dict:
+        await self.ap.plugin_connector.require_workspace_context(context)
+        runtime = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
+        if runtime is None or not isinstance(runtime.adapter, PlatformCommandRegistrar):
+            raise ValueError(t('Platform command registration requires a running supported bot'))
+        async with runtime._platform_command_sync_lock:
+            await runtime.assert_execution_active()
+            bot = await self.get_bot(context, bot_uuid)
+            if bot is None:
+                raise WorkspaceNotFoundError('Bot not found')
+            previous = bot.get('platform_command_sync') or {}
+            enabled = (bot.get('command_settings') or {}).get('platform_commands', {}).get('enabled', False)
+            if not enabled and not previous:
+                return {'status': 'disabled'}
+            state = dict(previous)
+            try:
+                plan = bot['platform_command_registration']
+                if plan.get('error'):
+                    raise RuntimeError(plan['error'])
+                language = await get_workspace_language(self.ap, require_workspace_uuid(context))
+                specs = command_sets(plan, bot['adapter'], language)
+                digest = command_set_hash({'language': language, 'adapter': bot['adapter'], 'commands': specs})
+                if digest == previous.get('hash') and not previous.get('error'):
+                    return {**previous, 'skipped': True}
+                for locale in previous.get('locales', []):
+                    specs.setdefault(locale, [])
+                state['locales'] = list(specs)
+                with language_scope(language):
+                    result = await runtime.adapter.sync_platform_commands(specs)
+                if not result.get('success', False):
+                    raise RuntimeError(result.get('error') or 'Platform command synchronization failed')
+                state = {
+                    'hash': digest,
+                    'synced_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    'error': None,
+                    'locales': list(specs),
+                    'rejected': plan['rejected'],
+                }
+            except Exception as exc:
+                state['error'] = bot_error_message(exc, {'adapter_config': getattr(runtime.adapter, 'config', {})})
+                state['attempted_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            await runtime.assert_execution_active()
+            await self.ap.persistence_mgr.execute_async(
+                scope_statement(
+                    sqlalchemy.update(persistence_bot.Bot)
+                    .where(persistence_bot.Bot.uuid == bot_uuid)
+                    .values(platform_command_sync=state),
+                    persistence_bot.Bot,
+                    context,
+                )
+            )
+            runtime.bot_entity.platform_command_sync = state
+            return state
 
     async def get_runtime_bot_info(
         self,
@@ -820,6 +1170,8 @@ class BotService:
         else:
             bot_data['event_bindings'] = await self._normalize_event_bindings(context, bot_data['event_bindings'])
         bot_data.setdefault('plugin_processors', [])
+        bot_data.setdefault('command_settings', {'enabled': True, 'prefixes': ['/'], 'processors': []})
+        bot_data.setdefault('message_policy', message_policy_schema.default_policy())
         # The column is NOT NULL; a caller that omits the optional description
         # must not get a 500 from the database constraint.
         bot_data.setdefault('description', '')
@@ -839,8 +1191,35 @@ class BotService:
     async def update_bot(self, context: TenantContext, bot_uuid: str, bot_data: dict) -> None:
         """Update bot"""
         workspace_uuid = require_workspace_uuid(context)
-        update_data = await self._prepare_bot_data(context, bot_data, include_uuid=False)
+        current_bindings = None
+        if isinstance(bot_data, dict) and (
+            bot_data.get('event_bindings')
+            or isinstance(bot_data.get('message_policy'), dict)
+            or isinstance(bot_data.get('command_settings'), dict)
+        ):
+            stored = await self.get_bot(context, bot_uuid, include_secret=False)
+            current_bindings = (stored or {}).get('event_bindings')
+            if isinstance(bot_data.get('command_settings'), dict):
+                existing = (stored or {}).get('command_settings') or {}
+                retained = {key: existing[key] for key in PERMISSION_FIELDS if key in existing}
+                bot_data = {**bot_data, 'command_settings': retained | bot_data['command_settings']}
+            if 'message_policy' in bot_data:
+                bot_data = {
+                    **bot_data,
+                    'message_policy': message_policy_schema.retain_plugin_selection(
+                        bot_data['message_policy'], (stored or {}).get('message_policy')
+                    ),
+                }
+        update_data = await self._prepare_bot_data(
+            context, bot_data, include_uuid=False, current_bindings=current_bindings
+        )
         update_data.pop('workspace_uuid', None)
+        if 'adapter' in update_data or 'adapter_config' in update_data:
+            current = await self.get_bot(context, bot_uuid, include_secret=True)
+            if current is not None and any(
+                key in update_data and update_data[key] != current.get(key) for key in ('adapter', 'adapter_config')
+            ):
+                update_data['platform_command_sync'] = {}
         if 'adapter' in update_data or update_data.get('enable'):
             current = await self.get_bot(context, bot_uuid, include_secret=True)
             await require_workspace_platform(self.ap, workspace_uuid, update_data.get('adapter', current['adapter']))
@@ -855,7 +1234,14 @@ class BotService:
         if getattr(result, 'rowcount', None) == 0:
             raise WorkspaceNotFoundError('Bot not found')
 
-        runtime_fields = {'adapter', 'adapter_config', 'enable', 'event_bindings', 'plugin_processors'}
+        runtime_fields = {
+            'adapter',
+            'adapter_config',
+            'enable',
+            'event_bindings',
+            'plugin_processors',
+            'command_settings',
+        }
         if not runtime_fields.intersection(update_data):
             runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
             if runtime_bot is not None:
@@ -863,9 +1249,74 @@ class BotService:
                     runtime_bot.bot_entity.name = update_data['name']
                 if 'description' in update_data:
                     runtime_bot.bot_entity.description = update_data['description']
+                if 'message_policy' in update_data:
+                    # A policy change needs no adapter restart: swap it in place
+                    # and drop the runtimes compiled from the old one.
+                    runtime_bot.bot_entity.message_policy = update_data['message_policy']
+            if 'message_policy' in update_data:
+                policy_mgr = getattr(self.ap, 'message_policy_mgr', None)
+                if policy_mgr is not None:
+                    policy_mgr.invalidate_bot(workspace_uuid, bot_uuid)
             return
 
+        if update_data.get('command_settings', {}).get('platform_commands', {}).get('enabled') is False:
+            # Clear the managed platform menu before the adapter restarts.
+            runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
+            if runtime_bot is not None and isinstance(runtime_bot.adapter, PlatformCommandRegistrar):
+                await self.sync_platform_commands(context, bot_uuid)
         await self._apply_bot_configuration(context, bot_uuid)
+
+    async def list_upgrade_checks(self, context: TenantContext) -> dict:
+        from .message_upgrade import checks
+
+        return await checks(self, context)
+
+    async def confirm_upgrade_checks(self, context: TenantContext, item_id: str | None) -> dict:
+        from .message_upgrade import confirm
+
+        return await confirm(self, context, item_id)
+
+    async def apply_upgrade_action(self, context: TenantContext, item_id: str, action: str) -> dict:
+        from .message_upgrade import act
+
+        return await act(self, context, item_id, action)
+
+    async def promote_route_policy(self, context: TenantContext, bot_uuid: str) -> dict:
+        from ....message_policy.promotion import policy_promotion
+
+        workspace = require_workspace_uuid(context)
+        model = persistence_bot.Bot
+        scoped = (model.workspace_uuid == workspace, model.uuid == bot_uuid)
+        async with self.ap.persistence_mgr.tenant_write_uow(workspace, operation='bot.policy.promote') as uow:
+            row = (
+                await uow.execute(
+                    sqlalchemy.select(model.message_policy, model.event_bindings).where(*scoped).with_for_update()
+                )
+            ).one_or_none()
+            if row is None:
+                raise WorkspaceNotFoundError('Bot not found')
+            default, bindings = row
+            promotion = policy_promotion(bot_uuid, default, bindings)
+            if promotion is None:
+                raise ApplicationAPIException(
+                    ApplicationAPIError('policy_promotion_not_equivalent', 'policy_promotion_not_equivalent', 409)
+                )
+            ids = set(promotion['route_ids'])
+            routes = [
+                {key: value for key, value in route.items() if key != 'policy'} if route['id'] in ids else route
+                for route in bindings
+            ]
+            await uow.execute(
+                sqlalchemy.update(model)
+                .where(*scoped)
+                .values(message_policy=promotion['message_policy'], event_bindings=routes)
+            )
+        runtime = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
+        if runtime is not None:
+            runtime.bot_entity.message_policy = promotion['message_policy']
+            runtime.bot_entity.event_bindings = routes
+        self.ap.message_policy_mgr.invalidate_bot(workspace, bot_uuid)
+        return promotion
 
     async def bind_event_route(
         self,
@@ -986,6 +1437,7 @@ class BotService:
         runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
 
         latest_by_binding: dict[str, dict[str, typing.Any]] = {}
+        counts = await self.ap.monitoring_service.route_counts_24h(context, bot_uuid)
         unmatched_events: list[dict[str, typing.Any]] = []
         runtime_logs = getattr(getattr(runtime_bot, 'logger', None), 'logs', [])
         for log in runtime_logs:
@@ -1011,6 +1463,7 @@ class BotService:
                 current_binding_ids.add(str(binding_id))
             route_status = {
                 'binding_id': binding_id,
+                'counts_24h': dict.fromkeys(('ai', 'command', 'plugin', 'policy'), 0) | counts.get(binding_id, {}),
                 'event_pattern': binding.get('event_pattern'),
                 'event_type': None,
                 'target_type': binding.get('target_type'),
@@ -1047,11 +1500,11 @@ class BotService:
         }
 
     async def preview_group_filter_migration(self, context: TenantContext, bot_uuid: str) -> dict[str, typing.Any]:
-        """Preview the effect of promoting the pipeline at-bot rule to a routing-layer filter.
+        """Preview the effect of promoting the at-bot rule to a routing-layer filter.
 
-        Detects bots whose pipeline trigger still requires at-bot, and whose event
-        bindings do not already filter group messages by is_at_bot. Returns the
-        proposed binding changes plus a per-pipeline summary. Does not persist.
+        Detects routes whose message policy still requires at-bot and whose
+        filters do not already select group messages by is_at_bot. Returns the
+        proposed binding changes plus a per-processor summary. Does not persist.
         """
         from ....platform.botmgr import RuntimeBot
 
@@ -1060,22 +1513,31 @@ class BotService:
             raise WorkspaceNotFoundError('Bot not found')
 
         bindings = RuntimeBot._get_event_bindings_from_value(bot.get('event_bindings') or [])
-        pipeline_uuids = {
-            str(b.get('target_uuid')) for b in bindings if b.get('target_type') == 'pipeline' and b.get('target_uuid')
-        }
 
-        # Load each pipeline's trigger config to detect at-bot still enabled.
+        # The at-bot rule is part of the message policy in effect for each route.
+        bot_policy = bot.get('message_policy')
+
+        def _group_rules(binding: dict) -> dict[str, typing.Any]:
+            policy = message_policy_schema.resolve_policy(bot_policy, binding.get('policy'))
+            rules = policy['trigger']['group-respond-rules']
+            return rules if rules.get('enabled', True) else {}
+
         pipeline_flags: dict[str, dict[str, typing.Any]] = {}
-        for pipeline_uuid in pipeline_uuids:
-            pipeline = await self.ap.pipeline_service.get_pipeline(context, pipeline_uuid)
-            trigger = (pipeline or {}).get('config', {}).get('trigger', {}) if pipeline else {}
-            group_rules = trigger.get('group-respond-rules', {}) if isinstance(trigger, dict) else {}
-            pipeline_flags[pipeline_uuid] = {
-                'at_bot_enabled': bool(group_rules.get('at')) if isinstance(group_rules, dict) else False,
-                'prefix': group_rules.get('prefix', []) if isinstance(group_rules, dict) else [],
-                'regexp': group_rules.get('regexp', []) if isinstance(group_rules, dict) else [],
-                'random': group_rules.get('random', 0.0) if isinstance(group_rules, dict) else 0.0,
-            }
+        for binding in bindings:
+            pipeline_uuid = str(binding.get('target_uuid') or '')
+            if binding.get('target_type') != 'pipeline' or not pipeline_uuid:
+                continue
+            group_rules = _group_rules(binding)
+            flags = pipeline_flags.setdefault(
+                pipeline_uuid,
+                {
+                    'at_bot_enabled': False,
+                    'prefix': group_rules.get('prefix', []),
+                    'regexp': group_rules.get('regexp', []),
+                    'random': group_rules.get('random', 0.0),
+                },
+            )
+            flags['at_bot_enabled'] = flags['at_bot_enabled'] or bool(group_rules.get('at'))
 
         # A binding "already has the at-bot filter" if it filters chat_type=group
         # AND requires is_at_bot=true (or non-false).
@@ -1106,6 +1568,7 @@ class BotService:
             for b in bindings
             if b.get('target_type') == 'pipeline'
             and str(b.get('target_uuid') or '') in needs_migration
+            and bool(_group_rules(b).get('at'))
             and not _has_group_at_filter(b)
         ]
 
@@ -1154,9 +1617,9 @@ class BotService:
         """Apply the group filter migration previewed by preview_group_filter_migration.
 
         Updates the bot's event_bindings to add is_at_bot=true filter on group
-        bindings whose pipeline still has at-bot enabled. Optionally disables the
-        pipeline's at-bot trigger rule so the filter is not checked twice. Existing
-        prefix/regexp/random rules remain untouched. Idempotent.
+        routes whose message policy still has at-bot enabled. Optionally turns
+        the at-bot rule off in those routes' policy so it is not checked twice.
+        Existing prefix/regexp/random rules remain untouched. Idempotent.
         """
         from ....platform.botmgr import RuntimeBot
 
@@ -1170,43 +1633,32 @@ class BotService:
 
         bindings = RuntimeBot._get_event_bindings_from_value(bot.get('event_bindings') or [])
         bindings_by_id = {b.get('id'): b for b in bindings if b.get('id')}
+        updated_pipelines: set[str] = set()
         for item in preview['bindings_to_update']:
             binding_id = item['binding_id']
             existing = bindings_by_id.get(binding_id)
             if existing is None:
                 continue
             existing['filters'] = item['proposed_filters']
+            if disable_pipeline_at_bot:
+                # The route filter now does the check; turn the policy rule off
+                # for this route so it is not applied twice.
+                existing['policy'] = message_policy_schema.merge_policy(
+                    existing.get('policy'),
+                    {'trigger': {'group-respond-rules': {'at': False}}},
+                )
+                updated_pipelines.add(str(existing.get('target_uuid') or ''))
 
         update_payload = {
             'event_bindings': await self._normalize_event_bindings(context, bindings),
         }
         await self.update_bot(context, bot_uuid, update_payload)
 
-        updated_pipelines: list[str] = []
-        if disable_pipeline_at_bot:
-            for pipeline_uuid in preview['pipelines_with_at_bot']:
-                pipeline = await self.ap.pipeline_service.get_pipeline(context, pipeline_uuid, include_secret=True)
-                if not pipeline:
-                    continue
-                config = pipeline.get('config') or {}
-                trigger = config.get('trigger') or {}
-                group_rules = trigger.get('group-respond-rules') or {}
-                if not isinstance(group_rules, dict) or not group_rules.get('at'):
-                    continue
-                new_config = json.loads(json.dumps(config))
-                new_config.setdefault('trigger', {}).setdefault('group-respond-rules', {})['at'] = False
-                await self.ap.pipeline_service.update_pipeline(
-                    context,
-                    pipeline_uuid,
-                    {'config': new_config},
-                )
-                updated_pipelines.append(pipeline_uuid)
-
         return {
             'bot_uuid': bot_uuid,
             'applied': True,
             'updated_bindings': [item['binding_id'] for item in preview['bindings_to_update']],
-            'disabled_pipeline_at_bot': updated_pipelines,
+            'disabled_pipeline_at_bot': sorted(updated_pipelines),
         }
 
     async def send_http_bot_test_message(

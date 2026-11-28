@@ -56,7 +56,7 @@ group = await self.plugin.call_platform_api(
 )
 ```
 
-`bot_uuid` は `await self.plugin.get_bots()`、またはパイプラインイベントの `await event_context.get_bot_uuid()` で取得できます。プラットフォーム ID には実際のイベントや設定の値を使用します。
+`bot_uuid` は `await self.plugin.get_bots()`、またはメッセージライフサイクルイベントの `await event_context.get_bot_uuid()` で取得できます。プラットフォーム ID には実際のイベントや設定の値を使用します。
 
 ### 主な操作
 

@@ -3,7 +3,7 @@ title: "Build a a website chat widget AI Bot with Gemini"
 description: "Step-by-step guide to running a Gemini-powered AI bot on a website chat widget with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
 ---
 
-This recipe puts a Gemini model behind a a website chat widget bot. LangBot receives messages from a website chat widget, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+This recipe puts a Gemini model behind a a website chat widget bot. LangBot receives messages from a website chat widget, runs them through a Chat, and sends the answer back, so you do not write any platform code.
 
 Use Google's Gemini models with LangBot's built-in Agent, including image input when the model supports vision.
 
@@ -24,9 +24,9 @@ Visitors' browsers talk to LangBot directly, so LangBot must be reachable at a p
 3. Enable **Tool Use** if the model supports function calling; MCP tools, Skills and the sandbox need it.
 4. Create the key in Google AI Studio. Enable **Vision** on the model if you want the bot to read images.
 
-## 2. Create a pipeline
+## 2. Create a Chat
 
-Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+Open **Chats** in the LangBot WebUI, create a Chat (or edit the default one) and set **AI** as follows.
 
 | Field | Value |
 | --- | --- |
@@ -37,12 +37,12 @@ Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default 
 
 ## 3. Create the a website chat widget bot
 
-1. Create a bot with the **Web Page Bot** adapter and bind a pipeline.
+1. Create a bot with the **Web Page Bot** adapter and bind a Chat.
 2. Copy the embed code into your site and replace `localhost:5300` with LangBot's public address.
 
 ## 4. Bind and test
 
-Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+Open the bot, select the Chat you created, save and make sure the bot is enabled.
 
 Open the page with the widget and start a conversation.
 
@@ -50,7 +50,7 @@ Open the page with the widget and start a conversation.
 
 - Images are ignored: enable **Vision** on the model and check that the platform adapter forwards images.
 - The widget does not load: the embed code still points at `localhost`, or the LangBot address is not served over HTTPS.
-- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+- Check **Monitoring** in the WebUI: every message, Chat run and error is recorded there.
 
 ## FAQ
 
@@ -64,7 +64,7 @@ Check the [platform feature matrix](/en/insight/platform-features) for what this
 
 ### Can the same Gemini setup serve other platforms too?
 
-Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+Yes. A Chat can be bound to many bots, so one configuration can answer on several platforms at once.
 
 ## Related guides
 

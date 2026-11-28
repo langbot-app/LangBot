@@ -7,9 +7,11 @@ Tests the actual RateLimit implementation from pkg.pipeline.ratelimit
 import pytest
 import asyncio
 import time
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 from importlib import import_module
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
+
+from .outer_stage_harness import bind_policy
 
 
 def get_modules():
@@ -290,7 +292,9 @@ async def test_require_access_allowed(mock_app, sample_query):
 
     sample_query.launcher_type = provider_session.LauncherTypes.PERSON
     sample_query.launcher_id = '12345'
-    sample_query.pipeline_config = {}
+    sample_query.pipeline_config = {
+        'safety': {'rate-limit': {'window-length': 60, 'limitation': 10, 'strategy': 'drop'}}
+    }
 
     # Create mock algorithm that allows access
     mock_algo = Mock(spec=algo_module.ReteLimitAlgo)
@@ -299,9 +303,9 @@ async def test_require_access_allowed(mock_app, sample_query):
 
     stage = ratelimit.RateLimit(mock_app)
 
-    # Patch the algorithm selection to use our mock
-    with patch.object(algo_module, 'preregistered_algos', []):
-        stage.algo = mock_algo
+    # The limiter belongs to the message policy bound to the query.
+    policy = await bind_policy(mock_app, sample_query)
+    policy.rate_limiter = mock_algo
 
     result = await stage.process(sample_query, 'RequireRateLimitOccupancy')
 
@@ -317,7 +321,9 @@ async def test_require_access_denied(mock_app, sample_query):
 
     sample_query.launcher_type = provider_session.LauncherTypes.PERSON
     sample_query.launcher_id = '12345'
-    sample_query.pipeline_config = {}
+    sample_query.pipeline_config = {
+        'safety': {'rate-limit': {'window-length': 60, 'limitation': 10, 'strategy': 'drop'}}
+    }
 
     # Create mock algorithm that denies access
     mock_algo = Mock(spec=algo_module.ReteLimitAlgo)
@@ -326,9 +332,9 @@ async def test_require_access_denied(mock_app, sample_query):
 
     stage = ratelimit.RateLimit(mock_app)
 
-    # Patch the algorithm selection to use our mock
-    with patch.object(algo_module, 'preregistered_algos', []):
-        stage.algo = mock_algo
+    # The limiter belongs to the message policy bound to the query.
+    policy = await bind_policy(mock_app, sample_query)
+    policy.rate_limiter = mock_algo
 
     result = await stage.process(sample_query, 'RequireRateLimitOccupancy')
 
@@ -344,7 +350,9 @@ async def test_release_access(mock_app, sample_query):
 
     sample_query.launcher_type = provider_session.LauncherTypes.PERSON
     sample_query.launcher_id = '12345'
-    sample_query.pipeline_config = {}
+    sample_query.pipeline_config = {
+        'safety': {'rate-limit': {'window-length': 60, 'limitation': 10, 'strategy': 'drop'}}
+    }
 
     # Create mock algorithm
     mock_algo = Mock(spec=algo_module.ReteLimitAlgo)
@@ -353,12 +361,37 @@ async def test_release_access(mock_app, sample_query):
 
     stage = ratelimit.RateLimit(mock_app)
 
-    # Patch the algorithm selection to use our mock
-    with patch.object(algo_module, 'preregistered_algos', []):
-        stage.algo = mock_algo
+    # The limiter belongs to the message policy bound to the query.
+    policy = await bind_policy(mock_app, sample_query)
+    policy.rate_limiter = mock_algo
 
     result = await stage.process(sample_query, 'ReleaseRateLimitOccupancy')
 
     assert result.result_type == entities.ResultType.CONTINUE
     assert result.new_query == sample_query
     mock_algo.release_access.assert_called_once_with(sample_query, 'person', '12345')
+
+
+@pytest.mark.asyncio
+async def test_disabled_rate_limit_never_consults_the_limiter(mock_app, sample_query):
+    """A policy with the rate limit switched off admits without counting."""
+    ratelimit, entities, algo_module = get_modules()
+
+    sample_query.pipeline_config = {
+        'safety': {'rate-limit': {'enabled': False, 'window-length': 60, 'limitation': 0, 'strategy': 'drop'}}
+    }
+    mock_algo = Mock(spec=algo_module.ReteLimitAlgo)
+    mock_algo.require_access = AsyncMock(return_value=False)
+    mock_algo.release_access = AsyncMock()
+
+    stage = ratelimit.RateLimit(mock_app)
+    policy = await bind_policy(mock_app, sample_query)
+    policy.rate_limiter = mock_algo
+
+    required = await stage.process(sample_query, 'RequireRateLimitOccupancy')
+    released = await stage.process(sample_query, 'ReleaseRateLimitOccupancy')
+
+    assert required.result_type == entities.ResultType.CONTINUE
+    assert released.result_type == entities.ResultType.CONTINUE
+    mock_algo.require_access.assert_not_called()
+    mock_algo.release_access.assert_not_called()

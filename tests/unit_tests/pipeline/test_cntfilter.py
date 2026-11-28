@@ -24,6 +24,8 @@ from tests.factories import (
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
+from .outer_stage_harness import bind_policy
+
 
 def get_cntfilter_module():
     """Lazy import to avoid circular import issues."""
@@ -80,50 +82,44 @@ def make_pipeline_config(**overrides):
     return base_config
 
 
-class TestContentFilterStageInit:
-    """Tests for ContentFilterStage initialization."""
+class TestContentFilterChain:
+    """The filters a message policy compiles from its content-filter settings."""
 
     @pytest.mark.asyncio
-    async def test_initialize_basic_filters(self):
-        """Initialize should load required filters."""
-        cntfilter = get_cntfilter_module()
-
+    async def test_basic_filters(self):
+        """Ignore rules are always part of the chain."""
         app = FakeApp()
-        stage = cntfilter.ContentFilterStage(app)
+        query = text_query('hello')
 
-        pipeline_config = make_pipeline_config()
+        policy = await bind_policy(app, query, make_pipeline_config())
 
-        await stage.initialize(pipeline_config)
-
-        assert [filter_impl.name for filter_impl in stage.filter_chain] == ['content-ignore']
+        assert [filter_impl.name for filter_impl in policy.filter_chain] == ['content-ignore']
 
     @pytest.mark.asyncio
-    async def test_initialize_with_sensitive_words(self):
-        """Initialize with sensitive words should load ban-word-filter."""
-        cntfilter = get_cntfilter_module()
-
+    async def test_sensitive_words_add_the_ban_word_filter(self):
+        """Checking sensitive words adds ban-word-filter to the chain."""
         app = FakeApp()
-        # Mock sensitive_meta for ban-word-filter
         app.sensitive_meta = Mock()
         app.sensitive_meta.data = {
             'words': [],
             'mask': '*',
             'mask_word': '',
         }
+        query = text_query('hello')
 
-        stage = cntfilter.ContentFilterStage(app)
-
-        pipeline_config = make_pipeline_config(
-            safety={
-                'content-filter': {
-                    'check-sensitive-words': True,
+        policy = await bind_policy(
+            app,
+            query,
+            make_pipeline_config(
+                safety={
+                    'content-filter': {
+                        'check-sensitive-words': True,
+                    }
                 }
-            }
+            ),
         )
 
-        await stage.initialize(pipeline_config)
-
-        assert {filter_impl.name for filter_impl in stage.filter_chain} == {
+        assert {filter_impl.name for filter_impl in policy.filter_chain} == {
             'ban-word-filter',
             'content-ignore',
         }
@@ -147,6 +143,7 @@ class TestPreContentFilter:
 
         query = text_query('hello world')
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
 
         result = await stage.process(query, 'PreContentFilterStage')
 
@@ -170,6 +167,7 @@ class TestPreContentFilter:
         query = text_query('')
         query.message_chain = platform_message.MessageChain([])
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
 
         result = await stage.process(query, 'PreContentFilterStage')
 
@@ -191,6 +189,7 @@ class TestPreContentFilter:
 
         query = text_query('   ')  # Only whitespace
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
 
         result = await stage.process(query, 'PreContentFilterStage')
 
@@ -213,6 +212,7 @@ class TestPreContentFilter:
         # Image message (non-text)
         query = image_query()
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
 
         result = await stage.process(query, 'PreContentFilterStage')
 
@@ -240,6 +240,7 @@ class TestPreContentFilter:
 
         query = text_query('hello world')
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
 
         result = await stage.process(query, 'PreContentFilterStage')
 
@@ -272,6 +273,7 @@ class TestContentIgnoreFilter:
 
         query = text_query('/help me')
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
 
         result = await stage.process(query, 'PreContentFilterStage')
 
@@ -300,6 +302,7 @@ class TestContentIgnoreFilter:
 
         query = text_query('http://example.com')
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
 
         result = await stage.process(query, 'PreContentFilterStage')
 
@@ -328,6 +331,7 @@ class TestContentIgnoreFilter:
 
         query = text_query('normal message')
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
 
         result = await stage.process(query, 'PreContentFilterStage')
 
@@ -349,6 +353,7 @@ class TestContentIgnoreFilter:
 
         query = text_query('/help me')
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
 
         result = await stage.process(query, 'PreContentFilterStage')
 
@@ -374,6 +379,7 @@ class TestPostContentFilter:
 
         query = text_query('hello')
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
         # Add a response message
         query.resp_messages = [provider_message.Message(role='assistant', content='Hello back!')]
 
@@ -402,6 +408,7 @@ class TestPostContentFilter:
 
         query = text_query('hello')
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
         query.resp_messages = [provider_message.Message(role='assistant', content='Response')]
 
         result = await stage.process(query, 'PostContentFilterStage')
@@ -424,6 +431,7 @@ class TestPostContentFilter:
 
         query = text_query('hello')
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
         # Non-string content - use model_construct to bypass validation
         # The actual content type could be a list of ContentElement objects
         non_string_msg = provider_message.Message.model_construct(
@@ -452,6 +460,7 @@ class TestPostContentFilter:
 
         query = text_query('hello')
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
         query.resp_messages = [provider_message.Message(role='assistant', content='')]
 
         result = await stage.process(query, 'PostContentFilterStage')
@@ -476,6 +485,7 @@ class TestContentFilterStageInvalidName:
 
         query = text_query('hello')
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
 
         with pytest.raises(ValueError, match='未知的 stage_inst_name'):
             await stage.process(query, 'UnknownStage')
@@ -506,6 +516,7 @@ class TestContentIgnoreFilterDirect:
 
         query = text_query('normal message without prefix')
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
 
         result = await stage.process(query, 'PreContentFilterStage')
 

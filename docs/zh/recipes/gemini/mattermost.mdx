@@ -3,7 +3,7 @@ title: "用 Gemini 搭建Mattermost AI 机器人"
 description: "使用 LangBot 搭建由 Gemini 驱动的Mattermost AI 机器人：模型配置、机器人凭据、网络要求、测试与常见问题。"
 ---
 
-本文把 Gemini 模型接到Mattermost机器人上。LangBot 接收Mattermost消息，交给流水线处理后把答案发回去，你不需要写任何平台对接代码。
+本文把 Gemini 模型接到Mattermost机器人上。LangBot 接收Mattermost消息，交给聊天处理后把答案发回去，你不需要写任何平台对接代码。
 
 用 LangBot 内置 Agent 调用 Google Gemini 模型；模型支持视觉时还可以识别图片。
 
@@ -24,9 +24,9 @@ description: "使用 LangBot 搭建由 Gemini 驱动的Mattermost AI 机器人�
 3. 如果模型支持函数调用，请勾选 **工具调用**；MCP 工具、Skills 和沙箱都依赖它。
 4. 在 Google AI Studio 创建密钥。需要识别图片时在模型上勾选 **视觉**。
 
-## 2. 创建流水线
+## 2. 创建聊天
 
-在 LangBot WebUI 打开 **流水线**，新建流水线（或编辑默认流水线），按下表配置 **AI** 能力。
+在 LangBot WebUI 打开 **聊天**，新建聊天（或编辑默认聊天），按下表配置 **AI** 能力。
 
 | 配置项 | 填写 |
 | --- | --- |
@@ -38,11 +38,11 @@ description: "使用 LangBot 搭建由 Gemini 驱动的Mattermost AI 机器人�
 ## 3. 创建Mattermost机器人
 
 1. 在 Mattermost 创建机器人账号（需要私信时勾选 `post:all`）并复制 Token，Token 只显示一次。
-2. 新建机器人，选择 **Mattermost** 适配器，填写服务器地址和 Token，并绑定流水线。
+2. 新建机器人，选择 **Mattermost** 适配器，填写服务器地址和 Token，并绑定聊天。
 
 ## 4. 绑定并测试
 
-打开机器人，选择刚才创建的流水线，保存并确认机器人已启用。
+打开机器人，选择刚才创建的聊天，保存并确认机器人已启用。
 
 私信机器人，或在它加入的频道中 @ 它。
 
@@ -50,8 +50,8 @@ description: "使用 LangBot 搭建由 Gemini 驱动的Mattermost AI 机器人�
 
 - 图片被忽略：在模型上勾选 **视觉**，并确认该平台适配器支持接收图片。
 - 暂不支持管理员相关功能，机器人角色保持 `Member` 即可。
-- 如果流水线或 AI 服务不支持流式输出，请在机器人上关闭流式。
-- 在 WebUI 的 **监控** 页面可以看到每条消息、每次流水线运行和错误详情。
+- 如果聊天或 AI 服务不支持流式输出，请在机器人上关闭流式。
+- 在 WebUI 的 **监控** 页面可以看到每条消息、每次聊天运行和错误详情。
 
 ## 常见问题
 
@@ -65,7 +65,7 @@ description: "使用 LangBot 搭建由 Gemini 驱动的Mattermost AI 机器人�
 
 ### 同一套 Gemini 配置能同时用在其他平台吗？
 
-可以。一条流水线可以绑定多个机器人，同一套配置能同时在多个平台上回复。
+可以。一个聊天可以绑定多个机器人，同一套配置能同时在多个平台上回复。
 
 ## 相关文档
 

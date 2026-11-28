@@ -56,7 +56,7 @@ group = await self.plugin.call_platform_api(
 )
 ```
 
-`bot_uuid` comes from `await self.plugin.get_bots()` or `await event_context.get_bot_uuid()` in a Pipeline event. Use platform IDs from real events or platform configuration.
+`bot_uuid` comes from `await self.plugin.get_bots()` or `await event_context.get_bot_uuid()` in a message lifecycle event. Use platform IDs from real events or platform configuration.
 
 ### Common actions
 

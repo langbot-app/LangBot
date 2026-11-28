@@ -53,11 +53,11 @@ preconditions:
   - "The selected model route supports function/tool calling, or LANGBOT_E2E_FAKE_PROVIDER_BASE_URL points to scripts/e2e/fake-openai-provider.mjs."
   - "qa-plugin-smoke exposes qa_plugin_echo."
 steps:
-  - "Ensure the local-agent pipeline and qa-plugin-smoke fixture plugin are available."
+  - "Ensure the local-agent Chat and qa-plugin-smoke fixture plugin are available."
   - "Temporarily set max-tool-iterations to 2 and bind only langbot-team/LocalAgent plus qa/plugin-smoke."
   - "Reset the person Debug Chat session for the target pipeline."
   - "Send the LOOP_LIMIT prompt and wait for the runner limit message."
-  - "Restore the original runner config and pipeline extension bindings."
+  - "Restore the original runner config and Chat extension bindings."
 checks:
   - "UI: The final Bot message contains Tool call iteration limit reached. I stopped before calling more tools."
   - "API diagnostic: pipeline-config-diagnostic.json shows max-tool-iterations was patched to 2."

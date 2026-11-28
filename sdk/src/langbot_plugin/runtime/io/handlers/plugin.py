@@ -1304,12 +1304,15 @@ class PluginConnectionHandler(handler.Handler):
     ) -> dict[str, Any]:
         return await self.call_action(
             RuntimeToPluginAction.GET_PLUGIN_SLOT_CONTAINER,
-            {},
+            {"include_registered_events": True},
             action_context=binding,
         )
 
     async def get_plugin_container(self) -> dict[str, Any]:
-        resp = await self.call_action(RuntimeToPluginAction.GET_PLUGIN_CONTAINER, {})
+        resp = await self.call_action(
+            RuntimeToPluginAction.GET_PLUGIN_CONTAINER,
+            {"include_registered_events": True},
+        )
 
         return resp
 

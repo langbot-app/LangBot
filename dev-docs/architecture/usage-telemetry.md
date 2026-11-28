@@ -83,3 +83,8 @@
 ### 5. 测试钩子
 
 Core 新增一个未在文档中公开的环境变量 `LANGBOT_TELEMETRY_HEARTBEAT_SECONDS`（最小 30），用于覆盖 heartbeat 周期，方便 E2E 测试。不设置时行为不变。
+# Message policy measurements
+
+`command.run` counts `builtin`, `plugin` and `processor` outcomes (`ok`, `denied`, `failed`, `intercepted`). Only built-in command names are reported; other names collapse to `plugin`. The corresponding execution-node family is `command` with operation `builtin:<name>`, `plugin` or `processor`.
+
+`policy.drop` and `message_policy` execution nodes record the rule, `bot|route` layer and `discarded` outcome. Rules: `access-control`, `group-respond-rules`, `rate-limit`, `ignore-rules`, `content-filter`, `outbound-content-filter`. `hook.intercept` identifies the lifecycle event and `output.transform` the action kind. Suppressed branches and telemetry-disabled instances send none of these observations.

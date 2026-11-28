@@ -8,6 +8,8 @@ import pytest
 from importlib import import_module
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
+from .outer_stage_harness import bind_policy
+
 
 def get_modules():
     """Lazy import to ensure proper initialization order"""
@@ -28,6 +30,7 @@ async def test_whitelist_allow(mock_app, sample_query):
 
     stage = bansess.BanSessionCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
+    await bind_policy(mock_app, sample_query)
 
     result = await stage.process(sample_query, 'BanSessionCheckStage')
 
@@ -46,6 +49,7 @@ async def test_whitelist_deny(mock_app, sample_query):
 
     stage = bansess.BanSessionCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
+    await bind_policy(mock_app, sample_query)
 
     result = await stage.process(sample_query, 'BanSessionCheckStage')
 
@@ -63,6 +67,7 @@ async def test_blacklist_allow(mock_app, sample_query):
 
     stage = bansess.BanSessionCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
+    await bind_policy(mock_app, sample_query)
 
     result = await stage.process(sample_query, 'BanSessionCheckStage')
 
@@ -80,6 +85,7 @@ async def test_blacklist_deny(mock_app, sample_query):
 
     stage = bansess.BanSessionCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
+    await bind_policy(mock_app, sample_query)
 
     result = await stage.process(sample_query, 'BanSessionCheckStage')
 
@@ -97,6 +103,7 @@ async def test_wildcard_group(mock_app, sample_query):
 
     stage = bansess.BanSessionCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
+    await bind_policy(mock_app, sample_query)
 
     result = await stage.process(sample_query, 'BanSessionCheckStage')
 
@@ -114,6 +121,7 @@ async def test_wildcard_person(mock_app, sample_query):
 
     stage = bansess.BanSessionCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
+    await bind_policy(mock_app, sample_query)
 
     result = await stage.process(sample_query, 'BanSessionCheckStage')
 
@@ -132,6 +140,7 @@ async def test_user_id_wildcard(mock_app, sample_query):
 
     stage = bansess.BanSessionCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
+    await bind_policy(mock_app, sample_query)
 
     result = await stage.process(sample_query, 'BanSessionCheckStage')
 
@@ -155,6 +164,7 @@ async def test_user_id_wildcard_normalizes_ids(mock_app, sample_query, mode, lau
 
     stage = bansess.BanSessionCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
+    await bind_policy(mock_app, sample_query)
     result = await stage.process(sample_query, 'BanSessionCheckStage')
 
     should_continue = (matching_field is not None) if mode == 'whitelist' else (matching_field is None)

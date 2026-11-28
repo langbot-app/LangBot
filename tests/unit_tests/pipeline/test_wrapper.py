@@ -650,7 +650,7 @@ class TestResponseWrapperVariables:
         query = text_query('hello')
         query.pipeline_config = pipeline_config
         query.resp_message_chain = []
-        query.variables['_pipeline_bound_plugins'] = ['plugin1', 'plugin2']
+        object.__setattr__(query, '_listener_plugins', ['plugin1', 'plugin2'])
 
         # Create assistant response
         assistant_resp = Mock()

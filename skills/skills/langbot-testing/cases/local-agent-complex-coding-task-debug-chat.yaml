@@ -57,7 +57,7 @@ preconditions:
   - "The selected real model supports sustained function calling across file inspection, edits, and test reruns."
 steps:
   - "Reset the isolated order-orchestrator workspace and confirm its baseline test suite fails."
-  - "Open the Local Agent pipeline in Debug Chat and send one complete autonomous coding task."
+  - "Open the Local Agent Chat in Debug Chat and send one complete autonomous coding task."
   - "Observe the Agent inspect requirements and code, run the baseline tests, edit multiple production files, and rerun verification after failures."
   - "Require the visible final sentinel only after all 12 tests and the acceptance check pass."
   - "Run the host-side verifier to confirm protected files were not changed and required artifacts are valid."

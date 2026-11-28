@@ -29,9 +29,9 @@ export const PLATFORMS = [
       ja: "Telegram はロングポーリングを使うため、LangBot から `api.telegram.org` へ外向きに接続できれば十分です。公開 Webhook URL は不要で、手元の PC や自宅サーバーでも動きます。",
     },
     test: {
-      en: "Press **Start** in a private chat with the bot and send a message. In groups, the message must match the pipeline's trigger rules (for example, mention the bot or reply to it).",
-      zh: "在与机器人的私聊中点击 **Start** 后发送消息。群聊中消息需要满足流水线的触发规则（例如 @ 机器人或回复它的消息）。",
-      ja: "ボットとの個人チャットで **Start** を押してからメッセージを送ります。グループではパイプラインのトリガー条件（ボットへのメンションや返信など）を満たす必要があります。",
+      en: "Press **Start** in a private chat with the bot and send a message. In groups, the message must match the trigger rules in the bot's message policy (for example, mention the bot or reply to it).",
+      zh: "在与机器人的私聊中点击 **Start** 后发送消息。群聊中消息需要满足机器人消息策略中的触发规则（例如 @ 机器人或回复它的消息）。",
+      ja: "ボットとの個人チャットで **Start** を押してからメッセージを送ります。グループではボットのメッセージポリシーにあるトリガー条件（ボットへのメンションや返信など）を満たす必要があります。",
     },
     trouble: {
       en: ["Only one running instance may poll a token. If replies are missing, make sure the same bot is not enabled in another LangBot instance or script."],
@@ -386,9 +386,9 @@ export const PLATFORMS = [
       ja: "ボットが読めるチャンネルで、トリガー条件に合うメッセージを送ります。",
     },
     trouble: {
-      en: ["No reply in a channel: check the bot's channel permissions and the pipeline's group trigger rules."],
-      zh: ["频道中没有回复：检查机器人的频道权限以及流水线的群聊触发规则。"],
-      ja: ["チャンネルで返信がない場合は、ボットのチャンネル権限とパイプラインのグループトリガー条件を確認します。"],
+      en: ["No reply in a channel: check the bot's channel permissions and the group trigger rules in the bot's message policy."],
+      zh: ["频道中没有回复：检查机器人的频道权限以及机器人消息策略中的群聊触发规则。"],
+      ja: ["チャンネルで返信がない場合は、ボットのチャンネル権限と、ボットのメッセージポリシーにあるグループトリガー条件を確認します。"],
     },
   },
   {
@@ -403,9 +403,9 @@ export const PLATFORMS = [
       ja: "Mattermost の **ボットアカウント**（ロール `Member`）とアクセストークン、Mattermost サーバーの URL。",
     },
     setup: {
-      en: ["Create the bot account in Mattermost (choose `post:all` for direct messages) and copy its token; it is shown only once.", "Create a bot with the **Mattermost** adapter, enter the server address and token, and bind a pipeline."],
-      zh: ["在 Mattermost 创建机器人账号（需要私信时勾选 `post:all`）并复制 Token，Token 只显示一次。", "新建机器人，选择 **Mattermost** 适配器，填写服务器地址和 Token，并绑定流水线。"],
-      ja: ["Mattermost でボットアカウントを作成し（DM を使う場合は `post:all`）、一度しか表示されないトークンをコピーします。", "**Mattermost** アダプターでボットを作成し、サーバーアドレスとトークンを入力してパイプラインを紐付けます。"],
+      en: ["Create the bot account in Mattermost (choose `post:all` for direct messages) and copy its token; it is shown only once.", "Create a bot with the **Mattermost** adapter, enter the server address and token, and bind a Chat."],
+      zh: ["在 Mattermost 创建机器人账号（需要私信时勾选 `post:all`）并复制 Token，Token 只显示一次。", "新建机器人，选择 **Mattermost** 适配器，填写服务器地址和 Token，并绑定聊天。"],
+      ja: ["Mattermost でボットアカウントを作成し（DM を使う場合は `post:all`）、一度しか表示されないトークンをコピーします。", "**Mattermost** アダプターでボットを作成し、サーバーアドレスとトークンを入力してチャットを紐付けます。"],
     },
     networkNote: {
       en: "LangBot only needs to reach your Mattermost server; Mattermost does not need to reach LangBot.",
@@ -418,9 +418,9 @@ export const PLATFORMS = [
       ja: "ボットに DM を送るか、参加しているチャンネルでメンションします。",
     },
     trouble: {
-      en: ["Administrator-related features are not supported; keep the bot role as `Member`.", "Disable streaming on the bot if your pipeline or AI provider does not support it."],
-      zh: ["暂不支持管理员相关功能，机器人角色保持 `Member` 即可。", "如果流水线或 AI 服务不支持流式输出，请在机器人上关闭流式。"],
-      ja: ["管理者向け機能には対応していないため、ボットのロールは `Member` のままにします。", "パイプラインや AI 側がストリーミングに対応しない場合は、ボットのストリーミングを無効にします。"],
+      en: ["Administrator-related features are not supported; keep the bot role as `Member`.", "Disable streaming on the bot if your Chat or AI provider does not support it."],
+      zh: ["暂不支持管理员相关功能，机器人角色保持 `Member` 即可。", "如果聊天或 AI 服务不支持流式输出，请在机器人上关闭流式。"],
+      ja: ["管理者向け機能には対応していないため、ボットのロールは `Member` のままにします。", "チャットや AI 側がストリーミングに対応しない場合は、ボットのストリーミングを無効にします。"],
     },
   },
   {
@@ -435,9 +435,9 @@ export const PLATFORMS = [
       ja: "外部サービスの認証情報は不要です。任意で、不正利用対策の Cloudflare Turnstile のサイトキーとシークレットキー。",
     },
     setup: {
-      en: ["Create a bot with the **Web Page Bot** adapter and bind a pipeline.", "Copy the embed code into your site and replace `localhost:5300` with LangBot's public address."],
-      zh: ["新建机器人，选择 **网页机器人** 适配器并绑定流水线。", "把嵌入代码放进你的网站，并把其中的 `localhost:5300` 换成 LangBot 的公网地址。"],
-      ja: ["**Web ページボット** アダプターでボットを作成し、パイプラインを紐付けます。", "埋め込みコードをサイトに貼り、`localhost:5300` を LangBot の公開アドレスに置き換えます。"],
+      en: ["Create a bot with the **Web Page Bot** adapter and bind a Chat.", "Copy the embed code into your site and replace `localhost:5300` with LangBot's public address."],
+      zh: ["新建机器人，选择 **网页机器人** 适配器并绑定聊天。", "把嵌入代码放进你的网站，并把其中的 `localhost:5300` 换成 LangBot 的公网地址。"],
+      ja: ["**Web ページボット** アダプターでボットを作成し、チャットを紐付けます。", "埋め込みコードをサイトに貼り、`localhost:5300` を LangBot の公開アドレスに置き換えます。"],
     },
     networkNote: {
       en: "Visitors' browsers talk to LangBot directly, so LangBot must be reachable at a public HTTPS address. LangBot Cloud includes one.",

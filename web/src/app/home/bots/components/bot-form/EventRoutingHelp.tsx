@@ -96,17 +96,6 @@ export default function EventRoutingHelp() {
           </div>
         </div>
         <p className="text-sm leading-6">{text('instructions')}</p>
-        <div className="mt-4 border-t pt-3 text-xs leading-6 text-muted-foreground">
-          <p>{text('plugin')}</p>
-          <a
-            href="https://langbot.app/docs/zh/plugin/dev/components/runner"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium text-foreground underline underline-offset-4"
-          >
-            {text('docs')} ↗
-          </a>
-        </div>
       </PopoverContent>
     </Popover>
   );

@@ -23,7 +23,7 @@ See [LLM request configuration](/en/plugin/dev/apis/llm-requests) for retries, t
 
 ## EventListener
 
-EventListener handles Pipeline events. Its event handler receives an `EventContext`:
+EventListener handles message lifecycle events. Its event handler receives an `EventContext`:
 
 ```python
 event = event_context.event
@@ -36,13 +36,13 @@ sender_id = event.sender_id
 | --- | --- | --- |
 | `event` | `BaseEventModel` | Current event object; its actual type matches the registered event type |
 | `event_name` | `str` | Current event class name |
-| `query_id` | `int` | Current Pipeline request ID |
-| `query_uuid` | `str \| None` | Stable identifier for the current Pipeline request |
+| `query_id` | `int` | Current request ID |
+| `query_uuid` | `str \| None` | Stable identifier for the current request |
 | `eid` | `int` | Temporary event number inside Plugin Runtime; do not persist it |
 | `is_prevent_default` | `bool` | Whether default handling has been stopped; change it with `prevent_default()` |
 | `is_prevent_postorder` | `bool` | Whether later plugins have been stopped; change it with `prevent_postorder()` |
 
-See [Pipeline Events](/en/plugin/dev/apis/pipeline-events) for event fields and all supported event types.
+See [Message Lifecycle Events](/en/plugin/dev/apis/pipeline-events) for event fields and all supported event types.
 
 ### Context methods
 
@@ -53,15 +53,15 @@ See [Pipeline Events](/en/plugin/dev/apis/pipeline-events) for event fields and 
 | `await event_context.set_query_var(key, value)` | - | Set a variable on the current request |
 | `await event_context.get_query_var(key)` | `Any` | Get one request variable |
 | `await event_context.get_query_vars()` | `dict[str, Any]` | Get all request variables |
-| `await event_context.create_new_conversation()` | `dict[str, Any]` | Clear the current Pipeline conversation so a later request starts a new one |
-| `await event_context.list_pipeline_knowledge_bases()` | `list[dict[str, Any]]` | List knowledge bases bound to the current Pipeline Local Agent |
-| `await event_context.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)` | `list[dict[str, Any]]` | Search a knowledge base bound to the current Pipeline |
+| `await event_context.create_new_conversation()` | `dict[str, Any]` | Clear the current Chat conversation so a later request starts a new one |
+| `await event_context.list_pipeline_knowledge_bases()` | `list[dict[str, Any]]` | List knowledge bases bound to the current Chat's Local Agent |
+| `await event_context.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)` | `list[dict[str, Any]]` | Search a knowledge base bound to the current Chat |
 | `event_context.prevent_default()` | - | Stop the default handling of the current event |
 | `event_context.prevent_postorder()` | - | Stop later plugins from handling the current event |
 
-`reply()` accepts a [MessageChain](/en/plugin/dev/apis/messages). Request variables, replies, and Pipeline knowledge-base methods require an associated Pipeline request. The `kb_id` passed to `retrieve_knowledge()` must come from `list_pipeline_knowledge_bases()`.
+`reply()` accepts a [MessageChain](/en/plugin/dev/apis/messages). Request variables, replies, and Chat knowledge-base methods require an associated request. The `kb_id` passed to `retrieve_knowledge()` must come from `list_pipeline_knowledge_bases()`.
 
-`prevent_default()` only affects Pipeline events whose default flow can be stopped. See [Pipeline Events](/en/plugin/dev/apis/pipeline-events#prevent-default-behavior).
+`prevent_default()` only affects events whose default flow can be stopped. See [Message Lifecycle Events](/en/plugin/dev/apis/pipeline-events#prevent-default-behavior).
 
 ## Command
 
@@ -84,8 +84,8 @@ session = context.session
 | `params` | `list[str]` | All arguments after the root command |
 | `crt_params` | `list[str]` | Arguments not yet consumed by the current subcommand |
 | `privilege` | `int` | Command privilege level of the current user |
-| `query_id` | `int` | Current Pipeline request ID |
-| `query_uuid` | `str \| None` | Stable identifier for the current Pipeline request |
+| `query_id` | `int` | Current request ID |
+| `query_uuid` | `str \| None` | Stable identifier for the current request |
 
 The SDK calls `context.shift()` before entering the current subcommand. Components do not need to call it directly.
 
@@ -98,9 +98,9 @@ The SDK calls `context.shift()` before entering the current subcommand. Componen
 | `await context.set_query_var(key, value)` | - | Set a variable on the current request |
 | `await context.get_query_var(key)` | `Any` | Get one request variable |
 | `await context.get_query_vars()` | `dict[str, Any]` | Get all request variables |
-| `await context.create_new_conversation()` | `dict[str, Any]` | Clear the current Pipeline conversation so a later request starts a new one |
-| `await context.list_pipeline_knowledge_bases()` | `list[dict[str, Any]]` | List knowledge bases bound to the current Pipeline Local Agent |
-| `await context.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)` | `list[dict[str, Any]]` | Search a knowledge base bound to the current Pipeline |
+| `await context.create_new_conversation()` | `dict[str, Any]` | Clear the current Chat conversation so a later request starts a new one |
+| `await context.list_pipeline_knowledge_bases()` | `list[dict[str, Any]]` | List knowledge bases bound to the current Chat's Local Agent |
+| `await context.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)` | `list[dict[str, Any]]` | Search a knowledge base bound to the current Chat |
 
 These request methods behave the same as their EventListener equivalents. See [Command](/en/plugin/dev/components/command) for registration and return values.
 
@@ -118,7 +118,7 @@ sender_id = session.sender_id
 | --- | --- |
 | `params` | Arguments generated by the model or caller from the tool JSON Schema |
 | `session` | Current session data |
-| `query_id` | Current Pipeline request ID; pass it unchanged to LangBot APIs that require request context |
+| `query_id` | Current request ID; pass it unchanged to LangBot APIs that require request context |
 
 Common `Session` properties are:
 
@@ -128,8 +128,8 @@ Common `Session` properties are:
 | `launcher_id` | Private-chat user or group ID |
 | `sender_id` | Current message sender ID |
 | `bot_uuid` | Current bot UUID |
-| `using_conversation` | Current Pipeline conversation |
-| `conversations` | Pipeline conversations stored in this Session |
+| `using_conversation` | Current Chat conversation |
+| `conversations` | Chat conversations stored in this Session |
 | `use_prompt_name` | Active prompt name |
 | `create_time`, `update_time` | Session creation and update times |
 
@@ -233,7 +233,7 @@ Batch registration must complete before sandbox source files are removed. Regist
 
 Bind before native sandbox tools or file operations. Runs sharing a Box still have separate attachment directories. `ctx.variables` contains public request variables for computing reuse keys.
 
-`ctx.delivery.automatic_reply` is `True` for Pipeline execution: return files using `RunnerResult.message_completed(ctx.run_id, message, file_ids=[...])`. Agents and plugin processors explicitly call `ctx.reply_files()`.
+`ctx.delivery.automatic_reply` is `True` for Chat execution: return files using `RunnerResult.message_completed(ctx.run_id, message, file_ids=[...])`. Agents and plugin processors explicitly call `ctx.reply_files()`.
 
 With automatic replies, every `RunnerResult.message_completed` is sent as its own message, so a Runner can post progress before its answer. `RunnerResult.message_delta` chunks update one streamed message on platforms that support streaming; elsewhere only completed messages are sent, and a run that ends with deltas alone sends its last result once.
 
@@ -286,7 +286,7 @@ On upgrade, an old acknowledgement on a requeued run may lack an attempt number.
 
 `run_id=None` refers to the current run. The SDK completes a normal event handler automatically. When a custom `run(ctx)` yields `RunnerResult`, do not register the same result again with `run_append_result()`.
 
-Pipeline retry and resume apply the current output filters, response wrapping and reply settings. Recovery uses the recorded reply target and message identity; missing information or an unsupported reply path produces an explicit error.
+Chat retry and resume apply the current output filters, response wrapping and reply settings. Recovery uses the recorded reply target and message identity; missing information or an unsupported reply path produces an explicit error.
 
 ### Availability and authorization
 
@@ -312,7 +312,7 @@ The following components receive task input rather than an EventListener or Runn
 
 The ACP daemon uses the existing LangBot run-scoped MCP bridge. With Box available and `event_reply` authorized, bind a Box, generate the file there, export the selected absolute paths with `langbot_export_box_files`, and send the returned IDs with `langbot_reply_files`. The platform adapter owns media upload and delivery; the ACP agent does not need platform credentials.
 
-File IDs are valid only within the run that exported them. Replies still target the original inbound message even when Pipeline filters rewrite the working text.
+File IDs are valid only within the run that exported them. Replies still target the original inbound message even when filters rewrite the working text.
 
 ## Installation-owned Artifacts in a run
 

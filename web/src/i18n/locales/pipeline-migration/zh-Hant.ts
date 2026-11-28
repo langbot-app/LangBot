@@ -12,7 +12,7 @@ export default {
   installDetails: '安裝詳情',
   stageProgress: '階段進度',
   downloaded: '已下載 {{size}}',
-  processed: '已處理 {{completed}} / {{total}} 條流水線',
+  processed: '已處理 {{completed}} / {{total}} 個聊天',
   installErrors: {
     plugin_permission_confirmation_required:
       '無法確認外掛權限。請有相應權限的成員在外掛設定中確認後重試。',
@@ -26,19 +26,19 @@ export default {
     plugin_launch_failed: '外掛啟動失敗，請檢查執行環境後重試。',
   },
   autoDescription:
-    '舊版執行方式已改為外掛。遷移全部流水線並保留現有設定，原設定會自動備份；遷移後開始新對話。',
-  viewPipelines: '查看流水線',
+    '舊版執行方式已改為外掛。遷移全部聊天並保留現有設定，原設定會自動備份；遷移後開始新對話。',
+  viewPipelines: '查看聊天',
   autoInstall: '自動安裝外掛並遷移',
   dataOnly: '僅遷移資料',
   dataOnlyHint: '適合離線或內網環境，遷移後請自行安裝對應的執行器外掛。',
   installing: '正在安裝所需外掛…',
-  migrating: '正在遷移流水線…',
-  summary: '已遷移 {{migrated}} 條，{{remaining}} 條需要處理。',
+  migrating: '正在遷移聊天…',
+  summary: '已遷移 {{migrated}} 個，{{remaining}} 個需要處理。',
   installFailed:
     '外掛安裝失敗。展開詳情查看失敗階段，處理後重試，或選擇僅遷移資料。',
 
   activationRetryHint:
-    '檢查執行環境後重新整理，選取此流水線並確認，即可只重試啟用，不會再次遷移已儲存的設定。',
+    '檢查執行環境後重新整理，選取此聊天並確認，即可只重試啟用，不會再次遷移已儲存的設定。',
   details: '遷移詳情',
   notices: {
     customRunner:
@@ -50,7 +50,7 @@ export default {
     mixedRunner: '同時存在新舊 Runner 選擇，已採用可用的那一項。',
     runnerConfigReplaced:
       '既有的新版 Runner 設定會被遷移結果取代，原值保存在遷移備份中。',
-    runnerAdded: '已將所需 Runner 外掛加入此流水線的擴充列表。',
+    runnerAdded: '已將所需 Runner 外掛加入此聊天的擴充列表。',
     extensionPrefs: '擴充設定中有無效項目，已忽略。',
     runtimeUnavailable:
       '外掛執行環境未連線，請恢復連線後重試，或選擇僅遷移資料。',
@@ -81,18 +81,18 @@ export default {
     pluginVersion: '請安裝所需外掛版本後重新整理。舊版本不支援此次遷移。',
     schemaChanged:
       '已安裝 Runner 的設定格式與遷移目標不一致，請檢查外掛版本後重新整理。',
-    runnerExcluded: '此流水線排除了所需 Runner 外掛，請先調整擴充設定。',
+    runnerExcluded: '此聊天排除了所需 Runner 外掛，請先調整擴充設定。',
     boxTemplateInvalid:
       '沙箱複用範本格式有誤，請使用 {變數名}；不支援位置參數、格式轉換或屬性存取。',
     pendingInteraction: '有對話正在等待輸入，請完成或取消後再遷移。',
   },
-  title: '流水線遷移',
-  description: '選擇要遷移的流水線。原設定會備份，遷移後將開始新對話。',
-  detected: '{{count}} 條流水線需要檢查遷移。',
+  title: '聊天遷移',
+  description: '選擇要遷移的聊天。原設定會備份，遷移後將開始新對話。',
+  detected: '{{count}} 個聊天需要檢查遷移。',
   review: '檢查遷移',
-  readOnly: '只有工作空間管理者可以遷移流水線。',
+  readOnly: '只有工作空間管理者可以遷移聊天。',
   previewError: '無法取得預覽，請重新整理。',
-  submitting: '正在提交所選流水線…',
+  submitting: '正在提交所選聊天…',
   running: '正在遷移。關閉對話框不會取消任務。',
   finished: '任務已結束，請逐條檢查下方結果。',
   failed: '任務失敗，請逐條檢查下方結果。',
@@ -106,10 +106,10 @@ export default {
   pluginHint: '缺少外掛？前往擴充功能安裝或啟用對應執行器，再重新整理預覽。',
   extensions: '開啟擴充功能',
   results: '逐條遷移結果',
-  selection: '已選擇 {{count}} 條（最多 50 條）',
-  confirm: '我確認遷移所選流水線。',
+  selection: '已選擇 {{count}} 個（最多 50 個）',
+  confirm: '我確認遷移所選聊天。',
   refresh: '重新整理預覽',
-  execute: '遷移所選流水線',
+  execute: '遷移所選聊天',
   legacyGate: '舊版設定在遷移前保持唯讀。為避免隱式轉換，已停用儲存和除錯。',
   states: {
     ready: '可遷移',

@@ -932,6 +932,23 @@ async def execute_platform_tool(
         reply_streams = session.get('reply_streams')
         if (
             definition.name == 'event_reply'
+            and message_chain is not None
+            and reply_streams is not None
+            and reply_streams.adapter is bot.adapter
+            and reply_streams.policy_query is not None
+        ):
+
+            async def api_func(target_type, target_id, message):
+                chain = await reply_streams.prepare_reply(message)
+                if chain is not None:
+                    return await bot.adapter.reply_message(
+                        message_source=reply_streams.source,
+                        message=chain,
+                        quote_origin=reply_streams.policy_query._message_policy.quote_origin,
+                    )
+
+        if (
+            definition.name == 'event_reply'
             and message_chain is None
             and reply_streams is not None
             and getattr(reply_streams, 'adapter', None) is bot.adapter

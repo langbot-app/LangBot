@@ -756,6 +756,10 @@ export default function WizardPage() {
         botDraft.current,
         bot,
         `${defaultName} ${t('agents.pipelineType')}`,
+        {
+          person: t('bots.routeNote.templatePerson'),
+          group: t('bots.routeNote.templateGroup'),
+        },
       );
       setBotName(resp.bot.name);
       setAdapterConfig(
@@ -915,7 +919,10 @@ export default function WizardPage() {
       const currentBot = (await httpClient.getBot(createdBotUuid)).bot;
       Object.assign(
         botUpdate,
-        wizardBindingsIfMissing(currentBot, previewPipelineUuid),
+        wizardBindingsIfMissing(currentBot, previewPipelineUuid, {
+          person: t('bots.routeNote.templatePerson'),
+          group: t('bots.routeNote.templateGroup'),
+        }),
       );
 
       await httpClient.updateBot(createdBotUuid, botUpdate);

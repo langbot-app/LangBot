@@ -4,6 +4,7 @@ import { backendClient, useCurrentWorkspace } from '@/app/infra/http';
 import { getCurrentWorkspaceSnapshot } from '@/app/infra/http/currentWorkspaceStore';
 import { resolveMonitoringWindow } from '../utils/dateUtils';
 import type {
+  ExecutionHandlingFilter,
   ExecutionListResult,
   ExecutionModeFilter,
   ExecutionSourceFilter,
@@ -18,6 +19,7 @@ export function useExecutions(params: {
   selectedAgents: string[];
   source: ExecutionSourceFilter;
   mode: ExecutionModeFilter;
+  handling?: ExecutionHandlingFilter;
   statusGroup: string;
   timeRange: TimeRangeOption;
   customDateRange: DateRange | null;
@@ -81,6 +83,7 @@ export function useExecutions(params: {
         status: params.statusGroup === 'all' ? undefined : [params.statusGroup],
         source: params.source,
         mode: params.mode,
+        handling: params.handling,
         startTime,
         endTime,
         limit: params.limit,
@@ -105,6 +108,7 @@ export function useExecutions(params: {
     params.selectedAgents,
     params.source,
     params.mode,
+    params.handling,
     params.statusGroup,
     params.timeRange,
     params.customDateRange,
@@ -128,6 +132,7 @@ export function useExecutions(params: {
     selectedAgentsStr,
     params.source,
     params.mode,
+    params.handling,
     params.statusGroup,
     params.timeRange,
     customDateRangeStr,

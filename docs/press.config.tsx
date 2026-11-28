@@ -447,7 +447,7 @@ export default defineConfig({
             }));
         const openingContent = isOpenAPI
           ? []
-          : sourceStructuredData.contents.slice(0, 2).map((content) => content.content.slice(0, 300));
+          : sourceStructuredData.contents.slice(0, 2).map((content) => content.content.slice(0, 100));
         const structuredData = {
           headings,
           contents: [{

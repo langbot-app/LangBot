@@ -3,7 +3,7 @@ title: "Build a Discord AI Bot with Ollama"
 description: "Step-by-step guide to running a Ollama-powered AI bot on Discord with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
 ---
 
-This recipe puts a Ollama model behind a Discord bot. LangBot receives messages from Discord, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+This recipe puts a Ollama model behind a Discord bot. LangBot receives messages from Discord, runs them through a Chat, and sends the answer back, so you do not write any platform code.
 
 Run open models locally with Ollama and serve them through LangBot's built-in Agent, so conversations never leave your machines.
 
@@ -23,9 +23,9 @@ Discord bots connect out to the Discord gateway, so no public webhook URL is req
 2. In LangBot, open **Models** and add an LLM model with the provider set to Ollama and the request URL pointing at your Ollama server (by default port `11434`).
 3. If LangBot runs in Docker, `localhost` is the container itself: use the host's address (for example `host.docker.internal`) instead.
 
-## 2. Create a pipeline
+## 2. Create a Chat
 
-Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+Open **Chats** in the LangBot WebUI, create a Chat (or edit the default one) and set **AI** as follows.
 
 | Field | Value |
 | --- | --- |
@@ -41,7 +41,7 @@ Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default 
 
 ## 4. Bind and test
 
-Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+Open the bot, select the Chat you created, save and make sure the bot is enabled.
 
 Send a message that matches the trigger rules in a server channel, then try a DM from the bot's profile.
 
@@ -50,7 +50,7 @@ Send a message that matches the trigger rules in a server channel, then try a DM
 - Small local models may not support tool calling well; leave **Tool Use** off for models that do not support it.
 - Gateway login fails: check the current token and that both privileged intents are enabled and saved.
 - Discord limits message length, so long streaming replies arrive as several messages.
-- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+- Check **Monitoring** in the WebUI: every message, Chat run and error is recorded there.
 
 ## FAQ
 
@@ -64,7 +64,7 @@ Yes. Enable streaming on the bot; the AI back end must also stream. See the [pla
 
 ### Can the same Ollama setup serve other platforms too?
 
-Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+Yes. A Chat can be bound to many bots, so one configuration can answer on several platforms at once.
 
 ## Related guides
 

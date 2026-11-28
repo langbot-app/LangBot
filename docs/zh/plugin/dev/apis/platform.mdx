@@ -56,7 +56,7 @@ group = await self.plugin.call_platform_api(
 )
 ```
 
-`bot_uuid` 可从 `await self.plugin.get_bots()` 获取，流水线事件中也可使用 `await event_context.get_bot_uuid()`。平台 ID 的值应来自实际事件或平台配置。
+`bot_uuid` 可从 `await self.plugin.get_bots()` 获取，消息生命周期事件中也可使用 `await event_context.get_bot_uuid()`。平台 ID 的值应来自实际事件或平台配置。
 
 ### 常用动作
 

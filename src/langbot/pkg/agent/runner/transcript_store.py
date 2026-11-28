@@ -298,6 +298,35 @@ class TranscriptStore:
                 messages.append(message)
         return messages
 
+    async def pop_last_turn(self, conversation_id, bot_id, workspace_id, thread_id, require_text=False):
+        scoped = self._apply_scope_filters(
+            sqlalchemy.select(Transcript).where(Transcript.conversation_id == conversation_id),
+            bot_id,
+            workspace_id,
+            thread_id,
+            True,
+        )
+        async with self._session_factory() as session, session.begin():
+            user = (
+                await session.scalars(scoped.where(Transcript.role == 'user').order_by(Transcript.seq.desc()).limit(1))
+            ).first()
+            if user is None:
+                return None
+            rows = (await session.scalars(scoped.where(Transcript.seq >= user.seq))).all()
+            if not any(row.role == 'assistant' and row.item_type == 'message' for row in rows):
+                return None
+            message = self._transcript_item_to_provider_message(self._row_to_dict(user))
+            if message is None:
+                return None
+            if require_text and not isinstance(message.content, str):
+                parts = message.content
+                if not parts or any(part.type != 'text' or part.text is None for part in parts):
+                    return None
+                message = message.model_copy(update={'content': ''.join(part.text for part in parts)})
+            for row in rows:
+                await session.delete(row)
+            return message
+
     async def has_history_before(
         self,
         conversation_id: str,

@@ -6,7 +6,7 @@ Plugins consist of one or more components that provide different functionalities
 
 - Plugin processor (Runner): handles platform events in plugin code after an instance is created and bound. See the [tutorial](/en/plugin/dev/components/runner).
 - Agent runner (Runner): provides execution logic selected in an Agent configuration; it is distinct from a standalone plugin processor.
-- Event Listeners (EventListener): Listen to events during pipeline execution and modify context or pipelines.
+- Event Listeners (EventListener): Listen to events while a bot processes messages and modify the context or processing flow.
 - Commands (Command): Triggered by user command messages starting with `!` (or other configured prefixes).
 - Tools (Tool): Called by LLMs during execution of LangBot's built-in Local Agent.
 - Knowledge Engines (KnowledgeEngine): Provide knowledge base indexing and retrieval capabilities for LangBot, managing document ingestion, retrieval, and deletion.

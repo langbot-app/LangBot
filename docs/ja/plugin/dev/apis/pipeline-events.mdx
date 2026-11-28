@@ -1,8 +1,60 @@
 ---
-title: "パイプラインイベントとAPI"
+title: "メッセージライフサイクルイベントとAPI"
 ---
 
-LangBotプラグインはパイプラインイベントを登録して処理できます。使用方法については、[コンポーネント: イベントリスナー](/ja/plugin/dev/components/event-listener)を参照してください。
+LangBot プラグインは [コンポーネント: イベントリスナー](/ja/plugin/dev/components/event-listener) を使って、ボットがメッセージを受信してからの各段階（メッセージライフサイクル）にフックできます。これらのフックは**ボット**に属し、メッセージが最終的にチャット、Agent、プラグインコマンドのどれで処理されても同じルールで発火します。
+
+<Info>
+このページの旧名は「パイプラインイベント」です。イベントクラスとフィールドは変わっていないため、既存のプラグインはそのまま動作します。
+</Info>
+
+## プラグインを有効にする場所
+
+プラグインは**ボット**で有効にします。ボットの「イベントルーティング → プラグイン」タブは、以前のチャットのプラグイン設定と同じく「すべてのプラグインを有効にする」か、プラグインを手動で選択できます。個々のルートでボットの設定を上書きできます。プラグインを有効にすると、そのコマンドとイベントリスナーがすべて有効になります。有効でないプラグインはこのボットのイベントを受け取らず、コマンドも一致しません。
+
+チャットのプラグイン一覧は、AI が呼び出せるプラグインツールを決めるだけになりました。リスナーが発火するかどうかには影響しません。
+
+イベントはボットのプラグイン一覧の順にプラグインへ配信されます。そのイベントを登録していないプラグインはスキップされます。
+
+## メッセージライフサイクル
+
+ボットがメッセージ（`message.received`）を受信すると、次の順に処理します。
+
+```text
+ルートの事前選択（どのルートに一致するかを計算するだけで、まだ実行しない）
+→ *MessageReceived                （prevent_default でメッセージ全体を終了）
+→ プラグインコマンド？
+    はい   → 受信ポリシー（グループ応答ルール、アクセス制御、レート制限、コンテンツフィルタ）
+             → *CommandSent       （prevent_default でコマンドを実行しない）
+             → コマンド実行 → 送信ポリシー（長文、遅延、@メンション、引用）
+    いいえ → 受信ポリシー
+             → チャット：PromptPreProcessing → *NormalMessageReceived → AI → NormalMessageResponded
+             → Agent：*NormalMessageReceived → Agent → NormalMessageResponded
+             → 送信ポリシー
+```
+
+- メッセージごとに Query が 1 つ作られます。フック、コマンド、処理側で共有されるため、どのフックとコマンドでも `reply()`、`get_bot_uuid()`、クエリ変数を使えます。
+- `*MessageReceived` はグループ応答ルールなどの受信ポリシーより**前**に発火するため、ボットをメンションしていないグループメッセージもプラグインから見えます。ルートのルールで破棄されたメッセージでも発火します。
+- 受信・送信ポリシーはボットの「メッセージポリシー」で設定します。[ボット](/ja/usage/platforms/readme)を参照してください。
+
+## 各フックが有効な処理先
+
+| イベント | チャット | Agent | プラグインコマンド |
+| --- | --- | --- | --- |
+| `*MessageReceived` | ✓ | ✓ | ✓ |
+| `*NormalMessageReceived` | ✓ | ✓ | — |
+| `*CommandSent` | — | — | ✓ |
+| `NormalMessageResponded` | ✓ | ✓（ストリーミング返信は通知のみ） | — |
+| `PromptPreProcessing` | ✓ | — | — |
+| プラットフォーム通知（後述） | ✓ | ✓ | ✓ |
+
+既知の制限:
+
+- `PromptPreProcessing` はチャットでのみ発火し、Agent では発火しません。
+- ストリーミング返信は生成中にすでにユーザーへ届いているため、`NormalMessageResponded` は通知のみで、書き換えや置き換えはできません。非ストリーミング返信は書き換えられます。
+- プラグイン処理（ルートがイベントを直接プラグインに渡すもの）は受信時のインターセプトを通りませんが、その返信は同じ送信ポリシーを通ります。
+
+ボットの「プラグイン」タブでは、選択中のルートの処理先に対して各フックが有効かどうかがラベルで表示されます。
 
 ## イベント一覧
 
@@ -10,7 +62,7 @@ LangBotプラグインはパイプラインイベントを登録して処理で�
 
 ### \*MessageReceived
 
-グループチャットまたはプライベートチャットでメッセージを受信したときにトリガーされます。
+ボットがグループまたはプライベートのメッセージを受信したときに、グループ応答ルールやコマンド照合より前にトリガーされます。`prevent_default()` を呼ぶとメッセージはそれ以上処理されません。書き換えた `message_chain` は後続の処理に渡されます。
 
 ```python
 class PersonMessageReceived(BaseEventModel):
@@ -61,7 +113,7 @@ class GroupMessageReceived(BaseEventModel):
 
 ### \*NormalMessageReceived
 
-グループチャットまたはプライベートチャットメッセージを受信し、LLMで処理する必要があるメッセージ(コマンドでないメッセージ)であると判定されたときにトリガーされます。
+メッセージが受信ポリシーを通過し、チャットまたは Agent に渡されるとき（コマンドではないとき）にトリガーされます。デフォルト動作を阻止して返信すると AI の返信を置き換え、入力を書き換えると AI は書き換えた内容を受け取ります。
 
 ```python
 class PersonNormalMessageReceived(BaseEventModel):
@@ -134,11 +186,7 @@ class GroupNormalMessageReceived(BaseEventModel):
 
 ### \*CommandSent
 
-<Warning>
-  使用は推奨されなくなりました。代わりに[コンポーネント: Command](/ja/plugin/dev/components/command)を使用してください。
-</Warning>
-
-グループチャットまたはプライベートチャットでコマンドを受信したときにトリガーされます。
+プラグインコマンドが受信ポリシーを通過した後、実行前にトリガーされます。`prevent_default()` でコマンドを実行せず、`reply_message_chain` で代わりの返信を返せます。コマンド自体は[コンポーネント: Command](/ja/plugin/dev/components/command)で実装してください。
 
 ```python
 class PersonCommandSent(BaseEventModel):
@@ -191,7 +239,7 @@ class GroupCommandSent(BaseEventModel):
 
 ### NormalMessageResponded
 
-メッセージがLLMレスポンスを受信したときにトリガーされます。
+チャットまたは Agent が返信を生成した後にトリガーされます。非ストリーミング返信では送信前に発火し、返信を書き換え・置き換えできます。ストリーミング返信では通知のみです。
 
 ```python
 class NormalMessageResponded(BaseEventModel):
@@ -228,7 +276,7 @@ class NormalMessageResponded(BaseEventModel):
 
 ### PromptPreProcessing
 
-LLMレスポンスコンテキスト(プロンプト)を構築するときにトリガーされます。
+チャットが LLM コンテキスト（プロンプト）を構築するときにトリガーされます。Agent ではトリガーされません。
 
 ```python
 class PromptPreProcessing(BaseEventModel):
@@ -251,6 +299,24 @@ class PromptPreProcessing(BaseEventModel):
 このターンの検索証拠は、`Message(role="system", content=...)` を `prompt` または `default_prompt` に追加して渡せます。Host は `prompt` 内で追加または変更されたシステムメッセージを、適用後の `default_prompt` に続けて Runner の `get_prompt()` API から返します。最終的なイベント処理順序を保ち、ターンごとに再構築します。Runner はモデル呼び出しの前にコンテキスト予算を適用します。会話履歴は引き続き Runner の履歴 API から取得します。プロンプト前処理のコンテキストは現在の実行に属します。
 
 イベント処理後のクエリ変数 `_knowledge_base_uuids` が、この実行の自動検索対象を選択します。空リストは自動検索を無効にし、未設定の場合は構成済みの選択を維持します。明示的な検索 API は引き続き実行時に固定されたリソース権限を検証します。メモリプラグインは、自身のクエリ単位の検索を終えてから、そのナレッジベースを自動検索対象から除外してください。
+
+## プラットフォーム通知
+
+以下のイベントは、メッセージプラットフォームで対応するイベントが発生したときに有効なプラグインへ通知されます。**通知のみ**で、インターセプトできず、ルーティングにも影響しません。`MessageReceived`（Person/Group の接頭辞なし）は `message.received` の汎用通知で、`*MessageReceived` より前に送られます。
+
+| イベント | 発生するプラットフォーム |
+| --- | --- |
+| `MessageReceived` | すべてのプラットフォーム |
+| `MessageDeleted` | OneBot v11、Discord、Lark、LINE、Slack、WeCom カスタマーサービス |
+| `MessageEdited` | Discord、Slack、Telegram |
+| `MessageReactionReceived` | Discord、Lark、QQ 公式、Slack、Telegram |
+| `GroupMemberJoined` / `GroupMemberLeft` / `BotInvitedToGroup` / `BotRemovedFromGroup` | Discord、Lark、LINE、OneBot v11、QQ 公式、Slack、Telegram |
+| `GroupMemberBanned` | OneBot v11、Telegram |
+| `BotMuted` / `BotUnmuted` | Telegram |
+| `FeedbackReceived` | DingTalk、WeCom ボット |
+| `PlatformSpecificEventReceived` | DingTalk、KOOK、Lark、LINE、WeChat 公式アカウント、OneBot v11、QQ 公式、Slack、Telegram、WeCom、WeCom ボット、WeCom カスタマーサービス |
+
+受信できるかどうかは、プラットフォームがそのイベントをボットに配信するかによります。
 
 ## EventListener コンテキスト
 
@@ -276,7 +342,7 @@ class PromptPreProcessing(BaseEventModel):
 
 #### モニタリングでの表示
 
-プラグインがメッセージ系イベントで `prevent_default()` を呼び出してメッセージを引き受けると、LangBot のモニタリングではそのメッセージが「プラグインが処理 · 作者/プラグイン名」と表示され、パイプラインに設定された Runner は処理者として表示されなくなります。イベント処理中にプラグインが送った内容も記録されます。
+プラグインがメッセージ系イベントで `prevent_default()` を呼び出してメッセージを引き受けると、LangBot のモニタリングではそのメッセージが「プラグインが処理 · 作者/プラグイン名」と表示され、チャットや Agent は処理者として表示されなくなります。イベント処理中にプラグインが送った内容も記録されます。
 
 - `event_context.reply()` で送った返信は、そのメッセージへの返信として記録されます。送信に失敗すると `PluginReplyError` エラーが記録されます。
 - `self.plugin.send_message()` で送ったメッセージは、プラグインが送信したメッセージとして記録されます。送信に失敗すると `PluginSendError` エラーが記録されます。

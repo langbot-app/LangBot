@@ -20,9 +20,9 @@ test('sidebar introduction takes priority without losing the page guide step', a
   await sidebar.getByRole('button', { name: 'Skip' }).click();
   await expect(sidebar).toHaveCount(0);
   await expect(contextual.getByRole('dialog')).toBeVisible();
-  await expect(contextual).toHaveAttribute('data-active-step', 'trigger');
+  await expect(contextual).toHaveAttribute('data-active-step', 'ai');
   await contextual.getByRole('button', { name: 'Next' }).click();
-  await expect(contextual).not.toHaveAttribute('data-active-step', 'trigger');
+  await expect(contextual).not.toHaveAttribute('data-active-step', 'ai');
 });
 
 for (const theme of ['light', 'dark']) {

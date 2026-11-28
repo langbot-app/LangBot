@@ -185,6 +185,7 @@ class RuntimeToPluginAction(ActionType):
 
 
 class LangBotToRuntimeAction(ActionType):
+    LIST_PLUGIN_REGISTRATIONS = "list_plugin_registrations"
     """The action from langbot to runtime."""
 
     LIST_PLUGINS = "list_plugins"

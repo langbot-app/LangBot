@@ -81,7 +81,7 @@ class ResponseWrapper(stage.PipelineStage):
                         )
 
                         # Get bound plugins for filtering
-                        bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+                        bound_plugins = getattr(query, '_listener_plugins', None)
                         event_ctx = await self.ap.plugin_connector.emit_event(event, bound_plugins)
 
                         if event_ctx.is_prevented_default():
@@ -141,7 +141,7 @@ class ResponseWrapper(stage.PipelineStage):
                             )
 
                             # Get bound plugins for filtering
-                            bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+                            bound_plugins = getattr(query, '_listener_plugins', None)
                             event_ctx = await self.ap.plugin_connector.emit_event(event, bound_plugins)
 
                             if event_ctx.is_prevented_default():

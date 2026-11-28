@@ -43,7 +43,7 @@ LangBot 目前支持 WeKnora 的 `知识库问答（chat）` 和 `Agent 智能�
 
 ## 配置 LangBot
 
-打开 LangBot WebUI 页面，添加一个新的流水线或在已有流水线中切换到 `AI 能力` 配置页面。
+打开 LangBot WebUI 页面，添加一个新的聊天或在已有聊天中切换到 `AI 能力` 配置页面。
 
 ![weknora](/images/zh/deploy/pipelines/weknora/creat_langbot_pipeline.png)
 
@@ -61,11 +61,11 @@ LangBot 目前支持 WeKnora 的 `知识库问答（chat）` 和 `Agent 智能�
    - `默认提示词`：当用户未发送文本内容时使用的默认问句。
 3. 点击 `保存` 完成配置。
 
-完成后，你即可在该流水线中调用 WeKnora 完成基于知识库的智能对话。
+完成后，你即可在该聊天中调用 WeKnora 完成基于知识库的智能对话。
 
 ## 输出处理
 
-- 使用 `agent` 应用时，如果开启了 LangBot 流水线 `输出处理` 中的 `track-function-calls`，将会在 WeKnora 执行每个工具调用时，输出一个 `调用函数 xxx` 的消息给用户。
+- 使用 `agent` 应用时，如果开启了 LangBot 聊天 `输出处理` 中的 `track-function-calls`，将会在 WeKnora 执行每个工具调用时，输出一个 `调用函数 xxx` 的消息给用户。
 - WeKnora 返回的 `thinking`（思维链）内容会以 `<think>` 标签包裹后发送，可在前端进行折叠展示。
 - WeKnora 返回的 `references`（知识库引用来源）会作为参考来源消息附在回答之后。
 
@@ -75,4 +75,4 @@ LangBot 目前支持 WeKnora 的 `知识库问答（chat）` 和 `Agent 智能�
 - **未返回知识库内容**：请确认填写的 `知识库 ID` 是否正确，且该知识库下已成功上传并解析了文档。
 - **无法选择 `WeKnora API`**：请确认当前 LangBot 版本是否已支持该运行器；若尚未支持，请升级到包含 WeKnora 运行器的版本。
 
-更多流水线通用配置说明，请参考[修改对话流水线配置](/zh/usage/pipelines/readme)。
+更多聊天通用配置说明，请参考[修改聊天配置](/zh/usage/pipelines/readme)。

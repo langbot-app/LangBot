@@ -7,7 +7,7 @@ title: "LangBot API"
 重试、超时、数字思考预算、prompt caching、请求头和流式取消见 [LLM 请求配置](/zh/plugin/dev/apis/llm-requests)。
 
 <Info>
-本页大多数方法都需要相应的插件能力：插件在 `manifest.yaml` 中声明，工作区成员在安装后授予。例如 `invoke_llm` 需要 `models.invoke`，`send_message` 需要 `bot.message.send`。未获授权的调用会返回 `permission_denied`。每个方法需要哪项能力，见[插件权限](/zh/plugin/dev/permissions#插件能力)。如需管理 Agent、流水线、机器人等工作区资源，请使用[工作区 API](/zh/plugin/dev/apis/workspace)。
+本页大多数方法都需要相应的插件能力：插件在 `manifest.yaml` 中声明，工作区成员在安装后授予。例如 `invoke_llm` 需要 `models.invoke`，`send_message` 需要 `bot.message.send`。未获授权的调用会返回 `permission_denied`。每个方法需要哪项能力，见[插件权限](/zh/plugin/dev/permissions#插件能力)。如需管理 Agent、聊天、机器人等工作区资源，请使用[工作区 API](/zh/plugin/dev/apis/workspace)。
 </Info>
 
 ## LangBot API
@@ -434,7 +434,7 @@ file_bytes = await self.plugin.get_config_file("key")
 
 ## 知识库 API
 
-这些 API 可在提供 `self.plugin` 的普通组件中访问，用于列出和检索 LangBot 实例中的所有知识库，不受流水线配置限制。
+这些 API 可在提供 `self.plugin` 的普通组件中访问，用于列出和检索 LangBot 实例中的所有知识库，不受聊天配置限制。
 
 ### 列出所有知识库
 
@@ -492,7 +492,7 @@ for entry in results:
 ```
 
 <Tip>
-这些 API 不需要 `query_id`，可以在普通组件中使用（包括 Tool 组件），且可以访问所有知识库，不受当前流水线配置限制。
+这些 API 不需要 `query_id`，可以在普通组件中使用（包括 Tool 组件），且可以访问所有知识库，不受当前聊天配置限制。
 </Tip>
 
 ## RAG API

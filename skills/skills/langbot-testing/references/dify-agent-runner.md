@@ -11,7 +11,7 @@ Use this reference when validating `langbot-team/DifyAgent` through LangBot WebU
 ## LangBot Configuration
 
 1. Open `LANGBOT_FRONTEND_URL`.
-2. Navigate to `Pipelines` and open the target pipeline.
+2. Navigate to `Processors` and open the target Chat.
 3. Open `Configuration > AI`.
 4. Select runner `Dify`.
 5. Configure:

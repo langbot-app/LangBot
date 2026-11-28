@@ -1,7 +1,7 @@
 name: safety
 label:
-  en_US: Safety Control
-  zh_Hans: 安全控制
+  en_US: Safety
+  zh_Hans: 安全
 stages:
   - name: content-filter
     label:
@@ -43,6 +43,13 @@ stages:
       en_US: Rate Limit
       zh_Hans: 速率限制
     config:
+      - name: enabled
+        label:
+          en_US: Enable Rate Limit
+          zh_Hans: 启用速率限制
+        type: boolean
+        required: true
+        default: true
       - name: window-length
         label:
           en_US: Window Length

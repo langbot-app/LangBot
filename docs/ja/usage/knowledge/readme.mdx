@@ -3,7 +3,7 @@ title: "ナレッジベース"
 description: "LangBot で RAG ナレッジベースを構築。AI ボットにドキュメント検索と根拠ある回答を付与。"
 ---
 
-LangBotはRAG（Retrieval-Augmented Generation）をネイティブサポートしています。ナレッジベースを作成してパイプラインにバインドすることで、ナレッジベースの内容に基づいて質問に答えることができます。
+LangBotはRAG（Retrieval-Augmented Generation）をネイティブサポートしています。ナレッジベースを作成してチャットにバインドすることで、ナレッジベースの内容に基づいて質問に答えることができます。
 
 ナレッジベースはRAGエンジンプラグインによって駆動され、異なるRAGエンジンは異なるインデックス作成と検索戦略を提供します。利用可能なRAGエンジンプラグインは[プラグインマーケットプレイス](https://space.langbot.app/market)で見つけることができます。
 
@@ -26,7 +26,7 @@ LangRAG の内蔵テキストパーサーは UTF-8 と Unicode のバイトオ�
 
 ## ナレッジベースの使用
 
-パイプライン設定に移動し、「AI」タブで`Local Agent`をランナーとして選択してから、先ほど作成したナレッジベースを選択します。
+チャット設定に移動し、「AI」タブで`Local Agent`をランナーとして選択してから、先ほど作成したナレッジベースを選択します。
 
 <img width="400px" src="/images/zh/deploy/knowledge/use_local_agent.png" alt="use_kb" />
 
@@ -47,7 +47,7 @@ LangRAG の内蔵テキストパーサーは UTF-8 と Unicode のバイトオ�
 LangBotの組み込みナレッジベースは、ランナーが`Local Agent`に設定されている場合にのみ使用できます。他のランナーについては、それぞれのドキュメントを参照してください。
 </Info>
 
-これで`チャットデバッグ`でナレッジベースを使用したり、このパイプラインにリンクされたボットを通じて使用できます:
+これで`チャットデバッグ`でナレッジベースを使用したり、このチャットにリンクされたボットを通じて使用できます:
 
 <img width="400px" src="/images/zh/deploy/knowledge/use_kb_in_chat.png" alt="use_kb_in_chat" />
 

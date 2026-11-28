@@ -109,7 +109,8 @@ def test_expire_time_metadata_lives_under_ai_runner_not_safety():
     metadata_dir = project_root / 'src' / 'langbot' / 'templates' / 'metadata' / 'pipeline'
 
     ai_meta = yaml.safe_load((metadata_dir / 'ai.yaml').read_text())
-    safety_meta = yaml.safe_load((metadata_dir / 'safety.yaml').read_text())
+    # Safety settings moved to the bot message policy.
+    safety_meta = yaml.safe_load((metadata_dir.parent / 'message-policy' / 'safety.yaml').read_text())
 
     ai_stage_names = [stage['name'] for stage in ai_meta['stages']]
     assert 'session-limit' not in ai_stage_names

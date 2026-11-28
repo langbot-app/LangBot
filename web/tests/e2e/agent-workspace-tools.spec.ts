@@ -38,7 +38,7 @@ test('workspace tools have a separate tab and retain selection across tabs', asy
     });
   });
   await page.goto('/home/agents?id=agent-tools');
-  await page.getByRole('tab', { name: 'Events & tools', exact: true }).click();
+  await page.getByTestId('agent-manage-tools').click();
   const workspaceTab = page.getByRole('button', {
     name: /Workspace Operations/,
   });
@@ -106,7 +106,7 @@ test('workspace selection uses installation grants, not the current member ceili
     }),
   );
   await page.goto('/home/agents?id=agent-tools');
-  await page.getByRole('tab', { name: 'Events & tools', exact: true }).click();
+  await page.getByTestId('agent-manage-tools').click();
   await page.getByRole('button', { name: /Workspace Operations/ }).click();
   await page.getByPlaceholder(/Search operation name/).fill('stats.');
   await expect(
