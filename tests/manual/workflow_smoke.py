@@ -160,6 +160,7 @@ async def smoke(base_url, api_key, screenshot=None):
                     if item['action'] in ('send_msg', 'send_group_msg')
                 )
                 await event_smoke(request, peer, joined_uuid)
+                await trigger_smoke(request, client, base_url, api_key)
                 print(json.dumps({'execution_details': traces}, ensure_ascii=False))
                 response = await client.delete(f'/api/v1/workflows/{workflow_uuid}')
                 assert response.status_code == 400
@@ -275,6 +276,152 @@ async def event_smoke(request, peer, workflow_uuid):
                 indent=2,
             )
         )
+
+
+async def wait_for(peer, text, actions=('send_msg', 'send_private_msg', 'send_group_msg'), timeout=20):
+    async with asyncio.timeout(timeout):
+        while not any(
+            text in json.dumps(row['params'], ensure_ascii=False) for row in peer.requests if row['action'] in actions
+        ):
+            await asyncio.sleep(0.1)
+
+
+async def trigger_smoke(request, client, base_url, api_key):
+    """Command, webhook and schedule triggers through a second, unthrottled bot."""
+    bot = await request(
+        'POST',
+        '/api/v1/platform/bots',
+        {
+            'name': 'Workflow trigger test',
+            'adapter': 'onebot-v11',
+            'enable': True,
+            'adapter_config': {'connection_mode': 'reverse_ws', 'access-token': api_key, 'self_id': '43'},
+        },
+    )
+    bot_uuid = bot['uuid']
+    peer = OneBotMock()
+    headers = {'Authorization': f'Bearer {api_key}', 'X-Self-ID': '43', 'X-Client-Role': 'Universal'}
+    async with connect(
+        base_url.replace('http', 'ws', 1) + f'/bots/{bot_uuid}/onebot/v11/ws', additional_headers=headers
+    ) as socket:
+        task = asyncio.create_task(peer.run(socket.send, socket.recv))
+        try:
+            command = await request(
+                'POST',
+                '/api/v1/workflows',
+                {
+                    'name': 'Weather command',
+                    'triggers': [
+                        {
+                            'type': 'command',
+                            'name': 'weather',
+                            'aliases': ['tq'],
+                            'args': [{'name': 'city', 'required': True}],
+                            'description': 'Look up the weather',
+                            'bots': 'all',
+                        }
+                    ],
+                    'graph': {
+                        'nodes': [
+                            {'id': 'start', 'type': 'start', 'name': 'Start', 'config': {}},
+                            {
+                                'id': 'remember',
+                                'type': 'remember',
+                                'name': 'Count',
+                                'config': {
+                                    'scope': 'user',
+                                    'items': [{'key': 'visits', 'op': 'increment', 'value': '1'}],
+                                },
+                            },
+                            {
+                                'id': 'reply',
+                                'type': 'reply',
+                                'name': 'Reply',
+                                'config': {'text': 'weather {{start.args.city}} #{{memory.user.visits}}'},
+                            },
+                        ],
+                        'edges': [{'from': 'start', 'to': 'remember'}, {'from': 'remember', 'to': 'reply'}],
+                    },
+                },
+            )
+            assert command['issues'] == [], command
+
+            def private(text, message_id):
+                payload = peer.message('private', 'friend', [{'type': 'text', 'data': {'text': text}}])
+                return payload | {'message_id': message_id, 'raw_message': text, 'self_id': 43}
+
+            await peer.emit(private('/weather Beijing', 101))
+            await wait_for(peer, 'weather Beijing #1')
+            await peer.emit(private('/tq Shanghai', 102))
+            await wait_for(peer, 'weather Shanghai #2')
+            await peer.emit(private('/weather', 103))
+            await wait_for(peer, 'Usage: /weather <city>')
+            await peer.emit(private('/help', 104))
+            await wait_for(peer, '/weather <city>')
+
+            hook = await request(
+                'POST',
+                '/api/v1/workflows',
+                {
+                    'name': 'Webhook push',
+                    'triggers': [{'type': 'webhook', 'bot_uuid': bot_uuid}],
+                    'graph': {
+                        'nodes': [
+                            {'id': 'start', 'type': 'start', 'name': 'Start', 'config': {}},
+                            {
+                                'id': 'send',
+                                'type': 'send',
+                                'name': 'Push',
+                                'config': {
+                                    'target_type': 'group',
+                                    'target_id': '20001',
+                                    'text': 'hook {{start.payload.title}}',
+                                },
+                            },
+                        ],
+                        'edges': [{'from': 'start', 'to': 'send'}],
+                    },
+                },
+            )
+            secret = hook['workflow']['triggers'][0]['secret']
+            path = f'/api/v1/workflows/hooks/{bot_uuid}/{hook["workflow"]["uuid"]}'
+            assert (await client.post(f'{path}/wrong-secret-value', json={'title': 'x'})).status_code == 404
+            response = await client.post(f'{path}/{secret}', json={'title': 'Release 1.0'})
+            assert response.status_code == 200 and response.json()['data']['status'] == 'completed', response.text
+            await wait_for(peer, 'hook Release 1.0', actions=('send_group_msg', 'send_msg'))
+
+            await request(
+                'POST',
+                '/api/v1/workflows',
+                {
+                    'name': 'Every minute',
+                    'triggers': [
+                        {
+                            'type': 'schedule',
+                            'every': 1,
+                            'bot_uuid': bot_uuid,
+                            'targets': [{'type': 'group', 'id': '20001'}],
+                        }
+                    ],
+                    'graph': {
+                        'nodes': [
+                            {'id': 'start', 'type': 'start', 'name': 'Start', 'config': {}},
+                            {
+                                'id': 'reply',
+                                'type': 'reply',
+                                'name': 'Tick',
+                                'config': {'text': 'tick {{start.target.id}}'},
+                            },
+                        ],
+                        'edges': [{'from': 'start', 'to': 'reply'}],
+                    },
+                },
+            )
+            await wait_for(peer, 'tick 20001', actions=('send_group_msg', 'send_msg'), timeout=80)
+            print(json.dumps({'triggers': ['command', 'usage', 'help', 'memory', 'webhook', 'schedule']}))
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
 
 def main():
