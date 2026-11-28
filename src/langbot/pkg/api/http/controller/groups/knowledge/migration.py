@@ -38,17 +38,6 @@ EXTERNAL_PLUGIN_CREATION_FIELDS: dict[str, set[str] | None] = {
     'langbot-team/FastGPTConnector': None,  # all fields -> creation_settings
 }
 
-_INFORMATION_SCHEMA_TABLES = sqlalchemy.table(
-    'tables',
-    sqlalchemy.column('table_schema'),
-    sqlalchemy.column('table_name'),
-    schema='information_schema',
-)
-_SQLITE_MASTER = sqlalchemy.table(
-    'sqlite_master',
-    sqlalchemy.column('type'),
-    sqlalchemy.column('name'),
-)
 _LEGACY_KNOWLEDGE_BASE_BACKUP = sqlalchemy.table(
     'knowledge_bases_backup',
     sqlalchemy.column('uuid'),
@@ -137,22 +126,7 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
 
     async def _table_exists(self, table_name: str) -> bool:
         """Check if a table exists."""
-        if self.ap.persistence_mgr.db.name == 'postgresql':
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(_INFORMATION_SCHEMA_TABLES.c.table_name)
-                .where(_INFORMATION_SCHEMA_TABLES.c.table_schema == 'public')
-                .where(_INFORMATION_SCHEMA_TABLES.c.table_name == table_name)
-                .limit(1)
-            )
-            return result.first() is not None
-        else:
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.select(_SQLITE_MASTER.c.name)
-                .where(_SQLITE_MASTER.c.type == 'table')
-                .where(_SQLITE_MASTER.c.name == table_name)
-                .limit(1)
-            )
-            return result.first() is not None
+        return await self.ap.persistence_mgr.table_exists(table_name)
 
     async def _install_plugin_from_marketplace(
         self,

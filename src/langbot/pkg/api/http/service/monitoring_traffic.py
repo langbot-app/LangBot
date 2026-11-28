@@ -8,6 +8,7 @@ import typing
 import sqlalchemy
 
 from ....entity.persistence.monitoring import MonitoringLLMCall, MonitoringMessage
+from ....persistence.dialect import time_bucket
 from .tenant import TenantContext, require_workspace_uuid
 
 if typing.TYPE_CHECKING:
@@ -34,16 +35,11 @@ async def get_traffic_series(
     service = MonitoringService(ap)
     bucket = 'hour' if start_time and end_time and end_time - start_time <= datetime.timedelta(days=7) else 'day'
     step = datetime.timedelta(hours=1) if bucket == 'hour' else datetime.timedelta(days=1)
-    postgres = ap.persistence_mgr.get_db_engine().dialect.name == 'postgresql'
     points: dict[datetime.datetime, dict[str, int]] = {}
     truncated = False
     for model, field in ((MonitoringMessage, 'messages'), (MonitoringLLMCall, 'llm_calls')):
         timestamp = model.timestamp
-        if postgres:
-            time_bucket = sqlalchemy.func.date_trunc(bucket, timestamp)
-        else:
-            pattern = '%Y-%m-%dT%H:00:00' if bucket == 'hour' else '%Y-%m-%dT00:00:00'
-            time_bucket = sqlalchemy.func.strftime(pattern, timestamp)
+        bucket_expr = time_bucket(ap.persistence_mgr, timestamp, bucket=bucket, iso_format=True)
         conditions = [model.workspace_uuid == workspace_uuid]
         conditions.append(service._monitoring_execution_condition(model, workspace_uuid, execution_statuses, mode))
         if bot_ids:
@@ -55,10 +51,10 @@ async def get_traffic_series(
         if end_time is not None:
             conditions.append(timestamp <= end_time)
         statement = (
-            sqlalchemy.select(time_bucket.label('bucket'), sqlalchemy.func.count(model.id).label('count'))
+            sqlalchemy.select(bucket_expr.label('bucket'), sqlalchemy.func.count(model.id).label('count'))
             .where(*conditions)
-            .group_by(time_bucket)
-            .order_by(time_bucket)
+            .group_by(bucket_expr)
+            .order_by(bucket_expr)
             .limit(MAX_TRAFFIC_POINTS + 1)
         )
         result = await ap.persistence_mgr.execute_async(statement)

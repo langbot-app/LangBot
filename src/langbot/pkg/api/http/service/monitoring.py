@@ -7,10 +7,9 @@ import functools
 import json
 from contextlib import asynccontextmanager
 import sqlalchemy
-from sqlalchemy.dialects import postgresql as postgresql_dialect
-from sqlalchemy.dialects import sqlite as sqlite_dialect
 
 from ....core import app
+from ....persistence.dialect import time_bucket, upsert_insert
 from ....entity.persistence import agent as persistence_agent
 from ....entity.persistence import monitoring as persistence_monitoring
 from ....entity.persistence import agent_run as persistence_agent_run
@@ -275,12 +274,10 @@ class MonitoringService(ExecutionDetailsMixin):
 
         if bucket not in {'hour', 'day'}:
             bucket = 'hour'
-        if dialect_name == 'postgresql':
-            return sqlalchemy.func.date_trunc(bucket, timestamp_column)
-        if dialect_name == 'sqlite':
-            bucket_format = '%Y-%m-%d %H:00' if bucket == 'hour' else '%Y-%m-%d'
-            return sqlalchemy.func.strftime(bucket_format, timestamp_column)
-        raise RuntimeError(f'Unsupported monitoring database dialect: {dialect_name}')
+        try:
+            return time_bucket(dialect_name, timestamp_column, bucket=bucket)
+        except ValueError as exc:
+            raise RuntimeError(f'Unsupported monitoring database dialect: {dialect_name}') from exc
 
     @staticmethod
     def _require_write_context(context: ExecutionContext | None) -> str:
@@ -2074,11 +2071,10 @@ class MonitoringService(ExecutionDetailsMixin):
         # ---- Time-bucketed series ----
         # Aggregate before materialization. Requests may omit their time window,
         # so fetching every historical call and bucketing in Python is unsafe.
-        engine = self.ap.persistence_mgr.get_db_engine()
-        bucket_expression = self._token_bucket_expression(
+        bucket_expression = time_bucket(
+            self.ap.persistence_mgr,
             LLMCall.timestamp,
-            bucket=bucket,
-            dialect_name=engine.dialect.name,
+            bucket=bucket if bucket in {'hour', 'day'} else 'hour',
         )
         bucket_limit = self._timeseries_bucket_limit()
         series_query = (
@@ -3398,13 +3394,10 @@ class MonitoringService(ExecutionDetailsMixin):
             'user_id': _normalize_user_id(user_id),
             'platform': platform,
         }
-        dialect_name = self.ap.persistence_mgr.get_db_engine().dialect.name
-        if dialect_name == 'postgresql':
-            statement = postgresql_dialect.insert(MonitoringFeedback).values(record_data)
-        elif dialect_name == 'sqlite':
-            statement = sqlite_dialect.insert(MonitoringFeedback).values(record_data)
-        else:
-            raise RuntimeError(f'Monitoring feedback upsert does not support {dialect_name!r}')
+        try:
+            statement = upsert_insert(self.ap.persistence_mgr, MonitoringFeedback).values(record_data)
+        except ValueError as exc:
+            raise RuntimeError(f'Monitoring feedback upsert failed: {exc}') from exc
 
         excluded = statement.excluded
 

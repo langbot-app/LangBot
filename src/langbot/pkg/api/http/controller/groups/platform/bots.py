@@ -1,5 +1,4 @@
 import quart
-from sqlalchemy.exc import IntegrityError
 from langbot.pkg.command.catalog import builtin_commands
 
 from .....application import ApplicationAPIException
@@ -350,8 +349,8 @@ class BotsRouterGroup(group.RouterGroup):
                 return self.success(data={'id': admin_id})
             except ValueError as e:
                 return self.http_status(400, -1, str(e))
-            except IntegrityError as e:
-                return self.http_status(409, -1, str(e))
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
 
         @self.route(
             '/<bot_uuid>/admins/<int:admin_id>',

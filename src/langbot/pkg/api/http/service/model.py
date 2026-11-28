@@ -231,42 +231,29 @@ class LLMModelsService:
         self.ap = ap
 
     async def get_starred_model(self, context: TenantContext) -> str | None:
-        from ....entity.persistence.metadata import WorkspaceMetadata
+        from ....persistence.workspace_metadata import get_workspace_metadata
 
-        result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(WorkspaceMetadata.value).where(
-                WorkspaceMetadata.workspace_uuid == require_workspace_uuid(context),
-                WorkspaceMetadata.key == 'starred_llm_model',
-            )
+        model_uuid = await get_workspace_metadata(
+            self.ap.persistence_mgr,
+            require_workspace_uuid(context),
+            'starred_llm_model',
         )
-        row = result.first()
-        model_uuid = row[0] if row else None
         if model_uuid and await self.get_llm_model(context, model_uuid) is not None:
             return model_uuid
         return None
 
     async def set_starred_model(self, context: TenantContext, model_uuid: str | None) -> None:
-        from ....entity.persistence.metadata import WorkspaceMetadata
+        from ....persistence.workspace_metadata import upsert_workspace_metadata
 
         workspace_uuid = require_workspace_uuid(context)
         if model_uuid and await self.get_llm_model(context, model_uuid) is None:
             raise ValueError('Model not found in this Workspace')
         # A single metadata row makes concurrent selections replace each other.
-        dialect = self.ap.persistence_mgr.get_db_engine().dialect.name
-        if dialect == 'postgresql':
-            from sqlalchemy.dialects.postgresql import insert
-        else:
-            from sqlalchemy.dialects.sqlite import insert
-        statement = insert(WorkspaceMetadata).values(
-            workspace_uuid=workspace_uuid,
-            key='starred_llm_model',
-            value=model_uuid or '',
-        )
-        await self.ap.persistence_mgr.execute_async(
-            statement.on_conflict_do_update(
-                index_elements=['workspace_uuid', 'key'],
-                set_={'value': model_uuid or ''},
-            )
+        await upsert_workspace_metadata(
+            self.ap.persistence_mgr,
+            workspace_uuid,
+            'starred_llm_model',
+            model_uuid or '',
         )
 
     async def get_default_model(self, context: TenantContext) -> str | None:

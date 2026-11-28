@@ -32,6 +32,8 @@ import sqlalchemy as sa
 from ..entity.persistence.agent_run import AgentRun
 from ..entity.persistence.execution_lease import ExecutionLeaseScope
 from ..entity.persistence.monitoring import MonitoringMessage, MonitoringError
+from ..persistence.dialect import upsert_insert
+from ..persistence.tenant_uow import TenantUnitOfWork
 from .inflight import inflight_hub
 
 OWNER_ID = str(uuid.uuid4())
@@ -61,15 +63,9 @@ def host_execution_lease():
     }
 
 
-def _upsert_scope(dialect_name: str, owner_id: str, workspace_uuid: str, expires_at: datetime.datetime):
+def _upsert_scope(engine, owner_id: str, workspace_uuid: str, expires_at: datetime.datetime):
     values = {'owner_id': owner_id, 'workspace_uuid': workspace_uuid, 'expires_at': expires_at, 'generation': 0}
-    if dialect_name == 'postgresql':
-        from sqlalchemy.dialects.postgresql import insert
-    elif dialect_name == 'sqlite':
-        from sqlalchemy.dialects.sqlite import insert
-    else:
-        return None
-    statement = insert(ExecutionLeaseScope).values(**values)
+    statement = upsert_insert(engine, ExecutionLeaseScope).values(**values)
     return statement.on_conflict_do_update(
         index_elements=[ExecutionLeaseScope.owner_id, ExecutionLeaseScope.workspace_uuid],
         set_={
@@ -97,21 +93,7 @@ async def register_execution_scope(engine, workspace_uuid: str | None, *, now=No
     now = now or _utc_now()
     expires_at = now + datetime.timedelta(seconds=LEASE_SECONDS)
     async with engine.begin() as connection:
-        statement = _upsert_scope(engine.dialect.name, owner_id, workspace_uuid, expires_at)
-        if statement is not None:
-            await connection.execute(statement)
-        else:
-            result = await connection.execute(
-                sa.update(ExecutionLeaseScope)
-                .where(ExecutionLeaseScope.owner_id == owner_id, ExecutionLeaseScope.workspace_uuid == workspace_uuid)
-                .values(expires_at=expires_at, generation=ExecutionLeaseScope.generation + 1)
-            )
-            if not result.rowcount:
-                await connection.execute(
-                    sa.insert(ExecutionLeaseScope).values(
-                        owner_id=owner_id, workspace_uuid=workspace_uuid, expires_at=expires_at, generation=0
-                    )
-                )
+        await connection.execute(_upsert_scope(engine, owner_id, workspace_uuid, expires_at))
     _scope_written_at[key] = clock
 
 
@@ -120,7 +102,21 @@ def _forget_scope(key: tuple[str, str]) -> None:
     _scope_used_at.pop(key, None)
 
 
-async def _reconcile_workspace(engine, workspace_uuid, *, now, owner_id, live_owner_id=None):
+def _workspace_uow(engine, workspace_uuid: str, *, persistence_mgr=None):
+    if persistence_mgr is not None:
+        return persistence_mgr.tenant_uow(workspace_uuid)
+    return TenantUnitOfWork(engine, workspace_uuid)
+
+
+async def _reconcile_workspace(
+    engine,
+    workspace_uuid,
+    *,
+    now,
+    owner_id,
+    live_owner_id=None,
+    persistence_mgr=None,
+):
     """Renew ``owner_id`` leases and reap expired rows in one Workspace.
 
     Returns ``(reaped_count, live_owned)`` where ``live_owned`` tells whether
@@ -137,13 +133,8 @@ async def _reconcile_workspace(engine, workspace_uuid, *, now, owner_id, live_ow
         conditions = [model.status.in_(statuses), scope == workspace_uuid]
         if model is AgentRun:
             conditions.extend([AgentRun.queue_name.is_(None), AgentRun.claimed_by_runtime_id.is_(None)])
-        async with engine.begin() as connection:
-            if engine.dialect.name == 'postgresql':
-                await connection.execute(
-                    sa.text("SELECT set_config('langbot.workspace_uuid', :workspace, true)"),
-                    {'workspace': workspace_uuid},
-                )
-            await connection.execute(
+        async with _workspace_uow(engine, workspace_uuid, persistence_mgr=persistence_mgr) as uow:
+            await uow.execute(
                 sa.update(model)
                 .where(
                     *conditions,
@@ -154,13 +145,13 @@ async def _reconcile_workspace(engine, workspace_uuid, *, now, owner_id, live_ow
             )
             expired = [*conditions, model.execution_lease_expires_at <= now]
             rows = (
-                await connection.execute(
+                await uow.execute(
                     sa.select(identity).where(*expired).order_by(model.execution_lease_expires_at).limit(500)
                 )
             ).all()
             if live_owner_id is not None and not live_owned:
                 live_owned = (
-                    await connection.execute(
+                    await uow.execute(
                         sa.select(identity)
                         .where(
                             *conditions,
@@ -174,19 +165,19 @@ async def _reconcile_workspace(engine, workspace_uuid, *, now, owner_id, live_ow
                 continue
             if model is MonitoringMessage:
                 messages = (
-                    (await connection.execute(sa.select(model).where(model.id.in_([row[0] for row in rows]))))
+                    (await uow.execute(sa.select(model.__table__).where(model.id.in_([row[0] for row in rows]))))
                     .mappings()
                     .all()
                 )
                 for message in messages:
-                    result = await connection.execute(
+                    result = await uow.execute(
                         sa.update(model)
                         .where(*expired, model.id == message['id'])
                         .values(status='error', level='error')
                     )
                     changed += result.rowcount
                     if result.rowcount:
-                        await connection.execute(
+                        await uow.execute(
                             sa.insert(MonitoringError).values(
                                 id=str(uuid.uuid4()),
                                 timestamp=now,
@@ -207,7 +198,7 @@ async def _reconcile_workspace(engine, workspace_uuid, *, now, owner_id, live_ow
                             )
                         )
             else:
-                result = await connection.execute(
+                result = await uow.execute(
                     sa.update(model)
                     .where(*expired, identity.in_([row[0] for row in rows]))
                     .values(status='failed', status_reason=INTERRUPTED_REASON, finished_at=now, updated_at=now)
@@ -221,10 +212,23 @@ async def _reconcile_workspace(engine, workspace_uuid, *, now, owner_id, live_ow
     return changed, live_owned
 
 
-async def reconcile_execution_leases(engine, workspace_uuid, *, now=None, owner_id=OWNER_ID):
+async def reconcile_execution_leases(
+    engine,
+    workspace_uuid,
+    *,
+    now=None,
+    owner_id=OWNER_ID,
+    persistence_mgr=None,
+):
     """Renew our live leases, then conditionally finish bounded expired batches."""
     now = now or _utc_now()
-    changed, _ = await _reconcile_workspace(engine, workspace_uuid, now=now, owner_id=owner_id)
+    changed, _ = await _reconcile_workspace(
+        engine,
+        workspace_uuid,
+        now=now,
+        owner_id=owner_id,
+        persistence_mgr=persistence_mgr,
+    )
     return changed
 
 
@@ -250,6 +254,7 @@ async def run_execution_lease_tick(
     now=None,
     owner_id: str = OWNER_ID,
     check_workspace: WorkspaceCheck | None = None,
+    persistence_mgr=None,
 ) -> int:
     """Run one maintenance pass; returns the number of executions marked interrupted."""
     now = now or _utc_now()
@@ -282,7 +287,12 @@ async def run_execution_lease_tick(
     async def renew_own(workspace_uuid, generation):
         async with semaphore:
             changed, live = await _reconcile_workspace(
-                engine, workspace_uuid, now=now, owner_id=owner_id, live_owner_id=owner_id
+                engine,
+                workspace_uuid,
+                now=now,
+                owner_id=owner_id,
+                live_owner_id=owner_id,
+                persistence_mgr=persistence_mgr,
             )
             key = (owner_id, workspace_uuid)
             used_at = _scope_used_at.get(key)
@@ -323,7 +333,12 @@ async def run_execution_lease_tick(
         live = False
         if state == 'ok':
             changed, live = await _reconcile_workspace(
-                engine, workspace_uuid, now=now, owner_id=owner_id, live_owner_id=dead_owner
+                engine,
+                workspace_uuid,
+                now=now,
+                owner_id=owner_id,
+                live_owner_id=dead_owner,
+                persistence_mgr=persistence_mgr,
             )
             total += changed
         if not live:
@@ -353,7 +368,9 @@ async def maintain_execution_leases(ap):
         started = time.monotonic()
         try:
             count = await run_execution_lease_tick(
-                engine, check_workspace=lambda workspace_uuid: _check_workspace(ap, workspace_uuid)
+                engine,
+                check_workspace=lambda workspace_uuid: _check_workspace(ap, workspace_uuid),
+                persistence_mgr=ap.persistence_mgr,
             )
             if count:
                 ap.logger.info(f'Marked {count} interrupted executions as failed after host lease expiry')

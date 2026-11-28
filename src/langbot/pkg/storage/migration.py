@@ -10,11 +10,10 @@ import stat
 from contextlib import ExitStack
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from ..api.http.context import ExecutionContext
 from ..entity.persistence.content import ContentAlias, ContentObject
+from ..persistence.dialect import upsert_insert
 from ..persistence.legacy_migration import WorkspaceMigration, require_import_runtime
 from ..utils.bounded_executor import blocking_work_scope, run_blocking_atomic
 from .media import SAFE_MEDIA_FILENAME
@@ -181,9 +180,8 @@ async def _import_asset(ap, context, uow, key, value, *, verify_only=False):
         raise FileNotFoundError('Previously imported upload is missing')
     # The old key retains only the owner hash; keep it rather than inventing a principal.
     reference = await store._put(uow, context.workspace_uuid, match['owner_type'], match['owner'], key, value)
-    insert = sqlite_insert if ap.persistence_mgr.get_db_engine().dialect.name == 'sqlite' else pg_insert
     await uow.execute(
-        insert(ContentAlias)
+        upsert_insert(ap.persistence_mgr, ContentAlias)
         .values(workspace_uuid=context.workspace_uuid, key=key, content_ref=reference)
         .on_conflict_do_nothing(index_elements=['workspace_uuid', 'key'])
     )

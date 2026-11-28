@@ -49,15 +49,18 @@ async def test_builtin_command(name, expected, monkeypatch):
             return_value=[{'manifest': {'manifest': {'metadata': {'author': 'qa', 'name': 'tools'}}}}]
         )
     )
-    engine = MagicMock()
-    engine.connect.return_value.__aenter__.return_value.scalar = AsyncMock(side_effect=[2, 42])
+    uow = MagicMock()
+    uow.execute = AsyncMock(side_effect=[NS(scalar=lambda: 2), NS(scalar=lambda: 42)])
+    tenant_uow = MagicMock()
+    tenant_uow.return_value.__aenter__ = AsyncMock(return_value=uow)
+    tenant_uow.return_value.__aexit__ = AsyncMock(return_value=False)
     app = NS(
         pipeline_mgr=NS(get_pipeline_by_uuid=AsyncMock(return_value=pipeline)),
         message_policy_mgr=NS(bind_query=AsyncMock()),
         sess_mgr=NS(get_session=AsyncMock(return_value=session)),
         agent_run_orchestrator=NS(cancel_active_from_query=AsyncMock(return_value='run')),
         model_mgr=NS(runtime_llm_models_for_workspace=lambda ws: {'model-1': NS(model_entity=NS(name='Test Model'))}),
-        persistence_mgr=NS(get_db_engine=lambda: engine),
+        persistence_mgr=NS(tenant_uow=tenant_uow, get_db_engine=lambda: MagicMock()),
         runner_registry=NS(get=AsyncMock(return_value=descriptor)),
         plugin_connector=connector,
         tool_mgr=NS(get_resolved_tool_catalog=AsyncMock(return_value=[{'name': 'draw'}])),
@@ -76,6 +79,8 @@ async def test_builtin_command(name, expected, monkeypatch):
     monkeypatch.setattr(builtin.TranscriptStore, 'pop_last_turn', history)
     result = await builtin.execute_builtin(bot, event, None, name, name, query, session, False)
     assert expected in result
+    if name in ('status', 'usage'):
+        tenant_uow.assert_called_once_with('ws')
     if name == 'new':
         reset.assert_awaited_once_with(app, query, None)
     if name == 'retry':

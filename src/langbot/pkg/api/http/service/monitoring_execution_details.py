@@ -15,6 +15,7 @@ from ....entity.persistence.agent_run import AgentRun, AgentRunEvent
 from ....entity.persistence.event_log import EventLog
 from ....entity.persistence.transcript import Transcript
 from ....entity.persistence import monitoring as models
+from ....persistence.dialect import json_text
 from .tenant import require_workspace_uuid
 
 
@@ -368,13 +369,7 @@ class ExecutionDetailsMixin:
         return messages, count
 
     def _execution_json_text(self, column, key):
-        # SQLite JSON functions accept TEXT directly; PostgreSQL operators
-        # require an explicit JSON cast for the existing text-backed journals.
-        if self.ap.persistence_mgr.get_db_engine().dialect.name == 'sqlite':
-            expression = sa.type_coerce(column, sa.JSON)
-        else:
-            expression = sa.cast(column, sa.JSON)
-        return expression[key].as_string()
+        return json_text(self.ap.persistence_mgr, column, key)
 
     async def link_execution_message(self, context, message_id, run_id, event_id):
         workspace = self._require_write_context(context)

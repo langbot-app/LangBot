@@ -3,13 +3,12 @@
 from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from .entitlements import EntitlementUnavailableError
 from .plan_policy import workspace_entitlement
 from .quota_warning import maybe_schedule as schedule_quota_warning
 from ..entity.persistence.workspace import WorkspaceMessageUsageDaily as Usage
+from ..persistence.dialect import upsert_insert
 
 
 def period_start():
@@ -28,8 +27,9 @@ async def daily_message_quota(ap, workspace_uuid, *, reserve=False):
             Usage.workspace_uuid == workspace_uuid, Usage.usage_date == start.date()
         )
         if reserve:
-            insert = pg_insert if manager.get_db_engine().dialect.name == 'postgresql' else sqlite_insert
-            statement = insert(Usage).values(workspace_uuid=workspace_uuid, usage_date=start.date(), message_count=1)
+            statement = upsert_insert(manager, Usage).values(
+                workspace_uuid=workspace_uuid, usage_date=start.date(), message_count=1
+            )
             statement = statement.on_conflict_do_update(
                 index_elements=[Usage.workspace_uuid, Usage.usage_date],
                 set_={'message_count': Usage.message_count + 1, 'updated_at': sa.func.now()},

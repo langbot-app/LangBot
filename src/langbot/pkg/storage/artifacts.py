@@ -21,6 +21,7 @@ from ..entity.persistence.skill import SkillVersion
 from ..entity.persistence.plugin import PluginSetting
 from ..entity.persistence.agent_run import AgentRun
 from ..entity.persistence.apikey import ApiKey
+from ..persistence.dialect import lock_rows_for_write
 
 MAX_ARTIFACT_BYTES = 10 * 1024 * 1024
 MAX_PLUGIN_ARTIFACT_BYTES = 256 * 1024
@@ -239,8 +240,7 @@ class ArtifactService:
                 ),
             )
         if lock:
-            # Also reserves SQLite's writer before reading; FOR UPDATE alone is ignored there.
-            await uow.execute(sa.update(Artifact).where(*conditions).values(id=Artifact.id))
+            await lock_rows_for_write(uow, Artifact, *conditions)
         row = (await uow.execute(sa.select(Artifact.__table__).where(*conditions))).mappings().first()
         if row is None or (live and row['deleted_at'] is not None):
             raise FileNotFoundError('Resource not found')
@@ -697,7 +697,7 @@ class ArtifactService:
                 .scalars()
                 .all()
             )
-        # Discovery must release SQLite's read snapshot before the first write reservation.
+        # Keep candidate discovery separate from the write-locking transaction.
         async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
             expired = 0
             for artifact_id in ids:

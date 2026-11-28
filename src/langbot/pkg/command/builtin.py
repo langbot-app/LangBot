@@ -90,28 +90,26 @@ async def execute_builtin(bot, event, adapter, name, text, query, session, is_ad
     envelope = bot._eba_event_to_agent_envelope(event, adapter) if binding else None
     scope = envelope.conversation_id if envelope else conversation_scope(query)
     if name in ('status', 'usage'):
-        async with ap.persistence_mgr.get_db_engine().connect() as conn:
+        async with ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
             count = (
-                await conn.scalar(
+                await uow.execute(
                     sa.select(MonitoringSession.message_count).where(
                         MonitoringSession.workspace_uuid == context.workspace_uuid,
                         MonitoringSession.bot_id == query.bot_uuid,
                         MonitoringSession.session_id == scope,
                     )
                 )
-                or 0
-            )
+            ).scalar() or 0
             if name == 'usage':
                 tokens = (
-                    await conn.scalar(
+                    await uow.execute(
                         sa.select(sa.func.sum(MonitoringLLMCall.total_tokens)).where(
                             MonitoringLLMCall.workspace_uuid == context.workspace_uuid,
                             MonitoringLLMCall.bot_id == query.bot_uuid,
                             MonitoringLLMCall.session_id == scope,
                         )
                     )
-                    or 0
-                )
+                ).scalar() or 0
                 return t('Messages: {count} · Tokens: {tokens}', count=count, tokens=tokens)
     if name == 'new' and (pipeline or binding):
         await reset_conversation(ap, query, envelope.conversation_id if envelope else None)
