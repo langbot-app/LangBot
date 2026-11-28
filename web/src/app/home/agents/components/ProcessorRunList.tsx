@@ -16,12 +16,14 @@ export default function ProcessorRunList({
   onSelect,
   footer,
   className,
+  runLabel,
 }: {
   runs: ProcessorRun[];
   selectedId?: string;
   onSelect: (run: ProcessorRun) => void;
   footer?: ReactNode;
   className?: string;
+  runLabel?: (run: ProcessorRun) => string;
 }) {
   const { t } = useTranslation();
   return (
@@ -36,7 +38,7 @@ export default function ProcessorRunList({
         const duration = processorRunDuration(run);
         const selected = selectedId === run.run_id;
         const event = run.metadata.event_type ?? '';
-        const label = eventPatternLabel(event, t);
+        const label = runLabel?.(run) ?? eventPatternLabel(event, t);
         return (
           <Button
             key={run.run_id}

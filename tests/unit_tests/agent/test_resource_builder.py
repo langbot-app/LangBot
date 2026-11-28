@@ -12,7 +12,13 @@ from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
 from langbot.pkg.agent.runner.binding_resolver import AgentBindingResolver
 from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
 from langbot.pkg.agent.runner.resource_builder import AgentResourceBuilder
-from langbot.pkg.agent.runner.host_models import AgentBinding, AgentEventEnvelope, BindingScope, ResourcePolicy
+from langbot.pkg.agent.runner.host_models import (
+    AgentBinding,
+    AgentEventEnvelope,
+    BindingScope,
+    DeliveryPolicy,
+    ResourcePolicy,
+)
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.provider.tools.toolmgr import ToolManager
 
@@ -238,6 +244,65 @@ async def test_platform_tools_are_not_claimed_when_runner_disables_tool_calling(
     assert resources['platform_capabilities']['unavailable_tools'] == [
         {'name': 'event_reply', 'reason': 'runner_call_permission_missing'}
     ]
+
+
+@pytest.mark.asyncio
+async def test_pipeline_receives_interactive_card_tool_for_supported_adapter(app):
+    query = make_query({})
+    query.adapter = SimpleNamespace(
+        get_supported_apis=lambda: ['send_interaction'],
+        get_interaction_capabilities=lambda: {
+            'field_types': ['select'],
+            'action_styles': ['default', 'primary', 'danger'],
+            'supports_updates': True,
+            'max_fields': 10,
+        },
+    )
+
+    resources = await build_resources(
+        app,
+        query,
+        make_descriptor(
+            capabilities={'tool_calling': True, 'interactions': True},
+            permissions={**FULL_PERMISSIONS, 'interactions': ['request']},
+        ),
+    )
+
+    assert [tool['tool_name'] for tool in resources['tools']] == ['request_interaction']
+    assert resources['platform_capabilities']['authorized_tools'] == ['request_interaction']
+
+
+@pytest.mark.asyncio
+async def test_event_processor_cannot_receive_interactive_card_tool(app):
+    event = AgentEventEnvelope(
+        event_id='event-processor-card',
+        event_type='message.received',
+        source='platform',
+        bot_id='bot-1',
+        input=AgentInput(text='hello'),
+        delivery=DeliveryContext(
+            surface='platform',
+            reply_target={'target_type': 'person', 'target_id': 'user-1'},
+            platform_capabilities={'supported_apis': ['send_interaction']},
+        ),
+    )
+    binding = AgentBinding(
+        binding_id='event-processor-binding',
+        scope=BindingScope(scope_type='global'),
+        runner_id=RUNNER_ID,
+        processor_type='event_processor',
+        resource_policy=ResourcePolicy(allowed_platform_tool_names=['request_interaction']),
+        delivery_policy=DeliveryPolicy(enable_interactions=True),
+    )
+
+    resources = await AgentResourceBuilder(app).build_resources_from_binding(
+        execution_context=TEST_CONTEXT,
+        event=event,
+        binding=binding,
+        descriptor=make_descriptor(capabilities={'tool_calling': True}),
+    )
+
+    assert resources['tools'] == []
 
 
 @pytest.mark.asyncio

@@ -7,14 +7,23 @@ from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, Mock
 
 import pytest
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import create_async_engine
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction, RuntimeToLangBotAction
 from langbot_plugin.entities.io.context import ActionContext, InstallationBinding
 
 from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.entity.persistence.bstorage import BinaryStorage
+from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
+from langbot.pkg.persistence.tenant_uow import _validate_scoped_statement_call
 from langbot.pkg.storage.mgr import StorageMgr
 
 from langbot.pkg.provider.tools.errors import ToolExecutionDeniedError
+
+from tests.utils.plugin_installations import install_legacy_plugin
+
+pytestmark = pytest.mark.usefixtures('installed_legacy_plugin')
 
 
 TEST_EXECUTION_CONTEXT = ExecutionContext(
@@ -73,6 +82,10 @@ def make_handler(app, workspace_context: ActionContext | None = None):
         plugin_name=plugin_name,
     )
     runtime_handler._current_action_context.set(installation_binding)
+    install_legacy_plugin(app, installation_binding, plugin_author, plugin_name)
+    if getattr(app, 'plugin_connector', None) is None:
+        app.plugin_connector = SimpleNamespace()
+    app.plugin_connector._runtime_handler = lambda: runtime_handler
     query_pool = getattr(app, 'query_pool', None)
     if query_pool is not None and isinstance(
         getattr(query_pool, 'cached_queries', None),
@@ -362,6 +375,46 @@ class TestSetBinaryStorage:
             'test-key',
         )
         assert insert_params['value'] == b'x' * 512
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('dialect', ['sqlite', 'postgresql'])
+    async def test_storage_upsert_passes_tenant_sql_validation(self, app, dialect):
+        app.persistence_mgr.get_db_engine.return_value.dialect.name = dialect
+        runtime_handler = make_handler(app)
+        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
+            self.payload(b'value')
+        )
+
+        assert response.code == 0
+        statements = [call.args[0] for call in app.persistence_mgr.execute_async.await_args_list]
+        assert any(getattr(statement, '_post_values_clause', None) is not None for statement in statements)
+        for statement in statements:
+            _validate_scoped_statement_call((statement,), {})
+
+    @pytest.mark.asyncio
+    async def test_storage_new_key_persists_through_tenant_uow(self, app, tmp_path):
+        engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "binary-storage.db"}')
+        manager = PersistenceManager(app, mode=PersistenceMode.CLOUD_RUNTIME)
+        manager.db = SimpleNamespace(get_engine=lambda: engine)
+        app.persistence_mgr = manager
+        runtime_handler = make_handler(app)
+        try:
+            async with engine.begin() as connection:
+                await connection.run_sync(BinaryStorage.__table__.create)
+
+            for value in (b'first value', b'updated value'):
+                response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
+                    self.payload(value)
+                )
+                assert response.code == 0, response.message
+                async with engine.connect() as connection:
+                    rows = (await connection.execute(sa.select(BinaryStorage.__table__))).mappings().all()
+                assert len(rows) == 1
+                assert rows[0]['workspace_uuid'] == 'workspace-a'
+                assert rows[0]['unique_key'] == canonical_binary_key('plugin', 'test-author/test-plugin', 'test-key')
+                assert rows[0]['value'] == value
+        finally:
+            await engine.dispose()
 
     @pytest.mark.asyncio
     async def test_updates_existing_storage(self, app):
@@ -868,6 +921,13 @@ class TestAgentRunProxyActions:
         mock_app.model_mgr.get_rerank_model_by_uuid = AsyncMock()
         mock_app.tool_mgr = Mock()
         mock_app.tool_mgr.execute_func_call = AsyncMock(return_value={'ok': True})
+        mock_app.tool_mgr.get_resolved_tool_catalog = AsyncMock(
+            return_value=[
+                {'name': 'test/search', 'source': 'mcp', 'source_id': 'bound-mcp'},
+                {'name': 'langbot_mcp_read_resource', 'source': 'mcp', 'source_id': None},
+                {'name': 'exec', 'source': 'builtin', 'source_id': None},
+            ]
+        )
         mock_app.tool_mgr.get_tool_detail = AsyncMock(
             return_value={
                 'name': 'test/search',
@@ -898,11 +958,15 @@ class TestAgentRunProxyActions:
 
         run_id = 'run_proxy_get_prompt'
         query = self.query()
+        query.variables['_host_prompt_preprocessing_system_context'] = [
+            {'role': 'system', 'content': 'Retrieved historical evidence'},
+        ]
         app.query_pool.cached_queries[900] = query
 
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=900,
@@ -926,6 +990,7 @@ class TestAgentRunProxyActions:
         assert response.code == 0
         assert response.data['prompt'][0]['role'] == 'system'
         assert response.data['prompt'][0]['content'] == 'effective prompt'
+        assert response.data['prompt'][1] == {'role': 'system', 'content': 'Retrieved historical evidence'}
 
     @pytest.mark.asyncio
     async def test_invoke_llm_restores_query_and_model_options(self, app):
@@ -939,6 +1004,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=901,
@@ -1017,6 +1083,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=905,
@@ -1049,7 +1116,8 @@ class TestAgentRunProxyActions:
         assert model_requester.LLM_USAGE_QUERY_VARIABLE not in query.variables
 
     @pytest.mark.asyncio
-    async def test_count_tokens_validates_run_authorization_and_calls_provider(self, app):
+    @pytest.mark.parametrize('reasoning_level', [None, 'minimal'])
+    async def test_count_tokens_validates_run_authorization_and_calls_provider(self, app, reasoning_level):
         """COUNT_TOKENS is run-scoped and forwards messages/tools to the model requester."""
         from langbot.pkg.agent.runner.session_registry import get_session_registry
 
@@ -1060,6 +1128,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=906,
@@ -1093,6 +1162,7 @@ class TestAgentRunProxyActions:
                         }
                     ],
                     'extra_args': {'temperature': 0.7},
+                    'reasoning_level': reasoning_level,
                 }
             )
         finally:
@@ -1102,7 +1172,12 @@ class TestAgentRunProxyActions:
         assert response.data == {'tokens': 37}
         requester.count_tokens.assert_awaited_once()
         kwargs = requester.count_tokens.await_args.kwargs
-        assert kwargs['model'] is model
+        if reasoning_level is None:
+            assert kwargs['model'] is model
+        else:
+            assert kwargs['model'] is not model
+            assert kwargs['model'].reasoning_config_override == {'level': reasoning_level}
+            assert not hasattr(model, 'reasoning_config_override')
         assert kwargs['messages'][0].content == 'hello'
         assert [tool.name for tool in kwargs['funcs']] == ['search']
         assert kwargs['extra_args'] == {'temperature': 0.7}
@@ -1116,6 +1191,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=None,
@@ -1162,6 +1238,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=902,
@@ -1226,6 +1303,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=904,
@@ -1283,6 +1361,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=906,
@@ -1329,6 +1408,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=903,
@@ -1376,6 +1456,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=None,
@@ -1461,7 +1542,7 @@ class TestAgentRunProxyActions:
             ),
         ],
     )
-    async def test_tool_actions_reject_malformed_frozen_source_identity(
+    async def test_tool_actions_resolve_source_from_catalog_not_legacy_selection(
         self,
         app,
         action,
@@ -1469,13 +1550,14 @@ class TestAgentRunProxyActions:
         manager_method,
         tool_resource,
     ):
-        """Run-scoped tool actions never fall back from a malformed authorization snapshot."""
+        """Installation grants use the trusted catalog rather than legacy tool preferences."""
         from langbot.pkg.agent.runner.session_registry import get_session_registry
 
         run_id = f'run_proxy_malformed_source_{action.value}'
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=None,
@@ -1496,9 +1578,10 @@ class TestAgentRunProxyActions:
         finally:
             await registry.unregister(run_id)
 
-        assert response.code != 0
-        assert response.message == 'Tool test/search has an invalid frozen source identity for this agent run'
-        getattr(app.tool_mgr, manager_method).assert_not_awaited()
+        assert response.code == 0
+        method = getattr(app.tool_mgr, manager_method)
+        method.assert_awaited_once()
+        assert method.await_args.kwargs['source_ref'] == {'source': 'mcp', 'source_id': 'bound-mcp'}
 
     @pytest.mark.asyncio
     async def test_call_tool_returns_error_when_host_denies_execution(self, app):
@@ -1515,6 +1598,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=907,
@@ -1557,6 +1641,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=None,
@@ -1611,7 +1696,7 @@ class TestAgentRunProxyActions:
                 platform_capabilities={'adapter': 'TestAdapter'},
             ),
         )
-        query = build_execution_query(event, [])
+        query = build_execution_query(event, [], TEST_EXECUTION_CONTEXT)
         app.box_service = SimpleNamespace(
             available=True,
             get_backend_status=AsyncMock(return_value={'backend': {'available': True}}),
@@ -1633,6 +1718,9 @@ class TestAgentRunProxyActions:
         tool_mgr.plugin_tool_loader = Mock()
         tool_mgr.mcp_tool_loader = Mock()
         tool_mgr.skill_tool_loader = Mock()
+        tool_mgr.plugin_tool_loader.get_tool_catalog = AsyncMock(return_value=[])
+        tool_mgr.mcp_tool_loader.get_tool_catalog = AsyncMock(return_value=[])
+        tool_mgr.skill_tool_loader.get_tools = AsyncMock(return_value=[])
         app.tool_mgr = tool_mgr
 
         run_id = 'run_pure_event_native_exec'
@@ -1642,6 +1730,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=None,
@@ -1681,6 +1770,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=904,
@@ -1780,6 +1870,7 @@ async def test_reply_stream_authorization_is_run_and_workspace_scoped(case):
         ]
     )
     await registry.register(
+        workspace_id='workspace-a',
         run_id=run_id,
         runner_id='plugin:test/runner/default',
         query_id=None,
@@ -1815,6 +1906,7 @@ async def test_reply_stream_authorization_is_run_and_workspace_scoped(case):
 async def test_public_platform_api_preserves_runner_authorization_and_mock(mode):
     app = Mock()
     app.logger = Mock()
+    app.persistence_mgr.execute_async = AsyncMock(return_value=make_result(SimpleNamespace(uuid='bot')))
     from langbot.pkg.agent.runner.session_registry import get_session_registry
     from langbot.pkg.agent.runner.platform_tools import freeze_platform_context, build_platform_tool_resources
     from langbot.pkg.agent.runner.host_models import AgentEventEnvelope
@@ -1836,6 +1928,7 @@ async def test_public_platform_api_preserves_runner_authorization_and_mock(mode)
     registry = get_session_registry()
     run_id = 'public-platform-' + mode
     await registry.register(
+        workspace_id='workspace-a',
         run_id=run_id,
         runner_id='plugin:test-author/test-plugin/runner',
         query_id=None,
@@ -1848,6 +1941,7 @@ async def test_public_platform_api_preserves_runner_authorization_and_mock(mode)
     app.platform_mgr.get_bot_by_uuid = AsyncMock(side_effect=AssertionError('Mock must not send'))
     data = {
         'run_id': run_id,
+        'context_tool': 'event_reply',
         'bot_uuid': 'bot',
         'action': 'send_message',
         'params': {
@@ -1857,7 +1951,14 @@ async def test_public_platform_api_preserves_runner_authorization_and_mock(mode)
         },
     }
     action = PluginToRuntimeAction.CALL_PLATFORM_API
+    if mode not in {'wrong-target', 'raw-send'}:
+        data['params'].pop('target_type')
+        data['params'].pop('target_id')
     if mode == 'raw-send':
+        send_message = AsyncMock(return_value={'message_id': 'sent'})
+        app.platform_mgr.get_bot_by_uuid = AsyncMock(
+            return_value=SimpleNamespace(adapter=SimpleNamespace(send_message=send_message))
+        )
         action = PluginToRuntimeAction.SEND_MESSAGE
         data = {
             'run_id': run_id,
@@ -1872,12 +1973,19 @@ async def test_public_platform_api_preserves_runner_authorization_and_mock(mode)
         result = await runtime_handler.actions[action.value](data)
     finally:
         await registry.unregister(run_id)
-    if mode in ('allowed', 'raw-send'):
+    if mode == 'raw-send':
+        assert result.code == 0, result.message
+        assert result.data['result'] == {'message_id': 'sent'}
+        send_message.assert_awaited_once()
+        assert send_message.await_args.args[:2] == ('group', 'group')
+        app.platform_mgr.get_bot_by_uuid.assert_awaited_once_with(TEST_EXECUTION_CONTEXT, 'bot')
+    elif mode == 'allowed':
         assert result.code == 0, result.message
         assert result.data['result']['mock'] is True
     else:
         assert result.code != 0
-    app.platform_mgr.get_bot_by_uuid.assert_not_awaited()
+    if mode != 'raw-send':
+        app.platform_mgr.get_bot_by_uuid.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1891,6 +1999,7 @@ async def test_embedding_api_rejects_model_outside_runner_grants():
     registry = get_session_registry()
     run_id = 'embedding-ungranted'
     await registry.register(
+        workspace_id='workspace-a',
         run_id=run_id,
         runner_id='plugin:test-author/test-plugin/runner',
         query_id=None,
@@ -1987,11 +2096,13 @@ async def test_knowledge_actions_enforce_run_grants_before_resource_access(knowl
             == {
                 'unselected': 'knowledge_base kb-unselected is not authorized for operation retrieve for this agent run',
                 'operation': 'knowledge_base kb-a is not authorized for operation retrieve for this agent run',
-                'expired': 'Run session expired not found or expired',
-                'plugin': 'Plugin identity mismatch: caller test-author/test-plugin is not authorized for run_id run-a',
+                'expired': 'Run does not belong to this installation Workspace',
+                'plugin': 'Run does not belong to this installation Workspace',
             }[denial]
         )
-        assert not response.data
+        assert response.data == {
+            'code': 'permission_denied' if denial in {'expired', 'plugin'} else 'application_error'
+        }
         host.app.rag_mgr.get_knowledge_base_by_uuid.assert_not_awaited()
         host.app.plugin_connector.call_rag_retrieve.assert_not_awaited()
 
@@ -2014,10 +2125,35 @@ async def test_knowledge_actions_keep_foreign_runs_in_trusted_workspace(knowledg
         {'run_id': 'run-b', 'kb_id': 'kb-b', 'query_text': 'hello', 'workspace_uuid': 'workspace-b'}
     )
     assert response.code != 0
-    assert response.message == 'Knowledge base kb-b not found'
-    assert not response.data
-    host.app.rag_mgr.get_knowledge_base_by_uuid.assert_awaited_once_with(TEST_EXECUTION_CONTEXT, 'kb-b')
+    assert response.message == 'Run does not belong to this installation Workspace'
+    assert response.data == {'code': 'permission_denied'}
+    host.app.rag_mgr.get_knowledge_base_by_uuid.assert_not_awaited()
     host.app.plugin_connector.call_rag_retrieve.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'action', [PluginToRuntimeAction.RETRIEVE_KNOWLEDGE, PluginToRuntimeAction.RETRIEVE_KNOWLEDGE_BASE]
+)
+async def test_knowledge_retrieval_failure_is_logged(knowledge_host, action):
+    host = knowledge_host
+    await host.registry.register(
+        run_id='run-a',
+        runner_id='plugin:test-author/test-plugin/runner',
+        query_id=None,
+        plugin_identity='test-author/test-plugin',
+        workspace_id='workspace-a',
+        resources=make_agent_resources(knowledge_bases=[{'kb_id': 'kb-a'}]),
+    )
+    host.app.plugin_connector.call_rag_retrieve.side_effect = RuntimeError('embedding backend unavailable')
+    response = await host.runtime.actions[action.value]({'run_id': 'run-a', 'kb_id': 'kb-a', 'query_text': 'hello'})
+    assert response.code != 0
+    assert 'embedding backend unavailable' in response.message
+    warnings = [call.args[0] for call in host.app.logger.warning.call_args_list]
+    assert any(
+        'kb=kb-a' in line and 'engine=author/engine' in line and 'embedding backend unavailable' in line
+        for line in warnings
+    ), warnings
 
 
 @pytest.mark.asyncio
@@ -2088,3 +2224,205 @@ async def test_pipeline_knowledge_action_enforces_query_scope(knowledge_host, se
         assert 'not configured for this pipeline' in response.message
         host.app.rag_mgr.get_knowledge_base_by_uuid.assert_not_awaited()
         host.app.plugin_connector.call_rag_retrieve.assert_not_awaited()
+
+
+PROXY_BOT_UUID = 'websocket-proxy-bot'
+
+
+def make_proxy_runtime(send_result=None):
+    from langbot.pkg.entity.persistence import bot as persistence_bot
+
+    return SimpleNamespace(
+        bot_entity=persistence_bot.Bot(
+            uuid=PROXY_BOT_UUID,
+            workspace_uuid='workspace-a',
+            name='WebSocket',
+            description='',
+            adapter='websocket',
+            adapter_config={'secret': 'must-not-leak'},
+            enable=True,
+        ),
+        adapter=SimpleNamespace(
+            bot_account_id='websocketbot',
+            send_message=AsyncMock(return_value=send_result or {'message_id': 'sent'}),
+        ),
+    )
+
+
+def make_proxy_app(live: bool):
+    app = Mock()
+    app.logger = Mock()
+    app.persistence_mgr.execute_async = AsyncMock(side_effect=AssertionError('proxy bot must not hit the bots table'))
+    runtime = make_proxy_runtime()
+    app.platform_mgr.has_websocket_proxy_bot = Mock(return_value=live)
+    app.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=runtime if live else None)
+    app.bot_service.get_runtime_bot_info = AsyncMock(side_effect=AssertionError('proxy bot has no bots row'))
+    return app, runtime
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('via', ['send_message', 'call_platform_api'])
+async def test_plugin_send_message_reaches_live_websocket_proxy_bot(via):
+    app, runtime = make_proxy_app(live=True)
+    runtime_handler = make_handler(app)
+    runtime_handler._record_plugin_send = AsyncMock()
+    runtime_handler._resolve_origin_query = AsyncMock(return_value=None)
+    chain = [{'type': 'Plain', 'text': 'hello'}]
+    if via == 'send_message':
+        action = PluginToRuntimeAction.SEND_MESSAGE
+        data = {
+            'bot_uuid': PROXY_BOT_UUID,
+            'target_type': 'person',
+            'target_id': 'websocket_p:s',
+            'message_chain': chain,
+        }
+    else:
+        action = PluginToRuntimeAction.CALL_PLATFORM_API
+        data = {
+            'bot_uuid': PROXY_BOT_UUID,
+            'action': 'send_message',
+            'params': {'target_type': 'person', 'target_id': 'websocket_p:s', 'message': chain},
+        }
+
+    result = await runtime_handler.actions[action.value](data)
+
+    assert result.code == 0, result.message
+    # Checked by both the installation authorization and the action guard.
+    assert app.platform_mgr.has_websocket_proxy_bot.call_args_list == [(('workspace-a',),)] * 2
+    app.platform_mgr.get_bot_by_uuid.assert_awaited_once_with(TEST_EXECUTION_CONTEXT, PROXY_BOT_UUID)
+    runtime.adapter.send_message.assert_awaited_once()
+    assert runtime.adapter.send_message.await_args.args[:2] == ('person', 'websocket_p:s')
+    app.persistence_mgr.execute_async.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('evicted_after_authorization', [False, True])
+async def test_plugin_send_message_rejects_websocket_proxy_bot_without_live_proxy(evicted_after_authorization):
+    app, runtime = make_proxy_app(live=False)
+    if evicted_after_authorization:
+        app.platform_mgr.has_websocket_proxy_bot = Mock(side_effect=[True, False])
+    runtime_handler = make_handler(app)
+
+    result = await runtime_handler.actions[PluginToRuntimeAction.SEND_MESSAGE.value](
+        {
+            'bot_uuid': PROXY_BOT_UUID,
+            'target_type': 'person',
+            'target_id': 'websocket_p:s',
+            'message_chain': [{'type': 'Plain', 'text': 'hello'}],
+        }
+    )
+
+    assert result.code != 0
+    expected = 'Bot with bot_uuid websocket-proxy-bot not found'
+    assert result.message == (expected if evicted_after_authorization else 'Bot is not available in this Workspace')
+    runtime.adapter.send_message.assert_not_awaited()
+    app.persistence_mgr.execute_async.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('live', [True, False])
+async def test_plugin_get_bot_info_for_websocket_proxy_bot(live):
+    app, _ = make_proxy_app(live=live)
+    runtime_handler = make_handler(app)
+
+    result = await runtime_handler.actions[PluginToRuntimeAction.GET_BOT_INFO.value]({'bot_uuid': PROXY_BOT_UUID})
+
+    app.bot_service.get_runtime_bot_info.assert_not_awaited()
+    app.persistence_mgr.execute_async.assert_not_awaited()
+    if not live:
+        assert result.code != 0
+        assert result.message == 'Bot is not available in this Workspace'
+        return
+    assert result.code == 0, result.message
+    bot = result.data['bot']
+    assert bot['uuid'] == PROXY_BOT_UUID
+    assert bot['workspace_uuid'] == 'workspace-a'
+    assert bot['adapter'] == 'websocket'
+    assert bot['enable'] is True
+    assert 'adapter_config' not in bot
+    assert bot['adapter_runtime_values'] == {
+        'bot_account_id': 'websocketbot',
+        'webhook_url': None,
+        'webhook_full_url': None,
+        'extra_webhook_full_url': None,
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('action', [PluginToRuntimeAction.SEND_MESSAGE, PluginToRuntimeAction.GET_BOT_INFO])
+async def test_persisted_bot_lookups_still_require_a_bots_row(action):
+    app = Mock()
+    app.logger = Mock()
+    # Authorized while the row existed, deleted before the action guard ran.
+    app.persistence_mgr.execute_async = AsyncMock(side_effect=[make_result(('deleted-bot',)), make_result(None)])
+    app.platform_mgr.has_websocket_proxy_bot = Mock(side_effect=AssertionError('only for the proxy uuid'))
+    app.platform_mgr.get_bot_by_uuid = AsyncMock(side_effect=AssertionError('must stop at the bots table'))
+    app.bot_service.get_runtime_bot_info = AsyncMock(side_effect=AssertionError('must stop at the bots table'))
+    runtime_handler = make_handler(app)
+    data = {'bot_uuid': 'deleted-bot'}
+    if action == PluginToRuntimeAction.SEND_MESSAGE:
+        data.update(target_type='group', target_id='g', message_chain=[{'type': 'Plain', 'text': 'x'}])
+
+    result = await runtime_handler.actions[action.value](data)
+
+    assert result.code != 0
+    assert result.message == 'Bot with bot_uuid deleted-bot not found'
+    assert app.persistence_mgr.execute_async.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_plugin_actions_reach_real_platform_manager_websocket_proxy():
+    """End to end through the real PlatformManager proxy cache, per Workspace."""
+    from langbot.pkg.platform.botmgr import PlatformManager
+
+    sent = []
+
+    class WebsocketAdapter:
+        bot_account_id = 'websocketbot'
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def register_listener(self, *_args):
+            pass
+
+        async def send_message(self, target_type, target_id, message):
+            sent.append((target_type, target_id, message))
+            return {'message_id': 'sent'}
+
+    app = Mock()
+    app.logger = Mock()
+    app.persistence_mgr.execute_async = AsyncMock(side_effect=AssertionError('proxy bot must not hit the bots table'))
+    app.instance_config = SimpleNamespace(data={'system': {}})
+    runtime_handler = make_handler(app)
+    runtime_handler._record_plugin_send = AsyncMock()
+    runtime_handler._resolve_origin_query = AsyncMock(return_value=None)
+    manager = PlatformManager(app)
+    manager.adapter_dict = {'websocket': WebsocketAdapter}
+    app.platform_mgr = manager
+    send = {
+        'bot_uuid': PROXY_BOT_UUID,
+        'target_type': 'person',
+        'target_id': 'websocket_p:s',
+        'message_chain': [{'type': 'Plain', 'text': 'hello'}],
+    }
+
+    # No debug session opened yet: nothing to address.
+    result = await runtime_handler.actions[PluginToRuntimeAction.SEND_MESSAGE.value](send)
+    assert result.code != 0 and sent == []
+
+    # Another Workspace's proxy is not visible to this plugin.
+    manager.websocket_proxy_bots['workspace-b'] = make_proxy_runtime()
+    result = await runtime_handler.actions[PluginToRuntimeAction.SEND_MESSAGE.value](send)
+    assert result.code != 0 and sent == []
+
+    await manager.get_websocket_proxy_bot(TEST_EXECUTION_CONTEXT)
+    result = await runtime_handler.actions[PluginToRuntimeAction.SEND_MESSAGE.value](send)
+    assert result.code == 0, result.message
+    assert [item[:2] for item in sent] == [('person', 'websocket_p:s')]
+
+    info = await runtime_handler.actions[PluginToRuntimeAction.GET_BOT_INFO.value]({'bot_uuid': PROXY_BOT_UUID})
+    assert info.code == 0, info.message
+    assert info.data['bot']['workspace_uuid'] == 'workspace-a'
+    assert info.data['bot']['adapter_runtime_values']['bot_account_id'] == 'websocketbot'
+    app.persistence_mgr.execute_async.assert_not_awaited()

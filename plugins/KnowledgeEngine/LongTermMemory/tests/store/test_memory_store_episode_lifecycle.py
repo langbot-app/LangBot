@@ -89,6 +89,7 @@ def _record(
     content: str | None = None,
 ) -> dict:
     metadata = {
+        "episode_id": item_id,
         "content": content or f"memory {item_id}",
         "tags": "",
         "importance": "2",
@@ -177,7 +178,7 @@ async def test_include_superseded_can_inspect_hidden_records():
 
 
 @pytest.mark.asyncio
-async def test_auto_supersede_marks_old_episode_status():
+async def test_explicit_replacement_marks_old_episode_status():
     plugin = FakeVectorPlugin()
     plugin.records = {
         "old-1": _record("old-1", status="active", content="User prefers tea"),
@@ -190,6 +191,7 @@ async def test_auto_supersede_marks_old_episode_status():
         user_key="user-1",
         content="Correction: user prefers coffee",
         tags=["correction"],
+        supersedes=["old-1"],
     )
 
     assert plugin.records["old-1"]["metadata"]["status"] == "superseded"
@@ -381,8 +383,8 @@ async def test_consolidation_preview_does_not_modify_records():
     )
 
     assert set(preview["candidate_episode_ids"]) == {"old-low", "hidden"}
-    assert set(preview["episodes_to_archive"]) == {"old-low", "hidden"}
-    assert preview["summary_episode"]
+    assert set(preview["episodes_to_archive"]) == {"hidden"}
+    assert preview["summary_episode"] == ""
     assert plugin.records["old-low"]["metadata"]["status"] == "active"
     assert plugin.records["hidden"]["metadata"]["status"] == "superseded"
     assert "other" in plugin.records
@@ -390,7 +392,7 @@ async def test_consolidation_preview_does_not_modify_records():
 
 
 @pytest.mark.asyncio
-async def test_apply_consolidation_archives_scoped_candidates_and_writes_summary():
+async def test_apply_consolidation_archives_only_superseded_records():
     plugin = FakeVectorPlugin()
     plugin.records = {
         "old-low": _record(
@@ -414,14 +416,11 @@ async def test_apply_consolidation_archives_scoped_candidates_and_writes_summary
         max_candidates=20,
     )
 
-    assert set(result["archived_episode_ids"]) == {"old-low", "hidden"}
-    assert plugin.records["old-low"]["metadata"]["status"] == "archived"
+    assert set(result["archived_episode_ids"]) == {"hidden"}
+    assert plugin.records["old-low"]["metadata"]["status"] == "active"
     assert plugin.records["hidden"]["metadata"]["status"] == "archived"
     assert plugin.records["other"]["metadata"]["status"] == "superseded"
-    summary = result["summary_episode"]
-    assert summary is not None
-    assert summary["source"] == "consolidation"
-    assert {"consolidation", "summary"} == set(summary["tags"])
+    assert result["summary_episode"] is None
 
 
 class FakeStorageVectorPlugin(FakeVectorPlugin):
@@ -496,3 +495,69 @@ async def test_accept_l2_candidate_uses_normal_episode_write_path():
     assert episode["source"] == "candidate"
     assert episode["sender_id"] == "u-1"
     assert episode["id"] in plugin.records
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tag", ["correction", "fact-update", "clarification"])
+async def test_similar_correction_without_explicit_target_preserves_old_fact(tag):
+    plugin = FakeVectorPlugin()
+    plugin.records["old"] = _record("old", content="Alice visits Shanghai on Friday")
+    store = MemoryStore(plugin)
+    await store.add_episode("kb", "emb", "user-1", "Bob visits Shanghai on Friday", tags=[tag])
+    assert plugin.records["old"]["metadata"]["status"] == "active"
+    assert len(plugin.records) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid", ["missing", "other-speaker", "other-scope", "archived"])
+async def test_replacement_rejects_invalid_target_before_any_write(invalid):
+    plugin = FakeVectorPlugin()
+    record = _record("old")
+    record["metadata"]["sender_id"] = "alice"
+    if invalid == "other-speaker":
+        record["metadata"]["sender_id"] = "bob"
+    elif invalid == "other-scope":
+        record["metadata"]["user_key"] = "other"
+    elif invalid == "archived":
+        record["metadata"]["status"] = "archived"
+    if invalid != "missing":
+        plugin.records["old"] = record
+    store = MemoryStore(plugin)
+    with pytest.raises(ValueError, match="Replacement targets"):
+        await store.add_episode("kb", "emb", "user-1", "Corrected fact", sender_id="alice", supersedes=["old"])
+    assert plugin.upserts == []
+
+
+@pytest.mark.asyncio
+async def test_exact_match_after_backend_top_k_boundary_is_still_ranked():
+    plugin = FakeVectorPlugin()
+    plugin.records = {f"noise-{i}": _record(f"noise-{i}", content="Unrelated note") for i in range(49)}
+    plugin.records["answer"] = _record("answer", content="Release rendezvous is at Cedar Pier")
+    result = await MemoryStore(plugin).search_episodes("kb", "emb", "release rendezvous", user_key="user-1", top_k=1)
+    assert [episode["id"] for episode in result] == ["answer"]
+
+
+@pytest.mark.asyncio
+async def test_consolidation_preserves_old_active_facts_and_keeps_obsolete_facts_hidden():
+    plugin = FakeVectorPlugin()
+    plugin.records["active"] = _record("active", content="Alice chose PostgreSQL because of JSON queries")
+    plugin.records["outdated"] = _record("outdated", status="superseded", content="Alice chose MySQL")
+    store = MemoryStore(plugin)
+    result = await store.apply_consolidation("kb", "emb", "user-1", min_age_days=0)
+    assert result["summary_episode"] is None
+    assert result["archived_episode_ids"] == ["outdated"]
+    recalled = await store.search_episodes("kb", "emb", "database choice", user_key="user-1")
+    assert [episode["content"] for episode in recalled] == ["Alice chose PostgreSQL because of JSON queries"]
+    assert plugin.records["active"]["metadata"]["status"] == "active"
+    second = await store.apply_consolidation("kb", "emb", "user-1", min_age_days=0)
+    assert second["summary_episode"] is None
+    assert second["archived_episode_ids"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("targets", ["old", [""], [1], ["old"] * 21])
+async def test_replacement_target_input_is_validated_before_writing(targets):
+    plugin = FakeVectorPlugin()
+    with pytest.raises(ValueError, match="supersedes"):
+        await MemoryStore(plugin).add_episode("kb", "emb", "user-1", "New fact", supersedes=targets)
+    assert plugin.upserts == []

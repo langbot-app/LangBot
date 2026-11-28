@@ -59,6 +59,14 @@ def _make_app() -> Mock:
     app.storage_mgr = storage_mgr
     app.persistence_mgr = Mock()
     app.persistence_mgr.execute_async = AsyncMock(return_value=SimpleNamespace(rowcount=1))
+
+    @asynccontextmanager
+    async def tenant_uow(workspace_uuid):
+        assert workspace_uuid == WORKSPACE_A
+        yield SimpleNamespace(execute=AsyncMock(return_value=SimpleNamespace(rowcount=1)))
+
+    app.persistence_mgr.tenant_uow = tenant_uow
+
     app.plugin_connector = Mock()
     app.plugin_connector.require_workspace_context = AsyncMock(side_effect=lambda context: context)
     app.workspace_service = SimpleNamespace(
@@ -90,14 +98,14 @@ class TestStoreFile:
 
         def create_user_task(coro, **kwargs):
             coro.close()
-            return SimpleNamespace(id='task-1', kwargs=kwargs, task=Mock())
+            return SimpleNamespace(id=17, kwargs=kwargs, task=Mock())
 
         kb.ap.task_mgr.create_user_task = Mock(side_effect=create_user_task)
 
         object_key = _upload_key('documents/test.pdf')
         task_id = await kb.store_file(CONTEXT, object_key)
 
-        assert task_id == 'task-1'
+        assert task_id == 17
         kb.ap.storage_mgr.storage_provider.exists.assert_awaited_once_with(object_key)
         kb.ap.persistence_mgr.execute_async.assert_awaited_once()
         call_kwargs = kb.ap.task_mgr.create_user_task.call_args.kwargs
@@ -189,12 +197,12 @@ class TestStoreZipFile:
                 }
             )
         )
-        kb.store_file = AsyncMock(side_effect=['task-pdf', 'task-txt', 'task-md', 'task-html'])
+        kb.store_file = AsyncMock(side_effect=[17, 18, 19, 20])
 
         zip_key = _upload_key('archive.zip')
         task_id = await kb._store_zip_file(CONTEXT, zip_key, parser_plugin_id='parser/plugin')
 
-        assert task_id == 'task-pdf'
+        assert task_id == 17
         assert kb.ap.storage_mgr.storage_provider.save.await_count == 4
         saved_names = [call.args[0] for call in kb.ap.storage_mgr.storage_provider.save.await_args_list]
         assert {name.rsplit('.', 1)[-1] for name in saved_names} == {'pdf', 'txt', 'md', 'html'}
@@ -281,7 +289,7 @@ class TestStoreFileTask:
         kb._set_file_status = AsyncMock(side_effect=[True, True])
         kb._ingest_document = AsyncMock(return_value={'status': 'completed', 'document_id': 'file-uuid'})
         object_key = _upload_key('scoped.pdf')
-        file_obj = SimpleNamespace(uuid='file-uuid', file_name=object_key, extension='pdf')
+        file_obj = SimpleNamespace(uuid='file-uuid', file_name=object_key, extension='pdf', artifact_id=None)
 
         await kb._store_file_task(CONTEXT, file_obj, Mock())
 
@@ -292,7 +300,7 @@ class TestStoreFileTask:
         kb = _make_kb()
         kb._ingest_document = AsyncMock(return_value={'status': 'completed', 'document_id': 'file-uuid'})
         object_key = _upload_key('test.pdf')
-        file_obj = SimpleNamespace(uuid='file-uuid', file_name=object_key, extension='pdf')
+        file_obj = SimpleNamespace(uuid='file-uuid', file_name=object_key, extension='pdf', artifact_id=None)
         task_context = Mock()
 
         await kb._store_file_task(CONTEXT, file_obj, task_context)
@@ -312,7 +320,7 @@ class TestStoreFileTask:
             return_value={'status': 'failed', 'error_message': 'parser failed', 'document_id': 'file-uuid'}
         )
         object_key = _upload_key('bad.pdf')
-        file_obj = SimpleNamespace(uuid='file-uuid', file_name=object_key, extension='pdf')
+        file_obj = SimpleNamespace(uuid='file-uuid', file_name=object_key, extension='pdf', artifact_id=None)
         task_context = Mock()
 
         with pytest.raises(Exception, match='parser failed'):

@@ -6,6 +6,10 @@ Use `self.plugin` for models, tools, knowledge bases, and storage. For the curre
 
 See [LLM request configuration](/en/plugin/dev/apis/llm-requests) for retries, timeouts, numeric reasoning budgets, prompt caching, headers and stream cancellation.
 
+<Info>
+Most methods on this page need a capability that your plugin declares in `manifest.yaml` and a Workspace member grants after installation, for example `models.invoke` for `invoke_llm` or `bot.message.send` for `send_message`. Calls without the grant fail with `permission_denied`. See [Plugin permissions](/en/plugin/dev/permissions#capabilities) for which capability each method needs. To manage Agents, Chats, bots and other Workspace resources, use the [Workspace API](/en/plugin/dev/apis/workspace).
+</Info>
+
 ## LangBot API
 
 These APIs can be called in any plugin component. Access methods:
@@ -90,6 +94,8 @@ async def send_message(
     target_type: str,
     target_id: str,
     message_chain: platform_message.MessageChain,
+    *,
+    timeout: float | None = None,
 ) -> None:
     """Send a message to a session"""
 
@@ -100,7 +106,22 @@ await self.plugin.send_message(
     target_id="1010553892",
     message_chain=platform_message.MessageChain([platform_message.Plain(text="Hello, world!")]),
 )
+
+# Allow more time for media messages such as images
+await self.plugin.send_message(
+    bot_uuid="de639861-be05-4018-859b-c2e2d3e0d603",
+    target_type="person",
+    target_id="1010553892",
+    message_chain=platform_message.MessageChain([platform_message.Image(url="https://example.com/a.png")]),
+    timeout=180,
+)
 ```
+
+`timeout` is how many seconds the plugin waits for LangBot to finish sending. It defaults to 60 seconds, must be passed as a keyword argument, and must be a positive number; otherwise `ValueError` is raised. Images, files and voice messages are uploaded to the platform before they are sent and can take longer, so raise it when needed. A timeout only means the plugin stops waiting: it does not cancel a send already in progress in LangBot, so do not resend right away after a timeout, or the message may be delivered twice.
+
+<Info>
+Requires a `langbot-plugin` release after 0.7.22: plugins need that SDK version to pass `timeout`, and the Plugin Runtime needs it to apply the 60-second default and the plugin's timeout. Version 0.7.22 and earlier wait a fixed 15 seconds.
+</Info>
 
 ### Get Configured LLM Model List
 
@@ -293,6 +314,28 @@ print(result)
 Tool names use `metadata.name` (e.g. `echo_tool`, `get_weather_alerts`), without author or plugin name prefix.
 </Tip>
 
+### Persistence Rules
+
+<Warning>
+Plugins must not write data they need to keep to the filesystem (the plugin directory, `data/`, the current working directory, a self-managed SQLite / JSON file, and so on). Anything that has to persist goes through the APIs into LangBot Core's persistent database.
+</Warning>
+
+A plugin runs inside the Plugin Runtime, whose disk is not persistent storage: upgrading or reinstalling a plugin replaces its directory, and the Runtime may run in a separate container or on another machine, so local files can disappear after a restart, migration or scale-out. Local files are also not isolated per plugin and Workspace, and are not backed up with LangBot's data.
+
+Choose the API by the kind of data:
+
+| Data | API |
+| --- | --- |
+| Plugin-private state, caches, counters, cursors | `set_plugin_storage` / `get_plugin_storage` (requires the `storage.plugin` capability) |
+| Data shared between plugins | `set_workspace_storage` / `get_workspace_storage` (requires the `storage.workspace` capability) |
+| Runner conversation, actor and runner state | [`ctx.state_get` / `ctx.state_set`](/en/plugin/dev/apis/agent-run) |
+| Vectors and knowledge base data | [RAG API](#rag-api): `vector_upsert` / `vector_search` / `vector_delete` |
+| Config files uploaded by users | `get_config_file` |
+
+Values are bytes; serialize structured data yourself (for example `json.dumps(data).encode()`). A single value is limited to 10 MiB by default (instance config `plugin.binary_storage.max_value_bytes`); split larger data across several keys.
+
+Scratch files that processing really needs on disk (for example, input for an external converter) may only go to the system temp directory (`tempfile`) and must be deleted when done. Never assume they still exist on the next call.
+
 ### Set Plugin Persistent Data
 
 Persistently store plugin data. Data stored through this interface can only be accessed by this plugin. Values need to be converted to bytes manually.
@@ -391,7 +434,7 @@ Use this in conjunction with configuration fields of type [``file or array[file`
 
 ## Knowledge Base API
 
-These APIs are accessible via `self.plugin` in regular components, allowing you to list and retrieve from all knowledge bases in the LangBot instance without pipeline restrictions.
+These APIs are accessible via `self.plugin` in regular components, allowing you to list and retrieve from all knowledge bases in the LangBot instance without Chat restrictions.
 
 ### List All Knowledge Bases
 
@@ -449,7 +492,7 @@ for entry in results:
 ```
 
 <Tip>
-These APIs do not require a `query_id` and can be used in regular components (including Tool components). They can access all knowledge bases without being restricted to the current pipeline's configuration.
+These APIs do not require a `query_id` and can be used in regular components (including Tool components). They can access all knowledge bases without being restricted to the current Chat's configuration.
 </Tip>
 
 ## RAG API
@@ -731,3 +774,22 @@ These methods use `self.plugin` and the current Workspace. Runner calls automati
 Unknown capacity fields are `None`. Zero remaining capacity still permits reuse; Runtime checks creation capacity atomically. The Runner computes reuse keys. When `required_reuse_key` is supplied, use it. Equal keys in different Workspaces never share a Box.
 
 Use the [Runner context](/en/plugin/dev/apis/agent-run#runner) to bind the Box before importing attachments or executing tools.
+
+## Typed Artifact helpers
+
+Use `self.plugin.artifacts` in a plugin or `ctx.api.artifacts` inside a Runner. These helpers use the same seven explicitly granted Workspace operations, not a new transport action or capability. Run calls also require the live run and its frozen `workspace_operations`; an installation grant alone cannot widen a run's access.
+
+```python
+asset = await self.plugin.artifacts.create("notes.txt", b"bounded content", mime_type="text/plain")
+body = await self.plugin.artifacts.read(asset.id, max_bytes=262144)
+assert body.content == b"bounded content"
+await self.plugin.artifacts.delete(asset.id)
+```
+
+`create(filename, content: bytes, mime_type=..., ttl_seconds=...)`, `get`, `retain` and `release` return `ArtifactMetadata`. `read` returns `ArtifactData(metadata, content: bytes)`; `read_content` returns the shared structured content list and accepts `mode`, `offset`, `max_chars`, `page_start` and `page_end`. `delete` returns a result dictionary. The SDK encodes/decodes the 256 KiB JSON RPC envelope; do not put its base64 payload into ordinary model text.
+
+An operation failure raises `ArtifactOperationError`, preserving the Host's `code` and `details`. Discover availability with the existing Workspace catalog (`workspace.list`, including `content_base64` in the create schema); there is no new feature flag. An older or unauthorized Host reports an operation error such as `not_found` or `permission_denied`; never fall back to an internal storage path.
+
+The existing Workspace action can traverse an independently deployed older Runtime, but use the coordinated Core/SDK/Runtime versions for Artifact cancellation propagation. A cancellation crossing an older hop is only best effort, not proof that the Host mutation stopped. This does not change legacy run `file_id`, upload or delivery contracts. Test the actual deployed combination before relying on the new helpers.
+
+Unlike the convenience helpers, generated `workspace.artifact` methods return the normal `ok/result/error` envelope and expose the `content_base64` wire field. Do not mix the two result shapes. A shared plugin helper picks up the active run invocation and rejects use after a captured invocation has ended.

@@ -16,8 +16,8 @@ spec:
         en_US: Provider User Identity
         zh_Hans: 供应商用户身份
       description:
-        en_US: Sender is the default. Legacy mode requires trusted Host identity; missing identity fails closed. Does not import old sessions.
-        zh_Hans: 默认使用发送者身份。兼容模式需要可信 Host 身份，缺失时拒绝请求；不会导入旧会话。
+        en_US: Sender is the default. In a group whose pipeline shares context across the group, the group identity is used so all members continue one Dify conversation. Legacy mode requires trusted Host identity; missing identity fails closed. Does not import old sessions.
+        zh_Hans: 默认使用发送者身份；若流水线设置为全群共享会话，则使用群身份，使全群成员延续同一个 Dify 会话。兼容模式需要可信 Host 身份，缺失时拒绝请求；不会导入旧会话。
       type: select
       required: false
       default: sender
@@ -107,6 +107,20 @@ spec:
         zh_Hans: Dify 请求的最长等待秒数。使用代理或长工作流时建议至少设置为 60 秒。
       required: false
       default: 30
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: stream-budget-mb
+      label:
+        en_US: Stream Budget (MiB)
+        zh_Hans: 流式响应预算（MiB）
+      type: integer
+      description:
+        en_US: Maximum accumulated bytes in MiB for one Dify streaming response. A single event, such as one tool observation, may use 1/16 of it (at least 1 MiB). Raise it when large agent tool observations exhaust the budget before the answer finishes.
+        zh_Hans: 单次 Dify 流式响应的累计字节上限（MiB）。单个事件（例如一次工具观测）最多可占用其 1/16（至少 1 MiB）。Agent 工具观测数据较大、预算在回答完成前耗尽时，可调大该值。
+      required: false
+      default: 16
       show_if:
         field: advanced-settings
         operator: eq

@@ -22,7 +22,7 @@ async def test_create_pipeline_defaults_missing_description(monkeypatch):
     service = PipelineService.__new__(PipelineService)
     service.ap = app
 
-    async def fake_get_default_config(context):
+    async def fake_get_default_config(context, runner_id=None):
         runner_id = 'plugin:langbot-team/LocalAgent/default'
         return {
             'ai': {

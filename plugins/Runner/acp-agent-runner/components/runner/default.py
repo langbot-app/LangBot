@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import json
 import logging
@@ -28,7 +29,7 @@ from pkg.daemon_relay import (
 )
 from pkg.prompt import acp_prompt_blocks, has_acp_prompt_input, prompt_capabilities
 from pkg.runtime_support import local_workspace
-from pkg.session import CLAUDE_ENV_VARS_TO_UNSET, build_session_params
+from pkg.session import CLAUDE_ENV_VARS_TO_UNSET, build_session_params, mcp_server_to_acp
 from pkg.session_management import read_json, runner_session_identity, storage_key, write_json
 from pkg.steering import run_with_steering
 
@@ -328,28 +329,30 @@ def _tool_update_name(payload: dict[str, typing.Any]) -> str:
     return str(payload.get("name") or payload.get("title") or "acp_tool")
 
 
-def _mcp_env_to_acp(env: typing.Any) -> list[dict[str, str]]:
-    if isinstance(env, dict):
-        return [{"name": str(key), "value": str(value)} for key, value in env.items()]
-    if isinstance(env, list):
-        converted = []
-        for item in env:
-            if isinstance(item, dict) and "name" in item and "value" in item:
-                converted.append({"name": str(item["name"]), "value": str(item["value"])})
-        return converted
-    return []
+async def _hydrate_input_attachments(ctx: RunnerContext) -> None:
+    """Fill attachment content from a Host that serves bytes by ref.
 
-
-def _mcp_headers_to_acp(headers: typing.Any) -> list[dict[str, str]]:
-    if isinstance(headers, dict):
-        return [{"name": str(key), "value": str(value)} for key, value in headers.items()]
-    if isinstance(headers, list):
-        converted = []
-        for item in headers:
-            if isinstance(item, dict) and "name" in item and "value" in item:
-                converted.append({"name": str(item["name"]), "value": str(item["value"])})
-        return converted
-    return []
+    Current Hosts send attachments as metadata only; the ACP prompt embeds
+    images, audio and files from inline content, so read them once up front.
+    Older SDKs or Hosts keep the previous inline/URL behavior.
+    """
+    reader = getattr(ctx, "read_input_attachment", None)
+    if reader is None:
+        return
+    for attachment in ctx.input.attachments or []:
+        if attachment.content or not attachment.ref:
+            continue
+        try:
+            data = await reader(attachment)
+        except Exception as exc:
+            logger.warning("Skipping input attachment %s: %s", attachment.ref, exc)
+            continue
+        if data is None:
+            return
+        mime_type = data.mime_type or attachment.mime_type or "application/octet-stream"
+        attachment.mime_type = mime_type
+        attachment.name = attachment.name or data.name
+        attachment.content = f"data:{mime_type};base64,{base64.b64encode(data.data).decode('ascii')}"
 
 
 class DefaultRunner(Runner):
@@ -577,22 +580,10 @@ class DefaultRunner(Runner):
             logger.warning("Failed to persist ACP session capabilities: %s", exc)
 
     def _mcp_server_to_acp(self, server: AgentMCPServerConfig) -> dict[str, typing.Any]:
-        if server.transport == "http":
-            return {
-                "name": server.name,
-                "type": "http",
-                "url": server.url,
-                "headers": _mcp_headers_to_acp(server.headers),
-            }
-        if server.transport != "stdio":
-            raise AcpError(f"unsupported MCP transport: {server.transport}", code="acp.mcp_bridge_invalid")
-        return {
-            "name": server.name,
-            "type": "stdio",
-            "command": server.command,
-            "args": list(server.args),
-            "env": _mcp_env_to_acp(server.env),
-        }
+        try:
+            return mcp_server_to_acp(server)
+        except ValueError as exc:
+            raise AcpError(str(exc), code="acp.mcp_bridge_invalid") from exc
 
     def _mcp_servers(
         self,
@@ -689,7 +680,8 @@ class DefaultRunner(Runner):
         if not isinstance(capabilities, dict):
             capabilities = {}
 
-        if stored_session_id and config["reuse_session"]:
+        recovering = ctx.runtime.metadata.get("recovery", {}).get("mode") == "resume"
+        if stored_session_id and (config["reuse_session"] or recovering):
             if _runtime_has_method(capabilities, "session/resume"):
                 result = await client.request(
                     "session/resume",
@@ -716,6 +708,8 @@ class DefaultRunner(Runner):
                 await client.drain_updates()
                 return _extract_session_id(result) or stored_session_id, False
 
+        if recovering:
+            raise AcpError("Source ACP session cannot be resumed by this runtime", code="acp.resume_unavailable")
         if not config["create_session_if_missing"]:
             raise AcpError(
                 "no stored ACP session and create-session-if-missing is disabled", code="acp.session_missing"
@@ -871,6 +865,17 @@ class DefaultRunner(Runner):
         )
 
         await hub.wait_for_daemon(config["daemon_id"], config["daemon_connect_timeout"])
+        # Emit a placeholder once the daemon is reachable so the platform
+        # creates its streaming card (a waiting indicator) before the agent
+        # produces any text. Later deltas carry full snapshots in
+        # ``all_content`` and replace this value, so the final answer is
+        # unaffected. Waiting for the daemon first avoids leaving an orphaned
+        # placeholder card when the daemon is offline.
+        if config.get("streaming", True):
+            yield RunnerResult.message_delta(
+                ctx.run_id,
+                MessageChunk(role="assistant", content="⏳", all_content="⏳", msg_sequence=0),
+            )
         tools = AgentRunExternalTools(self.get_run_api(ctx), ctx) if config["mcp_bridge_enabled"] else None
         payload = self._daemon_payload(ctx, config, prompt_text, stored_session_id)
         async with contextlib.aclosing(
@@ -902,7 +907,11 @@ class DefaultRunner(Runner):
             yield RunnerResult.run_failed(ctx.run_id, error=exc.message, code=exc.code, retryable=exc.retryable)
             return
 
+        await _hydrate_input_attachments(ctx)
         input_text = self._input_text(ctx)
+        if ctx.runtime.metadata.get("recovery", {}).get("mode") == "resume":
+            config["reuse_session"] = True
+            config["create_session_if_missing"] = False
         if not has_acp_prompt_input(input_text, ctx.input):
             yield RunnerResult.run_failed(ctx.run_id, error="input text is required", code="acp.empty_input")
             return

@@ -6,8 +6,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from tools.regression.evidence import checked
+
 from tools.entrypoints.regression_coverage import (
-    checked,
     collect,
     http_observations,
     load_catalog,
@@ -149,6 +150,57 @@ class CoverageTest(unittest.TestCase):
             self.assertTrue(result['evidence_errors'])
             self.assertEqual(result['kinds']['blackbox']['decided'], 0)
             self.assertTrue((root / 'coverage.md').is_file())
+
+    def test_api_requires_every_planned_round_and_its_named_assertions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            current_catalog = catalog()
+            current_catalog['contracts'] = [current_catalog['contracts'][0]]
+            bindings = current_catalog['contracts'][0]['bindings']
+            bindings[0].update(profile='api', case='fixed_api_chat')
+            bindings.append(dict(bindings[0], case='shuffled_api_chat'))
+            catalog_path = root / 'catalog.json'
+            catalog_path.write_text(json.dumps(current_catalog))
+            profile = {
+                'coverage_suite': 'api',
+                'smoke': {},
+                'vars': {'api_fixed_only': False},
+                'cases': [{'name': b['case']} for b in bindings],
+            }
+            (root / 'profile.json').write_text(json.dumps(profile))
+            fixed = {
+                'case': 'fixed_api_chat',
+                'status': 'passed',
+                'contract_ids': ['reply'],
+                'assertions': {'response': 'passed', 'fields': 'passed'},
+            }
+            shuffled = dict(fixed, case='shuffled_api_chat')
+            for executed, complete in (
+                ([fixed], False),
+                ([fixed, fixed], False),
+                ([fixed, dict(shuffled, assertions={'response': 'passed'})], False),
+                ([fixed, dict(shuffled, contract_ids=['wrong-id'])], False),
+                ([fixed, shuffled], True),
+            ):
+                with self.subTest(executed=executed):
+                    (root / 'cases.json').write_text(json.dumps(executed))
+                    observed, errors = collect(root, catalog_path)
+                    data = report(current_catalog, observed, errors)
+                    self.assertEqual(data['complete_evidence'], complete)
+                    self.assertEqual(data['contracts'][0]['status'], 'passed' if complete else 'incomplete')
+
+            (root / 'cases.json').write_text(json.dumps([fixed]))
+            profile['cases'].pop()
+            (root / 'profile.json').write_text(json.dumps(profile))
+            observed, errors = collect(root, catalog_path)
+            self.assertIn('required cases', errors[0])
+            self.assertEqual(report(current_catalog, observed, errors)['contracts'][0]['status'], 'incomplete')
+
+            profile['vars']['api_fixed_only'] = True
+            (root / 'profile.json').write_text(json.dumps(profile))
+            observed, errors = collect(root, catalog_path)
+            self.assertFalse(errors)
+            self.assertEqual(report(current_catalog, observed, errors)['contracts'][0]['status'], 'passed')
 
     def test_missing_phase_evidence_cannot_hide_behind_a_successful_phase(self):
         with tempfile.TemporaryDirectory() as directory:

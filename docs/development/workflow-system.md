@@ -26,7 +26,7 @@ completion event. Nodes are not retried by default because sends have side effec
 
 ## Persistence and authorization
 
-Migration `0043_workflow_tables` adds `workflows`, `workflow_versions`,
+Migration `0061_workflow_tables` adds `workflows`, `workflow_versions`,
 `workflow_executions` and `workflow_node_executions`. Every table has a Workspace
 foreign key. SQLite uses scoped statements; PostgreSQL also enforces Workspace
 RLS. Definitions are versioned on change. Execution details include persisted

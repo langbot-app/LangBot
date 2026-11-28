@@ -69,6 +69,22 @@ async def test_scope_is_reset_before_yield_and_stream_finishes(deadline):
 
 
 @pytest.mark.asyncio
+async def test_runner_transport_wait_has_no_stale_idle_deadline():
+    stream, handler, _, _, _, _ = make_stream()
+    original = handler.call_action_generator
+    timeouts = []
+
+    async def capture_timeout(*args, **kwargs):
+        timeouts.append(kwargs['timeout'])
+        async for frame in original(*args, **kwargs):
+            yield frame
+
+    handler.call_action_generator = capture_timeout
+    assert [frame['sequence'] async for frame in stream] == [0, 1, 2]
+    assert timeouts == [None]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('deadline', [True, False])
 async def test_early_close_releases_wire_stream_in_scope(deadline):
     stream, handler, _, _, closed, _ = make_stream(deadline=deadline)

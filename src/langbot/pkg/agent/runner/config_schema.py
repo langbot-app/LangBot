@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import typing
+from copy import deepcopy
 
 from .descriptor import RunnerDescriptor
 
@@ -189,6 +190,31 @@ def extract_knowledge_base_uuids(
     return list(dict.fromkeys(kb_uuids))
 
 
+def project_automatic_knowledge_bases(
+    descriptor: RunnerDescriptor,
+    runner_config: dict[str, typing.Any],
+    selected_ids: list[str],
+    authorized_ids: list[str],
+) -> dict[str, typing.Any]:
+    """Project the automatic retrieval selection onto an isolated run config.
+
+    Resource authorization is built independently from the stored binding.
+    Hooks can suppress automatic retrieval while explicit retrieval keeps using
+    the frozen resource grants.
+    """
+
+    projected = deepcopy(runner_config)
+    selected = set(selected_ids) & set(authorized_ids)
+    for item in iter_schema_items(descriptor, KB_SELECTOR_TYPES):
+        field_name = item.get('name')
+        if not field_name:
+            continue
+        configured = runner_config.get(field_name, item.get('default', []))
+        values = configured if isinstance(configured, list) else []
+        projected[field_name] = [value for value in values if isinstance(value, str) and value in selected]
+    return projected
+
+
 def iter_config_model_refs(
     descriptor: RunnerDescriptor,
     runner_config: dict[str, typing.Any],
@@ -222,6 +248,12 @@ def iter_config_model_refs(
         elif field_type == 'rerank-model-selector':
             if isinstance(value, str) and value not in NONE_SENTINELS:
                 yield 'rerank', value
+        elif field_type == 'asr-model-selector':
+            if isinstance(value, str) and value not in NONE_SENTINELS:
+                yield 'asr', value
+        elif field_type == 'tts-model-selector':
+            if isinstance(value, str) and value not in NONE_SENTINELS:
+                yield 'tts', value
 
 
 def set_empty_llm_model_selection(

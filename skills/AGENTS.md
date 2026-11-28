@@ -1,21 +1,18 @@
 # Agent Workflow
 
-This repository stores reusable LangBot agent-testing assets. Keep changes structured so the next agent does not need to rediscover paths.
+`skills/` inside the LangBot monorepo holds LangBot agent skills and the `lbs` QA harness. Paths below are relative to this directory (`skills/skills/<name>/` from the repository root). Repository-wide rules live in `../AGENTS.md`.
 
 ## First Steps
 
 1. Read `skills/.env` before using local URLs, paths, browser profiles, or proxy defaults. If present, `skills/.env.local` overrides it for this machine and must not be committed. On a new machine, copy `skills/.env.example` to `skills/.env.local` first.
-2. Pick the smallest relevant skill:
-   - `langbot-env-setup` for environment, browser, OAuth, proxy, and startup.
-   - `langbot-testing` for WebUI, provider, pipeline, cases, and troubleshooting.
-   - `langbot-skills-maintenance` for adding, deduplicating, or auditing this skills repository.
+2. Pick the smallest relevant skill from the catalog in `README.md` (development: `langbot-dev`, `langbot-plugin-dev`, `langbot-eba-adapter-dev`; operations: `langbot-mcp-ops`, `langbot-space-ops`, `langbot-deploy`; QA: `langbot-env-setup`, `langbot-testing`; this directory: `langbot-skills-maintenance`).
 3. Prefer existing cases and troubleshooting entries before exploring from scratch.
 
 ## Editing Rules
 
 - UI/browser testing is the primary QA path. API/curl checks are diagnostic only and cannot make a UI case pass by themselves.
-- Put skills under `skills/<name>/`.
-- Keep `SKILL.md` concise; move detailed workflows to `references/`.
+- Put skills under `skills/<name>/` and list new ones in `README.md`.
+- Keep `SKILL.md` concise; move detailed workflows to `references/`. Link to `../docs/` (public docs) or `../dev-docs/` (internal contracts) instead of copying their content.
 - Put reusable test paths in `cases/*.yaml`.
 - New or edited cases must include `priority`, `risk`, `ci_eligible`, and `evidence_required` so agents can select the right test set without rereading every file.
 - Use `env_any` / `automation_env_any` for one-of machine inputs, such as `LANGBOT_PIPELINE_URL|LANGBOT_PIPELINE_NAME`; do not list those alternatives as separate all-required env keys.

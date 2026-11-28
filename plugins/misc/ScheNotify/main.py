@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import datetime
 import itertools
 import logging
+import re
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from langbot_plugin.api.definition.plugin import BasePlugin
+from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
-from langbot_plugin.api.proxies.invocation import (
-    bind_invocation,
-    current_binding,
-    current_config,
-)
+from langbot_plugin.api.proxies.invocation import current_binding
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,72 @@ LOOP_STOP_TIMEOUT = 5.0
 # bounded so a single session cannot grow the shared worker's memory without limit.
 MAX_EVENTS_PER_INSTALLATION = 100
 MAX_MESSAGE_LENGTH = 2000
+
+
+# Display/parse format shared by the tools and commands.
+TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+# ``UTC+8``, ``GMT-03:30``, ``+0530`` style fixed offsets.
+_OFFSET_RE = re.compile(
+    r"^(?:UTC|GMT)?\s*([+-])\s*(\d{1,2})(?::?(\d{2}))?$", re.IGNORECASE
+)
+
+
+def resolve_timezone(name: Any) -> datetime.tzinfo | None:
+    """Return the tzinfo for a ``timezone`` config value.
+
+    Accepts an IANA name (``Asia/Shanghai``), ``UTC`` or a fixed offset
+    (``UTC+8``, ``+05:30``). An empty or unknown value returns ``None``, which
+    every helper below treats as the host's local timezone (the pre-config
+    behaviour).
+    """
+    text = str(name or "").strip()
+    if not text:
+        return None
+    if text.upper() in ("UTC", "GMT", "Z"):
+        return datetime.timezone.utc
+    match = _OFFSET_RE.match(text)
+    if match:
+        sign, hours, minutes = match.group(1), int(match.group(2)), int(match.group(3) or 0)
+        if hours <= 14 and minutes < 60:
+            delta = datetime.timedelta(hours=hours, minutes=minutes)
+            return datetime.timezone(-delta if sign == "-" else delta)
+    try:
+        return ZoneInfo(text)
+    except (ZoneInfoNotFoundError, ValueError):
+        logger.warning("ScheNotify: unknown timezone %r, using the host's local timezone", text)
+        return None
+
+
+def now_in(tz: datetime.tzinfo | None) -> datetime.datetime:
+    """Current aware time in ``tz`` (``None``: host local timezone)."""
+    return datetime.datetime.now(tz) if tz is not None else datetime.datetime.now().astimezone()
+
+
+def localize(naive: datetime.datetime, tz: datetime.tzinfo | None) -> datetime.datetime:
+    """Interpret a wall-clock time as being in ``tz`` and make it aware."""
+    if naive.tzinfo is not None:
+        return naive
+    return naive.replace(tzinfo=tz) if tz is not None else naive.astimezone()
+
+
+def to_timezone(moment: datetime.datetime, tz: datetime.tzinfo | None) -> datetime.datetime:
+    """Convert a stored event time to ``tz``; naive times are host-local."""
+    aware = moment if moment.tzinfo is not None else moment.astimezone()
+    return aware.astimezone(tz)
+
+
+def timezone_label(moment: datetime.datetime) -> str:
+    """Human label of an aware time's zone, e.g. ``Asia/Shanghai, UTC+08:00``."""
+    offset = moment.strftime("%z")
+    offset_text = f"UTC{offset[:3]}:{offset[3:]}" if offset else "UTC"
+    key = getattr(moment.tzinfo, "key", None)
+    return f"{key}, {offset_text}" if key else offset_text
+
+
+def format_time(moment: datetime.datetime) -> str:
+    """Format an aware time with its zone, e.g. ``2026-01-01 08:00:00 (UTC+08:00)``."""
+    return f"{moment.strftime(TIME_FORMAT)} ({timezone_label(moment)})"
 
 
 def session_key(bot_uuid: Any, target_type: Any, target_id: Any) -> tuple[str, str, str]:
@@ -121,19 +187,40 @@ class ScheNotify(BasePlugin):
         """
         return session_key(bot_uuid, target_type, target_id)
 
+    def get_timezone(self) -> datetime.tzinfo | None:
+        """Timezone configured for the invoking installation.
+
+        Read per invocation; ``None`` means the host's local timezone.
+        """
+        return resolve_timezone((self.get_config() or {}).get("timezone"))
+
+    def current_time(self) -> datetime.datetime:
+        """Current aware time in the invoking installation's timezone."""
+        return now_in(self.get_timezone())
+
+    def localize_time(self, naive: datetime.datetime) -> datetime.datetime:
+        """Interpret a wall-clock time in the invoking installation's timezone."""
+        return localize(naive, self.get_timezone())
+
+    def format_time(self, moment: datetime.datetime) -> str:
+        """Format an aware time with its zone label."""
+        return format_time(moment)
+
+    def format_event_time(self, moment: datetime.datetime) -> str:
+        """Format a stored event time in the invoking installation's timezone."""
+        return format_time(to_timezone(moment, self.get_timezone()))
+
     def _ensure_loop(self, scope: str) -> None:
         """Start (or refresh) the scheduler of the invoking installation.
 
-        The invocation's handler, config and binding are captured here: the
-        detached loop re-enters them at fire time so every Host send stays
-        attributable to the installation that scheduled the reminder. A worker
-        upgrade keeps the scope token (the revision is excluded from it) but
-        presents a new binding, so the loop is restarted under the new authority
-        instead of sending with the superseded revision.
+        The loop captures no invocation: a reminder is delivered through the
+        installation-authorized ``bot.message.send`` Workspace operation, which
+        the Host authorizes from the installation grant and revokes with it. A
+        worker upgrade keeps the scope token (the revision is excluded from it)
+        but presents a new binding, so the loop is restarted for the new
+        revision instead of outliving it.
         """
-        handler = getattr(self, "plugin_runtime_handler", None)
-        config = current_config(handler)
-        binding = current_binding(handler)
+        binding = current_binding(getattr(self, "plugin_runtime_handler", None))
 
         task = self._loops.get(scope)
         if task is not None and not task.done():
@@ -141,8 +228,13 @@ class ScheNotify(BasePlugin):
                 return
             task.cancel()
         self._loop_bindings[scope] = binding
+        # Start from an empty Context: the scheduling invocation's task-local
+        # state is closed once that call returns, and the loop must not inherit
+        # it. What the loop keeps is the immutable installation binding, which
+        # the Host validates against the live connection on every delivery.
         self._loops[scope] = asyncio.create_task(
-            self._check_loop_wrapper(scope, handler, config, binding)
+            self._check_loop_wrapper(scope, binding),
+            context=contextvars.Context(),
         )
 
     async def _stop_loop(self, scope: str) -> None:
@@ -162,30 +254,31 @@ class ScheNotify(BasePlugin):
     # ------------------------------------------------------------------ #
     # Scheduler
     # ------------------------------------------------------------------ #
-    async def _check_loop_wrapper(self, scope: str, handler: Any, config: Any, binding: Any):
-        """Check one installation's due events until that binding is revoked.
+    async def _check_loop_wrapper(self, scope: str, binding: Any = None):
+        """Check one installation's due events until that installation is revoked.
 
-        A detached task keeps no usable invocation of its own — the invocation
-        that started it has ended and is marked inactive. It therefore re-enters
-        the handler, config and binding captured when it started, so every send
-        this loop makes carries the scheduling installation's authority instead
-        of falling back to the worker's connection default. ``on_installation_revoked``
-        cancels the task, which exits this scope and drops the authority with it.
+        The loop holds no invocation and no configuration: each delivery passes
+        the installation binding as the explicit action context, so the Host
+        validates it (Workspace, installation, revision and artifact) against
+        the live connection and rejects a superseded or detached installation.
+        ``on_installation_revoked`` cancels the task, so a revoked installation
+        stops delivering immediately.
         """
-        with bind_invocation(handler, config=config, binding=binding):
-            while True:
-                try:
-                    await self._check_scheduled_events(scope)
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    logger.error(f"Error in check loop: {e}", exc_info=True)
-                await asyncio.sleep(CHECK_INTERVAL_SECONDS)  # Check every minute
+        while True:
+            try:
+                await self._check_scheduled_events(scope, binding)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"Error in check loop: {type(e).__name__}: {e}")
+            await asyncio.sleep(CHECK_INTERVAL_SECONDS)  # Check every minute
 
-    async def _check_scheduled_events(self, scope: str):
+    async def _check_scheduled_events(self, scope: str, binding: Any = None):
         """Send notifications for this installation's due events."""
-        now = datetime.datetime.now()
-        logger.info(f"Checking scheduled events at {now}")
+        # Event times are aware (naive ones are host-local), so the comparison
+        # needs no config and is independent of the configured timezone.
+        now = datetime.datetime.now(datetime.timezone.utc)
+        logger.info(f"Checking scheduled events at {now.isoformat()}")
         events = self._events.get(scope)
         if not events:
             return
@@ -196,10 +289,10 @@ class ScheNotify(BasePlugin):
         # delete entries while this loop is awaiting a send.
         delivered_ids = []
         for event in list(events):
-            if now >= event["time"]:
+            if now >= to_timezone(event["time"], datetime.timezone.utc):
                 # Send notification
                 try:
-                    await self._send_notification(event)
+                    await self._send_notification(event, binding)
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:
@@ -218,24 +311,48 @@ class ScheNotify(BasePlugin):
         delivered = set(delivered_ids)
         events[:] = [event for event in events if event["id"] not in delivered]
 
-    async def _send_notification(self, event: dict[str, Any]):
+    async def _send_notification(self, event: dict[str, Any], binding: Any = None):
         """
         Send notification message to the session.
 
+        The delivery is an ordinary Host action carrying the installation
+        binding as its explicit action context: the Host validates that context
+        against the live connection (Workspace, installation, revision and
+        artifact) and applies the installation's granted capabilities, so no
+        invocation is invented for the background task and a detached or
+        upgraded installation cannot be used to deliver.
+
         Args:
             event: Event dict containing session info and message
+            binding: Installation binding captured when the reminder was created
         """
         message_chain = platform_message.MessageChain([
             platform_message.Plain(text=f"{NOTIFY_PREFIX}{event['message']}")
         ])
+        payload = {
+            "bot_uuid": event["bot_uuid"],
+            "target_type": event["target_type"],
+            "target_id": event["target_id"],
+            "message_chain": message_chain.model_dump(),
+        }
 
-        # Send message using saved session info. Failures propagate so the
-        # scheduler can keep the event queued and record the failed attempt.
-        await self.send_message(
-            bot_uuid=event["bot_uuid"],
-            target_type=event["target_type"],
-            target_id=event["target_id"],
-            message_chain=message_chain
+        if binding is None:
+            # A dedicated worker's invocation carries no binding; the connection
+            # itself is the installation, so the task-local context is correct.
+            await self.send_message(
+                bot_uuid=payload["bot_uuid"],
+                target_type=payload["target_type"],
+                target_id=payload["target_id"],
+                message_chain=message_chain,
+            )
+            return
+
+        # Failures propagate so the scheduler keeps the event queued.
+        await self.plugin_runtime_handler.call_action(
+            PluginToRuntimeAction.SEND_MESSAGE,
+            payload,
+            timeout=180.0,
+            action_context=binding,
         )
 
     async def add_scheduled_event(
@@ -250,7 +367,8 @@ class ScheNotify(BasePlugin):
         Add a scheduled event (called from schedule_notify tool).
 
         Args:
-            time: Scheduled time
+            time: Scheduled time; should be timezone-aware (a naive time is
+                interpreted in the host's local timezone)
             message: Notification message
             bot_uuid: Bot UUID
             target_type: "person" or "group"

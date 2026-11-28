@@ -2,7 +2,7 @@
 title: "Component: Command"
 ---
 
-Command components are triggered by user command messages starting with `!` (or other configured prefixes). Here's an example of triggering the `!help` command:
+Command components are triggered by user messages that start with a command prefix (set in the **Plugins & commands** tab of the bot, `/` by default). Commands belong to the **bot**: only plugins enabled on the bot (or on the route the message matches) have their commands matched, and enabled built-in [system commands](/en/deploy/system-commands) take precedence over same-named plugin commands. Here's an example of triggering a command:
 
 <img width="600" src="/images/zh/plugin/dev/components/command_use.png" />
 
@@ -52,6 +52,33 @@ execution:
     path: info.py  # Command handler, do not modify
     attr: Info  # Command handler class name, matches the class name in info.py
 ```
+
+## How commands match and apply
+
+- Commands apply only to `message.received`. They match by "prefix + registered command name" **before route rules**; a matched command runs directly instead of going to a Chat, an Agent or a plugin processor.
+- A command uses the message policy of the route the message would otherwise match (group response rules, access control, rate limit, content filter, long text, @mention, quote). When no route matches, the bot default policy applies.
+- Command messages also fire `*MessageReceived`; after admission and before execution, `*CommandSent` fires and plugins can intercept it. See [Message Lifecycle Events](/en/plugin/dev/apis/pipeline-events).
+- Query-bound APIs such as `context.reply()` and `get_bot_uuid()` work while a command runs.
+- Commands do not take part in message aggregation. `/stop` still stops an AI reply in progress.
+
+## Command Configuration
+
+A command can declare a configuration form in its manifest `spec.config`, using the same format as a Runner's `spec.config`:
+
+```yaml
+spec:
+  config:
+    - name: style
+      type: string
+      label:
+        en_US: Style
+        zh_Hans: 风格
+      default: plain
+```
+
+On the bot's **Plugins** tab, users click **Command settings** on a plugin's row and fill in the configuration of each of its commands for that bot. At execution time, read these values from `context.config`; missing fields use their `default`. Plugins without saved command settings use the defaults. **Command settings** only appears for plugins with at least one command that declares `spec.config`.
+
+Commands without `spec.config` need no changes: enable the plugin on the bot and they work as before, with `context.config` as an empty dict. Plugin-level settings are still available through `self.get_plugin_config()`.
 
 ## Plugin Processing
 
@@ -186,6 +213,9 @@ class ExecuteContext(pydantic.BaseModel):
     privilege: int
     """Session privilege level"""
 
+    config: dict[str, Any]
+    """Command settings of this plugin on the current bot, filled from spec.config"""
+
     ...
 ```
 
@@ -205,7 +235,7 @@ yield CommandReturn(
 
 Command processing supports returning multiple messages, so please use `yield` statements to return messages.
 
-For specific return values, please refer to the definition of `CommandReturn`: [langbot_plugin.api.entities.builtin.command.context.CommandReturn](https://github.com/langbot-app/langbot-plugin-sdk/tree/main/src/langbot_plugin/api/entities/builtin/command/context.py)
+For specific return values, please refer to the definition of `CommandReturn`: [langbot_plugin.api.entities.builtin.command.context.CommandReturn](https://github.com/langbot-app/LangBot/blob/master/sdk/src/langbot_plugin/api/entities/builtin/command/context.py)
 
 ## One installation, many usages
 
@@ -217,6 +247,39 @@ A single command is triggered **concurrently by several conversations**:
 - If you keep per-installation process-local caches, release them in `on_installation_revoked(binding)`.
 
 See [Certified plugins and shared runtime](/en/plugin/certified-plugins) for the full specification.
+
+## Platform command menus
+
+On the bot's **Plugins** tab, enable **Register on platform** and select
+commands from its enabled plugins. Save the bot before using
+**Sync now**. Registration replaces the entire platform list, including manually
+configured commands. Disabling it clears the previously managed lists. Other adapters
+do not expose this panel.
+
+The effective list follows the order of the plugin list: the first plugin providing a
+command name wins, the same rule used to match commands. Descriptions come from `metadata.description` in the Workspace language,
+with localized variants registered where supported. Invalid names or descriptions
+are excluded with a reason shown in the panel. Telegram allows 100 commands, names
+matching `[a-z0-9_]{1,32}`, and descriptions of 1–256 characters. Discord allows 100
+global chat-input commands, names of 1–32 characters using its Unicode naming rules,
+and descriptions of 1–100 characters. Discord commands have one optional string
+argument, `args`.
+
+Telegram commands use normal incoming messages; include `/` in the bot prefixes.
+Discord interactions are deferred before dispatch and converted to `message.received`,
+with prefix validation bypassed. Replies use interaction followups.
+
+Menus synchronize on bot startup, settings saves, and plugin changes. Unchanged
+payloads skip remote writes. `GET /api/v1/platform/bots/{uuid}` returns
+`platform_command_sync` and filtering diagnostics. The `resource.manage` endpoint
+`POST /api/v1/bots/{uuid}/platform-commands/sync` and MCP tool
+`sync_bot_platform_commands` synchronize saved settings. This release registers
+Telegram's default scope and Discord's global command scope.
+
+Limits: [Telegram BotCommand](https://core.telegram.org/bots/api#botcommand),
+[setMyCommands](https://core.telegram.org/bots/api#setmycommands),
+[Discord application commands](https://docs.discord.com/developers/interactions/application-commands),
+[Discord interaction responses](https://docs.discord.com/developers/interactions/receiving-and-responding).
 
 ## What's Next
 

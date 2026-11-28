@@ -48,14 +48,29 @@ class RunnerInvoker:
                 context=context,
             )
 
+            next_result = None
             try:
                 while True:
+                    if next_result is None:
+                        next_result = asyncio.create_task(self._next_with_deadline(gen, descriptor, context))
                     try:
-                        result_dict = await self._next_with_deadline(gen, descriptor, context)
+                        result_dict = await next_result
                     except StopAsyncIteration:
                         break
+                    next_result = None
+                    if not isinstance(result_dict, dict) or result_dict.get('type') not in (
+                        'run.completed',
+                        'run.failed',
+                        'run.cancelled',
+                    ):
+                        # One pending frame keeps Host persistence out of the next transport read.
+                        next_result = asyncio.create_task(self._next_with_deadline(gen, descriptor, context))
                     yield result_dict
             finally:
+                if next_result is not None:
+                    if not next_result.done():
+                        next_result.cancel()
+                    await asyncio.gather(next_result, return_exceptions=True)
                 await self._close_generator(gen, descriptor)
 
         except asyncio.TimeoutError as e:
@@ -94,17 +109,33 @@ class RunnerInvoker:
             await self._close_generator(gen, descriptor)
             raise asyncio.TimeoutError
 
+        next_result = asyncio.create_task(anext(gen))
         try:
-            if remaining is None:
-                return await anext(gen)
-            return await asyncio.wait_for(anext(gen), timeout=remaining)
+            while True:
+                if remaining is None:
+                    return await next_result
+                try:
+                    return await asyncio.wait_for(asyncio.shield(next_result), timeout=remaining)
+                except asyncio.TimeoutError:
+                    # The Host can extend the deadline while a blocking interaction
+                    # is active. Keep the same pending read when that happens.
+                    renewed = self._remaining_deadline_seconds(context)
+                    if renewed is None or renewed <= 0:
+                        raise
+                    remaining = renewed
         except StopAsyncIteration:
             if self._is_deadline_exhausted(context):
                 raise asyncio.TimeoutError
             raise
         except asyncio.TimeoutError:
+            next_result.cancel()
+            await asyncio.gather(next_result, return_exceptions=True)
             await self._close_generator(gen, descriptor)
             raise
+        finally:
+            if not next_result.done():
+                next_result.cancel()
+                await asyncio.gather(next_result, return_exceptions=True)
 
     def _remaining_deadline_seconds(
         self,

@@ -139,7 +139,7 @@ LangBot does not yet expose an interactive approval UI for these requests.
 | `!new` | Clears the current binding; the next message creates a new ACP session while preserving the old one |
 | `!list` / `!sessions` | Lists ACP sessions in the configured daemon workspace |
 | `!switch <number or session ID>` | Selects an existing ACP session |
-| `!delete` | Deletes the current ACP session, then clears the LangBot binding and visible context |
+| `!delete [number\|session_id]` | Deletes the current session when no argument is given; otherwise deletes a session from the last `!list`. The reply includes its title and ID. Deleting another session keeps the current binding and clears the list cache: run `!list` again before deleting by number. |
 | `!stop` | Stops the active run without deleting the ACP session |
 
 `!delete` preserves LangBot run-audit records. Immediate `!stop` cancellation requires Host support for control-command cancellation before the per-session concurrency slot.

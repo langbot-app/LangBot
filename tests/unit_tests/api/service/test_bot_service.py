@@ -369,7 +369,7 @@ class TestBotServiceCreateBot:
 
         # Execute & Verify
         with pytest.raises(ValueError, match='Maximum number of bots'):
-            await service.create_bot(WORKSPACE_UUID, {'name': 'New Bot'})
+            await service.create_bot(WORKSPACE_UUID, {'name': 'New Bot', 'adapter': 'aiocqhttp', 'adapter_config': {}})
         assert all(not call.args[0].is_insert for call in ap.persistence_mgr.execute_async.await_args_list)
         ap.platform_mgr.load_bot.assert_not_awaited()
 
@@ -749,6 +749,7 @@ class TestBotServiceListEventRouteStatuses:
 
     async def test_returns_saved_routes_when_runtime_bot_is_unavailable(self):
         ap = SimpleNamespace()
+        ap.monitoring_service = SimpleNamespace(route_counts_24h=AsyncMock(return_value={}))
         ap.platform_mgr = SimpleNamespace()
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
 
@@ -773,6 +774,7 @@ class TestBotServiceListEventRouteStatuses:
         assert result['routes'] == [
             {
                 'binding_id': 'binding-1',
+                'counts_24h': {'ai': 0, 'command': 0, 'plugin': 0, 'policy': 0},
                 'event_pattern': 'message.received',
                 'event_type': None,
                 'target_type': 'agent',

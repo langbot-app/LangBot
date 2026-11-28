@@ -131,7 +131,9 @@ def fake_pipeline_app():
     app.pipeline_service.create_pipeline = AsyncMock(return_value='new-pipeline-uuid')
     app.pipeline_service.update_pipeline = AsyncMock(return_value={})
     app.pipeline_service.delete_pipeline = AsyncMock()
-    app.pipeline_service.copy_pipeline = AsyncMock(return_value='copied-pipeline-uuid')
+    app.pipeline_service.copy_pipeline_result = AsyncMock(
+        return_value={'uuid': 'copied-pipeline-uuid', 'ignored_keys': ['trigger']}
+    )
 
     # Bot service
     app.bot_service = Mock()
@@ -157,6 +159,15 @@ def fake_pipeline_app():
 
     # Plugin connector (for extensions endpoint)
     app.plugin_connector.list_plugins = AsyncMock(return_value=[])
+
+    # The extensions endpoint delegates to the real service, which reads the
+    # pipeline through the mocked ``get_pipeline`` and finds no plugin grants.
+    from langbot.pkg.api.http.service.pipeline import PipelineService
+
+    app.persistence_mgr.execute_async = AsyncMock(return_value=[])
+    extensions_service = PipelineService(app)
+    extensions_service.get_pipeline = app.pipeline_service.get_pipeline
+    app.pipeline_service.get_pipeline_extensions = extensions_service.get_pipeline_extensions
 
     return app
 
@@ -287,7 +298,10 @@ class TestPipelinesCRUDEndpoints:
         response = await quart_test_client.post(
             '/api/v1/pipelines',
             headers={'Authorization': 'Bearer test_token'},
-            json={'name': 'New Pipeline', 'config': {}},
+            json={
+                'name': 'New Pipeline',
+                'config': {'trigger': {}, 'output': {'misc': {'at-sender': True, 'remove-think': False}}},
+            },
         )
 
         assert response.status_code == 200
@@ -298,9 +312,9 @@ class TestPipelinesCRUDEndpoints:
         called = fake_pipeline_app.pipeline_service.create_pipeline
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
-        assert called.await_args.args[1:] == ({'name': 'New Pipeline', 'config': {}},)
+        assert called.await_args.args[1]['name'] == 'New Pipeline'
         assert called.await_args.kwargs == {'default': False}
-        assert data['data'] == {'uuid': 'new-pipeline-uuid'}
+        assert data['data'] == {'uuid': 'new-pipeline-uuid', 'ignored_keys': ['output.misc.at-sender', 'trigger']}
 
     @pytest.mark.asyncio
     async def test_create_default_pipeline_forwards_default_flag(self, quart_test_client, fake_pipeline_app):
@@ -366,12 +380,12 @@ class TestPipelinesCRUDEndpoints:
         assert data['code'] == 0
         assert 'uuid' in data['data']
 
-        called = fake_pipeline_app.pipeline_service.copy_pipeline
+        called = fake_pipeline_app.pipeline_service.copy_pipeline_result
         assert called.await_count == 1
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
         assert called.await_args.args[1:] == ('test-pipeline-uuid',)
         assert called.await_args.kwargs == {}
-        assert data['data'] == {'uuid': 'copied-pipeline-uuid'}
+        assert data['data'] == {'uuid': 'copied-pipeline-uuid', 'ignored_keys': ['trigger']}
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')

@@ -128,6 +128,24 @@ def get_emitted_plugins(event_ctx: Any) -> list[dict[str, Any]]:
     return emitted_plugins if isinstance(emitted_plugins, list) else []
 
 
+def get_prevent_default_plugin(event_ctx: Any) -> dict[str, str] | None:
+    """Return the plugin that took the message over via ``prevent_default``.
+
+    Newer Plugin Runtimes report it as a ``prevent_default`` response source.
+    Older ones only list the plugins whose handlers ran, so a single emitted
+    plugin is attributed and anything ambiguous returns ``None``.
+    """
+    for source in get_response_sources(event_ctx) or []:
+        if isinstance(source, dict) and source.get('kind') == 'prevent_default':
+            plugin_ref = source.get('plugin')
+            if isinstance(plugin_ref, dict) and plugin_ref.get('author') and plugin_ref.get('name'):
+                return {'author': str(plugin_ref['author']), 'name': str(plugin_ref['name'])}
+    plugin_refs = [ref for ref in map(_extract_plugin_ref, get_emitted_plugins(event_ctx)) if ref is not None]
+    if len(plugin_refs) == 1:
+        return plugin_refs[0]
+    return None
+
+
 def get_response_sources(event_ctx: Any) -> list[dict[str, Any]] | None:
     event_attrs = vars(event_ctx)
     if '_response_sources' not in event_attrs:

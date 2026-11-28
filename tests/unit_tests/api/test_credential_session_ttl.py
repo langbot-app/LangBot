@@ -1,102 +1,95 @@
-"""Credential-session TTL enforcement for the platform adapter flows.
+"""Credential-session TTL enforcement for the platform adapter flows."""
 
-Every adapter registration flow (Lark one-click app, DingTalk device flow, WeCom
-bot, QQ Official bind) parks a short-lived secret in an in-memory session dict
-between the platform handshake and the caller persisting it. The per-route
-cleanups only run when another request arrives, so an abandoned flow would keep
-its secret in memory past its validity window. These tests cover the sweeper that
-enforces the TTL on a timer and scrubs the secret as it evicts.
-"""
-
+import asyncio
 import time
 
-from langbot.pkg.api.http.controller.groups.platform.adapters import (
-    _sweep_credential_sessions,
-)
+import pytest
+
+from langbot.pkg.platform.credential_setup import _sweep_credential_sessions
+
+
+_NOW = 10_000
+
+
+@pytest.fixture
+def sweep(monkeypatch):
+    """Freeze wall time only during the synchronous sweep."""
+
+    def sweep_at_fixed_time(stores):
+        with monkeypatch.context() as patch:
+            patch.setattr(time, 'time', lambda: _NOW)
+            return _sweep_credential_sessions(stores)
+
+    return sweep_at_fixed_time
 
 
 def _session(age_seconds: float, **extra):
-    return {'status': 'pending', 'created_at': time.time() - age_seconds, **extra}
+    return {'status': 'pending', 'created_at': _NOW - age_seconds, **extra}
 
 
-def test_expired_sessions_are_evicted():
-    store = {'old': _session(1000)}
-    assert _sweep_credential_sessions([(store, 900)]) == 1
+def test_sweep_evicts_only_expired_sessions_using_each_store_ttl(sweep):
+    shared_age = 400
+    fresh = _session(299, app_secret='still-needed')
+    boundary = _session(300)
+    long_lived = _session(shared_age)
+    short = {'expired': _session(shared_age), 'fresh': fresh, 'boundary': boundary}
+    long = {'still-valid': long_lived}
+
+    assert sweep([(short, 300), (long, 900), ({}, 60)]) == 1
+    assert short == {'fresh': fresh, 'boundary': boundary}
+    assert long == {'still-valid': long_lived}
+    assert fresh['app_secret'] == 'still-needed'
+    assert sweep([(short, 300), (long, 900)]) == 0
+
+
+def test_sweep_removes_multiple_expired_and_malformed_sessions_and_scrubs_retained_reference(sweep):
+    expired = _session(1000, app_secret='fixture-a', client_secret='fixture-b', secret='fixture-c')
+    malformed = {'status': 'pending'}
+    store = {'expired': expired, 'also-expired': _session(1001), 'broken': malformed}
+
+    assert sweep([(store, 900)]) == 3
     assert store == {}
+    assert {name: expired[name] for name in ('app_secret', 'client_secret', 'secret')} == {
+        'app_secret': None,
+        'client_secret': None,
+        'secret': None,
+    }
 
 
-def test_fresh_sessions_survive():
-    store = {'new': _session(10)}
-    assert _sweep_credential_sessions([(store, 900)]) == 0
-    assert 'new' in store
+async def test_sweep_cancels_pending_exchange_task(sweep):
+    started = asyncio.Event()
+    blocked = asyncio.Event()
+
+    async def exchange():
+        started.set()
+        await blocked.wait()
+
+    task = asyncio.create_task(exchange())
+    try:
+        await asyncio.wait_for(started.wait(), timeout=2)
+        store = {'old': _session(1000, task=task)}
+        assert sweep([(store, 900)]) == 1
+        assert store == {}
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(asyncio.shield(task), timeout=2)
+        assert task.cancelled()
+    finally:
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
 
 
-def test_secret_is_scrubbed_on_eviction():
-    """The evicted dict must not keep the credential readable."""
-    session = _session(1000, app_secret='super-secret', client_secret='other', secret='third')
-    store = {'old': session}
-    _sweep_credential_sessions([(store, 900)])
-
-    assert store == {}
-    assert session['app_secret'] is None
-    assert session['client_secret'] is None
-    assert session['secret'] is None
-
-
-def test_ttl_is_per_store():
-    """A store with a shorter window expires while a longer one keeps its entry."""
-    short, long = {'s': _session(400)}, {'l': _session(400)}
-    assert _sweep_credential_sessions([(short, 300), (long, 900)]) == 1
-    assert short == {}
-    assert 'l' in long
-
-
-def test_pending_task_is_cancelled_on_eviction():
-    class FakeTask:
-        def __init__(self):
-            self.cancelled = False
-
-        def done(self):
-            return False
-
-        def cancel(self):
-            self.cancelled = True
-
-    task = FakeTask()
-    store = {'old': _session(1000, task=task)}
-    _sweep_credential_sessions([(store, 900)])
-    assert task.cancelled is True
-
-
-def test_finished_task_is_not_cancelled():
-    class DoneTask:
-        def __init__(self):
-            self.cancelled = False
-
+def test_sweep_does_not_cancel_finished_exchange(sweep):
+    # Calling cancel() on a completed asyncio task is a no-op, so use a
+    # strict probe to distinguish skipping it from pointless cancellation.
+    class CompletedExchange:
         def done(self):
             return True
 
-        def cancel(self):  # pragma: no cover - must not be called
-            self.cancelled = True
+        def cancel(self):
+            pytest.fail('completed exchange should not be cancelled')
 
-    task = DoneTask()
-    store = {'old': _session(1000, task=task)}
-    _sweep_credential_sessions([(store, 900)])
-    assert task.cancelled is False
+    store = {'old': _session(1000, task=CompletedExchange())}
 
-
-def test_session_without_created_at_is_evicted():
-    """A malformed session must not become immortal."""
-    store = {'broken': {'status': 'pending'}}
-    assert _sweep_credential_sessions([(store, 900)]) == 1
+    assert sweep([(store, 900)]) == 1
     assert store == {}
-
-
-def test_multiple_expired_sessions_in_one_store():
-    store = {f's{i}': _session(1000) for i in range(5)}
-    assert _sweep_credential_sessions([(store, 900)]) == 5
-    assert store == {}
-
-
-def test_empty_stores_are_harmless():
-    assert _sweep_credential_sessions([({}, 900), ({}, 60)]) == 0

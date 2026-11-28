@@ -175,6 +175,46 @@ class TestNormalizeRunCompleted:
 
         assert result is None
 
+    @pytest.mark.asyncio
+    async def test_normalize_progress_and_cancellation_ack(self):
+        """Structured progress and cancellation acknowledgements are host events."""
+        normalizer = AgentResultNormalizer(FakeApplication())
+        descriptor = make_descriptor()
+
+        assert (
+            await normalizer.normalize(
+                {
+                    'type': 'run.progress',
+                    'data': {'progress': 50, 'stage': 'tool'},
+                },
+                descriptor,
+            )
+            is None
+        )
+        assert (
+            await normalizer.normalize(
+                {
+                    'type': 'run.cancelled',
+                    'data': {'reason': 'user requested', 'cleanup_confirmed': True},
+                },
+                descriptor,
+            )
+            is None
+        )
+
+    def test_oversized_output_is_marked(self):
+        normalizer = AgentResultNormalizer(FakeApplication())
+        descriptor = make_descriptor()
+        result = {
+            'type': 'message.delta',
+            'data': {'chunk': {'role': 'assistant', 'content': 'x' * (1024 * 1024 + 1)}},
+        }
+
+        normalizer.annotate_result_size(result, descriptor)
+
+        assert result['metadata']['output_truncated'] is True
+        assert result['metadata']['original_size_bytes'] > 1024 * 1024
+
 
 class TestNormalizeRunFailed:
     """Tests for normalizing run.failed results."""

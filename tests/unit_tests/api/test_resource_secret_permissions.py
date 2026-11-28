@@ -94,7 +94,7 @@ async def _create_client(role: str):
 
     application.provider_service = SimpleNamespace(
         get_providers=AsyncMock(side_effect=get_providers),
-        get_provider_model_counts=AsyncMock(return_value={'llm_count': 0, 'embedding_count': 0, 'rerank_count': 0}),
+        get_provider_model_counts=AsyncMock(return_value={'llm_count': 0, 'embedding_count': 0, 'rerank_count': 0, 'asr_count': 0, 'tts_count': 0}),
     )
 
     async def get_knowledge_bases(_context, *, include_secret=False):

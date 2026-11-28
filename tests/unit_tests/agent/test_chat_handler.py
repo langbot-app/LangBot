@@ -12,6 +12,7 @@ Avoids circular imports by using proper import structure.
 from __future__ import annotations
 
 import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langbot.pkg.agent.runner.errors import (
@@ -390,6 +391,61 @@ class TestChatHandlerAsyncBehavior:
         query.adapter.create_message_card.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_non_streaming_sends_each_completed_message(self):
+        """Progress messages a runner completes before its answer each reach the platform."""
+        from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler
+        from langbot.pkg.pipeline import entities
+        from langbot_plugin.api.entities.builtin.provider.message import Message, MessageChunk
+
+        results = [
+            Message(role='assistant', content='submitted'),
+            Message(role='assistant', content='started'),
+            MessageChunk(role='assistant', content='ans'),
+            Message(role='assistant', content='answer'),
+        ]
+        handler = ChatMessageHandler(MockApplication(orchestrator=MockAgentRunOrchestrator(chunks=results)))
+        query = make_handler_query('question')
+        query.adapter.is_stream_output_supported.return_value = False
+        sent = []
+
+        async for result in handler.handle(query):
+            assert result.result_type == entities.ResultType.CONTINUE
+            sent.append(result.new_query.resp_messages[-1].content)
+
+        assert sent == ['submitted', 'started', 'answer']
+        assert query.resp_messages == results
+        ids = [message.resp_message_id for message in results]
+        assert len({ids[0], ids[1], ids[3]}) == 3
+        assert ids[2] == ids[3]
+        query.adapter.create_message_card.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_non_streaming_keeps_tool_rounds_and_deltas_aggregated(self):
+        """Tool-call rounds and trailing deltas never become extra bot messages."""
+        from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler
+        from langbot_plugin.api.entities.builtin.provider.message import Message, MessageChunk
+        from langbot_plugin.api.entities.builtin.provider.message import FunctionCall, ToolCall
+
+        tool_round = Message(
+            role='assistant',
+            content='',
+            tool_calls=[ToolCall(id='c1', type='function', function=FunctionCall(name='search', arguments='{}'))],
+        )
+        results = [
+            tool_round,
+            MessageChunk(role='assistant', content='par'),
+            MessageChunk(role='assistant', content='tial'),
+        ]
+        handler = ChatMessageHandler(MockApplication(orchestrator=MockAgentRunOrchestrator(chunks=results)))
+        query = make_handler_query('question')
+        query.adapter.is_stream_output_supported.return_value = False
+
+        sent = [result.new_query.resp_messages[-1].content async for result in handler.handle(query)]
+
+        assert sent == ['tial']
+        assert query.resp_messages == results
+
+    @pytest.mark.asyncio
     async def test_agent_turn_recreates_conversation_if_tool_resets_it(self):
         """Agent turn bookkeeping should tolerate CREATE_NEW_CONVERSATION during runner execution."""
         from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler
@@ -441,7 +497,8 @@ class TestChatHandlerAsyncBehavior:
         from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler
         from langbot.pkg.pipeline import entities
 
-        orchestrator = MockAgentRunOrchestrator(error=RunnerNotFoundError('plugin:notexist/unknown/default'))
+        failure = RunnerNotFoundError('plugin:notexist/unknown/default', 'Plugin dependency installation failed')
+        orchestrator = MockAgentRunOrchestrator(error=failure)
         mock_ap = MockApplication(orchestrator=orchestrator)
         mock_ap.plugin_connector.emit_event = AsyncMock(return_value=MockEventContext(prevented=False))
 
@@ -456,6 +513,7 @@ class TestChatHandlerAsyncBehavior:
             return MagicMock(
                 result_type=kwargs.get('result_type'),
                 user_notice=kwargs.get('user_notice'),
+                error_notice=kwargs.get('error_notice'),
             )
 
         with (
@@ -473,6 +531,19 @@ class TestChatHandlerAsyncBehavior:
         assert len(results) == 1
         assert results[0].result_type == entities.ResultType.INTERRUPT
         assert 'not found' in results[0].user_notice
+        assert results[0].error_notice == str(failure)
+
+        from tests.unit_tests.telemetry.test_pipeline_lane import CONTEXT, FakeManager, build_pipeline, get_modules
+
+        pipelinemgr, execution = get_modules()
+        counters = execution.ExecutionCounters(FakeManager())
+        mock_ap.telemetry = SimpleNamespace(execution=counters)
+        pipeline = build_pipeline(pipelinemgr, mock_ap)
+        with execution.ingress(mock_ap, 'completed', CONTEXT, execution_id='missing-runner'):
+            pipeline._record_lane_failure(query, results[0].error_notice)
+        chain = next(row for row in counters.records if row['event_type'] == 'execution_chain')
+        assert chain['outcome'] == 'failed'
+        assert chain['error'] == str(failure)
 
     @pytest.mark.asyncio
     async def test_runner_not_found_during_steering_falls_back_to_normal_run(self):

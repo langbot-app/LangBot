@@ -1,5 +1,9 @@
 import pipelineMigration from './pipeline-migration/th-TH';
+import pluginPermissions from './plugin-permissions/th-TH';
+import pluginCompat from './plugin-compat/th-TH';
 const thTH = {
+  pluginPermissions,
+  pluginCompat,
   planRevision: {
     subscribedOn: 'วันที่สมัคร: {{date}}',
     latestQuota: 'โควตาล่าสุดของแผนนี้',
@@ -113,6 +117,88 @@ const thTH = {
       managed_sandbox_sessions: 'เซสชันแซนด์บ็อกซ์ที่จัดการ',
     },
   },
+  workspaceSandbox: {
+    quotaCheck:
+      'ตรวจโควตาดิสก์ก่อนและหลังคำสั่ง ไม่ใช่การจำกัดระบบไฟล์อย่างต่อเนื่อง',
+    testRun: 'ทดสอบการทำงาน',
+    testRunCost: 'สร้างแซนด์บ็อกซ์ชั่วคราว ใช้หนึ่งโควตา และอาจมีค่าใช้จ่าย',
+    checkHint: 'การตรวจสอบและบันทึกไม่สร้างแซนด์บ็อกซ์ การทดสอบเป็นทางเลือก',
+    queryUnsupported:
+      'บริการไม่รองรับการค้นหาเทมเพลต จึงยังไม่ยืนยัน สามารถบันทึกหรือทดสอบได้',
+    limitsTitle: 'ขีดจำกัดพื้นที่ทำงาน',
+    limitsHelp: 'เว้นว่างเพื่อใช้ค่าเริ่มต้น การเปลี่ยนแปลงมีผลกับงานใหม่',
+    inherit: 'ใช้ค่าเริ่มต้น',
+    limitMax: 'สูงสุด: {{value}}',
+    limitUnsupported: 'สภาพแวดล้อมหรือนโยบายไม่รองรับ',
+    e2bLimitUnsupported:
+      'ควบคุมโดยเทมเพลตหรือบริการ E2B ไม่รองรับการตั้งค่านี้',
+    invalidLimits: 'กรอกค่าภายในขอบเขตที่แสดง',
+
+    confirm: 'ยืนยันและบันทึก',
+    cancel: 'ยกเลิก',
+    current: 'ใช้งานอยู่: {{backend}}',
+    unsaved: 'ยังไม่บันทึก',
+    configureE2b: 'ตั้งค่า E2B',
+    apiUrl: 'URL ของ API',
+    sandboxUrl: 'URL ของแซนด์บ็อกซ์',
+    template: 'เทมเพลต',
+    keyConfigured: 'ตั้งค่าแล้ว เว้นว่างเพื่อคงเดิม',
+    keyRequired: 'ป้อน API Key',
+    keyHelp: 'ระบบไม่แสดงคีย์ที่บันทึกไว้ เมื่อเปลี่ยน URL ต้องป้อนคีย์ใหม่',
+    noManagedProcesses: 'สภาพแวดล้อมนี้ไม่รองรับเซิร์ฟเวอร์ stdio MCP',
+    label: 'สภาพแวดล้อมการทำงาน',
+    description:
+      'งานใหม่ในเวิร์กสเปซนี้จะใช้สภาพแวดล้อมนี้ งานที่กำลังทำงานจะใช้สภาพแวดล้อมเดิม',
+    saved: 'บันทึกแล้ว มีผลกับงานใหม่',
+    saveFailed: 'บันทึกสภาพแวดล้อมไม่สำเร็จ',
+    loadFailed: 'ตรวจสอบสภาพแวดล้อมไม่สำเร็จ',
+    refresh: 'ตรวจสอบอีกครั้ง',
+    noEnvironment: 'ไม่มีสภาพแวดล้อมที่ใช้ได้',
+    unavailable: 'สภาพแวดล้อมที่เลือกไม่พร้อมใช้งานสำหรับงานใหม่',
+    templateVerified:
+      'Template verified: temporary sandbox created, executed and deleted',
+    limitLabels: {
+      timeout_sec: 'หมดเวลาคำสั่ง (วินาที)',
+      idle_ttl_sec: 'คืนทรัพยากรเมื่อว่าง (วินาที)',
+      max_sessions: 'จำนวนแซนด์บ็อกซ์สูงสุด',
+      cpus: 'แกน CPU',
+      memory_mb: 'หน่วยความจำ (MiB)',
+      pids_limit: 'จำนวนโปรเซสสูงสุด',
+      workspace_quota_mb: 'โควตาดิสก์ (MiB)',
+    },
+    reasons: {
+      resource_not_found: 'Requested service resource not found',
+      rate_limited: 'Too many requests; retry later',
+      template_not_found: 'Template not found or not visible to this account',
+      template_query_failed: 'Template query failed; check service status',
+      template_not_ready: 'Template build is not ready',
+      network_error: 'Cannot reach service; check URLs and network',
+      capacity_limited:
+        'Service capacity exhausted or rate limited; retry later',
+      permission_denied: 'Permission denied for the supplied credentials',
+      template_creation_failed:
+        'Sandbox creation failed; check template status and service capacity',
+      template_execution_failed: 'Sandbox created but execution check failed',
+      template_cleanup_failed:
+        'Temporary sandbox cleanup failed; check E2B service',
+
+      environment_unavailable: 'ไม่พร้อมใช้งาน',
+      policy_restricted: 'ถูกจำกัดโดยแพลตฟอร์ม',
+      probe_failed: 'ตรวจสอบไม่สำเร็จ',
+      docker_missing: 'ไม่ได้ติดตั้ง Docker CLI',
+      docker_unreachable: 'Docker ไม่ทำงานหรือไม่มีสิทธิ์เข้าถึง',
+      nsjail_missing: 'ไม่ได้ติดตั้ง nsjail',
+      cgroup_unavailable: 'ข้อจำกัด cgroup ของ nsjail ไม่พร้อม',
+      isolation_unavailable: 'การแยกสภาพแวดล้อม nsjail ไม่ผ่าน',
+      sdk_missing: 'ไม่ได้ติดตั้ง E2B SDK',
+      missing_credentials: 'ยังไม่ได้ตั้งค่า E2B API Key',
+      connection_failed: 'เชื่อมต่อ E2B ไม่ได้ ตรวจสอบ URL และเครือข่าย',
+      authentication_failed: 'ยืนยันตัวตน E2B ไม่ผ่าน ตรวจสอบคีย์',
+      probe_timeout: 'การตรวจสอบหมดเวลา',
+      invalid_configuration: 'URL หรือข้อมูลรับรอง E2B ไม่ครบ',
+      not_checked: 'การตั้งค่าเปลี่ยนแล้ว โปรดตรวจสอบอีกครั้ง',
+    },
+  },
   workspaceLanguage: {
     label: 'ภาษาของพื้นที่ทำงาน',
     description:
@@ -145,6 +231,14 @@ const thTH = {
     failed: 'ล้มเหลว',
     cancelled: 'ยกเลิกแล้ว',
     ignored: 'ละเว้นแล้ว',
+  },
+  githubStarPrompt: {
+    title: 'LangBot ประมวลผลให้คุณไปแล้ว {{total}} เหตุการณ์',
+    description:
+      'หาก LangBot มีประโยชน์กับคุณ กด Star บน GitHub เพื่อช่วยให้คนอื่นได้รู้จักมากขึ้น',
+    later: 'ไว้ทีหลัง',
+    star: 'Star',
+    close: 'ปิด',
   },
   assistant: {
     movePosition: 'เลื่อนผู้ช่วยในแนวนอน',
@@ -182,17 +276,20 @@ const thTH = {
       'ยังไม่ยืนยันการส่ง ตรวจสอบการเชื่อมต่อแล้วเปิดบทสนทนาใหม่',
     draftPlaceholder: 'ร่างข้อความถัดไประหว่างรอได้…',
     operations: {
-      create_pipeline: 'สร้าง Pipeline',
-      configure_pipeline: 'ตั้งค่า Pipeline',
+      create_pipeline: 'สร้างแชท',
+      configure_pipeline: 'ตั้งค่าแชท',
       create_knowledge_base: 'สร้างฐานความรู้',
-      get_pipeline: 'ดู Pipeline',
+      get_pipeline: 'ดูแชท',
       get_knowledge_schema: 'ดูสคีมาของ knowledge engine',
       list_operation_logs: 'ดูบันทึกการดำเนินการ',
+      workspace_search: 'ค้นหาความสามารถของพื้นที่ทำงาน',
+      workspace_describe: 'ดูคำจำกัดความของการดำเนินการ',
+      workspace_call: 'ดำเนินการในพื้นที่ทำงาน',
     },
     resources: {
       models: 'ค้นหาโมเดลแชต',
       embedding_models: 'ค้นหาโมเดล embedding',
-      pipelines: 'ค้นหา Pipeline',
+      pipelines: 'ค้นหาแชท',
       knowledge_bases: 'ค้นหาฐานความรู้',
       knowledge_engines: 'ค้นหา knowledge engine',
     },
@@ -201,11 +298,14 @@ const thTH = {
     newChat: 'บทสนทนาใหม่',
     close: 'ปิด',
     welcome:
-      'บอกฉันว่าคุณต้องการสร้างแอปอะไร ฉันสามารถตรวจสอบพื้นที่ทำงานนี้และเสนอการตั้งค่าสำหรับบอต, Agent, ฐานความรู้, Pipeline และอื่น ๆ แล้วดำเนินการหลังจากคุณยืนยันได้',
-    discover: 'มีโมเดล ฐานความรู้ และ Pipeline อะไรที่ใช้ได้บ้าง?',
+      'บอกฉันว่าคุณต้องการสร้างแอปอะไร ฉันสามารถตรวจสอบพื้นที่ทำงานนี้และเสนอการตั้งค่าสำหรับบอต, Agent, ฐานความรู้, แชทและอื่น ๆ แล้วดำเนินการหลังจากคุณยืนยันได้',
+    discover: 'มีโมเดล ฐานความรู้ และแชทอะไรที่ใช้ได้บ้าง?',
     build: 'ช่วยสร้างแอปตอบคำถามจากฐานความรู้ให้หน่อย',
     toolResult: 'ผลลัพธ์การดำเนินการ',
     review: 'ตรวจสอบการดำเนินการและพารามิเตอร์ก่อนยืนยัน',
+    dangerousWarning:
+      'การดำเนินการที่อ่อนไหว: การดำเนินการนี้มีความเสี่ยงสูงและอาจย้อนกลับไม่ได้ โปรดตรวจสอบอาร์กิวเมนต์ให้ดีก่อนยืนยัน',
+    parameters: 'พารามิเตอร์:',
     confirm: 'ยืนยันและดำเนินการ',
     decline: 'ปฏิเสธ',
     working: 'กำลังประมวลผล…',
@@ -241,7 +341,7 @@ const thTH = {
       pipelines: {
         title: 'ตั้งค่าตัวประมวลผล',
         description:
-          'สร้างไปป์ไลน์ Agent และการตั้งค่าตัวประมวลผลปลั๊กอินที่ใช้ซ้ำได้ แล้วเชื่อมต่อกับบอท',
+          'สร้างแชท Agent และการตั้งค่าตัวประมวลผลปลั๊กอินที่ใช้ซ้ำได้ แล้วเชื่อมต่อกับบอท',
       },
       knowledge: {
         title: 'จัดการฐานความรู้',
@@ -275,9 +375,13 @@ const thTH = {
       'เลือกเหตุการณ์ที่รองรับ ใส่ข้อมูลทดสอบ แล้วดูผลลัพธ์และการเรียกเครื่องมือ การกระทำบนแพลตฟอร์มจะถูกจำลอง ส่วนโมเดลและเครื่องมืออื่นทำงานตามการตั้งค่าจริง',
     pipeline: {
       trigger: {
-        title: 'เลือกข้อความที่จะตอบ',
+        title: 'Choose which messages to answer',
+        description: 'แชทจัดการเหตุการณ์ข้อความและตอบกลับอัตโนมัติด้วย AI',
+      },
+      speech: {
+        title: 'Configure speech capabilities',
         description:
-          'ไปป์ไลน์ประมวลผลเหตุการณ์ข้อความและตอบด้วย AI อัตโนมัติ ตั้งเงื่อนไขในกลุ่ม กฎแชทส่วนตัว และตัวกรองข้อความได้ที่นี่',
+          'Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.',
       },
       ai: {
         title: 'ตั้งค่าความสามารถ AI',
@@ -296,12 +400,12 @@ const thTH = {
       extensions: {
         title: 'เลือกส่วนขยาย',
         description:
-          'เลือกปลั๊กอิน เซิร์ฟเวอร์ MCP และทักษะที่ไปป์ไลน์นี้ใช้ได้ เพื่อเพิ่มความสามารถในการประมวลผลและเครื่องมือ',
+          'เลือกปลั๊กอิน เซิร์ฟเวอร์ MCP และทักษะที่แชทนี้ใช้ได้ เพื่อเพิ่มความสามารถในการประมวลผลและเครื่องมือ',
       },
       basic: {
-        title: 'จัดการไปป์ไลน์',
+        title: 'จัดการแชท',
         description:
-          'คัดลอกไปป์ไลน์เพื่อสร้างการตั้งค่าอื่น หรือลบไปป์ไลน์ที่ไม่ต้องการแล้ว',
+          'คัดลอกแชทเพื่อสร้างการตั้งค่าอื่น หรือลบแชทที่ไม่ต้องการแล้ว',
       },
       debug: {
         title: 'ทดสอบการสนทนา',
@@ -324,7 +428,7 @@ const thTH = {
       save: {
         title: 'บันทึกและเชื่อมต่อบอท',
         description:
-          'บันทึกการตั้งค่า แล้วกำหนดเส้นทางเหตุการณ์รับข้อความให้ไปป์ไลน์นี้ในหน้าบอท',
+          'บันทึกการตั้งค่า แล้วกำหนดเส้นทางเหตุการณ์รับข้อความให้แชทนี้ในหน้าบอท',
       },
     },
     pluginProcessor: {
@@ -399,7 +503,7 @@ const thTH = {
       type: {
         title: 'เลือกประเภทตัวประมวลผล',
         description:
-          'ไปป์ไลน์ประมวลผลข้อความตามลำดับที่กำหนด Agent ตัดสินใจด้วยโมเดลและเครื่องมือ ส่วนตัวประมวลผลปลั๊กอินจัดการเหตุการณ์แพลตฟอร์มที่ประกาศไว้',
+          'แชทประมวลผลข้อความตามลำดับที่กำหนด Agent ตัดสินใจด้วยโมเดลและเครื่องมือ ส่วนตัวประมวลผลปลั๊กอินจัดการเหตุการณ์แพลตฟอร์มที่ประกาศไว้',
       },
       basic: {
         title: 'ตั้งชื่อตัวประมวลผล',
@@ -481,6 +585,11 @@ const thTH = {
     editionCloud: 'Cloud',
   },
   common: {
+    refresh: 'รีเฟรช',
+    clickToCopy: 'คลิกเพื่อคัดลอก',
+    finish: 'เสร็จสิ้น',
+    operationFailed: 'ดำเนินการไม่สำเร็จ',
+    optional: 'ไม่บังคับ',
     failureReasonNotRecorded:
       'ไม่ได้บันทึกสาเหตุของข้อผิดพลาด โปรดตรวจสอบบันทึกของบอตหรือส่งข้อความอีกครั้งเพื่อดูรายละเอียด',
     loadFailedTitle: 'ไม่สามารถโหลดเนื้อหาได้',
@@ -715,7 +824,7 @@ const thTH = {
       confirmDisconnect: 'ยืนยันการยกเลิกการเชื่อมต่อ',
     },
     title: 'โมเดล',
-    description: 'กำหนดค่าและจัดการโมเดลที่สามารถใช้ใน Pipeline',
+    description: 'กำหนดค่าและจัดการโมเดลที่สามารถใช้ในแชท',
     createModel: 'สร้างโมเดล',
     editModel: 'แก้ไขโมเดล',
     getModelListError: 'ไม่สามารถดึงรายการโมเดลได้: ',
@@ -868,6 +977,10 @@ const thTH = {
     chat: 'แชท',
     embedding: 'Embedding',
     rerank: 'จัดลำดับใหม่',
+    asr: 'ASR (การรู้จำเสียงพูด)',
+    tts: 'TTS (แปลงข้อความเป็นเสียง)',
+    asrTab: 'ASR',
+    ttsTab: 'TTS',
     rerankUrlTooltip:
       'URL เต็มสำหรับ endpoint จัดลำดับใหม่ (เช่น: https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',
     rerankPathTooltip:
@@ -881,13 +994,457 @@ const thTH = {
       addFallback: 'เพิ่มโมเดลสำรอง',
     },
   },
+  upgradeChecks: {
+    banner: 'มีการเปลี่ยนแปลงจากการอัปเกรด {{count}} รายการที่ต้องตรวจสอบ',
+    review: 'ตรวจสอบ',
+    title: 'ตรวจสอบการอัปเกรด',
+    description:
+      'การอัปเกรดนี้ย้ายการตั้งค่าทริกเกอร์ ความปลอดภัย และการส่งออกทั่วไปจากแชทไปยังบอท และเพิ่มคำสั่งระบบ ตรวจสอบการเปลี่ยนแปลงด้านล่าง หรือปรับด้วยคลิกเดียว',
+    empty: 'ไม่มีรายการที่ต้องตรวจสอบ',
+    confirmAll: 'รับทราบทั้งหมด',
+    allConfirmed: 'รับทราบทั้งหมดแล้ว',
+    acknowledge: 'รับทราบ',
+    confirmedSection: 'รับทราบแล้ว {{count}} รายการ',
+    unknownBot: 'บอท',
+    scopeDefault: 'ค่าเริ่มต้นของบอท',
+    scopeRoutes: '{{count}} เส้นทาง',
+    failed: 'ดำเนินการไม่สำเร็จ: {{error}}',
+    actionDone: 'เสร็จแล้ว: {{action}}',
+    taskStarted: 'เริ่มแล้ว: {{action}} ดูความคืบหน้าในรายการงาน',
+    links: {
+      admins: 'ตั้งผู้ดูแลในการติดตามเซสชัน',
+      policy: 'เปิดนโยบายข้อความ',
+      commands: 'เปิดปลั๊กอินและคำสั่ง',
+    },
+    actions: {
+      restore_prefixes: 'รับ ! และ ！ ด้วย',
+      uninstall_essential: 'ถอนการติดตั้ง EssentialCommands',
+      remove_plugin: 'นำออกจากบอท',
+      promote_route_policy: 'ตั้งเป็นค่าเริ่มต้นของบอท',
+    },
+    confirm: {
+      uninstall_essential:
+        'จะถอนการติดตั้ง EssentialCommands (เก็บข้อมูลปลั๊กอินไว้) คำสั่งชื่อซ้ำจะใช้คำสั่งระบบแทน',
+      remove_plugin:
+        'จะนำปลั๊กอิน {{plugin}} ออกจาก "{{bot}}" คำสั่งและตัวรับฟังเหตุการณ์ของปลั๊กอินจะหยุดทำงานที่นั่น',
+      promote_route_policy:
+        'การตั้งค่าที่เหมือนกันนี้จะเป็นนโยบายข้อความเริ่มต้นของ "{{bot}}" และลบการแทนที่บน {{count}} เส้นทาง ทุกเส้นทางทำงานเหมือนเดิม',
+    },
+    items: {
+      command_prefix_changed: {
+        title: 'คำนำหน้าคำสั่งเปลี่ยนไป',
+        body: '"{{bot}}" เคยใช้ {{prefixes}} เป็นคำนำหน้าคำสั่ง ตอนนี้ค่าเริ่มต้นคือ /',
+        keep: 'ใช้ / ต่อ',
+      },
+      plugin_command_collision: {
+        title: 'ชื่อซ้ำกับคำสั่งระบบ',
+        body: 'คำสั่งปลั๊กอินเหล่านี้ชื่อซ้ำกับคำสั่งระบบ ตอนนี้จะรันคำสั่งระบบแทน: {{names}}',
+        bodyEssential:
+          'ติดตั้ง EssentialCommands อยู่ และคำสั่งระบบครอบคลุมความสามารถนี้แล้ว คำสั่งชื่อซ้ำจะรันเป็นคำสั่งระบบ: {{names}}',
+        keep: 'เก็บปลั๊กอินไว้',
+      },
+      command_admin_missing: {
+        title: 'คำสั่งสำหรับผู้ดูแลแต่ไม่มีผู้ดูแล',
+        body: '"{{bot}}" มีคำสั่งเฉพาะผู้ดูแล แต่ยังไม่ได้ตั้งผู้ดูแล จึงยังไม่มีใครใช้ได้',
+      },
+      command_plugin_enabled: {
+        title: 'ปลั๊กอินที่เพิ่งเปิดใช้บนบอท',
+        body: 'ปลั๊กอิน {{plugin}} มีคำสั่ง การอัปเกรดจึงเปิดใช้บน "{{bot}}" ({{scope}})',
+        keep: 'เก็บไว้',
+      },
+      equivalent_route_policies: {
+        title: 'ทำให้การแทนที่เส้นทางง่ายขึ้นได้',
+        body: 'การแทนที่ {{count}} เส้นทางของ "{{bot}}" มีผลเหมือนกัน สามารถตั้งเป็นนโยบายเริ่มต้นของบอทได้',
+        unroutedCommands: 'คำสั่งที่ไม่ตรงกับเส้นทางใดจะใช้การตั้งค่านี้ด้วย',
+      },
+      chat_settings_moved: {
+        title: 'ย้ายการตั้งค่าแชทแล้ว',
+        body: 'การตั้งค่าทริกเกอร์ ความปลอดภัย และการส่งออกทั่วไปอยู่ที่บอทแล้ว {{count}} เส้นทางของ "{{bot}}" ยังใช้การตั้งค่าของแชทเดิม',
+      },
+    },
+  },
   bots: {
+    routeCounts: {
+      last24h: '24 ชม. ล่าสุด',
+      none: 'ไม่มีข้อความ',
+      ai: 'AI',
+      command: 'คำสั่ง',
+      plugin: 'ปลั๊กอิน',
+      policy: 'บล็อก',
+    },
+    routingTabs: {
+      routes: 'เส้นทาง',
+      plugins: 'ปลั๊กอินและคำสั่ง',
+      policy: 'นโยบายข้อความ',
+    },
+    policy: {
+      scopeLabel: 'ใช้กับ',
+      botDefault: 'ค่าเริ่มต้นของบอท',
+      routes: 'เส้นทาง',
+      custom: 'กำหนดเอง',
+      inherit: 'ค่าเริ่มต้น',
+      inheritDefault: 'ใช้ค่าเริ่มต้น',
+      routeMode: 'นโยบายของเส้นทางนี้',
+      promote: 'ตั้งเป็นค่าเริ่มต้นของบอท',
+      promoted:
+        'ตั้งเป็นค่าเริ่มต้นของบอทแล้ว มี {{count}} เส้นทางที่เปลี่ยนมาใช้ค่าเริ่มต้น',
+      loadFailed: 'โหลดนโยบายข้อความไม่สำเร็จ',
+      botDefaultHint:
+        'ค่าเริ่มต้นของบอทใช้กับทุกเส้นทางที่รับข้อความ และแต่ละเส้นทางกำหนดทับได้ มีผลเฉพาะเหตุการณ์ message.received',
+      neutralDefaultHint:
+        'ค่าเริ่มต้นปัจจุบันไม่บล็อกข้อความใดและไม่เปลี่ยนการตอบกลับ',
+      policyState: 'นโยบาย: {{state}}',
+      pluginState: 'ปลั๊กอิน: {{state}}',
+      inheritHint:
+        'เส้นทางนี้ใช้ค่าเริ่มต้นของบอท ด้านล่างคือการตั้งค่าที่มีผลอยู่ เปลี่ยนเป็น "กำหนดเอง" เพื่อแก้ไขเฉพาะเส้นทางนี้',
+      streamingNote:
+        'การตอบกลับแบบสตรีมใช้เฉพาะการหน่วงเวลา การ @ ผู้ส่ง และการอ้างอิงข้อความ ไม่ใช้การจัดการข้อความยาว',
+      streamingPlatformLimit:
+        'แพลตฟอร์มนี้ไม่รองรับ @ หรือการอ้างอิงในเฟรมแรกของการสตรีม จึงไม่แสดงในการตอบกลับแบบสตรีม',
+      newRouteNeutral:
+        'เส้นทางใหม่ใช้นโยบายข้อความเริ่มต้นของบอท ซึ่งขณะนี้ไม่บล็อกข้อความใด ตั้งค่าเฉพาะได้ในแท็บนโยบายข้อความ',
+      newRouteInherits:
+        'เส้นทางใหม่ใช้นโยบายข้อความเริ่มต้นของบอท ตั้งค่าเฉพาะได้ในแท็บนโยบายข้อความ',
+      settings: {
+        or: ' หรือ ',
+        off: 'ปิด',
+        seconds: 'วินาที',
+        who: {
+          title: 'ตอบกลับใคร',
+          hint: 'กำหนดว่าบอทจะตอบกลับใครและข้อความแบบไหน',
+        },
+        group: {
+          title: 'เงื่อนไขการตอบในกลุ่ม',
+          all: 'ตอบทุกข้อความในกลุ่ม',
+          some: 'ตอบเมื่อ{{conditions}}',
+          none: 'ยังไม่ได้ตั้งเงื่อนไข ข้อความในกลุ่มจะไม่ได้รับการตอบ',
+          allOption: 'ตอบทุกข้อความ',
+          someOption: 'ตอบเมื่อตรงเงื่อนไขเท่านั้น',
+          anyHint: 'ตอบเมื่อตรงเงื่อนไขใดก็ได้ด้านล่าง ไม่มีผลกับแชทส่วนตัว',
+          whenAt: 'ถูก @',
+          whenPrefix: 'ขึ้นต้นด้วย "{{prefixes}}"',
+          whenRegexp: 'ตรงกับ regex {{count}} รายการ',
+          whenRandom: 'สุ่ม {{percent}}%',
+          atLabel: 'เมื่อบอทถูก @',
+          prefixLabel: 'เมื่อข้อความขึ้นต้นด้วย',
+          prefixHint: 'คำนำหน้าจะถูกตัดออกก่อนส่งให้ AI',
+          prefixPlaceholder: 'พิมพ์คำนำหน้าแล้วกด Enter เช่น ai',
+          regexpLabel: 'เมื่อข้อความตรงกับ regex',
+          regexpPlaceholder: 'พิมพ์ regex แล้วกด Enter',
+          randomLabel: 'โอกาสสุ่มตอบข้อความอื่น',
+          randomHint:
+            'ข้อความในกลุ่มที่ไม่ตรงเงื่อนไขใดเลยจะได้รับการตอบตามโอกาสนี้',
+        },
+        access: {
+          title: 'ใครใช้ได้บ้าง',
+          everyone: 'ทุกคน',
+          blacklist: 'บล็อกบางแชท',
+          whitelist: 'อนุญาตเฉพาะบางแชท',
+          everyoneSummary: 'ทุกคน',
+          blacklistSummary: 'บล็อก {{count}} แชท',
+          whitelistSummary: 'เฉพาะ {{count}} แชท',
+          whitelistEmpty: 'รายการว่าง จะไม่ตอบแชทใดเลย',
+          format:
+            'รูปแบบ: แชทส่วนตัว person_<id ผู้ใช้> กลุ่ม group_<id กลุ่ม>; person_* / group_* = แชทส่วนตัวทั้งหมด / กลุ่มทั้งหมด',
+        },
+        ignore: {
+          title: 'ข้อความที่ละเว้น',
+          summary: 'กฎละเว้น {{count}} ข้อ',
+          none: 'ไม่ละเว้น',
+          hint: 'ข้อความที่ตรงกับกฎเหล่านี้จะถูกละเว้นทั้งในแชทส่วนตัวและกลุ่ม หลังจากตรวจสอบเงื่อนไขการตอบในกลุ่มแล้ว',
+          prefixLabel: 'ละเว้นข้อความที่ขึ้นต้นด้วย',
+          prefixPlaceholder: 'พิมพ์คำนำหน้าแล้วกด Enter เช่น #',
+        },
+        read: {
+          title: 'การรับข้อความ',
+        },
+        aggregate: {
+          title: 'รวมข้อความที่ส่งติดกัน',
+          on: 'รวมหลังรอ {{seconds}} วินาที',
+          label: 'รวมข้อความที่ผู้ใช้ส่งติดกัน',
+          hint: 'เมื่อผู้ใช้ส่งหลายข้อความติดกัน จะรอสักครู่แล้วประมวลผลเป็นข้อความเดียว แทนการตอบทีละข้อความ',
+          wait: 'รอ',
+        },
+        quoteIn: {
+          title: 'รวมข้อความที่อ้างถึง',
+          on: 'เปิด',
+          label: 'ส่งข้อความที่ถูกอ้างถึงให้ AI ด้วย',
+          hint: 'เมื่อผู้ใช้ตอบกลับข้อความ เนื้อหาที่ถูกอ้างถึงจะถูกรวมเข้ามา',
+        },
+        safety: {
+          title: 'ความปลอดภัยและการจำกัด',
+        },
+        filter: {
+          title: 'กรองคำต้องห้าม',
+          label: 'ตรวจคำต้องห้าม',
+          hint: 'ตั้งค่าคำใน data/metadata/sensitive-words.json',
+          check: 'ตรวจ',
+          scope: {
+            all: 'ข้อความที่รับและที่ตอบ',
+            'income-msg': 'เฉพาะข้อความที่รับ',
+            'output-msg': 'เฉพาะข้อความที่ตอบ',
+          },
+        },
+        rate: {
+          title: 'จำกัดความถี่',
+          summary:
+            'สูงสุด {{count}} ข้อความต่อ {{seconds}} วินาที จากนั้น{{strategy}}',
+          label: 'จำกัดความถี่ข้อความต่อแชท',
+          hint: 'ป้องกันการสแปมและการใช้โควตาเร็วเกินไป',
+          every: 'ทุก',
+          secondsAtMost: 'วินาที สูงสุด',
+          messages: 'ข้อความ',
+          whenExceeded: 'เมื่อเกิน',
+          strategy: {
+            drop: 'ทิ้ง',
+            wait: 'รอคิว',
+          },
+        },
+        reply: {
+          title: 'วิธีตอบกลับ',
+        },
+        style: {
+          title: '@ และการอ้างอิง',
+          atSender: '@ ผู้ส่งในกลุ่ม',
+          quote: 'อ้างอิงข้อความเดิม',
+          plain: 'ตอบตามปกติ',
+          atSenderLabel: '@ ผู้ส่งเมื่อตอบในกลุ่ม',
+          quoteLabel: 'อ้างอิงข้อความเดิมเมื่อตอบ',
+        },
+        delay: {
+          title: 'หน่วงเวลาตอบ',
+          summary: 'สุ่มรอ {{min}}–{{max}} วินาที',
+          none: 'ตอบทันที',
+          hint: 'สุ่มรอก่อนตอบ เพื่อให้ดูเป็นธรรมชาติ',
+          wait: 'รอ',
+        },
+        long: {
+          title: 'ข้อความยาว',
+          none: 'ไม่เปลี่ยน',
+          summary: 'เกิน {{threshold}} ตัวอักษร: {{strategy}}',
+          when: 'เกิน',
+          chars: 'ตัวอักษร:',
+          strategy: {
+            none: 'ไม่เปลี่ยน',
+            forward: 'ส่งต่อแบบรวม',
+            image: 'แปลงเป็นรูป',
+          },
+          font: 'พาธฟอนต์ของรูป',
+          fontPlaceholder: 'เว้นว่างเพื่อใช้ฟอนต์เริ่มต้น',
+        },
+        errors: {
+          title: 'เมื่อเกิดข้อผิดพลาด',
+          rowTitle: 'การตอบเมื่อผิดพลาด',
+          mode: {
+            'show-hint': 'แจ้งสั้น ๆ',
+            'show-error': 'แสดงรายละเอียดข้อผิดพลาด',
+            hide: 'ไม่ตอบ',
+          },
+          modeHint: {
+            'show-hint': 'ตอบข้อความแจ้งล้มเหลวสั้น ๆ โดยไม่เปิดเผยรายละเอียด',
+            'show-error': 'ตอบข้อผิดพลาดตามจริง เหมาะสำหรับดีบัก',
+            hide: 'ไม่ตอบอะไรเมื่อเกิดข้อผิดพลาด',
+          },
+          customCount: 'ข้อความกำหนดเอง {{count}} รายการ',
+          hintsIntro:
+            'ข้อความกำหนดเอง (เว้นว่าง = ข้อความเริ่มต้นตามภาษาของเวิร์กสเปซ ข้อความที่กำหนดเองจะไม่ถูกแปล):',
+          hints: {
+            'failure-hint': 'ประมวลผลล้มเหลว',
+            'rate-limit-hint': 'เกินขีดจำกัดความถี่',
+            'content-filter-hint': 'เนื้อหาถูกกรอง',
+            'content-filter-error-hint': 'ตรวจเนื้อหาล้มเหลว',
+          },
+          defaultPlaceholder: 'ข้อความเริ่มต้น',
+        },
+      },
+    },
+    systemCommands: {
+      title: 'คำสั่งระบบ',
+      entry: 'คำสั่งระบบ · {{enabled}}/{{total}}',
+      description:
+        'คำสั่งที่มีมาใน LangBot จับคู่ด้วยคำนำหน้าเหมือนคำสั่งของปลั๊กอิน ตั้งค่าเปิด/ปิดและผู้ที่ใช้ได้ของแต่ละคำสั่งที่นี่',
+      readOnly: 'คำสั่งระบบมีผลทั้งบอท แก้ไขได้ใน "ค่าเริ่มต้นของบอท"',
+      admins: 'ผู้ดูแล',
+      noAdmins:
+        'ยังไม่มีผู้ดูแล คำสั่งที่ตั้งเป็น "เฉพาะผู้ดูแล" จึงยังไม่มีใครใช้ได้',
+      denied: 'เมื่อไม่มีสิทธิ์',
+      deniedSilent: 'ไม่ตอบ',
+      deniedNotice: 'ตอบแจ้งว่าไม่มีสิทธิ์',
+      deniedSilentHint: 'ถือว่าไม่มีคำสั่งนี้ ข้อความจะไปตามเส้นทางตามปกติ',
+      deniedNoticeHint: 'ตอบ "คุณไม่มีสิทธิ์ทำสิ่งนี้" ตามภาษาของเวิร์กสเปซ',
+      everyone: 'ทุกคน',
+      adminsOnly: 'เฉพาะผู้ดูแล',
+      permissionOf: 'ผู้ที่ใช้ {{command}} ได้',
+      enableCommand: 'เปิดใช้ {{command}}',
+      pluginCommands: 'คำสั่งปลั๊กอิน',
+      pluginCommandsHint:
+        'คำสั่งจากปลั๊กอินที่เปิดใช้ ตั้งให้เฉพาะผู้ดูแลใช้ได้ทีละคำสั่ง',
+      adminsCount: 'มีผู้ดูแล {{count}} คน',
+      adminsNone: 'ยังไม่ได้ตั้งผู้ดูแล',
+      adminsWhere: 'ตั้งผู้ดูแลได้ในหน้าตรวจสอบเซสชัน',
+      openSessions: 'เปิดหน้าตรวจสอบเซสชัน',
+      pluginEntry: 'ตั้งสิทธิ์',
+      pluginEntryRestricted: 'เฉพาะผู้ดูแล {{count}} รายการ',
+      groups: {
+        session: 'เซสชัน',
+        info: 'ข้อมูล',
+        admin: 'จัดการ',
+      },
+    },
+    pluginHooks: {
+      openSettings: 'เปิดการตั้งค่าปลั๊กอิน',
+      devDocsHint: 'อยากพัฒนาปลั๊กอินคำสั่งหรือฮุกเอง? ดู',
+      devDocs: 'เอกสารการพัฒนาปลั๊กอิน',
+      devDocsUrl: 'https://langbot.app/docs/en/plugin/dev/tutor',
+      tabDescription:
+        'ตั้งค่าคำสั่งและปลั๊กอินที่นี่: คำสั่งทำงานเมื่อผู้ใช้ส่งคำนำหน้าตามด้วยชื่อคำสั่ง ปลั๊กอินให้คำสั่งและฮุกเหตุการณ์แชท',
+      routeMode: 'ปลั๊กอินของเส้นทางนี้',
+      lifecycleTitle: 'วงจรของข้อความ',
+      lifecycleHint: 'ไอคอนแสดงปลั๊กอินที่เปิดใช้และทำงานในแต่ละขั้น',
+      policyCaption: 'นโยบายข้อความ',
+      enableTitle: 'ปลั๊กอิน',
+      enableHint:
+        'คำสั่ง: ปลั๊กอินทำงานเมื่อผู้ใช้ส่งคำนำหน้าตามด้วยชื่อคำสั่ง ฮุกเหตุการณ์แชท: เข้ามาแทรกในขั้นตอนต่าง ๆ เช่น เมื่อได้รับข้อความหรือก่อน/หลังตอบกลับ ส่วนข้อความยังคงประมวลผลโดย Agent หรือแชทที่เส้นทางกำหนด',
+      inheritHint:
+        'เส้นทางนี้ใช้การเลือกปลั๊กอินเริ่มต้นของบอท เปลี่ยนเป็น "กำหนดเอง" เพื่อเลือกปลั๊กอินเฉพาะเส้นทางนี้',
+      loadFailed: 'โหลดปลั๊กอินไม่สำเร็จ',
+      empty: 'ยังไม่ได้เพิ่มปลั๊กอิน',
+      browseMarket: 'ติดตั้งปลั๊กอิน',
+      registrationsUnknown:
+        'Plugin Runtime เก่าเกินไป จึงอ่านฮุกที่แต่ละปลั๊กอินลงทะเบียนไม่ได้',
+      globallyDisabled: 'ปลั๊กอินถูกปิดใช้',
+      hooksUnknown: 'ไม่ทราบฮุก',
+      enablePlugin: 'เปิดใช้ {{plugin}} บนบอทนี้',
+      allEnabledHint:
+        'เปิดใช้ปลั๊กอินทั้งหมดแล้ว รวมถึงปลั๊กอินที่ติดตั้งภายหลัง',
+      notInstalled: 'ยังไม่ได้ติดตั้ง',
+      remove: 'นำ {{plugin}} ออก',
+      kinds: {
+        command: 'คำสั่ง',
+        hook: 'ฮุกเหตุการณ์แชท',
+      },
+      add: {
+        installNew: 'ติดตั้งปลั๊กอินใหม่',
+        button: 'เพิ่มปลั๊กอิน',
+        title: 'เพิ่มปลั๊กอิน',
+        description:
+          'เลือกปลั๊กอินที่มีคำสั่งหรือฮุกเหตุการณ์แชท มีผลหลังบันทึกบอท',
+        installed: 'ติดตั้งแล้ว',
+        marketplace: 'จากมาร์เก็ตเพลส',
+        noInstalled: 'เพิ่มปลั๊กอินคำสั่งและฮุกที่ติดตั้งไว้ครบแล้ว',
+        search: 'ค้นหาปลั๊กอิน',
+        all: 'ทั้งหมด',
+        loading: 'กำลังโหลดมาร์เก็ตเพลส…',
+        unavailable: 'เชื่อมต่อมาร์เก็ตเพลสไม่ได้',
+        noMarketplace:
+          'ไม่พบปลั๊กอินที่ยังไม่ได้ติดตั้งหรือมีอัปเดตที่ตรงกันในมาร์เก็ตเพลส',
+        viewMarketplace: 'ดูในมาร์เก็ตเพลส',
+        confirm: 'เพิ่ม {{count}} ปลั๊กอิน',
+        installAndAdd: 'ติดตั้งและเพิ่ม {{plugin}}',
+        installedAdded: 'ติดตั้งและเพิ่ม {{plugin}} แล้ว บันทึกบอทเพื่อให้มีผล',
+        installFailed: 'ติดตั้งไม่สำเร็จ',
+        alreadyAdded: 'เพิ่มแล้ว',
+        update: 'อัปเดต',
+        updateAvailable: 'มีอัปเดต {{from}} → {{to}}',
+        updated: 'อัปเดต {{plugin}} แล้ว',
+        updateFailed: 'อัปเดตไม่สำเร็จ',
+      },
+      commands: {
+        botWide:
+          'สวิตช์คำสั่ง คำนำหน้า และการตั้งค่าคำสั่งมีผลกับทั้งบอท โปรดแก้ไขที่ค่าเริ่มต้นของบอท',
+        label: 'คำสั่งปลั๊กอิน',
+        hint: 'เฉพาะข้อความที่ได้รับ และตรวจก่อนเส้นทาง ถ้าชื่อซ้ำ คำสั่งระบบมาก่อน แล้วจึงเป็นปลั๊กอินที่อยู่สูงกว่าในรายการ',
+        title: 'คำสั่ง',
+        enable: 'เปิดใช้คำสั่ง',
+        prefixHint:
+          'คำสั่งระบบและคำสั่งปลั๊กอินใช้คำนำหน้าเหล่านี้ เช่น {{example}}',
+        systemHint: 'คำสั่งที่มีมาใน LangBot เช่น /help, /new และ /stop',
+        pluginTitle: 'คำสั่งปลั๊กอิน',
+        pluginNone: 'ปลั๊กอินที่เพิ่มไว้ไม่มีคำสั่ง',
+        pluginHint:
+          'มาจากปลั๊กอินที่เพิ่มไว้ด้านล่าง กด "ตั้งสิทธิ์" เพื่อให้เฉพาะผู้ดูแลใช้ได้',
+      },
+      commandConfig: {
+        button: 'ตั้งค่าคำสั่ง',
+        title: 'ตั้งค่าคำสั่งของ {{plugin}}',
+        description:
+          'ใช้กับบอทนี้เท่านั้น หากไม่แก้ไข คำสั่งจะใช้ค่าเริ่มต้นของปลั๊กอิน',
+        custom: 'ตั้งค่าคำสั่งแบบกำหนดเอง',
+        commandsOff: 'ปิดคำสั่งแล้ว',
+        useDefaults: 'คืนค่าเริ่มต้น',
+        saved: 'บันทึกการตั้งค่าคำสั่งแล้ว',
+        created: 'สร้างการตั้งค่าคำสั่งแล้ว บันทึกบอตเพื่อให้มีผล',
+      },
+      processors: {
+        messaging: 'แชท',
+        agent: 'Agent',
+        command: 'คำสั่ง',
+      },
+      reasons: {
+        observeOnly: 'เหตุการณ์แพลตฟอร์ม: แจ้งเตือนเท่านั้น บล็อกไม่ได้',
+        promptOnAgent: 'ส่งไปยัง Agent ฮุกพรอมต์จึงไม่มีผล',
+        notOnRoute: 'ไม่ได้ใช้ในเส้นทางนี้ มีผลเฉพาะ {{processors}}',
+        streamObserveOnly:
+          'เมื่อตอบกลับแบบสตรีม ฮุกนี้ทำได้เพียงสังเกต แก้ไขเนื้อหาที่ส่งไปแล้วไม่ได้',
+      },
+      steps: {
+        received: 'รับ',
+        command: 'คำสั่ง',
+        admission: 'คัดกรอง',
+        before: 'ก่อนตอบ',
+        process: 'ประมวลผล',
+        after: 'หลังตอบ',
+        send: 'ส่ง',
+      },
+      events: {
+        GroupMessageReceived: 'ข้อความกลุ่ม',
+        PersonMessageReceived: 'ข้อความส่วนตัว',
+        GroupCommandSent: 'คำสั่งในกลุ่ม',
+        PersonCommandSent: 'คำสั่งส่วนตัว',
+        GroupNormalMessageReceived: 'ข้อความทั่วไปในกลุ่ม',
+        PersonNormalMessageReceived: 'ข้อความทั่วไปส่วนตัว',
+        PromptPreProcessing: 'ประมวลผลพรอมต์ล่วงหน้า',
+        NormalMessageResponded: 'หลังตอบ',
+      },
+    },
+    platformCommands: {
+      title: 'ลงทะเบียนบนแพลตฟอร์ม',
+      overwrite:
+        'แทนที่คำสั่งทั้งหมดรวมถึงคำสั่งที่ตั้งค่าด้วยตนเอง การปิดจะล้างรายการคำสั่งที่ลงทะเบียน',
+      limits:
+        'สูงสุด {{count}} คำสั่ง คำอธิบายยาวได้ {{length}} อักขระ รูปแบบชื่อ:',
+      prefixWarning:
+        'ไม่มีคำนำหน้า /: คำสั่งเมนู Telegram จะไม่ตรงกัน แต่การโต้ตอบ Discord ยังทำงานได้',
+      failed: 'ซิงค์ไม่สำเร็จ',
+      synced: 'ซิงค์ล่าสุด: {{time}}',
+      notSynced: 'ยังไม่ซิงค์',
+      sync: 'ซิงค์ตอนนี้',
+      saveFirst: 'บันทึกการตั้งค่าบอทก่อนซิงค์',
+      reasons: {
+        invalid_name: 'ชื่อคำสั่งไม่ถูกต้อง',
+        invalid_description: 'คำอธิบายว่างหรือยาวเกินไป',
+        invalid_localized_description: 'คำอธิบายที่แปลยาวเกินไป',
+        command_limit: 'เกินจำนวนคำสั่งที่แพลตฟอร์มรองรับ',
+        unavailable: 'คำสั่งไม่พร้อมใช้งาน',
+      },
+    },
+    pluginCommands: {
+      prefixes: 'คำนำหน้าคำสั่ง',
+      prefixPlaceholder: 'ป้อนคำนำหน้าแล้วกด Enter (เช่น / หรือ !)',
+      addPrefix: 'เพิ่มคำนำหน้า',
+      prefixInvalid: 'คำนำหน้าต้องไม่ว่างเปล่าและไม่มีช่องว่าง',
+      prefixDuplicate: 'มีคำนำหน้านี้อยู่แล้ว',
+      overriddenBy: 'ถูกเขียนทับโดย {{plugin}} (ลำดับความสำคัญสูงกว่า)',
+    },
     pluginSubscriptions: {
+      docs: 'เอกสารพัฒนาตัวประมวลผลปลั๊กอิน',
+      docsUrl: 'https://langbot.app/docs/en/plugin/dev/components/runner',
       incompleteEvents:
         'บอตนี้รองรับเพียงบางเหตุการณ์ที่ตัวประมวลผลติดตาม ({{events}}) ตัวประมวลผลอาจทำงานได้ไม่ครบถ้วน',
       description:
-        'รับเหตุการณ์ที่ปลั๊กอินประกาศไว้โดยอัตโนมัติ และทำงานแยกจากเส้นทางด้านบน',
-      empty: 'ยังไม่ได้เชื่อมโยงตัวประมวลผลปลั๊กอิน',
+        'ปลั๊กอินจัดการเหตุการณ์ที่สมัครรับไว้ทั้งหมดเอง ไม่ต้องใช้ Agent หรือแชท และทำงานแยกจากเส้นทาง',
+      empty:
+        'ยังไม่มีตัวประมวลผลปลั๊กอิน ใช้ปุ่มด้านล่างเพื่อเลือกปลั๊กอินที่ติดตั้งแล้ว หรือติดตั้งจากตลาดปลั๊กอินได้ทันที',
       add: 'เพิ่มตัวประมวลผลปลั๊กอิน',
       existing: 'เลือกการตั้งค่า',
       new: 'สร้างการตั้งค่า',
@@ -932,7 +1489,7 @@ const thTH = {
     saveSuccess: 'บันทึกสำเร็จ',
     saveError: 'บันทึกล้มเหลว: ',
     createSuccess: 'สร้างสำเร็จ กรุณากำหนดเส้นทางเหตุการณ์',
-    autoCreatedPipeline: 'สร้างไปป์ไลน์และผูกเหตุการณ์ข้อความโดยอัตโนมัติแล้ว',
+    autoCreatedPipeline: 'สร้างแชทและผูกเหตุการณ์ข้อความโดยอัตโนมัติแล้ว',
     createError: 'สร้างล้มเหลว: ',
     deleteSuccess: 'ลบสำเร็จ',
     deleteError: 'ลบล้มเหลว: ',
@@ -948,8 +1505,8 @@ const thTH = {
       'อะแดปเตอร์รุ่นเก่าเน้นรับส่งข้อความ และคงไว้เพื่อรองรับการตั้งค่าบอทเดิม\nรุ่นใหม่เชื่อมต่อแพลตฟอร์มเดียวกันผ่านเหตุการณ์ ทั้งข้อความ คำขอเป็นเพื่อนหรือการเปลี่ยนแปลงกลุ่มที่รองรับ แล้วส่งให้ตัวประมวลผล\nแนะนำรุ่นใหม่สำหรับบอทใหม่ บอทเดิมยังใช้รุ่นเก่าได้ เมื่อเปลี่ยนให้ตรวจการเชื่อมต่อและเส้นทางเหตุการณ์ ไม่ใช่การอัปเกรดบัญชีแพลตฟอร์ม',
     adapterConfig: 'การกำหนดค่าอะแดปเตอร์',
     viewAdapterDocs: 'ดูเอกสาร',
-    bindPipeline: 'ผูก Pipeline',
-    selectPipeline: 'เลือก Pipeline',
+    bindPipeline: 'ผูกแชท',
+    selectPipeline: 'เลือกแชท',
     selectBot: 'เลือก Bot',
     botLogTitle: 'บันทึก Bot',
     enableAutoRefresh: 'เปิดการรีเฟรชอัตโนมัติ',
@@ -968,8 +1525,7 @@ const thTH = {
     basicInfo: 'ข้อมูลพื้นฐาน',
     basicInfoDescription: 'ตั้งชื่อและคำอธิบาย Bot',
     routingConnection: 'การกำหนดเส้นทางและการเชื่อมต่อ',
-    routingConnectionDescription:
-      'ผูก Pipeline ที่ประมวลผลข้อความสำหรับ Bot นี้',
+    routingConnectionDescription: 'ผูกแชทที่ประมวลผลข้อความสำหรับ Bot นี้',
     routingHelp: {
       title: 'การกำหนดเส้นทางเหตุการณ์คืออะไร?',
       intro: 'บอทรับได้ทั้งข้อความ คำขอเป็นเพื่อน และเหตุการณ์เข้าร่วมกลุ่ม',
@@ -992,8 +1548,16 @@ const thTH = {
       play: 'เล่น',
     },
     eventRouting: 'การกำหนดเส้นทางเหตุการณ์',
+    routingLayers: {
+      rules: 'เส้นทาง',
+      commands: 'คำสั่งปลั๊กอิน',
+      processors: 'ตัวประมวลผลปลั๊กอิน',
+      rulesDescription:
+        'เส้นทางจะส่งเหตุการณ์ไปยังตัวประมวลผลของ LangBot ที่คุณตั้งค่าไว้ (Agent, แชท) เพื่อประมวลผลด้วย AI เหตุการณ์ที่คำสั่งปลั๊กอินไม่ได้จัดการจะถูกจับคู่ตามลำดับ และเส้นทางแรกที่ตรงกันจะจัดการ หากต้องการใช้เฉพาะปลั๊กอินโดยไม่ใช้ AI ให้ลบหรือปิดเส้นทาง',
+      commandsDisabled: 'ปิดคำสั่งปลั๊กอินอยู่ ข้อความจะส่งไปยังเส้นทางโดยตรง',
+    },
     eventRoutingDescription:
-      'เลือกตัวประมวลผลสำหรับแต่ละเหตุการณ์ของ Bot และแก้ไขตรรกะในการตั้งค่า Agent หรือ Pipeline ที่เกี่ยวข้อง โดย Pipeline รองรับเฉพาะเหตุการณ์ข้อความ',
+      'เลือกตัวประมวลผลสำหรับแต่ละเหตุการณ์ของ Bot และแก้ไขตรรกะในการตั้งค่า Agent หรือแชทที่เกี่ยวข้อง โดยแชทรองรับเฉพาะเหตุการณ์ข้อความ',
     eventBindings: 'เส้นทางเหตุการณ์',
     addEventBinding: 'เพิ่มเส้นทาง',
     addBehavior: 'เพิ่มพฤติกรรม',
@@ -1021,7 +1585,7 @@ const thTH = {
     targetType: 'ประเภทปลายทาง',
     target: 'ตัวประมวลผล',
     targetAgent: 'Agent',
-    targetPipeline: 'ไปป์ไลน์',
+    targetPipeline: 'แชท',
     targetDiscard: 'ละทิ้ง',
     selectTarget: 'เลือกตัวประมวลผล',
     searchTarget: 'ค้นหาตัวประมวลผล…',
@@ -1030,8 +1594,7 @@ const thTH = {
     enabled: 'เปิดใช้งาน',
     eventBindingDescriptionPlaceholder: 'คำอธิบายกฎ',
     noEventBindings: 'ไม่มีเส้นทางเหตุการณ์',
-    unsupportedPipelineEvent:
-      'ไปป์ไลน์ใช้ได้กับเหตุการณ์ message.received เท่านั้น',
+    unsupportedPipelineEvent: 'แชทใช้ได้กับเหตุการณ์ message.received เท่านั้น',
     disable: 'ปิดใช้งาน',
     enable: 'เปิดใช้งาน',
     disabledBindings: 'ปิดใช้งาน',
@@ -1214,6 +1777,22 @@ const thTH = {
     conditionsDescription:
       'ต้องตรงทุกเงื่อนไขจึงจะทำงาน เว้นว่างเพื่อให้ทำงานเสมอ',
     conditionsEmpty: 'ไม่มีเงื่อนไข — ทำงานเสมอ',
+    routeNote: {
+      templatePerson: 'ข้อความส่วนตัว',
+      templateGroup: 'ข้อความในกลุ่มที่ @ บอท',
+      label: 'หมายเหตุ',
+      placeholder:
+        'ไม่บังคับ เช่น "กลุ่มซัพพอร์ต" จะแสดงในรายการเส้นทางและตัวเลือกขอบเขต',
+    },
+    routeCard: {
+      noTarget: 'ยังไม่ได้เลือกตัวประมวลผล',
+      edit: 'แก้ไขเส้นทาง',
+      event: 'เหตุการณ์',
+      target: 'ส่งไปยัง',
+    },
+    routeSummary: {
+      always: 'ทุกข้อความ',
+    },
     addFilter: 'เพิ่มเงื่อนไข',
     filterIsAtBot: 'กล่าวถึงบอตนี้',
     mentionYes: 'ใช่',
@@ -1230,7 +1809,7 @@ const thTH = {
     operator_regex: 'นิพจน์ทั่วไป',
     routingRules: 'กฎการกำหนดเส้นทางตามเงื่อนไข',
     routingRulesDescription:
-      'กฎจะถูกประเมินตามลำดับ การจับคู่แรกจะกำหนดเส้นทางไปยัง Pipeline ที่เกี่ยวข้อง หากไม่ตรงกันจะใช้ Pipeline เริ่มต้นด้านบน',
+      'กฎจะถูกประเมินตามลำดับ การจับคู่แรกจะกำหนดเส้นทางไปยังแชทที่เกี่ยวข้อง หากไม่ตรงกันจะใช้แชทเริ่มต้นด้านบน',
     addRoutingRule: 'เพิ่มกฎ',
     ruleTypeLauncherType: 'ประเภทเซสชัน',
     ruleTypeLauncherId: 'ID เซสชัน',
@@ -1291,6 +1870,11 @@ const thTH = {
     collapse: 'ย่อ',
     imagesAttached: 'รูปภาพที่แนบ',
     noLogs: 'ยังไม่มีบันทึก',
+    routeDraftExists: 'มีกฎเส้นทางสำหรับ {{id}} อยู่แล้ว และขยายไว้ด้านล่าง',
+    routeDraftAddedGroup:
+      'เพิ่มกฎสำหรับกลุ่ม {{id}} ไว้บนสุดแล้ว เลือกไปป์ไลน์แล้วบันทึก',
+    routeDraftAddedPerson:
+      'เพิ่มกฎสำหรับผู้ใช้ {{id}} ไว้บนสุดแล้ว เลือกไปป์ไลน์แล้วบันทึก',
     sessionMonitor: {
       resetContext: 'รีเซ็ตบริบท',
       resetDescription:
@@ -1298,6 +1882,28 @@ const thTH = {
       resetSuccess: 'รีเซ็ตบริบทแล้ว',
       resetError:
         'รีเซ็ตไม่สำเร็จ โปรดรอให้งานที่กำลังทำอยู่เสร็จแล้วลองอีกครั้ง',
+      resetScopeMember:
+        'แชทนี้เก็บบริบทแยกสำหรับสมาชิกแต่ละคนในกลุ่ม จึงรีเซ็ตเฉพาะบริบทของสมาชิกคนนี้',
+      resetScopeGroup:
+        'กลุ่มนี้ใช้บริบทร่วมกัน การรีเซ็ตจะล้างการสนทนาของทั้งกลุ่ม ไม่ใช่เฉพาะสมาชิกคนนี้',
+      inGroup: 'ในกลุ่ม {{group}}',
+      filterByGroup: 'กลุ่มเดียวกัน',
+      groupFilterActive: 'กลุ่ม {{group}}',
+      clearGroupFilter: 'แสดงเซสชันทั้งหมด',
+      groupTitle: 'กลุ่ม {{group}}',
+      memberLine: 'สมาชิก: {{name}}',
+      lastSenderLine: 'ผู้ส่งล่าสุด: {{name}}',
+      privateChat: 'แชทส่วนตัว',
+      groupChat: 'แชทกลุ่ม',
+      groupId: 'ID กลุ่ม',
+      member: 'สมาชิก',
+      lastSender: 'ผู้ส่งล่าสุด',
+      userId: 'ID ผู้ใช้',
+      pipeline: 'ไปป์ไลน์',
+      routeGroup: 'ตั้งเส้นทางสำหรับกลุ่มนี้',
+      routeGroupHint: 'สร้างกฎเส้นทางที่ส่งกลุ่มนี้ไปยังไปป์ไลน์ที่กำหนด',
+      contextShared: 'บริบทร่วมทั้งกลุ่ม',
+      contextPerMember: 'บริบทแยกตามสมาชิก',
 
       title: 'เซสชัน',
       sessions: 'เซสชัน',
@@ -1346,6 +1952,11 @@ const thTH = {
     },
   },
   agents: {
+    layout: {
+      platformTools: 'เครื่องมือแพลตฟอร์ม',
+      hostTools: 'เครื่องมือปลั๊กอินและ MCP',
+      toolsSheetDescription: 'มีผลหลังบันทึก Agent',
+    },
     apiToolsSelectAll: 'เลือกทั้งหมด',
     monitoring: {
       rangeDays: '{{days}} วันที่ผ่านมา',
@@ -1375,12 +1986,115 @@ const thTH = {
       rawEvents: 'เหตุการณ์ดิบ',
       inputUnavailable: 'ไม่มีการบันทึกข้อมูลเริ่มต้นของการทำงานนี้',
     },
+    commandProcessor: {
+      loadingCatalog: 'กำลังโหลดปลั๊กอินคำสั่ง...',
+      catalogUnavailable: 'ไม่สามารถโหลดปลั๊กอินคำสั่งได้',
+      installFailed: 'ติดตั้งปลั๊กอินคำสั่งไม่สำเร็จ',
+      installTimeout:
+        'การติดตั้งปลั๊กอินคำสั่งหมดเวลา โปรดตรวจสอบงานในหน้าส่วนขยาย',
+      registrationTimeout:
+        'ติดตั้งปลั๊กอินแล้ว แต่คำสั่งยังลงทะเบียนไม่ทัน โปรดรีเฟรชแล้วลองอีกครั้ง',
+      diagnosis: {
+        missing: 'ไม่พบปลั๊กอินคำสั่งที่เลือก โปรดติดตั้งหรือกู้คืนปลั๊กอิน',
+        disabled:
+          'ปลั๊กอินคำสั่งที่เลือกถูกปิดใช้งาน โปรดเปิดใช้งานในหน้าปลั๊กอิน',
+        runtime:
+          'รันไทม์ปลั๊กอินไม่พร้อมใช้งานหรือถูกปิด โปรดกู้คืนการเชื่อมต่อแล้วลองอีกครั้ง',
+        draft:
+          'หน้าซ่อมแซมจะเปิดในแท็บใหม่ การเลือกปัจจุบันและฉบับร่างที่ยังไม่บันทึกจะยังอยู่',
+      },
+      debugTitle: 'ดีบักคำสั่ง',
+      type: 'ตัวประมวลผลคำสั่ง',
+      plugin: 'ปลั๊กอิน',
+      selectPlugin: 'เลือกปลั๊กอินคำสั่ง',
+      unavailable: 'ปลั๊กอินไม่พร้อมใช้งาน',
+      noSettings: 'ไม่มีการตั้งค่า',
+      notice: 'ประมวลผลคำสั่งก่อนกำหนดเส้นทางเหตุการณ์',
+      bindBot: 'ผูกกับบอท',
+      description:
+        'จัดการคำสั่งที่ขึ้นต้นด้วยคำนำหน้า เช่น /help หรือ /draw โดยจับคู่ก่อนเส้นทาง เมื่อตรงกันจะตอบกลับทันที',
+      noPlugins: 'ไม่มีปลั๊กอินที่ติดตั้งซึ่งมีคำสั่ง',
+      noMarketplace: 'ไม่มีปลั๊กอินที่มีคำสั่งในตลาด',
+      docs: 'เอกสารคอมโพเนนต์คำสั่ง',
+      debugCommand: 'คำสั่ง',
+      debugArgs: 'อาร์กิวเมนต์ (ไม่บังคับ)',
+      run: 'เรียกใช้คำสั่ง',
+      saveAndRun: 'บันทึกและเรียกใช้',
+      debugNotice:
+        'เรียกใช้คำสั่งหนึ่งครั้งในฐานะผู้ดูแล คำตอบแสดงเฉพาะที่นี่และไม่ถูกส่งไปยังแพลตฟอร์มใด',
+      debugEmpty: 'เลือกคำสั่งแล้วเรียกใช้เพื่อดูคำตอบที่นี่',
+      debugFailed: 'ดีบักคำสั่งไม่สำเร็จ',
+      noOutput: 'คำสั่งไม่ได้ส่งคำตอบกลับ',
+      outputs: 'คำตอบ',
+      noRuns:
+        'ยังไม่มีการเรียกใช้คำสั่ง ผูกตัวประมวลผลนี้กับบอท หรือเรียกใช้ในหน้าดีบัก',
+      sourceDebug: 'ดีบัก',
+      sourcePlatform: 'ข้อความจากบอท',
+    },
+    diagram: {
+      bestFor: 'เหมาะสำหรับ: ',
+      messageReceived: 'ได้รับข้อความ',
+      anyEvent: 'เหตุการณ์ใดก็ได้ของบอท',
+      anyEventCaption: 'ข้อความ สมาชิกเข้ากลุ่ม คำขอเป็นเพื่อน…',
+      model: 'โมเดล',
+      knowledge: 'ฐานความรู้',
+      tools: 'เครื่องมือ',
+      externalAgent: 'Agent ภายนอก',
+      reply: 'ตอบกลับในบทสนทนา',
+      replyOrAction: 'ตอบกลับหรือดำเนินการบนแพลตฟอร์ม',
+      pipeline: {
+        summary: 'ข้อความผ่านกฎทริกเกอร์และการสร้างคำตอบด้วย AI แล้วจึงตอบกลับ',
+        group: 'ภายในแชท',
+        trigger: 'กฎทริกเกอร์และการประมวลผลล่วงหน้า',
+        generate: 'AI สร้างคำตอบ',
+        generateCaption: 'ใช้โมเดล ฐานความรู้ และเครื่องมือ',
+        bestFor: 'ถามตอบ บริการลูกค้า และแชตกับฐานความรู้',
+      },
+      agent: {
+        summary:
+          'ทำตามคำสั่งภาษาธรรมชาติของคุณ และตัดสินใจเองว่าจะจัดการแต่ละเหตุการณ์อย่างไร',
+        group: 'ภายใน Agent',
+        instructions: 'คำสั่งของคุณ',
+        instructionsCaption: 'อธิบายวิธีจัดการเหตุการณ์แต่ละประเภท',
+        decide: 'AI ตัดสินใจและดำเนินการ',
+        decideCaption: 'เรียกเครื่องมือหรือการกระทำบนแพลตฟอร์มตามต้องการ',
+        bestFor:
+          'จัดการเหตุการณ์หลายประเภทอย่างชาญฉลาด หรือเชื่อมต่อแพลตฟอร์ม Agent ภายนอก',
+      },
+      eventProcessor: {
+        summary:
+          'โค้ดปลั๊กอินรับเหตุการณ์ที่สมัครไว้ และจัดการด้วยตรรกะที่กำหนดไว้',
+        input: 'เหตุการณ์ที่สมัครไว้',
+        inputCaption: 'สมาชิกเข้ากลุ่ม คำขอเป็นเพื่อน ข้อความ…',
+        group: 'ภายในปลั๊กอิน',
+        handle: 'โค้ดปลั๊กอินจัดการเหตุการณ์',
+        outputCaption: 'ข้อความต้อนรับ อนุมัติคำขอ สถิติ…',
+        branch: 'ทำงานพร้อมกับเส้นทางและไม่บล็อกกัน',
+        bestFor:
+          'งานอัตโนมัติที่มีกฎชัดเจน เช่น ต้อนรับสมาชิก ตรวจคำขอ และบันทึกเหตุการณ์',
+      },
+      commandProcessor: {
+        hit: 'ตรงกัน',
+        miss: 'ไม่ตรงกัน',
+        summary: 'จัดการข้อความที่ขึ้นต้นด้วยคำนำหน้าคำสั่งก่อนเส้นทางใด ๆ',
+        group: 'ภายในตัวประมวลผลคำสั่ง',
+        match: 'จับคู่คำนำหน้าและชื่อคำสั่ง',
+        matchCaption: 'จะตรงกันเฉพาะชื่อคำสั่งที่ปลั๊กอินลงทะเบียนไว้',
+        run: 'ปลั๊กอินเรียกใช้คำสั่ง',
+        runCaption: 'ใช้การตั้งค่าของอินสแตนซ์นี้',
+        branch: 'ไม่ตรงกัน: ข้อความจะไปยังตัวประมวลผลปลั๊กอินและเส้นทางต่อ',
+        bestFor: 'การกระทำที่ผู้ใช้พิมพ์ชัดเจน เช่น /help, /reset, /draw',
+      },
+    },
+    fromPlugin: 'จากปลั๊กอิน',
+    fromPluginDescription:
+      'ใช้โค้ดที่ปลั๊กอินเขียนไว้ โดยไม่ผ่าน AI ปลั๊กอินจะจัดการข้อความและเหตุการณ์อื่นที่ประกาศไว้',
     eventProcessor: {
       configurations: 'การตั้งค่าตัวประมวลผลปลั๊กอิน',
       configTab: 'การตั้งค่า',
       logsTab: 'บันทึก',
       noSettings: 'ตัวประมวลผลปลั๊กอินนี้ไม่ต้องตั้งค่า',
-      createPageTitle: 'สร้างตัวประมวลผลเหตุการณ์',
+      createPageTitle: 'สร้างตัวประมวลผล',
       processWithPlugin: 'ประมวลผลด้วยโค้ดปลั๊กอิน',
       pluginSettings: 'การตั้งค่าปลั๊กอิน',
       pluginSettingsDescription: 'พารามิเตอร์ที่ประกาศโดยปลั๊กอินนี้',
@@ -1458,9 +2172,9 @@ const thTH = {
     agentType: 'Agent',
     agentTypeDescription:
       'ใช้ runner เพื่อประมวลผลข้อความ สมาชิกกลุ่ม เพื่อน ฟีดแบ็ก และเหตุการณ์แพลตฟอร์มอื่นๆ',
-    pipelineType: 'ไปป์ไลน์',
+    pipelineType: 'แชท',
     kindBadgeAgent: 'Agent',
-    kindBadgePipeline: 'Pipeline',
+    kindBadgePipeline: 'แชท',
     groupByKind: 'จัดกลุ่มตามประเภท',
     groupByKindShort: 'จัดกลุ่ม',
     pipelineTypeDescription:
@@ -1477,9 +2191,9 @@ const thTH = {
     agentDiagramTitle: 'Agent: ตัดสินใจและลงมือ',
     agentDiagramDescription:
       'Agent รับเหตุการณ์หลายประเภท ใช้โมเดลและเครื่องมือทำความเข้าใจ แล้วตัดสินใจทำงานต่อ',
-    pipelineDiagramTitle: 'ไปป์ไลน์: ทำตามขั้นตอนที่กำหนด',
+    pipelineDiagramTitle: 'แชท: ทำตามขั้นตอนที่กำหนด',
     pipelineDiagramDescription:
-      'ไปป์ไลน์ประมวลผลเฉพาะเหตุการณ์ข้อความและทำตามลำดับที่ตั้งไว้',
+      'แชทประมวลผลเฉพาะเหตุการณ์ข้อความและทำตามลำดับที่ตั้งไว้',
     pipelineDiagramFlow: 'ข้อความผ่านขั้นตอนตามลำดับคงที่',
     diagramEvents: 'เหตุการณ์แพลตฟอร์ม',
     diagramAgentCanUse: 'สิ่งที่ Agent ใช้ได้',
@@ -1527,7 +2241,7 @@ const thTH = {
     eventToolUnavailable: 'ไม่พร้อมใช้งาน',
     eventApiToolsDescription:
       'ปลายทางกำหนดจากเหตุการณ์ปัจจุบัน Agent ส่งเฉพาะพารามิเตอร์การกระทำ',
-    platformApiTools: 'เครื่องมือแพลตฟอร์ม',
+    platformApiTools: 'เครื่องมือบอต',
     platformApiToolsDescription:
       'Agent เลือก ID ผู้ใช้ กลุ่ม หรือข้อความได้ ให้สิทธิ์เท่าที่จำเป็น',
     apiToolEvents: 'เหตุการณ์',
@@ -1674,9 +2388,13 @@ const thTH = {
     debugRunFailed: 'ดีบัก Agent ไม่สำเร็จ',
   },
   plugins: {
+    enabledOnBots: 'เปิดใช้ปลั๊กอินบน {{count}} บอทแล้ว',
+    notEnabledOnBots:
+      'ปลั๊กอินยังไม่ได้เปิดใช้บนบอทใด คำสั่งและฮุกเหตุการณ์แชทจึงยังไม่ทำงาน',
+    goEnable: 'เปิดใช้',
     title: 'ส่วนขยาย',
     description:
-      'ติดตั้งและกำหนดค่าปลั๊กอินเพื่อขยายฟังก์ชันการทำงาน กรุณาเลือกใน Pipeline',
+      'ติดตั้งและกำหนดค่าปลั๊กอินเพื่อขยายฟังก์ชันการทำงาน กรุณาเลือกในแชท',
     createPlugin: 'สร้างปลั๊กอิน',
     editPlugin: 'แก้ไขปลั๊กอิน',
     installed: 'ติดตั้งแล้ว',
@@ -1762,7 +2480,7 @@ const thTH = {
     modifyFailed: 'แก้ไขล้มเหลว: ',
     componentName: {
       Tool: 'เครื่องมือ',
-      EventListener: 'ตัวรับฟังเหตุการณ์',
+      EventListener: 'ฮุกเหตุการณ์แชท',
       Command: 'คำสั่ง',
       KnowledgeEngine: 'เครื่องมือความรู้',
       Parser: 'ตัวแยกวิเคราะห์',
@@ -1773,6 +2491,12 @@ const thTH = {
     debugging: 'ดีบัก',
     uploadLocalPlugin: 'อัปโหลดปลั๊กอินจากเครื่อง',
     spaceUpload: {
+      descriptionInstalled:
+        'อัปโหลดปลั๊กอินที่ติดตั้งภายใน {{author}}/{{name}} ไปยังตลาด',
+      shareInstalledAction: 'แชร์ไปยัง Space',
+      installedPackageTitle: 'จะอัปโหลดแพ็กเกจปลั๊กอินที่ติดตั้งอยู่',
+      installedPackageHint:
+        'ปลั๊กอินที่ติดตั้งภายในจะถูกอัปโหลดตาม .lbpkg ที่ใช้งาน ผู้เขียน ชื่อ และเวอร์ชันมาจาก manifest',
       menuAction: 'อัปโหลดไปยังตลาดปลั๊กอิน',
       title: 'อัปโหลดปลั๊กอินไปยังตลาดปลั๊กอิน',
       description:
@@ -2014,6 +2738,10 @@ const thTH = {
     updating: 'กำลังอัปเดต...',
     updateSuccess: 'อัปเดตปลั๊กอินสำเร็จ',
     updateError: 'อัปเดตล้มเหลว: ',
+    installedVersion: 'เวอร์ชันที่ติดตั้ง v{{version}}',
+    updateToVersion: 'อัปเดตเป็น v{{version}}',
+    confirmUpdatePluginVersion:
+      'อัปเดตปลั๊กอิน {{author}}/{{name}} จาก v{{from}} เป็น v{{to}} หรือไม่?',
     saveConfigSuccessNormal: 'บันทึกการกำหนดค่าสำเร็จ',
     saveConfigError: 'บันทึกการกำหนดค่าล้มเหลว: ',
     config: 'การกำหนดค่า',
@@ -2048,6 +2776,24 @@ const thTH = {
     backToReleases: 'กลับไปรีลีส',
     backToRepoUrl: 'กลับไป URL ของ repository',
     backToAssets: 'กลับไปไฟล์แนบ',
+    githubSourceRelease: 'รีลีส',
+    githubSourceBranch: 'สาขา',
+    searchBranches: 'ค้นหาสาขา...',
+    defaultBranch: 'ค่าเริ่มต้น',
+    noBranchesFound: 'ไม่พบสาขาที่ตรงกัน',
+    branchesTruncated: 'แสดงเพียง 500 สาขาแรก',
+    pluginDirectory: 'ไดเรกทอรีปลั๊กอิน',
+    pluginDirectoryPlaceholder: 'รูทของรีโพซิทอรี',
+    pluginDirectoryHelp:
+      'ไดเรกทอรีย่อยที่มี manifest.yaml หากปลั๊กอินไม่ได้อยู่ที่รูท',
+    downloadSourceDirect: 'เชื่อมต่อ GitHub โดยตรง · {{latency}} ms',
+    downloadSourceMirror: 'มิเรอร์ {{host}} · {{latency}} ms',
+    releasesUnavailable:
+      'เซิร์ฟเวอร์นี้เข้าถึงรีลีสของ GitHub ไม่ได้ สามารถติดตั้งจากสาขาแทนได้',
+    noReleasesUseBranch: 'รีโพซิทอรีนี้ไม่มีรีลีส สามารถติดตั้งจากสาขาได้',
+    useBranchInstead: 'ติดตั้งจากสาขา',
+    fetchBranchesError: 'โหลดรายการสาขาไม่สำเร็จ: ',
+    backToBranches: 'กลับไปที่รายการสาขา',
     releaseTag: 'แท็ก: {{tag}}',
     releaseName: 'ชื่อ: {{name}}',
     publishedAt: 'เผยแพร่เมื่อ: {{date}}',
@@ -2056,6 +2802,12 @@ const thTH = {
     confirmInstall: 'ยืนยันการติดตั้ง',
     installFromGithubDesc: 'ติดตั้งปลั๊กอินจาก GitHub Release',
     goToMarketplace: 'ไปที่ตลาดปลั๊กอิน',
+    notReady: {
+      awaitingTitle: 'รอยืนยันสิทธิ์',
+      awaitingDescription:
+        'ปลั๊กอินนี้จะเริ่มทำงานหลังจากคุณยืนยันสิทธิ์ การตั้งค่าและเอกสารจะโหลดเมื่อปลั๊กอินทำงานแล้ว โปรดตรวจสอบและยืนยันในส่วนสิทธิ์ปลั๊กอิน',
+      starting: 'ปลั๊กอินกำลังเริ่มทำงานและจะโหลดในไม่ช้า…',
+    },
     installProgress: {
       title: 'กำลังติดตั้ง {{name}}',
       updateTitle: 'กำลังอัปเดต {{name}}',
@@ -2078,6 +2830,13 @@ const thTH = {
       depsInfo: '{{count}} แพ็กเกจที่ต้องติดตั้ง',
       depsProgress: 'ติดตั้งแล้ว {{installed}}/{{total}} · เหลือ {{remaining}}',
       installComplete: 'ติดตั้งปลั๊กอินสำเร็จ',
+      followUp: {
+        nextSteps: 'ขั้นตอนถัดไป',
+        agents: 'สร้าง Agent หรือตัวประมวลผลปลั๊กอิน',
+        bots: 'เพิ่มในบอท (แท็บปลั๊กอิน) เพื่อใช้คำสั่งและฮุก',
+        pipelines: 'สร้างแชท',
+        knowledge: 'สร้างฐานความรู้',
+      },
       updateComplete: 'อัปเดตปลั๊กอินสำเร็จ',
       installCompletePlugin: 'ติดตั้งปลั๊กอินสำเร็จ',
       installCompleteMCP: 'ติดตั้งเซิร์ฟเวอร์ MCP สำเร็จ',
@@ -2090,6 +2849,13 @@ const thTH = {
     },
   },
   market: {
+    typeTiles: {
+      all: 'ส่วนขยายทั้งหมด',
+      allDesc: 'ปลั๊กอิน MCP และสกิล',
+      pluginDesc: 'แพลตฟอร์ม เครื่องมือ รันเนอร์ และอื่น ๆ',
+      mcpDesc: 'เครื่องมือจากเซิร์ฟเวอร์ MCP ภายนอก',
+      skillDesc: 'สอนวิธีทำงานใหม่ให้ Agent',
+    },
     certifiedPlugin: 'ปลั๊กอินที่ผ่านการรับรอง',
     certificationTooltip:
       'เวอร์ชันนี้ผ่านการตรวจสอบการแยกข้อมูลและความเข้ากันได้กับสภาพแวดล้อมรันร่วมกัน และแพ็กเกจได้รับการลงนามแล้ว',
@@ -2097,7 +2863,7 @@ const thTH = {
 
     runnerUsage: 'การใช้งานรันเนอร์',
     runnerUsageAll: 'ทั้งหมด',
-    runnerUsageAgent: 'Agent / ไปป์ไลน์',
+    runnerUsageAgent: 'Agent / แชท',
     runnerUsageEvent: 'ตัวประมวลผลปลั๊กอิน',
     searchPlaceholder: 'ค้นหาปลั๊กอิน...',
     searchPlaceholderCount:
@@ -2157,11 +2923,11 @@ const thTH = {
     markAsReadFailed: 'ทำเครื่องหมายว่าอ่านแล้วล้มเหลว',
     filterByComponent: 'ส่วนประกอบปลั๊กอิน',
     filterByComponentHint:
-      'ประเภทความสามารถที่ปลั๊กอินมีให้ เช่น เครื่องมือ (Tool) คำสั่ง (Command) ตัวรับฟังเหตุการณ์ (EventListener) เป็นต้น ใช้เพื่อขยายความสามารถต่าง ๆ ของ LangBot กรองตามส่วนประกอบเพื่อแสดงเฉพาะปลั๊กอินที่มีความสามารถนั้น',
+      'ประเภทความสามารถที่ปลั๊กอินมีให้ เช่น เครื่องมือ (Tool) คำสั่ง (Command) ฮุกเหตุการณ์แชท (EventListener) เป็นต้น ใช้เพื่อขยายความสามารถต่าง ๆ ของ LangBot กรองตามส่วนประกอบเพื่อแสดงเฉพาะปลั๊กอินที่มีความสามารถนั้น',
     allComponents: 'ส่วนประกอบทั้งหมด',
     componentName: {
       Tool: 'เครื่องมือ',
-      EventListener: 'ตัวรับฟังเหตุการณ์',
+      EventListener: 'ฮุกเหตุการณ์แชท',
       Command: 'คำสั่ง',
       KnowledgeEngine: 'เครื่องมือความรู้',
       Parser: 'ตัวแยกวิเคราะห์',
@@ -2332,16 +3098,52 @@ const thTH = {
       'เมื่อลบแล้ว การกำหนดค่าเซิร์ฟเวอร์ MCP นี้จะไม่สามารถกู้คืนได้',
   },
   pipelines: {
-    title: 'ไปป์ไลน์',
-    description:
-      'Pipeline กำหนดกระบวนการประมวลผลเหตุการณ์ข้อความ ใช้เพื่อผูกกับ Bot',
-    createPipeline: 'สร้าง Pipeline',
-    selectFromSidebar: 'เลือก Pipeline จากแถบด้านข้าง',
-    editPipeline: 'แก้ไข Pipeline',
+    chatConfig: {
+      tools: 'เครื่องมือ',
+      toolsHint:
+        'เครื่องมือปลั๊กอิน เซิร์ฟเวอร์ MCP สกิล และการดำเนินการในเวิร์กสเปซที่ AI เรียกใช้ได้ขณะตอบ',
+      manageTools: 'จัดการเครื่องมือ',
+      toolsSheetDescription:
+        'การเปลี่ยนปลั๊กอิน เซิร์ฟเวอร์ MCP และสกิลจะบันทึกทันที ส่วนการดำเนินการในเวิร์กสเปซต้องกด "บันทึกสิทธิ์เครื่องมือ"',
+      plugins: 'เครื่องมือปลั๊กอิน',
+      mcp: 'เซิร์ฟเวอร์ MCP',
+      skills: 'สกิล',
+      operations: 'การดำเนินการในเวิร์กสเปซ',
+      all: 'ทั้งหมด',
+      countItems: '{{count}} รายการ',
+      none: 'ไม่มี',
+      retrieval: 'การตั้งค่าการค้นหา',
+      runnerSettings: 'การตั้งค่า {{runner}}',
+      more: 'การตั้งค่าเพิ่มเติม',
+      context: 'บริบทการสนทนา',
+      scopeMember: 'สมาชิกกลุ่มแต่ละคนมีบทสนทนาของตัวเอง',
+      scopeGroup: 'ทั้งกลุ่มใช้บทสนทนาเดียวกัน',
+      expireNever: 'บทสนทนาไม่หมดอายุ',
+      expireAfter: 'เริ่มบทสนทนาใหม่หลังว่าง {{seconds}} วินาที',
+      runtime: 'ขีดจำกัดและการเรียกเครื่องมือ',
+      sandbox: 'แซนด์บ็อกซ์',
+      on: 'เปิด',
+      off: 'ปิด',
+      reply: 'เนื้อหาคำตอบ',
+      hints: 'ข้อความแจ้งเตือน',
+      hintsCustom: 'กำหนดเอง {{count}} รายการ',
+      advanced: 'การตั้งค่าขั้นสูงอื่น ๆ',
+      default: 'ค่าเริ่มต้น',
+      modified: 'เปลี่ยน {{count}} รายการ',
+      manage: 'จัดการ',
+      manageSummary: 'คัดลอกหรือลบแชทนี้',
+    },
+    outputMovedToPolicy:
+      'เงื่อนไขการรับ ความปลอดภัย และการตั้งค่าการตอบกลับทั่วไป (ข้อความยาว การหน่วงเวลา การ @ ผู้ส่ง การอ้างอิง ข้อความแจ้งข้อผิดพลาด) ย้ายไปที่แท็บนโยบายข้อความของบอทแล้ว ที่นี่เหลือเฉพาะตัวเลือกเอาต์พุตของ AI',
+    title: 'แชท',
+    description: 'แชทกำหนดกระบวนการประมวลผลเหตุการณ์ข้อความ ใช้เพื่อผูกกับ Bot',
+    createPipeline: 'สร้างแชท',
+    selectFromSidebar: 'เลือกแชทจากแถบด้านข้าง',
+    editPipeline: 'แก้ไขแชท',
     chat: 'แชท',
     configuration: 'การกำหนดค่า',
     debugChat: 'แชทดีบัก',
-    getPipelineListError: 'ไม่สามารถดึงรายการ Pipeline ได้: ',
+    getPipelineListError: 'ไม่สามารถดึงรายการแชทได้: ',
     daysAgo: 'วันก่อน',
     today: 'วันนี้',
     updateTime: 'อัปเดตเมื่อ ',
@@ -2352,34 +3154,35 @@ const thTH = {
     recentlyEdited: 'แก้ไขล่าสุด',
     earliestEdited: 'แก้ไขเก่าสุด',
     basicInfo: 'ข้อมูลพื้นฐาน',
-    basicInfoDescription: 'ตั้งชื่อ ไอคอน และคำอธิบาย Pipeline',
-    managementDescription: 'คัดลอกหรือลบไปป์ไลน์นี้',
+    basicInfoDescription: 'ตั้งชื่อ ไอคอน และคำอธิบายแชท',
+    managementDescription: 'คัดลอกหรือลบแชทนี้',
     aiCapabilities: 'AI',
     triggerConditions: 'ทริกเกอร์',
     safetyControls: 'ความปลอดภัย',
     outputProcessing: 'เอาต์พุต',
+    speechProcessing: 'เสียง',
     nameRequired: 'ชื่อต้องไม่ว่างเปล่า',
     descriptionRequired: 'คำอธิบายต้องไม่ว่างเปล่า',
-    createSuccess: 'สร้างสำเร็จ กรุณาแก้ไขพารามิเตอร์ Pipeline',
+    createSuccess: 'สร้างสำเร็จ กรุณาแก้ไขพารามิเตอร์แชท',
     createError: 'สร้างล้มเหลว: ',
     saveSuccess: 'บันทึกสำเร็จ',
     saveError: 'บันทึกล้มเหลว: ',
     copySuffix: ' สำเนา',
     deleteConfirmation:
-      'คุณแน่ใจหรือไม่ว่าต้องการลบ Pipeline นี้? Bot ที่ผูกกับ Pipeline นี้จะไม่ทำงาน',
-    defaultPipelineCannotDelete: 'ไม่สามารถลบ Pipeline ค่าเริ่มต้นได้',
+      'คุณแน่ใจหรือไม่ว่าต้องการลบแชทนี้? Bot ที่ผูกกับแชทนี้จะไม่ทำงาน',
+    defaultPipelineCannotDelete: 'ไม่สามารถลบแชทค่าเริ่มต้นได้',
     deleteSuccess: 'ลบสำเร็จ',
     deleteError: 'ลบล้มเหลว: ',
     copyConfirmTitle: 'ยืนยันการคัดลอก',
     copyConfirmation:
-      'คุณแน่ใจหรือไม่ว่าต้องการคัดลอก Pipeline นี้? การดำเนินการนี้จะสร้าง Pipeline ใหม่พร้อมการกำหนดค่าทั้งหมด',
+      'คุณแน่ใจหรือไม่ว่าต้องการคัดลอกแชทนี้? การดำเนินการนี้จะสร้างแชทใหม่พร้อมการกำหนดค่าทั้งหมด',
     unsavedChanges: 'คุณมีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก',
     dangerZone: 'โซนอันตราย',
     dangerZoneDescription: 'การดำเนินการที่ย้อนกลับไม่ได้และเป็นอันตราย',
-    deletePipelineAction: 'ลบ Pipeline นี้',
-    deletePipelineHint: 'เมื่อลบแล้ว Bot ที่ผูกกับ Pipeline นี้จะหยุดทำงาน',
-    copyPipelineAction: 'คัดลอก Pipeline นี้',
-    copyPipelineHint: 'สร้าง Pipeline ใหม่พร้อมการกำหนดค่าทั้งหมดที่คัดลอกมา',
+    deletePipelineAction: 'ลบแชทนี้',
+    deletePipelineHint: 'เมื่อลบแล้ว Bot ที่ผูกกับแชทนี้จะหยุดทำงาน',
+    copyPipelineAction: 'คัดลอกแชทนี้',
+    copyPipelineHint: 'สร้างแชทใหม่พร้อมการกำหนดค่าทั้งหมดที่คัดลอกมา',
     extensions: {
       title: 'ส่วนขยาย',
       loadError: 'ไม่สามารถโหลดปลั๊กอินได้',
@@ -2390,9 +3193,9 @@ const thTH = {
       noPluginsSelected: 'ไม่ได้เลือกปลั๊กอิน',
       addPlugin: 'เพิ่มปลั๊กอิน',
       selectPlugins: 'เลือกปลั๊กอิน',
-      pluginsTitle: 'ปลั๊กอิน',
+      pluginsTitle: 'เครื่องมือที่ AI เรียกใช้ได้',
       pluginScopeHint:
-        'ควบคุมเฉพาะตัวรับฟังเหตุการณ์ เครื่องมือ และคำสั่งของไปป์ไลน์นี้ ไม่ส่งผลต่อ Runner ที่เลือกในการตั้งค่า AI',
+        'ควบคุมเฉพาะเครื่องมือปลั๊กอินที่ AI ในแชทนี้เรียกใช้ได้ คำสั่งและฮุกเหตุการณ์แชทของปลั๊กอินเพิ่มในแท็บปลั๊กอินของบอท',
       runnerScopeHint:
         'เลือก Runner ได้อย่างอิสระจากสวิตช์ปลั๊กอินส่วนขยาย โดยปลั๊กอินของ Runner ต้องติดตั้งแล้วและพร้อมใช้งาน',
       mcpServersTitle: 'เซิร์ฟเวอร์ MCP',
@@ -2409,6 +3212,9 @@ const thTH = {
       enableAllPlugins: 'เปิดใช้งานปลั๊กอินทั้งหมด',
       enableAllMCPServers: 'เปิดใช้งานเซิร์ฟเวอร์ MCP ทั้งหมด',
       enableAllSkills: 'เปิดใช้สกิลทั้งหมด',
+      toolsDescription:
+        'เลือกเครื่องมือเหตุการณ์ เครื่องมือบอท และการดำเนินการของพื้นที่ทำงานที่ Agent เรียกใช้ได้แชทจะตอบกลับด้วยข้อความจากโมเดลโดยอัตโนมัติ จึงไม่ต้องใช้เครื่องมือตอบกลับ',
+      saveTools: 'บันทึกสิทธิ์เครื่องมือ',
       allPluginsEnabled: 'เปิดใช้งานปลั๊กอินทั้งหมดแล้ว',
       allMCPServersEnabled: 'เปิดใช้งานเซิร์ฟเวอร์ MCP ทั้งหมดแล้ว',
       allSkillsEnabled: 'เปิดใช้สกิลทั้งหมดแล้ว',
@@ -2418,7 +3224,7 @@ const thTH = {
       selectSkills: 'เลือกสกิล',
       noSkillsAvailable: 'ไม่มีสกิลที่พร้อมใช้งาน',
       mcpServersScopeTooltip:
-        'ส่วนนี้ใช้ควบคุมว่า Pipeline ผูกกับเซิร์ฟเวอร์ MCP ใดเท่านั้น ส่วนเครื่องมือและทรัพยากร MCP รายตัวให้เลือกใน AI Feature > Runner',
+        'ส่วนนี้ใช้ควบคุมว่าแชทผูกกับเซิร์ฟเวอร์ MCP ใดเท่านั้น ส่วนเครื่องมือและทรัพยากร MCP รายตัวให้เลือกใน AI Feature > Runner',
       enableAllMCPServersTooltip:
         'เมื่อเปิดใช้ เซิร์ฟเวอร์ MCP ที่ตั้งค่าและเปิดใช้งานทั้งหมดจะเป็นตัวเลือกสำหรับเครื่องมือและทรัพยากร MCP ใน AI Feature',
     },
@@ -2454,8 +3260,8 @@ const thTH = {
       selectKnowledgeBases: 'เลือกคลังความรู้',
     },
     debugDialog: {
-      title: 'แชท Pipeline',
-      selectPipeline: 'เลือก Pipeline',
+      title: 'แชทดีบัก',
+      selectPipeline: 'เลือกแชท',
       sessionType: 'ประเภทเซสชัน',
       privateChat: 'แชทส่วนตัว',
       groupChat: 'แชทกลุ่ม',
@@ -2470,7 +3276,7 @@ const thTH = {
       resetSuccess: 'รีเซ็ตการสนทนาสำเร็จ',
       resetFailed: 'รีเซ็ตล้มเหลว',
       loadMessagesFailed: 'ไม่สามารถโหลดข้อความได้',
-      loadPipelinesFailed: 'ไม่สามารถโหลด Pipeline ได้',
+      loadPipelinesFailed: 'ไม่สามารถโหลดแชทได้',
       atTips: 'กล่าวถึง Bot',
       streaming: 'สตรีมมิ่ง',
       streamOutput: 'สตรีม',
@@ -2502,7 +3308,7 @@ const thTH = {
       title: 'บันทึกการทำงาน',
       workbench: 'กำหนดค่าและดีบัก',
       description:
-        'ดูบันทึกการดำเนินการและข้อผิดพลาดของ Pipeline นี้ (24 ชั่วโมงล่าสุด)',
+        'ดูบันทึกการดำเนินการและข้อผิดพลาดของแชทนี้ (24 ชั่วโมงล่าสุด)',
       detailedLogs: 'บันทึกโดยละเอียด',
     },
   },
@@ -2722,6 +3528,21 @@ const thTH = {
     newVersionAvailable: 'มีเวอร์ชันใหม่',
     viewUpdateGuide: 'ดูคู่มือการอัปเดต',
     noReleaseNotes: 'ไม่มีบันทึกการเผยแพร่',
+    latestBadge: 'ล่าสุด',
+    currentBadge: 'ปัจจุบัน',
+    viewOnWebsite: 'ดูบนเว็บไซต์',
+    whatsNewInCurrent: 'มีอะไรใหม่ในเวอร์ชันนี้',
+    releasesIncluded: 'รวม {{count}} รุ่น',
+    upToDate: 'คุณใช้เวอร์ชันล่าสุดแล้ว',
+    showOlderReleases: 'แสดงรุ่นก่อนหน้า {{count}} รุ่น',
+    viewFullChangelog: 'ดูบันทึกการเปลี่ยนแปลงทั้งหมด',
+    changeTypes: {
+      new: 'ใหม่',
+      improved: 'ปรับปรุง',
+      changed: 'เปลี่ยนแปลง',
+      fixed: 'แก้ไข',
+      security: 'ความปลอดภัย',
+    },
   },
   account: {
     settings: 'การตั้งค่าบัญชี',
@@ -2828,11 +3649,44 @@ const thTH = {
     space_account_not_registeredTitle: 'Account not registered',
     space_account_not_registered:
       'No local account is registered for this LangBot Account email. Ask the Workspace owner for an invitation.',
+    space_dedicated_member_requiredTitle:
+      'คุณยังไม่ได้เป็นสมาชิกของอินสแตนซ์นี้',
+    space_dedicated_member_required:
+      'บัญชี LangBot ของคุณยังไม่ได้รับเชิญเข้าอินสแตนซ์นี้ โปรดให้เจ้าของเชิญคุณจากหน้า Cloud ใน LangBot Space แล้วตอบรับคำเชิญและลองอีกครั้ง',
     space_account_binding_requiredTitle: 'LangBot Account connection required',
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
+  dailyMessageQuota: {
+    planLimited: '{{count}} ข้อความต่อวัน',
+    planUnlimited: 'ข้อความต่อวันไม่จำกัด',
+    planHelp:
+      'จำนวนข้อความที่บอตประมวลผลได้ต่อวัน นับตามวัน UTC และรีเซ็ตเวลา 00:00 UTC นับเฉพาะข้อความที่บอตประมวลผลจริง เมื่อใช้ครบแล้ว ข้อความใหม่ของวันนั้นจะไม่ถูกประมวลผลและผู้ใช้จะได้รับแจ้ง',
+    title: 'ข้อความวันนี้',
+    usage: '{{used}} / {{limit}}',
+    remaining: 'เหลือ {{count}}',
+    resetsAt: 'รีเซ็ต {{time}}',
+    today: 'วันนี้ {{time}}',
+    tomorrow: 'พรุ่งนี้ {{time}}',
+    exhausted: 'ใช้โควตาวันนี้ครบแล้ว',
+    exhaustedHint: 'ข้อความใหม่จะหยุดประมวลผลจนถึง {{time}}',
+    nearLimit: 'ใกล้หมดแล้ว',
+    upgrade: 'อัปเกรดแผน',
+    unlimited: 'ไม่จำกัด',
+    settingsTitle: 'โควตาข้อความรายวัน',
+    settingsDescription:
+      'จำนวนข้อความที่บอตประมวลผลได้ต่อวัน รวมแชตดีบัก นับตามวัน UTC ข้อความในกลุ่มที่ไม่ได้เรียกบอตจะไม่ถูกนับ',
+    unlimitedDescription: 'แผนของคุณไม่จำกัดจำนวนข้อความต่อวัน',
+    errorTitle: 'ใช้โควตาข้อความวันนี้ครบแล้ว',
+    errorBody:
+      'เวิร์กสเปซนี้ประมวลผลไปแล้ว {{limit}} ข้อความในวันนี้ ข้อความนี้จึงไม่ถูกประมวลผล โควตาจะรีเซ็ต {{time}}',
+    errorUpgrade: 'อัปเกรดเพื่อเพิ่มโควตา',
+    unavailable: 'ไม่สามารถดึงการใช้งานวันนี้ได้ในขณะนี้',
+  },
   workspace: {
+    dedicatedSpaceMembersHint:
+      'สมาชิกที่เข้าสู่ระบบด้วยบัญชี LangBot ให้เชิญจากหน้า Cloud ใน LangBot Space คำเชิญด้านล่างจะสร้างบัญชีรหัสผ่านแยกต่างหากในอินสแตนซ์นี้',
+    manageOnSpace: 'จัดการใน LangBot Space',
     title: 'Workspace',
     description: 'Manage members, roles, and invitation links',
     selectTitle: 'Choose a Workspace',
@@ -2862,6 +3716,10 @@ const thTH = {
       failed: 'Invitation link created, but email could not be sent',
     },
     invitationCreateFailed: 'Failed to create invitation',
+    memberLimitReached:
+      'เวิร์กสเปซนี้มีสมาชิกครบตามขีดจำกัดแล้ว ({{max}} คน รวมคำเชิญที่รอดำเนินการ) อัปเกรดแผนเพื่อเชิญสมาชิกเพิ่ม',
+    memberLimitReachedToast:
+      'สมาชิกครบตามขีดจำกัดแล้ว อัปเกรดแผนเพื่อเชิญสมาชิกเพิ่ม',
     oneTimeLinkWarning: 'Copy this link now. It is shown only once.',
     copyInvitation: 'Copy invitation link',
     invitationCopied: 'Invitation link copied',
@@ -2933,7 +3791,22 @@ const thTH = {
       llm_calls: 'การเรียกโมเดล',
       tool_calls: 'การเรียกเครื่องมือ',
       errors: 'ข้อผิดพลาด',
-      payload: 'รายละเอียด',
+      payload: 'ข้อมูลดิบ',
+      rawEvents: 'เหตุการณ์ดิบ ({{count}}{{more}})',
+      copyJson: 'คัดลอก JSON',
+      diagnostics: 'การวินิจฉัย',
+      diagnosticsHint:
+        'เลือกหัวข้อเพื่อโหลดการเรียกโมเดล การเรียกเครื่องมือ เหตุการณ์ การทำงานที่เกี่ยวข้อง หรือบริบทการสนทนา',
+      chat: {
+        bot: 'บอท',
+        groupChat: 'แชทกลุ่ม',
+        privateChat: 'แชทส่วนตัว',
+        source: 'แหล่งที่มา',
+        groupId: 'ID กลุ่ม',
+        sender: 'ผู้ส่ง',
+        routeGroup: 'ตั้งเส้นทางสำหรับกลุ่มนี้',
+        routePerson: 'ตั้งเส้นทางสำหรับผู้ใช้นี้',
+      },
       metadata: 'ข้อมูลทางเทคนิค',
       loadMore: 'โหลดเพิ่มเติม',
       noRecords: 'ไม่มีบันทึก',
@@ -2947,21 +3820,88 @@ const thTH = {
       },
     },
     execution: {
+      handling: {
+        ai: 'AI',
+        command: 'คำสั่ง',
+        plugin: 'ปลั๊กอิน',
+        policy: 'ถูกนโยบายบล็อก',
+      },
+      badges: {
+        builtinCommand: 'คำสั่งระบบ /{{name}}',
+        pluginCommand: 'คำสั่งปลั๊กอิน /{{name}}',
+        commandProcessor: 'ตัวประมวลผลคำสั่ง',
+        commandDenied: 'คำสั่งถูกปฏิเสธ',
+        policyBlocked: 'ถูกนโยบายบล็อก · {{item}}',
+        policyBlockedUnknown: 'ถูกนโยบายบล็อก',
+        pluginIntercepted: 'ปลั๊กอินสกัด · {{plugin}} ({{hook}})',
+      },
+      policyItems: {
+        'access-control': 'การควบคุมการเข้าถึง',
+        'group-respond-rules': 'กฎการตอบในกลุ่ม',
+        'rate-limit': 'จำกัดความถี่',
+        'ignore-rules': 'กฎการละเว้น',
+        'content-filter': 'ตัวกรองเนื้อหา',
+        'outbound-content-filter': 'ตัวกรองเนื้อหาขาออก',
+      },
+      policyLayer: {
+        bot: 'นโยบายเริ่มต้นของบอท',
+        route: 'นโยบายแทนที่ของเส้นทาง',
+      },
+      timeline: {
+        title: 'นโยบายข้อความ',
+        steps: {
+          admission: 'การรับเข้า',
+          hooks: 'ฮุกวงจรชีวิต',
+          processor: 'ตัวประมวลผล',
+          output: 'การส่งออก',
+        },
+        admitted: 'ผ่านการรับเข้า',
+        blocked: 'ถูกนโยบายข้อความบล็อก',
+        blockedBy: 'ถูก "{{item}}" ของ{{layer}}บล็อก จึงไม่ได้ตอบกลับ',
+        unknownLayer: 'นโยบายข้อความ',
+        notReached: 'ไม่ได้ทำงาน',
+        hookBy: 'ปลั๊กอิน {{plugin}} สกัดข้อความที่ {{hook}}',
+        noHook: 'ไม่มีปลั๊กอินสกัด',
+        earlyHookOnly:
+          'MessageReceived ทำงานแล้วและไม่ได้สกัด ฮุกถัดไปไม่ได้ทำงาน',
+        denied: '/{{name}} ถูกปฏิเสธเพราะไม่มีสิทธิ์ ({{reply}})',
+        deniedNotice: 'ตอบกลับว่าไม่มีสิทธิ์',
+        deniedSilent: 'ไม่ตอบกลับ',
+        builtin: 'รันคำสั่งระบบ /{{name}}',
+        pluginCommand: 'รันคำสั่งปลั๊กอิน /{{name}}',
+        discarded: 'กฎการกำหนดเส้นทางทิ้งข้อความ',
+        handledBy: 'จัดการโดย {{target}}',
+        noOutput: 'ไม่มีการประมวลผลขาออก',
+        outputApplied: 'ทำสิ่งต่อไปนี้ก่อนส่งคำตอบ',
+        actions: {
+          long_text: 'ข้อความยาว{{strategy}}',
+          strategy: {
+            image: 'แปลงเป็นรูปภาพ',
+            forward: 'แปลงเป็นข้อความส่งต่อ',
+          },
+          delay: 'หน่วง {{ms}} มิลลิวินาที',
+          at: '@ ผู้ส่ง',
+          quote: 'อ้างอิงข้อความเดิม',
+          outbound_block: 'ตัวกรองเนื้อหาขาออกบล็อกคำตอบ',
+        },
+      },
       title: 'การทำงาน',
       subtitle:
-        'เหตุการณ์ขาเข้าแต่ละรายการและการทำงานที่ถูกเรียกใช้ ทั้งในเอเจนต์และไปป์ไลน์',
+        'เหตุการณ์ขาเข้าแต่ละรายการและการทำงานที่ถูกเรียกใช้ ทั้งในเอเจนต์และแชท',
       tabs: { executions: 'การทำงาน' },
       filters: {
         source: 'ประเภท',
         sourceAll: 'ทุกประเภท',
         sourceAgent: 'เอเจนต์',
-        sourcePipeline: 'ไปป์ไลน์',
+        sourcePipeline: 'แชท',
         mode: 'โหมดการทำงาน',
         modeAll: 'ใช้งานจริง + ดีบัก',
         modeLive: 'เฉพาะใช้งานจริง',
         modeDebug: 'เฉพาะดีบัก',
         status: 'สถานะ',
         statusAll: 'ทุกสถานะ',
+        handling: 'วิธีจัดการ',
+        handlingAll: 'ทุกวิธีจัดการ',
       },
       status: {
         completed: 'เสร็จสิ้น',
@@ -2970,11 +3910,12 @@ const thTH = {
         queued: 'อยู่ในคิว',
         cancelled: 'ยกเลิกแล้ว',
         ignored: 'ละเว้นแล้ว',
+        denied: 'ถูกปฏิเสธ',
       },
       // prettier-ignore
       kind: {
         agent: 'เอเจนต์',
-        pipeline: 'ไปป์ไลน์',
+        pipeline: 'แชท',
         processor: 'ตัวประมวลผล',
       },
       columns: {
@@ -2988,13 +3929,24 @@ const thTH = {
       empty: 'ไม่มีการทำงานในช่วงเวลานี้',
       loading: 'กำลังโหลดการทำงาน...',
       triggeredBy: 'เรียกใช้โดย {{trigger}}',
+      handledByPlugin: 'จัดการโดยปลั๊กอิน {{plugin}}',
+      handledByUnknownPlugin: 'จัดการโดยปลั๊กอินที่ระบุไม่ได้',
+      filteredByStage: 'ถูกหยุดโดยแชท · {{stage}}',
+      filteredByUnknownStage: 'ถูกหยุดโดยแชท',
+      filterStages: {
+        BanSessionCheckStage: 'การควบคุมการเข้าถึง',
+        GroupRespondRuleCheckStage: 'กฎการตอบกลับในกลุ่ม',
+        PreContentFilterStage: 'ตัวกรองเนื้อหา / กฎการเพิกเฉย',
+        PostContentFilterStage: 'ตัวกรองเนื้อหาขาออก',
+        RequireRateLimitOccupancy: 'การจำกัดอัตรา',
+      },
       cards: {
         latencyHint:
           'P50/P95: ประมาณ 50%/95% ทำงานเสร็จภายในเวลานี้ ใช้เฉพาะ Agent ที่เสร็จล่าสุด ไม่รวมเวลารอคิว',
         tokensHint:
           'รวมเฉพาะการใช้ที่บันทึกไว้ ผลรวมอาจไม่ครบหากโมเดลไม่ส่งข้อมูลการใช้กลับมา',
         totalExecutions: 'การทำงาน',
-        bySource: 'เอเจนต์ {{agent}} · ไปป์ไลน์ {{pipeline}}',
+        bySource: 'เอเจนต์ {{agent}} · แชท {{pipeline}}',
         successRate: 'อัตราการทำงานสำเร็จ',
         successRateHint:
           'สำเร็จ ÷ (สำเร็จ + ล้มเหลว) ไม่รวมงานที่กำลังทำงาน ถูกละเว้น หรือยกเลิก',
@@ -3045,14 +3997,14 @@ const thTH = {
     filters: {
       title: 'ตัวกรอง',
       bot: 'Bot',
-      pipeline: 'Pipeline',
+      pipeline: 'แชท',
       allBots: 'Bot ทั้งหมด',
       selectBot: 'เลือก Bot',
       processor: 'ตัวประมวลผล',
       allProcessors: 'ตัวประมวลผลทั้งหมด',
       selectProcessor: 'เลือกตัวประมวลผล',
-      allPipelines: 'Pipeline ทั้งหมด',
-      selectPipeline: 'เลือก Pipeline',
+      allPipelines: 'แชททั้งหมด',
+      selectPipeline: 'เลือกแชท',
       loading: 'กำลังโหลด...',
       timeRange: 'ช่วงเวลา',
       customRange: 'ช่วงเวลาที่กำหนดเอง',
@@ -3088,7 +4040,7 @@ const thTH = {
     messageList: {
       timestamp: 'เวลา',
       bot: 'Bot',
-      pipeline: 'Pipeline',
+      pipeline: 'แชท',
       message: 'ข้อความ',
       sessionId: 'ID เซสชัน',
       status: 'สถานะ',
@@ -3309,6 +4261,7 @@ const thTH = {
     nav: {
       workspace: 'Workspace',
       operationTrace: 'บันทึกการดำเนินการ',
+      alerts: 'การแจ้งเตือน',
       models: 'โมเดล',
       api: 'API',
       storage: 'พื้นที่จัดเก็บ',
@@ -3382,7 +4335,7 @@ const thTH = {
       adapter: 'อะแดปเตอร์',
       model_provider: 'ผู้ให้บริการโมเดล',
       llm_model: 'โมเดล',
-      pipeline: 'ไปป์ไลน์',
+      pipeline: 'แชท',
       user: 'ผู้ใช้',
       workspace: 'เวิร์กสเปซ',
       monitoring: 'การมอนิเตอร์',
@@ -3400,6 +4353,7 @@ const thTH = {
       skill: 'ทักษะ',
       knowledge_base: 'ฐานความรู้',
       mcp_server: 'เซิร์ฟเวอร์ MCP',
+      content: 'เนื้อหาที่แชร์',
       runtime: 'รันไทม์',
       system: 'ระบบ',
       resource: 'ทรัพยากร',
@@ -3410,6 +4364,8 @@ const thTH = {
       error: 'ล้มเหลว',
     },
     actions: {
+      content_publish: 'แชร์เนื้อหาไปยัง Space',
+      plugin_publish: 'เผยแพร่ส่วนขยายไปยัง Space',
       audit_log_view: 'ดูบันทึกการดำเนินการ',
       settings_update: 'แก้ไขการตั้งค่าการติดตาม',
       settings_view: 'ดูการตั้งค่าการติดตาม',
@@ -3440,7 +4396,7 @@ const thTH = {
       codex_view: 'ดูการอนุญาต Codex',
       codex_authorize: 'อนุญาต Codex',
       embed: 'เซสชันฝังตัว',
-      pipeline_extensions_update: 'แก้ไขการผูกส่วนขยายของไปป์ไลน์',
+      pipeline_extensions_update: 'แก้ไขการผูกส่วนขยายของแชท',
       export: 'ส่งออกข้อมูล',
       execute: 'รันงาน',
       debug: 'ดีบักงาน',
@@ -3542,7 +4498,7 @@ const thTH = {
     maxBotsReached:
       'จำนวน Bot สูงสุด ({{max}}) ถึงขีดจำกัดแล้ว กรุณาลบ Bot ที่มีอยู่ก่อนสร้างใหม่',
     maxPipelinesReached:
-      'จำนวน Pipeline สูงสุด ({{max}}) ถึงขีดจำกัดแล้ว กรุณาลบ Pipeline ที่มีอยู่ก่อนสร้างใหม่',
+      'จำนวนแชทสูงสุด ({{max}}) ถึงขีดจำกัดแล้ว กรุณาลบแชทที่มีอยู่ก่อนสร้างใหม่',
     maxExtensionsReached:
       'จำนวนส่วนขยายสูงสุด ({{max}}) ถึงขีดจำกัดแล้ว กรุณาลบเซิร์ฟเวอร์ MCP หรือปลั๊กอินที่มีอยู่ก่อนเพิ่มใหม่',
     quotaLoadingTooltip:
@@ -3655,7 +4611,7 @@ const thTH = {
     next: 'ถัดไป',
     finish: 'สร้างและติดตั้ง',
     confirmCreateBot: 'ยืนยัน สร้าง Bot',
-    createSuccess: 'สร้าง Pipeline และเชื่อมกับ Bot สำเร็จ!',
+    createSuccess: 'สร้างแชทและเชื่อมกับ Bot สำเร็จ!',
     botCreateSuccess: 'สร้าง Bot สำเร็จ!',
     botSaveSuccess: 'บันทึกและเปิดใช้งาน Bot สำเร็จ!',
     createError: 'ไม่สามารถสร้างทรัพยากรได้',
@@ -3727,7 +4683,7 @@ const thTH = {
       selectModelTitle: 'เลือกโมเดล',
       selectScannedModelTitle: 'เลือกโมเดล',
       selectScannedModelDescription:
-        'โมเดลที่เลือกจะแทนที่โมเดลหลักในไปป์ไลน์ของบอทนี้',
+        'โมเดลที่เลือกจะแทนที่โมเดลหลักในแชทของบอทนี้',
       scanModelMode: 'สแกนโมเดล',
       manualModelMode: 'เพิ่มด้วยตนเอง',
       scanningModels: 'กำลังสแกนโมเดลที่พร้อมใช้งาน…',
@@ -3763,6 +4719,8 @@ const thTH = {
         'ใช้รันเนอร์ที่ติดตั้งแล้วหรือลองภายหลัง',
       browseRunners: 'เรียกดูส่วนขยายรันเนอร์',
       installAndContinue: 'ติดตั้งและดำเนินการต่อ',
+      autoConfirmPermissions:
+        'ระบบจะให้สิทธิ์ที่ปลั๊กอินประกาศโดยอัตโนมัติ คุณปรับได้ในการตั้งค่าปลั๊กอิน',
       installing: 'กำลังติดตั้ง...',
       useInstalled: 'ใช้รันเนอร์นี้',
       installedUnavailable: 'ติดตั้งแล้ว แต่รันเนอร์ไม่พร้อมใช้',
@@ -3783,7 +4741,7 @@ const thTH = {
     done: {
       title: 'เสร็จเรียบร้อย!',
       description:
-        'Bot ของคุณถูกสร้างและเชื่อมต่อกับ Pipeline AI แล้ว คุณสามารถจัดการได้จากหน้าทำงาน',
+        'Bot ของคุณถูกสร้างและเชื่อมต่อกับแชท AI แล้ว คุณสามารถจัดการได้จากหน้าทำงาน',
       backToWorkbench: 'กลับไปหน้าทำงาน',
     },
   },
@@ -4072,6 +5030,252 @@ const thTH = {
     person: 'Private message',
     group: 'Group message',
     replies: 'Replies',
+  },
+  sensitiveTools: {
+    badge: 'เครื่องมือที่อ่อนไหว {{count}} รายการ',
+    title: 'เปิดใช้เครื่องมือที่อ่อนไหวหรือมีความเสี่ยงสูง',
+    description:
+      'หากบอทที่ผูกไว้ให้บริการผู้ใช้ที่ไม่น่าเชื่อถือ โปรดไปปิดเครื่องมือที่เกี่ยวข้องในหน้า "{{page}}"',
+    list: 'ได้แก่: {{items}}',
+    listMore: 'ได้แก่: {{items}} และอื่น ๆ (รวม {{count}})',
+    listSeparator: ', ',
+  },
+  workspaceOperations: {
+    title: 'การดำเนินการของพื้นที่ทำงาน',
+    description:
+      'กำหนดการดำเนินการของ API รวมของพื้นที่ทำงานที่ตัวประมวลผลนี้เรียกใช้ได้ การเลือกคือการอนุญาต',
+    scopeHint:
+      'อนุญาตให้ตัวประมวลผลนี้เรียกใช้การดำเนินการของ API รวมของพื้นที่ทำงาน LangBot ในนามของตัวเอง',
+    searchPlaceholder: 'ค้นหาตามชื่อ ID หรือคำอธิบาย...',
+    selectAll: 'เลือกทั้งหมด',
+    deselectAll: 'ยกเลิกทั้งหมด',
+    selectedCount: 'เลือก {{count}} รายการ',
+    totalCount: 'ทั้งหมด {{count}} รายการ',
+    noOperations: 'ไม่มีการดำเนินการของพื้นที่ทำงานที่ใช้ได้',
+    noSearchResults: 'ไม่พบการดำเนินการที่ตรงกัน',
+    riskRead: 'อ่าน',
+    riskWrite: 'เขียน',
+    riskDangerous: 'อันตราย',
+    requiresPermission: 'ต้องมีสิทธิ์: {{permission}}',
+    dangerousConfirmTitle: 'มีการดำเนินการของพื้นที่ทำงานที่อันตราย',
+    dangerousConfirmDescription:
+      'ตัวประมวลผลนี้ให้บริการผู้ใช้แชทใครก็ตามที่แชทกับบอทได้อาจเรียกการดำเนินการเหล่านี้ ต้องการบันทึกหรือไม่',
+    dangerousConfirmAction: 'ยืนยันการบันทึก',
+    dangerousConfirmCancel: 'ยกเลิก',
+    saveWorkspaceOperations: 'บันทึกการดำเนินการ',
+    saveSuccess: 'บันทึกการดำเนินการของพื้นที่ทำงานแล้ว',
+    saveFailed: 'บันทึกการดำเนินการของพื้นที่ทำงานไม่สำเร็จ',
+    configuredCount: 'กำหนดค่าแล้ว {{count}} การดำเนินการ',
+    expandDomain: 'ขยาย',
+    collapseDomain: 'ยุบ',
+    ungrantableRemoved:
+      'การดำเนินการบางรายการไม่ได้ถูกเลือกหรือถูกนำออกเพราะสิทธิ์ไม่เพียงพอ',
+  },
+  alerts: {
+    enableHint: 'เปิดการแจ้งเตือน',
+    cta: {
+      title: 'เข้าสู่ระบบด้วยบัญชี LangBot เพื่อส่งอีเมลแจ้งเตือนฟรี',
+      pointFree: 'ส่งฟรีอย่างเป็นทางการ 20 ฉบับต่อวัน',
+      pointNoSetup: 'ไม่ต้องตั้งค่า SMTP หรือ Resend',
+      pointPrivate: 'ส่งไปยังอีเมลบัญชี LangBot ของคุณเท่านั้น',
+      selfHosted: 'ต้องการใช้เซิร์ฟเวอร์อีเมลของคุณเอง?',
+      selfHostedLink: 'ตั้งค่า SMTP หรือ Resend ใน config.yaml →',
+    },
+    title: 'การแจ้งเตือน',
+    description: 'แจ้งทางอีเมลและ webhook เมื่อบอทแชทหรือโมเดลล้มเหลวซ้ำ ๆ',
+    enabled: 'เปิดการแจ้งเตือน',
+    firingCount: 'กำลังแจ้งเตือน {{count}} รายการ',
+    allClear: 'ปกติทั้งหมด',
+    sendTest: 'ส่งทดสอบ',
+    saveBeforeTest: 'บันทึกการเปลี่ยนแปลงก่อนส่งทดสอบ',
+    saved: 'บันทึกการตั้งค่าการแจ้งเตือนแล้ว',
+    saveFailed: 'บันทึกการตั้งค่าไม่สำเร็จ: {{error}}',
+    loadFailed: 'โหลดการแจ้งเตือนไม่สำเร็จ: {{error}}',
+    testSent: 'ส่งการแจ้งเตือนทดสอบไปยัง {{count}} ปลายทางแล้ว',
+    testPartial: 'ส่งทดสอบแล้วแต่มีข้อผิดพลาด ดูบันทึกการส่ง',
+    testNoChannel: 'ยังไม่ได้ตั้งค่าช่องทางใด เลือกช่องทางอีเมลหรือ webhook',
+    testFailed: 'ส่งการแจ้งเตือนทดสอบไม่สำเร็จ: {{error}}',
+    disabledInstanceWide:
+      'อินสแตนซ์นี้ปิดการแจ้งเตือนไว้ (alerts.enabled ใน config.yaml)',
+    emailTitle: 'อีเมล',
+    emailDescription: 'ส่งผ่าน: {{channel}}',
+    recipients: 'ผู้รับ (เจ้าของและผู้ดูแล Workspace)',
+    noRecipients: 'ไม่มีเจ้าของหรือผู้ดูแลที่มีอีเมล',
+    extraRecipientsCloud: 'ผู้รับเพิ่มเติม (สูงสุด 10)',
+    extraRecipients: 'ผู้รับเพิ่มเติม (เฉพาะบริการอีเมลของคุณ สูงสุด 10)',
+    spaceRecipientsHint:
+      'LangBot Space ส่งเฉพาะผู้ดูแลที่เข้าสู่ระบบด้วย LangBot Space ไปยังอีเมล Space ของตนเอง โควตาฟรี: 20 ฉบับต่อวัน 200 ฉบับต่อเดือนต่อบัญชี',
+    channel: {
+      auto: 'อัตโนมัติ',
+      autoDescription:
+        'ใช้บริการอีเมลของคุณเมื่อตั้งค่าไว้ ไม่เช่นนั้นใช้ LangBot Space',
+      autoDescriptionNoSpace: 'ใช้บริการอีเมลของคุณเมื่อตั้งค่าแล้ว',
+      autoDescriptionCloud: 'ส่งโดย LangBot Cloud',
+      cloud: 'LangBot Cloud',
+      cloudConfigured: 'บริการอีเมลทางการ',
+      cloudMissing: 'บริการอีเมลของ Cloud ไม่พร้อมใช้งานชั่วคราว',
+      instance: 'บริการอีเมลของคุณ',
+      instanceConfigured: 'ตั้งค่า {{provider}} ใน config.yaml แล้ว',
+      instanceMissing:
+        'ยังไม่ได้ตั้งค่า กำหนดส่วน email (SMTP หรือ Resend) ใน config.yaml',
+      space: 'LangBot Space (ทางการ)',
+      spaceAvailable: 'ส่งฟรีอย่างเป็นทางการไปยัง {{accounts}}',
+      spaceMissing: 'เข้าสู่ระบบด้วยบัญชี LangBot Space เพื่อใช้งาน',
+      off: 'ปิด',
+      offDescription: 'แสดงที่นี่และส่ง webhook เท่านั้น',
+      none: 'ไม่ส่ง (ไม่มีช่องทาง)',
+      ready: 'พร้อม',
+      unavailable: 'ไม่พร้อม',
+    },
+    rulesTitle: 'กฎ',
+    rulesDescription:
+      'จะเปิดการแจ้งเตือนเมื่อจำนวนความล้มเหลวในช่วงเวลาถึงเกณฑ์',
+    minutesWithin: 'นาที อย่างน้อย',
+    failuresOrMore: 'ครั้ง',
+    notifyResolved: 'แจ้งเมื่อกลับมาปกติ',
+    throttleHint:
+      'แต่ละการแจ้งเตือนส่งครั้งเดียวเมื่อเปิด จากนั้นเตือนซ้ำหลัง 6 ชม. 12 ชม. และทุก 24 ชม. หากยังล้มเหลว',
+    rule: {
+      pipeline_failures: 'แชทล้มเหลว',
+      pipeline_failuresDescription: 'ข้อผิดพลาดในการประมวลผลของแชทเดียว',
+      model_failures: 'การเรียกโมเดลล้มเหลว',
+      model_failuresDescription: 'คำขอไปยังโมเดลเดียวล้มเหลว',
+      bot_offline: 'บอทหยุดทำงานด้วยข้อผิดพลาด',
+      bot_offlineDescription: 'แจ้งทันที และกลับมาปกติเมื่อบอทเริ่มใหม่',
+    },
+    webhooksTitle: 'Webhook',
+    webhooksDescription:
+      'Webhook ที่เลือกจะได้รับเหตุการณ์ alert.fired, alert.reminder และ alert.resolved',
+    noWebhooks: 'ยังไม่มี webhook เพิ่มได้ที่ การตั้งค่า → API',
+    webhookDisabled: 'ปิดใช้งาน',
+    incidentsTitle: 'การแจ้งเตือนล่าสุด',
+    noIncidents: 'ยังไม่มีการแจ้งเตือน',
+    incidentMeta: 'ล้มเหลว {{count}} ครั้ง · เริ่ม {{time}}',
+    state: {
+      firing: 'กำลังแจ้งเตือน',
+      resolved: 'กลับมาปกติ',
+    },
+    deliveriesTitle: 'บันทึกการส่ง',
+    noDeliveries: 'ยังไม่มีการส่ง',
+    kind: {
+      fired: 'แจ้งเตือน',
+      reminder: 'เตือนซ้ำ',
+      resolved: 'กลับมาปกติ',
+      test: 'ทดสอบ',
+    },
+    via: {
+      email: 'อีเมล',
+      space: 'LangBot Space',
+      webhook: 'Webhook',
+    },
+    status: {
+      sent: 'ส่งแล้ว',
+      failed: 'ล้มเหลว',
+      rate_limited: 'เกินโควตา',
+      skipped: 'ข้าม',
+    },
+  },
+  promptLibrary: {
+    emptyTitle: 'เทมเพลตกำลังมา ✨',
+    emptyBody: 'กด “แชร์” ข้างพรอมต์ แล้วมาเป็นคนแรกกัน!',
+    bindToFavorite: 'ผูกบัญชีเพื่อบันทึกรายการโปรด',
+    originalLanguage: 'ต้นฉบับ',
+    open: 'คลังพรอมต์',
+    title: 'คลังพรอมต์',
+    description:
+      'ค้นหาพรอมต์ที่ผ่านการตรวจบน LangBot Space แล้วบันทึกการตั้งค่าหลังนำไปใช้',
+    kindMessaging: 'บทสนทนา',
+    kindAgent: 'Agent',
+    searchPlaceholder: 'ค้นหาชื่อ คำอธิบาย แท็ก หรือข้อความ',
+    tabAll: 'ทั้งหมด',
+    tabFavorites: 'รายการโปรด',
+    favoritesNeedAccount: 'ผูก LangBot Account เพื่อใช้รายการโปรด',
+    otherKindHint:
+      'กำลังดูพรอมต์ {{kind}} ซึ่งเขียนสำหรับการใช้งานอื่น ตรวจสอบก่อนนำไปใช้',
+    noFavorites: 'ยังไม่มีรายการโปรด',
+    empty: 'ไม่พบพรอมต์',
+    loadFailed: 'โหลดคลังพรอมต์ไม่สำเร็จ',
+    favoriteFailed: 'อัปเดตรายการโปรดไม่สำเร็จ',
+    applied: 'นำไปใช้แล้ว บันทึกเพื่อให้มีผล',
+    uses: 'ใช้ {{count}} ครั้ง',
+    favorite: 'บันทึก',
+    variablesHint: 'ตัวแปร:',
+    append: 'ต่อท้ายพรอมต์ปัจจุบัน',
+    replace: 'แทนที่พรอมต์ปัจจุบัน',
+    replaceTitle: 'แทนที่พรอมต์ปัจจุบัน?',
+    replaceDescription: 'พรอมต์ปัจจุบันจะถูกเขียนทับ (ยกเลิกได้ก่อนบันทึก)',
+    selectHint: 'เลือกพรอมต์ทางซ้ายเพื่อดูตัวอย่าง',
+  },
+  spaceShare: {
+    modeNew: 'เผยแพร่เป็นรายการใหม่',
+    modeUpdate: 'อัปเดตที่มีอยู่ ({{count}})',
+    pickExisting: 'เลือกรายการที่จะอัปเดต',
+    unlisted: 'ซ่อนอยู่',
+    identifierHint: 'ตัวพิมพ์เล็ก ตัวเลข - หรือ _ แก้ไขไม่ได้หลังเผยแพร่',
+    bindAccount: 'ผูกบัญชี LangBot',
+    autoTranslateNotice:
+      'เขียนเพียงภาษาเดียวก็พอ เราจะแปลเป็นภาษาอื่นให้อัตโนมัติหลังอัปโหลด',
+    shareShort: 'แชร์',
+    shareToSpace: 'แชร์ไปยัง Space',
+    findingsBlockTitle: 'พบข้อมูลรับรองที่น่าสงสัย ลบออกก่อนแชร์',
+    findingsWarnTitle: 'มีข้อมูลส่วนตัวหรือข้อมูลภายใน',
+    submitFailed: 'ส่งไม่สำเร็จ',
+    submittedTitle: 'ส่งตรวจสอบแล้ว',
+    submittedAgentReview:
+      '{{id}} กำลังตรวจอัตโนมัติ และจะแสดงบน LangBot Space เมื่ออนุมัติ',
+    submittedManualReview: '{{id}} รอการตรวจโดยเจ้าหน้าที่',
+    viewProgress: 'ดูความคืบหน้าบน LangBot Space',
+    needAccountTitle: 'ต้องใช้ LangBot Account',
+    needAccount:
+      'ผูกบัญชี LangBot เพื่อส่งผลงาน ผลงานจะเผยแพร่ในนามโปรไฟล์ผู้สร้างของบัญชีนั้นบน LangBot Space',
+    needCreatorTitle: 'ยังไม่มีโปรไฟล์ครีเอเตอร์',
+    needCreator:
+      'ตั้งค่าโปรไฟล์ผู้สร้างบน LangBot Space เพื่อส่งผลงาน ทำเพียงครั้งเดียว',
+    openCreator: 'ตั้งค่าโปรไฟล์ผู้สร้าง',
+    acknowledgeWarnings: 'ยืนยันว่าข้อมูลนี้เปิดเผยได้',
+    displayName: 'ชื่อที่แสดง',
+    identifier: 'รหัส',
+    descriptionLabel: 'คำอธิบาย',
+    changelog: 'บันทึกการเปลี่ยนแปลง',
+    reviewNotice:
+      'ผลงานจะถูกตรวจก่อนเผยแพร่บน LangBot Space การแชร์ชื่อเดิมอีกครั้งจะเป็นเวอร์ชันใหม่',
+    submit: 'ส่งตรวจสอบ',
+    promptTitle: 'แชร์พรอมต์ไปยัง LangBot Space',
+    promptDescriptionMessaging: 'เผยแพร่เป็นพรอมต์บทสนทนาสำหรับการตั้งค่าแชท',
+    promptDescriptionAgent: 'เผยแพร่เป็นพรอมต์ Agent สำหรับการตั้งค่า Agent',
+    detectedVariables: 'ตัวแปรที่พบ:',
+    skillTitle: 'แชร์ Skill ไปยัง LangBot Space',
+    skillDescription:
+      'อัปโหลดแพ็กเกจ Skill ปัจจุบัน การตรวจจะดูสคริปต์และการเรียกภายนอก',
+    packageFiles: 'ไฟล์ที่จะส่ง',
+    mcpTitle: 'แชร์เซิร์ฟเวอร์ MCP ไปยัง LangBot Space',
+    mcpDescription:
+      'รองรับเฉพาะ MCP ระยะไกล ข้อมูลรับรองจะไม่ถูกอัปโหลด แต่ถูกแทนด้วยตัวแทนค่า',
+    mcpPublishedConfig: 'การตั้งค่าที่จะเผยแพร่',
+    mcpToolsCount: 'รวมเครื่องมือ {{count}} รายการ',
+    mcpRedactedTitle: 'นำข้อมูลรับรองออก {{count}} รายการ',
+    mcpRedactedHint: 'ผู้ติดตั้งจะถูกขอค่าเหล่านี้ ตั้งชื่อที่เข้าใจง่ายได้:',
+    mcpInputLabelPlaceholder: 'ชื่อ (ค่าเริ่มต้น: {{label}})',
+    mcpNoCredentials: 'ไม่พบข้อมูลรับรอง จะเผยแพร่ตามเดิม',
+    mcpNeedsConnection:
+      'เชื่อมต่อให้สำเร็จก่อน รายการเครื่องมือจะถูกเผยแพร่ด้วย',
+    mcpFillInputsTitle: 'กรอกข้อมูลรับรองก่อนเปิดใช้',
+    mcpFillInputs:
+      'MCP จากชุมชนนี้ต้องใช้ค่าของคุณสำหรับ {{names}} แทนที่ บันทึก แล้วเปิดใช้',
+    finding: {
+      openai_key: 'คีย์ OpenAI',
+      anthropic_key: 'คีย์ Anthropic',
+      github_token: 'โทเคน GitHub',
+      slack_token: 'โทเคน Slack',
+      aws_access_key: 'คีย์ AWS',
+      google_api_key: 'คีย์ Google API',
+      private_key: 'คีย์ส่วนตัว',
+      jwt: 'โทเคน JWT',
+      langbot_key: 'คีย์ LangBot',
+      email: 'อีเมล',
+      phone: 'เบอร์โทร',
+      private_url: 'URL ภายใน',
+    },
   },
 };
 export default thTH;

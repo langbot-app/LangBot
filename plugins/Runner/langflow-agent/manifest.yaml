@@ -3,7 +3,7 @@ kind: Plugin
 metadata:
   author: langbot-team
   name: LangflowAgent
-  version: 0.2.2
+  version: 0.2.3
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/langflow-agent
   label:
     en_US: Langflow Agent

@@ -21,7 +21,14 @@ from unittest.mock import AsyncMock, Mock
 from types import SimpleNamespace
 
 from langbot.pkg.api.http.service.provider import ModelProviderService
-from langbot.pkg.entity.persistence.model import ModelProvider, LLMModel, EmbeddingModel, RerankModel
+from langbot.pkg.entity.persistence.model import (
+    ModelProvider,
+    LLMModel,
+    EmbeddingModel,
+    RerankModel,
+    ASRModel,
+    TTSModel,
+)
 from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 
 
@@ -412,12 +419,12 @@ class TestModelProviderServiceUpdateProvider:
 class TestModelProviderServiceDeleteProvider:
     """Fast guard coverage; real transaction/cache behavior is in test_provider_cascade."""
 
-    @pytest.mark.parametrize('label', ['LLM', 'Embedding', 'Rerank', None])
+    @pytest.mark.parametrize('label', ['LLM', 'Embedding', 'Rerank', 'ASR', 'TTS', None])
     async def test_delete_provider_requires_no_references(self, label):
         provider_result = Mock()
         provider_result.first.return_value = SimpleNamespace(requester='openai')
         results = [provider_result]
-        for model_label in ('LLM', 'Embedding', 'Rerank'):
+        for model_label in ('LLM', 'Embedding', 'Rerank', 'ASR', 'TTS'):
             result = Mock()
             result.scalars.return_value = ['model'] if label == model_label else []
             results.append(result)
@@ -462,6 +469,8 @@ class TestModelProviderServiceGetProviderModelCounts:
             LLMModel.__tablename__: (LLMModel, llm_result),
             EmbeddingModel.__tablename__: (EmbeddingModel, embedding_result),
             RerankModel.__tablename__: (RerankModel, rerank_result),
+            ASRModel.__tablename__: (ASRModel, Mock(scalar=Mock(return_value=4))),
+            TTSModel.__tablename__: (TTSModel, Mock(scalar=Mock(return_value=5))),
         }
 
         async def mock_execute(query):
@@ -485,6 +494,8 @@ class TestModelProviderServiceGetProviderModelCounts:
         assert result['llm_count'] == 3
         assert result['embedding_count'] == 2
         assert result['rerank_count'] == 1
+        assert result['asr_count'] == 4
+        assert result['tts_count'] == 5
 
     async def test_get_model_counts_zero_counts(self):
         """Returns zero counts when no models."""
@@ -507,6 +518,8 @@ class TestModelProviderServiceGetProviderModelCounts:
         assert result['llm_count'] == 0
         assert result['embedding_count'] == 0
         assert result['rerank_count'] == 0
+        assert result['asr_count'] == 0
+        assert result['tts_count'] == 0
 
 
 class TestModelProviderServiceFindOrCreateProvider:

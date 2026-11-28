@@ -37,6 +37,8 @@ class MonitoringMessage(Base):
     event_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
     run_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
     parent_message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    # ``runner:<runner_id>`` or ``plugin:<author>/<name>``; NULL for legacy rows.
+    handled_by = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
 
     __table_args__ = (
         sqlalchemy.Index('ix_monitoring_messages_summary_event', 'workspace_uuid', 'bot_id', 'event_id', 'role'),

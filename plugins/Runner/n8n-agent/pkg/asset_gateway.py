@@ -5,6 +5,7 @@ The parent invocation revokes tokens and drains all accepted connections.
 """
 
 import asyncio
+import contextvars
 import hmac
 import json
 import math
@@ -22,6 +23,23 @@ from langbot_plugin.api.proxies.invocation import invocation_capability
 
 MAX_BODY = 1024 * 1024
 MAX_CONNECTIONS = 16
+
+
+async def _create_tenant_free_listener(connected, host, port):
+    """Create the shared listener from an explicit, empty Context.
+
+    ``asyncio`` copies the current Context into the reader Handle that drives
+    ``accept()``, and every accepted connection task inherits that Context. Built
+    inside the registering invocation, the handle would pin that invocation's
+    configuration and revocable authority to the shared listener for as long as
+    any other installation keeps using it. The listener is tenant-agnostic: an
+    invocation Context is entered only per validated run token, in
+    ``Resolver.call_tool``.
+    """
+    return await asyncio.get_running_loop().create_task(
+        asyncio.start_server(connected, host, port, limit=16384, backlog=16),
+        context=contextvars.Context(),
+    )
 
 
 class Registration:
@@ -71,7 +89,9 @@ class Gateway:
         if len(self.tasks) >= MAX_CONNECTIONS:
             writer.close()
             return
-        task = asyncio.create_task(self.serve(reader, writer))
+        # Serve connections tenant-free too; the registration's invocation
+        # context is entered only after a run token is validated.
+        task = asyncio.create_task(self.serve(reader, writer), context=contextvars.Context())
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
 
@@ -233,7 +253,7 @@ async def register_assets(owner, api, ctx, config):
             gateway = Gateway(timeout)
             gateway.pool, gateway.key = pool, key
             try:
-                gateway.server = await asyncio.start_server(gateway.connected, key[0], key[1], limit=16384, backlog=16)
+                gateway.server = await _create_tenant_free_listener(gateway.connected, key[0], key[1])
                 host, port = gateway.server.sockets[0].getsockname()[:2]
                 host = f"[{host}]" if ":" in host else host
                 gateway.endpoint = f"http://{host}:{port}"

@@ -14,6 +14,7 @@ import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
 import sqlalchemy
 
 from . import database, sqlite_migration_backup
+from .write_admission import write_slot
 from ..entity.persistence import base, metadata, model as persistence_model
 from ..entity.persistence import workspace as persistence_workspace
 from ..entity import persistence
@@ -31,6 +32,8 @@ from .tenant_uow import (
     TENANT_POLICY_NAME,
     TENANT_SETTING,
     TENANT_TABLE_COLUMNS,
+    PUBLIC_MEDIA_KEY_SETTING,
+    PUBLIC_MEDIA_POLICY_NAME,
     CrossScopeTransactionError,
     DIRECTORY_INSTANCE_SETTING,
     DIRECTORY_PROJECTED_TENANT_TABLES,
@@ -61,6 +64,13 @@ _ALEMBIC_TENANT_TABLES = {
     'bots',
     'bot_admins',
     'binary_storages',
+    'content_objects',
+    'content_aliases',
+    'artifacts',
+    'artifact_references',
+    'artifact_publications',
+    'skill_registry',
+    'skill_versions',
     'mcp_servers',
     'model_providers',
     'codex_credentials',
@@ -70,6 +80,8 @@ _ALEMBIC_TENANT_TABLES = {
     'llm_models',
     'embedding_models',
     'rerank_models',
+    'asr_models',
+    'tts_models',
     'legacy_pipelines',
     'pipeline_run_records',
     'workflows',
@@ -91,6 +103,10 @@ _ALEMBIC_TENANT_TABLES = {
     'monitoring_embedding_calls',
     'monitoring_feedback',
     'workspace_operation_logs',
+    'alert_settings',
+    'alert_incidents',
+    'alert_deliveries',
+    'workspace_message_usage_daily',
     'langbot_vectors',
     'directory_projection_states',
     'directory_projection_inbox',
@@ -110,7 +126,7 @@ _WORKSPACE_ALEMBIC_REVISION = '0009_workspace_tenancy'
 _RESOURCE_SCOPE_ALEMBIC_REVISION = '0010_scope_resources'
 _OSS_WORKSPACE_METADATA_KEY = 'oss_workspace_uuid'
 _RELEASE_MIGRATION_ADVISORY_LOCK_ID = 0x4C414E47424F5432
-_PGVECTOR_ALLOWED_DIMENSIONS = (384, 512, 768, 1024, 1536, 3072)
+_PGVECTOR_ALLOWED_DIMENSIONS = (384, 512, 768, 1024, 1536, 2048, 3072)
 _RUNTIME_SCHEMA = 'public'
 _ALEMBIC_RUNTIME_TABLE = 'alembic_version'
 _RUNTIME_TABLE_PRIVILEGES = frozenset({'SELECT', 'INSERT', 'UPDATE', 'DELETE'})
@@ -1583,6 +1599,14 @@ class PersistenceManager:
             'check_expression': None,
         }
 
+        policies['content_objects'][PUBLIC_MEDIA_POLICY_NAME] = {
+            'command': 'r',
+            'using_expression': (
+                f'((public_media = true) AND ((public_key)::text = {setting(PUBLIC_MEDIA_KEY_SETTING)}))'
+            ),
+            'check_expression': None,
+        }
+
         directory_setting = setting(DIRECTORY_INSTANCE_SETTING)
         workspace_expression = (
             f"(((instance_uuid)::text = {directory_setting}) AND ((source)::text = 'cloud_projection'::text))"
@@ -1836,6 +1860,15 @@ class PersistenceManager:
     def tenant_uow(self, workspace_uuid: str) -> TenantUnitOfWork:
         return self._scoped_uow(PersistenceScope.workspace(workspace_uuid))
 
+    @contextlib.asynccontextmanager
+    async def tenant_write_uow(self, workspace_uuid: str, *, operation: str = 'artifact'):
+        # An already-owned transaction cannot wait behind a writer that needs it to finish.
+        active = self._active_transaction.get()
+        joined = active is not None and active.owner_task is asyncio.current_task()
+        slot = contextlib.nullcontext() if joined else write_slot(self.get_db_engine(), operation)
+        async with slot, self.tenant_uow(workspace_uuid) as uow:
+            yield uow
+
     def tenant_scope(self, workspace_uuid: str) -> PersistenceScopeBoundary:
         """Bind a Workspace without holding a database session between calls."""
 
@@ -1862,6 +1895,10 @@ class PersistenceManager:
 
     def identity_discovery_uow(self, identity_digest: str) -> TenantUnitOfWork:
         return self._scoped_uow(PersistenceScope.identity(identity_digest))
+
+    def public_media_uow(self, key: str) -> TenantUnitOfWork:
+        """Read only the exact, explicitly published media object requested by its URL."""
+        return self._scoped_uow(PersistenceScope.public_media(key))
 
     def current_session(self) -> sqlalchemy_asyncio.AsyncSession | None:
         """Return the transaction-bound session for the current task, if any."""

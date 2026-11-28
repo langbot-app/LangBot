@@ -10,6 +10,8 @@ Tests cover:
 
 from __future__ import annotations
 
+import json
+
 import pytest
 import httpx
 from unittest.mock import AsyncMock, Mock, patch
@@ -21,107 +23,29 @@ def get_telemetry_module():
     return import_module('langbot.pkg.telemetry.telemetry')
 
 
-class TestTelemetryManagerInit:
-    """Tests for TelemetryManager initialization."""
-
-    def test_init_stores_app_reference(self):
-        """Test that __init__ stores the Application reference."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        manager = telemetry.TelemetryManager(mock_app)
-        assert manager.ap is mock_app
-
-    def test_init_empty_telemetry_config(self):
-        """Test that telemetry_config starts empty."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        manager = telemetry.TelemetryManager(mock_app)
-        assert manager.telemetry_config == {}
-
-
-class TestTelemetryManagerInitialize:
-    """Tests for initialize() method."""
-
-    @pytest.mark.asyncio
-    async def test_initialize_loads_space_config(self):
-        """Test that initialize() loads space config from instance_config."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.instance_config = Mock()
-        mock_app.instance_config.data = {'space': {'url': 'https://example.com'}}
-
-        manager = telemetry.TelemetryManager(mock_app)
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'instance_config',
+    [
+        pytest.param(None, id='before-initialize'),
+        pytest.param({}, id='no-space-config'),
+        pytest.param({'space': {'url': '', 'disable_telemetry': False}}, id='no-endpoint'),
+        pytest.param({'space': {'url': 'https://example.invalid', 'disable_telemetry': True}}, id='opted-out'),
+    ],
+)
+async def test_send_does_not_open_http_client_without_active_space(instance_config):
+    app = Mock()
+    manager = get_telemetry_module().TelemetryManager(app)
+    if instance_config is not None:
+        app.instance_config.data = instance_config
         await manager.initialize()
 
-        assert manager.telemetry_config == {'url': 'https://example.com'}
+    with patch.object(httpx, 'AsyncClient') as http_client:
+        await manager.send({'query_id': 'test'})
 
-    @pytest.mark.asyncio
-    async def test_initialize_handles_empty_space_config(self):
-        """Test that initialize() handles missing space config."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.instance_config = Mock()
-        mock_app.instance_config.data = {}
-
-        manager = telemetry.TelemetryManager(mock_app)
-        await manager.initialize()
-
-        assert manager.telemetry_config == {}
-
-
-class TestTelemetrySendEarlyReturn:
-    """Tests for early return conditions in send() method."""
-
-    @pytest.mark.asyncio
-    async def test_send_returns_when_config_empty(self):
-        """Test that send() returns early when telemetry_config is empty."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.logger = Mock()
-
-        manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {}
-
-        # Should return without making HTTP calls
-        with patch.object(httpx, 'AsyncClient') as client:
-            await manager.send({'query_id': 'test'})
-        client.assert_not_called()
-
-        # No HTTP client should be created, no logs should be written
-        mock_app.logger.debug.assert_not_called()
-        mock_app.logger.warning.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_send_returns_when_telemetry_disabled(self):
-        """Test that send() returns early when disable_telemetry is True."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.logger = Mock()
-
-        manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {'disable_telemetry': True, 'url': 'https://example.com'}
-
-        with patch.object(httpx, 'AsyncClient') as client:
-            await manager.send({'query_id': 'test'})
-        client.assert_not_called()
-
-        mock_app.logger.debug.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_send_returns_when_server_empty(self):
-        """Test that send() returns early when server URL is empty."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.logger = Mock()
-
-        manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {'url': ''}
-
-        with patch.object(httpx, 'AsyncClient') as client:
-            await manager.send({'query_id': 'test'})
-        client.assert_not_called()
-
-        mock_app.logger.debug.assert_not_called()
+    http_client.assert_not_called()
+    app.logger.debug.assert_not_called()
+    app.logger.warning.assert_not_called()
 
 
 class TestPayloadSanitization:
@@ -129,33 +53,6 @@ class TestPayloadSanitization:
 
     IMPORTANT: These tests verify actual behavior, not source code strings.
     """
-
-    @pytest.mark.asyncio
-    async def test_sanitize_null_query_id(self):
-        """Test that null query_id is converted to empty string."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.logger = Mock()
-
-        manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {'url': 'https://example.com'}
-
-        captured_payloads = []
-
-        async def mock_post(url, json):
-            captured_payloads.append(json)
-            return Mock(status_code=200, text='', json=Mock(return_value={'code': 0}))
-
-        mock_client = Mock()
-        mock_client.post = mock_post
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-
-        with patch.object(httpx, 'AsyncClient', return_value=mock_client):
-            await manager.send({'query_id': None})
-
-        assert len(captured_payloads) == 1
-        assert captured_payloads[0]['query_id'] == ''
 
     @pytest.mark.asyncio
     async def test_sanitize_query_id_string_value(self):
@@ -183,49 +80,6 @@ class TestPayloadSanitization:
 
         assert len(captured_payloads) == 1
         assert captured_payloads[0]['query_id'] == 'abc123'
-
-    @pytest.mark.asyncio
-    async def test_sanitize_null_string_fields(self):
-        """Test that null string fields are converted to empty strings."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.logger = Mock()
-
-        manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {'url': 'https://example.com'}
-
-        captured_payloads = []
-
-        async def mock_post(url, json):
-            captured_payloads.append(json)
-            return Mock(status_code=200, text='', json=Mock(return_value={'code': 0}))
-
-        mock_client = Mock()
-        mock_client.post = mock_post
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-
-        payload = {
-            'query_id': 'test',
-            'adapter': None,
-            'runner': None,
-            'runner_category': None,
-            'model_name': None,
-            'version': None,
-            'edition': None,
-            'error': None,
-            'timestamp': None,
-        }
-
-        with patch.object(httpx, 'AsyncClient', return_value=mock_client):
-            await manager.send(payload)
-
-        assert len(captured_payloads) == 1
-        result = captured_payloads[0]
-
-        # All null string fields should be empty strings
-        for field in ['adapter', 'runner', 'runner_category', 'model_name', 'version', 'edition', 'error', 'timestamp']:
-            assert result[field] == '', f'Field {field} should be empty string, got {result[field]}'
 
     @pytest.mark.asyncio
     async def test_sanitize_string_fields_preserve_values(self):
@@ -267,148 +121,29 @@ class TestPayloadSanitization:
         assert result['model_name'] == 'gpt-4'
         assert result['version'] == 'v1.0.0'
 
-    @pytest.mark.asyncio
-    async def test_sanitize_duration_ms_invalid_value(self):
-        """Test that invalid duration_ms is converted to 0."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.logger = Mock()
 
-        manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {'url': 'https://example.com'}
+@pytest.mark.asyncio
+@pytest.mark.parametrize('suffix', ['', '/'], ids=['bare-url', 'trailing-slash'])
+async def test_configured_space_receives_one_normalized_telemetry_request(suffix):
+    app = Mock()
+    app.instance_config.data = {'space': {'url': f'https://example.invalid{suffix}'}}
+    manager = get_telemetry_module().TelemetryManager(app)
+    await manager.initialize()
+    requests = []
 
-        captured_payloads = []
+    def handle_request(request):
+        requests.append(request)
+        return httpx.Response(200, json={'code': 0})
 
-        async def mock_post(url, json):
-            captured_payloads.append(json)
-            return Mock(status_code=200, text='', json=Mock(return_value={'code': 0}))
+    payload = {'query_id': 'wired-config'}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle_request)) as client:
+        manager._client = client
+        await manager.send(payload)
 
-        mock_client = Mock()
-        mock_client.post = mock_post
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-
-        with patch.object(httpx, 'AsyncClient', return_value=mock_client):
-            await manager.send({'query_id': 'test', 'duration_ms': 'invalid'})
-
-        assert len(captured_payloads) == 1
-        assert captured_payloads[0]['duration_ms'] == 0
-
-    @pytest.mark.asyncio
-    async def test_sanitize_duration_ms_none_value(self):
-        """Test that None duration_ms is converted to 0."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.logger = Mock()
-
-        manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {'url': 'https://example.com'}
-
-        captured_payloads = []
-
-        async def mock_post(url, json):
-            captured_payloads.append(json)
-            return Mock(status_code=200, text='', json=Mock(return_value={'code': 0}))
-
-        mock_client = Mock()
-        mock_client.post = mock_post
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-
-        with patch.object(httpx, 'AsyncClient', return_value=mock_client):
-            await manager.send({'query_id': 'test', 'duration_ms': None})
-
-        assert len(captured_payloads) == 1
-        assert captured_payloads[0]['duration_ms'] == 0
-
-    @pytest.mark.asyncio
-    async def test_sanitize_duration_ms_valid_value(self):
-        """Test that valid duration_ms is converted to int."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.logger = Mock()
-
-        manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {'url': 'https://example.com'}
-
-        captured_payloads = []
-
-        async def mock_post(url, json):
-            captured_payloads.append(json)
-            return Mock(status_code=200, text='', json=Mock(return_value={'code': 0}))
-
-        mock_client = Mock()
-        mock_client.post = mock_post
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-
-        with patch.object(httpx, 'AsyncClient', return_value=mock_client):
-            await manager.send({'query_id': 'test', 'duration_ms': 123.45})
-
-        assert len(captured_payloads) == 1
-        assert captured_payloads[0]['duration_ms'] == 123
-
-
-class TestURLConstruction:
-    """Tests for URL construction in send() method.
-
-    IMPORTANT: These tests verify actual URLs sent, not source code strings.
-    """
-
-    @pytest.mark.asyncio
-    async def test_url_strip_trailing_slash(self):
-        """Test that trailing slash is stripped from server URL."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.logger = Mock()
-
-        manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {'url': 'https://example.com/'}
-
-        captured_urls = []
-
-        async def mock_post(url, json):
-            captured_urls.append(url)
-            return Mock(status_code=200, text='', json=Mock(return_value={'code': 0}))
-
-        mock_client = Mock()
-        mock_client.post = mock_post
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-
-        with patch.object(httpx, 'AsyncClient', return_value=mock_client):
-            await manager.send({'query_id': 'test'})
-
-        assert len(captured_urls) == 1
-        assert captured_urls[0] == 'https://example.com/api/v1/telemetry'
-        # No trailing slash before /api/v1/telemetry
-
-    @pytest.mark.asyncio
-    async def test_url_without_trailing_slash(self):
-        """Test that URL without trailing slash works correctly."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.logger = Mock()
-
-        manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {'url': 'https://example.com'}
-
-        captured_urls = []
-
-        async def mock_post(url, json):
-            captured_urls.append(url)
-            return Mock(status_code=200, text='', json=Mock(return_value={'code': 0}))
-
-        mock_client = Mock()
-        mock_client.post = mock_post
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-
-        with patch.object(httpx, 'AsyncClient', return_value=mock_client):
-            await manager.send({'query_id': 'test'})
-
-        assert len(captured_urls) == 1
-        assert captured_urls[0] == 'https://example.com/api/v1/telemetry'
+    assert [(request.method, str(request.url)) for request in requests] == [
+        ('POST', 'https://example.invalid/api/v1/telemetry')
+    ]
+    assert json.loads(requests[0].content) == payload
 
 
 class TestHTTPScenarios:

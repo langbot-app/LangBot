@@ -415,6 +415,16 @@ def _bytes_to_data_uri(data: bytes) -> str:
         mime_type = 'application/pdf'
     elif data[:4] == b'PK\x03\x04':
         mime_type = 'application/zip'
+    elif data.startswith(b'#!AMR'):
+        mime_type = 'audio/amr'
+    elif data.startswith((b'#!SILK_V3', b'\x02#!SILK_V3')):
+        mime_type = 'audio/silk'
+    elif data.startswith(b'RIFF') and len(data) >= 12 and data[8:12] == b'WAVE':
+        mime_type = 'audio/wav'
+    elif data.startswith(b'ID3') or (len(data) >= 2 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0):
+        mime_type = 'audio/mpeg'
+    elif data.startswith(b'OggS'):
+        mime_type = 'audio/ogg'
     else:
         mime_type = 'application/octet-stream'
 
@@ -508,6 +518,29 @@ async def parse_wecom_bot_message(
             return await asyncio.to_thread(_bytes_to_data_uri, data)
         return None
 
+    async def _safe_download_voice(url: str, per_msg_aeskey: str = '') -> Tuple[Optional[str], Optional[int]]:
+        """Download, decrypt, and transcode voice message to MP3 data URI for universal browser playback."""
+        data, _filename = await _safe_download(url, per_msg_aeskey)
+        if not data:
+            return None, None
+        from langbot.pkg.utils import audio as audio_utils
+
+        fmt = audio_utils.detect_audio_format(data)
+        duration = int(round(audio_utils.estimate_audio_duration(data, fmt))) if data else None
+
+        # Transcode AMR / SILK to MP3 so web browsers and media players can decode directly
+        if fmt in ('amr', 'silk') and audio_utils.is_ffmpeg_available():
+            try:
+                mp3_bytes = await audio_utils.transcode_audio(data, 'mp3', fmt)
+                b64 = base64.b64encode(mp3_bytes).decode('utf-8')
+                return f'data:audio/mpeg;base64,{b64}', duration
+            except Exception as exc:
+                await logger.warning(f'Failed to transcode {fmt} voice to MP3: {exc}')
+
+        mime = 'audio/mpeg' if fmt == 'mp3' else ('audio/wav' if fmt == 'wav' else f'audio/{fmt}')
+        b64 = base64.b64encode(data).decode('utf-8')
+        return f'data:{mime};base64,{b64}', duration
+
     if msg_type == 'text':
         message_data['content'] = msg_json.get('text', {}).get('content')
     elif msg_type == 'markdown':
@@ -534,10 +567,12 @@ async def parse_wecom_bot_message(
         }
         if voice_info.get('content'):
             message_data['content'] = voice_info.get('content')
-        # if (message_data['voice'].get('filesize') or 0) <= max_inline_file_size:
-        #     voice_base64 = await _safe_download_as_data_uri(download_url, per_msg_aeskey)
-        #     if voice_base64:
-        #         message_data['voice']['base64'] = voice_base64
+        if (message_data['voice'].get('filesize') or 0) <= max_inline_file_size:
+            voice_base64, duration = await _safe_download_voice(download_url, per_msg_aeskey)
+            if voice_base64:
+                message_data['voice']['base64'] = voice_base64
+                if duration:
+                    message_data['voice']['length'] = duration
     elif msg_type == 'video':
         video_info = msg_json.get('video', {}) or {}
         download_url = video_info.get('url')
@@ -638,9 +673,11 @@ async def parse_wecom_bot_message(
                 if voice_info.get('content'):
                     texts.append(voice_info.get('content'))
                 if (voice_data.get('filesize') or 0) <= max_inline_file_size:
-                    voice_base64 = await _safe_download_as_data_uri(download_url, item_aeskey)
+                    voice_base64, duration = await _safe_download_voice(download_url, item_aeskey)
                     if voice_base64:
                         voice_data['base64'] = voice_base64
+                        if duration:
+                            voice_data['length'] = duration
                 voices.append(voice_data)
             elif item_type == 'video':
                 video_info = item.get('video', {}) or {}
@@ -740,6 +777,12 @@ async def parse_wecom_bot_message(
             }
             if voice_info.get('content'):
                 quote_data['content'] = voice_info.get('content')
+            if (voice_data.get('filesize') or 0) <= max_inline_file_size:
+                voice_base64, duration = await _safe_download_voice(download_url, item_aeskey)
+                if voice_base64:
+                    voice_data['base64'] = voice_base64
+                    if duration:
+                        voice_data['length'] = duration
             # Same as private chat: append aeskey to url for plugin processing
             if download_url and item_aeskey:
                 voice_data['url'] = download_url + f'?aeskey={item_aeskey}'

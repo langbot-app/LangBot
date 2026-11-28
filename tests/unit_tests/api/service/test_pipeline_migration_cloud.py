@@ -105,17 +105,12 @@ def test_conversation_authority_is_captured_before_runner_returns():
 
     old, new = NS(), NS()
     config = planner(SOURCE)['config']
-    query = NS(pipeline_config=config, pipeline_uuid='one', session=NS(using_conversation=new))
-    binding = NS(
-        processor_type='pipeline', processor_id='one', runner_id=RID, runner_config=config['ai']['runner_config'][RID]
+    query = NS(pipeline_config=config, pipeline_uuid='one', session=NS(using_conversation=old))
+    authority = InteractionManager._pipeline_tool_admission(
+        {'execution_query': query},
+        {'processor_type': 'pipeline', 'processor_id': 'one'},
+        RID,
     )
-    authority = InteractionManager._pipeline_admission(
-        binding,
-        NS(id=RID),
-        {
-            '_query': query,
-            '_pipeline_expected_config': copy.deepcopy(config),
-            '_pipeline_conversation': old,
-        },
-    )
+    assert authority['authority_check']() is True
+    query.session.using_conversation = new
     assert authority['authority_check']() is False

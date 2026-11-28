@@ -59,7 +59,7 @@ _ALIASES = {
     'Invalid TOTP code': 'Invalid TOTP or recovery code',
     'Too many attempts, try again later': 'Too many requests. Please try again later.',
     'The configured Agent runner is unavailable': 'Agent runner temporarily unavailable. Please try again.',
-    'The configured Agent runner is not authorized': 'Agent runner not authorized for this pipeline.',
+    'The configured Agent runner is not authorized': 'Agent runner not authorized for this chat.',
     'The Agent runner could not complete this test': 'Agent runner execution failed.',
     'Forbidden': 'Permission denied',
     'Member removal permission is required': 'Permission denied',
@@ -158,6 +158,15 @@ def error_text(code: int | str, message: str) -> str:
     if language.get() == DEFAULT_LANGUAGE:
         return message
     messages = {
+        'artifact_principal_not_supported': 'Artifact operations require an account or API key',
+        'artifact_expired': 'Artifact has expired',
+        'artifact_in_use': 'Artifact is still in use',
+        'artifact_integrity_failed': 'Artifact content failed integrity verification',
+        'artifact_publish_not_authorized': 'Artifact publication is not authorized',
+        'artifact_read_timeout': 'Artifact read timed out',
+        'artifact_manager_conflict': 'Artifact has a different manager',
+        'artifact_legacy_commit_unmanaged': 'Legacy output requires explicit manager assignment',
+        'artifact_run_not_active': 'Artifact access requires an active run lease',
         'permission_denied': 'Permission denied',
         'resource_not_found': 'Resource not found',
         'membership_not_found': 'Resource not found',

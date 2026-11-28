@@ -9,6 +9,7 @@ import pytest
 from langbot_plugin.api.entities.builtin.platform.events import MemberJoinedEvent
 
 from langbot.pkg.platform.botmgr import RuntimeBot
+from langbot.pkg.api.context import ExecutionContext
 from langbot.pkg.persistence.tenant_uow import PersistenceScope, PersistenceScopeBoundary
 
 
@@ -17,7 +18,9 @@ def make_bot(subscriptions):
     bot.bot_entity = SimpleNamespace(
         uuid='bot', adapter='aiocqhttp', event_bindings=[], plugin_processors=subscriptions
     )
-    bot.execution_context = 'workspace'
+    bot.execution_context = ExecutionContext(
+        instance_uuid='instance', workspace_uuid='workspace', placement_generation=1
+    )
     bot.workspace_uuid = 'workspace'
     bot.placement_generation = 1
     bot.ap = SimpleNamespace(workspace_service=SimpleNamespace(get_execution_binding=AsyncMock()))
@@ -110,7 +113,7 @@ async def test_missing_processor_is_logged_without_unscoped_lookup():
     bot = make_bot([])
     bot.ap = SimpleNamespace(agent_service=SimpleNamespace(get_agent=AsyncMock(return_value=None)))
     await bot._dispatch_plugin_subscription(MemberJoinedEvent(), None, 'missing')
-    bot.ap.agent_service.get_agent.assert_awaited_once_with('workspace', 'missing')
+    bot.ap.agent_service.get_agent.assert_awaited_once_with(bot.execution_context, 'missing')
     assert bot._record_event_route_trace.await_args.kwargs['status'] == 'failed'
 
 

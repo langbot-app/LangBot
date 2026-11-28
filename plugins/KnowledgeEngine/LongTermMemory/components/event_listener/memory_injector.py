@@ -6,7 +6,9 @@ import re
 from langbot_plugin.api.definition.components.common.event_listener import EventListener
 from langbot_plugin.api.entities import events, context
 from langbot_plugin.api.entities.builtin.provider.message import Message
+from store.recall import bounded_profile
 from langbot_plugin.api.proxies.query_based_api import QueryBasedAPIProxy
+from store.candidate_extraction import extract_candidates
 
 logger = logging.getLogger(__name__)
 
@@ -81,31 +83,7 @@ class MemoryInjector(EventListener):
             )
             return
 
-        # Remove memory KB from naive RAG pre-processing; L2 episodic
-        # retrieval is handled below so it works regardless of whether
-        # AgenticRAG is installed.
         query_vars = await api.get_query_vars()
-        raw_kb_uuids = query_vars.get("_knowledge_base_uuids", [])
-        if "_knowledge_base_uuids" not in query_vars:
-            logger.warning(
-                "[LongTermMemory] naive RAG suppression unavailable: query_id=%s kb_id=%s reason=missing_kb_uuid_query_var",
-                event_ctx.query_id,
-                kb_id,
-            )
-        elif not isinstance(raw_kb_uuids, list):
-            logger.warning(
-                "[LongTermMemory] naive RAG suppression skipped: query_id=%s kb_id=%s reason=invalid_kb_uuid_query_var",
-                event_ctx.query_id,
-                kb_id,
-            )
-        else:
-            kb_uuids: list[str] = raw_kb_uuids
-            if kb_id not in kb_uuids:
-                kb_uuids = []
-            else:
-                kb_uuids = [u for u in kb_uuids if u != kb_id]
-                await api.set_query_var("_knowledge_base_uuids", kb_uuids)
-
         # --- L2 episodic memory retrieval ---
         retrieved_episodes: list[dict] = []
         user_message_text: str = query_vars.get("user_message_text", "")
@@ -157,6 +135,27 @@ class MemoryInjector(EventListener):
                     kb_id,
                 )
 
+        # Suppress duplicate automatic RAG only after scoped L2 recall.
+        # The Host checks recall against the effective list for this query,
+        # so removing this KB before recall would deny the plugin's own lookup.
+        naive_rag_suppressed = False
+        raw_kb_uuids = query_vars.get("_knowledge_base_uuids")
+        if "_knowledge_base_uuids" not in query_vars:
+            logger.warning(
+                "[LongTermMemory] naive RAG suppression unavailable: query_id=%s kb_id=%s reason=missing_kb_uuid_query_var",
+                event_ctx.query_id,
+                kb_id,
+            )
+        elif not isinstance(raw_kb_uuids, list):
+            logger.warning(
+                "[LongTermMemory] naive RAG suppression skipped: query_id=%s kb_id=%s reason=invalid_kb_uuid_query_var",
+                event_ctx.query_id,
+                kb_id,
+            )
+        elif kb_id in raw_kb_uuids:
+            await api.set_query_var("_knowledge_base_uuids", [u for u in raw_kb_uuids if u != kb_id])
+            naive_rag_suppressed = True
+
         isolation = config.get("isolation", "session")
         bot_uuid = await api.get_bot_uuid()
 
@@ -206,9 +205,11 @@ class MemoryInjector(EventListener):
         # Build injection parts
         blocks: list[str] = []
         if session_profile_block.strip():
-            blocks.append(session_profile_block)
+            if bounded_profile(session_profile_block):
+                blocks.append(session_profile_block)
         if speaker_profile_block.strip():
-            blocks.append(speaker_profile_block)
+            if bounded_profile(speaker_profile_block):
+                blocks.append(speaker_profile_block)
 
         # Inject current speaker identity so LLM knows who is talking
         if sender_name:
@@ -229,7 +230,7 @@ class MemoryInjector(EventListener):
                     "kb_id": kb_id,
                     "isolation": isolation,
                     "speaker": {"id": sender_id, "name": sender_name},
-                    "naive_rag_suppressed": "_knowledge_base_uuids" in query_vars,
+                    "naive_rag_suppressed": naive_rag_suppressed,
                     "session_profile": _profile_summary(session_profile),
                     "speaker_profile": _profile_summary(speaker_profile),
                     "episodes": retrieved_episodes,
@@ -293,12 +294,13 @@ class MemoryInjector(EventListener):
             "enabled": bool(config.get("candidate_extraction_enabled", False)),
             "auto_apply": bool(config.get("candidate_auto_apply", False)),
             "max_per_turn": max(1, min(10, as_int("candidate_max_per_turn", 3))),
+            "model_uuid": str(config.get("candidate_model_uuid", "") or "").strip(),
         }
 
     @staticmethod
-    def _candidate_text_from_query_vars(query_vars: dict, fallback: str = "") -> str:
+    def _candidate_text_from_query_vars(query_vars: dict) -> str:
         text = str(query_vars.get("user_message_text", "") or "").strip()
-        return text or str(fallback or "").strip()
+        return text
 
     @staticmethod
     def _redact_sensitive_candidate_text(text: str) -> str:
@@ -441,21 +443,33 @@ class MemoryInjector(EventListener):
         )
         sender_id = str(getattr(event, "sender_id", "") or query_vars.get("sender_id", "") or "")
         sender_name = str(query_vars.get("sender_name", "") or "")
-        text = self._candidate_text_from_query_vars(
-            query_vars,
-            getattr(event, "response_text", ""),
-        )
+        text = self._candidate_text_from_query_vars(query_vars)
         candidates = self._infer_candidates_from_text(
             text,
             sender_id=sender_id,
             sender_name=sender_name,
             max_candidates=candidate_config["max_per_turn"],
         )
+        if candidate_config["model_uuid"] and not any(item["candidate_type"] == "ignore" for item in candidates):
+            try:
+                candidates = await extract_candidates(
+                    self.plugin, candidate_config["model_uuid"], text,
+                    store._now_timestamp(), sender_id, candidate_config["max_per_turn"],
+                )
+            except ValueError as exc:
+                # Invalid model output is expected occasionally; keep it to one line.
+                logger.warning("Memory candidate model extraction failed; no candidates written: %s", exc)
+                return
+            except Exception:
+                logger.exception("Memory candidate model extraction failed; no candidates written")
+                return
         if not candidates:
             return
 
         embedding_model_uuid = str(config.get("embedding_model_uuid", "") or "")
         for candidate in candidates:
+            candidate["payload"].setdefault("claim_type", "user_statement")
+            candidate["payload"]["source_ref"] = f"query:{event_ctx.query_id}"
             entry = await store.append_memory_candidate(
                 scope_key=session_key,
                 user_key=user_key,
@@ -466,7 +480,7 @@ class MemoryInjector(EventListener):
                 sender_name=sender_name,
                 query_id=event_ctx.query_id,
             )
-            if not candidate_config["auto_apply"]:
+            if not candidate_config["auto_apply"] or candidate["payload"]["claim_type"] == "inference":
                 continue
             if not embedding_model_uuid:
                 continue

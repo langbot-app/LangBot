@@ -3,7 +3,7 @@ title: "Knowledge Base"
 description: "Build RAG knowledge bases in LangBot. Give your AI bot document retrieval and grounded answers across messaging platforms."
 ---
 
-LangBot natively supports RAG (Retrieval-Augmented Generation). You can create a knowledge base and bind it to a pipeline, allowing the pipeline to answer questions based on the contents of the knowledge base.
+LangBot natively supports RAG (Retrieval-Augmented Generation). You can create a knowledge base and bind it to a Chat, allowing the Chat to answer questions based on the contents of the knowledge base.
 
 Knowledge bases are powered by Knowledge Engine plugins, with different Knowledge Engines providing different indexing and retrieval strategies. You can find available Knowledge Engine plugins in the [Plugin Marketplace](https://space.langbot.app/market).
 
@@ -22,9 +22,11 @@ Different Knowledge Engines have different configuration parameters, depending o
 
 If the selected Knowledge Engine supports document upload (declares `DOC_INGESTION` capability), after creation go to the "Documents" tab of your knowledge base and upload documents. LangBot will automatically parse and index these in the background.
 
+LangRAG's internal text parser recognizes UTF-8 and Unicode byte-order marks before using legacy encoding detection. This preserves punctuation and accented characters in UTF-8 files. Corrected decoding applies during ingestion, so affected documents already in an index require re-ingestion.
+
 ## Using the Knowledge Base
 
-Go to your pipeline configuration, under the "AI" tab, choose `Local Agent` as the runner, then select the knowledge base you just created.
+Go to your Chat configuration, under the "AI" tab, choose `Local Agent` as the runner, then select the knowledge base you just created.
 
 <img width="400px" src="/images/zh/deploy/knowledge/use_local_agent.png" alt="use_kb" />
 
@@ -45,7 +47,7 @@ Rerank models are optional. When configured, candidate documents from knowledge 
 LangBot's built-in knowledge base can be used only when the runner is set to `Local Agent`. For other runners, refer to their documentation.
 </Info>
 
-Now you can use the knowledge base in `Chat Debug`, or through the bot linked to this pipeline:
+Now you can use the knowledge base in `Chat Debug`, or through the bot linked to this Chat:
 
 <img width="400px" src="/images/zh/deploy/knowledge/use_kb_in_chat.png" alt="use_kb_in_chat" />
 

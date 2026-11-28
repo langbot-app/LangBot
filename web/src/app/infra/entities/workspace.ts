@@ -23,6 +23,19 @@ export interface WorkspaceMembership {
   created_at: string;
 }
 
+/** Cloud daily message quota for the current Workspace (UTC calendar day). */
+export interface MessageQuota {
+  /** False when the plan does not cap messages (limit/remaining are -1). */
+  enforced: boolean;
+  limit: number;
+  used: number;
+  remaining: number;
+  period: 'day';
+  timezone: string;
+  period_start: string;
+  resets_at: string;
+}
+
 export interface CurrentWorkspace {
   current_plan?: {
     subscription_started_at?: number | null;
@@ -39,6 +52,8 @@ export interface CurrentWorkspace {
   /** Signed Cloud display metadata; never used for client-side authorization. */
   plan_name?: string | null;
   limitation?: Record<string, number> | null;
+  /** Null when the entitlement could not be resolved. */
+  message_quota?: MessageQuota | null;
 }
 
 export interface WorkspaceSpaceBilling {
@@ -69,4 +84,46 @@ export type WorkspaceInvitationDeliveryStatus = 'sent' | 'link_only' | 'failed';
 export interface WorkspaceInvitationDelivery {
   status: WorkspaceInvitationDeliveryStatus;
   provider: 'resend' | 'smtp' | null;
+}
+
+export interface E2BConfigInput {
+  api_url: string;
+  sandbox_url: string;
+  api_key?: string;
+  template: string;
+}
+
+export type WorkspaceLimits = Partial<
+  Record<
+    | 'timeout_sec'
+    | 'idle_ttl_sec'
+    | 'max_sessions'
+    | 'cpus'
+    | 'memory_mb'
+    | 'pids_limit'
+    | 'workspace_quota_mb',
+    number
+  >
+>;
+
+export interface WorkspaceSandboxSettings {
+  limits?: WorkspaceLimits;
+  limit_caps?: WorkspaceLimits;
+  e2b?: Omit<E2BConfigInput, 'api_key'> & {
+    api_key_configured: boolean;
+    source: string;
+  };
+  e2b_configurable?: boolean;
+  backend: string | null;
+  effective_backend: string | null;
+  enabled: boolean;
+  backends: {
+    name: string;
+    available: boolean;
+    reason: string | null;
+    managed_processes?: boolean;
+    template_validated?: boolean;
+    template_validation?: string;
+    limit_capabilities?: Partial<Record<keyof WorkspaceLimits, boolean>>;
+  }[];
 }

@@ -27,6 +27,7 @@ PLUGINS = [
     "deerflow-agent",
     "dify-agent",
     "langflow-agent",
+    "multica-agent",
     "n8n-agent",
     "tbox-agent",
     "weknora-agent",

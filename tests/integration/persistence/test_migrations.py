@@ -123,6 +123,198 @@ class TestSQLiteMigrationUpgrade:
     """Tests for upgrade to head workflow."""
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize('enabled', [True, False])
+    @pytest.mark.parametrize('json_null', [True, False])
+    async def test_plugin_permission_backfill_preserves_enabled(self, sqlite_engine, enabled, json_null):
+        from types import SimpleNamespace
+
+        from langbot.pkg.api.application.plugin_capabilities import LEGACY_CAPABILITIES
+        from langbot.pkg.api.application.plugin_permissions import permission_status
+
+        metadata = sqlalchemy.MetaData()
+        settings = sqlalchemy.Table(
+            'plugin_settings',
+            metadata,
+            sqlalchemy.Column('uuid', sqlalchemy.String, primary_key=True),
+            sqlalchemy.Column('enabled', sqlalchemy.Boolean),
+            *(
+                sqlalchemy.Column(name, sqlalchemy.JSON)
+                for name in ('permission_declaration', 'permission_grants', 'permission_snapshot')
+            ),
+        )
+        empty = None if json_null else sqlalchemy.null()
+        async with sqlite_engine.begin() as conn:
+            await conn.run_sync(metadata.create_all)
+            await conn.execute(
+                settings.insert().values(
+                    uuid='legacy',
+                    enabled=enabled,
+                    permission_declaration=empty,
+                    permission_grants=empty,
+                    permission_snapshot=empty,
+                )
+            )
+            await conn.execute(
+                settings.insert().values(
+                    uuid='pending',
+                    enabled=False,
+                    permission_declaration=empty,
+                    permission_grants={},
+                    permission_snapshot=empty,
+                )
+            )
+        await run_alembic_stamp(sqlite_engine, '0043_speech_models')
+        await run_alembic_upgrade(sqlite_engine)
+        async with sqlite_engine.connect() as conn:
+            row = (await conn.execute(settings.select().where(settings.c.uuid == 'legacy'))).mappings().one()
+            pending = (await conn.execute(settings.select().where(settings.c.uuid == 'pending'))).mappings().one()
+        expected = {'workspace_operations': [], 'capabilities': sorted(LEGACY_CAPABILITIES)}
+        assert row['permission_grants'] == row['permission_snapshot'] == expected
+        assert row['enabled'] is enabled
+        assert not permission_status(None, SimpleNamespace(**row))['pending_confirmation']
+        assert pending['permission_grants'] == {} and pending['permission_snapshot'] is None
+        await run_alembic_downgrade(sqlite_engine, '0043_speech_models')
+        await run_alembic_upgrade(sqlite_engine)
+        async with sqlite_engine.connect() as conn:
+            row = (await conn.execute(settings.select().where(settings.c.uuid == 'legacy'))).mappings().one()
+        assert row['permission_grants'] == row['permission_snapshot'] == expected
+        assert row['enabled'] is enabled
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('existing_columns', [None, [], ['permission_grants']])
+    async def test_plugin_permission_schema_round_trip(self, sqlite_engine, existing_columns):
+        permission_columns = {'permission_declaration', 'permission_grants', 'permission_snapshot'}
+        if existing_columns is not None:
+            metadata = sqlalchemy.MetaData()
+            sqlalchemy.Table(
+                'plugin_settings',
+                metadata,
+                sqlalchemy.Column('uuid', sqlalchemy.String, primary_key=True),
+                *(sqlalchemy.Column(name, sqlalchemy.JSON) for name in existing_columns),
+            )
+            async with sqlite_engine.begin() as conn:
+                await conn.run_sync(metadata.create_all)
+        await run_alembic_stamp(sqlite_engine, '0044_plugin_permissions')
+        await run_alembic_downgrade(sqlite_engine, '0043_speech_models')
+        for _ in range(2):
+            await run_alembic_upgrade(sqlite_engine)
+            async with sqlite_engine.connect() as conn:
+                exists = await conn.run_sync(lambda sync: sqlalchemy.inspect(sync).has_table('plugin_settings'))
+                assert exists == (existing_columns is not None)
+                if exists:
+                    columns = await conn.run_sync(
+                        lambda sync: {
+                            column['name'] for column in sqlalchemy.inspect(sync).get_columns('plugin_settings')
+                        }
+                    )
+                    assert permission_columns <= columns
+            await run_alembic_downgrade(sqlite_engine, '0043_speech_models')
+            if existing_columns is not None:
+                async with sqlite_engine.connect() as conn:
+                    columns = await conn.run_sync(
+                        lambda sync: {
+                            column['name'] for column in sqlalchemy.inspect(sync).get_columns('plugin_settings')
+                        }
+                    )
+                    assert columns == {'uuid'}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('has_table', [False, True])
+    async def test_monitoring_handled_by_round_trip(self, sqlite_engine, has_table):
+        """0045 is idempotent and keeps existing monitoring rows (LANG-320)."""
+        metadata = sqlalchemy.MetaData()
+        messages = sqlalchemy.Table(
+            'monitoring_messages',
+            metadata,
+            sqlalchemy.Column('id', sqlalchemy.String(255), primary_key=True),
+            sqlalchemy.Column('runner_name', sqlalchemy.String(255)),
+        )
+        if has_table:
+            async with sqlite_engine.begin() as conn:
+                await conn.run_sync(metadata.create_all)
+                await conn.execute(messages.insert().values(id='legacy', runner_name='runner'))
+
+        def inspect(sync):
+            inspector = sqlalchemy.inspect(sync)
+            if not inspector.has_table('monitoring_messages'):
+                return None, None
+            return (
+                {column['name'] for column in inspector.get_columns('monitoring_messages')},
+                {index['name'] for index in inspector.get_indexes('monitoring_messages')},
+            )
+
+        await run_alembic_stamp(sqlite_engine, '0044_plugin_permissions')
+        for _ in range(2):
+            await run_alembic_upgrade(sqlite_engine, '0045_monitoring_handled_by')
+            async with sqlite_engine.connect() as conn:
+                columns, indexes = await conn.run_sync(inspect)
+                if has_table:
+                    assert 'handled_by' in columns
+                    assert 'ix_monitoring_messages_handled_by' in indexes
+                    row = (await conn.execute(text('SELECT runner_name, handled_by FROM monitoring_messages'))).one()
+                    assert tuple(row) == ('runner', None)
+                else:
+                    assert columns is None
+            await run_alembic_downgrade(sqlite_engine, '0044_plugin_permissions')
+            async with sqlite_engine.connect() as conn:
+                columns, _ = await conn.run_sync(inspect)
+                assert columns is None or 'handled_by' not in columns
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('with_model_parents', [False, True])
+    async def test_speech_upgrade_preserves_pipeline_and_model_constraints(self, sqlite_engine, with_model_parents):
+        metadata = sqlalchemy.MetaData()
+        if with_model_parents:
+            sqlalchemy.Table('workspaces', metadata, sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True))
+            sqlalchemy.Table(
+                'model_providers',
+                metadata,
+                sqlalchemy.Column('uuid', sqlalchemy.String(255), primary_key=True),
+                sqlalchemy.Column('workspace_uuid', sqlalchemy.String(36), nullable=False),
+                sqlalchemy.UniqueConstraint('workspace_uuid', 'uuid'),
+            )
+        pipelines = sqlalchemy.Table(
+            'legacy_pipelines',
+            metadata,
+            sqlalchemy.Column('uuid', sqlalchemy.String(255), primary_key=True),
+            sqlalchemy.Column('stages', sqlalchemy.JSON),
+            sqlalchemy.Column('config', sqlalchemy.JSON),
+        )
+        stages = ['GroupRespondRuleCheckStage', 'PreContentFilterStage', 'ResponseWrapper', 'LongTextProcessStage']
+        async with sqlite_engine.begin() as conn:
+            await conn.run_sync(metadata.create_all)
+            await conn.execute(
+                pipelines.insert().values(uuid='pipeline', stages=stages, config={'ai': {'model': 'llm'}})
+            )
+        await run_alembic_stamp(sqlite_engine, '0042_sqlite_incremental_vacuum')
+        await run_alembic_upgrade(sqlite_engine, '0043_speech_models')
+        async with sqlite_engine.connect() as conn:
+            pipeline = (await conn.execute(pipelines.select())).one()
+            assert pipeline.stages == [
+                'GroupRespondRuleCheckStage',
+                'SpeechRecognitionStage',
+                'PreContentFilterStage',
+                'ResponseWrapper',
+                'TextToSpeechStage',
+                'LongTextProcessStage',
+            ]
+            assert pipeline.config['ai'] == {'model': 'llm'}
+            assert pipeline.config['speech']['speech-recognition']['enabled'] is False
+            assert pipeline.config['speech']['text-to-speech']['enabled'] is False
+            for table_name in ('asr_models', 'tts_models'):
+                assert (
+                    await conn.run_sync(lambda sync: sqlalchemy.inspect(sync).has_table(table_name))
+                    is with_model_parents
+                )
+                if with_model_parents:
+                    foreign_keys = await conn.run_sync(
+                        lambda sync: sqlalchemy.inspect(sync).get_foreign_keys(table_name)
+                    )
+                    provider_key = next(key for key in foreign_keys if key['referred_table'] == 'model_providers')
+                    assert provider_key['constrained_columns'] == ['workspace_uuid', 'provider_uuid']
+                    assert provider_key['referred_columns'] == ['workspace_uuid', 'uuid']
+
+    @pytest.mark.asyncio
     async def test_execution_filter_index_round_trip_preserves_history(self, sqlite_engine):
         from langbot.pkg.entity.persistence.monitoring import MonitoringMessage
 
@@ -164,7 +356,8 @@ class TestSQLiteMigrationUpgrade:
         expected = {
             name: columns
             for name, columns in original.items()
-            if name not in {index_name, 'ix_monitoring_messages_summary_event'}
+            # Indexes owned by later migrations disappear on downgrade to 0039.
+            if name not in {index_name, 'ix_monitoring_messages_summary_event', 'ix_monitoring_messages_handled_by'}
         }
         expected['ix_monitoring_messages_workspace_timestamp'] = ['workspace_uuid', 'timestamp']
         assert remaining == expected

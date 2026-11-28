@@ -34,8 +34,11 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
-
-type ToolSource = NonNullable<PluginTool['source']>;
+import ToolGroupChecklist from '@/app/home/components/tool-groups/ToolGroupChecklist';
+import {
+  buildToolSourceGroups,
+  normalizeToolSource,
+} from '@/app/home/components/tool-groups/toolGroups';
 
 type BoundMCPResource = {
   server_uuid?: string;
@@ -52,19 +55,6 @@ type PipelineExtensions = Awaited<
 >;
 type AvailablePlugin = PipelineExtensions['available_plugins'][number];
 
-type ToolProviderGroup = {
-  key: string;
-  name: string;
-  tools: PluginTool[];
-};
-
-type ToolSourceGroup = {
-  key: ToolSource | string;
-  label: string;
-  groups: ToolProviderGroup[];
-  total: number;
-};
-
 type MCPToolOwner = {
   serverId?: string;
   serverName: string;
@@ -75,16 +65,6 @@ type PluginToolOwner = {
 };
 
 type BoundPlugin = PipelineExtensions['bound_plugins'][number];
-
-const BUILTIN_TOOL_NAMES = new Set([
-  'exec',
-  'read',
-  'write',
-  'edit',
-  'glob',
-  'grep',
-]);
-const TOOL_SOURCE_ORDER = ['plugin', 'mcp', 'skill', 'builtin'];
 
 function getMCPResourceKey(server: MCPServer, uri: string) {
   return `${server.uuid || server.name}:${uri}`;
@@ -144,19 +124,6 @@ function InfoTooltip({ label }: { label: string }) {
   );
 }
 
-function normalizeToolSource(tool: PluginTool): ToolSource | string {
-  if (tool.source) {
-    return tool.source;
-  }
-  if (BUILTIN_TOOL_NAMES.has(tool.name)) {
-    return 'builtin';
-  }
-  if (tool.name.startsWith('langbot_mcp_')) {
-    return 'mcp';
-  }
-  return 'plugin';
-}
-
 function hasReliableSourceMetadata(tool: PluginTool) {
   if (!tool.source) {
     return false;
@@ -165,56 +132,6 @@ function hasReliableSourceMetadata(tool: PluginTool) {
     return Boolean(tool.source_id || tool.source_name);
   }
   return true;
-}
-
-function buildToolSourceGroups(
-  tools: PluginTool[],
-  sourceLabels: Record<string, string>,
-) {
-  const sourceGroups = new Map<string, Map<string, ToolProviderGroup>>();
-
-  for (const tool of tools) {
-    const source = normalizeToolSource(tool);
-    const providerName =
-      tool.source_name ||
-      (source === 'builtin' ? 'LangBot' : sourceLabels[source] || source);
-    const providerKey = `${source}:${tool.source_id || providerName}`;
-
-    if (!sourceGroups.has(source)) {
-      sourceGroups.set(source, new Map());
-    }
-
-    const providerGroups = sourceGroups.get(source)!;
-    if (!providerGroups.has(providerKey)) {
-      providerGroups.set(providerKey, {
-        key: providerKey,
-        name: providerName,
-        tools: [],
-      });
-    }
-    providerGroups.get(providerKey)!.tools.push(tool);
-  }
-
-  return Array.from(sourceGroups.entries())
-    .sort(([left], [right]) => {
-      const leftIndex = TOOL_SOURCE_ORDER.indexOf(left);
-      const rightIndex = TOOL_SOURCE_ORDER.indexOf(right);
-      return (
-        (leftIndex === -1 ? TOOL_SOURCE_ORDER.length : leftIndex) -
-        (rightIndex === -1 ? TOOL_SOURCE_ORDER.length : rightIndex)
-      );
-    })
-    .map(([source, providerGroups]): ToolSourceGroup => ({
-      key: source,
-      label: sourceLabels[source] || source,
-      groups: Array.from(providerGroups.values()).sort((left, right) =>
-        left.name.localeCompare(right.name),
-      ),
-      total: Array.from(providerGroups.values()).reduce(
-        (count, group) => count + group.tools.length,
-        0,
-      ),
-    }));
 }
 
 function buildMCPToolOwners(servers: MCPServer[]) {
@@ -588,10 +505,6 @@ export default function ToolResourceSelectors({
     [t],
   );
 
-  const availableToolGroups = useMemo(
-    () => buildToolSourceGroups(availableTools, sourceLabels),
-    [availableTools, sourceLabels],
-  );
   const selectedToolGroups = useMemo(
     () => buildToolSourceGroups(selectedTools, sourceLabels),
     [selectedTools, sourceLabels],
@@ -956,93 +869,23 @@ export default function ToolResourceSelectors({
             <DialogHeader>
               <DialogTitle>{t('pipelines.runner.selectTools')}</DialogTitle>
             </DialogHeader>
-            <div className="flex-1 space-y-5 overflow-y-auto pr-2">
-              {availableToolGroups.map((sourceGroup) => {
-                return (
-                  <div key={sourceGroup.key} className="rounded-lg border">
-                    <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-2">
-                      <span className="text-sm font-semibold">
-                        {sourceGroup.label}
-                      </span>
-                      {pipelineId && sourceGroup.key === 'mcp' && (
-                        <InfoTooltip
-                          label={t('pipelines.runner.mcpToolsScopeTooltip')}
-                        />
-                      )}
-                      {sourceGroup.key === 'skill' && (
-                        <InfoTooltip
-                          label={t('pipelines.runner.skillToolsScopeTooltip')}
-                        />
-                      )}
-                      <Badge variant="outline" className="ml-auto">
-                        {sourceGroup.total}
-                      </Badge>
-                    </div>
-                    <div className="space-y-4 p-3">
-                      {sourceGroup.groups.map((providerGroup) => (
-                        <div key={providerGroup.key} className="space-y-2">
-                          <div className="flex items-center gap-2 px-1 text-xs font-medium text-muted-foreground">
-                            <Wrench className="h-3.5 w-3.5" />
-                            <span className="min-w-0 truncate">
-                              {providerGroup.name}
-                            </span>
-                            <Badge
-                              variant="outline"
-                              className="ml-auto h-5 px-1.5 text-[11px]"
-                            >
-                              {providerGroup.tools.length}
-                            </Badge>
-                          </div>
-                          <div className="space-y-2">
-                            {providerGroup.tools.map((tool) => {
-                              const selected = tempSelectedToolNames.includes(
-                                tool.name,
-                              );
-                              return (
-                                <div
-                                  key={`${providerGroup.key}:${tool.name}`}
-                                  className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 hover:bg-accent"
-                                  onClick={() =>
-                                    setTempSelectedToolNames((prev) =>
-                                      prev.includes(tool.name)
-                                        ? prev.filter(
-                                            (name) => name !== tool.name,
-                                          )
-                                        : [...prev, tool.name],
-                                    )
-                                  }
-                                >
-                                  <Checkbox
-                                    checked={selected}
-                                    aria-label={`Select ${tool.name}`}
-                                  />
-                                  <div className="min-w-0 flex-1">
-                                    <div className="truncate font-medium">
-                                      {tool.name}
-                                    </div>
-                                    {tool.human_desc && (
-                                      <div className="truncate text-sm text-muted-foreground">
-                                        {tool.human_desc}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-              {availableToolGroups.length === 0 && (
-                <div className="flex h-24 items-center justify-center rounded-lg border-2 border-dashed border-border">
-                  <p className="text-sm text-muted-foreground">
-                    {t('pipelines.runner.noToolsSelected')}
-                  </p>
-                </div>
-              )}
+            <div className="flex-1 overflow-y-auto pr-2">
+              <ToolGroupChecklist
+                tools={availableTools}
+                value={tempSelectedToolNames}
+                onChange={setTempSelectedToolNames}
+                renderSourceExtra={(source) =>
+                  pipelineId && source === 'mcp' ? (
+                    <InfoTooltip
+                      label={t('pipelines.runner.mcpToolsScopeTooltip')}
+                    />
+                  ) : source === 'skill' ? (
+                    <InfoTooltip
+                      label={t('pipelines.runner.skillToolsScopeTooltip')}
+                    />
+                  ) : null
+                }
+              />
             </div>
             <DialogFooter>
               <Button

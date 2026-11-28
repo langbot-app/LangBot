@@ -1,6 +1,8 @@
 import quart
 from sqlalchemy.exc import IntegrityError
+from langbot.pkg.command.catalog import builtin_commands
 
+from .....application import ApplicationAPIException
 from ....authz import Permission, has_permission
 from ....context import RequestContext
 from ....service.bot_errors import BotApplyError, bot_error_message
@@ -18,6 +20,81 @@ class BotsRouterGroup(group.RouterGroup):
         ), 400
 
     async def initialize(self) -> None:
+        @self.route(
+            '/_/upgrade-checks',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def list_upgrade_checks(request_context: RequestContext):
+            return self.success(data=await self.ap.bot_service.list_upgrade_checks(request_context))
+
+        @self.route(
+            '/_/upgrade-checks/confirm-all',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def confirm_all(request_context: RequestContext):
+            return self.success(data=await self.ap.bot_service.confirm_upgrade_checks(request_context, None))
+
+        @self.route(
+            '/_/upgrade-checks/confirm',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def confirm_check(request_context: RequestContext):
+            payload = await quart.request.get_json(silent=True)
+            if not isinstance(payload, dict) or not isinstance(payload.get('id'), str):
+                return self.http_status(400, 'invalid_upgrade_check', 'invalid_upgrade_check')
+            try:
+                return self.success(
+                    data=await self.ap.bot_service.confirm_upgrade_checks(request_context, payload['id'])
+                )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+
+        @self.route(
+            '/_/upgrade-checks/action',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def upgrade_action(request_context: RequestContext):
+            payload = await quart.request.get_json(silent=True)
+            if not isinstance(payload, dict) or not all(isinstance(payload.get(key), str) for key in ('id', 'action')):
+                return self.http_status(400, 'invalid_upgrade_check', 'invalid_upgrade_check')
+            try:
+                return self.success(
+                    data=await self.ap.bot_service.apply_upgrade_action(
+                        request_context, payload['id'], payload['action']
+                    )
+                )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+
+        @self.route(
+            '/<bot_uuid>/upgrade-checks/promote-route-policy',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def promote_route_policy(bot_uuid: str, request_context: RequestContext):
+            try:
+                return self.success(data=await self.ap.bot_service.promote_route_policy(request_context, bot_uuid))
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+
+        @self.route(
+            '/_/builtin-commands',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def list_builtin_commands(request_context: RequestContext):
+            return self.success(data={'commands': builtin_commands()})
+
         @self.route(
             '',
             methods=['GET'],
@@ -52,6 +129,32 @@ class BotsRouterGroup(group.RouterGroup):
             except ValueError as exc:
                 return self.http_status(400, 'invalid_bot_config', bot_error_message(exc, json_data))
             return self.success(data={'uuid': bot_uuid})
+
+        @self.route(
+            '/_/message-policy/metadata',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            return self.success(data=self.ap.bot_service.get_message_policy_metadata())
+
+        @self.route(
+            '/<bot_uuid>/plugin-registrations',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(bot_uuid: str, request_context: RequestContext) -> str:
+            result = await self.ap.bot_service.get_plugin_registrations(
+                request_context,
+                bot_uuid,
+                quart.request.args.get('route_id'),
+                include_disabled=quart.request.args.get('include_disabled') in {'1', 'true'},
+            )
+            if result is None:
+                return self.http_status(404, -1, 'bot not found')
+            return self.success(data=result)
 
         @self.route(
             '/<bot_uuid>',
@@ -194,6 +297,31 @@ class BotsRouterGroup(group.RouterGroup):
             return self.success(data=result)
 
         @self.route(
+            '/<bot_uuid>/platform-api',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(bot_uuid: str, request_context: RequestContext) -> str:
+            json_data = await quart.request.get_json(silent=True)
+            if not isinstance(json_data, dict) or not isinstance(json_data.get('action'), str):
+                return self.http_status(400, 'invalid_input', 'action is required')
+            params = json_data.get('params') or {}
+            if not isinstance(params, dict):
+                return self.http_status(400, 'invalid_input', 'params must be an object')
+            try:
+                result = await self.ap.application_api.execute(
+                    'bot.platform_api.call',
+                    request_context,
+                    {'bot_uuid': bot_uuid, 'action': json_data['action'], 'params': params},
+                )
+            except ApplicationAPIException as exc:
+                return quart.jsonify(
+                    code=exc.error.code, msg=exc.error.message, data=exc.error.details or {}
+                ), exc.error.status_code
+            return self.success(data=result)
+
+        @self.route(
             '/<bot_uuid>/admins',
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
@@ -220,6 +348,8 @@ class BotsRouterGroup(group.RouterGroup):
                     request_context, bot_uuid, launcher_type, launcher_id
                 )
                 return self.success(data={'id': admin_id})
+            except ValueError as e:
+                return self.http_status(400, -1, str(e))
             except IntegrityError as e:
                 return self.http_status(409, -1, str(e))
 

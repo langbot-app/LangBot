@@ -5,7 +5,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Bot, Workflow, Puzzle } from 'lucide-react';
+import {
+  Blocks,
+  Bot,
+  Workflow,
+  Puzzle,
+  SquareTerminal,
+  Loader2,
+} from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { AgentKind } from '@/app/infra/entities/api';
 import { Button } from '@/components/ui/button';
@@ -46,11 +53,14 @@ export default function AgentCreateContent({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const quotas = useWorkspaceQuotaStatus();
-  const [kind, setKind] = useState<AgentKind>(allowedKinds?.[0] ?? 'pipeline');
+  const [kind, setKind] = useState<AgentKind>(
+    allowedKinds?.includes('pipeline') || !allowedKinds
+      ? 'pipeline'
+      : allowedKinds[0],
+  );
   const [metadata, setMetadata] = useState<GetAgentMetadataResponseData>();
   const [runner, setRunner] = useState('');
   const [loading, setLoading] = useState(true);
-  const createdPipeline = useRef<string | null>(null);
   const loadMetadata = useCallback(async () => {
     setLoading(true);
     try {
@@ -65,18 +75,28 @@ export default function AgentCreateContent({
     void loadMetadata();
   }, [loadMetadata]);
   const runnerOptions =
-    kind === 'event_processor'
-      ? (metadata?.event_processors ?? []).map((item) => ({
+    kind === 'command_processor'
+      ? (metadata?.command_processors ?? []).map((item) => ({
           name: item.id,
-          label: { en_US: item.id, zh_Hans: item.id, ...item.label },
+          label: {
+            en_US: item.plugin_id,
+            zh_Hans: item.plugin_id,
+          },
         }))
-      : (metadata?.runner_config?.stages
-          .find((stage) => stage.name === 'runner')
-          ?.config.find((item) => item.name === 'id')?.options ?? []);
+      : kind === 'event_processor'
+        ? (metadata?.event_processors ?? []).map((item) => ({
+            name: item.id,
+            label: { en_US: item.id, zh_Hans: item.id, ...item.label },
+          }))
+        : (metadata?.runner_config?.stages
+            .find((stage) => stage.name === 'runner')
+            ?.config.find((item) => item.name === 'id')?.options ?? []);
   const selectorLabel = t(
-    kind === 'event_processor'
-      ? 'agents.selectProcessorPlugin'
-      : 'agents.selectAgentRunner',
+    kind === 'command_processor'
+      ? 'agents.commandProcessor.selectPlugin'
+      : kind === 'event_processor'
+        ? 'agents.selectProcessorPlugin'
+        : 'agents.selectAgentRunner',
   );
   const formSchema = z.object({
     name: z.string().min(1, { message: t('agents.nameRequired') }),
@@ -108,14 +128,22 @@ export default function AgentCreateContent({
 
   function handleKindChange(nextKind: AgentKind) {
     const previousDefaultEmoji =
-      kind === 'pipeline' ? '⚙️' : kind === 'event_processor' ? '🧩' : '🤖';
+      kind === 'pipeline'
+        ? '⚙️'
+        : kind === 'command_processor'
+          ? '⌨️'
+          : kind === 'event_processor'
+            ? '🧩'
+            : '🤖';
     const nextDefaultEmoji =
       nextKind === 'pipeline'
         ? '⚙️'
-        : nextKind === 'event_processor'
-          ? '🧩'
-          : '🤖';
-    if ((kind === 'event_processor') !== (nextKind === 'event_processor')) {
+        : nextKind === 'command_processor'
+          ? '⌨️'
+          : nextKind === 'event_processor'
+            ? '🧩'
+            : '🤖';
+    if (kind !== nextKind) {
       setRunner('');
     }
     setKind(nextKind);
@@ -147,63 +175,24 @@ export default function AgentCreateContent({
       (stage) => stage.name === runner,
     );
     const parameters = runnerStage ? getDefaultValues(runnerStage.config) : {};
-    const config = {
+
+    const defaultWorkspaceOps = runner.startsWith('plugin:') ? [] : undefined;
+
+    const config: Record<string, unknown> = {
       runner: { id: runner },
       runner_config: { [runner]: parameters },
+      ...(defaultWorkspaceOps !== undefined
+        ? { allowed_workspace_operations: defaultWorkspaceOps }
+        : {}),
     };
     try {
-      if (
-        kind === 'pipeline' &&
-        runnerStage?.config.some((field) =>
-          [
-            'llm-model-selector',
-            'select-llm-model',
-            'model-fallback-selector',
-          ].includes(field.type),
-        )
-      ) {
-        const { uuid } = await httpClient.getDefaultModel();
-        if (uuid) {
-          for (const field of runnerStage.config) {
-            if (
-              ['llm-model-selector', 'select-llm-model'].includes(field.type) &&
-              !parameters[field.name]
-            )
-              parameters[field.name] = uuid;
-            if (
-              field.type === 'model-fallback-selector' &&
-              !parameters[field.name]?.primary
-            ) {
-              parameters[field.name] = {
-                ...parameters[field.name],
-                primary: uuid,
-                fallbacks: parameters[field.name]?.fallbacks ?? [],
-              };
-            }
-          }
-        }
-      }
       if (kind === 'pipeline') {
-        // Keep the created ID if configuration fails, so retry does not create duplicates.
-        const uuid =
-          createdPipeline.current ??
-          (
-            await httpClient.createAgent({
-              kind,
-              name: values.name,
-              description: '',
-              emoji: values.emoji,
-            })
-          ).uuid;
-        createdPipeline.current = uuid;
-        const { pipeline } = await httpClient.getPipeline(uuid);
-        await httpClient.updatePipeline(uuid, {
+        const { uuid } = await httpClient.createAgent({
+          kind,
           name: values.name,
+          description: '',
           emoji: values.emoji,
-          config: {
-            ...pipeline.config,
-            ai: { ...pipeline.config.ai, ...config },
-          },
+          runner_id: runner,
         });
         toast.success(t('agents.createSuccess'));
         onCreated(uuid);
@@ -214,7 +203,17 @@ export default function AgentCreateContent({
           description: '',
           emoji: values.emoji,
           component_ref: runner,
-          ...(kind === 'event_processor' ? {} : { config }),
+          ...(kind === 'command_processor'
+            ? {}
+            : kind === 'event_processor'
+              ? defaultWorkspaceOps !== undefined
+                ? {
+                    config: {
+                      allowed_workspace_operations: defaultWorkspaceOps,
+                    },
+                  }
+                : {}
+              : { config }),
         });
         toast.success(t('agents.createSuccess'));
         onCreated(response.uuid);
@@ -238,20 +237,146 @@ export default function AgentCreateContent({
       icon: Workflow,
       title: t('agents.pipelineType'),
       description: t('agents.pipelineTypeDescription'),
+      bestFor: t('agents.diagram.pipeline.bestFor'),
     },
     {
       kind: 'agent' as const,
       icon: Bot,
       title: t('agents.agentType'),
       description: t('agents.agentTypeDescription'),
+      bestFor: t('agents.diagram.agent.bestFor'),
     },
+  ].filter((option) => !allowedKinds || allowedKinds.includes(option.kind));
+  const pluginOptions = [
     {
       kind: 'event_processor' as const,
       icon: Puzzle,
       title: t('agents.eventProcessor.type'),
       description: t('agents.eventProcessor.description'),
+      bestFor: t('agents.diagram.eventProcessor.bestFor'),
     },
-  ];
+    // Command settings are created from a plugin's row on the bot's Plugins
+    // tab, so command processors are only offered when a caller asks for them.
+    ...(allowedKinds?.includes('command_processor')
+      ? [
+          {
+            kind: 'command_processor' as const,
+            icon: SquareTerminal,
+            title: t('agents.commandProcessor.type'),
+            description: t('agents.commandProcessor.description'),
+            bestFor: t('agents.diagram.commandProcessor.bestFor'),
+          },
+        ]
+      : []),
+  ].filter((option) => !allowedKinds || allowedKinds.includes(option.kind));
+  const selectedPlugin = pluginOptions.find((option) => option.kind === kind);
+  const optionClass =
+    'h-auto w-full items-start justify-start gap-3 rounded-lg border px-4 py-3.5 text-left whitespace-normal shadow-none hover:bg-muted/40 data-[state=on]:border-[#2288ee]/50 data-[state=on]:bg-blue-50/60 data-[state=on]:text-foreground data-[state=on]:shadow-none dark:data-[state=on]:border-blue-500/50 dark:data-[state=on]:bg-blue-500/10';
+  function renderOption(option: (typeof typeOptions)[number]) {
+    const Icon = option.icon;
+    return (
+      <ToggleGroupItem
+        key={option.kind}
+        value={option.kind}
+        data-processor-kind={option.kind}
+        aria-label={`${option.title} ${option.description}`}
+        className={optionClass}
+      >
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background text-[#2288ee] shadow-xs">
+          <Icon className="size-4" />
+        </span>
+        <span className="min-w-0 space-y-1">
+          <span className="block text-sm font-medium text-foreground">
+            {option.title}
+          </span>
+          <span className="block text-sm font-normal leading-relaxed text-muted-foreground">
+            {option.description}
+          </span>
+          {kind === option.kind && (
+            <span className="block text-xs font-normal leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground/80">
+                {t('agents.diagram.bestFor')}
+              </span>
+              {option.bestFor}
+            </span>
+          )}
+        </span>
+      </ToggleGroupItem>
+    );
+  }
+  // Plugin-provided kinds stay compact until chosen; details appear for the selection only.
+  function renderPluginGroup() {
+    return (
+      <div
+        className={`w-full rounded-lg border px-4 py-3.5 transition-colors ${
+          selectedPlugin
+            ? 'border-[#2288ee]/50 bg-blue-50/60 dark:border-blue-500/50 dark:bg-blue-500/10'
+            : 'hover:bg-muted/40'
+        }`}
+      >
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-auto w-full items-start justify-start gap-3 whitespace-normal p-0 text-left font-normal hover:bg-transparent"
+          data-processor-kind={
+            pluginOptions.length === 1 ? pluginOptions[0].kind : undefined
+          }
+          aria-pressed={
+            pluginOptions.length === 1 ? Boolean(selectedPlugin) : undefined
+          }
+          onClick={() => {
+            if (!selectedPlugin && pluginOptions[0])
+              handleKindChange(pluginOptions[0].kind);
+          }}
+        >
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background text-[#2288ee] shadow-xs">
+            <Blocks className="size-4" />
+          </span>
+          <span className="min-w-0 space-y-1">
+            <span className="block text-sm font-medium">
+              {t('agents.fromPlugin')}
+            </span>
+            <span className="block text-sm leading-relaxed text-muted-foreground">
+              {t('agents.fromPluginDescription')}
+            </span>
+          </span>
+        </Button>
+        {/* A single plugin kind needs no second choice. */}
+        {pluginOptions.length > 1 && (
+          <div className="mt-3 flex flex-wrap gap-2 pl-12">
+            {pluginOptions.map((option) => {
+              const Icon = option.icon;
+              return (
+                <ToggleGroupItem
+                  key={option.kind}
+                  value={option.kind}
+                  data-processor-kind={option.kind}
+                  aria-label={`${option.title} ${option.description}`}
+                  className="h-8 flex-none gap-1.5 rounded-md border bg-background px-3 text-sm font-normal shadow-none data-[state=on]:border-[#2288ee] data-[state=on]:bg-background data-[state=on]:text-[#2288ee]"
+                >
+                  <Icon className="size-4" />
+                  {option.title}
+                </ToggleGroupItem>
+              );
+            })}
+          </div>
+        )}
+        {selectedPlugin && (
+          <div className="mt-3 space-y-1 pl-12">
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {selectedPlugin.description}
+            </p>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground/80">
+                {t('agents.diagram.bestFor')}
+              </span>
+              {selectedPlugin.bestFor}
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
   return (
     <div className="flex h-full flex-col">
       <div
@@ -277,7 +402,12 @@ export default function AgentCreateContent({
             (kind !== 'workflow' && !runner)
           }
         >
-          {t('common.submit')}
+          {form.formState.isSubmitting && (
+            <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
+          )}
+          {form.formState.isSubmitting
+            ? t('common.loading')
+            : t('common.submit')}
         </Button>
       </div>
 
@@ -311,38 +441,10 @@ export default function AgentCreateContent({
                   }}
                   variant="outline"
                   spacing={3}
-                  className="grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-1"
+                  className="flex w-full flex-col items-stretch gap-3"
                 >
-                  {typeOptions
-                    .filter(
-                      (option) =>
-                        !allowedKinds || allowedKinds.includes(option.kind),
-                    )
-                    .map((option) => {
-                      const Icon = option.icon;
-                      return (
-                        <div key={option.kind} className="relative w-full">
-                          <ToggleGroupItem
-                            value={option.kind}
-                            data-processor-kind={option.kind}
-                            aria-label={`${option.title} ${option.description}`}
-                            className="h-auto min-h-28 w-full items-start justify-start gap-3 rounded-lg border px-4 py-4 text-left whitespace-normal shadow-none hover:bg-muted/40 data-[state=on]:border-[#2288ee]/50 data-[state=on]:bg-blue-50/60 data-[state=on]:text-foreground data-[state=on]:shadow-none dark:data-[state=on]:border-blue-500/50 dark:data-[state=on]:bg-blue-500/10"
-                          >
-                            <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background text-[#2288ee] shadow-xs">
-                              <Icon className="size-4" />
-                            </span>
-                            <span className="min-w-0 space-y-1.5">
-                              <span className="block text-sm font-medium text-foreground">
-                                {option.title}
-                              </span>
-                              <span className="block text-sm font-normal leading-relaxed text-muted-foreground">
-                                {option.description}
-                              </span>
-                            </span>
-                          </ToggleGroupItem>
-                        </div>
-                      );
-                    })}
+                  {typeOptions.map(renderOption)}
+                  {pluginOptions.length > 0 && renderPluginGroup()}
                 </ToggleGroup>
               </section>
 
@@ -364,55 +466,88 @@ export default function AgentCreateContent({
                         className={kind === 'workflow' ? 'hidden' : 'space-y-2'}
                       >
                         <p className="text-sm font-medium">{selectorLabel}</p>
-                        <RunnerSelect
-                          key={kind === 'event_processor' ? 'event' : 'agent'}
-                          usage={kind === 'event_processor' ? 'event' : 'agent'}
-                          options={runnerOptions}
-                          label={selectorLabel}
-                          value={runner}
-                          onValueChange={selectRunner}
-                          disabled={loading || form.formState.isSubmitting}
-                          installScope={`processor-create-${kind === 'event_processor' ? 'event' : 'agent'}`}
-                          onInstalled={(installed) => {
-                            setMetadata((previous) =>
-                              previous
-                                ? {
-                                    ...previous,
-                                    runner_config: installed.configTab,
-                                  }
-                                : previous,
-                            );
-                            selectRunner(
-                              installed.runner.name,
-                              extractI18nObject(installed.runner.label),
-                            );
-                          }}
-                          onEventProcessorInstalled={(component) => {
-                            setMetadata((previous) =>
-                              previous
-                                ? {
-                                    ...previous,
-                                    event_processors: [
-                                      ...(
-                                        previous.event_processors ?? []
-                                      ).filter(
-                                        (item) => item.id !== component.id,
-                                      ),
-                                      component,
-                                    ],
-                                  }
-                                : previous,
-                            );
-                            selectRunner(
-                              component.id,
-                              extractI18nObject({
-                                en_US: component.id,
-                                zh_Hans: component.id,
-                                ...component.label,
-                              }),
-                            );
-                          }}
-                        />
+                        {kind === 'command_processor' ? (
+                          <RunnerSelect
+                            key="command"
+                            usage="command"
+                            options={runnerOptions}
+                            label={selectorLabel}
+                            value={runner}
+                            onValueChange={selectRunner}
+                            disabled={loading || form.formState.isSubmitting}
+                            installScope="processor-create-command"
+                            onCommandProcessorInstalled={(component) => {
+                              setMetadata((previous) =>
+                                previous
+                                  ? {
+                                      ...previous,
+                                      command_processors: [
+                                        ...(
+                                          previous.command_processors ?? []
+                                        ).filter(
+                                          (item) => item.id !== component.id,
+                                        ),
+                                        component,
+                                      ],
+                                    }
+                                  : previous,
+                              );
+                              selectRunner(component.id, component.plugin_id);
+                            }}
+                          />
+                        ) : (
+                          <RunnerSelect
+                            key={kind === 'event_processor' ? 'event' : 'agent'}
+                            usage={
+                              kind === 'event_processor' ? 'event' : 'agent'
+                            }
+                            options={runnerOptions}
+                            label={selectorLabel}
+                            value={runner}
+                            onValueChange={selectRunner}
+                            disabled={loading || form.formState.isSubmitting}
+                            installScope={`processor-create-${kind === 'event_processor' ? 'event' : 'agent'}`}
+                            onInstalled={(installed) => {
+                              setMetadata((previous) =>
+                                previous
+                                  ? {
+                                      ...previous,
+                                      runner_config: installed.configTab,
+                                    }
+                                  : previous,
+                              );
+                              selectRunner(
+                                installed.runner.name,
+                                extractI18nObject(installed.runner.label),
+                              );
+                            }}
+                            onEventProcessorInstalled={(component) => {
+                              setMetadata((previous) =>
+                                previous
+                                  ? {
+                                      ...previous,
+                                      event_processors: [
+                                        ...(
+                                          previous.event_processors ?? []
+                                        ).filter(
+                                          (item) => item.id !== component.id,
+                                        ),
+                                        component,
+                                      ],
+                                    }
+                                  : previous,
+                              );
+                              selectRunner(
+                                component.id,
+                                extractI18nObject({
+                                  en_US: component.id,
+                                  zh_Hans: component.id,
+                                  ...component.label,
+                                }),
+                              );
+                            }}
+                          />
+                        )}
                       </div>
                       <div className="flex gap-4 items-start">
                         <FormField

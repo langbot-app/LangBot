@@ -1,0 +1,60 @@
+{
+  "protocol": {
+    "protocol_id": "locomo-text-real-pipeline-calibration-v1",
+    "embedding_model": "all-MiniLM-L6-v2:384",
+    "answer_model": "deepseek-flash",
+    "answer_policy": "source-only-v1",
+    "answer_temperature": 0,
+    "answer_max_tokens": 256,
+    "judge_model": "deepseek-flash",
+    "judge_policy": "strict-v1",
+    "judge_request_settings": {
+      "thinking": {
+        "type": "disabled"
+      }
+    },
+    "context_budget_bytes": 12000,
+    "execution_layer": "langbot.pipeline"
+  },
+  "provenance": {
+    "core_sha": "b05872e8e1a248b9773503ad56daef27ee5550a3",
+    "core_local_patch_sha256": "079c0b1571bd4f7fc00543bd0478faa031c162d6ab5c80b6c42d2fe6fe327187",
+    "candidate_core_commit": "476b78a23",
+    "sdk_version": "0.7.25 in-tree overlay",
+    "plugins": {
+      "LongTermMemory": {
+        "version": "0.2.8",
+        "archive_sha256": "e4a3c418d552094ab866eac3eb552ef7b1b6176b3f053825bba7b65e4cb8d834"
+      },
+      "PowerContext": {
+        "version": "0.1.3",
+        "archive_sha256": "c380005158936293a992d9a879476644c579ba7da4f22879981c386f27809078"
+      },
+      "LangRAG": {
+        "version": "0.2.2",
+        "archive_sha256": "453a6f60095fc58e9300cd05e390660ca27801eed6d59af2bca15c328ff114c6"
+      },
+      "LocalAgent": {
+        "version": "0.2.14",
+        "archive_sha256": "c5fdb5c5d2712423bb44919f2d1708c4a8652dfa6df0a6011071453748f5ef87"
+      }
+    },
+    "vector_backend": "Chroma local",
+    "dataset_input": "timestamped text-only conv-26",
+    "pc_scope": "scp_7z8rd4kj92n7envsge4f51d392",
+    "ltm_user_key": "bot:websocket-proxy-bot",
+    "parser_experiment": "fresh KB byte-integrity check; existing KB made under historical decoder/dependencies; QA difference not single-patch causal",
+    "parser_new_kb": "f45c83ac-c059-46ce-99fb-5ebe9d594ee9",
+    "parser_old_kb": "ee852652-e958-4b03-a4a5-aa2fbe20a4e0",
+    "parser_chardet": "7.7.0"
+  },
+  "timeout_seconds": 180,
+  "arms": {
+    "langrag_parser_fixed": {
+      "pipelines": {
+        "conv-26": "bea3cd52-f760-43ad-ae28-09a0bbb5d22b"
+      },
+      "ingestion_policy": "19 identical reconstructed UTF-8 session files, chunk512 overlap50 top10; patched parser + current dependency environment; fresh KB"
+    }
+  }
+}

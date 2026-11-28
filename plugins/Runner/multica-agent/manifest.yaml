@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: MulticaAgent
+  version: 0.2.2
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/multica-agent
+  label:
+    en_US: Multica Agent
+    zh_Hans: Multica 智能体
+    zh_Hant: Multica 智能體
+    ja_JP: Multica エージェント
+    th_TH: เอเจนต์ Multica
+    vi_VN: Tác nhân Multica
+    es_ES: Agente de Multica
+    ru_RU: Агент Multica
+  description:
+    en_US: Chat with a selected Multica agent directly from LangBot.
+    zh_Hans: 在 LangBot 中直接与选定的 Multica 智能体对话。
+    zh_Hant: 在 LangBot 中直接與選定的 Multica 智能體對話。
+    ja_JP: LangBot から選択した Multica エージェントと直接チャットします。
+    th_TH: แชทกับเอเจนต์ Multica ที่เลือกได้โดยตรงจาก LangBot
+    vi_VN: Trò chuyện trực tiếp với tác nhân Multica đã chọn ngay trong LangBot.
+    es_ES: Chatea con un agente de Multica seleccionado directamente desde LangBot.
+    ru_RU: Общайтесь с выбранным агентом Multica прямо из LangBot.
+  icon: assets/icon.svg
+spec:
+  config:
+    - name: language
+      label:
+        en_US: Language
+        zh_Hans: 语言
+      description:
+        en_US: Language of this plugin's own chat output (progress lines, commands, errors). The agent's answer is never translated.
+        zh_Hans: 插件自身聊天输出（进度、命令、错误提示）的语言。智能体的回答正文不会被翻译。
+      type: select
+      required: false
+      default: en_US
+      options:
+        - name: en_US
+          label: {en_US: English, zh_Hans: 英文}
+        - name: zh_Hans
+          label: {en_US: Simplified Chinese, zh_Hans: 简体中文}
+        - name: zh_Hant
+          label: {en_US: Traditional Chinese, zh_Hans: 繁体中文}
+        - name: ja_JP
+          label: {en_US: Japanese, zh_Hans: 日语}
+        - name: es_ES
+          label: {en_US: Spanish, zh_Hans: 西班牙语}
+        - name: ru_RU
+          label: {en_US: Russian, zh_Hans: 俄语}
+        - name: th_TH
+          label: {en_US: Thai, zh_Hans: 泰语}
+        - name: vi_VN
+          label: {en_US: Vietnamese, zh_Hans: 越南语}
+  components:
+    Runner:
+      fromDirs:
+        - path: components/runner/
+  pages: []
+execution:
+  python:
+    path: main.py
+    attr: MulticaAgentPlugin
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

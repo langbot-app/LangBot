@@ -28,6 +28,45 @@ def _key_value_pairs(value: typing.Any) -> dict[str, str]:
     return {}
 
 
+def _acp_name_value_pairs(value: typing.Any) -> list[dict[str, str]]:
+    """Return ACP ``[{name, value}]`` pairs from a dict or an existing pair list."""
+    if isinstance(value, dict):
+        return [{"name": str(key), "value": str(item)} for key, item in value.items()]
+    if isinstance(value, list):
+        return [
+            {"name": str(item["name"]), "value": str(item["value"])}
+            for item in value
+            if isinstance(item, dict) and "name" in item and "value" in item
+        ]
+    return []
+
+
+def mcp_server_to_acp(server: typing.Any) -> dict[str, typing.Any]:
+    """Serialize an SDK MCP server config as an ACP ``McpServer`` entry.
+
+    ACP requires ``headers`` (HTTP) and ``env`` (stdio) to be arrays of
+    ``{name, value}`` even when empty; clients such as OpenCode skip servers
+    whose fields do not match. The SDK ``to_dict`` omits empty fields and
+    emits dicts, so it must not be sent to ACP directly.
+    """
+    if server.transport == "http":
+        return {
+            "name": server.name,
+            "type": "http",
+            "url": server.url,
+            "headers": _acp_name_value_pairs(server.headers),
+        }
+    if server.transport != "stdio":
+        raise ValueError(f"unsupported MCP transport: {server.transport}")
+    return {
+        "name": server.name,
+        "type": "stdio",
+        "command": server.command,
+        "args": [str(item) for item in server.args],
+        "env": _acp_name_value_pairs(server.env),
+    }
+
+
 def _claude_mcp_servers(mcp_servers: list[dict[str, typing.Any]]) -> dict[str, dict[str, typing.Any]]:
     servers: dict[str, dict[str, typing.Any]] = {}
     for server in mcp_servers:

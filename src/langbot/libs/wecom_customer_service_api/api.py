@@ -603,6 +603,27 @@ class WecomCSClient:
         return media_id
 
     @_bounded_token_retry
+    async def list_kf_accounts(self) -> list[dict]:
+        """List the customer-service accounts (open_kfid) visible to this app."""
+        if not await self.check_access_token():
+            self.access_token = await self.get_access_token(self.secret)
+
+        url = f'{self.base_url}/kf/account/list?access_token={self.access_token}'
+
+        async with self._http_client_context() as client:
+            response = await client.post(url, json={'offset': 0, 'limit': 100})
+            data = await httpclient.parse_json_response(response)
+
+            if data.get('errcode') in [40014, 42001]:
+                await self._refresh_access_token(data)
+                return await self.list_kf_accounts()
+
+            if data.get('errcode', 0) != 0:
+                raise Exception(f'Failed to list WeCom CS accounts: {data}')
+
+            return list(data.get('account_list') or [])
+
+    @_bounded_token_retry
     async def get_customer_info(self, external_userid: str) -> dict | None:
         """
         Get customer information by external_userid with caching.

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 import quart
 
+from langbot.pkg.message_policy.manager import MessagePolicyManager
 from langbot.pkg.api.http.context import (
     ExecutionContext,
     PrincipalContext,
@@ -132,6 +133,7 @@ def runtime_app(monitoring_service):
         return SimpleNamespace(adapter=adapters[context.workspace_uuid])
 
     ap.platform_mgr = SimpleNamespace(get_websocket_proxy_bot=proxy)
+    ap.message_policy_mgr = MessagePolicyManager(ap)
     return ap
 
 
@@ -218,6 +220,7 @@ async def test_run_failure_timeout_and_missing_pipeline(service):  # noqa: F811
 
 async def test_extension_discovery_preserves_empty_bindings_and_redacts_plugins():
     ap = SimpleNamespace(
+        persistence_mgr=SimpleNamespace(execute_async=AsyncMock(return_value=[])),
         plugin_connector=SimpleNamespace(
             is_enable_plugin=True,
             require_workspace_context=AsyncMock(),
@@ -359,6 +362,8 @@ async def test_compiled_cli_against_core_http(service, tmp_path):  # noqa: F811
         ]:
             assert (await cli(*args))['ok']
         await cli('knowledge-engine', 'creation-schema', 'missing/engine', code=5)
+        before = await cli('pipeline', 'extensions', 'get', 'p')
+        assert before['data']['enable_all_plugins'] is True
         body = {
             'bound_plugins': [],
             'bound_mcp_servers': [],
@@ -373,6 +378,8 @@ async def test_compiled_cli_against_core_http(service, tmp_path):  # noqa: F811
         body_path.write_text(json.dumps(body))
         updated = await cli('pipeline', 'extensions', 'update', 'p', '--file', str(body_path))
         assert all(updated['data'][k] == v for k, v in body.items())
+        readback = await cli('pipeline', 'extensions', 'get', 'p')
+        assert {key: readback['data'][key] for key in body} == body
         task = asyncio.create_task(process_next(ap))
         result = await cli('pipeline', 'run', 'p', '--message', 'HTTP smoke')
         await task

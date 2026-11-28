@@ -147,6 +147,7 @@ async def test_wal_policy_applies_to_all_connections_after_pool_disposal(tmp_pat
         for _ in range(2):
             async with manager.engine.connect() as first, manager.engine.connect() as second:
                 for connection in (first, second):
+                    assert (await connection.exec_driver_sql('PRAGMA busy_timeout')).scalar_one() == 30_000
                     assert (await connection.exec_driver_sql('PRAGMA journal_size_limit')).scalar_one() == 64 * 1024**2
                     assert (await connection.exec_driver_sql('PRAGMA wal_autocheckpoint')).scalar_one() == 1000
                     assert (await connection.exec_driver_sql('PRAGMA synchronous')).scalar_one() == 2

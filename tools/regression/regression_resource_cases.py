@@ -3,11 +3,11 @@
 import copy
 import json
 from pathlib import Path
-import sys
 import tempfile
 from uuid import uuid4
 
-from tools.entrypoints.regression_coverage import checked
+from tools.regression.evidence import checked
+from tools.regression.resource_cleanup import cleanup, journal
 from tools.regression.regression_local_cases import ScenarioUnavailable, api, require
 from tools.entrypoints.regression_suite import resolve
 
@@ -37,33 +37,6 @@ def data(suite, method, path, body=None, *, headers=None):
         f'{method} {path} did not return a successful response (HTTP {status})',
     )
     return response.get('data', {})
-
-
-def journal(suite, row):
-    row.setdefault('resource_journal', f'resource-case-{uuid4().hex}.json')
-    suite.write(
-        row['resource_journal'],
-        {
-            'workspace_uuid': suite.variables['workspace_uuid'],
-            'resources': row.get('owned_resources', []),
-            'cleanup_errors': row.get('cleanup_errors', []),
-        },
-    )
-
-
-def cleanup(suite, row, assertion, action):
-    original = sys.exc_info()[1]
-    try:
-        checked(row, assertion, action)
-    except Exception as exc:
-        message = f'{type(exc).__name__}: {exc}'
-        for secret in suite.secrets:
-            message = message.replace(secret, '[REDACTED]')
-        row.setdefault('cleanup_errors', []).append(message)
-        if original is None:
-            raise
-    finally:
-        journal(suite, row)
 
 
 def auth_revocation(suite, case, row):

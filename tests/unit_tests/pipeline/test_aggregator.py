@@ -69,6 +69,7 @@ def aggregation_key(
         pipeline_uuid,
         launcher_type.value,
         launcher_id,
+        None,
     )
 
 
@@ -114,6 +115,19 @@ def make_aggregator_app():
     return app
 
 
+def use_route_policy(app, legacy_config):
+    """Make ``legacy_config`` the settings of the route every message matches.
+
+    Aggregation is read from the message policy in effect for the message, so
+    the config is converted the way stored configs are and served as that policy.
+    """
+    from langbot.pkg.message_policy import schema
+
+    policy = schema.resolve_policy(None, schema.split_legacy_config(legacy_config)[1])
+    app.message_policy_mgr = Mock()
+    app.message_policy_mgr.effective_policy = Mock(return_value=policy)
+
+
 def enable_aggregation(app, *, delay=10.0):
     pipeline = Mock()
     pipeline.pipeline_entity.config = {
@@ -124,7 +138,7 @@ def enable_aggregation(app, *, delay=10.0):
             }
         }
     }
-    app.pipeline_mgr.get_pipeline_by_uuid = AsyncMock(return_value=pipeline)
+    use_route_policy(app, pipeline.pipeline_entity.config)
 
 
 def scoped_message_kwargs(context, *, launcher_id=12345, text='hello'):
@@ -262,6 +276,7 @@ class TestMessageAggregatorSessionId:
             None,
             'person',
             45678,
+            None,
         )
 
     def test_session_id_different_launchers(self):
@@ -341,7 +356,7 @@ class TestMessageAggregatorConfig:
                 }
             }
         }
-        app.pipeline_mgr.get_pipeline_by_uuid = AsyncMock(return_value=mock_pipeline)
+        use_route_policy(app, mock_pipeline.pipeline_entity.config)
 
         agg = aggregator.MessageAggregator(app)
 
@@ -370,7 +385,7 @@ class TestMessageAggregatorConfig:
                 }
             }
         }
-        app.pipeline_mgr.get_pipeline_by_uuid = AsyncMock(return_value=mock_pipeline)
+        use_route_policy(app, mock_pipeline.pipeline_entity.config)
 
         agg = aggregator.MessageAggregator(app)
 
@@ -398,7 +413,7 @@ class TestMessageAggregatorConfig:
                 }
             }
         }
-        app.pipeline_mgr.get_pipeline_by_uuid = AsyncMock(return_value=mock_pipeline)
+        use_route_policy(app, mock_pipeline.pipeline_entity.config)
 
         agg = aggregator.MessageAggregator(app)
 
@@ -426,7 +441,7 @@ class TestMessageAggregatorConfig:
                 }
             }
         }
-        app.pipeline_mgr.get_pipeline_by_uuid = AsyncMock(return_value=mock_pipeline)
+        use_route_policy(app, mock_pipeline.pipeline_entity.config)
 
         agg = aggregator.MessageAggregator(app)
 
@@ -477,6 +492,7 @@ class TestMessageAggregatorAddMessage:
             pipeline_uuid=None,
             routed_by_rule=False,
             variables=None,
+            route_id=None,
         )
 
     @pytest.mark.asyncio
@@ -496,7 +512,7 @@ class TestMessageAggregatorAddMessage:
                 }
             }
         }
-        app.pipeline_mgr.get_pipeline_by_uuid = AsyncMock(return_value=mock_pipeline)
+        use_route_policy(app, mock_pipeline.pipeline_entity.config)
 
         agg = aggregator.MessageAggregator(app)
 
@@ -523,6 +539,7 @@ class TestMessageAggregatorAddMessage:
         assert len(agg.buffers[key].messages) == 1
         pending = agg.buffers[key].messages[0]
         assert {key: value for key, value in vars(pending).items() if key != 'timestamp'} == {
+            'entry_query': None,
             'execution_context': context,
             'bot_uuid': 'test-bot',
             'launcher_type': provider_session.LauncherTypes.PERSON,
@@ -534,6 +551,7 @@ class TestMessageAggregatorAddMessage:
             'pipeline_uuid': 'test-pipeline',
             'routed_by_rule': False,
             'variables': None,
+            'route_id': None,
         }
         app.query_pool.add_query.assert_not_awaited()
         await agg.flush_all()
@@ -546,7 +564,7 @@ class TestMessageAggregatorAddMessage:
         mock_pipeline = Mock()
         mock_pipeline.pipeline_entity = Mock()
         mock_pipeline.pipeline_entity.config = {'trigger': {'message-aggregation': {'enabled': True, 'delay': 10.0}}}
-        app.pipeline_mgr.get_pipeline_by_uuid = AsyncMock(return_value=mock_pipeline)
+        use_route_policy(app, mock_pipeline.pipeline_entity.config)
         agg = aggregator.MessageAggregator(app)
 
         chain = text_chain('approve')
@@ -560,14 +578,12 @@ class TestMessageAggregatorAddMessage:
             message_chain=chain,
             adapter=mock_adapter(),
             pipeline_uuid='test-pipeline',
-            variables={'_interaction_submission': {'interaction_id': 'form-1'}},
+            variables={'test_marker': {'interaction_id': 'form-1'}},
         )
 
         assert agg.buffers == {}
         app.query_pool.add_query.assert_awaited_once()
-        assert app.query_pool.add_query.call_args.kwargs['variables'] == {
-            '_interaction_submission': {'interaction_id': 'form-1'}
-        }
+        assert app.query_pool.add_query.call_args.kwargs['variables'] == {'test_marker': {'interaction_id': 'form-1'}}
 
     @pytest.mark.asyncio
     async def test_max_buffer_flushes_immediately(self):
@@ -586,7 +602,7 @@ class TestMessageAggregatorAddMessage:
                 }
             }
         }
-        app.pipeline_mgr.get_pipeline_by_uuid = AsyncMock(return_value=mock_pipeline)
+        use_route_policy(app, mock_pipeline.pipeline_entity.config)
 
         agg = aggregator.MessageAggregator(app)
 
@@ -806,6 +822,7 @@ class TestMessageAggregatorFlush:
             pipeline_uuid=None,
             routed_by_rule=False,
             variables=None,
+            route_id=None,
         )
         assert key not in agg.buffers
 
@@ -1114,3 +1131,31 @@ class TestMessageAggregatorWorkspaceIsolation:
             call.kwargs['execution_context'].workspace_uuid for call in app.query_pool.add_query.await_args_list
         }
         assert forwarded_workspaces == {'workspace-a', 'workspace-b'}
+
+
+class TestMessageAggregatorRoute:
+    """The matched route travels with a message to the query it becomes."""
+
+    @pytest.mark.asyncio
+    async def test_route_selects_aggregation_and_reaches_the_query(self):
+        aggregator = get_aggregator_module()
+
+        app = make_aggregator_app()
+        use_route_policy(app, {'trigger': {'message-aggregation': {'enabled': True, 'delay': 10.0}}})
+        agg = aggregator.MessageAggregator(app)
+        context = execution_context(pipeline_uuid='test-pipeline')
+
+        await agg.add_message(
+            **scoped_message_kwargs(context),
+            route_id='route-1',
+        )
+
+        app.message_policy_mgr.effective_policy.assert_called_once_with(
+            context,
+            'test-bot',
+            route_id='route-1',
+            pipeline_uuid='test-pipeline',
+        )
+        app.query_pool.add_query.assert_not_awaited()
+        await agg.flush_all()
+        assert app.query_pool.add_query.await_args.kwargs['route_id'] == 'route-1'

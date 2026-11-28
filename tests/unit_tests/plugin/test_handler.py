@@ -10,7 +10,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
 
-from langbot_plugin.entities.io.actions.enums import LangBotToRuntimeAction, PluginToRuntimeAction
+from tests.utils.plugin_installations import install_legacy_plugin
+
+from langbot_plugin.entities.io.actions.enums import CommonAction, LangBotToRuntimeAction, PluginToRuntimeAction
 from langbot_plugin.entities.io.context import (
     ActionContext,
     InstallationBinding,
@@ -18,9 +20,69 @@ from langbot_plugin.entities.io.context import (
     PluginInstallationDesiredState,
 )
 
+pytestmark = pytest.mark.usefixtures('installed_legacy_plugin')
+
 
 @pytest.mark.asyncio
-async def test_plugin_reset_clears_runner_history_in_the_authorized_scope(monkeypatch):
+@pytest.mark.parametrize(
+    'action', [PluginToRuntimeAction.RETRIEVE_KNOWLEDGE, PluginToRuntimeAction.RETRIEVE_KNOWLEDGE_BASE]
+)
+async def test_knowledge_retrieval_counts_on_the_authorized_run(monkeypatch, action):
+    from langbot.pkg.telemetry import trace
+    from tests.unit_tests.telemetry.test_trace import make_counters
+
+    _, counters = make_counters()
+    state = trace.TraceState('event')
+    counters.register_trace(state, 'run')
+    query = SimpleNamespace(
+        session=SimpleNamespace(launcher_type=SimpleNamespace(value='group'), launcher_id='group'),
+        bot_uuid='bot',
+        sender_id='sender',
+    )
+    app = SimpleNamespace(
+        telemetry=SimpleNamespace(execution=counters),
+        logger=Mock(),
+        rag_mgr=SimpleNamespace(
+            get_knowledge_base_by_uuid=AsyncMock(return_value=SimpleNamespace(retrieve=AsyncMock(return_value=[])))
+        ),
+    )
+    monkeypatch.setattr('langbot.pkg.plugin.handler._validate_run_authorization', AsyncMock(return_value=({}, None)))
+    monkeypatch.setattr('langbot.pkg.plugin.handler._resolve_action_query', Mock(return_value=query))
+    from langbot.pkg.agent.runner.session_registry import get_session_registry
+    from tests.unit_tests.plugin.test_handler_actions import make_agent_resources
+
+    # The execution facade only admits runs owned by the calling installation.
+    registry = get_session_registry()
+    await registry.register(
+        workspace_id='workspace-a',
+        run_id='run',
+        runner_id='plugin:test-author/test-plugin/default',
+        query_id=None,
+        plugin_identity='test-author/test-plugin',
+        resources=make_agent_resources(),
+    )
+    runtime_handler = make_handler(app)
+    try:
+        response = await runtime_handler.actions[action.value](
+            {'run_id': 'run', 'kb_id': 'kb', 'query_text': 'private query'}
+        )
+    finally:
+        await registry.unregister('run')
+    assert response.code == 0, response.message
+    assert state.features == {'kb': {'retrievals': 1}}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('group_context', 'expected'),
+    [
+        # Member isolation is the default when the Chat has no setting.
+        (None, 'groupmember_7_guild-a_user-a'),
+        ('member', 'groupmember_7_guild-a_user-a'),
+        ('group', 'group_guild-a'),
+    ],
+)
+async def test_plugin_reset_clears_runner_history_in_the_authorized_scope(monkeypatch, group_context, expected):
     reset = AsyncMock()
     monkeypatch.setattr('langbot.pkg.agent.runner.context_reset.reset_runner_context', reset)
     transactions = []
@@ -37,6 +99,7 @@ async def test_plugin_reset_clears_runner_history_in_the_authorized_scope(monkey
         sender_id='user-a',
         variables={},
         session=SimpleNamespace(using_conversation=SimpleNamespace(uuid=None)),
+        pipeline_config={'ai': {'runner': {'group-context': group_context}}} if group_context else None,
     )
     app = SimpleNamespace(
         query_pool=SimpleNamespace(cached_queries={'query-a': query}),
@@ -46,7 +109,7 @@ async def test_plugin_reset_clears_runner_history_in_the_authorized_scope(monkey
     h = make_handler(app)
     response = await h.actions[PluginToRuntimeAction.CREATE_NEW_CONVERSATION.value]({'query_id': 'query-a'})
     assert response.code == 0
-    reset.assert_awaited_once_with(app.persistence_mgr, 'workspace-a', 'bot-a', 'group_guild-a')
+    reset.assert_awaited_once_with(app.persistence_mgr, 'workspace-a', 'bot-a', expected)
     assert transactions == ['workspace-a']
     assert query.session.using_conversation is None
 
@@ -86,6 +149,7 @@ def make_handler(app):
         plugin_name='test-plugin',
     )
     runtime_handler._current_action_context.set(installation_binding)
+    install_legacy_plugin(app, installation_binding, 'test-author', 'test-plugin')
     query_pool = getattr(app, 'query_pool', None)
     if query_pool is not None and hasattr(query_pool, 'cached_queries'):
 
@@ -207,6 +271,7 @@ class TestHandlerQueryVariables:
         'key',
         [
             '_host_box_scope',
+            '_host_configured_knowledge_base_uuids',
             '_host_tool_source_refs',
             '_pipeline_bound_plugins',
             '_pipeline_bound_mcp_servers',
@@ -372,6 +437,16 @@ class TestHandlerRagErrorResponse:
         # No context parts means no brackets
         assert '[' in response.message  # Still has error type bracket
         assert 'KeyError' in response.message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('action', [CommonAction.STREAM_ACK, CommonAction.CANCEL_ACTION])
+async def test_stream_control_actions_bypass_capability_authorization(action):
+    """Stream acks and cancellations ride on the plugin's own authorized action."""
+    app = SimpleNamespace(logger=Mock())
+    runtime_handler = make_handler(app)
+    response = await runtime_handler.actions[action.value]({'seq_id': 404, 'index': 0})
+    assert response.code == 0, response.message
 
 
 class TestHandlerPluginDiagnostic:

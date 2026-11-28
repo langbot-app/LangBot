@@ -12,6 +12,7 @@ import time
 
 from .. import stage, app
 from ..bootutils import config
+from ...notification import email as email_notification
 
 
 _RUNTIME_POLICY_DEFAULTS = {
@@ -63,8 +64,18 @@ _RUNTIME_POLICY_DEFAULTS = {
             'dedicated': dict.fromkeys(('max_cpus', 'max_memory_mb', 'max_pids', 'max_open_files', 'max_file_size_mb')),
             'shared': dict.fromkeys(('max_cpus', 'max_memory_mb', 'max_pids', 'max_open_files', 'max_file_size_mb')),
         },
+        # Operator-only: upgrade the listed Marketplace plugins in every
+        # Workspace after the shared Runtime connects. Empty disables it.
+        'marketplace_upgrade': {
+            'plugins': [],
+            'concurrency': 2,
+            'start_delay_seconds': 120.0,
+            'confirm_permissions': True,
+            'workspaces': [],
+        },
     },
     'mcp': {'stdio': {'enabled': True}},
+    'alerts': {'enabled': True, 'tick_seconds': 30},
     'monitoring': {
         'query_limits': {
             'page_rows': 1000,
@@ -115,6 +126,25 @@ def _complete_runtime_policy_defaults(cfg: dict) -> dict:
     return cfg
 
 
+def _complete_content_defaults(cfg: dict) -> dict:
+    """Preserve upgraded deployments' choices; fresh files use the template."""
+    for section in ('skills', 'storage', 'box'):
+        if not isinstance(cfg.setdefault(section, {}), dict):
+            raise ValueError(f'{section} must be a mapping')
+    cfg['skills'].setdefault('persistence', 'filesystem')
+    cfg['storage'].setdefault('use', 'local')
+    cfg['box'].setdefault(
+        'workspace_mode', 'shared' if cfg['box'].get('file_transfer_mode') == 'network' else 'private'
+    )
+    cfg['box'].setdefault('file_transfer_mode', 'legacy')
+    for section in ('skills', 'storage'):
+        migration = cfg[section].setdefault('migration', {})
+        if not isinstance(migration, dict):
+            raise ValueError(f'{section}.migration must be a mapping')
+        migration.setdefault('require_source', False)
+    return cfg
+
+
 def _apply_env_overrides_to_config(cfg: dict) -> dict:
     """Apply environment variable overrides to data/config.yaml
 
@@ -159,8 +189,15 @@ def _apply_env_overrides_to_config(cfg: dict) -> dict:
         else:
             return value
 
+    # Legacy ``WORKSPACE__INVITATIONS__EMAIL__*`` names are aliases of
+    # ``EMAIL__*``; never let them recreate the moved legacy section.
+    environ = {
+        key: value for key, value in os.environ.items() if not key.startswith(email_notification.LEGACY_ENV_PREFIX)
+    }
+    environ.update(email_notification.legacy_email_env_overrides())
+
     # Process environment variables
-    for env_key, env_value in os.environ.items():
+    for env_key, env_value in environ.items():
         # Check if the environment variable is uppercase and contains __
         if not env_key.isupper():
             continue
@@ -252,13 +289,28 @@ class LoadConfigStage(stage.BootingStage):
 
         ap.instance_config = await config.load_yaml_config('data/config.yaml', 'config.yaml', completion=False)
 
+        # workspace.invitations.email moved to the shared top-level email
+        # section; the dump below persists the move.
+        if email_notification.migrate_email_config(ap.instance_config.data):
+            print('Migrated workspace.invitations.email to the top-level email section')
+
         # Deep-complete only typed execution-policy fields. This keeps native
         # env coercion reliable for existing data/config.yaml files.
         ap.instance_config.data = _complete_runtime_policy_defaults(ap.instance_config.data)
+        ap.instance_config.data = _complete_content_defaults(ap.instance_config.data)
 
         # Apply environment variable overrides to data/config.yaml
         ap.instance_config.data = _apply_env_overrides_to_config(ap.instance_config.data)
         ap.instance_config.data = _apply_certification_key_ring_env(ap.instance_config.data)
+
+        # The persistent provider must not create a missing legacy volume before
+        # the explicit upgrade check can report it.
+        for section in ('skills', 'storage'):
+            required = ap.instance_config.data[section]['migration']['require_source']
+            if not isinstance(required, bool):
+                raise ValueError(f'{section}.migration.require_source must be a boolean')
+        source = os.path.join('data', 'storage')
+        ap.legacy_storage_source_exists = os.path.lexists(source)
 
         blocking_config = ap.instance_config.data['system']['blocking_executor']
         ap.blocking_executor = bounded_executor.configure_bounded_default_executor(
@@ -342,9 +394,13 @@ class LoadConfigStage(stage.BootingStage):
             with resources.files('langbot.templates').joinpath(resource_name).open('r', encoding='utf-8') as f:
                 return yaml.load(f, Loader=yaml.FullLoader)
 
-        ap.pipeline_config_meta_trigger = await load_resource_yaml_template_data('metadata/pipeline/trigger.yaml')
-        ap.pipeline_config_meta_safety = await load_resource_yaml_template_data('metadata/pipeline/safety.yaml')
+        # Form metadata of the bot message policy: entry, safety, reply.
+        ap.message_policy_meta = [
+            await load_resource_yaml_template_data(f'metadata/message-policy/{name}.yaml')
+            for name in ('trigger', 'safety', 'output')
+        ]
         ap.pipeline_config_meta_ai = await load_resource_yaml_template_data('metadata/pipeline/ai.yaml')
+        ap.pipeline_config_meta_speech = await load_resource_yaml_template_data('metadata/pipeline/speech.yaml')
         ap.pipeline_config_meta_output = await load_resource_yaml_template_data('metadata/pipeline/output.yaml')
 
         # Load workflow node metadata from YAML files. YAML is the source of

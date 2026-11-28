@@ -7,12 +7,14 @@ import typing
 import pydantic
 
 from langbot.libs.official_account_api.api import OAClient, OAClientForLongerResponse
+from langbot.libs.official_account_api.menu_api import MenuAPI
 from langbot.libs.official_account_api.oaevent import OAEvent
 from langbot.pkg.platform.adapters.officialaccount.api_impl import OfficialAccountAPIMixin
 from langbot.pkg.platform.adapters.officialaccount.event_converter import OfficialAccountEventConverter
-from langbot.pkg.platform.adapters.officialaccount.errors import NotSupportedError
+from langbot.pkg.platform.adapters.officialaccount.errors import NotSupportedError, OfficialAccountSendError
 from langbot.pkg.platform.adapters.officialaccount.message_converter import OfficialAccountMessageConverter
-from langbot.pkg.platform.adapters.officialaccount.platform_api import PLATFORM_API_MAP
+from langbot.pkg.platform.adapters.officialaccount import menu as custom_menu
+from langbot.pkg.platform.adapters.officialaccount.platform_api import MENU_API_MAP, PLATFORM_API_MAP
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
@@ -75,6 +77,7 @@ class OfficialAccountAdapter(OfficialAccountAPIMixin, abstract_platform_adapter.
             _message_cache={},
             _user_cache={},
         )
+        self.bot.instant_reply = self._menu_instant_reply
         self._register_native_handlers()
 
     def set_bot_uuid(self, bot_uuid: str):
@@ -87,13 +90,16 @@ class OfficialAccountAdapter(OfficialAccountAPIMixin, abstract_platform_adapter.
         ]
 
     def get_supported_apis(self) -> list[str]:
-        return [
+        apis = [
             'reply_message',
             'get_message',
             'get_user_info',
             'get_friend_list',
             'call_platform_api',
         ]
+        if self.config['Mode'] == 'auto':
+            apis.append('send_message')
+        return apis
 
     async def send_message(
         self,
@@ -101,7 +107,24 @@ class OfficialAccountAdapter(OfficialAccountAPIMixin, abstract_platform_adapter.
         target_id: str,
         message: platform_message.MessageChain,
     ) -> platform_events.MessageResult:
-        raise NotSupportedError('send_message:official_account_requires_inbound_webhook_reply')
+        if self.config['Mode'] != 'auto':
+            raise NotSupportedError(
+                'send_message: switch OfficialAccount Mode to auto to enable customer service sends'
+            )
+        if target_type not in ('person', 'friend', 'private'):
+            raise NotSupportedError('send_message: OfficialAccount only supports person, friend or private targets')
+        if any(not isinstance(component, platform_message.Plain) for component in message):
+            raise ValueError('OfficialAccount send_message only supports Plain text components')
+        content = ''.join(component.text for component in message)
+        if not content.strip():
+            raise ValueError('OfficialAccount send_message requires non-empty text')
+        try:
+            errcode = await self.bot.customer_service.send(target_id, content)
+        except Exception as exc:
+            raise RuntimeError(f'OfficialAccount customer message failed ({type(exc).__name__})') from None
+        if errcode != 0:
+            raise OfficialAccountSendError(errcode)
+        return platform_events.MessageResult(raw={'errcode': errcode})
 
     async def reply_message(
         self,
@@ -121,6 +144,9 @@ class OfficialAccountAdapter(OfficialAccountAPIMixin, abstract_platform_adapter.
         return platform_events.MessageResult(message_id=source.message_id, raw={'queued': queued})
 
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
+        menu_handler = MENU_API_MAP.get(action)
+        if menu_handler is not None:
+            return await menu_handler(self, dict(params or {}))
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             raise NotSupportedError(f'call_platform_api:{action}')
@@ -172,9 +198,32 @@ class OfficialAccountAdapter(OfficialAccountAPIMixin, abstract_platform_adapter.
         for msg_type in ('text', 'image', 'voice', 'event'):
             self.bot.on_message(msg_type)(self._handle_native_event)
 
+    def menu_api(self) -> MenuAPI:
+        return MenuAPI(self.bot.api_token, self.config.get('api_base_url') or 'https://api.weixin.qq.com')
+
+    def _resolve_menu_click(self, payload: dict) -> tuple[str, str] | None:
+        if payload.get('MsgType') != 'event' or str(payload.get('Event') or '').upper() != 'CLICK':
+            return None
+        return custom_menu.resolve_click(self.config.get(custom_menu.CONFIG_KEY), payload.get('EventKey'))
+
+    def _menu_instant_reply(self, payload: dict) -> str | None:
+        """Answer fixed-reply menu buttons directly inside the WeChat callback."""
+        resolved = self._resolve_menu_click(payload)
+        if resolved and resolved[0] == 'reply':
+            return resolved[1]
+        return None
+
+    def _menu_click_as_message(self, event: OAEvent) -> OAEvent:
+        """Turn an "ask AI" menu click into the text message the user would have typed."""
+        resolved = self._resolve_menu_click(event)
+        if not resolved or resolved[0] != 'ai':
+            return event
+        return OAEvent({**event, 'MsgType': 'text', 'Content': resolved[1]})
+
     async def _handle_native_event(self, event: OAEvent):
         self.bot_account_id = event.receiver_id or self.bot_account_id
         try:
+            event = self._menu_click_as_message(event)
             if platform_events.FriendMessage in self.listeners:
                 legacy_event = await self.event_converter.target2legacy(event)
                 if legacy_event and platform_events.FriendMessage in self.listeners:

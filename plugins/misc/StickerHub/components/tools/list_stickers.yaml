@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: stickerhub_list_stickers
+  label:
+    en_US: List Stickers
+    zh_Hans: 列出表情包
+  description:
+    en_US: List stored stickers with their names and stable URLs.
+    zh_Hans: 列出已存储的表情包及其名称和稳定地址。
+spec:
+  parameters:
+    type: object
+    properties:
+      limit:
+        type: integer
+        description: 'Maximum number of stickers to return (default 20).'
+    required: []
+  llm_prompt: 'List stored stickers with their names and stable URLs.'
+execution:
+  python:
+    path: list_stickers.py
+    attr: ListStickers

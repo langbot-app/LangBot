@@ -367,3 +367,123 @@ async def test_telegram_text_field_does_not_show_action_buttons():
     assert args['text'].startswith('[人工介入]')
     assert 'us_input (paragraph)' in args['text']
     assert adapter._form_action_titles == {}
+
+
+@pytest.mark.asyncio
+async def test_telegram_source_reply_message_sends_text_and_voice():
+    import base64 as _b64
+    import telegram as _tg
+
+    bot = MagicMock()
+    bot.send_message = AsyncMock()
+    bot.send_voice = AsyncMock()
+    adapter = TelegramAdapter.model_construct(bot=bot, config={}, msg_stream_id={}, seq=1, listeners={})
+
+    update = _tg.Update.de_json(
+        {
+            'update_id': 1000,
+            'message': {
+                'message_id': 99,
+                'date': 1700000000,
+                'chat': {'id': 123, 'type': 'private'},
+                'from': {'id': 1, 'is_bot': False, 'first_name': 'User'},
+                'text': 'hi',
+            },
+        },
+        None,
+    )
+    event = platform_events.FriendMessage(
+        sender=platform_entities.Friend(id='user-1', nickname='', remark=''),
+        message_chain=platform_message.MessageChain([]),
+        source_platform_object=update,
+    )
+
+    # Coexist mode: text and voice
+    chain = platform_message.MessageChain(
+        [
+            platform_message.Plain(text='Hello'),
+            platform_message.Voice(
+                base64='data:audio/ogg;base64,' + _b64.b64encode(b'OggS-voice').decode('utf-8'),
+                length=6,
+            ),
+        ]
+    )
+    await adapter.reply_message(event, chain, quote_origin=True)
+    bot.send_message.assert_awaited_once()
+    bot.send_voice.assert_awaited_once()
+    assert bot.send_message.await_args.kwargs['reply_to_message_id'] == 99
+    assert bot.send_voice.await_args.kwargs['reply_to_message_id'] == 99
+    assert bot.send_voice.await_args.kwargs['duration'] == 6
+    assert bot.send_voice.await_args.kwargs['voice'].filename == 'voice.ogg'
+
+    # Voice only mode
+    bot.send_message.reset_mock()
+    bot.send_voice.reset_mock()
+    voice_only_chain = platform_message.MessageChain(
+        [
+            platform_message.Voice(
+                base64='data:audio/ogg;base64,' + _b64.b64encode(b'OggS-voice-only').decode('utf-8'),
+                length=4,
+            ),
+        ]
+    )
+    await adapter.reply_message(event, voice_only_chain, quote_origin=True)
+    bot.send_message.assert_not_awaited()
+    bot.send_voice.assert_awaited_once()
+    assert bot.send_voice.await_args.kwargs['reply_to_message_id'] == 99
+    assert bot.send_voice.await_args.kwargs['duration'] == 4
+
+
+@pytest.mark.asyncio
+async def test_telegram_source_reply_message_chunk_delivers_voice():
+    import base64 as _b64
+    import telegram as _tg
+
+    bot = MagicMock()
+    bot.send_message = AsyncMock()
+    bot.send_voice = AsyncMock()
+    bot.send_message_draft = AsyncMock()
+    adapter = TelegramAdapter.model_construct(bot=bot, config={}, msg_stream_id={}, seq=1, listeners={})
+    adapter.msg_stream_id['stream_1'] = ('private', 101, True)
+
+    update = _tg.Update.de_json(
+        {
+            'update_id': 1000,
+            'message': {
+                'message_id': 99,
+                'date': 1700000000,
+                'chat': {'id': 123, 'type': 'private'},
+                'from': {'id': 1, 'is_bot': False, 'first_name': 'User'},
+                'text': 'hi',
+            },
+        },
+        None,
+    )
+    event = platform_events.FriendMessage(
+        sender=platform_entities.Friend(id='user-1', nickname='', remark=''),
+        message_chain=platform_message.MessageChain([]),
+        source_platform_object=update,
+    )
+
+    chunk = SimpleNamespace(resp_message_id='stream_1', msg_sequence=1, tool_calls=None)
+    chain = platform_message.MessageChain(
+        [
+            platform_message.Plain(text='Streaming text'),
+            platform_message.Voice(
+                base64='data:audio/ogg;base64,' + _b64.b64encode(b'OggS-voice').decode('utf-8'),
+                length=5,
+            ),
+        ]
+    )
+
+    # Not final chunk: no voice sent yet
+    await adapter.reply_message_chunk(event, chunk, chain, is_final=False)
+    bot.send_voice.assert_not_awaited()
+
+    # Final chunk: voice sent and message finalized
+    await adapter.reply_message_chunk(event, chunk, chain, quote_origin=True, is_final=True)
+    bot.send_voice.assert_awaited_once()
+    assert bot.send_voice.await_args.kwargs['reply_to_message_id'] == 99
+    assert bot.send_voice.await_args.kwargs['duration'] == 5
+    bot.send_message.assert_awaited_once()
+    assert 'stream_1' not in adapter.msg_stream_id

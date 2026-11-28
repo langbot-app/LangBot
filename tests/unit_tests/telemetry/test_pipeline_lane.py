@@ -52,7 +52,7 @@ def test_lane_failure_marks_the_owned_chain_without_any_prior_stage():
     pipeline = build_pipeline(pipelinemgr, ap)
     query = types.SimpleNamespace(pipeline_config={})
 
-    with execution.ingress(ap, 'pipeline_done', CONTEXT, execution_id='query-7'):
+    with execution.ingress(ap, 'completed', CONTEXT, execution_id='query-7'):
         pipeline._record_lane_failure(query, 'sandbox exited 127')
 
     rows = [record for record in counters.records if record['event_type'] == 'execution_node']
@@ -76,7 +76,7 @@ def test_lane_failure_does_not_duplicate_the_runner_node_the_orchestrator_record
     pipeline = build_pipeline(pipelinemgr, ap)
     query = types.SimpleNamespace(pipeline_config={})
 
-    with execution.ingress(ap, 'pipeline_done', CONTEXT, execution_id='query-8'):
+    with execution.ingress(ap, 'completed', CONTEXT, execution_id='query-8'):
         execution.record(
             ap,
             CONTEXT,
@@ -375,7 +375,7 @@ async def test_lane_node_nests_under_the_platform_route_that_called_it():
 
     async def scenario():
         # A platform event owns the chain; the route step wraps the Pipeline lane.
-        with execution.ingress(ap, 'event_done', CONTEXT, execution_id='exec-routed'):
+        with execution.ingress(ap, 'completed', CONTEXT, execution_id='exec-routed'):
             with trace.stage_scope() as event_node:
                 execution.record(
                     ap,
@@ -440,7 +440,7 @@ async def test_broken_lane_records_a_failed_step_with_its_reason():
     assert (family, operation) == ('pipeline', 'run')
     assert shapes[0] == ('platform_event', 'message.received', parent, '')
     assert row['outcome'] == 'failed'
-    assert row['error'] == 'lane exploded'
+    assert row['error'].startswith('RuntimeError: lane exploded')
 
 
 async def test_lane_reported_failure_marks_the_step_failed():
@@ -462,3 +462,57 @@ async def test_lane_reported_failure_marks_the_step_failed():
 
     row = lane_nodes(counters)[-1]
     assert (row['family'], row['operation'], row['outcome']) == ('pipeline', 'run', 'failed')
+
+
+class QQOfficialAdapter:
+    """A plain adapter stand-in; only its class name is reported."""
+
+
+def chain_records(counters):
+    return [record for record in counters.records if record['event_type'] == 'execution_chain']
+
+
+async def test_command_lane_names_its_adapter_and_no_runner():
+    """A command never reaches the chat handler: no Runner ran, but the adapter is known."""
+    pipelinemgr, execution = get_modules()
+    counters, ap = build_counters()
+    lane = build_lane(pipelinemgr, ap)
+    query = build_query(
+        adapter=QQOfficialAdapter(),
+        pipeline_config={'ai': {'runner': {'id': 'plugin:langbot-team/LocalAgent/default'}}},
+    )
+
+    async def fake_command(_query):
+        # The command handler failed and reported it as a value.
+        _query.variables['_monitoring_has_error'] = True
+        lane._record_lane_failure(_query, "ActionCallError: KeyError: 'manifest'")
+
+    lane._process_query = fake_command
+    await lane.process_query(query)
+    await stop_counters(counters)
+
+    assert all(row['runner'] == '' for row in lane_nodes(counters))
+    (chain,) = chain_records(counters)
+    assert chain['adapter'] == 'QQOfficialAdapter'
+    assert chain['runner'] == ''
+    assert chain['outcome'] == 'failed'
+
+
+async def test_chat_lane_reports_the_runner_it_engaged():
+    pipelinemgr, execution = get_modules()
+    trace = get_trace()
+    counters, ap = build_counters()
+    lane = build_lane(pipelinemgr, ap)
+    query = build_query(adapter=QQOfficialAdapter())
+
+    async def fake_chat(_query):
+        # The chat handler names the Runner it drove on the chain.
+        trace.current().runner = 'plugin:langbot-team/LocalAgent/default'
+
+    lane._process_query = fake_chat
+    await lane.process_query(query)
+    await stop_counters(counters)
+
+    assert lane_nodes(counters)[-1]['runner'] == 'plugin:langbot-team/LocalAgent/default'
+    (chain,) = chain_records(counters)
+    assert (chain['adapter'], chain['runner']) == ('QQOfficialAdapter', 'plugin:langbot-team/LocalAgent/default')

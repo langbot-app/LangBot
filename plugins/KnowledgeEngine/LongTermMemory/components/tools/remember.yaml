@@ -21,6 +21,30 @@ spec:
         items:
           type: string
         description: Short category tags for this memory (e.g. "travel", "work", "schedule").
+      supersedes:
+        type: array
+        maxItems: 20
+        items:
+          type: string
+          minLength: 1
+        description: IDs of active memories explicitly replaced by this correction. Retrieve them first; they must belong to the current speaker and memory scope. Omit when unsure.
+      event_at:
+        type: string
+        description: Optional event time with explicit timezone (ISO-8601). Keep relative wording in content when the date or timezone is unknown; never guess.
+      valid_from:
+        type: string
+        description: Optional inclusive validity start with explicit timezone (ISO-8601).
+      valid_until:
+        type: string
+        description: Optional exclusive validity end with explicit timezone (ISO-8601), later than valid_from.
+      source_ref:
+        type: string
+        maxLength: 1024
+        description: Optional declared reference to the original message or document. This is not proof that the Host verified its source.
+      claim_type:
+        type: string
+        enum: [unknown, user_statement, inference]
+        description: Evidence category. Default unknown. Use user_statement only for an explicit user statement; model guesses must be inference.
       importance:
         type: integer
         description: How important this memory is, from 1 (low) to 5 (critical). Default 2.
@@ -58,6 +82,7 @@ spec:
     If the user explicitly corrects, retracts, or revises an earlier statement:
     - store the correction as an episodic memory with clear wording
     - describe the new statement as a correction, not as an unrelated new fact
+    - retrieve the old memory and pass its ID in supersedes only when the same speaker explicitly replaces the same fact or event; similarity alone is insufficient
     - when appropriate, add tags such as ["correction"], ["profile-update"], or ["preference-change"]
     - if the correction changes the user's current stable profile, also update that profile through "update_profile"
     - when updating a stable preference or trait that may change later, prefer giving update_profile a reusable fact_key such as "coffee_preference"
@@ -71,9 +96,17 @@ spec:
     - Group chat L2: "In the design group, Bob decided to own the database migration this week."
     - Not L2: "Alice prefers concise answers." Use update_profile instead.
 
+    Keep statement provenance and time distinct:
+    - timestamp is assigned by storage, not the date of the event.
+    - event_at, valid_from, and valid_until require explicit ISO-8601 timezones. Do not guess dates from "tomorrow" without a known reference date and timezone.
+    - valid_from is inclusive and valid_until is exclusive. Leave either empty when unknown.
+    - source_ref is only a declared reference, not Host-verified evidence. Omit it rather than inventing a message/document ID.
+    - claim_type defaults to unknown. Distinguish direct user statements from model inferences; never promote an assistant reply into a user statement.
+
     Parameters:
     - content (required): What to remember. Be concise and factual. Always attribute to the speaker.
     - tags (optional): Category tags like ["travel", "work"].
+    - supersedes (optional): IDs of explicitly replaced memories. Tags alone never replace older memories.
     - importance (optional): 1-5 scale, default 2. Use 4-5 for critical facts.
 
 execution:

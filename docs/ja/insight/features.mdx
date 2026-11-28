@@ -19,7 +19,7 @@ LangBot は、**オープンソースで本番運用に耐える**、LLM ネイ�
 - **MCP プロトコル** — Model Context Protocol のツールエコシステムにクライアントとして接続し、Stdio と HTTP の両トランスポートに対応。
 - **Web 管理パネル** — ブラウザ上で視覚的にボットを設定・管理・監視。手動での設定ファイル編集は不要。
 - **本番グレードのプラグインシステム** — クロスプロセス・イベント駆動アーキテクチャ上に数百のコミュニティプラグイン。安全でホットプラグ可能。
-- **マルチパイプラインアーキテクチャ** — 1 インスタントで複数のパイプラインを実行し、異なるボットが異なるシナリオを担当。アクセス制御、レート制限、センシティブワードフィルタ、包括的な監視を備える。
+- **複数チャットとメッセージポリシー** — 1 インスタンスで複数のチャットと Agent を実行し、異なるボットが異なるシナリオを担当。ボットのメッセージポリシーでアクセス制御、レート制限、センシティブワードフィルタを提供し、包括的な監視も備える。
 
 ## インスタントメッセージングプラットフォームのサポート
 
@@ -64,6 +64,7 @@ LangBot は **LiteLLM を統一的なモデルリクエストバックエンド*
 | [DeepSeek](https://www.deepseek.com/) | ✅ |  |
 | [Google Gemini](https://aistudio.google.com/prompts/new_chat) | ✅ | |
 | [xAI](https://x.ai/) | ✅ |  |
+| [NVIDIA NIM](https://build.nvidia.com/) | ✅ |  |
 | [Moonshot](https://www.moonshot.cn/) | ✅ |  |
 | [Zhipu AI](https://open.bigmodel.cn/) | ✅ |  |
 | [Mistral](https://mistral.ai/) | ✅ |  |
@@ -128,25 +129,25 @@ LangBot は二次開発とエンタープライズ統合のための完全な拡
 - **HTTP Service API**：API キー認証付きの HTTP インターフェースを通じて LangBot の各種エンティティにアクセスでき、既存システムとの統合が容易。
 - **Outgoing Webhook**：LangBot の内部イベントを外部システムにリアルタイムでプッシュし、イベント駆動の自動化を構築。
 - **本番グレードのプラグインシステム**：クロスプロセス通信と非同期技術に基づき、さまざまなコンポーネント拡張をサポート。安全・安定・ホットプラグ可能で、数百のコミュニティプラグインを[拡張マーケットプレイス](https://space.langbot.app)からワンクリックでインストール可能。
-- **Web 管理パネル**：ボット、モデル、パイプライン、ナレッジベース、プラグインのすべての設定と監視を視覚的に実行。
+- **Web 管理パネル**：ボット、モデル、チャット、ナレッジベース、プラグインのすべての設定と監視を視覚的に実行。
 
 ## デプロイ方法
 
 LangBot は 1 行のコマンドから Kubernetes クラスターまで、さまざまなデプロイ方法をサポートします。
 
 - **LangBot Cloud（推奨）**：[デプロイ不要、すぐに使えるホスト版](https://space.langbot.app/cloud)。
-- **ワンラインで起動**：`uvx langbot` を実行し、`http://localhost:5300` にアクセス。
+- **ワンラインインストール**：`curl -fsSL https://langbot.app/install.sh | bash`（Windows：`irm https://langbot.app/install.ps1 | iex`）を実行し、`http://localhost:5300` にアクセス。
 - **Docker Compose**、**aaPanel（宝塔パネル）**、**Kubernetes**、**Zeabur / Railway でのワンクリッククラウドデプロイ**など。
 
 詳細は[デプロイドキュメント](/ja/deploy/langbot/kubernetes)と[クイックスタート](/ja/insight/guide)をご覧ください。
 
 ## ケーススクリーンショット
 
-![LangBot ボット設定ページ：Web 管理画面でウェブページボットをパイプラインに紐付け](/images/zh/insight/features/bot-page.png)
+![LangBot ボット設定ページ：Web 管理画面でウェブページボットのメッセージをチャットにルーティング](/images/zh/insight/features/bot-page.png)
 
 ![LangBot モデル設定：OpenAI / Anthropic API 形式に対応した任意の LLM を接続](/images/zh/insight/features/create-model.png)
 
-![LangBot パイプライン AI 設定：内蔵エージェントランナーとメインモデルを選択](/images/zh/insight/features/edit-pipeline.png)
+![LangBot チャット AI 設定：内蔵エージェントランナーとメインモデルを選択](/images/zh/insight/features/edit-pipeline.png)
 
 ![LangBot 拡張機能マーケットプレイス：数百のコミュニティプラグインと MCP ツールをワンクリックでインストール](/images/zh/insight/features/plugin-market.png)
 

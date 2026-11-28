@@ -434,7 +434,7 @@ async def test_nested_serialized_episode_write_does_not_self_lock():
         importance=2,
     )
 
-    # add_episode nests _auto_supersede for the same collection scope, which must
+    # add_episode can nest update_episode_status for the same collection scope, which must
     # not wait on the lock its own caller already holds.
     created = await asyncio.wait_for(
         store.add_episode(
@@ -443,6 +443,7 @@ async def test_nested_serialized_episode_write_does_not_self_lock():
             user_key="user-1",
             content="Alice lives in Munich",
             tags=["correction"],
+            supersedes=[original["id"]],
             importance=3,
         ),
         timeout=5,

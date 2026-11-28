@@ -4,7 +4,7 @@ metadata:
   author: langbot-team
   name: AIImagePlugin
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/AIImagePlugin
-  version: 0.1.6
+  version: 0.1.7
   description:
     en_US: Compatible with OpenAI format image generation plugin
     zh_Hans: 兼容使用 OpenAI 格式的绘图插件

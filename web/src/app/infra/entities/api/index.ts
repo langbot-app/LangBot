@@ -14,6 +14,27 @@ export interface AsyncTaskCreatedResp {
   task_id: number;
 }
 
+export interface GithubRefEntry {
+  name: string;
+  commit_sha: string;
+}
+
+export interface GithubRefsResp {
+  owner: string;
+  repo: string;
+  default_branch: string;
+  requested_ref: string;
+  source_subdir: string;
+  branches: GithubRefEntry[];
+  tags: GithubRefEntry[];
+  truncated: boolean;
+  source: {
+    kind: 'direct' | 'mirror';
+    host: string;
+    latency_ms: number;
+  };
+}
+
 export interface ApiRespProviderRequesters {
   requesters: Requester[];
 }
@@ -52,6 +73,8 @@ export interface ModelProvider {
   llm_count?: number;
   embedding_count?: number;
   rerank_count?: number;
+  asr_count?: number;
+  tts_count?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -158,6 +181,38 @@ export interface RerankModel {
   extra_args?: object;
 }
 
+export interface ApiRespProviderASRModels {
+  models: ASRModel[];
+}
+
+export interface ApiRespProviderASRModel {
+  model: ASRModel;
+}
+
+export interface ASRModel {
+  uuid: string;
+  name: string;
+  provider_uuid: string;
+  provider?: ModelProvider;
+  extra_args?: object;
+}
+
+export interface ApiRespProviderTTSModels {
+  models: TTSModel[];
+}
+
+export interface ApiRespProviderTTSModel {
+  model: TTSModel;
+}
+
+export interface TTSModel {
+  uuid: string;
+  name: string;
+  provider_uuid: string;
+  provider?: ModelProvider;
+  extra_args?: object;
+}
+
 export interface LangBotModelAvailability {
   up: boolean | null;
   last_probed_at: string | null;
@@ -183,7 +238,12 @@ export interface ApiRespPipelines {
   pipelines: Pipeline[];
 }
 
-export type AgentKind = 'agent' | 'pipeline' | 'event_processor' | 'workflow';
+export type AgentKind =
+  | 'agent'
+  | 'pipeline'
+  | 'event_processor'
+  | 'command_processor'
+  | 'workflow';
 
 export interface RunnerDescriptor {
   id: string;
@@ -192,6 +252,10 @@ export interface RunnerDescriptor {
   plugin_name: string;
   config_schema: import('../form/dynamic').IDynamicFormItemSchema[];
   supported_event_patterns: string[];
+  permissions?: {
+    workspace_operations?: string[];
+    [key: string]: unknown;
+  };
 }
 
 export interface ProcessorRun {
@@ -217,7 +281,25 @@ export interface ProcessorRun {
     input?: { text?: string; contents?: unknown[]; attachments?: unknown[] };
     input_event?: unknown;
     delivery?: unknown;
+    command?: string;
   };
+}
+
+export interface CommandOutput {
+  text?: string;
+  error?: string;
+  image_url?: string;
+  image?: string;
+  file_url?: string;
+  file_name?: string;
+}
+
+export interface CommandDebugResult {
+  run_id: string | null;
+  status: 'completed' | 'failed';
+  command: string;
+  outputs: CommandOutput[];
+  error: string | null;
 }
 
 export interface ProcessorRunEvent {
@@ -259,6 +341,13 @@ export interface Agent {
   updated_at?: string;
 }
 
+export type CreateAgentRequest = Pick<
+  Agent,
+  'name' | 'description' | 'emoji' | 'kind' | 'component_ref' | 'config'
+> & {
+  runner_id?: string;
+};
+
 export interface ApiRespAgents {
   agents: Agent[];
 }
@@ -267,11 +356,32 @@ export interface ApiRespAgent {
   agent: Agent;
 }
 
+export interface WorkspaceOperationItem {
+  id: string;
+  domain: string;
+  label: Record<string, string>;
+  summary: string;
+  risk: 'read' | 'write' | 'dangerous';
+  permission: string;
+  grantable: boolean;
+}
+
+export interface DomainMeta {
+  domain: string;
+  label: Record<string, string>;
+  summary?: string;
+  count?: number;
+}
+
 export interface GetAgentMetadataResponseData {
+  workspace_operation_grants?: Record<string, string[]>;
   event_processors?: RunnerDescriptor[];
+  command_processors?: CommandProcessorDescriptor[];
   runner_config?: PipelineConfigTab;
   platform_tools: AgentPlatformTool[];
   host_tools?: PluginTool[] | null;
+  workspace_operations?: WorkspaceOperationItem[];
+  domains?: DomainMeta[];
   kinds: Array<{
     name: AgentKind;
     supported_event_patterns: string[];
@@ -323,6 +433,8 @@ export interface Adapter {
     help_links?: Record<string, string>;
     supported_events?: string[];
     supported_apis?: string[];
+    command_registration?: PlatformCommandCapability;
+    platform_specific_apis?: { action: string }[];
     config: IDynamicFormItemSchema[];
   };
 }
@@ -344,9 +456,75 @@ export interface Bot {
   adapter_config: object;
   event_bindings?: EventBinding[];
   plugin_processors?: PluginProcessorBinding[];
+  command_settings?: BotCommandSettings;
+  message_policy?: MessagePolicy;
+  platform_command_sync?: PlatformCommandSync;
+  platform_command_registration?: {
+    rejected?: { name: string; reason: string }[];
+    error?: string;
+  };
   created_at?: string;
   updated_at?: string;
   adapter_runtime_values?: object;
+}
+
+export interface BotCommandProcessorBinding {
+  processor_uuid: string;
+  enabled: boolean;
+}
+
+export interface CommandComponentDescriptor {
+  name: string;
+  label: Record<string, string>;
+  description?: Record<string, string> | null;
+  config_schema: import('../form/dynamic').IDynamicFormItemSchema[];
+}
+
+export interface CommandProcessorDescriptor {
+  id: string;
+  plugin_id: string;
+  commands: CommandComponentDescriptor[];
+}
+
+export type CommandPermission = 'everyone' | 'admins';
+
+export interface BotCommandSettings {
+  enabled: boolean;
+  prefixes: string[];
+  processors: BotCommandProcessorBinding[];
+  platform_commands?: { enabled: boolean; selected: string[] };
+  /** Built-in (system) commands by name; missing entries use the defaults. */
+  builtin?: Record<string, { enabled: boolean; permission: CommandPermission }>;
+  /** Plugin command permissions keyed by `author/plugin/command`. */
+  plugin_permissions?: Record<string, CommandPermission>;
+  /** What a sender without permission gets: nothing, or a notice. */
+  denied_reply?: 'silent' | 'notice';
+}
+
+export interface BuiltinCommandDescriptor {
+  name: string;
+  aliases: string[];
+  group: 'session' | 'info' | 'admin';
+  default_enabled: boolean;
+  default_permission: CommandPermission;
+  label: import('../common').I18nObject;
+  description: import('../common').I18nObject;
+}
+
+export interface PlatformCommandCapability {
+  max_commands: number;
+  name_pattern: string;
+  description_max_length: number;
+  multilingual: boolean;
+  scopes: boolean;
+  lowercase?: boolean;
+}
+
+export interface PlatformCommandSync {
+  synced_at?: string;
+  error?: string | null;
+  skipped?: boolean;
+  rejected?: { name: string; reason: string }[];
 }
 
 export interface PluginProcessorBinding {
@@ -357,13 +535,54 @@ export interface PluginProcessorBinding {
 export interface EventBinding {
   id?: string;
   event_pattern: string;
-  target_type: AgentKind | 'discard';
+  target_type: Exclude<AgentKind, 'command_processor'> | 'discard';
   target_uuid: string;
   filters?: Array<Record<string, unknown>>;
   priority: number;
   enabled: boolean;
   description?: string;
   order?: number;
+  /** Partial message policy overriding the bot's for this route; null clears it. */
+  policy?: MessagePolicyOverride | null;
+}
+
+export type MessagePolicySectionName = 'trigger' | 'safety' | 'output';
+
+export interface PluginSelection {
+  enable_all: boolean;
+  plugins: { author: string; name: string }[];
+}
+
+/** A bot's message policy: sections of blocks, as in the policy metadata. */
+export interface MessagePolicy {
+  trigger?: Record<string, Record<string, unknown>>;
+  safety?: Record<string, Record<string, unknown>>;
+  output?: Record<string, Record<string, unknown>>;
+  plugins?: PluginSelection;
+}
+
+export interface MessagePolicyOverride extends Omit<MessagePolicy, 'plugins'> {
+  plugins?: PluginSelection | null;
+}
+
+export interface MessagePolicyMetadata {
+  configs: import('../pipeline').PipelineConfigTab[];
+  default: MessagePolicy;
+  neutral: MessagePolicy;
+}
+
+/** Where a hook takes effect: Chat (``messaging``), Agent or command. */
+export type HookProcessor = 'messaging' | 'agent' | 'command';
+
+export interface PluginRegistration {
+  commands?: string[] | null;
+  events?: string[] | null;
+  event_processors?: Record<string, HookProcessor[]> | null;
+}
+
+export interface ApiRespPluginRegistrations {
+  /** null when the Plugin Runtime cannot report registrations. */
+  plugins: Record<string, PluginRegistration> | null;
 }
 
 export interface BotRouteDryRunRequest {
@@ -418,6 +637,55 @@ export interface BotEventRouteStatus {
   order?: number | null;
   enabled?: boolean;
   current?: boolean;
+  /** Last 24h `message.received` events whose primary route was this rule. */
+  counts_24h?: BotRouteCounts;
+}
+
+export interface BotRouteCounts {
+  ai: number;
+  command: number;
+  plugin: number;
+  policy: number;
+}
+
+/** One item of the workspace "upgrade check" (message policy migration). */
+export type UpgradeCheckCode =
+  | 'command_prefix_changed'
+  | 'plugin_command_collision'
+  | 'command_admin_missing'
+  | 'command_plugin_enabled'
+  | 'equivalent_route_policies'
+  | 'chat_settings_moved';
+
+export type UpgradeCheckAction =
+  | 'restore_prefixes'
+  | 'uninstall_essential'
+  | 'remove_plugin'
+  | 'promote_route_policy';
+
+export interface UpgradeCheckItem {
+  id: string;
+  code: UpgradeCheckCode | string;
+  params: {
+    bot_uuid?: string;
+    original_prefixes?: string[];
+    essential_installed?: boolean;
+    names?: string[];
+    plugin?: string;
+    /** Route ids; `null` is the bot default. */
+    scopes?: (string | null)[];
+    route_ids?: string[];
+    changes_unrouted_commands?: boolean;
+    routes?: { bot_uuid: string; route_id: string; chat_uuid?: string }[];
+    [key: string]: unknown;
+  };
+  actions: (UpgradeCheckAction | string)[];
+  confirmed: boolean;
+}
+
+export interface UpgradeChecksResponse {
+  items: UpgradeCheckItem[];
+  reports: Record<string, unknown>[];
 }
 
 export interface BotEventRouteStatusResponse {
@@ -656,6 +924,8 @@ export interface ApiRespAsyncTasks {
 export interface AsyncTaskRuntimeInfo {
   done: boolean;
   exception?: string;
+  /** Structured failure, currently only `plugin_incompatible_langbot_version`. */
+  error?: { code: string; details?: Record<string, unknown> };
   result?: object;
   state: string;
 }
@@ -695,6 +965,7 @@ interface GetPipelineConfig {
   ai: object;
   output: object;
   safety: object;
+  speech?: object;
   trigger: object;
 }
 
@@ -830,6 +1101,8 @@ export type MCPServer =
       enable: boolean;
       extra_args: MCPServerExtraArgsSSE;
       runtime_info?: MCPServerRuntimeInfo;
+      /** ${VAR} placeholder names still to fill (community installs). */
+      unfilled_inputs?: string[];
       readme?: string;
       created_at?: string;
       updated_at?: string;
@@ -841,6 +1114,8 @@ export type MCPServer =
       enable: boolean;
       extra_args: MCPServerExtraArgsHttp;
       runtime_info?: MCPServerRuntimeInfo;
+      /** ${VAR} placeholder names still to fill (community installs). */
+      unfilled_inputs?: string[];
       readme?: string;
       created_at?: string;
       updated_at?: string;
@@ -852,6 +1127,8 @@ export type MCPServer =
       enable: boolean;
       extra_args: MCPServerExtraArgsRemote;
       runtime_info?: MCPServerRuntimeInfo;
+      /** ${VAR} placeholder names still to fill (community installs). */
+      unfilled_inputs?: string[];
       readme?: string;
       created_at?: string;
       updated_at?: string;
@@ -863,6 +1140,8 @@ export type MCPServer =
       enable: boolean;
       extra_args: MCPServerExtraArgsStdio;
       runtime_info?: MCPServerRuntimeInfo;
+      /** ${VAR} placeholder names still to fill (community installs). */
+      unfilled_inputs?: string[];
       readme?: string;
       created_at?: string;
       updated_at?: string;

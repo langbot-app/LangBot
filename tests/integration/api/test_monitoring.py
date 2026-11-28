@@ -232,6 +232,34 @@ class TestMonitoringMessagesEndpoint:
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
+class TestMonitoringExecutionsEndpoint:
+    """Tests for /api/v1/monitoring/executions endpoint."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ('query', 'include_summary'),
+        [('', True), ('&summary=true', True), ('&summary=false', False), ('&summary=0', False)],
+    )
+    async def test_summary_flag(self, quart_test_client, fake_monitoring_app, query, include_summary):
+        """``summary=false`` lets count-only callers skip dashboard aggregates."""
+        fake_monitoring_app.monitoring_service.get_executions = AsyncMock(
+            return_value={'items': [], 'total': 123, 'has_more': True}
+        )
+        response = await quart_test_client.get(
+            f'/api/v1/monitoring/executions?source=pipeline&mode=real&limit=1{query}',
+            headers={'Authorization': 'Bearer test_token'},
+        )
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data['data']['total'] == 123
+        kwargs = fake_monitoring_app.monitoring_service.get_executions.await_args.kwargs
+        assert kwargs['include_summary'] is include_summary
+        assert kwargs['source'] == 'pipeline'
+        assert kwargs['mode'] == 'real'
+
+
+@pytest.mark.usefixtures('mock_circular_import_chain')
 class TestMonitoringLLMCallsEndpoint:
     """Tests for /api/v1/monitoring/llm-calls endpoint."""
 
@@ -289,7 +317,7 @@ class TestMonitoringSessionsEndpoint:
         fake_monitoring_app.monitoring_service.get_sessions.reset_mock()
 
         response = await quart_test_client.get(
-            '/api/v1/monitoring/sessions?botId=bot-1&userQuery=alice&limit=20&offset=40',
+            '/api/v1/monitoring/sessions?botId=bot-1&userQuery=alice&launcherId=group-100&limit=20&offset=40',
             headers={'Authorization': 'Bearer test_token'},
         )
 
@@ -297,6 +325,7 @@ class TestMonitoringSessionsEndpoint:
         kwargs = fake_monitoring_app.monitoring_service.get_sessions.await_args.kwargs
         assert kwargs['bot_ids'] == ['bot-1']
         assert kwargs['user_query'] == 'alice'
+        assert kwargs['launcher_id'] == 'group-100'
         assert kwargs['limit'] == 20
         assert kwargs['offset'] == 40
 

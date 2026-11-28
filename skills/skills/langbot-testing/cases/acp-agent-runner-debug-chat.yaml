@@ -49,7 +49,7 @@ preconditions:
 steps:
   - "Open LANGBOT_FRONTEND_URL."
   - "Open the ACP Runner QA pipeline."
-  - "Confirm the pipeline AI runner is plugin:langbot-team/ACPRunner/default."
+  - "Confirm the Chat AI runner is plugin:langbot-team/ACPRunner/default."
   - "Open Debug Chat."
   - "Ask the real remote Claude ACP agent to call langbot_get_current_event and return ACP_RUNNER_E2E_OK exactly."
 checks:

@@ -9,7 +9,7 @@
 本仓库跟随 LangBot 4.11.x Runner 集成工作。联合测试时使用：
 
 - `langbot-app/LangBot` 分支 `dev/4.11.x`
-- `langbot-app/langbot-plugin-sdk` 分支 `dev/4.11.x`
+- 插件 SDK：本仓库 `sdk/` 目录（PyPI 包 `langbot-plugin`），与 Core 同一提交联调
 - 本仓库 `plugins/Runner/LocalAgent` 目录，与 Core 同一提交联调
 - `langbot-app/langbot-agent-control-plane` 分支 `main`
 
@@ -49,6 +49,7 @@ LangBot 默认不会内联完整历史。如果运行器需要更多上下文，
 | `codex-agent` | `plugin:langbot-team/CodexAgent/default` | - | Codex CLI 专属集成 |
 | `deerflow-agent` | `plugin:langbot-team/DeerFlowAgent/default` | `deerflow-api` | DeerFlow LangGraph 集成 |
 | `dify-agent` | `plugin:langbot-team/DifyAgent/default` | `dify-service-api` | Dify 应用集成 |
+| `multica-agent` | `plugin:langbot-team/MulticaAgent/default` | - | 与选定的 Multica 智能体直接对话 |
 | `n8n-agent` | `plugin:langbot-team/N8nAgent/default` | `n8n-service-api` | n8n 工作流 webhook 集成 |
 | `coze-agent` | `plugin:langbot-team/CozeAgent/default` | `coze-api` | Coze（扣子）机器人集成 |
 | `dashscope-agent` | `plugin:langbot-team/DashScopeAgent/default` | `dashscope-app-api` | 阿里云 DashScope（百炼）集成 |
@@ -114,6 +115,16 @@ Pipeline 适配字段只用于适配层：
 - 追问以文本形式延续（`item.input.to_text()`）；追问自带的附件暂不转发。
 - daemon 传输下追问不会丢失（仍会被排空并作为后续轮次执行），但会话连续性是尽力而为。
 
+### 领取确认与显式恢复
+
+`steering_pull()` 默认保留旧版的拉取即消费语义。Host 授权 `steering_ack` 时，官方 Runner 使用 `claim=True`，在接受输入后确认 `delivery_id`；未确认的领取到期后可重投。确认先持久化，失败可重试。这个协议提供至少一次投递，不保证外部副作用恰好执行一次。
+
+`run_retry()` 对 Host 执行创建独立的新 Run，返回新 Run ID；原 Run、用量和事件保持不变。重试会重新加载当前处理器配置、授权资源和执行期限，也可能重复原任务的副作用。外部队列拥有的 Run 仍使用原有重新入队路径。
+
+支持检查点恢复的 Runner 在组件 manifest 中声明 `spec.resume: true`。新 Runtime 在描述符 metadata 中公布此扩展；旧 SDK 会忽略它，普通执行不受影响。`run_resume()` 只接受最新已提交的 Runner 事件游标，不回退已经发生的副作用。LocalAgent 把已完成的工具调用和结果还原到模型上下文；ACP、Claude Code 和 Codex 继续原 Run 的原生会话。检查点缺失、工具效果未确认或原生会话不可恢复时会失败，不会静默新建会话。Codex daemon 需声明检查点恢复支持。
+
+旧 Run 缺少完整持久输入，或内联附件仅剩脱敏记录时，恢复会明确拒绝并要求重新提交输入。新 Host/SDK 的恢复能力需配套使用；以上改动不自动发布任何插件。
+
 ## 开发
 
 ### 环境要求
@@ -151,6 +162,6 @@ uv run ruff check .
 
 ## 相关仓库
 
-- [LangBot Plugin SDK](https://github.com/langbot-app/langbot-plugin-sdk)：插件开发 SDK 和运行时。
+- [LangBot Plugin SDK](../../sdk/)：插件开发 SDK 和运行时（LangBot 仓库 `sdk/`，PyPI 包 `langbot-plugin`）。
 - [LangBot](https://github.com/langbot-app/LangBot)：LangBot 主应用和 Host 实现。
 - Runner Protocol v1：见 LangBot 仓库中的 `LangBot/docs/agent-runner-pluginization/PROTOCOL_V1.md`。

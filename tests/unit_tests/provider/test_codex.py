@@ -22,9 +22,11 @@ async def test_response_headers_obey_host_first_event_deadline(monkeypatch):
     from langbot.pkg.provider.modelmgr.errors import RequesterError
     from langbot.pkg.provider.modelmgr.request_policy import CallState, RequestPolicy, current_call
 
+    started = asyncio.Event()
     cancelled = asyncio.Event()
 
     async def handler(request):
+        started.set()
         try:
             await asyncio.sleep(10)
         finally:
@@ -40,7 +42,20 @@ async def test_response_headers_obey_host_first_event_deadline(monkeypatch):
         current_call.reset(token)
     assert caught.value.code == 'timeout'
     assert caught.value.phase == 'first_event'
-    assert cancelled.is_set()
+    # The deadline can expire before the request is even issued (`wait` enforces an
+    # already-elapsed budget up front, without starting the operation), in which
+    # case the handler never runs and there is nothing to cancel. Only require
+    # cancellation once the request actually started; otherwise give the
+    # cancellation a moment, since it is delivered asynchronously.
+    if started.is_set():
+        for _ in range(100):
+            if cancelled.is_set():
+                break
+            try:
+                await asyncio.sleep(0.01)
+            except asyncio.CancelledError:
+                break
+        assert cancelled.is_set()
 
 
 def requester(monkeypatch, handler):

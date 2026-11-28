@@ -11,9 +11,9 @@ import zipfile
 import yaml
 
 from tools.regression.regression_api_checks import check, request
-from tools.entrypoints.regression_coverage import checked
+from tools.regression.evidence import checked
 from tools.regression.regression_local_cases import api, auth_headers, endpoint, require
-from tools.regression.regression_resource_cases import cleanup, journal
+from tools.regression.resource_cleanup import cleanup, journal
 
 CASE_NAMES = ('plugin_upgrade', 'plugin_rejected_package', 'plugin_failed_activation')
 FIXTURE = Path(__file__).resolve().parents[1] / 'fixtures' / 'plugin_lifecycle'

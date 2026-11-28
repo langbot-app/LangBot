@@ -35,12 +35,12 @@ async def workflow_engine(tmp_path, request):
 
 @pytest.mark.asyncio
 async def test_workflow_upgrade_without_workspace_table(workflow_engine):
-    await run_alembic_stamp(workflow_engine, '0042_sqlite_incremental_vacuum')
-    await run_alembic_upgrade(workflow_engine, '0043_workflow_tables')
+    await run_alembic_stamp(workflow_engine, '0060_bot_plugin_selection')
+    await run_alembic_upgrade(workflow_engine, '0061_workflow_tables')
     async with workflow_engine.connect() as connection:
         tables = await connection.run_sync(lambda conn: set(sa.inspect(conn).get_table_names()))
         assert tables == {'alembic_version'}
-    await run_alembic_downgrade(workflow_engine, '0042_sqlite_incremental_vacuum')
+    await run_alembic_downgrade(workflow_engine, '0060_bot_plugin_selection')
 
 
 @pytest.mark.asyncio
@@ -50,8 +50,8 @@ async def test_workflow_upgrade_and_downgrade(workflow_engine):
     try:
         async with engine.begin() as connection:
             await connection.execute(sa.text('CREATE TABLE workspaces (uuid VARCHAR(36) PRIMARY KEY)'))
-        await run_alembic_stamp(engine, '0042_sqlite_incremental_vacuum')
-        await run_alembic_upgrade(engine, '0043_workflow_tables')
+        await run_alembic_stamp(engine, '0060_bot_plugin_selection')
+        await run_alembic_upgrade(engine, '0061_workflow_tables')
         async with engine.connect() as connection:
             actual = await connection.run_sync(lambda conn: set(sa.inspect(conn).get_table_names()))
             assert tables <= actual
@@ -64,7 +64,7 @@ async def test_workflow_upgrade_and_downgrade(workflow_engine):
                     sa.text("SELECT tablename FROM pg_policies WHERE policyname = 'langbot_workspace_isolation'")
                 )
                 assert tables <= set(policies.scalars())
-        await run_alembic_downgrade(engine, '0042_sqlite_incremental_vacuum')
+        await run_alembic_downgrade(engine, '0060_bot_plugin_selection')
         async with engine.connect() as connection:
             actual = await connection.run_sync(lambda conn: set(sa.inspect(conn).get_table_names()))
             assert tables.isdisjoint(actual)

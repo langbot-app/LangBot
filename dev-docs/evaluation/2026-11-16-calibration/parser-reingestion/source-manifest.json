@@ -1,0 +1,141 @@
+{
+  "sample_id": "conv-26",
+  "dataset_sha256": "79fa87e90f04081343b8c8debecb80a9a6842b76a7aa537dc9fdf651ea698ff4",
+  "serialization": "[session_date_time] speaker: text joined by newline with trailing newline",
+  "total_turns": 419,
+  "sessions": [
+    {
+      "session": "session_1",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_1.txt",
+      "sha256": "ca55b4c4ca6c22c689e1fb1b18ef9fc136a3d315404df4e6ab8c89fc9dc0c9c8",
+      "turns": 18,
+      "bytes": 2199
+    },
+    {
+      "session": "session_2",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_2.txt",
+      "sha256": "658e88fb66a4547618d9eaf4ade82e836b6cb7b774d72cd65cd33412c6447dba",
+      "turns": 17,
+      "bytes": 3111
+    },
+    {
+      "session": "session_3",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_3.txt",
+      "sha256": "aef50c976dae6c8469bf5605b2e3f0d880afdf68f56e187c0e74f3c85505255d",
+      "turns": 23,
+      "bytes": 5164
+    },
+    {
+      "session": "session_4",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_4.txt",
+      "sha256": "002e84ae449510faf07505412d2968d96804038a0d893f0f322edc0a5bc73587",
+      "turns": 18,
+      "bytes": 3658
+    },
+    {
+      "session": "session_5",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_5.txt",
+      "sha256": "1f233e945bfbc3a02856debc00469fc738bab38a5f9fd47772fb51e6f8b92b77",
+      "turns": 16,
+      "bytes": 2639
+    },
+    {
+      "session": "session_6",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_6.txt",
+      "sha256": "cf716188640b34a0ecbc0d57513517e27c780c267002b4cbbc47c61999ccd27d",
+      "turns": 16,
+      "bytes": 2782
+    },
+    {
+      "session": "session_7",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_7.txt",
+      "sha256": "cd961f0a2093285d62abe64e6f6ae2f124ccf763fac3f1919ae7f38289bc5583",
+      "turns": 27,
+      "bytes": 4623
+    },
+    {
+      "session": "session_8",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_8.txt",
+      "sha256": "0d2b4498c861667c30e230a40c307ead52055c3fe3f0b5d89e6c69859302bed3",
+      "turns": 39,
+      "bytes": 5898
+    },
+    {
+      "session": "session_9",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_9.txt",
+      "sha256": "3ef0fee0c39bd9910a060a9a7d0dc6fbae4ff81701128f19b69733838b369980",
+      "turns": 17,
+      "bytes": 2670
+    },
+    {
+      "session": "session_10",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_10.txt",
+      "sha256": "abc2866f0ba888e66344f73a5a78b208b3fde0bd19391445a5880487239bce6f",
+      "turns": 24,
+      "bytes": 4338
+    },
+    {
+      "session": "session_11",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_11.txt",
+      "sha256": "df6108a14ac166ff88e312f1c690da289dc21c20e6a84d95b008c9fa895ec8a0",
+      "turns": 17,
+      "bytes": 3368
+    },
+    {
+      "session": "session_12",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_12.txt",
+      "sha256": "c687306a799f3f51c9d0cf785582d6df4dc3cd5909f00a47b32fe9a3da6c5776",
+      "turns": 21,
+      "bytes": 3543
+    },
+    {
+      "session": "session_13",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_13.txt",
+      "sha256": "3cfe27caa1c2a2bddcc34892bdb3682ee90132964c08c4b9121b8e4f957595f1",
+      "turns": 18,
+      "bytes": 3200
+    },
+    {
+      "session": "session_14",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_14.txt",
+      "sha256": "c1340a542611153713858a94cc376828df14b244490dfa327109db37098d370a",
+      "turns": 35,
+      "bytes": 6020
+    },
+    {
+      "session": "session_15",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_15.txt",
+      "sha256": "60c53aaccd38254593cf8831835dd5308137b2d90fb9e7447924567816dc32fe",
+      "turns": 28,
+      "bytes": 4719
+    },
+    {
+      "session": "session_16",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_16.txt",
+      "sha256": "6300a199c63bce08633855f4300361629b24d6b968063253138736a8c8b9308b",
+      "turns": 20,
+      "bytes": 4459
+    },
+    {
+      "session": "session_17",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_17.txt",
+      "sha256": "95271dfe3cd2100fe53d38f7d7a1adfa71d41ce984a4de53a3d8021c0a4648ed",
+      "turns": 26,
+      "bytes": 4879
+    },
+    {
+      "session": "session_18",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_18.txt",
+      "sha256": "083c31f6365af0355ce528018ec2f644249605f6cb7d983979d120b61ab2c8d5",
+      "turns": 24,
+      "bytes": 3672
+    },
+    {
+      "session": "session_19",
+      "path": "/home/yhh/.config/langbot-eval/unified-pilot/parser-ab-v1/sources/session_19.txt",
+      "sha256": "250d14f01e011afa23c0c9341e12585094c581a31b1c1d15e3d09ed4a753a06e",
+      "turns": 15,
+      "bytes": 2967
+    }
+  ]
+}

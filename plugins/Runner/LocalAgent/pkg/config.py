@@ -8,6 +8,7 @@ DEFAULT_MAX_TOOL_ITERATIONS = 100
 DEFAULT_MAX_TOOL_RESULT_CHARS = 20000
 DEFAULT_RUN_TIMEOUT_SECONDS = 300
 DEFAULT_TOOL_EXECUTION_MODE = "parallel"
+DEFAULT_WORKSPACE_DIRECT_THRESHOLD = 8
 VALID_TOOL_EXECUTION_MODES = {"parallel", "serial"}
 
 
@@ -33,6 +34,13 @@ def parse_model_config(
     candidates: list[str] = []
 
     if model_config is None:
+        return candidates
+
+    # Host-side selection also accepts a bare model UUID (pre-fallback shape).
+    if isinstance(model_config, str):
+        model_id = _normalize_model_id(model_config)
+        if model_id and model_id in allowed_model_ids:
+            candidates.append(model_id)
         return candidates
 
     if isinstance(model_config, dict):
@@ -62,10 +70,10 @@ def model_reasoning_levels(config: dict[str, typing.Any]) -> dict[str, str]:
     selection = config.get("model")
     if not isinstance(selection, dict):
         return {}
-    levels = selection.get("reasoning", {})
+    levels = selection.get("reasoning")
     if not isinstance(levels, dict):
-        raise ValueError("Model reasoning settings must be an object")
-    return dict(levels)
+        return {}
+    return {str(k): str(v) for k, v in levels.items() if isinstance(v, str)}
 
 
 def _normalize_model_id(model_id: typing.Any) -> str | None:
@@ -183,3 +191,13 @@ def _positive_int(value: typing.Any, *, default: int) -> int:
     if value < 1:
         return default
     return value
+
+
+def get_workspace_direct_threshold(config: dict[str, typing.Any] | None) -> int:
+    """Get the maximum number of workspace operations to expose in direct mode."""
+    if not isinstance(config, dict):
+        return DEFAULT_WORKSPACE_DIRECT_THRESHOLD
+    val = config.get("workspace-direct-threshold")
+    if isinstance(val, bool) or not isinstance(val, int) or val < 0:
+        return DEFAULT_WORKSPACE_DIRECT_THRESHOLD
+    return val

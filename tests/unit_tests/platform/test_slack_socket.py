@@ -7,6 +7,79 @@ import pytest
 from langbot.libs.slack_api.api import SlackClient
 
 
+def thread_payload(**overrides):
+    return {
+        'event': {
+            'type': 'message',
+            'channel_type': 'channel',
+            'channel': 'C-1',
+            'user': 'U-1',
+            'ts': '1710003600.000100',
+            'thread_ts': '1710003600.000001',
+            'parent_user_id': 'B-1',
+            'text': 'reply without mention',
+            **overrides,
+        }
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('channel_type', ['channel', 'group'])
+@pytest.mark.parametrize('subtype', [None, 'file_share', 'thread_broadcast'])
+async def test_bot_thread_replies_dispatch_without_mention(channel_type, subtype):
+    bot = SlackClient('test', '', SimpleNamespace(), unified_mode=True)
+    received = AsyncMock()
+    bot.on_message('channel')(received)
+    payload = thread_payload(channel_type=channel_type, subtype=subtype)
+    payload['authorizations'] = [{'is_bot': True, 'user_id': 'B-1'}]
+    await bot.handle_payload(payload)
+    received.assert_awaited_once()
+    assert received.await_args.args[0]['event']['thread_ts'] == '1710003600.000001'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'overrides',
+    [
+        {'parent_user_id': 'other-user'},
+        {'parent_user_id': None},
+        {'thread_ts': None},
+        {'bot_id': 'B-2'},
+    ],
+)
+async def test_unrelated_channel_messages_are_ignored(overrides):
+    bot = SlackClient('test', '', SimpleNamespace(), unified_mode=True)
+    bot.bot_user_id = 'B-1'
+    bot._handle_message = AsyncMock()
+    await bot.handle_payload(thread_payload(**overrides))
+    bot._handle_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('kinds', [('message', 'app_mention'), ('app_mention', 'message')])
+async def test_bot_thread_mention_is_dispatched_once(kinds):
+    bot = SlackClient('test', '', SimpleNamespace(), unified_mode=True)
+    bot.bot_user_id = 'B-1'
+    received = AsyncMock()
+    bot.on_message('channel')(received)
+    for kind in kinds:
+        payload = thread_payload(type=kind, text='<@B-1> reply')
+        payload['event_id'] = kind
+        await bot.handle_payload(payload)
+    received.assert_awaited_once()
+    await bot.handle_payload(thread_payload(channel='C-2'))
+    assert received.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_thread_edits_keep_event_dispatch():
+    bot = SlackClient('test', '', SimpleNamespace(), unified_mode=True)
+    bot.bot_user_id = 'B-1'
+    bot._handle_message = AsyncMock()
+    await bot.handle_payload(thread_payload(subtype='message_changed'))
+    assert bot._handle_message.await_args.args[1] == 'event'
+
+
 @pytest.mark.asyncio
 async def test_socket_ack_dedup_and_backpressure():
     bot = SlackClient('test', '', SimpleNamespace(warning=AsyncMock(), error=AsyncMock()), unified_mode=True)

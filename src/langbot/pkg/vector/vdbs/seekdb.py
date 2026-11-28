@@ -44,7 +44,8 @@ class SeekDBVectorDatabase(VectorDatabase):
         if not SEEKDB_AVAILABLE:
             raise ImportError(
                 "SeekDB support is not installed. Install LangBot with the 'seekdb' extra: "
-                "uv sync --extra seekdb (source) or uvx --from 'langbot[seekdb]@latest' langbot (PyPI)."
+                "uv sync --extra seekdb (source), uvx --from 'langbot[seekdb]@latest' langbot (PyPI), "
+                'or use the rockchin/langbot:<tag>-seekdb Docker image.'
             )
 
         self.ap = ap

@@ -33,6 +33,11 @@ import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
+from langbot_plugin.api.entities.builtin.runner.interaction import (
+    InteractionHandle,
+    InteractionRequest,
+    InteractionSubmission,
+)
 
 
 class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
@@ -56,9 +61,12 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
     _stream_ctx_ts: dict[str, float] = {}
     _fallback_text: dict[str, str] = {}
     _fallback_text_ts: dict[str, float] = {}
+    _anchor_msg_seq: dict[str, int] = {}
     _ws_task: asyncio.Task | None = None
+    _gateway_tasks: set[asyncio.Task] = set()
 
     _STREAM_CTX_TTL = 300
+    _MAX_REPLIES_PER_ANCHOR = 5
 
     class Config:
         arbitrary_types_allowed = True
@@ -93,7 +101,9 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             _stream_ctx_ts={},
             _fallback_text={},
             _fallback_text_ts={},
+            _anchor_msg_seq={},
             _ws_task=None,
+            _gateway_tasks=set(),
         )
         self._register_native_handlers()
 
@@ -109,6 +119,7 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             'bot.invited_to_group',
             'bot.removed_from_group',
             'platform.specific',
+            'interaction.callback',
         ]
 
     def get_supported_apis(self) -> list[str]:
@@ -122,11 +133,62 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             'get_group_member_list',
             'get_group_member_info',
             'call_platform_api',
-            'interaction.request',
+            'send_interaction',
+            'update_interaction',
+            'get_interaction_capabilities',
         ]
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:
         return interaction_delivery_capabilities()
+
+    async def send_interaction(
+        self,
+        target_type: str,
+        target_id: str,
+        request: InteractionRequest,
+        callback_token: str,
+        reply_to: str | None = None,
+    ) -> InteractionHandle:
+        result = await send_interaction(
+            self,
+            {
+                'request': request.model_dump(mode='json'),
+                'callback_token': callback_token,
+                'reply_target': {'target_type': target_type, 'target_id': target_id, 'message_id': reply_to},
+            },
+        )
+        handle = InteractionHandle.model_validate(result)
+        handle.context['request'] = request.model_dump(mode='json')
+        handle.context['target_type'] = target_type
+        handle.context['target_id'] = target_id
+        return handle
+
+    async def update_interaction(
+        self,
+        handle: InteractionHandle,
+        state: str,
+        submission: InteractionSubmission | None = None,
+    ) -> InteractionHandle:
+        del submission
+        label = {'submitted': 'Submitted', 'expired': 'Expired', 'cancelled': 'Cancelled'}[state]
+        await self.send_message(
+            str(handle.context['target_type']),
+            str(handle.context['target_id']),
+            self._plain_message(f'{handle.context["request"]["title"]}: {label}'),
+        )
+        return handle
+
+    def next_interaction_msg_seq(self, anchor: str) -> int | None:
+        """Allocate QQ's per-anchor passive reply sequence for interaction cards."""
+        if not anchor:
+            return 1
+        used = self._anchor_msg_seq.get(anchor, 0)
+        if used >= self._MAX_REPLIES_PER_ANCHOR:
+            return None
+        self._anchor_msg_seq[anchor] = used + 1
+        while len(self._anchor_msg_seq) > 4096:
+            self._anchor_msg_seq.pop(next(iter(self._anchor_msg_seq)), None)
+        return used + 1
 
     @staticmethod
     def _plain_message(text: str) -> platform_message.MessageChain:
@@ -172,8 +234,6 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
         return platform_events.MessageResult(message_id=source.d_id or source.id, raw={'results': raw})
 
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
-        if action == 'interaction.request':
-            return await send_interaction(self, params)
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             raise NotSupportedError(f'call_platform_api:{action}')
@@ -251,7 +311,13 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             except asyncio.CancelledError:
                 pass
             self._ws_task = None
+        for task in tuple(self._gateway_tasks):
+            task.cancel()
+        if self._gateway_tasks:
+            await asyncio.gather(*self._gateway_tasks, return_exceptions=True)
+            self._gateway_tasks.clear()
         await self.bot.close()
+        self._anchor_msg_seq.clear()
         self._stream_ctx.clear()
         self._stream_ctx_ts.clear()
         self._fallback_text.clear()
@@ -277,7 +343,7 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             'user_openid': source.user_openid,
             'msg_id': source.d_id,
             'stream_msg_id': None,
-            'msg_seq': 1,
+            'msg_seq': None,
             'index': 0,
             'last_update_ts': 0,
             'accumulated_text': '',
@@ -335,6 +401,9 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             return
         ctx['last_update_ts'] = now
 
+        if ctx['msg_seq'] is None:
+            ctx['msg_seq'] = self.bot.allocate_msg_seq()
+
         resp = await self.bot.send_stream_msg(
             user_openid=ctx['user_openid'],
             content=content_to_send,
@@ -372,7 +441,20 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
                 await self.bot.ack_interaction(interaction_id)
             event = interaction_event_from_payload(event_data)
             if event is not None:
-                await self._dispatch_eba_event(event)
+                self._queue_gateway_event(self._dispatch_eba_event(event))
+
+    def _queue_gateway_event(self, awaitable: typing.Awaitable[None]) -> None:
+        async def run() -> None:
+            try:
+                await awaitable
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                await self.logger.error(f'Error in qqofficial gateway event: {traceback.format_exc()}')
+
+        task = asyncio.create_task(run())
+        self._gateway_tasks.add(task)
+        task.add_done_callback(self._gateway_tasks.discard)
 
     async def _handle_native_event(self, event: QQOfficialEvent):
         self.bot_account_id = self.config.get('appid', self.bot_account_id)
@@ -429,12 +511,12 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
                 await self.logger.warning(f'Event data is not dict, skipping: {event_type} -> {type(event_data)}')
                 return
             if event_type not in MESSAGE_EVENT_TYPES:
-                await self._handle_native_event(QQOfficialEvent({'t': event_type, **event_data}))
+                self._queue_gateway_event(self._handle_native_event(QQOfficialEvent({'t': event_type, **event_data})))
                 return
             payload = {'t': event_type, 'd': event_data}
             message_data = await self.bot.get_message(payload)
             if message_data:
-                await self.bot._handle_message(QQOfficialEvent.from_payload(message_data))
+                self._queue_gateway_event(self.bot._handle_message(QQOfficialEvent.from_payload(message_data)))
 
         async def on_error(error: Exception):
             await self.logger.error(f'QQ Official WebSocket error: {error}')

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -12,8 +13,9 @@ import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from langbot_plugin.api.entities.builtin.provider.message import ContentElement, Message
+from langbot_plugin.api.entities.builtin.provider.message import ContentElement, FunctionCall, Message, ToolCall
 from langbot_plugin.api.entities.builtin.runner import RunnerContext
+from langbot_plugin.api.proxies.runner.common import PermissionDeniedError
 
 from pkg.config import get_knowledge_base_ids, get_rerank_config, get_retrieval_top_k
 from pkg.messages import (
@@ -33,6 +35,7 @@ DEFAULT_CONTEXT_RESERVE_TOKENS = 16_384
 DEFAULT_CONTEXT_KEEP_RECENT_TOKENS = 20_000
 DEFAULT_CONTEXT_SUMMARY_TOKENS = 8_000
 RAG_CONTEXT_MAX_INPUT_FRACTION = 4
+HOST_TOKEN_COUNT_TIMEOUT = 5.0
 
 ESTIMATED_ATTACHMENT_CHARS = 4800
 ESTIMATED_ATTACHMENT_TOKENS = 1600
@@ -407,8 +410,26 @@ class HostContextTokenCounter:
         self.tools = tools or []
         self.reasoning_level = reasoning_level
         self._counts: dict[tuple[str, str, bytes], int] = {}
+        self.using_estimate = False
+
+    def _estimate(self, messages: list[Message]) -> int:
+        # URLs and base64 lengths do not bound image, audio, or document tokens.
+        if any(
+            isinstance(message.content, list) and any(part.type != "text" for part in message.content)
+            for message in messages
+        ):
+            raise ContextTokenCounterRequiredError(
+                "Cannot safely estimate media tokens while Host counting is unavailable"
+            )
+        tools = [tool.model_dump(mode="json") if hasattr(tool, "model_dump") else tool for tool in self.tools]
+        payload = {"messages": [message.model_dump(mode="json") for message in messages], "tools": tools}
+        # A byte per token overestimates byte-based text tokenizers; include the
+        # serialized tool schemas and generous message/tool framing allowances.
+        return len(json.dumps(payload, ensure_ascii=True).encode("utf-8")) + 64 * (len(messages) + 1) + 256 * len(tools)
 
     async def count(self, messages: list[Message]) -> int:
+        if self.using_estimate:
+            return self._estimate(messages)
         count_tokens = getattr(self.api, "count_tokens", None)
         if not callable(count_tokens):
             raise ContextTokenCounterRequiredError(
@@ -418,14 +439,27 @@ class HostContextTokenCounter:
         key = (self.model_id, self.reasoning_level, hashlib.sha256(payload.encode()).digest())
         if key in self._counts:
             return self._counts[key]
-        tokens = await count_tokens(
-            llm_model_uuid=self.model_id,
-            messages=messages,
-            funcs=[],
-            reasoning_level=self.reasoning_level,
-        )
-        if isinstance(tokens, bool) or not isinstance(tokens, int) or tokens < 0:
-            raise ContextTokenCounterRequiredError(f"Host count_tokens returned invalid token count: {tokens!r}")
+        try:
+            tokens = await asyncio.wait_for(
+                count_tokens(
+                    llm_model_uuid=self.model_id,
+                    messages=messages,
+                    funcs=[],
+                    reasoning_level=self.reasoning_level,
+                ),
+                timeout=HOST_TOKEN_COUNT_TIMEOUT,
+            )
+            if isinstance(tokens, bool) or not isinstance(tokens, int) or tokens < 0:
+                raise ContextTokenCounterRequiredError("Host count_tokens returned an invalid token count")
+        except PermissionDeniedError:
+            raise
+        except Exception as exc:
+            self.using_estimate = True
+            self._counts.clear()
+            logger.warning(
+                "Host token counting failed (%s); using conservative local estimates for this run", type(exc).__name__
+            )
+            return self._estimate(messages)
         # This counter belongs to one run; retain only a bounded set of input digests.
         if len(self._counts) >= 32:
             self._counts.pop(next(iter(self._counts)))
@@ -443,12 +477,14 @@ class ContextAssembler:
         budget: ContextBudget | None = None,
         summarizer: ContextSummarizer | None = None,
         token_counter: ContextTokenCounter | None = None,
+        workspace_manager: typing.Any = None,
     ):
         self.api = api
         self.ctx = ctx
         self.budget = budget or ContextBudget.from_context(ctx)
         self.summarizer = summarizer
         self.token_counter = token_counter
+        self.workspace_manager = workspace_manager
 
     async def assemble(self) -> ContextAssembly:
         user_text = self.ctx.input.to_text()
@@ -477,6 +513,10 @@ class ContextAssembler:
         platform_tools_message = build_platform_tools_system_message(self.ctx)
         if platform_tools_message is not None:
             system_instructions.append(platform_tools_message.content)
+        if self.workspace_manager is not None:
+            workspace_message = self.workspace_manager.build_system_message()
+            if workspace_message is not None:
+                system_instructions.append(workspace_message.content)
         if system_instructions:
             # Strict chat templates only accept a system message at position zero.
             guidance = "\n\n".join(system_instructions)
@@ -502,6 +542,43 @@ class ContextAssembler:
         )
         if user_message is not None:
             current_messages.append(user_message)
+        recovery = self.ctx.runtime.metadata.get("recovery", {})
+        if recovery.get("mode") == "resume":
+            started = {}
+            for event in recovery.get("events", []):
+                data = event.get("data", {})
+                call_id = data.get("tool_call_id")
+                if event.get("type") == "tool.call.started":
+                    started[call_id] = data
+                elif event.get("type") == "tool.call.completed" and call_id in started:
+                    call = started.pop(call_id)
+                    current_messages.append(
+                        Message(
+                            role="assistant",
+                            tool_calls=[
+                                ToolCall(
+                                    id=call_id,
+                                    type="function",
+                                    function=FunctionCall(
+                                        name=call["tool_name"], arguments=json.dumps(call.get("parameters", {}))
+                                    ),
+                                )
+                            ],
+                        )
+                    )
+                    current_messages.append(
+                        Message(
+                            role="tool",
+                            tool_call_id=call_id,
+                            content=json.dumps(
+                                data.get("result") if not data.get("error") else {"error": data["error"]}
+                            ),
+                        )
+                    )
+                elif event.get("type") == "message.completed":
+                    current_messages.append(Message.model_validate(data["message"]))
+            if started:
+                raise ValueError("Resume checkpoint contains an unfinished tool call")
 
         assembly = await ContextCompactor(
             self.budget,
@@ -978,6 +1055,12 @@ class ContextCompactor:
         )
         messages = sanitize_provider_messages(frame.to_messages())
         tokens_after = await self._count_messages_async(messages)
+        if (
+            getattr(self.token_counter, "using_estimate", False)
+            and self.budget.enabled
+            and tokens_after > self.budget.input_tokens
+        ):
+            raise ContextTokenCounterRequiredError("Conservative token estimate exceeds the available context budget")
         diagnostics = ContextDiagnostics(
             tokens_before=tokens_before,
             tokens_after=tokens_after,

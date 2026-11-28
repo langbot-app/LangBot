@@ -20,6 +20,7 @@ from ..plugin import connector as plugin_connector
 from ..pipeline import pool
 from ..pipeline import controller, pipelinemgr
 from ..pipeline import aggregator as message_aggregator
+from ..message_policy import manager as message_policy_manager
 from ..utils import version as version_mgr, proxy as proxy_mgr, httpclient
 from ..persistence import mgr as persistencemgr
 from ..api.http.controller import main as http_controller
@@ -42,7 +43,7 @@ from ..api.http.service import skill as skill_service
 from ..api.http.service import maintenance as maintenance_service
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
-from ..utils import bounded_executor, event_loop_monitor, logcache
+from ..utils import bounded_executor, event_loop_monitor, gc_maintenance, logcache
 from . import taskmgr
 from . import entities as core_entities
 from ..rag.knowledge import kbmgr as rag_mgr
@@ -55,6 +56,8 @@ from ..skill import manager as skill_mgr
 from ..workspace import service as workspace_service_module
 from ..workspace import collaboration as workspace_collaboration_module
 from ..workspace import invitation_delivery as invitation_delivery_module
+from ..notification import email as email_notification_module
+from ..alerts import service as alert_service_module
 from ..cloud import bootstrap as cloud_bootstrap_module
 from ..cloud import launch as cloud_launch_module
 from ..cloud import support_admin as cloud_support_admin_module
@@ -62,6 +65,7 @@ from ..cloud import directory_projection as cloud_directory_projection_module
 from ..cloud import entitlements as cloud_entitlements_module
 from ..cloud import model_catalog as cloud_model_catalog_module
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
+from ..api.application import ApplicationAPI
 
 if TYPE_CHECKING:
     from ..agent.runner import RunnerRegistry, AgentRunOrchestrator, RunnerDefaultConfigService
@@ -115,10 +119,10 @@ class Application:
 
     sensitive_meta: config_mgr.ConfigManager = None
 
-    pipeline_config_meta_trigger: config_mgr.ConfigManager = None
-    pipeline_config_meta_safety: config_mgr.ConfigManager = None
+    message_policy_meta: list[dict] = None
     pipeline_config_meta_ai: config_mgr.ConfigManager = None
     pipeline_config_meta_output: config_mgr.ConfigManager = None
+    pipeline_config_meta_speech: config_mgr.ConfigManager = None
 
     # =========================
 
@@ -127,6 +131,8 @@ class Application:
     query_pool: pool.QueryPool = None
 
     msg_aggregator: message_aggregator.MessageAggregator = None
+
+    message_policy_mgr: message_policy_manager.MessagePolicyManager = None
 
     ctrl: controller.Controller = None
 
@@ -145,6 +151,10 @@ class Application:
     workspace_collaboration_service: workspace_collaboration_module.WorkspaceCollaborationService = None
 
     invitation_delivery_service: invitation_delivery_module.InvitationDeliveryService = None
+
+    email_service: email_notification_module.EmailService = None
+
+    alert_service: alert_service_module.AlertService = None
 
     space_launch_service: cloud_launch_module.SpaceLaunchService = None
 
@@ -166,6 +176,8 @@ class Application:
     log_cache: logcache.LogCache = None
 
     storage_mgr: storagemgr.StorageMgr = None
+    artifact_service = None
+    artifact_publication_service = None
 
     # ========= HTTP Services =========
 
@@ -180,9 +192,15 @@ class Application:
 
     rerank_models_service: model_service.RerankModelsService = None
 
+    asr_models_service: model_service.ASRModelsService = None
+
+    tts_models_service: model_service.TTSModelsService = None
+
     provider_service: provider_service.ModelProviderService = None
 
     pipeline_service: pipeline_service.PipelineService = None
+
+    application_api: ApplicationAPI = None
 
     agent_service: agent_service.AgentService = None
 
@@ -221,10 +239,12 @@ class Application:
 
     blocking_executor: bounded_executor.BoundedThreadPoolExecutor | None = None
     event_loop_monitor: event_loop_monitor.EventLoopLagMonitor
+    gc_maintainer: gc_maintenance.GarbageCollectionMaintainer | None = None
 
     def __init__(self):
         self._shutdown_lock = asyncio.Lock()
         self._shutdown_complete = False
+        self._stopping = False
         self._shutdown_task: asyncio.Task | None = None
         self.event_loop_monitor = event_loop_monitor.EventLoopLagMonitor()
 
@@ -325,6 +345,7 @@ class Application:
         return {
             'asyncio_tasks': asyncio_tasks,
             'event_loop': self.event_loop_monitor.snapshot(),
+            'gc': (self.gc_maintainer.snapshot() if self.gc_maintainer is not None else {}),
             'blocking_executor': (self.blocking_executor.snapshot() if self.blocking_executor is not None else {}),
             'application_tasks': task_stats,
             'database_pool': database_stats,
@@ -366,6 +387,7 @@ class Application:
 
         await initialize_application_summaries(self)
         self.event_loop_monitor.start()
+        self._start_gc_maintenance()
         from ..utils.execution_lease import maintain_execution_leases
 
         self.task_mgr.create_task(
@@ -410,6 +432,12 @@ class Application:
                     core_entities.LifecycleControlScope.PLATFORM,
                 ],
             )
+            if self.alert_service is not None:
+                self.task_mgr.create_task(
+                    self.alert_service.run(),
+                    name='workspace-alerts',
+                    scopes=[core_entities.LifecycleControlScope.APPLICATION],
+                )
             self.task_mgr.create_task(
                 self.ctrl.run(),
                 name='query-controller',
@@ -494,6 +522,13 @@ class Application:
                 maintenance_intervals['invitations'] = 3600.0
             if operation_log_enabled:
                 maintenance_intervals['operation_logs'] = operation_log_interval_seconds
+            dedicated_members = None
+            if getattr(self, 'user_service', None) is not None:
+                dedicated_members = self.user_service._space_dedicated_members()
+            if dedicated_members is not None:
+                # Dedicated Cloud instances re-check Space-managed members so a
+                # removal on LangBot Space takes effect without a new login.
+                maintenance_intervals['dedicated_members'] = 600.0
 
             if maintenance_intervals:
 
@@ -581,6 +616,17 @@ class Application:
                                             f'Operation log auto-cleanup failed for '
                                             f'Workspace {context.workspace_uuid}: {exc}'
                                         )
+                            if 'dedicated_members' in due and dedicated_members is not None:
+                                try:
+                                    removed_members = await dedicated_members.sync_all()
+                                    if removed_members:
+                                        self.logger.info(
+                                            f'Removed {removed_members} member(s) no longer invited on LangBot Space'
+                                        )
+                                except asyncio.CancelledError:
+                                    raise
+                                except Exception as exc:
+                                    self.logger.warning(f'Space dedicated member sync failed: {exc}')
                             if 'invitations' in due:
                                 try:
                                     await self.workspace_collaboration_service.cleanup_expired_invitations(
@@ -615,6 +661,27 @@ class Application:
             self.logger.error(f'Application runtime fatal exception: {e}')
             self.logger.debug(f'Traceback: {traceback.format_exc()}')
 
+    def _start_gc_maintenance(self) -> None:
+        """Bound cyclic garbage from reconnecting adapters (see gc_maintenance)."""
+
+        if self.gc_maintainer is None:
+            system_cfg = (getattr(self, 'instance_config', None) and self.instance_config.data.get('system')) or {}
+            gc_cfg = system_cfg.get('gc') or {}
+            try:
+                self.gc_maintainer = gc_maintenance.GarbageCollectionMaintainer(
+                    freeze_after_seconds=gc_cfg.get(
+                        'freeze_after_seconds', gc_maintenance.DEFAULT_FREEZE_AFTER_SECONDS
+                    ),
+                    collect_interval_seconds=gc_cfg.get(
+                        'collect_interval_seconds', gc_maintenance.DEFAULT_COLLECT_INTERVAL_SECONDS
+                    ),
+                    logger=self.logger,
+                )
+            except (TypeError, ValueError) as exc:
+                self.logger.warning(f'Invalid system.gc config {gc_cfg!r}: {exc}; using defaults')
+                self.gc_maintainer = gc_maintenance.GarbageCollectionMaintainer(logger=self.logger)
+        self.gc_maintainer.start()
+
     def _get_positive_int_config(self, value, default: int, name: str) -> int:
         try:
             parsed = int(value)
@@ -642,6 +709,7 @@ class Application:
         async with self._shutdown_lock:
             if self._shutdown_complete:
                 return
+            self._stopping = True
 
             if self.task_mgr is not None:
                 self.task_mgr.cancel_by_scope(core_entities.LifecycleControlScope.APPLICATION)
@@ -652,6 +720,9 @@ class Application:
                     await plugin_runtime_task
             with contextlib.suppress(Exception):
                 await self.event_loop_monitor.stop()
+            if self.gc_maintainer is not None:
+                with contextlib.suppress(Exception):
+                    await self.gc_maintainer.stop()
             mcp_mount = getattr(self.http_ctrl, 'mcp_mount', None)
             if mcp_mount is not None:
                 with contextlib.suppress(Exception):
@@ -703,6 +774,11 @@ class Application:
                     with contextlib.suppress(Exception):
                         await persistence_engine.dispose()
             self._shutdown_complete = True
+
+    @property
+    def stopping(self) -> bool:
+        """Whether shutdown has begun; late work must not reopen resources."""
+        return self._stopping
 
     def dispose(self):
         """Compatibility wrapper for callers that cannot await shutdown."""

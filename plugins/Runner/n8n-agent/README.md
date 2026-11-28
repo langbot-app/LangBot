@@ -134,6 +134,9 @@ The n8n workflow behind the webhook must use an **AI Agent** node with an
 4. Return the agent output in the webhook response (streaming `type: item`/`end`
    chunks, or a JSON object keyed by `output-key`).
 
+   A streaming `type: error` chunk fails the run with code `n8n.workflow_error`.
+   Previously streamed text may remain visible on streaming channels.
+
 ### Configure LangBot
 
 Select the n8n runner on the LangBot pipeline and set:

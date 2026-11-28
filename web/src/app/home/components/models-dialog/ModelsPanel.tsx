@@ -213,17 +213,22 @@ export default function ModelsPanel({
       setLoadingProviders((prev) => new Set(prev).add(providerUuid));
     }
     try {
-      const [llmResp, embeddingResp, rerankResp] = await Promise.all([
-        httpClient.getProviderLLMModels(providerUuid),
-        httpClient.getProviderEmbeddingModels(providerUuid),
-        httpClient.getProviderRerankModels(providerUuid),
-      ]);
+      const [llmResp, embeddingResp, rerankResp, asrResp, ttsResp] =
+        await Promise.all([
+          httpClient.getProviderLLMModels(providerUuid),
+          httpClient.getProviderEmbeddingModels(providerUuid),
+          httpClient.getProviderRerankModels(providerUuid),
+          httpClient.getProviderASRModels(providerUuid),
+          httpClient.getProviderTTSModels(providerUuid),
+        ]);
       setProviderModels((prev) => ({
         ...prev,
         [providerUuid]: {
           llm: llmResp.models,
           embedding: embeddingResp.models,
           rerank: rerankResp.models,
+          asr: asrResp.models,
+          tts: ttsResp.models,
         },
       }));
     } catch (err) {
@@ -320,8 +325,20 @@ export default function ModelsPanel({
           provider_uuid: providerUuid,
           extra_args: extraArgsObj,
         } as never);
-      } else {
+      } else if (modelType === 'rerank') {
         await httpClient.createProviderRerankModel({
+          name,
+          provider_uuid: providerUuid,
+          extra_args: extraArgsObj,
+        } as never);
+      } else if (modelType === 'asr') {
+        await httpClient.createProviderASRModel({
+          name,
+          provider_uuid: providerUuid,
+          extra_args: extraArgsObj,
+        } as never);
+      } else {
+        await httpClient.createProviderTTSModel({
           name,
           provider_uuid: providerUuid,
           extra_args: extraArgsObj,
@@ -379,8 +396,20 @@ export default function ModelsPanel({
             provider_uuid: providerUuid,
             extra_args: {},
           } as never);
-        } else {
+        } else if (effectiveType === 'rerank') {
           await httpClient.createProviderRerankModel({
+            name: item.model.name,
+            provider_uuid: providerUuid,
+            extra_args: {},
+          } as never);
+        } else if (effectiveType === 'asr') {
+          await httpClient.createProviderASRModel({
+            name: item.model.name,
+            provider_uuid: providerUuid,
+            extra_args: {},
+          } as never);
+        } else {
+          await httpClient.createProviderTTSModel({
             name: item.model.name,
             provider_uuid: providerUuid,
             extra_args: {},
@@ -436,8 +465,20 @@ export default function ModelsPanel({
           provider_uuid: providerUuid,
           extra_args: extraArgsObj,
         } as never);
-      } else {
+      } else if (modelType === 'rerank') {
         await httpClient.updateProviderRerankModel(modelId, {
+          name,
+          provider_uuid: providerUuid,
+          extra_args: extraArgsObj,
+        } as never);
+      } else if (modelType === 'asr') {
+        await httpClient.updateProviderASRModel(modelId, {
+          name,
+          provider_uuid: providerUuid,
+          extra_args: extraArgsObj,
+        } as never);
+      } else {
+        await httpClient.updateProviderTTSModel(modelId, {
           name,
           provider_uuid: providerUuid,
           extra_args: extraArgsObj,
@@ -463,8 +504,12 @@ export default function ModelsPanel({
         await httpClient.deleteProviderLLMModel(modelId);
       } else if (modelType === 'embedding') {
         await httpClient.deleteProviderEmbeddingModel(modelId);
-      } else {
+      } else if (modelType === 'rerank') {
         await httpClient.deleteProviderRerankModel(modelId);
+      } else if (modelType === 'asr') {
+        await httpClient.deleteProviderASRModel(modelId);
+      } else {
+        await httpClient.deleteProviderTTSModel(modelId);
       }
       toast.success(t('models.deleteSuccess'));
       loadProviderModels(providerUuid, true);
@@ -515,8 +560,24 @@ export default function ModelsPanel({
           provider: providerData,
           extra_args: extraArgsObj,
         } as never);
-      } else {
+      } else if (modelType === 'rerank') {
         await httpClient.testRerankModel('_', {
+          uuid: '',
+          name,
+          provider_uuid: providerUuid,
+          provider: providerData,
+          extra_args: extraArgsObj,
+        } as never);
+      } else if (modelType === 'asr') {
+        await httpClient.testASRModel('_', {
+          uuid: '',
+          name,
+          provider_uuid: providerUuid,
+          provider: providerData,
+          extra_args: extraArgsObj,
+        } as never);
+      } else {
+        await httpClient.testTTSModel('_', {
           uuid: '',
           name,
           provider_uuid: providerUuid,

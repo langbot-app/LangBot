@@ -23,6 +23,54 @@ from tests.unit_tests.provider.conftest import TEST_EXECUTION_CONTEXT
 from tests.unit_tests.provider.test_litellmchat import MockRuntimeModel
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('lane', ['pipeline', 'agent', 'event_processor'])
+@pytest.mark.parametrize('streaming', [False, True])
+async def test_execution_telemetry_captures_actual_llm_on_every_lane(
+    runtime_provider, runtime_llm_model, lane, streaming
+):
+    import contextvars
+    from langbot.pkg.telemetry import trace
+    from tests.unit_tests.telemetry.test_trace import make_counters
+
+    _, counters = make_counters()
+    runtime_provider.requester.ap.telemetry = SimpleNamespace(execution=counters)
+    state = trace.TraceState('execution')
+    counters.register_trace(state, 'run')
+    query = SimpleNamespace(
+        _agent_run_session={'run_id': 'run'},
+        _execution_context=TEST_EXECUTION_CONTEXT,
+        variables={},
+    )
+    runtime_provider._record_call = AsyncMock()
+    runtime_provider.requester.invoke_llm = AsyncMock(return_value=Message(role='assistant', content='private'))
+
+    async def stream(**kwargs):
+        yield MessageChunk(role='assistant', content='private')
+
+    runtime_provider.requester.invoke_llm_stream = stream
+
+    async def invoke():
+        if streaming:
+            return [chunk async for chunk in runtime_provider.invoke_llm_stream(query, runtime_llm_model, [])]
+        return await runtime_provider.invoke_llm(query, runtime_llm_model, [])
+
+    binding = trace.bind() if lane == 'pipeline' else None
+    try:
+        if binding is not None:
+            state = binding.state
+            await invoke()
+        else:
+            await asyncio.create_task(invoke(), context=contextvars.Context())
+        assert state.model_name == runtime_llm_model.model_entity.name
+        assert state.features == {'llm_calls': 1}
+        assert counters.records == []
+        assert 'private' not in str(state.features)
+    finally:
+        if binding is not None:
+            trace.unbind_root(binding)
+
+
 @pytest.fixture
 async def image_url_engine(tmp_path):
     engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "resource_urls.db"}')
@@ -627,3 +675,56 @@ async def test_legacy_none_chunk_is_ignored(runtime_provider, runtime_llm_model)
         )
     ]
     assert [chunk.content for chunk in chunks] == ['ok']
+
+
+def _monitored_query():
+    from langbot_plugin.api.entities.builtin.pipeline.query import Query
+
+    query = Query.model_construct(
+        query_id=1, launcher_type='person', launcher_id=1, variables={}, bot_uuid='bot', pipeline_uuid='p', session=None
+    )
+    object.__setattr__(query, '_execution_context', TEST_EXECUTION_CONTEXT)
+    return query
+
+
+@pytest.mark.asyncio
+async def test_empty_successful_call_is_flagged_in_monitoring(runtime_provider, runtime_llm_model):
+    """LANG-427: an empty, zero-token "success" must be visible on the LLM call record."""
+    usage = {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
+    runtime_provider.requester.invoke_llm = AsyncMock(return_value=(Message(role='assistant', content=''), usage))
+    with patch(
+        'langbot.pkg.pipeline.monitoring_helper.MonitoringHelper.record_llm_call', new_callable=AsyncMock
+    ) as record:
+        await runtime_provider.invoke_llm(_monitored_query(), runtime_llm_model, [])
+    kwargs = record.call_args.kwargs
+    assert kwargs['status'] == 'success'
+    assert kwargs['details']['warnings'] == ['empty_response', 'zero_usage']
+    assert 'empty response' in kwargs['error_message']
+
+
+@pytest.mark.asyncio
+async def test_empty_stream_is_flagged_but_tool_call_stream_is_not(runtime_provider, runtime_llm_model):
+    from langbot_plugin.api.entities.builtin.provider.message import FunctionCall, ToolCall
+
+    async def empty_stream(**kwargs):
+        yield MessageChunk(role='assistant', content='', is_final=True)
+
+    async def tool_stream(**kwargs):
+        yield MessageChunk(
+            role='assistant',
+            content='',
+            is_final=True,
+            tool_calls=[ToolCall(id='c1', type='function', function=FunctionCall(name='t', arguments='{}'))],
+        )
+
+    for stream, expected in ((empty_stream, ['empty_response']), (tool_stream, None)):
+        runtime_provider.requester.invoke_llm_stream = stream
+        with patch(
+            'langbot.pkg.pipeline.monitoring_helper.MonitoringHelper.record_llm_call', new_callable=AsyncMock
+        ) as record:
+            async for _ in runtime_provider.invoke_llm_stream(_monitored_query(), runtime_llm_model, []):
+                pass
+        kwargs = record.call_args.kwargs
+        assert kwargs['status'] == 'success'
+        assert kwargs['details'].get('warnings') == expected
+        assert (kwargs['error_message'] is not None) is (expected is not None)

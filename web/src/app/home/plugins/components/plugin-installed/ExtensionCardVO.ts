@@ -1,6 +1,12 @@
+import type { PluginCompatibility } from '@/app/infra/entities/plugin';
+
 export type ExtensionType = 'plugin' | 'mcp' | 'skill';
 
 export interface IExtensionCardVO {
+  permission_status?: {
+    compatibility_mode: boolean;
+    pending_confirmation: boolean;
+  };
   id: string;
   author: string;
   label: string;
@@ -15,12 +21,17 @@ export interface IExtensionCardVO {
   status?: string;
   debug?: boolean;
   hasUpdate?: boolean;
+  compatibility?: PluginCompatibility;
   runtimeStatus?: 'connecting' | 'connected' | 'error' | 'disabled';
   tools?: number;
   mode?: 'stdio' | 'sse' | 'http' | 'remote';
 }
 
 export class ExtensionCardVO implements IExtensionCardVO {
+  permission_status?: {
+    compatibility_mode: boolean;
+    pending_confirmation: boolean;
+  };
   id: string;
   author: string;
   label: string;
@@ -35,11 +46,13 @@ export class ExtensionCardVO implements IExtensionCardVO {
   status?: string;
   debug?: boolean;
   hasUpdate?: boolean;
+  compatibility?: PluginCompatibility;
   runtimeStatus?: 'connecting' | 'connected' | 'error' | 'disabled';
   tools?: number;
   mode?: 'stdio' | 'sse' | 'http' | 'remote';
 
   constructor(prop: IExtensionCardVO) {
+    this.permission_status = prop.permission_status;
     this.id = prop.id;
     this.author = prop.author;
     this.label = prop.label;
@@ -54,6 +67,7 @@ export class ExtensionCardVO implements IExtensionCardVO {
     this.status = prop.status;
     this.debug = prop.debug;
     this.hasUpdate = prop.hasUpdate;
+    this.compatibility = prop.compatibility;
     this.runtimeStatus = prop.runtimeStatus;
     this.tools = prop.tools;
     this.mode = prop.mode;

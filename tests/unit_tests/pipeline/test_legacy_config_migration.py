@@ -1204,3 +1204,25 @@ def test_invalid_box_templates_are_defaulted(template):
     assert selected_config(result)['box-session-id-template'] == '{launcher_type}_{launcher_id}'
 
 
+@pytest.mark.parametrize('location', ['section', 'runner_config'])
+def test_legacy_runner_name_in_current_id_migrates(location):
+    """A pre-4.11 runner name saved in ai.runner.id is migrated, not blocked (LANG-358)."""
+    settings = copy.deepcopy(FIXTURES['local-agent'])
+    source = source_for('local-agent')
+    source['ai'] = {'runner': {'id': 'local-agent', 'expire-time': 0}}
+    if location == 'section':
+        source['ai']['local-agent'] = settings
+    else:
+        source['ai']['runner_config'] = {'local-agent': settings}
+    result = plan(source)
+    assert result['state'] == 'ready', result['blockers']
+    assert result['legacy_runner'] == 'local-agent'
+    assert result['config']['ai']['runner']['id'] == 'plugin:langbot-team/LocalAgent/default'
+    assert set(result['config']['ai']['runner_config']) == {'plugin:langbot-team/LocalAgent/default'}
+    assert {'code': 'migration.value_coerced', 'field': 'ai.runner.id'} in result['warnings']
+    assert {'code': 'migration.runner_config_replaced', 'field': 'ai.runner_config'} not in result['warnings']
+    assert plan(result['config'])['state'] == 'already_current'
+
+
+def test_legacy_runner_name_in_current_id_without_settings_stays_blocked():
+    assert_block(plan({'ai': {'runner': {'id': 'local-agent'}}}), 'invalid_runner_id', 'ai.runner.id')

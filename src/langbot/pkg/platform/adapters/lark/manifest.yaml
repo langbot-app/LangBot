@@ -193,10 +193,10 @@ spec:
         zh_Hant: 啟用飛書串流回覆模式
         ja_JP: ストリーミング返信モードを有効化
       description:
-        en_US: Used for streaming replies from pipelines or plugins. If enabled, replies are rendered through an updating Lark card.
-        zh_Hans: 用于流水线和插件主动发起的流式回复。如果启用，将使用可更新的飞书卡片进行流式回复。
-        zh_Hant: 用於流水線和插件主動發起的串流回覆。如果啟用，將使用可更新的飛書卡片進行串流回覆。
-        ja_JP: パイプラインやプラグインのストリーミング返信に適用されます。有効にすると、更新可能な Lark カードでストリーミング返信します。
+        en_US: Used for streaming replies from Chats or plugins. If enabled, replies are rendered through an updating Lark card.
+        zh_Hans: 用于聊天和插件主动发起的流式回复。如果启用，将使用可更新的飞书卡片进行流式回复。
+        zh_Hant: 用於聊天和插件主動發起的串流回覆。如果啟用，將使用可更新的飛書卡片進行串流回覆。
+        ja_JP: チャットやプラグインのストリーミング返信に適用されます。有効にすると、更新可能な Lark カードでストリーミング返信します。
       type: boolean
       required: true
       default: false
@@ -252,6 +252,7 @@ spec:
     - message.deleted
     - message.reaction
     - platform.specific
+    - interaction.callback
 
   supported_apis:
     required:
@@ -264,8 +265,9 @@ spec:
       - get_user_info
       - get_file_url
       - call_platform_api
-      - interaction.request
-      - interaction.acknowledge
+      - send_interaction
+      - update_interaction
+      - get_interaction_capabilities
 
   platform_specific_apis:
     - action: check_tenant_access_token

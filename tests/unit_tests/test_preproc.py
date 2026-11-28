@@ -268,6 +268,34 @@ async def test_preproc_skips_injection_when_addendum_is_empty():
         assert 'Available Skills' not in (query.prompt.messages[0].content or '')
 
 
+@pytest.mark.asyncio
+async def test_preproc_projects_turn_system_context_without_mutating_conversation_prompt():
+    preproc_module, _ = _import_preproc_modules()
+    app = _make_app(skill_service=SimpleNamespace())
+    conversation = app.sess_mgr.get_conversation.return_value
+    conversation.messages = [Message(role='user', content='Previous question')]
+
+    async def inject(event, bound_plugins):
+        event.default_prompt.append(Message(role='system', content='Turn profile'))
+        event.prompt.append(Message(role='system', content='Turn episodic evidence'))
+        return SimpleNamespace(event=event)
+
+    app.plugin_connector.emit_event.side_effect = inject
+    query = _make_query()
+    await stage_process_capture(preproc_module, app, query)
+
+    assert [message.content for message in query.prompt.messages] == ['system prompt', 'Turn profile']
+    assert [message.content for message in conversation.prompt.messages] == ['system prompt']
+    assert [message.content for message in query.messages] == ['Previous question', 'Turn episodic evidence']
+    context = query.variables['_host_prompt_preprocessing_system_context']
+    assert [message['content'] for message in context] == ['Turn episodic evidence']
+
+    # A later preprocessing pass replaces the turn projection, including an empty one.
+    app.plugin_connector.emit_event.side_effect = lambda event, plugins: SimpleNamespace(event=event)
+    await stage_process_capture(preproc_module, app, query)
+    assert query.variables['_host_prompt_preprocessing_system_context'] == []
+
+
 async def stage_process_capture(preproc_module, app, query):
     """Run PreProcessor.process and return the result while keeping ``query``
     accessible to the assertions (process mutates query in place)."""

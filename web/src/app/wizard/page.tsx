@@ -564,6 +564,7 @@ export default function WizardPage() {
       try {
         const installed = await installMarketplaceRunner(plugin, {
           scope: WIZARD_RUNNER_INSTALL_SCOPE,
+          autoConfirmPermissions: true,
           onProgress: (task) => updateRunnerInstallProgress(pluginId, task),
         });
         finishRunnerProgress(pluginId);
@@ -755,6 +756,10 @@ export default function WizardPage() {
         botDraft.current,
         bot,
         `${defaultName} ${t('agents.pipelineType')}`,
+        {
+          person: t('bots.routeNote.templatePerson'),
+          group: t('bots.routeNote.templateGroup'),
+        },
       );
       setBotName(resp.bot.name);
       setAdapterConfig(
@@ -844,7 +849,11 @@ export default function WizardPage() {
                   await getCloudServiceClient()
                 ).getPluginDetail('langbot-team', 'LocalAgent')
               ).plugin,
-              { scope, onProgress: onDefaultInstallProgress },
+              {
+                scope,
+                autoConfirmPermissions: true,
+                onProgress: onDefaultInstallProgress,
+              },
             );
         configTab = installed?.configTab;
       }
@@ -910,7 +919,10 @@ export default function WizardPage() {
       const currentBot = (await httpClient.getBot(createdBotUuid)).bot;
       Object.assign(
         botUpdate,
-        wizardBindingsIfMissing(currentBot, previewPipelineUuid),
+        wizardBindingsIfMissing(currentBot, previewPipelineUuid, {
+          person: t('bots.routeNote.templatePerson'),
+          group: t('bots.routeNote.templateGroup'),
+        }),
       );
 
       await httpClient.updateBot(createdBotUuid, botUpdate);
@@ -1803,6 +1815,9 @@ function StepBotConfig({
                     ) : null;
                   })()}
               </div>
+              <p className="text-xs text-muted-foreground">
+                {t('wizard.aiEngine.autoConfirmPermissions')}
+              </p>
               <Button
                 size="sm"
                 onClick={onSaveBot}
@@ -2197,6 +2212,9 @@ function StepAIEngine({
         </div>
       )}
 
+      <p className="text-sm text-muted-foreground">
+        {t('wizard.aiEngine.autoConfirmPermissions')}
+      </p>
       <div
         className={cn(
           'grid grid-cols-1 gap-4',

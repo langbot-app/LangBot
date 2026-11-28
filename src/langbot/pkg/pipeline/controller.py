@@ -9,7 +9,9 @@ from ..core import entities as core_entities
 from ..workspace.errors import WorkspaceError, WorkspaceInvariantError
 
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+from .command_text import command_name_from_chain
 from .pool import get_query_execution_context
+from .process.command_settings import get_bot_command_settings
 
 
 class Controller:
@@ -24,48 +26,16 @@ class Controller:
         self.ap = ap
         self.semaphore = asyncio.Semaphore(self.ap.instance_config.data['concurrency']['pipeline'])
 
-    def _command_name(self, query: pipeline_query.Query) -> str | None:
+    async def _command_name(self, query: pipeline_query.Query) -> str | None:
         """Return a command name while ignoring non-text platform components."""
 
-        command_config = self.ap.instance_config.data.get('command', {})
-        if not command_config.get('enable', True):
+        cmd_enable, cmd_prefixes = await get_bot_command_settings(self.ap, query)
+        if not cmd_enable:
             return None
-        message_chain = getattr(query, 'message_chain', None)
-        try:
-            components = list(message_chain or [])
-        except TypeError:
-            components = []
-        text_parts = [str(getattr(component, 'text', '')) for component in components]
-        message_text = ''.join(text_parts).strip() or str(message_chain or '').strip()
-        for prefix in command_config.get('prefix', []):
-            if message_text.startswith(prefix):
-                command_text = message_text[len(prefix) :].strip()
-                return command_text.split(maxsplit=1)[0].lower() if command_text else None
-        return None
-
-    async def _handle_stop_command(
-        self,
-        query: pipeline_query.Query,
-        original_query: pipeline_query.Query,
-    ) -> None:
-        """Cancel an authorized active run and retain the result for CommandHandler."""
-
-        if original_query.variables.get('_stop_command_attempted'):
-            return
-        query.variables['_stop_command_attempted'] = True
-        original_query.variables['_stop_command_attempted'] = True
-        allow_other_actors = False
-        if getattr(getattr(query, 'launcher_type', None), 'value', None) == 'group':
-            allow_other_actors = await self.ap.cmd_mgr.resolve_privilege(original_query) >= 2
-        run_id = await self.ap.agent_run_orchestrator.cancel_active_from_query(
-            query,
-            allow_other_actors=allow_other_actors,
+        return command_name_from_chain(
+            getattr(query, 'message_chain', None),
+            sorted(cmd_prefixes, key=len, reverse=True),
         )
-        if query.variables.get('_stop_command_denied'):
-            original_query.variables['_stop_command_denied'] = True
-        if run_id:
-            query.variables['_stop_command_run_id'] = run_id
-            original_query.variables['_stop_command_run_id'] = run_id
 
     async def _assert_query_execution_active(
         self,
@@ -89,7 +59,6 @@ class Controller:
         """Offer follow-up input to an active Runner before it queues."""
 
         try:
-            original_query = query
             pipeline_uuid = query.pipeline_uuid
             if not pipeline_uuid:
                 return False
@@ -101,15 +70,14 @@ class Controller:
             if pipeline is None:
                 return False
             query.session = await self.ap.sess_mgr.get_session(query)
-            query.pipeline_config = pipeline.pipeline_entity.config
+            # Same view the stage chain gets: Messaging config with the message
+            # policy of the matched route laid over it.
+            await self.ap.message_policy_mgr.bind_query(query, pipeline.pipeline_entity.config)
             query.variables['_pipeline_bound_plugins'] = pipeline.bound_plugins
             query.variables['_pipeline_bound_mcp_servers'] = pipeline.bound_mcp_servers
-            command = self._command_name(query)
-            if command == 'stop':
-                await self._handle_stop_command(query, original_query)
-                # Control commands bypass ordinary group response rules while a
-                # run owns the session slot, then reach CommandHandler normally.
-                return False
+            query.variables['_pipeline_workspace_operations'] = getattr(pipeline, 'workspace_operations', [])
+            query.variables['_pipeline_allowed_platform_tools'] = getattr(pipeline, 'allowed_platform_tools', [])
+            command = await self._command_name(query)
             if getattr(getattr(query, 'launcher_type', None), 'value', None) == 'group':
                 from .resprule.resprule import GroupRespondRuleCheckStage
                 from .entities import ResultType
@@ -126,10 +94,7 @@ class Controller:
                 if result.result_type == ResultType.INTERRUPT:
                     return False
                 query = candidate
-                command = self._command_name(query)
-                if command == 'stop':
-                    await self._handle_stop_command(query, original_query)
-                    return False
+                command = await self._command_name(query)
             if command:
                 # Commands must reach CommandHandler after the active run releases
                 # the session slot. They must never become Runner steering input.
@@ -186,6 +151,9 @@ class Controller:
                 f'Dropped query {selected_query.query_id} because its Workspace execution binding is stale: {exc}'
             )
         finally:
+            # A query that never reached its Pipeline lane still closes the
+            # execution chain it was handed off from.
+            self._settle_telemetry_handoff(selected_query, 'Query dropped before its Pipeline ran')
             try:
                 try:
                     await self.ap.query_pool.remove_query(selected_query)
@@ -200,9 +168,23 @@ class Controller:
                 if global_slot_reserved:
                     self.semaphore.release()
 
+    def _settle_telemetry_handoff(self, query, error: str = '', *, merged: bool = False) -> None:
+        try:
+            from ..telemetry import execution as telemetry_execution
+
+            telemetry_execution.release_handoff(
+                self.ap,
+                getattr(query, 'variables', None),
+                error='' if merged else error,
+                merged_into='' if merged else None,
+            )
+        except Exception:
+            pass
+
     async def _drop_selected_query(self, selected_query, selected_session) -> None:
         """Undo scheduler ownership when work cannot be handed to a task."""
 
+        self._settle_telemetry_handoff(selected_query, 'Query dropped before its Pipeline ran')
         try:
             await self.ap.query_pool.remove_query(selected_query)
         finally:
@@ -233,13 +215,6 @@ class Controller:
                                 break
                             continue
 
-                        # A stop command must cancel an active run even when the
-                        # session has spare capacity (for example, concurrency=2).
-                        # Otherwise it would occupy the second slot as a normal
-                        # Pipeline query and never reach the cancellation branch.
-                        if self._command_name(query) == 'stop' and not query.variables.get('_stop_command_attempted'):
-                            await self._try_claim_steering_before_session_slot(query)
-
                         if not session._semaphore.locked():
                             selected_query = query
                             selected_session = session
@@ -251,6 +226,8 @@ class Controller:
                             break
 
                     if claimed_steering_query is not None:
+                        # The message steered an active run instead of starting one.
+                        self._settle_telemetry_handoff(claimed_steering_query, merged=True)
                         self.ap.query_pool.remove_query_locked(claimed_steering_query)
                         self.ap.query_pool.condition.notify_all()
                         continue

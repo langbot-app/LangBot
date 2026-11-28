@@ -14,6 +14,19 @@ _CLEANUP_INTERVAL_SECONDS = 60
 _MAX_EVICTION_PROBES = 64
 
 
+def _window_seconds(config: dict) -> int:
+    """Window length in whole seconds, at least 1.
+
+    Policies saved before ``window-length`` was validated can hold 0 or a
+    negative value, which made ``now % window`` raise ZeroDivisionError and
+    dropped the message. The WebUI already shows such values as 1.
+    """
+    try:
+        return max(1, int(config['window-length']))
+    except (TypeError, ValueError):
+        return 1
+
+
 # 固定窗口算法
 class SessionContainer:
     wait_lock: asyncio.Lock
@@ -41,6 +54,34 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
         self.containers = OrderedDict()
         self._last_cleanup = time.monotonic()
 
+    @staticmethod
+    def _session_name(query, launcher_type, launcher_id):
+        context = get_query_execution_context(query)
+        return ':'.join(
+            map(
+                str,
+                (
+                    context.instance_uuid,
+                    context.workspace_uuid,
+                    context.placement_generation,
+                    query.bot_uuid,
+                    query.pipeline_uuid,
+                    launcher_type,
+                    launcher_id,
+                ),
+            )
+        )
+
+    def would_drop(self, query):
+        config = query.pipeline_config['safety']['rate-limit']
+        container = self.containers.get(self._session_name(query, query.launcher_type.value, query.launcher_id))
+        now = int(time.time())
+        return (
+            config['strategy'] == 'drop'
+            and container is not None
+            and container.records.get(now - now % _window_seconds(config), 0) >= config['limitation']
+        )
+
     async def require_access(
         self,
         query: pipeline_query.Query,
@@ -50,25 +91,14 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
         # 加锁，找容器
         container: SessionContainer = None
 
-        execution_context = get_query_execution_context(query)
-        session_name = ':'.join(
-            (
-                execution_context.instance_uuid,
-                execution_context.workspace_uuid,
-                str(execution_context.placement_generation),
-                str(getattr(query, 'bot_uuid', '')),
-                str(getattr(query, 'pipeline_uuid', '')),
-                str(launcher_type),
-                str(launcher_id),
-            )
-        )
+        session_name = self._session_name(query, launcher_type, launcher_id)
 
         async with self.containers_lock:
             container = self.containers.get(session_name)
 
             if container is None:
-                window_size = query.pipeline_config['safety']['rate-limit']['window-length']
-                ttl_seconds = max(int(window_size) * 2, _MIN_CONTAINER_TTL_SECONDS)
+                window_size = _window_seconds(query.pipeline_config['safety']['rate-limit'])
+                ttl_seconds = max(window_size * 2, _MIN_CONTAINER_TTL_SECONDS)
                 now_monotonic = time.monotonic()
                 if now_monotonic - self._last_cleanup >= _CLEANUP_INTERVAL_SECONDS:
                     self._last_cleanup = now_monotonic
@@ -101,7 +131,7 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
         # 等待锁
         async with container.wait_lock:
             # 获取窗口大小和限制
-            window_size = query.pipeline_config['safety']['rate-limit']['window-length']
+            window_size = _window_seconds(query.pipeline_config['safety']['rate-limit'])
             limitation = query.pipeline_config['safety']['rate-limit']['limitation']
 
             # TODO revert it

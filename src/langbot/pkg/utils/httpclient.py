@@ -14,12 +14,15 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import ssl
 import typing
+from urllib.parse import urlsplit
 
 import aiohttp
 import httpx
 
 _sessions: dict[str, aiohttp.ClientSession] = {}
+_client_ssl_context: ssl.SSLContext | None = None
 DEFAULT_REMOTE_BODY_LIMIT = 10 * 1024 * 1024
 
 
@@ -81,6 +84,36 @@ def httpx_response_limit_hooks(
         response.stream = _LimitedHTTPXAsyncByteStream(response.stream, max_bytes)
 
     return {'response': [limit_response]}
+
+
+def client_ssl_context() -> ssl.SSLContext:
+    """Return the process-wide verified TLS client context.
+
+    ``websockets.connect()`` builds ``ssl.create_default_context()`` for every
+    ``wss://`` connection when no context is passed, which loads the whole
+    system CA store (~330 KB of C allocations) each time. Reconnecting platform
+    gateways (QQ Official, DingTalk, KOOK, Satori) do that hundreds of times an
+    hour on a multi-tenant Core; memray on Cloud attributed most of the steady
+    RSS growth that led to OOMKills to exactly this path. One shared context
+    has the same verification behaviour and is safe to reuse across
+    connections.
+    """
+
+    global _client_ssl_context
+    if _client_ssl_context is None:
+        _client_ssl_context = ssl.create_default_context()
+    return _client_ssl_context
+
+
+def websocket_connect_kwargs(url: str) -> dict[str, typing.Any]:
+    """Extra ``websockets.connect`` kwargs that reuse the shared TLS context.
+
+    ``ssl`` is only valid for ``wss://`` URIs; websockets rejects it for ``ws://``.
+    """
+
+    if urlsplit(url).scheme.lower() == 'wss':
+        return {'ssl': client_ssl_context()}
+    return {}
 
 
 def get_session(*, trust_env: bool = False) -> aiohttp.ClientSession:

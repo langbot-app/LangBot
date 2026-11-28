@@ -32,7 +32,13 @@ def check_catalog(root: Path = ROOT) -> list[dict]:
             raise ValueError(f'Duplicate plugin ID: {identity}')
         identities.add(identity)
         kinds = manifest['spec']['components']
-        category = 'Runner' if 'Runner' in kinds else 'KnowledgeEngine' if 'KnowledgeEngine' in kinds else 'misc'
+        category = (
+            'Runner'
+            if 'Runner' in kinds and 'EventListener' not in kinds
+            else 'KnowledgeEngine'
+            if 'KnowledgeEngine' in kinds
+            else 'misc'
+        )
         assert plugin.parent.name == category, path
         assert metadata['repository'] == REPOSITORY + plugin.relative_to(root).as_posix(), path
         assert re.fullmatch(r'\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?', str(metadata['version'])), path

@@ -7,6 +7,7 @@ import copy
 import typing
 import time
 import threading
+from uuid import uuid4
 
 from langbot_plugin.api.entities.builtin.pipeline import query as pipeline_query
 
@@ -15,6 +16,7 @@ from ...provider.tools.toolmgr import ToolSourceRef
 
 
 MAX_STEERING_QUEUE_ITEMS = 100
+STEERING_LEASE_SECONDS = 30
 
 DEFAULT_RESOURCE_OPERATIONS: dict[str, set[str]] = {
     'model': {'invoke', 'stream', 'rerank', 'count_tokens'},
@@ -51,6 +53,13 @@ class RunAuthorizationSnapshot(typing.TypedDict):
     platform_context: dict[str, typing.Any]
     authorized_ids: dict[str, set[str]]
     authorized_operations: dict[str, dict[str, set[str]]]
+    binding_id: str | None
+    processor_type: str | None
+    processor_id: str | None
+    interactions_enabled: bool
+    interactions_authorized: bool
+    trigger_actor: typing.NotRequired[str | None]
+    workspace_operations: typing.NotRequired[list[dict[str, typing.Any]]]
 
 
 SteeringQueueItem = dict[str, typing.Any]
@@ -80,6 +89,12 @@ class AgentRunSession(typing.TypedDict):
     status: AgentRunSessionStatus
     reply_streams: typing.Any
     steering_queue: list[SteeringQueueItem]
+    processor_type: typing.NotRequired[str | None]
+    processor_id: typing.NotRequired[str | None]
+    trigger_actor: typing.NotRequired[str | None]
+    workspace_id: typing.NotRequired[str | None]
+    workspace_operations: typing.NotRequired[list[dict[str, typing.Any]]]
+    runtime_context: dict[str, typing.Any] | None
     task: asyncio.Task[typing.Any] | None
 
 
@@ -120,6 +135,13 @@ class AgentRunSessionRegistry:
         execution_query: pipeline_query.Query | None = None,
         platform_context: dict[str, typing.Any] | None = None,
         reply_streams: typing.Any = None,
+        binding_id: str | None = None,
+        processor_type: str | None = None,
+        processor_id: str | None = None,
+        interactions_enabled: bool = False,
+        interactions_authorized: bool = False,
+        runtime_context: dict[str, typing.Any] | None = None,
+        trigger_actor: str | None = None,
     ) -> None:
         """Register a new agent run session.
 
@@ -167,6 +189,13 @@ class AgentRunSessionRegistry:
             'platform_context': copy.deepcopy(platform_context or {}),
             'authorized_ids': self._build_authorized_ids(resources_snapshot),
             'authorized_operations': self._build_authorized_operations(resources_snapshot),
+            'binding_id': binding_id,
+            'processor_type': processor_type,
+            'processor_id': processor_id,
+            'interactions_enabled': interactions_enabled,
+            'interactions_authorized': interactions_authorized,
+            'trigger_actor': trigger_actor,
+            'workspace_operations': copy.deepcopy(resources_snapshot.get('workspace_operations', [])),
         }
 
         session: AgentRunSession = {
@@ -182,6 +211,12 @@ class AgentRunSessionRegistry:
                 'last_activity_at': now,
             },
             'steering_queue': [],
+            'processor_type': processor_type,
+            'processor_id': processor_id,
+            'trigger_actor': trigger_actor,
+            'workspace_id': workspace_id,
+            'workspace_operations': copy.deepcopy(resources_snapshot.get('workspace_operations', [])),
+            'runtime_context': runtime_context,
             'task': asyncio.current_task(),
         }
 
@@ -276,12 +311,18 @@ class AgentRunSessionRegistry:
         bot_id: str | None = None,
         workspace_id: str | None = None,
         thread_id: str | None = None,
+        binding_id: str | None = None,
+        eligible_run_ids: set[str] | None = None,
     ) -> str | None:
         """Find the oldest active run that can accept steering for a conversation."""
         async with self._lock:
             candidates: list[tuple[int, str]] = []
             for run_id, session in self._sessions.items():
                 authorization = session['authorization']
+                if eligible_run_ids is not None and run_id not in eligible_run_ids:
+                    continue
+                if binding_id is not None and authorization.get('binding_id') != binding_id:
+                    continue
                 if session.get('runner_id') != runner_id:
                     continue
                 if authorization.get('conversation_id') != conversation_id:
@@ -368,14 +409,67 @@ class AgentRunSessionRegistry:
             session['status']['last_activity_at'] = int(time.time())
             return True
 
+    async def restore_steering(
+        self,
+        run_id: str,
+        items: typing.Iterable[SteeringQueueItem],
+    ) -> int:
+        """Restore unacknowledged steering inputs from durable event log state."""
+        async with self._lock:
+            session = self._sessions.get(run_id)
+            if session is None:
+                return 0
+            existing_ids = {
+                item.get('event', {}).get('event_id')
+                for item in session['steering_queue']
+                if isinstance(item.get('event'), dict)
+            }
+            restored = 0
+            for item in items:
+                event = item.get('event') if isinstance(item, dict) else None
+                event_id = event.get('event_id') if isinstance(event, dict) else None
+                if not event_id or event_id in existing_ids:
+                    continue
+                if len(session['steering_queue']) >= MAX_STEERING_QUEUE_ITEMS:
+                    break
+                session['steering_queue'].append(copy.deepcopy(item))
+                existing_ids.add(event_id)
+                restored += 1
+            if restored:
+                session['status']['last_activity_at'] = int(time.time())
+            return restored
+
+    async def complete_steering_enqueue(self, run_id: str, event_id: str, *, persisted: bool) -> bool:
+        """Publish a durable input or remove a failed pending enqueue."""
+        async with self._lock:
+            session = self._sessions.get(run_id)
+            if session is None:
+                return False
+            queue = session['steering_queue']
+            for index, item in enumerate(queue):
+                if item.get('_steering_pending') and item.get('event', {}).get('event_id') == event_id:
+                    if persisted:
+                        item.pop('_steering_pending')
+                    else:
+                        del queue[index]
+                    return persisted
+            return False
+
     async def pull_steering(
         self,
         run_id: str,
         *,
         mode: str = 'all',
         limit: int | None = None,
+        claim: bool = False,
     ) -> list[SteeringQueueItem]:
-        """Pop pending steering items from a run queue."""
+        """Pull pending steering items, optionally claiming them for acknowledgement.
+
+        The legacy non-claiming mode keeps the original pop semantics. New
+        protocol callers should use ``claim=True`` and acknowledge each
+        returned ``delivery_id`` after applying the input. Unacknowledged
+        claims become visible again after the short lease expires.
+        """
         async with self._lock:
             session = self._sessions.get(run_id)
             if session is None:
@@ -394,10 +488,62 @@ class AgentRunSessionRegistry:
                 count = len(queue)
 
             count = max(0, min(count, len(queue), 100))
-            items = [copy.deepcopy(item) for item in queue[:count]]
-            del queue[:count]
+            now = int(time.time())
+            items: list[SteeringQueueItem] = []
+            selected_indexes: list[int] = []
+            for index, item in enumerate(queue):
+                if item.get('_steering_pending'):
+                    break
+                lease_expires_at = item.get('_steering_lease_expires_at')
+                if isinstance(lease_expires_at, int):
+                    if lease_expires_at > now:
+                        continue
+                    item.pop('_steering_delivery_id', None)
+                    item.pop('_steering_lease_expires_at', None)
+                selected_indexes.append(index)
+                projected = copy.deepcopy(item)
+                if claim:
+                    delivery_id = item.get('_steering_delivery_id') or str(uuid4())
+                    lease_expires_at = now + STEERING_LEASE_SECONDS
+                    item['_steering_delivery_id'] = delivery_id
+                    item['_steering_lease_expires_at'] = lease_expires_at
+                    projected.pop('_steering_delivery_id', None)
+                    projected.pop('_steering_lease_expires_at', None)
+                    projected['delivery_id'] = delivery_id
+                    projected['lease_expires_at'] = lease_expires_at
+                items.append(projected)
+                if len(items) >= count:
+                    break
+            if not claim:
+                for index in reversed(selected_indexes):
+                    del queue[index]
             session['status']['last_activity_at'] = int(time.time())
             return items
+
+    async def ack_steering(
+        self,
+        run_id: str,
+        delivery_ids: typing.Iterable[str],
+    ) -> tuple[list[str], list[str]]:
+        """Acknowledge claimed steering items and remove them from the queue."""
+        requested = {str(item) for item in delivery_ids if item}
+        if not requested:
+            return [], []
+        async with self._lock:
+            session = self._sessions.get(run_id)
+            if session is None:
+                return [], sorted(requested)
+            acknowledged: list[str] = []
+            remaining: list[SteeringQueueItem] = []
+            for item in session['steering_queue']:
+                delivery_id = item.get('_steering_delivery_id')
+                if delivery_id in requested:
+                    acknowledged.append(str(delivery_id))
+                    continue
+                remaining.append(item)
+            session['steering_queue'] = remaining
+            session['status']['last_activity_at'] = int(time.time())
+            return acknowledged, sorted(requested - set(acknowledged))
 
     def is_resource_allowed(
         self,

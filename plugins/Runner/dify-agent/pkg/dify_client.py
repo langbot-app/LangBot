@@ -5,15 +5,26 @@ This module provides a minimal Dify API client that doesn't depend on LangBot in
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import mimetypes
 import typing
+from urllib.parse import urlsplit
 
 import httpx
 from pkg.deadline import deadline
 from pkg.endpoint import endpoint
-from pkg.http_limits import limited_body, limited_bytes, limited_lines, limited_post
+from pkg.http_limits import (
+    MAX_LINE_CHARS,
+    MAX_STREAM_BUDGET_BYTES,
+    MAX_STREAM_BYTES,
+    limited_body,
+    limited_bytes,
+    limited_lines,
+    limited_post,
+)
+from pkg.request_log import redact, redacted_target
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +47,34 @@ class DifyConfigError(Exception):
         super().__init__(message)
 
 
-async def _iter_sse_json(response):
-    async for line in limited_lines(response, DifyAPIError):
+def _event_tool(payload: dict) -> str | None:
+    """Return the tool or node a Dify SSE event belongs to, for diagnostics."""
+    if payload.get("tool"):
+        return str(payload["tool"])[:200]
+    data = payload.get("data")
+    if isinstance(data, dict) and str(payload.get("event", "")).startswith("node_") and data.get("title"):
+        return str(data["title"])[:200]
+    return None
+
+
+async def _iter_sse_json(response, max_stream_bytes: int = MAX_STREAM_BYTES):
+    # The default budget keeps the native 1 MiB event cap; a raised budget lifts
+    # it proportionally so one large tool observation can still pass.
+    max_line_bytes = max(MAX_LINE_CHARS, max_stream_bytes // (MAX_STREAM_BYTES // MAX_LINE_CHARS))
+    lines = limited_lines(response, DifyAPIError, max_stream_bytes, max_line_bytes)
+    last_event = None
+    last_tool = None
+    while True:
+        try:
+            line = await anext(lines)
+        except StopAsyncIteration:
+            return
+        except DifyAPIError as exc:
+            context = f"last event: {last_event or 'none'}"
+            if last_tool:
+                context += f", last tool: {last_tool}"
+            logger.warning("Dify stream stopped by the plugin byte budget: %s (%s)", exc.message, context)
+            raise DifyAPIError(f"{exc.message} ({context})", code="dify.stream_limit_exceeded") from None
         line = line.strip()
         if not line.startswith("data:"):
             continue
@@ -50,6 +87,8 @@ async def _iter_sse_json(response):
             raise DifyAPIError("Dify SSE data is not valid JSON", code="dify.response_invalid") from None
         if not isinstance(payload, dict):
             raise DifyAPIError("Dify SSE event is not a JSON object", code="dify.response_invalid")
+        last_event = str(payload.get("event") or last_event or "")[:100] or None
+        last_tool = _event_tool(payload) or last_tool
         yield payload
 
 
@@ -67,10 +106,14 @@ class AsyncDifyClient:
         api_key: str,
         base_url: str = "https://api.dify.ai/v1",
         timeout: float = 30.0,
+        max_stream_bytes: int = MAX_STREAM_BYTES,
     ):
+        if not isinstance(max_stream_bytes, int) or not 0 < max_stream_bytes <= MAX_STREAM_BUDGET_BYTES:
+            raise ValueError(f"max_stream_bytes must be between 1 byte and {MAX_STREAM_BUDGET_BYTES} bytes")
         self.api_key = api_key
         self.base_url = endpoint(base_url).rstrip("/")
         self.timeout = timeout
+        self.max_stream_bytes = max_stream_bytes
 
     @deadline
     async def chat_messages(
@@ -119,7 +162,7 @@ class AsyncDifyClient:
                             code="dify.http_error",
                         )
 
-                    async for event in _iter_sse_json(response):
+                    async for event in _iter_sse_json(response, self.max_stream_bytes):
                         yield event
             except httpx.TimeoutException:
                 raise DifyAPIError(
@@ -175,7 +218,7 @@ class AsyncDifyClient:
                             code="dify.http_error",
                         )
 
-                    async for event in _iter_sse_json(response):
+                    async for event in _iter_sse_json(response, self.max_stream_bytes):
                         yield event
             except httpx.TimeoutException:
                 raise DifyAPIError(
@@ -208,18 +251,31 @@ class AsyncDifyClient:
                 timeout=self.timeout,
                 trust_env=False,
             ) as client:
-                response = await limited_post(
-                    client,
-                    f"/form/human_input/{form_token}",
-                    DifyAPIError,
-                    headers=headers,
-                    json={"inputs": inputs, "user": user, "action": action},
-                )
-                if not response.is_success:
-                    raise DifyAPIError(
-                        f"Dify API error: {response.status_code} - {response.text[:200]}",
-                        code="dify.http_error",
-                    )
+                async with contextlib.AsyncExitStack() as stack:
+                    # The form token alone submits the form through Dify's web API.
+                    form_target = redact(self.base_url, urlsplit(self.base_url).path + "/form/human_input/[redacted]")
+                    with redacted_target(form_target):
+                        response = await stack.enter_async_context(
+                            client.stream(
+                                "POST",
+                                f"/form/human_input/{form_token}",
+                                headers=headers,
+                                json={"inputs": inputs, "user": user, "action": action},
+                            )
+                        )
+                    if not response.is_success:
+                        body = await limited_body(response, DifyAPIError)
+                        raise DifyAPIError(
+                            f"Dify API error: {response.status_code} - {body.decode('utf-8', errors='replace')[:200]}",
+                            code="dify.http_error",
+                        )
+
+                    content_type = response.headers.get("content-type", "").lower()
+                    if content_type.split(";", 1)[0].strip() == "text/event-stream":
+                        async for event in _iter_sse_json(response, self.max_stream_bytes):
+                            yield event
+                        return
+                    await limited_body(response, DifyAPIError)
 
                 async with client.stream(
                     "GET",
@@ -234,7 +290,7 @@ class AsyncDifyClient:
                             f"{body.decode('utf-8', errors='replace')[:200]}",
                             code="dify.http_error",
                         )
-                    async for event in _iter_sse_json(event_response):
+                    async for event in _iter_sse_json(event_response, self.max_stream_bytes):
                         yield event
         except httpx.TimeoutException:
             raise DifyAPIError(
@@ -250,7 +306,10 @@ class AsyncDifyClient:
         endpoint(url, query=True)
         try:
             async with httpx.AsyncClient(timeout=self.timeout, trust_env=False, follow_redirects=False) as client:
-                async with client.stream("GET", url) as response:
+                async with contextlib.AsyncExitStack() as stack:
+                    # Input file URLs may be signed in their path or query.
+                    with redacted_target(redact(url)):
+                        response = await stack.enter_async_context(client.stream("GET", url))
                     response.raise_for_status()
                     body = bytearray()
                     async for chunk in limited_bytes(response, DifyAPIError):
@@ -341,6 +400,36 @@ def extract_text_from_output(value: typing.Any) -> str:
             return content
         return json.dumps(value, ensure_ascii=False)
     return str(value)
+
+
+def extract_workflow_outputs(outputs: typing.Any) -> str:
+    """Extract text output from workflow outputs dict or value."""
+    if not outputs:
+        return ""
+    if isinstance(outputs, str):
+        return extract_text_from_output(outputs)
+    if not isinstance(outputs, dict):
+        return str(outputs)
+
+    # Check common output variable names in order of preference
+    for key in ("summary", "answer", "result", "text", "output", "response", "content"):
+        if key in outputs and outputs[key]:
+            extracted = extract_text_from_output(outputs[key])
+            if extracted:
+                return extracted
+
+    # If exactly one output field exists, return it
+    if len(outputs) == 1:
+        val = next(iter(outputs.values()))
+        return extract_text_from_output(val)
+
+    # If multiple custom fields exist, look for any non-empty string value
+    for val in outputs.values():
+        if isinstance(val, str) and val.strip():
+            return extract_text_from_output(val)
+
+    # Fallback to JSON-encoded outputs
+    return json.dumps(outputs, ensure_ascii=False)
 
 
 def process_thinking_content(content: str, remove_think: bool = False) -> tuple[str, str]:

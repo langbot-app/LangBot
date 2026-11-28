@@ -15,23 +15,22 @@ Box の設定は LangBot メインプロセスが管理し、Box Runtime が実�
 box:
   enabled: true
   backend: 'local'        # Docker / Nsjail から利用可能なものを自動選択
+  file_transfer_mode: 'network'
   local:
     profile: 'default'
-    host_root: './data/box'
-    skills_root: 'skills'
   docker:
     cpu_limit_enabled: true
 ```
 
-- `enabled`：サンドボックスのマスタースイッチ。`false` にすると、サンドボックス組み込みツール、Skill の追加 / 編集、stdio MCP のホスティングなど Box 依存の機能はすべて無効になります。
+- `enabled`：サンドボックスのマスタースイッチ。`false` にすると、サンドボックス組み込みツール、サンドボックス下書きの公開、stdio MCP のホスティングなど Box 依存の機能はすべて無効になります。
 - `backend`：下記「バックエンドの選択」を参照。
 - `local.profile`：セキュリティプロファイル。ネットワーク、マウント、リソース制限を制御。
-- `local.host_root`：ホスト側のサンドボックス作業ディレクトリ。サンドボックス内では `/workspace` にマウントされます。
-- `local.skills_root`：Skill パッケージのディレクトリ。相対パスは `host_root` 配下に解決され、デフォルトは `host_root/skills`。
+- `local.host_root`：`legacy` 方式の共有作業ルートです。ネットワーク方式では Runtime 自身のルートを使い、Core のホストパスは渡しません。
+- `local.skills_root`：トップレベルの `skills.root` がない旧設定だけの互換フォールバックです。相対パスは `host_root` 配下に解決し、新設定ではトップレベルの `skills.root` を使います。
 - `docker.cpu_limit_enabled`：Docker サンドボックスコンテナに CPU 制限を付けるかどうか。`false` にすると `docker run --cpus` を省略し、メモリと PID 制限は維持します。
 
 <Note>
-Skill は Box Runtime が管理する skill store からのみ読み込まれます。Box Runtime またはバックエンドが利用できない場合、Skill 一覧は空になり、追加 / 編集 / `register_skill` も使えません。`data/skills/` へのフォールバックは行いません。
+Skill の管理、有効化、読み取り専用リソースは Core が提供し、Box は不要です。スクリプトとサンドボックス下書きの公開には Box が必要です。新規設定の既定は `file_transfer_mode: network` で、Core と Box の Skill・作業ディレクトリ共有は不要です。既存の明示的な `legacy` 設定は維持されます。保存と更新手順は[Skills](../skills/readme)を参照してください。
 </Note>
 
 ## バックエンドの選択
@@ -138,6 +137,22 @@ Host MVP は `sh` を備えた POSIX システム（Linux / macOS）をサポー
 | `e2b.template` | 空 | 既定の E2B テンプレート ID |
 
 E2B はホスト側に Docker や Nsjail を必要とせず、毎回の実行をリモートサンドボックスで行います。
+
+## ローカルデータの読み取り専用マウント
+
+セルフホストの Docker Box では、Box Runtime の `LANGBOT_BOX_CONFIG` JSON の既存設定に次のマッピングを追加できます。Runtime と Docker デーモンが同じ絶対パスで参照できるディレクトリを指定してください。
+
+```json
+{
+  "local_mounts": {
+    "corpus": {"path": "/srv/corpus", "workspaces": ["<workspace-uuid>"]}
+  }
+}
+```
+
+LocalAgent の **Local Box mounts** に `corpus` を指定します。独自の Runner では、`acquire_box` の options に `{"mounts": ["corpus"]}` を渡せます。Box は `/datasets/corpus` でデータを読み取り、ファイル転送と Skill 公開には `/workspace` を使います。エクスポートする成果物は `/workspace` に保存してください。マッピングの変更後は Box Runtime を再起動します。
+
+新規インストールはネットワーク転送と専用ワークスペースを使用します。v4.11.8 からのアップグレードでは、転送モードが未指定または `legacy` の場合、共有ワークスペースを維持します。`network` で `workspace_mode` が未指定の場合も共有ワークスペースとネットワーク転送を維持します。必要な作業ファイルと未公開の草稿を保存した後、`box.workspace_mode: private` を設定すると専用ワークスペースと名前付きマウントを利用できます。
 
 ## Docker Compose デプロイ
 

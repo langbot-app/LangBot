@@ -7,7 +7,9 @@ from ....i18n import t
 import typing
 import copy
 import time
+import json
 import os
+import re
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 from openai import AsyncOpenAI
@@ -19,7 +21,8 @@ from urllib.parse import urlsplit
 from ..request_policy import current_call, RequestPolicy, error_metadata
 
 import litellm
-from litellm import acompletion, aembedding, arerank
+import litellm.exceptions as litellm_exceptions
+from litellm import acompletion, aembedding, arerank, atranscription, aspeech
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
 from litellm.secret_managers.main import get_secret, get_secret_bool
 
@@ -45,11 +48,14 @@ class _LeasedHTTPHandler(AsyncHTTPHandler):
             kwargs['content'] = kwargs.pop('data')
         request = self.client.build_request('POST', url, timeout=timeout or self.timeout, **kwargs)
         response = await self.client.send(request, stream=stream)
-        try:
+        if response.is_error:
+            # Buffer the error body before releasing the stream so LiteLLM can
+            # still map the HTTP status and upstream error code.
+            try:
+                await response.aread()
+            finally:
+                await response.aclose()
             response.raise_for_status()
-        except BaseException:
-            await response.aclose()
-            raise
         return response
 
     async def close(self):
@@ -179,9 +185,24 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
     """LiteLLM unified API requester supporting chat, embedding, and rerank."""
 
     reports_raw_timing = True
+    TOKEN_COUNT_TIMEOUT = 4.0
+    # A count that outlived its caller (timeout or cancellation). Its thread
+    # cannot be stopped, so no new count starts until it finishes.
+    _stalled_count_task: asyncio.Task | None = None
 
     _EMBEDDING_MODEL_HINTS = ('embedding', 'embed', 'bge-', 'e5-', 'm3e', 'gte-', 'text-embedding')
     _RERANK_MODEL_HINTS = ('rerank', 're-rank', 're_rank')
+    _ASR_MODEL_HINTS = (
+        'whisper',
+        'sensevoice',
+        'asr',
+        'paraformer',
+        'conformer',
+        'speech-to-text',
+        'transcription',
+        'stt',
+    )
+    _TTS_MODEL_HINTS = ('tts', 'text-to-speech', 'speech-synthesis', 'cosyvoice', 'voice-clone', 'sambert', 'chattts')
     _QWEN_DEDICATED_THINKING_MODELS = frozenset(
         {
             'qwen3.7-max-preview',
@@ -276,8 +297,15 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 return
             # A fresh lightweight SDK wrapper keeps rotating keys, organization
             # and deadlines request-local; only its HTTP transport is reused.
+            api_key = args.get('api_key') or litellm.api_key or litellm.openai_key or get_secret('OPENAI_API_KEY')
+            if not api_key:
+                raise errors.RequesterError(
+                    t('No API key is configured for this model provider'),
+                    code='authentication',
+                    retryable=False,
+                )
             sdk = AsyncOpenAI(
-                api_key=args.get('api_key') or litellm.api_key or litellm.openai_key or get_secret('OPENAI_API_KEY'),
+                api_key=api_key,
                 base_url=(
                     args.get('api_base')
                     or litellm.api_base
@@ -337,6 +365,10 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
     def _uncached_litellm_bool_helper(self, helper_name, model_name):
         helper = getattr(litellm, helper_name, None)
+        if helper_name == 'supports_pdf_input' and not callable(helper):
+            from litellm.utils import supports_pdf_input
+
+            helper = supports_pdf_input
         if not callable(helper):
             return False
 
@@ -786,12 +818,27 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
     def _reasoning_level(self, model: requester.RuntimeLLMModel) -> str:
         return reasoning.normalize_reasoning_config(self._reasoning_config_value(model))['level']
 
-    def _infer_model_type(self, model_id: str) -> str:
+    def _infer_model_type(self, model_id: str, model_payload: dict[str, typing.Any] | None = None) -> str:
+        if model_payload:
+            explicit_type = (model_payload.get('type') or model_payload.get('task') or '').lower()
+            if explicit_type in ('asr', 'audio_transcription', 'speech-to-text', 'stt'):
+                return 'asr'
+            if explicit_type in ('tts', 'text_to_speech', 'text-to-speech', 'speech-synthesis'):
+                return 'tts'
+            if explicit_type in ('embedding', 'text-embedding'):
+                return 'embedding'
+            if explicit_type in ('rerank', 'reranking'):
+                return 'rerank'
+
         normalized_id = (model_id or '').lower()
         if any(kw in normalized_id for kw in self._RERANK_MODEL_HINTS):
             return 'rerank'
         if any(kw in normalized_id for kw in self._EMBEDDING_MODEL_HINTS):
             return 'embedding'
+        if any(kw in normalized_id for kw in self._ASR_MODEL_HINTS):
+            return 'asr'
+        if any(kw in normalized_id for kw in self._TTS_MODEL_HINTS):
+            return 'tts'
         return 'llm'
 
     def _enrich_scanned_model(
@@ -799,7 +846,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         model_id: str,
         model_payload: dict[str, typing.Any] | None = None,
     ) -> dict[str, typing.Any]:
-        model_type = self._infer_model_type(model_id)
+        model_type = self._infer_model_type(model_id, model_payload)
         scanned_model: dict[str, typing.Any] = {
             'id': model_id,
             'name': model_id,
@@ -838,6 +885,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         messages: typing.List[provider_message.Message],
         reasoning_family: str = '',
         include_reasoning_context: bool = True,
+        model_name: str | None = None,
+        pdf_input_declared: bool = False,
     ) -> list[dict]:
         """Convert LangBot messages to LiteLLM/OpenAI format."""
         req_messages = []
@@ -913,13 +962,30 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                             part.pop('image_base64', None)
                         else:
                             continue
-                    # OpenAI-compatible chat models reject non-image file parts
-                    # (audio/document base64 or url). These originate from Voice /
-                    # File attachments — including ones replayed from conversation
-                    # history — and the agent already accesses their bytes via the
-                    # sandbox. Drop them from the model payload to avoid
-                    # "Invalid user message ... invalid content type=file_base64".
+                    # Explicit PDF input must succeed or fail visibly; keep other legacy file handling.
                     if isinstance(part, dict) and part.get('type') in ('file_base64', 'file_url'):
+                        file_data = part.get('file_base64') or part.get('file_url')
+                        if isinstance(file_data, str) and file_data.startswith('data:application/pdf;base64,'):
+                            supported = pdf_input_declared or (
+                                model_name is not None
+                                and self._safe_litellm_bool_helper('supports_pdf_input', model_name)
+                            )
+                            if not supported:
+                                raise errors.RequesterError(
+                                    t(
+                                        'The selected model does not support native PDF input; read the PDF as text instead.'
+                                    ),
+                                    code='unsupported_pdf_input',
+                                )
+                            converted_parts.append(
+                                {
+                                    'type': 'file',
+                                    'file': {
+                                        'file_data': file_data,
+                                        'filename': part.get('file_name') or 'document.pdf',
+                                    },
+                                }
+                            )
                         continue
                     converted_parts.append(part)
                 msg_dict['content'] = converted_parts
@@ -1223,33 +1289,168 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 args['api_version'] = self.requester_cfg['api_version']
         return args
 
+    _QUOTA_ERROR_CODES = frozenset(
+        {
+            'insufficient_quota',
+            'quota_exceeded',
+            'billing_hard_limit_reached',
+            # New API / One API (LangBot Models gateway)
+            'insufficient_user_quota',
+            'pre_consume_token_quota_failed',
+            'token_quota_exhausted',
+            # Other OpenAI-compatible gateways
+            'insufficient_balance',
+            'insufficient_credits',
+            'payment_required',
+        }
+    )
+    _QUOTA_MESSAGE_PATTERN = re.compile(
+        r'额度不足|余额不足|额度已用尽|额度用尽|欠费|'
+        r'insufficient[ _-]?(?:user[ _-]?)?(?:balance|quota|credits?|funds)|'
+        r'quota (?:is )?(?:not enough|exceeded|exhausted)|'
+        r'credit balance is too low|exceeded your current quota|out of credits',
+        re.IGNORECASE,
+    )
+    _SAFE_ERROR_CODE = re.compile(r'^[A-Za-z0-9_.-]{1,64}$')
+
+    @staticmethod
+    def _upstream_error_details(e: Exception) -> tuple[str | None, str]:
+        """Return the upstream machine code and diagnostic text of a provider error.
+
+        LiteLLM does not always keep the response body, so the exception chain
+        and the rendered message are inspected as well. The text is only used
+        for classification and is never shown to users.
+        """
+
+        code: str | None = None
+        texts: list[str] = []
+        seen: set[int] = set()
+        current: BaseException | None = e
+        while current is not None and id(current) not in seen and len(seen) < 5:
+            seen.add(id(current))
+            body = getattr(current, 'body', None)
+            if not isinstance(body, dict):
+                body = LiteLLMRequester._response_json(getattr(current, 'response', None))
+            if isinstance(body, dict):
+                upstream = body.get('error', body)
+                if isinstance(upstream, dict):
+                    if code is None and isinstance(upstream.get('code'), str) and upstream['code']:
+                        code = upstream['code']
+                    if code is None and upstream.get('type') in LiteLLMRequester._QUOTA_ERROR_CODES:
+                        code = upstream['type']
+                    if isinstance(upstream.get('message'), str):
+                        texts.append(upstream['message'])
+            attr_code = getattr(current, 'code', None)
+            if code is None and isinstance(attr_code, str) and attr_code:
+                code = attr_code
+            message = getattr(current, 'message', None)
+            texts.append(message if isinstance(message, str) else str(current))
+            current = current.__cause__ or current.__context__
+        return code, ' '.join(texts)
+
+    @staticmethod
+    def _response_json(response) -> dict | None:
+        if not isinstance(response, httpx.Response):
+            return None
+        try:
+            payload = json.loads(response.content[:65536] or b'null')
+        except (httpx.ResponseNotRead, httpx.StreamError, ValueError, TypeError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    @classmethod
+    def _is_quota_error(cls, status: int | None, code: str | None, text: str) -> bool:
+        if code and code.lower() in cls._QUOTA_ERROR_CODES:
+            return True
+        if status == 402:
+            return True
+        return bool(cls._QUOTA_MESSAGE_PATTERN.search(text or ''))
+
+    @staticmethod
+    def _is_stream_eof_without_finish(e: Exception) -> bool:
+        """True when LiteLLM gave up only because no finish_reason arrived.
+
+        Newer LiteLLM raises ``MidStreamFallbackError`` when a stream closes
+        after content without a finish_reason. Those bytes are already
+        delivered, so a caller that does not need the marker has a complete
+        answer and must not see it as a failed request.
+        """
+        cls = getattr(litellm_exceptions, 'MidStreamFallbackError', None)
+        if cls is None or not isinstance(e, cls) or e.is_pre_first_chunk:
+            return False
+        # LiteLLM synthesizes this error while handling iterator exhaustion.
+        # It also wraps transport failures, but those are not raised from
+        # iterator exhaustion and must not finalize a partial answer.
+        return isinstance(e.__context__, (StopAsyncIteration, StopIteration)) and str(e.original_exception).endswith(
+            'Stream ended before a finish_reason was received'
+        )
+
     def _handle_litellm_error(self, e: Exception) -> None:
         """Convert LiteLLM exceptions to RequesterError. Never returns, always raises."""
         if isinstance(e, errors.RequesterError):
             raise e
         metadata = error_metadata(e)
+        status = metadata['status_code']
+        upstream_code, upstream_text = self._upstream_error_details(e)
+        if self._is_quota_error(status, upstream_code, upstream_text):
+            raise errors.RequesterError(
+                t('Insufficient balance or quota for this model. Please top up and try again.'),
+                code='quota_exceeded',
+                retryable=False,
+                **metadata,
+            ) from e
         mappings = (
             (litellm.ContextWindowExceededError, 'context_length', t('Context length exceeded'), False),
             (litellm.AuthenticationError, 'authentication', t('Invalid API key'), False),
+            (getattr(litellm, 'PermissionDeniedError', ()), 'permission_denied', t('Permission denied'), False),
             (litellm.NotFoundError, 'not_found', t('Invalid model or endpoint'), False),
             (litellm.RateLimitError, 'rate_limit', t('Rate limit exceeded or insufficient balance'), True),
             (litellm.Timeout, 'timeout', t('Request timed out'), True),
             (litellm.APIConnectionError, 'connection', t('Connection failed'), True),
             (litellm.BadRequestError, 'bad_request', t('Invalid request parameters'), False),
+            (getattr(litellm, 'InternalServerError', ()), 'internal_error', t('Internal server error'), True),
+            (getattr(litellm, 'BadGatewayError', ()), 'bad_gateway', t('Internal server error'), True),
+            (getattr(litellm, 'ServiceUnavailableError', ()), 'service_unavailable', t('Internal server error'), True),
         )
         for exception_type, code, message, retryable in mappings:
             if isinstance(e, exception_type):
-                body = getattr(e, 'body', None)
-                body = body if isinstance(body, dict) else {}
-                upstream_error = body.get('error', body)
-                upstream_code = upstream_error.get('code') if isinstance(upstream_error, dict) else None
-                if upstream_code in ('insufficient_quota', 'quota_exceeded', 'billing_hard_limit_reached'):
-                    code, retryable = 'quota_exceeded', False
                 raise errors.RequesterError(message, code=code, retryable=retryable, **metadata) from e
-        status = metadata['status_code']
+        code = 'upstream_error'
+        if status in (500, 502, 503):
+            message = t('Internal server error')
+            code = 'internal_error'
+        elif status == 504:
+            message = t('Request timed out')
+            code = 'timeout'
+        elif status == 401:
+            message = t('Invalid API key')
+            code = 'authentication'
+        elif status == 403:
+            message = t('Permission denied')
+            code = 'permission_denied'
+        elif status == 404:
+            message = t('Invalid model or endpoint')
+            code = 'not_found'
+        elif status == 429:
+            message = t('Rate limit exceeded or insufficient balance')
+            code = 'rate_limit'
+        elif status == 400:
+            message = t('Invalid request parameters')
+            code = 'bad_request'
+        elif status is not None:
+            message = f'{t("API error")} (HTTP {status})'
+        elif isinstance(e, (litellm.APIError, getattr(litellm, 'OpenAIError', ()))):
+            message = t('API error')
+        else:
+            message = t('Unknown error')
+        if code == 'upstream_error' and upstream_code and self._SAFE_ERROR_CODE.match(upstream_code):
+            # Machine-readable upstream codes are stable English identifiers and
+            # make otherwise generic failures diagnosable without leaking bodies.
+            message = f'{message} [{upstream_code}]'
+
         raise errors.RequesterError(
-            t('API error') if isinstance(e, litellm.APIError) else t('Unknown error'),
-            code='upstream_error',
+            message,
+            code=code,
             retryable=status in (408, 409, 429, 500, 502, 503, 504),
             **metadata,
         ) from e
@@ -1342,13 +1543,25 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         model = scoped_model
         reasoning_family = self._reasoning_family(model.model_entity.name, model)
         reasoning_level = self._reasoning_level(model)
-        message_key = ('messages', id(messages), reasoning_family, reasoning_level != 'disabled')
+        pdf_input_declared = 'pdf_input' in (model.model_entity.abilities or [])
+        message_key = (
+            'messages',
+            id(messages),
+            reasoning_family,
+            reasoning_level != 'disabled',
+            model.model_entity.name,
+            pdf_input_declared,
+        )
         if cache_preparation and message_key in state.prepared:
             req_messages = copy.deepcopy(state.prepared[message_key])
             state.metrics['preparation_cache_hits'] = state.metrics.get('preparation_cache_hits', 0) + 1
         else:
             req_messages = self._convert_messages(
-                messages, reasoning_family=reasoning_family, include_reasoning_context=reasoning_level != 'disabled'
+                messages,
+                reasoning_family=reasoning_family,
+                include_reasoning_context=reasoning_level != 'disabled',
+                model_name=model.model_entity.name,
+                pdf_input_declared=pdf_input_declared,
             )
             if cache_preparation:
                 state.prepared[message_key] = copy.deepcopy(req_messages)
@@ -1445,23 +1658,112 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         extra_args: dict[str, typing.Any] = {},
     ) -> int:
         """Count input tokens with LiteLLM's model-aware tokenizer."""
-        args = await self._build_completion_args(model, messages, funcs, extra_args, stream=False)
+        # Counting only needs the input representation, not generation policy,
+        # credentials, or transport parameters.
+        count_started = time.perf_counter()
+        conversion_started = count_started
+        logger = getattr(self.ap, 'logger', None)
+        reasoning_config = reasoning.resolve_reasoning_config(model, extra_args)
+        req_messages = self._convert_messages(
+            messages,
+            reasoning_family=self._reasoning_family(model.model_entity.name, model),
+            include_reasoning_context=reasoning_config['level'] != 'disabled',
+            model_name=model.model_entity.name,
+            pdf_input_declared='pdf_input' in (model.model_entity.abilities or []),
+        )
+        chat_provider = 'openrouter' if self._uses_openrouter_protocol() else self._get_custom_llm_provider()
+        self._adapt_messages_for_provider(req_messages, chat_provider)
+        conversion_ms = (time.perf_counter() - conversion_started) * 1000
         count_args: dict[str, typing.Any] = {
-            'model': args['model'],
-            'messages': args['messages'],
+            'model': self._build_litellm_model_name(model.model_entity.name, chat_provider),
+            'messages': req_messages,
         }
-        if 'tools' in args:
-            count_args['tools'] = args['tools']
-        if 'tool_choice' in args:
-            count_args['tool_choice'] = args['tool_choice']
+        for args in (model.model_entity.extra_args, extra_args):
+            if args:
+                for key in ('model', 'messages', 'tools', 'tool_choice'):
+                    if key in args:
+                        count_args[key] = args[key]
+        tools_started = time.perf_counter()
+        if funcs:
+            tools = await self.ap.tool_mgr.generate_tools_for_openai(funcs)
+            if tools:
+                count_args['tools'] = tools
+                count_args.setdefault('tool_choice', 'auto')
+        tools_ms = (time.perf_counter() - tools_started) * 1000
 
+        # Concurrent counts are normal (one per conversation). Only a count
+        # that outlived its caller blocks new ones: its thread cannot be
+        # stopped, and repeated stalled downloads would fill the executor.
+        if self._stalled_count_task is not None and not self._stalled_count_task.done():
+            if logger is not None:
+                logger.warning(
+                    'count_tokens_timing outcome=stalled model=%s messages=%d tools=%d '
+                    'conversion_ms=%.3f tools_ms=%.3f total_ms=%.3f',
+                    count_args['model'],
+                    len(req_messages),
+                    len(count_args.get('tools', [])),
+                    conversion_ms,
+                    tools_ms,
+                    (time.perf_counter() - count_started) * 1000,
+                )
+            raise errors.RequesterError('Token counter is still busy loading tokenizer resources')
+        counter_timing: dict[str, float] = {}
+
+        def run_token_counter() -> tuple[int, float]:
+            tokenizer_started = time.perf_counter()
+            counter_timing['queue_ms'] = (tokenizer_started - counter_started) * 1000
+            tokens = litellm.token_counter(**count_args)
+            return tokens, (time.perf_counter() - tokenizer_started) * 1000
+
+        counter_started = time.perf_counter()
+        task = asyncio.create_task(asyncio.to_thread(run_token_counter))
+        task.add_done_callback(lambda completed: None if completed.cancelled() else completed.exception())
         try:
-            tokens = await asyncio.to_thread(litellm.token_counter, **count_args)
+            tokens, tokenizer_ms = await asyncio.wait_for(asyncio.shield(task), timeout=self.TOKEN_COUNT_TIMEOUT)
+        except TimeoutError as exc:
+            self._stalled_count_task = task
+            counter_ms = (time.perf_counter() - counter_started) * 1000
+            if logger is not None:
+                logger.warning(
+                    'count_tokens_timing outcome=timeout model=%s messages=%d tools=%d '
+                    'conversion_ms=%.3f tools_ms=%.3f counter_ms=%.3f queue_ms=%s tokenizer_ms=%s '
+                    'total_ms=%.3f task_done=%s',
+                    count_args['model'],
+                    len(req_messages),
+                    len(count_args.get('tools', [])),
+                    conversion_ms,
+                    tools_ms,
+                    counter_ms,
+                    counter_timing.get('queue_ms'),
+                    None,
+                    (time.perf_counter() - count_started) * 1000,
+                    task.done(),
+                )
+            raise errors.RequesterError('Token counting exceeded its time limit') from exc
+        except asyncio.CancelledError:
+            if not task.done():
+                self._stalled_count_task = task
+            raise
         except Exception as e:
             self._handle_litellm_error(e)
 
         if isinstance(tokens, bool) or not isinstance(tokens, int) or tokens < 0:
             raise errors.RequesterError(f'token counter returned invalid value: {tokens!r}')
+        counter_ms = (time.perf_counter() - counter_started) * 1000
+        if logger is not None:
+            logger.info(
+                'count_tokens_timing outcome=ok model=%s messages=%d tools=%d '
+                'conversion_ms=%.3f tools_ms=%.3f counter_ms=%.3f queue_ms=%.3f tokenizer_ms=%.3f total_ms=%.3f',
+                count_args['model'],
+                len(req_messages),
+                len(count_args.get('tools', [])),
+                conversion_ms,
+                tools_ms,
+                counter_ms,
+                counter_timing.get('queue_ms', 0),
+                tokenizer_ms,
+                (time.perf_counter() - count_started) * 1000,
+            )
         return tokens
 
     async def invoke_llm(
@@ -1536,6 +1838,31 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         keep_minimax_content = self._reasoning_family(model.model_entity.name, model) == 'minimax'
         raw_content_parts: list[str] = []
         response = None
+
+        async def _finish():
+            """Emit the chunks that close a stream, in the order callers expect."""
+            if raw_content_parts:
+                yield provider_message.MessageChunk(
+                    role=role,
+                    is_final=True,
+                    provider_specific_fields={minimax.RAW_CONTENT_FIELD: ''.join(raw_content_parts)},
+                )
+
+            if reasoning_started and not reasoning_closed:
+                yield provider_message.MessageChunk(
+                    role=role,
+                    content='\n</think>\n',
+                    is_final=True,
+                )
+
+            if think_state is not None:
+                pending_content = think_state.flush()
+                if pending_content:
+                    yield provider_message.MessageChunk(
+                        role=role,
+                        content=pending_content,
+                        is_final=True,
+                    )
 
         async with self._client_args(args) as args:
             try:
@@ -1658,31 +1985,17 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     yield provider_message.MessageChunk(**chunk_data)
                     chunk_idx += 1
 
-                if raw_content_parts:
-                    yield provider_message.MessageChunk(
-                        role=role,
-                        is_final=True,
-                        provider_specific_fields={minimax.RAW_CONTENT_FIELD: ''.join(raw_content_parts)},
-                    )
-
-                if reasoning_started and not reasoning_closed:
-                    yield provider_message.MessageChunk(
-                        role=role,
-                        content='\n</think>\n',
-                        is_final=True,
-                    )
-
-                if think_state is not None:
-                    pending_content = think_state.flush()
-                    if pending_content:
-                        yield provider_message.MessageChunk(
-                            role=role,
-                            content=pending_content,
-                            is_final=True,
-                        )
+                async for chunk in _finish():
+                    yield chunk
 
             except Exception as e:
-                self._handle_litellm_error(e)
+                # Some providers end the stream cleanly without a finish_reason.
+                # Flush those answers without treating transport failures as EOF.
+                if chunk_idx and self._is_stream_eof_without_finish(e):
+                    async for chunk in _finish():
+                        yield chunk
+                else:
+                    self._handle_litellm_error(e)
 
             finally:
                 # Closing a downstream async generator must release the provider's
@@ -1880,6 +2193,123 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             )
 
         return results
+
+    async def invoke_asr(
+        self,
+        model: requester.RuntimeASRModel,
+        audio: bytes,
+        mime: str,
+        extra_args: dict[str, typing.Any] = {},
+    ) -> str:
+        """Invoke speech recognition (ASR) and return transcript."""
+        model_name = self._build_litellm_model_name(model.model_entity.name)
+        api_key = model.provider.token_mgr.get_token()
+
+        ext = 'wav'
+        if 'mp3' in mime or 'mpeg' in mime:
+            ext = 'mp3'
+        elif 'ogg' in mime:
+            ext = 'ogg'
+        elif 'flac' in mime:
+            ext = 'flac'
+        elif 'm4a' in mime or 'mp4' in mime:
+            ext = 'm4a'
+        elif 'wav' in mime:
+            ext = 'wav'
+        filename = f'audio.{ext}'
+
+        args: dict[str, typing.Any] = {
+            'model': model_name,
+            'file': (filename, audio, mime),
+            'api_key': api_key,
+            'response_format': 'json',
+        }
+        self._build_common_args(args, include_retry_params=False)
+
+        provider = self._get_custom_llm_provider()
+        if provider:
+            args['custom_llm_provider'] = provider
+
+        if model.model_entity.extra_args:
+            args.update(model.model_entity.extra_args)
+        args.update(extra_args)
+
+        try:
+            response = await atranscription(**args)
+            if hasattr(response, 'text'):
+                return response.text or ''
+            if isinstance(response, dict):
+                return response.get('text', '')
+            return str(response)
+        except errors.RequesterError:
+            raise
+        except Exception as e:
+            self._handle_litellm_error(e)
+
+    async def invoke_tts(
+        self,
+        model: requester.RuntimeTTSModel,
+        text: str,
+        extra_args: dict[str, typing.Any] = {},
+    ) -> tuple[bytes, str]:
+        """Invoke text-to-speech and return (audio_bytes, mime_type)."""
+        model_name = self._build_litellm_model_name(model.model_entity.name)
+        api_key = model.provider.token_mgr.get_token()
+
+        combined_extra = {**(model.model_entity.extra_args or {}), **extra_args}
+        voice = combined_extra.pop('voice', None)
+        response_format = combined_extra.pop('response_format', None) or combined_extra.pop('format', None) or 'mp3'
+
+        args: dict[str, typing.Any] = {
+            'model': model_name,
+            'input': text,
+            'response_format': response_format,
+            'api_key': api_key,
+        }
+        if voice:
+            args['voice'] = voice
+        self._build_common_args(args, include_retry_params=False)
+
+        provider = self._get_custom_llm_provider()
+        if provider:
+            args['custom_llm_provider'] = provider
+
+        args.update(combined_extra)
+
+        try:
+            response = await aspeech(**args)
+            content = b''
+            if hasattr(response, 'content'):
+                content = response.content
+            elif hasattr(response, 'read'):
+                res = response.read()
+                if asyncio.iscoroutine(res):
+                    content = await res
+                else:
+                    content = res
+            elif isinstance(response, bytes):
+                content = response
+            elif hasattr(response, 'response') and hasattr(response.response, 'content'):
+                content = response.response.content
+
+            # Determine mime type
+            mime = 'audio/mpeg'
+            if response_format == 'wav':
+                mime = 'audio/wav'
+            elif response_format in ('ogg', 'opus'):
+                mime = 'audio/ogg'
+            elif response_format == 'flac':
+                mime = 'audio/flac'
+            elif response_format == 'aac':
+                mime = 'audio/aac'
+            elif hasattr(response, 'response') and hasattr(response.response, 'headers'):
+                mime = response.response.headers.get('content-type', mime)
+
+            return content, mime
+        except errors.RequesterError:
+            raise
+        except Exception as e:
+            self._handle_litellm_error(e)
 
     async def scan_models(self, api_key: str | None = None) -> dict[str, typing.Any]:
         """Scan models supported by the provider."""

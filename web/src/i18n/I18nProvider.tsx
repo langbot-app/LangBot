@@ -29,11 +29,19 @@ export const extractI18nObject = (i18nObject: I18nObject): string => {
   if (language === 'vi_VN' && i18nObject.vi_VN) return i18nObject.vi_VN;
   if (language === 'es_ES' && i18nObject.es_ES) return i18nObject.es_ES;
   if (language === 'ru_RU' && i18nObject.ru_RU) return i18nObject.ru_RU;
+  // Same-script Chinese first, then English, then any language at all, so a
+  // label written in a single language (e.g. community content) never renders
+  // empty.
+  if (language === 'zh_Hant' && i18nObject.zh_Hans) return i18nObject.zh_Hans;
+  if (language === 'zh_Hans' && i18nObject.zh_Hant) return i18nObject.zh_Hant;
   return (
     i18nObject.en_US ||
     i18nObject.zh_Hans ||
     i18nObject.zh_Hant ||
     i18nObject.ja_JP ||
+    Object.values(i18nObject).find(
+      (v): v is string => typeof v === 'string' && v.trim() !== '',
+    ) ||
     ''
   );
 };

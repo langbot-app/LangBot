@@ -15,7 +15,8 @@ import urllib.error
 import urllib.request
 from uuid import uuid4
 
-from tools.entrypoints.regression_traffic import group_request
+from tools.regression.http_bot import group_request, valid_group_settings
+from tools.regression.resource_cleanup import verify_cleanup
 
 
 KINDS = {'provider', 'model', 'pipeline', 'knowledge-base', 'bot'}
@@ -63,7 +64,26 @@ def number(value, label, *, minimum=0, integer=False):
         raise ValueError(f'{label} must be {"an integer " if integer else ""}>= {minimum}')
 
 
-def validate(profile):
+LOAD_ARGUMENTS = (
+    ('--duration', 'duration_seconds', float, 'Override duration_seconds in every phase'),
+    ('--rps', 'rps', float, 'Override RPS in every phase'),
+    ('--workers', 'workers', int, 'Override workers in every phase'),
+    ('--groups', 'groups', int, 'Override group count in every group phase'),
+    ('--members-per-group', 'members_per_group', int, 'Override member count per group'),
+)
+
+
+def add_load_arguments(parser):
+    for flag, field, kind, help_text in LOAD_ARGUMENTS:
+        parser.add_argument(flag, dest=field, type=kind, help=help_text)
+
+
+def phase_overrides(args):
+    return {field: value for _, field, _, _ in LOAD_ARGUMENTS if (value := getattr(args, field)) is not None}
+
+
+def validate(profile, *, load_overrides=None):
+    """Apply explicit load overrides to every phase and validate the resulting suite."""
     if not isinstance(profile, dict) or profile.get('version') != 1:
         raise ValueError('profile version must be 1')
     allowed = {
@@ -95,6 +115,11 @@ def validate(profile):
             not isinstance(profile[field], list) or any(not isinstance(item, dict) for item in profile[field])
         ):
             raise ValueError(f'{field} must be an array of objects')
+    if load_overrides:
+        if 'smoke' in profile:
+            raise ValueError('Load overrides are not applicable to smoke mode')
+        for phase in profile.get('phases', []):
+            phase.update(load_overrides)
     if 'coverage_suite' in profile and not re.fullmatch(r'[a-z][a-z0-9_-]*', str(profile['coverage_suite'])):
         raise ValueError('coverage_suite must be a stable suite identifier')
     if profile.get('performance_mode', 'gate') not in {'gate', 'observe'}:
@@ -292,8 +317,7 @@ def validate(profile):
                 'args' in case
                 or 'body' in case
                 or not isinstance(settings, dict)
-                or set(settings) != {'url', 'secret_env', 'message'}
-                or any(not isinstance(value, str) or not value for value in settings.values())
+                or not valid_group_settings(settings)
                 or not resolve(settings['url'], variables).startswith(('http://', 'https://'))
                 or settings['secret_env'] != 'LANGBOT_QA_GROUP_SECRET'
             ):
@@ -383,24 +407,86 @@ def validate(profile):
             'duration_seconds',
             'rps',
             'workers',
+            'sender_workers',
             'cooldown_seconds',
             'groups',
             'members_per_group',
+            'max_requests',
+            'arrival_mode',
+            'queue_capacity',
+            'drain_all',
+            'drain_timeout_seconds',
+            'scenario_weights',
+            'min_delivery_ratio',
         }:
             raise ValueError(f'{name}: unknown phase field')
         number(phase.get('duration_seconds'), 'duration_seconds', minimum=0.001)
         number(phase.get('rps'), 'rps', minimum=0.001)
         number(phase.get('workers'), 'workers', minimum=1, integer=True)
+        if 'sender_workers' in phase:
+            number(phase['sender_workers'], 'sender_workers', minimum=1, integer=True)
+            if phase['sender_workers'] > 256:
+                raise ValueError('sender_workers must be <= 256')
         number(phase.get('cooldown_seconds', 0), 'cooldown_seconds')
+        if 'max_requests' in phase:
+            number(phase['max_requests'], 'max_requests', minimum=1, integer=True)
+        arrival_mode = phase.get('arrival_mode', 'paced')
+        if not isinstance(arrival_mode, str) or arrival_mode not in {'paced', 'open-loop'}:
+            raise ValueError('arrival_mode must be paced or open-loop')
+        if 'queue_capacity' in phase:
+            number(phase['queue_capacity'], 'queue_capacity', minimum=0, integer=True)
+            if phase.get('arrival_mode') != 'open-loop':
+                raise ValueError('queue_capacity requires open-loop arrival_mode')
+            if phase['queue_capacity'] == 0 and not phase.get('drain_all'):
+                raise ValueError('queue_capacity zero requires drain_all')
+        if 'drain_all' in phase and not isinstance(phase['drain_all'], bool):
+            raise ValueError('drain_all must be boolean')
+        if 'drain_timeout_seconds' in phase:
+            number(phase['drain_timeout_seconds'], 'drain_timeout_seconds', minimum=0.001)
+        if phase.get('drain_all') and arrival_mode != 'open-loop':
+            raise ValueError('drain_all requires open-loop arrival_mode')
+        if phase.get('arrival_mode') == 'open-loop' and 'max_requests' in phase:
+            raise ValueError('open-loop arrival_mode cannot use max_requests')
         if phase['workers'] > 32:
             raise ValueError('workers must be <= 32')
         number(phase.get('groups', 0), 'groups', integer=True)
         number(phase.get('members_per_group', 3), 'members_per_group', minimum=1, integer=True)
         if phase.get('groups', 0) > 4096 or phase.get('members_per_group', 3) > 1000:
             raise ValueError('groups must be <= 4096 and members_per_group <= 1000')
-        group_cases = ['http_group' in case for case in cases]
+        phase_cases = cases
+        if 'scenario_weights' in phase:
+            if arrival_mode == 'open-loop':
+                raise ValueError('scenario_weights uses fixed group slots and cannot use open-loop arrival_mode')
+            weights = phase['scenario_weights']
+            catalogue = {case['name']: case for case in cases}
+            if (
+                not isinstance(weights, list)
+                or not weights
+                or any(
+                    not isinstance(item, list)
+                    or len(item) != 2
+                    or not isinstance(item[0], str)
+                    or item[0] not in catalogue
+                    or type(item[1]) is not int
+                    or not 1 <= item[1] <= 1000
+                    for item in weights
+                )
+                or len({name for name, _ in weights}) != len(weights)
+                or sum(weight for _, weight in weights) > 1000
+            ):
+                raise ValueError(f'{name}: invalid scenario weights')
+            if not phase.get('groups') or phase['groups'] % sum(weight for _, weight in weights):
+                raise ValueError(f'{name}: groups must be a positive multiple of total scenario weight')
+            if verification is None:
+                raise ValueError('Configurable mixload requires ledger verification')
+            phase_cases = [dict(catalogue[case_name], weight=weight) for case_name, weight in weights]
+        if 'min_delivery_ratio' in phase:
+            number(phase['min_delivery_ratio'], 'min_delivery_ratio')
+            if 'scenario_weights' not in phase or phase['min_delivery_ratio'] > 1:
+                raise ValueError('min_delivery_ratio requires configurable mixload and must be <= 1')
+        group_cases = ['http_group' in case for case in phase_cases]
         if any(group_cases) and (
-            not all(group_cases) or phase.get('groups', 0) < sum(case.get('weight', 1) for case in cases)
+            not all(group_cases) or phase.get('groups', 0) < sum(case.get('weight', 1) for case in phase_cases)
         ):
             raise ValueError('group phases need only http_group cases and enough groups for all weighted cases')
         if not any(group_cases) and phase.get('groups', 0):
@@ -408,17 +494,20 @@ def validate(profile):
     if profile.get('cleanup', 'on-success') not in {'always', 'on-success', 'never'}:
         raise ValueError('cleanup must be always/on-success/never')
     thresholds = profile.get('thresholds', {})
-    if extra := thresholds.keys() - {'min_rps_ratio', 'max_p95_seconds'}:
+    if extra := thresholds.keys() - {'min_rps_ratio', 'max_p95_seconds', 'max_arrival_p95_seconds'}:
         raise ValueError(f'unknown thresholds: {sorted(extra)}')
     number(thresholds.get('min_rps_ratio', 0), 'min_rps_ratio')
     if thresholds.get('min_rps_ratio', 0) > 1:
         raise ValueError('min_rps_ratio must be <= 1')
-    if not isinstance(thresholds.get('max_p95_seconds', {}), dict):
-        raise ValueError('max_p95_seconds must map case names to seconds')
-    for name, value in thresholds.get('max_p95_seconds', {}).items():
-        if name not in {case['name'] for case in cases}:
-            raise ValueError(f'unknown case in max_p95_seconds: {name}')
-        number(value, 'max_p95_seconds', minimum=0.001)
+    for metric in ('max_p95_seconds', 'max_arrival_p95_seconds'):
+        if not isinstance(thresholds.get(metric, {}), dict):
+            raise ValueError(f'{metric} must map case names to seconds')
+        for name, value in thresholds.get(metric, {}).items():
+            if name not in {case['name'] for case in cases}:
+                raise ValueError(f'unknown case in {metric}: {name}')
+            number(value, metric, minimum=0.001)
+    if thresholds.get('max_arrival_p95_seconds') and any(phase.get('arrival_mode') != 'open-loop' for phase in phases):
+        raise ValueError('max_arrival_p95_seconds requires open-loop phases')
     if 'resource_limits' in profile:
         if 'smoke' in profile and execution is None:
             raise ValueError('resource_limits requires measured load and cooldown phases')
@@ -564,6 +653,12 @@ class Suite:
                 ):
                     return data
             error = result.stdout + result.stderr
+            try:
+                response = json.loads(result.stdout)
+            except ValueError:
+                response = None
+            if isinstance(response, dict) and response.get('error'):
+                error = json.dumps(response['error'], ensure_ascii=False) + '\n' + error
             for secret in self.secrets:
                 error = error.replace(secret, '[REDACTED]')
             raise RuntimeError(error[:3000])
@@ -664,6 +759,40 @@ class Suite:
                         'config': merge(current['config'], config),
                     },
                 )
+            if kind == 'pipeline' and item['id'] == 'memory_pipeline':
+                from tools.regression.regression_api_checks import user_headers
+                from tools.regression.regression_local_cases import api
+
+                headers = user_headers(self)
+                bindings = {
+                    'enable_all_plugins': False,
+                    'bound_plugins': [
+                        {'author': 'langbot-team', 'name': 'LocalAgent'},
+                        {'author': 'langbot-team', 'name': 'LongTermMemory'},
+                    ],
+                    'enable_all_mcp_servers': False,
+                    'bound_mcp_servers': [],
+                    'enable_all_skills': False,
+                    'bound_skills': [],
+                }
+                status, report = api(self, 'PUT', f'/api/v1/pipelines/{uuid}/extensions', bindings, headers)
+                if status != 200 or report.get('code') != 0:
+                    raise ValueError('Cannot scope the memory pipeline to the fixture plugins')
+                status, report = api(self, 'GET', f'/api/v1/tools?pipeline_uuid={uuid}', headers=headers)
+                catalog = report.get('data', {}).get('tools', []) if status == 200 else []
+                memory_tools = sorted(
+                    tool['name'] for tool in catalog if tool.get('source_id') == 'langbot-team/LongTermMemory'
+                )
+                self.write(
+                    'memory-tool-discovery.json',
+                    {
+                        'status': status,
+                        'memory_tools': memory_tools,
+                        'tool_names': sorted(tool['name'] for tool in catalog),
+                    },
+                )
+                if not {'remember', 'recall_memory'} <= set(memory_tools):
+                    raise ValueError('Memory pipeline did not discover both LongTermMemory tools')
             for document in item.get('documents', []):
                 self.call(
                     [
@@ -717,21 +846,15 @@ class Suite:
                 saved['resources'].remove(resource)
                 self.write('owned.json', saved)
         if 'smoke' in self.profile or 'verification' in self.profile:
-            from tools.regression.regression_smoke import verify_cleanup
-
             try:
                 verify_cleanup(self, [item for item in original if item not in saved['resources']])
             except (RuntimeError, ValueError, OSError, KeyError) as exc:
                 failures.append(f'cleanup readback failed: {exc}')
         return failures
 
-    def run(self):
-        if 'smoke' in self.profile:
-            from tools.regression.regression_smoke import run_smoke
-
-            return run_smoke(self)
+    def _traffic_cases(self, originals, file_name):
         cases = []
-        for original in self.profile['cases']:
+        for original in originals:
             case = resolve(original, self.variables)
             if 'body' in case:
                 case['args'] += ['--file', self.write(f'case-{len(cases)}.json', case.pop('body'))]
@@ -754,7 +877,17 @@ class Suite:
                 ]
                 * case.get('weight', 1)
             )
-        cases_path = self.write('cases.json', cases)
+        return self.write(file_name, cases)
+
+    def run(self):
+        if 'smoke' in self.profile:
+            from tools.regression.regression_smoke import run_smoke
+
+            return run_smoke(self)
+        catalogue = {case['name']: case for case in self.profile['cases']}
+        shared_cases_path = None
+        if any('scenario_weights' not in phase for phase in self.profile['phases']):
+            shared_cases_path = self._traffic_cases(self.profile['cases'], 'cases.json')
         observed = resolve(self.profile.get('observe', {}), self.variables)
         observe_args = []
         for name, pid in observed.get('pids', {}).items():
@@ -780,6 +913,13 @@ class Suite:
         errors = []
         for phase in self.profile['phases']:
             destination = self.output / phase['name']
+            profiled = 'scenario_weights' in phase
+            group_state = 'group-state.json'
+            cases_path = shared_cases_path
+            if profiled:
+                selected = [dict(catalogue[name], weight=weight) for name, weight in phase['scenario_weights']]
+                cases_path = self._traffic_cases(selected, f'{phase["name"]}-cases.json')
+                group_state = f'{phase["name"]}-group-state.json'
             command = [
                 sys.executable,
                 '-m',
@@ -806,12 +946,30 @@ class Suite:
                 '--members-per-group',
                 str(phase.get('members_per_group', 3)),
                 '--group-state',
-                str(self.output / 'group-state.json'),
+                str(self.output / group_state),
                 *observe_args,
             ]
+            if profiled:
+                command.append('--open-loop-groups')
+            if 'max_requests' in phase:
+                command += ['--max-requests', str(phase['max_requests'])]
+            if 'arrival_mode' in phase:
+                command += ['--arrival-mode', phase['arrival_mode']]
+            if 'sender_workers' in phase:
+                command += ['--sender-workers', str(phase['sender_workers'])]
+            if 'queue_capacity' in phase:
+                command += ['--queue-capacity', str(phase['queue_capacity'])]
+            if phase.get('drain_all'):
+                command.append('--drain-all')
+            if 'drain_timeout_seconds' in phase:
+                command += ['--drain-timeout', str(phase['drain_timeout_seconds'])]
             with (self.output / f'{phase["name"]}.log').open('w') as log:
                 result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, env=self.env)
-            summary = json.loads((destination / 'summary.json').read_text())
+            phase_summary = destination / 'summary.json'
+            if profiled and not phase_summary.is_file():
+                errors.append(f'{phase["name"]}: no completed phase summary (exit {result.returncode})')
+                continue
+            summary = json.loads(phase_summary.read_text())
             summary['name'] = phase['name']
             summary['achieved_rps'] = (
                 summary.get(
@@ -824,7 +982,10 @@ class Suite:
                 from tools.entrypoints.regression_analysis import resource_verdict
 
                 summary['resources'] = resource_verdict(destination, self.profile['resource_limits'])
-                errors.extend(f'{phase["name"]}: {error}' for error in summary['resources']['errors'])
+                resource_errors = summary['resources']['errors']
+                if self.profile.get('performance_mode') == 'observe':
+                    resource_errors = [error for error in resource_errors if not error.startswith('docker_containers/')]
+                errors.extend(f'{phase["name"]}: {error}' for error in resource_errors)
             if result.returncode:
                 errors.append(f'{phase["name"]}: business or health/resource checks failed')
             summary['performance_mode'] = self.profile.get('performance_mode', 'gate')
@@ -834,9 +995,15 @@ class Suite:
             if summary['achieved_rps'] < phase['rps'] * thresholds.get('min_rps_ratio', 0):
                 errors.append(f'{phase["name"]}: achieved RPS below configured threshold')
             for name, maximum in thresholds.get('max_p95_seconds', {}).items():
+                if profiled and name not in summary['cases']:
+                    continue
                 p95 = summary['cases'][name]['p95_seconds']
                 if p95 is None or p95 > maximum:
                     errors.append(f'{phase["name"]}/{name}: P95 missing or above configured threshold')
+            for name, maximum in thresholds.get('max_arrival_p95_seconds', {}).items():
+                p95 = summary['cases'][name].get('arrival_p95_seconds')
+                if p95 is None or p95 > maximum:
+                    errors.append(f'{phase["name"]}/{name}: arrival P95 missing or above configured threshold')
         return {'phases': results, 'errors': errors}
 
 
@@ -845,29 +1012,11 @@ def main():
     parser.add_argument('action', choices=('validate', 'run', 'cleanup'))
     parser.add_argument('--profile', required=True, type=Path)
     parser.add_argument('--output', type=Path, help='New run directory; existing run directory for cleanup')
-    parser.add_argument('--duration', type=float, help='Override duration_seconds in every phase')
-    parser.add_argument('--rps', type=float, help='Override RPS in every phase')
-    parser.add_argument('--workers', type=int, help='Override workers in every phase')
-    parser.add_argument('--groups', type=int, help='Override group count in every group phase')
-    parser.add_argument('--members-per-group', type=int)
+    add_load_arguments(parser)
     args = parser.parse_args()
     try:
         profile = json.loads(args.profile.read_text())
-        if 'smoke' in profile and any(
-            getattr(args, flag) is not None for flag in ('duration', 'rps', 'workers', 'groups', 'members_per_group')
-        ):
-            raise ValueError('Load overrides are not applicable to smoke mode')
-        for phase in profile.get('phases', []):
-            for flag, field in [
-                ('duration', 'duration_seconds'),
-                ('rps', 'rps'),
-                ('workers', 'workers'),
-                ('groups', 'groups'),
-                ('members_per_group', 'members_per_group'),
-            ]:
-                if getattr(args, flag) is not None:
-                    phase[field] = getattr(args, flag)
-        validate(profile)
+        validate(profile, load_overrides=phase_overrides(args))
         if args.action == 'validate':
             print('Profile valid (no services or resources changed).')
             return

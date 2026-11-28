@@ -9,14 +9,14 @@ For path-by-path coverage, read [Local Runner Coverage](local-agent-runner-cover
 ## Main Surface
 
 - Open `LANGBOT_FRONTEND_URL`.
-- Navigate to `Pipelines`.
+- Navigate to `Processors`.
 - Open the target pipeline.
 - In `Configuration > AI`, select runner `Default`.
 - Configure:
   - `Model`: an LLM model that is known to answer Debug Chat.
   - `Knowledge Bases`: only when validating RAG behavior.
   - `Rerank Model`: leave `None` unless the case explicitly tests reranking.
-- Save the pipeline before using Debug Chat.
+- Save the Chat before using Debug Chat.
 
 ## Debug Chat Checks
 

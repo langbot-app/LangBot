@@ -20,7 +20,6 @@ def create_minimal_config(tmpdir: Path, port: int = 15300) -> Path:
     data_dir.mkdir(parents=True, exist_ok=True)
 
     config = {
-        'admins': [],
         'api': {
             'port': port,
             'webhook_prefix': f'http://127.0.0.1:{port}',

@@ -1,0 +1,15 @@
+{
+  "schema": "langbot.public-memory-dataset.v1",
+  "dataset_id": "locomo10",
+  "source_url": "https://github.com/snap-research/locomo",
+  "source_revision": "3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376",
+  "source_path": "data/locomo10.json",
+  "source_license": "CC-BY-NC-4.0",
+  "source_license_url": "https://github.com/snap-research/locomo/blob/3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376/LICENSE.txt",
+  "local_filename": "locomo10.json",
+  "local_sha256": "79fa87e90f04081343b8c8debecb80a9a6842b76a7aa537dc9fdf651ea698ff4",
+  "local_size_bytes": 2805274,
+  "conversations": 10,
+  "scored_categories": [1, 2, 3, 4],
+  "evidence_granularities": ["session", "turn"]
+}

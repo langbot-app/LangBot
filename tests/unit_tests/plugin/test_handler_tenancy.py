@@ -18,6 +18,10 @@ from langbot.pkg.plugin.handler import RuntimeConnectionHandler
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
 
+from tests.utils.plugin_installations import install_legacy_plugin
+
+pytestmark = pytest.mark.usefixtures('installed_legacy_plugin')
+
 
 class EmptyResult:
     def first(self):
@@ -81,6 +85,7 @@ def make_handler(workspace_uuid: str = 'workspace-a'):
         plugin_author='author-a',
         plugin_name='plugin-a',
     )
+    install_legacy_plugin(app, installation_context, 'author-a', 'plugin-a')
     return runtime_handler, app, installation_context
 
 

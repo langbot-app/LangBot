@@ -81,6 +81,8 @@ def register_created_skill_visibility(query: pipeline_query.Query, skill_name: s
 def build_execution_mounts(ap: app.Application, query: pipeline_query.Query) -> list[dict]:
     """Mount only immutable revisions pinned by this run's activations."""
 
+    if getattr(getattr(ap, 'box_service', None), 'file_transfer_mode', None) == 'network':
+        return []
     mounts: list[dict] = []
     for skill_name, skill_data in get_activated_skills(query).items():
         package_root = str(skill_data.get('package_root', '') or '').strip()
@@ -275,13 +277,15 @@ def rewrite_command_for_skill_mount(command: str, skill_name: str) -> str:
 
 
 def build_skill_session_id(skill_data: dict, query: pipeline_query.Query) -> str:
+    from ....persistence.session_summary_contract import conversation_scope
+
     skill_identifier = str(skill_data.get('name', 'unknown') or 'unknown')
     launcher_type = getattr(query, 'launcher_type', None)
     launcher_id = getattr(query, 'launcher_id', None)
     query_id = getattr(query, 'query_id', 'unknown')
 
     if launcher_type is not None and launcher_id is not None:
-        return f'skill-{launcher_type}_{launcher_id}-{skill_identifier}'
+        return f'skill-{conversation_scope(query)}-{skill_identifier}'
     return f'skill-{query_id}-{skill_identifier}'
 
 

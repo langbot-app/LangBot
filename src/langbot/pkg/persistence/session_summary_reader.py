@@ -49,6 +49,30 @@ class SqlSessionSummaryReader:
         if filters.user_query and filters.user_query.strip():
             pattern = f'%{filters.user_query.strip()}%'
             conditions.append(sa.or_(model.user_id.ilike(pattern), model.user_name.ilike(pattern)))
+        if filters.launcher_id and filters.launcher_id.strip():
+            raw_launcher = filters.launcher_id.strip()
+            normalized = raw_launcher
+            for prefix in ('group_', 'GROUP_', 'person_', 'PERSON_'):
+                if raw_launcher.startswith(prefix) and len(raw_launcher) > len(prefix):
+                    normalized = raw_launcher[len(prefix) :]
+                    break
+            escaped = normalized.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+            conditions.append(
+                sa.or_(
+                    model.session_id.in_(
+                        (
+                            raw_launcher,
+                            f'group_{normalized}',
+                            f'GROUP_{normalized}',
+                            f'person_{normalized}',
+                            f'PERSON_{normalized}',
+                        )
+                    ),
+                    model.session_id.startswith(f'groupmember_{len(normalized)}_{normalized}_', autoescape=True),
+                    model.session_id.like(f'group_{escaped}#%', escape='\\'),
+                    model.session_id.like(f'GROUP_{escaped}#%', escape='\\'),
+                )
+            )
         if filters.is_active is not None:
             conditions.append(model.is_active == filters.is_active)
         async with self._session_scope(workspace) as session:

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from ..cloud.plan_policy import require_workspace_platform
 
-from ..i18n import language_scope
+from ..i18n import language_scope, t
+from ..command.permissions import builtin_settings, can_run
+from ..command.catalog import DESCRIPTIONS
+from ..telemetry.message_policy import observe
 from ..i18n.workspace import get_workspace_language
 
 import asyncio
@@ -34,7 +37,9 @@ from ..agent.runner.host_models import (
 )
 from ..agent.runner.resource_policy import ResourcePolicyProjector
 from ..agent.runner.platform_tools import resolve_agent_platform_tool_names
-from ..agent.runner.query_entry_adapter import QueryEntryAdapter
+from ..agent.runner import input_media
+from ..agent.runner.interaction_store import InteractionAlreadySubmittedError, InteractionExpiredError
+from langbot_plugin.api.entities.builtin.runner.interaction import InteractionHandle
 from ..entity.persistence import workspace as persistence_workspace
 
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType, RequestContext
@@ -42,7 +47,11 @@ from ..api.http.authz import WorkspaceRequiredError
 from ..workspace.errors import WorkspaceInvariantError
 
 from .logger import EventLogger
+from ..plugin.message_received import message_received_event
+from ..message_policy import schema as policy_schema
+from ..utils import constants
 from .adapter_names import canonical_adapter_name
+from .command_registration import PlatformCommandEvent, PlatformCommandRegistrar
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.events as plugin_events
@@ -116,6 +125,7 @@ class RuntimeBot:
         self.logger = logger
         self._shutdown_lock = asyncio.Lock()
         self._shutdown_complete = False
+        self._platform_command_sync_lock = asyncio.Lock()
 
     async def assert_execution_active(self) -> None:
         """Fail closed when this long-lived adapter belongs to a stale placement."""
@@ -393,6 +403,10 @@ class RuntimeBot:
         binding = binding or {}
         kind = str(target_type or binding.get('target_type') or '').strip()
         target = str(target_uuid or binding.get('target_uuid') or '').strip()
+        if kind == 'plugin_command':
+            return 'plugin_command'
+        if kind == 'builtin_command' and target in DESCRIPTIONS:
+            return f'builtin:{target}'
         if not kind or not target:
             return ''
         return f'{kind}:{target}'[:160]
@@ -410,8 +424,17 @@ class RuntimeBot:
         failure_code: str | None = None,
         reason: str | None = None,
         run_id: str | None = None,
+        node: str | None = None,
+        error: str = '',
+        details: dict | None = None,
     ) -> dict[str, typing.Any]:
-        """Record structured event routing state while preserving the human log."""
+        """Record structured event routing state while preserving the human log.
+
+        ``node`` is the routing step opened by the caller *before* it delivered
+        the event, so the Pipeline or Agent it delivered to nests under it and
+        the step's interval covers the delivery. Without it the step is opened
+        here.
+        """
         binding = binding or {}
         metadata = {
             'kind': 'event_route_trace',
@@ -424,7 +447,33 @@ class RuntimeBot:
             'failure_code': failure_code,
             'reason': reason or text,
             'run_id': run_id,
+            **(details or {}),
         }
+        if metadata.get('policy_item'):
+            observe(
+                self.ap,
+                self.execution_context,
+                'policy.drop',
+                item=metadata['policy_item'],
+                layer=metadata['policy_layer'],
+            )
+        if metadata.get('hook'):
+            observe(self.ap, self.execution_context, 'hook.intercept', event=metadata['hook'])
+        if (
+            metadata.get('policy_item')
+            or metadata.get('hook')
+            or metadata['target_type'] in {'builtin_command', 'plugin_command'}
+        ):
+            from langbot_plugin.utils.log import trace_id
+            import logging
+
+            metadata['trace'] = trace_id.get()
+            logging.getLogger(__name__).info(
+                '%s %s: %s',
+                metadata['target_type'],
+                status,
+                text if metadata.get('policy_item') else metadata['target_uuid'],
+            )
         log_method = getattr(self.logger, level, self.logger.info)
         await log_method(text, metadata=metadata)
         if status in {'delivered', 'failed'}:
@@ -432,26 +481,34 @@ class RuntimeBot:
             from ..telemetry.execution import record
 
             state = trace_mod.current()
+            detail = ''
+            if status == 'failed':
+                detail = error or ': '.join(part for part in (failure_code or 'route_failed', reason or '') if part)
             if status == 'failed' and state is not None and state.reportable and not trace_mod.reporting_suppressed():
                 # The root event can finish successfully after a delivery failed.
                 # Preserve that failure for closure reporting in failures mode.
-                state.mark_failure(failure_code or 'route_failed')
+                state.mark_failure(detail)
+
+            def _record_route(route_node: str) -> None:
+                record(
+                    getattr(self, 'ap', None),
+                    getattr(self, 'execution_context', None),
+                    family='event_route',
+                    operation=event_type,
+                    adapter=type(getattr(self, 'adapter', None)).__name__,
+                    mode=target_type if target_type in {'pipeline', 'agent', 'event_processor', 'workflow'} else 'none',
+                    outcome={'delivered': 'success', 'failed': 'failed'}.get(status, 'skipped'),
+                    error=detail,
+                    node=route_node,
+                )
+
             with trace_mod.scope(route_ref=self._route_ref(binding, target_type, target_uuid)):
-                # The routing decision is its own workflow step; the Pipeline or
-                # processor it delivers to hangs under this node.
-                with trace_mod.stage_scope() as node:
-                    record(
-                        getattr(self, 'ap', None),
-                        getattr(self, 'execution_context', None),
-                        family='event_route',
-                        operation=event_type,
-                        adapter=type(getattr(self, 'adapter', None)).__name__,
-                        mode=target_type
-                        if target_type in {'pipeline', 'agent', 'event_processor', 'workflow'}
-                        else 'none',
-                        outcome={'delivered': 'success', 'failed': 'failed'}.get(status, 'skipped'),
-                        node=node,
-                    )
+                if node is not None:
+                    _record_route(node)
+                else:
+                    # The routing decision is its own workflow step.
+                    with trace_mod.stage_scope() as opened:
+                        _record_route(opened)
         return metadata
 
     def get_pipeline_target_for_event_type(self, event_type: str = 'message.received') -> str | None:
@@ -537,7 +594,7 @@ class RuntimeBot:
             'adapter': getattr(self.bot_entity, 'adapter', None) or adapter.__class__.__name__,
             'bot_uuid': self.bot_entity.uuid,
         }
-        await self.logger.info(
+        await self.logger.debug(
             f'Platform adapter received {event_type}',
             metadata=metadata,
         )
@@ -746,28 +803,23 @@ class RuntimeBot:
 
     @classmethod
     def _build_agent_input(cls, event: platform_events.EBAEvent) -> AgentInput:
-        text = platform_events.event_summary(event)
-        contents: list[dict[str, typing.Any]] = []
-
+        rendered = None
         message_chain = getattr(event, 'message_chain', None)
         if message_chain:
-            try:
-                for component in message_chain:
-                    if isinstance(component, platform_message.Image):
-                        if component.url:
-                            contents.append({'type': 'image_url', 'image_url': {'url': component.url}})
-                        elif component.base64:
-                            contents.append({'type': 'image_base64', 'image_base64': component.base64})
-            except TypeError:
-                pass
+            rendered = input_media.render_input(message_chain, include_quotes=True, include_other_text=True)
 
-        if text:
-            contents.insert(0, {'type': 'text', 'text': text})
+        text = (rendered.text if rendered else '') or platform_events.event_summary(event)
+        if rendered and rendered.contents:
+            contents = [item.model_dump(mode='json') for item in rendered.contents]
+        else:
+            contents = [{'type': 'text', 'text': text}] if text else []
 
         return AgentInput(
             text=text,
             contents=contents,
-            attachments=QueryEntryAdapter._build_attachments(event, contents),
+            # The envelope is Host-internal: inline payloads ride along until
+            # prepare_input_files registers them and clears the descriptors.
+            attachments=rendered.attachments(include_content=True) if rendered else [],
         )
 
     def _eba_event_to_agent_envelope(
@@ -855,7 +907,7 @@ class RuntimeBot:
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         supported_apis: list[str],
     ) -> dict[str, typing.Any] | None:
-        if 'interactions' not in DeliveryContext.model_fields or 'interaction.request' not in supported_apis:
+        if 'interactions' not in DeliveryContext.model_fields or 'send_interaction' not in supported_apis:
             return None
         get_capabilities = getattr(adapter, 'get_interaction_capabilities', None)
         if not callable(get_capabilities):
@@ -896,11 +948,12 @@ class RuntimeBot:
                 allowed_platform_tool_names=resolve_agent_platform_tool_names(config, event_type),
                 allowed_host_tool_names=config.get('allowed_tools'),
                 override_runner_tools='allowed_tools' in config,
+                allowed_workspace_operations=config.get('allowed_workspace_operations'),
             ),
             state_policy=StatePolicy(state_scopes=['conversation', 'actor', 'subject', 'runner']),
             delivery_policy=DeliveryPolicy(
-                enable_streaming=False,
-                enable_reply=False,
+                enable_streaming=agent.get('kind') == 'agent' and event_type == 'message.received',
+                enable_reply=agent.get('kind') == 'agent' and event_type == 'message.received',
                 enable_interactions=agent.get('kind') != 'event_processor',
             ),
             agent_id=agent.get('uuid'),
@@ -958,13 +1011,23 @@ class RuntimeBot:
                 if await store.get_event(execution_id):
                     return
                 await self._persist_monitoring_ingress(event, adapter, execution_id)
-        with ingress(
-            getattr(self, 'ap', None),
-            'event_done',
-            getattr(self, 'execution_context', None),
-            execution_id,
-            require_route=True,
+        from langbot_plugin.utils.log import log_scope, trace_id
+
+        object.__setattr__(event, '_policy_ingress_id', execution_id)
+        with (
+            log_scope(workspace=self.execution_context.workspace_uuid),
+            ingress(
+                getattr(self, 'ap', None),
+                'completed',
+                getattr(self, 'execution_context', None),
+                execution_id,
+                require_route=True,
+            ) as binding,
         ):
+            object.__setattr__(event, '_message_log_trace', trace_id.get())
+            if binding.created:
+                # The platform is known at ingress, whatever the route does next.
+                binding.state.adapter = adapter.__class__.__name__
             # The inbound event is the root workflow step: everything recorded
             # while handling it hangs under this node.
             with trace_mod.stage_scope() as node:
@@ -972,13 +1035,24 @@ class RuntimeBot:
 
     @staticmethod
     def _summarize_event_delivery(results: list[typing.Any]) -> tuple[str, str]:
-        outcome = 'success'
-        error_detail = ''
+        from ..telemetry.execution import describe_exception, is_cancellation
+
+        failure_detail = ''
+        cancel_detail = ''
         for result in results:
-            if isinstance(result, BaseException):
-                outcome = 'failed'
-                error_detail = error_detail or f'{type(result).__name__}: {result}'
-        return outcome, error_detail
+            if not isinstance(result, BaseException):
+                continue
+            if is_cancellation(result):
+                # A cancelled delivery (stopped run, superseding message,
+                # shutdown) is not a failed one.
+                cancel_detail = cancel_detail or describe_exception(result)
+            else:
+                failure_detail = failure_detail or describe_exception(result)
+        if failure_detail:
+            return 'failed', failure_detail
+        if cancel_detail:
+            return 'cancelled', cancel_detail
+        return 'success', ''
 
     def _record_platform_event(self, event, adapter, outcome: str, error_detail: str, node: str = '') -> None:
         from ..telemetry.execution import record
@@ -1022,6 +1096,490 @@ class RuntimeBot:
         except Exception as exc:
             await self.logger.warning(f'Failed to persist monitoring ingress: {exc}')
 
+    @staticmethod
+    def _command_text_from_event(event: platform_events.MessageReceivedEvent) -> str:
+        """Plain text of a message; mentions such as ``@bot /draw`` must not hide the prefix."""
+        return ''.join(
+            component.text for component in event.message_chain if isinstance(component, platform_message.Plain)
+        ).strip()
+
+    async def _resolve_command_processors(self, processors: list) -> list[tuple[str, dict]]:
+        """Resolve enabled command processor bindings to (plugin_id, agent) in priority order."""
+        from ..command import processor as command_processor
+
+        resolved: list[tuple[str, dict]] = []
+        for item in processors:
+            if not isinstance(item, dict) or not item.get('enabled', True):
+                continue
+            processor_uuid = item.get('processor_uuid')
+            if not processor_uuid:
+                if item.get('plugin_id'):
+                    resolved.append((item['plugin_id'], {}))
+                continue
+            agent = await self.ap.agent_service.get_agent(self.execution_context, processor_uuid)
+            if not agent or agent.get('kind') != command_processor.COMMAND_PROCESSOR_KIND:
+                continue
+            plugin_id = command_processor.plugin_id_from_component_ref(agent.get('component_ref'))
+            if plugin_id is not None:
+                resolved.append((plugin_id, agent))
+        return resolved
+
+    async def _match_plugin_command(
+        self,
+        event: platform_events.EBAEvent,
+    ) -> tuple[str, str, str, str, dict, str] | None:
+        """Match an incoming message against the bot's command processors.
+
+        Returns (plugin_id, command_name, command_text, full_command_text, command_config,
+        processor_uuid) if a registered command name matches, else None.
+        """
+        from ..command import processor as command_processor
+
+        if not isinstance(event, platform_events.MessageReceivedEvent):
+            return None
+
+        command_settings = getattr(self.bot_entity, 'command_settings', None) or {}
+        if not isinstance(command_settings, dict) or not command_settings.get('enabled', True):
+            return None
+
+        prefixes = command_settings.get('prefixes', ['/'])
+        if not isinstance(prefixes, list) or not prefixes:
+            prefixes = ['/']
+
+        processors = command_settings.get('processors', [])
+        if not isinstance(processors, list):
+            return None
+
+        full_command_text = self._command_text_from_event(event)
+        if not full_command_text:
+            return None
+
+        # Longest prefix match
+        matched_prefix = None
+        for prefix in sorted(prefixes, key=len, reverse=True):
+            if isinstance(prefix, str) and prefix and full_command_text.startswith(prefix):
+                matched_prefix = prefix
+                break
+
+        if isinstance(event, PlatformCommandEvent):
+            command_text = f'{event.command_name} {event.command_args}'.strip()
+        elif matched_prefix is None:
+            return None
+        else:
+            command_text = full_command_text[len(matched_prefix) :].strip()
+        if not command_text:
+            return None
+
+        command_name = command_text.split()[0]
+        canonical = 'new' if command_name == 'reset' else command_name
+        if canonical in DESCRIPTIONS and builtin_settings(command_settings, canonical)['enabled']:
+            return '', canonical, command_text, full_command_text, {}, ''
+
+        for plugin_id, agent, manifest in await self._effective_plugin_commands(event, processors):
+            if command_name == command_processor.command_name(manifest):
+                return (
+                    plugin_id,
+                    command_name,
+                    command_text,
+                    full_command_text,
+                    command_processor.instance_command_config(agent, command_name),
+                    str(agent.get('uuid') or ''),
+                )
+        return None
+
+    async def _effective_plugin_commands(self, event, processors):
+        from ..command import processor as command_processor
+
+        plugin_connector = getattr(self.ap, 'plugin_connector', None)
+        if plugin_connector is None:
+            return []
+
+        resolved = await self._resolve_command_processors(processors)
+        query = getattr(event, '_entry_query', None)
+        allowed = getattr(query, '_listener_plugins', None)
+        if allowed is not None:
+            resolved = [(name, instance) for name, instance in resolved if name in allowed]
+        if not resolved and query is None:
+            return []
+
+        try:
+            available_commands = await plugin_connector.list_commands(
+                allowed if query is not None else [name for name, _ in resolved]
+            )
+        except Exception as exc:
+            await self.logger.warning(f'Failed to list plugin commands: {exc}')
+            return []
+
+        commands_by_plugin = {}
+        for cmd in available_commands:
+            owner = str(getattr(cmd, 'owner', '') or '').strip()
+            name = command_processor.command_name(cmd)
+            if owner and name:
+                commands_by_plugin.setdefault(owner, {})[name] = cmd
+
+        # Registered names only, in binding priority order.
+        if query is not None:
+            configured = {name for name, _ in resolved}
+            for item in processors:
+                if not item.get('enabled', True):
+                    disabled = await self._resolve_command_processors([{**item, 'enabled': True}])
+                    configured.update(name for name, _ in disabled)
+            resolved.extend(
+                (name, {})
+                for name in (allowed if allowed is not None else commands_by_plugin)
+                if name not in configured
+            )
+            if allowed is not None:
+                # Duplicate command names resolve in the order plugins are enabled on the bot,
+                # the same order lifecycle hooks are dispatched in.
+                position = {name: index for index, name in enumerate(allowed)}
+                resolved.sort(key=lambda item: position.get(item[0], len(position)))
+        return [(owner, agent, cmd) for owner, agent in resolved for cmd in commands_by_plugin.get(owner, {}).values()]
+
+    async def _try_handle_plugin_command(
+        self,
+        event: platform_events.EBAEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        execution_id: str | None = None,
+        node: str = '',
+    ) -> bool | dict:
+        """Match a plugin command, returning its trace if policy blocked delivery."""
+        matched = await self._match_plugin_command(event)
+        if matched is None:
+            return False
+        from ..telemetry import trace as trace_mod
+
+        trace_mod.admit()
+        plugin_id, cmd_name, cmd_text, full_cmd_text, cmd_config, processor_uuid = matched
+        query = getattr(event, '_entry_query', None)
+        runtime = getattr(query, '_message_policy', None)
+        settings = getattr(self.bot_entity, 'command_settings', None) or {}
+        permission = (
+            settings.get('plugin_permissions', {}).get(f'{plugin_id}/{cmd_name}', 'everyone')
+            if plugin_id
+            else builtin_settings(settings, cmd_name)['permission']
+        )
+        is_admin = await self.ap.cmd_mgr.is_admin(
+            self.execution_context.workspace_uuid, self.bot_entity.uuid, 'person', event.sender.id, event.sender.id
+        )
+        allowed = can_run(permission, is_admin)
+        denied_reply = settings.get('denied_reply', 'silent')
+        kind = 'processor' if processor_uuid else 'plugin' if plugin_id else 'builtin'
+        dims = {'kind': kind, 'name': 'plugin' if plugin_id else cmd_name}
+        if not allowed:
+            observe(self.ap, self.execution_context, 'command.run', outcome='denied', **dims)
+            denial = await self._record_event_route_trace(
+                event_type=event.type,
+                binding=getattr(event, '_selected_route', None),
+                status='denied',
+                target_type='plugin_command' if plugin_id else 'builtin_command',
+                target_uuid=f'{plugin_id}/{cmd_name}' if plugin_id else cmd_name,
+                failure_code='command_permission_denied',
+                text=f'Command {cmd_name} denied ({denied_reply})',
+                details={'denied_reply': denied_reply, 'command_kind': 'plugin' if plugin_id else 'builtin'},
+            )
+            object.__setattr__(event, '_command_denial', denial)
+            if denied_reply == 'silent':
+                return True
+        async with runtime.admit(query, cmd_text) if runtime is not None else contextlib.nullcontext() as item:
+            if item:
+                binding = dict(
+                    getattr(event, '_selected_route', None) or {},
+                    target_type='plugin_command',
+                    target_uuid=f'{plugin_id}/{cmd_name}',
+                )
+                return await self._record_policy_drop(event, binding, item)
+            if not allowed:
+                chain = platform_message.MessageChain([platform_message.Plain(text=t('Permission denied'))])
+                if runtime is not None:
+                    await runtime.send_command_reply(query, chain)
+                else:
+                    await adapter.reply_message(
+                        message_source=event.to_legacy_event(), message=chain, quote_origin=False
+                    )
+                return True
+            try:
+                result = await self._execute_matched_plugin_command(
+                    event=event,
+                    adapter=adapter,
+                    plugin_id=plugin_id,
+                    command_name=cmd_name,
+                    command_text=cmd_text,
+                    full_command_text=full_cmd_text,
+                    is_admin=is_admin,
+                    command_config=cmd_config,
+                    processor_uuid=processor_uuid,
+                    execution_id=execution_id,
+                    node=node,
+                )
+            except Exception:
+                observe(self.ap, self.execution_context, 'command.run', outcome='failed', **dims)
+                raise
+            outcome = 'ok'
+            if isinstance(result, dict):
+                if result.get('hook'):
+                    outcome = 'intercepted'
+                elif result.get('status') == 'failed':
+                    outcome = 'failed'
+            observe(self.ap, self.execution_context, 'command.run', outcome=outcome, **dims)
+        return result if isinstance(result, dict) else True
+
+    async def _execute_matched_plugin_command(
+        self,
+        event: platform_events.MessageReceivedEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        plugin_id: str,
+        command_name: str,
+        command_text: str,
+        full_command_text: str,
+        is_admin: bool,
+        execution_id: str | None = None,
+        node: str = '',
+        command_config: dict | None = None,
+        processor_uuid: str = '',
+    ) -> dict | None:
+        """Execute a matched command and return its terminal routing result."""
+        legacy_event = event.to_legacy_event() if hasattr(event, 'to_legacy_event') else event
+        is_group_message = (
+            isinstance(legacy_event, platform_events.GroupMessage)
+            or getattr(event, 'chat_type', None) == 'group'
+            or getattr(event, 'group', None) is not None
+        )
+        launcher_type = (
+            provider_session.LauncherTypes.GROUP if is_group_message else provider_session.LauncherTypes.PERSON
+        )
+        launcher_id = (
+            legacy_event.group.id
+            if is_group_message
+            else (getattr(legacy_event, 'sender', None) and legacy_event.sender.id) or getattr(event, 'chat_id', '')
+        )
+        sender_id = getattr(legacy_event, 'sender', None) and legacy_event.sender.id or launcher_id
+
+        if hasattr(adapter, 'get_launcher_id'):
+            custom_launcher_id = adapter.get_launcher_id(legacy_event)
+            if custom_launcher_id:
+                launcher_id = custom_launcher_id
+
+        sess_mgr = getattr(self.ap, 'sess_mgr', None)
+        if sess_mgr and hasattr(sess_mgr, 'get_session_by_launcher'):
+            session = await sess_mgr.get_session_by_launcher(
+                self.execution_context,
+                self.bot_entity.uuid,
+                launcher_type,
+                launcher_id,
+                sender_id,
+            )
+        else:
+            session = None
+
+        query = getattr(event, '_entry_query', None)
+        query_id = query.query_id if query is not None else int(time.time() * 1000)
+        query_uuid = query.query_uuid if query is not None else str(uuid.uuid4())
+        cmd_ctx = await self.ap.cmd_mgr.build_context(
+            command_text=command_text,
+            full_command_text=full_command_text,
+            session=session,
+            instance_uuid=self.execution_context.instance_uuid,
+            workspace_uuid=self.execution_context.workspace_uuid,
+            placement_generation=self.execution_context.placement_generation,
+            query_id=str(query_id),
+            query_uuid=query_uuid,
+            bot_uuid=self.bot_entity.uuid,
+            launcher_type=launcher_type.value,
+            launcher_id=launcher_id,
+            sender_id=sender_id,
+            config=command_config,
+            is_admin=is_admin,
+        )
+
+        if query is not None:
+            hook = plugin_events.GroupCommandSent if is_group_message else plugin_events.PersonCommandSent
+            ctx = await self.ap.plugin_connector.emit_event(
+                hook(
+                    query=query,
+                    launcher_type=launcher_type.value,
+                    launcher_id=launcher_id,
+                    sender_id=sender_id,
+                    command=command_name,
+                    params=command_text.split()[1:],
+                    text_message=full_command_text,
+                    is_admin=is_admin,
+                ),
+                query._listener_plugins,
+            )
+            if ctx.is_prevented_default():
+                from ..pipeline import monitoring_helper
+
+                monitoring_helper.mark_plugin_handled(query, ctx)
+                owner = monitoring_helper.get_handled_by(query)
+                if ctx.event.reply_message_chain is not None:
+                    await query._message_policy.send_command_reply(query, ctx.event.reply_message_chain)
+                return await self._record_event_route_trace(
+                    event_type=event.type,
+                    binding=getattr(event, '_selected_route', None),
+                    status='delivered',
+                    target_type='plugin',
+                    target_uuid=owner,
+                    text=f'{hook.__name__} handled by {owner}',
+                    details={'hook': 'CommandSent'},
+                )
+        if not plugin_id:
+            from ..command.builtin import execute_builtin
+
+            try:
+                text = await execute_builtin(self, event, adapter, command_name, command_text, query, session, is_admin)
+                chain = platform_message.MessageChain([platform_message.Plain(text=text)])
+                if query is not None:
+                    await query._message_policy.send_command_reply(query, chain)
+                else:
+                    await adapter.reply_message(message_source=legacy_event, message=chain, quote_origin=False)
+            except Exception:
+                status = 'failed'
+            else:
+                status = 'delivered'
+            return await self._record_event_route_trace(
+                event_type=event.type,
+                binding=getattr(event, '_selected_route', None),
+                status=status,
+                target_type='builtin_command',
+                target_uuid=command_name,
+                text=f'Builtin command {command_name}: {status}',
+                details={'route_ref': f'builtin:{command_name}'},
+                failure_code='command_execution_failed' if status == 'failed' else None,
+            )
+
+        event_type = getattr(event, 'type', None) or 'message.received'
+        binding = {
+            'id': (getattr(event, '_selected_route', None) or {}).get('id'),
+            'target_type': 'plugin_command',
+            'target_uuid': f'{plugin_id}/{command_name}',
+            'event_pattern': event_type,
+        }
+
+        from ..telemetry import trace as trace_mod
+
+        trace_mod.admit()
+        await self._record_event_route_trace(
+            event_type=event_type,
+            status='matched',
+            binding=binding,
+            target_type='plugin_command',
+            target_uuid=f'{plugin_id}/{command_name}',
+            text=f'Event {event_type} matched plugin command {command_name} from plugin {plugin_id}',
+        )
+
+        from ..command.runs import CommandRunRecorder
+
+        run_recorder = CommandRunRecorder(self.ap, self.execution_context.workspace_uuid)
+        if processor_uuid:
+            await run_recorder.start(
+                processor_uuid=processor_uuid,
+                plugin_id=plugin_id,
+                command_name=command_name,
+                full_command_text=full_command_text,
+                bot_uuid=self.bot_entity.uuid,
+                conversation_id=f'{launcher_type.value}_{launcher_id}',
+                source='platform',
+                launcher={'type': launcher_type.value, 'id': str(launcher_id), 'sender_id': str(sender_id)},
+            )
+        command_error: str | None = None
+
+        try:
+            with trace_mod.scope(route_ref='plugin_command'):
+                async for ret in self.ap.cmd_mgr.execute_command(cmd_ctx, bound_plugins=[plugin_id]):
+                    await run_recorder.output(ret)
+                    if ret.error is not None:
+                        command_error = str(ret.error)
+                    components: list[platform_message.MessageComponent] = []
+                    if ret.error is not None:
+                        components.append(platform_message.Plain(text=str(ret.error)))
+                        await self.logger.debug(f'Command({query_id}) error: {ret.error}')
+                    else:
+                        if ret.text is not None:
+                            components.append(platform_message.Plain(text=ret.text))
+                        if ret.image_url is not None:
+                            components.append(platform_message.Image(url=ret.image_url))
+                        if ret.image_base64 is not None:
+                            components.append(platform_message.Image(base64=ret.image_base64))
+                        if ret.file_url is not None:
+                            components.append(platform_message.File(url=ret.file_url, name=ret.file_name or ''))
+
+                    if components:
+                        chain = platform_message.MessageChain(components)
+                        if query is None:
+                            await adapter.reply_message(message_source=legacy_event, message=chain, quote_origin=False)
+                        else:
+                            await query._message_policy.send_command_reply(query, chain)
+        except Exception as exc:
+            await self._record_event_route_trace(
+                event_type=event_type,
+                status='failed',
+                level='error',
+                binding=binding,
+                target_type='plugin_command',
+                target_uuid=f'{plugin_id}/{command_name}',
+                failure_code='command_execution_failed',
+                reason=str(exc),
+                run_id=run_recorder.run_id,
+                text=f'Plugin command {plugin_id}/{command_name} failed: {exc}',
+            )
+            await run_recorder.finish(error=str(exc))
+            raise
+
+        await run_recorder.finish(error=command_error)
+
+        return await self._record_event_route_trace(
+            event_type=event_type,
+            status='failed' if command_error else 'delivered',
+            binding=binding,
+            target_type='plugin_command',
+            target_uuid=f'{plugin_id}/{command_name}',
+            text=f'Plugin command {plugin_id}/{command_name}: {"failed" if command_error else "delivered"}',
+            run_id=run_recorder.run_id,
+        )
+
+    async def _begin_message(self, event, adapter):
+        route = self._resolve_eba_event_binding(event, event.type)
+        object.__setattr__(event, '_selected_route', route)
+        legacy = event.to_legacy_event()
+        group = isinstance(legacy, platform_events.GroupMessage)
+        launcher_id = (adapter.get_launcher_id(legacy) if hasattr(adapter, 'get_launcher_id') else None) or (
+            legacy.group.id if group else legacy.sender.id
+        )
+        query = await self.ap.query_pool.add_query(
+            bot_uuid=self.bot_entity.uuid,
+            launcher_type=provider_session.LauncherTypes.GROUP if group else provider_session.LauncherTypes.PERSON,
+            launcher_id=launcher_id,
+            sender_id=legacy.sender.id,
+            message_event=legacy,
+            message_chain=event.message_chain,
+            adapter=adapter,
+            execution_context=self.execution_context,
+            enqueue=False,
+            pipeline_uuid=route.get('target_uuid') if route and route.get('target_type') == 'pipeline' else None,
+            route_id=route.get('id') if route else None,
+        )
+        try:
+            object.__setattr__(event, '_entry_query', query)
+            object.__setattr__(query, '_message_log_trace', getattr(event, '_message_log_trace', None))
+            object.__setattr__(query, '_policy_ingress_id', getattr(event, '_policy_ingress_id', None))
+            object.__setattr__(query, '_policy_route', route)
+            await self.ap.message_policy_mgr.bind_query(query)
+            await self._notify_platform_listeners(event, query=query)
+            ctx = await self.ap.plugin_connector.emit_event(message_received_event(query), query._listener_plugins)
+            object.__setattr__(query, '_message_received_dispatched', True)
+            command_handled = ctx.is_prevented_default()
+            if command_handled:
+                from ..pipeline import monitoring_helper
+
+                monitoring_helper.mark_plugin_handled(query, ctx)
+            query.message_chain = event.message_chain = ctx.event.message_chain
+            query.message_event.message_chain = query.message_chain
+            return query, command_handled
+        except BaseException:
+            await self.ap.query_pool.remove_query(query)
+            raise
+
     async def _handle_platform_event_body(
         self,
         event: platform_events.EBAEvent,
@@ -1030,35 +1588,101 @@ class RuntimeBot:
         node: str = '',
     ) -> None:
         results: list[typing.Any] = []
+        query = None
         try:
             await self._record_adapter_event(event, adapter)
             await self._persist_monitoring_ingress(event, adapter, execution_id)
 
-            primary_handler = (
-                self._handle_interaction_submission
-                if isinstance(event, platform_events.PlatformSpecificEvent) and event.action == 'interaction.submitted'
-                else self._dispatch_eba_event_to_processor
-            )
-            subscriptions = self._get_event_bindings_from_value(getattr(self.bot_entity, 'plugin_processors', []))
-            seen = set()
-            tasks = [self._run_event_delivery(primary_handler, event, adapter, execution_id=execution_id)]
-            for subscription in subscriptions:
-                processor_uuid = subscription.get('processor_uuid')
-                if not processor_uuid or processor_uuid in seen or not subscription.get('enabled', True):
-                    continue
-                seen.add(processor_uuid)
-                tasks.append(
-                    self._run_event_delivery(
-                        self._dispatch_plugin_subscription, event, adapter, processor_uuid, execution_id
+            command_handled = False
+            if isinstance(event, platform_events.MessageReceivedEvent):
+                query, command_handled = await self._begin_message(event, adapter)
+                if command_handled:
+                    from ..pipeline import monitoring_helper
+                    from ..telemetry import trace as trace_mod
+
+                    if event._selected_route and event._selected_route.get('target_type') != 'discard':
+                        trace_mod.admit()
+                    owner = monitoring_helper.get_handled_by(query)
+                    results.append(
+                        await self._record_event_route_trace(
+                            event_type=event.type,
+                            status='delivered',
+                            target_type='plugin',
+                            target_uuid=owner,
+                            text=f'{event.type} handled by {owner}',
+                            binding=event._selected_route,
+                            details={'hook': 'MessageReceived'},
+                        )
                     )
+            command_settings = getattr(self.bot_entity, 'command_settings', None) or {}
+            if (
+                isinstance(event, platform_events.MessageReceivedEvent)
+                and command_settings.get('enabled', True)
+                and not command_handled
+            ):
+                cmd_tasks = [
+                    self._run_event_delivery(
+                        self._try_handle_plugin_command,
+                        event=event,
+                        adapter=adapter,
+                        execution_id=execution_id,
+                        node=node,
+                    )
+                ]
+                cmd_results = await asyncio.gather(*cmd_tasks, return_exceptions=True)
+                if cmd_results and isinstance(cmd_results[0], dict):
+                    command_handled = True
+                    results = cmd_results
+                elif cmd_results and cmd_results[0] is True:
+                    command_handled = True
+                    results = [None]
+                elif cmd_results and isinstance(cmd_results[0], BaseException):
+                    results = cmd_results
+                    command_handled = True
+
+            denial = getattr(event, '_command_denial', None)
+            if denial:
+                results.append(denial)
+            if not command_handled or denial:
+                primary_handler = (
+                    self._handle_interaction_submission
+                    if isinstance(event, platform_events.InteractionCallbackEvent)
+                    else self._dispatch_eba_event_to_processor
                 )
-            # Start all deliveries together. A slow or failed subscriber cannot block
-            # another subscriber or the primary route from receiving the event.
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+                subscriptions = self._get_event_bindings_from_value(getattr(self.bot_entity, 'plugin_processors', []))
+                seen = set()
+                tasks = []
+                if not command_handled:
+                    tasks.append(self._run_event_delivery(primary_handler, event, adapter, execution_id=execution_id))
+                if (
+                    not isinstance(event, platform_events.MessageReceivedEvent)
+                    and getattr(self.ap, 'plugin_connector', None) is not None
+                ):
+                    tasks.append(self._run_event_delivery(self._notify_platform_listeners, event))
+                for subscription in subscriptions:
+                    processor_uuid = subscription.get('processor_uuid')
+                    if not processor_uuid or processor_uuid in seen or not subscription.get('enabled', True):
+                        continue
+                    seen.add(processor_uuid)
+                    tasks.append(
+                        self._run_event_delivery(
+                            self._dispatch_plugin_subscription, event, adapter, processor_uuid, execution_id
+                        )
+                    )
+                # Start all deliveries together. A slow or failed subscriber cannot block
+                # another subscriber or the primary route from receiving the event.
+                results.extend(await asyncio.gather(*tasks, return_exceptions=True))
         except BaseException as exc:
-            self._record_platform_event(event, adapter, 'failed', f'{type(exc).__name__}: {exc}', node)
+            from ..telemetry.execution import describe_exception, is_cancellation
+
+            self._record_platform_event(
+                event, adapter, 'cancelled' if is_cancellation(exc) else 'failed', describe_exception(exc), node
+            )
             await self._persist_monitoring_ingress(event, adapter, execution_id, 'failed', [exc])
             raise
+        finally:
+            if query is not None and not getattr(query, '_handed_to_messaging', False):
+                await self.ap.query_pool.remove_query(query)
 
         # Recorded after handling so the inbound stage carries the real outcome
         # instead of a hardcoded success.
@@ -1070,11 +1694,12 @@ class RuntimeBot:
                 except Exception:
                     pass
         self._record_platform_event(event, adapter, outcome, error_detail, node)
+        route_failed = any(isinstance(result, dict) and result.get('status') == 'failed' for result in results)
         await self._persist_monitoring_ingress(
             event,
             adapter,
             execution_id,
-            {'success': 'completed', 'skipped': 'ignored'}.get(outcome, 'failed'),
+            'failed' if route_failed else {'success': 'completed', 'skipped': 'ignored'}.get(outcome, 'failed'),
             results,
         )
 
@@ -1089,6 +1714,28 @@ class RuntimeBot:
             async with tenant_scope(self.workspace_uuid):
                 return await handler(*args, **kwargs)
         return await handler(*args, **kwargs)
+
+    async def _notify_platform_listeners(self, event, query=None):
+        try:
+            hook = self._eba_event_to_plugin_event(event)
+            if hook is None:
+                return
+            hook.inherit_execution_scope(self.execution_context)
+            if query is not None:
+                hook.query = query
+                hook.query_uuid = query.query_uuid
+                listeners = query._listener_plugins
+            else:
+                route = self._resolve_eba_event_binding(event, event.type) or {}
+                policy = policy_schema.resolve_policy(
+                    getattr(self.bot_entity, 'message_policy', None), route.get('policy')
+                )
+                await self.ap.plugin_connector.require_workspace_context(self.execution_context)
+                listeners = policy_schema.enabled_plugins(policy)
+            if listeners != []:
+                await self.ap.plugin_connector.emit_event(hook, listeners)
+        except Exception as exc:
+            await self.logger.warning(f'Plugin notification for {event.type} failed: {exc}')
 
     async def _dispatch_plugin_subscription(self, event, adapter, processor_uuid, execution_id=None):
         event_type = event.type
@@ -1111,6 +1758,7 @@ class RuntimeBot:
                 return
         except Exception as exc:
             from ..telemetry import trace as trace_mod
+            from ..telemetry.execution import describe_exception
 
             # No matching declaration was resolved: log locally without
             # reporting a failed delivery for every unrelated incoming event.
@@ -1125,6 +1773,7 @@ class RuntimeBot:
                     failure_code='runner_failed',
                     reason=str(exc),
                     text=f'Plugin processor {processor_uuid} failed: {exc}',
+                    error=describe_exception(exc),
                 )
         agent = {**agent, 'supported_event_patterns': patterns}
         return await self._dispatch_eba_event_to_processor(
@@ -1141,8 +1790,34 @@ class RuntimeBot:
     ) -> dict[str, typing.Any]:
         event_type = getattr(event, 'type', None) or event.__class__.__name__
 
+        if isinstance(event, platform_events.MessageReceivedEvent):
+            interaction_manager = getattr(getattr(self.ap, 'agent_run_orchestrator', None), 'interaction_manager', None)
+        else:
+            interaction_manager = None
+        if callable(getattr(interaction_manager, 'consume_text_message', None)):
+            target_type_for_text, target_id_for_text, _ = self._infer_reply_target(event)
+            sender_for_text = getattr(event, 'sender', None) or getattr(event, 'user', None)
+            actor_id_for_text = self._get_entity_id(sender_for_text)
+            text_for_interaction = ''.join(
+                part.text for part in event.message_chain if isinstance(part, platform_message.Plain)
+            )
+            if target_type_for_text and target_id_for_text and actor_id_for_text and text_for_interaction:
+                consumed = await interaction_manager.consume_text_message(
+                    workspace_id=self.execution_context.workspace_uuid,
+                    bot_id=self.bot_entity.uuid,
+                    conversation_id=f'{target_type_for_text}_{target_id_for_text}',
+                    actor_id=str(actor_id_for_text),
+                    text=text_for_interaction,
+                )
+                if consumed:
+                    return {'status': 'delivered', 'interaction': 'text_reply'}
+
         if event_binding is None:
-            event_binding = self._resolve_eba_event_binding(event, event_type)
+            event_binding = (
+                event._selected_route
+                if hasattr(event, '_selected_route')
+                else self._resolve_eba_event_binding(event, event_type)
+            )
         if event_binding is None:
             return await self._record_event_route_trace(
                 event_type=event_type,
@@ -1205,25 +1880,45 @@ class RuntimeBot:
                     reason='Pipeline targets only support message events',
                     text=f'Event {event_type} ignored Pipeline target for non-message event',
                 )
+            pipeline_uuid = event_binding.get('target_uuid')
+            if not await self._pipeline_target_exists(pipeline_uuid):
+                # A binding left pointing at a deleted Pipeline must fail
+                # visibly instead of queueing a query that is later dropped.
+                return await self._record_event_route_trace(
+                    event_type=event_type,
+                    status='failed',
+                    level='warning',
+                    binding=event_binding,
+                    target_type=target_type,
+                    target_uuid=pipeline_uuid,
+                    failure_code='processor_not_found',
+                    reason='Pipeline target not found',
+                    text=f'Event {event_type} target Pipeline not found: {pipeline_uuid or ""}'.strip(),
+                )
             from ..telemetry import trace as trace_mod
 
-            with trace_mod.scope(
-                route_ref=self._route_ref(event_binding, target_type, event_binding.get('target_uuid'))
-            ):
-                await self._dispatch_eba_message_to_pipeline(
-                    event,
-                    adapter,
-                    pipeline_uuid=event_binding.get('target_uuid'),
-                    routed_by_event_binding=True,
+            # The routing step opens before delivery so the queued Pipeline
+            # lane nests under it and runs after it in the chain order.
+            with trace_mod.stage_scope() as route_node:
+                with trace_mod.scope(
+                    route_ref=self._route_ref(event_binding, target_type, event_binding.get('target_uuid'))
+                ):
+                    await self._dispatch_eba_message_to_pipeline(
+                        event,
+                        adapter,
+                        pipeline_uuid=event_binding.get('target_uuid'),
+                        routed_by_event_binding=True,
+                        route_id=str(event_binding.get('id') or '') or None,
+                    )
+                return await self._record_event_route_trace(
+                    event_type=event_type,
+                    status='delivered',
+                    binding=event_binding,
+                    target_type=target_type,
+                    target_uuid=event_binding.get('target_uuid'),
+                    text=f'Event {event_type} delivered to Pipeline {event_binding.get("target_uuid") or ""}'.strip(),
+                    node=route_node,
                 )
-            return await self._record_event_route_trace(
-                event_type=event_type,
-                status='delivered',
-                binding=event_binding,
-                target_type=target_type,
-                target_uuid=event_binding.get('target_uuid'),
-                text=f'Event {event_type} delivered to Pipeline {event_binding.get("target_uuid") or ""}'.strip(),
-            )
         if target_type == 'workflow':
             return await self._dispatch_eba_workflow(event, adapter, event_binding)
         if target_type not in {'agent', 'event_processor'}:
@@ -1268,7 +1963,9 @@ class RuntimeBot:
 
         try:
             binding = self._agent_product_to_binding(agent, event_binding, event_type, self.bot_entity.uuid)
-        except Exception:
+        except Exception as exc:
+            from ..telemetry.execution import describe_exception
+
             return await self._record_event_route_trace(
                 event_type=event_type,
                 status='failed',
@@ -1279,6 +1976,7 @@ class RuntimeBot:
                 failure_code='runner_failed',
                 reason='Agent configuration is invalid',
                 text=f'Failed to build Agent binding for EBA event {event_type}: {traceback.format_exc()}',
+                error=describe_exception(exc),
             )
         if binding is None:
             return await self._record_event_route_trace(
@@ -1293,7 +1991,87 @@ class RuntimeBot:
                 text=f'Event {event_type} target agent has no runner: {target_uuid}',
             )
 
+        query = getattr(event, '_entry_query', None)
+        async with contextlib.AsyncExitStack() as stack:
+            altered = None
+            if query is not None and target_type == 'agent':
+                runtime = query._message_policy
+                group = query.launcher_type == provider_session.LauncherTypes.GROUP
+                query.message_chain = query.message_chain.model_copy(deep=True)
+                item = await stack.enter_async_context(runtime.admit(query))
+                if item:
+                    return await self._record_policy_drop(event, event_binding, item)
+                event = event.model_copy(update={'message_chain': query.message_chain})
+                query.message_event.message_chain = query.message_chain
+                hook = plugin_events.GroupNormalMessageReceived if group else plugin_events.PersonNormalMessageReceived
+                ctx = await self.ap.plugin_connector.emit_event(
+                    hook(
+                        launcher_type=query.launcher_type.value,
+                        launcher_id=query.launcher_id,
+                        sender_id=query.sender_id,
+                        query=query,
+                        message_event=query.message_event,
+                        message_chain=query.message_chain,
+                        text_message=str(query.message_chain),
+                    ),
+                    query._listener_plugins,
+                )
+                if ctx.is_prevented_default():
+                    from ..pipeline import monitoring_helper
+
+                    monitoring_helper.mark_plugin_handled(query, ctx)
+                    if ctx.event.reply_message_chain is not None:
+                        await runtime.send_command_reply(query, ctx.event.reply_message_chain)
+                    return await self._record_event_route_trace(
+                        event_type=event_type,
+                        binding=event_binding,
+                        target_type='plugin',
+                        status='delivered',
+                        target_uuid=monitoring_helper.get_handled_by(query),
+                        text=f'{hook.__name__} handled by plugin',
+                        details={'hook': 'NormalMessageReceived'},
+                    )
+                altered = ctx.event.user_message_alter
+            return await self._deliver_runner_event(event, adapter, execution_id, event_binding, binding, altered)
+
+    async def _record_policy_drop(self, event, binding, item):
+        query = getattr(event, '_entry_query', None)
+        notice = getattr(query, '_policy_drop_notice', None)
+        runtime = getattr(query, '_message_policy', None)
+        if (
+            notice
+            and runtime is not None
+            and callable(getattr(runtime, 'send_notice', None))
+            and callable(getattr(runtime, 'build_notice', None))
+        ):
+            try:
+                await runtime.send_notice(query, runtime.build_notice(query.message_event, notice))
+            except Exception as exc:
+                await self.logger.warning(f'Failed to send policy drop notice: {exc}')
+        reason = policy_schema.drop_reason(self.bot_entity.uuid, binding, item)
+        return await self._record_event_route_trace(
+            event_type=event.type,
+            binding=binding,
+            status='discarded',
+            failure_code='message_policy',
+            details={'policy_layer': reason.split(':', 1)[0], 'policy_item': item.split('.', 1)[1]},
+            reason=reason,
+            text=reason,
+        )
+
+    async def _deliver_runner_event(self, event, adapter, execution_id, event_binding, binding, altered):
+        target_type = event_binding['target_type']
+        target_uuid = event_binding.get('target_uuid')
+        event_type = event.type
         envelope = self._eba_event_to_agent_envelope(event, adapter, execution_id)
+        if altered is not None:
+            if isinstance(altered, str):
+                envelope.input = AgentInput(text=altered, contents=[{'type': 'text', 'text': altered}])
+            else:
+                parts = altered if isinstance(altered, list) else [altered]
+                envelope.input = AgentInput(text=''.join(part.text or '' for part in parts), contents=parts)
+        if target_type == 'agent' and isinstance(event, platform_events.MessageReceivedEvent):
+            envelope.delivery.supports_streaming = True
         if target_type == 'event_processor':
             envelope.data = event.model_dump(mode='json', exclude={'source_platform_object', 'legacy_event'})
             if isinstance(event, platform_events.MessageReceivedEvent):
@@ -1302,45 +2080,69 @@ class RuntimeBot:
                 envelope.data['message_chain'] = event.message_chain.model_dump()
         from ..telemetry import trace as trace_mod
 
-        try:
-            with trace_mod.scope(route_ref=self._route_ref(event_binding, target_type, target_uuid)):
-                from .processing_indicator import processing_indicator
-
-                reply_type, reply_id = (None, None)
-                if isinstance(event, platform_events.MessageReceivedEvent):
-                    reply_type, reply_id, _ = self._infer_reply_target(event)
-                async with processing_indicator(adapter, reply_type, reply_id):
-                    async for _ in self.ap.agent_run_orchestrator.run(
-                        envelope,
-                        binding,
-                        adapter_context={
-                            '_delivery_adapter': adapter,
-                            '_platform_event': event,
-                            '_execution_context': self.execution_context,
-                        },
+        # The routing step opens before the Agent runs, so the run nests under it.
+        with trace_mod.stage_scope() as route_node:
+            try:
+                with trace_mod.scope(route_ref=self._route_ref(event_binding, target_type, target_uuid)):
+                    if target_type == 'agent' and await self.ap.agent_run_orchestrator.try_claim_steering_from_event(
+                        envelope, binding, self.execution_context
                     ):
-                        # Results are journaled by the orchestrator; platform sends require explicit actions.
-                        pass
-        except Exception:
+                        return await self._record_event_route_trace(
+                            event_type=event_type,
+                            status='delivered',
+                            binding=event_binding,
+                            target_type=target_type,
+                            target_uuid=target_uuid,
+                            text=f'Event {event_type} queued as steering',
+                            node=route_node,
+                        )
+                    from .processing_indicator import processing_indicator
+
+                    reply_type, reply_id = (None, None)
+                    if isinstance(event, platform_events.MessageReceivedEvent):
+                        reply_type, reply_id, _ = self._infer_reply_target(event)
+                    async with processing_indicator(adapter, reply_type, reply_id):
+                        async for _ in self.ap.agent_run_orchestrator.run(
+                            envelope,
+                            binding,
+                            adapter_context={
+                                '_delivery_adapter': adapter,
+                                '_platform_event': event,
+                                '_execution_context': self.execution_context,
+                                **(
+                                    {'_entry_query': event._entry_query}
+                                    if target_type == 'agent' and hasattr(event, '_entry_query')
+                                    else {}
+                                ),
+                            },
+                        ):
+                            # Results are journaled by the orchestrator; platform sends require explicit actions.
+                            pass
+            except Exception as exc:
+                from ..telemetry.execution import describe_exception
+
+                return await self._record_event_route_trace(
+                    event_type=event_type,
+                    status='failed',
+                    level='error',
+                    binding=event_binding,
+                    target_type=target_type,
+                    target_uuid=target_uuid,
+                    failure_code='runner_failed',
+                    reason='Agent runner failed',
+                    text=f'Failed to run Agent for EBA event {event_type}: {traceback.format_exc()}',
+                    error=describe_exception(exc),
+                    node=route_node,
+                )
             return await self._record_event_route_trace(
                 event_type=event_type,
-                status='failed',
-                level='error',
+                status='delivered',
                 binding=event_binding,
                 target_type=target_type,
                 target_uuid=target_uuid,
-                failure_code='runner_failed',
-                reason='Agent runner failed',
-                text=f'Failed to run Agent for EBA event {event_type}: {traceback.format_exc()}',
+                text=f'Event {event_type} delivered to Agent {target_uuid}',
+                node=route_node,
             )
-        return await self._record_event_route_trace(
-            event_type=event_type,
-            status='delivered',
-            binding=event_binding,
-            target_type=target_type,
-            target_uuid=target_uuid,
-            text=f'Event {event_type} delivered to Agent {target_uuid}',
-        )
 
     def resolve_event_pipeline_uuid(
         self,
@@ -1379,16 +2181,13 @@ class RuntimeBot:
             else:
                 message_content = str(message_chain)
 
-            sender_name = None
-            if hasattr(message_event, 'sender'):
-                if hasattr(message_event.sender, 'nickname'):
-                    sender_name = message_event.sender.nickname
-                elif hasattr(message_event.sender, 'member_name'):
-                    sender_name = message_event.sender.member_name
+            from ..pipeline.monitoring_helper import build_monitoring_session_id, extract_sender_name
+
+            sender_name = extract_sender_name(message_event)
 
             # Use the same session_id format as monitoring_helper.py
-            session_id = f'{launcher_type}_{launcher_id}'
             platform = launcher_type.value if hasattr(launcher_type, 'value') else str(launcher_type)
+            session_id = build_monitoring_session_id(platform, launcher_id, sender_id)
 
             await self.ap.monitoring_service.record_message(
                 self.execution_context,
@@ -1479,6 +2278,7 @@ class RuntimeBot:
         pipeline_uuid_override: str | None = None,
         routed_by_event_binding: bool = False,
         variables: dict[str, typing.Any] | None = None,
+        route_id: str | None = None,
     ) -> None:
         await self.assert_execution_active()
         is_group_message = isinstance(event, platform_events.GroupMessage)
@@ -1493,7 +2293,7 @@ class RuntimeBot:
             component for component in event.message_chain if isinstance(component, platform_message.Image)
         ]
 
-        await self.logger.info(
+        await self.logger.debug(
             f'{event.message_chain}',
             images=image_components,
             message_session_id=f'{launcher_kind}_{launcher_id}',
@@ -1555,213 +2355,82 @@ class RuntimeBot:
             routed_by_rule=routed_by_rule,
             variables=variables,
             execution_context=self.execution_context,
+            route_id=route_id,
         )
+        if hasattr(event, '_entry_query'):
+            object.__setattr__(event._entry_query, '_handed_to_messaging', True)
 
     async def _handle_interaction_submission(
         self,
-        event: platform_events.PlatformSpecificEvent,
+        event: platform_events.InteractionCallbackEvent,
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         execution_id: str | None = None,
     ) -> None:
-        """Consume a platform interaction callback and resume its original processor."""
-        data = event.data if isinstance(event.data, dict) else {}
-        callback_token = str(data.get('callback_token') or '')
-        actor_id = str(data.get('actor_id') or data.get('user_id') or '') or None
-        target_type = str(data.get('target_type') or '') or None
-        target_id = str(data.get('target_id') or data.get('chat_id') or '') or None
+        """Validate a callback and wake the Runner waiting in the original run."""
+        del execution_id
+        manager = self.ap.agent_run_orchestrator.interaction_manager
+        target_type = event.target_type
+        target_id = event.target_id
         conversation_id = f'{target_type}_{target_id}' if target_type and target_id else None
-        submission = {
-            'interaction_id': data.get('interaction_id'),
-            'action_id': data.get('action_id'),
-            'values': data.get('values') if isinstance(data.get('values'), dict) else {},
-            'submitted_at': int(event.timestamp) if event.timestamp else None,
+        submission: dict[str, typing.Any] = {
+            'action_id': event.action_id,
+            'values': event.values,
         }
         for ref_name in ('action_ref', 'field_ref', 'option_ref'):
-            if data.get(ref_name) is not None:
-                submission[ref_name] = data[ref_name]
+            value = event.raw_submission.get(ref_name)
+            if value is not None:
+                submission[ref_name] = value
 
-        record = await self.ap.agent_run_orchestrator.interaction_manager.consume_callback(
-            callback_token=callback_token,
-            submission=submission,
-            bot_id=self.bot_entity.uuid,
-            conversation_id=conversation_id,
-            actor_id=actor_id,
-        )
-        if record['processor_type'] not in {'agent', 'pipeline'}:
-            raise ValueError(f'Unsupported interaction processor type: {record["processor_type"]}')
-        from ..telemetry import trace as trace_mod
-
-        # Only a validated callback resolving an original processor is eligible.
-        # Admit before acknowledgement and target lookup to preserve failures.
-        trace_mod.admit()
-        await self.ap.agent_run_orchestrator.interaction_manager.acknowledge_submission(record, adapter)
-
-        if record['processor_type'] == 'agent':
-            await self._resume_agent_interaction(record, event, adapter, actor_id, execution_id)
+        try:
+            record = await manager.consume_callback(
+                callback_token=event.callback_token,
+                submission=submission,
+                bot_id=self.bot_entity.uuid,
+                conversation_id=conversation_id,
+                actor_id=event.actor_id,
+            )
+        except InteractionAlreadySubmittedError:
+            return
+        except InteractionExpiredError:
+            stale = await manager.store.get_by_callback_token(event.callback_token)
+            delivery_result = stale.get('delivery_result') if stale else None
+            if isinstance(delivery_result, dict) and callable(getattr(adapter, 'update_interaction', None)):
+                try:
+                    handle = InteractionHandle.model_validate(delivery_result)
+                    handle.context.setdefault('request', stale.get('request') or {})
+                    handle.context['callback_context'] = event.callback_context
+                    await adapter.update_interaction(handle, 'expired')
+                except Exception as exc:
+                    await self.logger.warning(f'Failed to invalidate stale interaction card: {exc}')
             return
 
-        pipeline = await self.ap.pipeline_service.get_pipeline(
-            self.execution_context,
-            record['processor_id'],
-            include_secret=True,
-        )
-        if not pipeline:
-            raise ValueError(f'Interaction target Pipeline is unavailable: {record["processor_id"]}')
-        current_runner_id = RunnerConfigResolver.resolve_runner_id(pipeline.get('config') or {})
-        if current_runner_id != record['runner_id']:
-            raise ValueError('Interaction target Pipeline runner changed after the request was created')
+        if not manager.wake_waiter(record, event.actor_id, event.callback_context):
+            delivery_result = record.get('delivery_result')
+            if isinstance(delivery_result, dict) and callable(getattr(adapter, 'update_interaction', None)):
+                try:
+                    handle = InteractionHandle.model_validate(delivery_result)
+                    handle.context.setdefault('request', record.get('request') or {})
+                    handle.context['callback_context'] = event.callback_context
+                    await adapter.update_interaction(handle, 'cancelled')
+                except Exception as exc:
+                    await self.logger.warning(f'Failed to invalidate orphaned interaction card: {exc}')
 
-        message_components: list[platform_message.MessageComponent] = []
-        callback_message_id = data.get('message_id')
-        if callback_message_id:
-            message_components.append(
-                platform_message.Source(
-                    id=str(callback_message_id),
-                    time=int(event.timestamp) if event.timestamp else int(time.time()),
-                )
-            )
-        message_components.append(
-            platform_message.Plain(text=str(data.get('display_text') or data.get('action_id') or 'submitted'))
-        )
-        message_chain = platform_message.MessageChain(message_components)
-        delivery_target = record.get('delivery_target') or {}
-        original_target_type = delivery_target.get('target_type')
-        original_target_id = delivery_target.get('target_id')
-        if original_target_type == 'group':
-            group = platform_entities.Group(
-                id=original_target_id,
-                name='',
-                permission=platform_entities.Permission.Member,
-            )
-            message_event: platform_events.MessageEvent = platform_events.GroupMessage(
-                sender=platform_entities.GroupMember(
-                    id=actor_id or '',
-                    member_name='',
-                    permission=platform_entities.Permission.Member,
-                    group=group,
-                ),
-                message_chain=message_chain,
-                time=event.timestamp,
-                source_platform_object=event.source_platform_object,
-            )
-        else:
-            message_event = platform_events.FriendMessage(
-                sender=platform_entities.Friend(id=actor_id or '', nickname='', remark=''),
-                message_chain=message_chain,
-                time=event.timestamp,
-                source_platform_object=event.source_platform_object,
-            )
+    async def _pipeline_target_exists(self, pipeline_uuid: str | None) -> bool:
+        """Whether a bound Pipeline target still exists in this Workspace.
 
-        launcher_type = (
-            provider_session.LauncherTypes.GROUP
-            if original_target_type == 'group'
-            else provider_session.LauncherTypes.PERSON
-        )
-        await self.ap.msg_aggregator.add_message(
-            bot_uuid=self.bot_entity.uuid,
-            launcher_type=launcher_type,
-            launcher_id=original_target_id or target_id or actor_id or '',
-            sender_id=actor_id or '',
-            message_event=message_event,
-            message_chain=message_chain,
-            adapter=adapter,
-            pipeline_uuid=record['processor_id'],
-            routed_by_rule=True,
-            variables={'_interaction_submission': record['submission']},
-            execution_context=self.execution_context,
-        )
-
-    async def _resume_agent_interaction(
-        self,
-        record: dict[str, typing.Any],
-        event: platform_events.PlatformSpecificEvent,
-        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
-        actor_id: str | None,
-        execution_id: str | None = None,
-    ) -> None:
-        """Resume the exact independent Agent that produced an interaction."""
-        agent = await self.ap.agent_service.get_agent(
-            self.execution_context,
-            record['processor_id'],
-        )
-        if not agent or agent.get('kind') != 'agent':
-            raise ValueError(f'Interaction target Agent is unavailable: {record["processor_id"]}')
-
-        binding = self._agent_product_to_binding(
-            agent,
-            {'id': record['binding_id']},
-            'interaction.submitted',
-            self.bot_entity.uuid,
-        )
-        if binding is None or binding.runner_id != record['runner_id']:
-            raise ValueError('Interaction target Agent runner changed after the request was created')
-        binding.binding_id = record['binding_id']
-
-        submission = record['submission']
-        display_text = str(
-            (submission or {}).get('action_id')
-            or (event.data if isinstance(event.data, dict) else {}).get('display_text')
-            or 'submitted'
-        )
-        input_data: dict[str, typing.Any] = {
-            'text': display_text,
-            'contents': [{'type': 'text', 'text': display_text}],
-            'attachments': [],
-        }
-        if 'interaction' in AgentInput.model_fields:
-            input_data['interaction'] = submission
-
-        delivery_target = record.get('delivery_target') or {}
-        supported_apis = self._get_adapter_supported_apis(adapter)
-        delivery_data: dict[str, typing.Any] = {
-            'surface': 'platform',
-            'reply_target': delivery_target,
-            'supports_streaming': False,
-            'supports_edit': 'edit_message' in supported_apis,
-            'supports_reaction': bool({'add_reaction', 'remove_reaction'} & set(supported_apis)),
-            'platform_capabilities': {
-                'adapter': adapter.__class__.__name__,
-                'event_type': 'interaction.submitted',
-                'supported_apis': supported_apis,
-            },
-        }
-        interaction_capabilities = self._get_adapter_interaction_capabilities(adapter, supported_apis)
-        if interaction_capabilities is not None:
-            delivery_data['interactions'] = interaction_capabilities
-
-        envelope = AgentEventEnvelope(
-            event_id=execution_id or f'interaction:{record["id"]}:{uuid.uuid4()}',
-            event_type='interaction.submitted',
-            event_time=int(event.timestamp) if event.timestamp else int(time.time()),
-            source='platform',
-            source_event_type='interaction.submitted',
-            bot_id=self.bot_entity.uuid,
-            workspace_id=record.get('workspace_id'),
-            conversation_id=record.get('conversation_id'),
-            thread_id=record.get('thread_id'),
-            actor=ActorContext(actor_type='user', actor_id=actor_id),
-            subject=SubjectContext(
-                subject_type='interaction',
-                subject_id=record['interaction_id'],
-                data={'action_id': (submission or {}).get('action_id')},
-            ),
-            input=AgentInput.model_validate(input_data),
-            delivery=DeliveryContext.model_validate(delivery_data),
-            raw_ref=RawEventRef(ref_id=f'interaction:{record["id"]}', storage_key=None),
-            data={'interaction': submission},
-        )
-
-        async for _ in self.ap.agent_run_orchestrator.run(
-            envelope,
-            binding,
-            adapter_context={
-                '_delivery_adapter': adapter,
-                '_platform_event': event,
-                '_execution_context': self.execution_context,
-            },
-        ):
-            # Resuming an interaction follows the same explicit-action delivery policy.
-            pass
+        The loaded Pipeline answers the common case; only a miss falls back to
+        the database, so a Pipeline being reloaded is never reported missing.
+        """
+        pipeline_uuid = str(pipeline_uuid or '').strip()
+        if not pipeline_uuid:
+            return False
+        try:
+            if await self.ap.pipeline_mgr.get_pipeline_by_uuid(self.execution_context, pipeline_uuid) is not None:
+                return True
+            return await self.ap.pipeline_service.get_pipeline(self.execution_context, pipeline_uuid) is not None
+        except Exception:
+            # An inconclusive lookup keeps the previous delivery behaviour.
+            return True
 
     async def _dispatch_eba_message_to_pipeline(
         self,
@@ -1769,17 +2438,22 @@ class RuntimeBot:
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         pipeline_uuid: str | None = None,
         routed_by_event_binding: bool = False,
+        route_id: str | None = None,
     ) -> None:
         if not isinstance(event, platform_events.MessageReceivedEvent):
             event_type = getattr(event, 'type', None) or event.__class__.__name__
             await self.logger.warning(f'Event {event_type} cannot be dispatched to legacy Pipeline')
             return
 
+        legacy = event.to_legacy_event()
+        if hasattr(event, '_entry_query'):
+            object.__setattr__(legacy, '_entry_query', event._entry_query)
         await self._handle_legacy_message_event(
-            event.to_legacy_event(),
+            legacy,
             adapter,
             pipeline_uuid_override=pipeline_uuid,
             routed_by_event_binding=routed_by_event_binding,
+            route_id=route_id,
         )
 
     async def initialize(self):
@@ -1906,11 +2580,47 @@ class RuntimeBot:
             platform_events.EBAEvent,
             tenant_scoped_listener(on_eba_event),
         )
+        if isinstance(self.adapter, PlatformCommandRegistrar):
+
+            async def sync_commands():
+                try:
+                    await self.ap.bot_service.sync_platform_commands(self.execution_context, self.bot_entity.uuid)
+                except Exception as exc:
+                    await self.logger.warning(f'Platform command synchronization failed: {type(exc).__name__}')
+
+            settings = self.bot_entity.command_settings or {}
+            self.adapter.configure_platform_commands(
+                settings.get('prefixes', ['/'])[0], tenant_scoped_listener(sync_commands)
+            )
+
+    def _observe_alert(self, *, error: Exception | None = None, recovered: bool = False) -> None:
+        """Report adapter crashes and restarts to Workspace alerts."""
+
+        alert_service = getattr(self.ap, 'alert_service', None)
+        bot_entity = getattr(self, 'bot_entity', None)
+        if alert_service is None or bot_entity is None:
+            return
+        workspace_uuid = getattr(self.execution_context, 'workspace_uuid', None)
+        try:
+            if recovered:
+                alert_service.observe_recovery(workspace_uuid, 'bot_offline', bot_entity.uuid)
+            else:
+                alert_service.observe_failure(
+                    workspace_uuid,
+                    'bot_offline',
+                    bot_entity.uuid,
+                    getattr(bot_entity, 'name', None) or bot_entity.uuid,
+                    error_type=type(error).__name__ if error else None,
+                    error_message=str(error) if error else None,
+                )
+        except Exception:
+            pass
 
     async def run(self):
         async def exception_wrapper():
             try:
                 self.task_context.set_current_action('Running...')
+                self._observe_alert(recovered=True)
                 await self.adapter.run_async()
                 self.task_context.set_current_action('Exited.')
             except Exception as e:
@@ -1920,6 +2630,7 @@ class RuntimeBot:
 
                 traceback_str = traceback.format_exc()
                 self.task_context.set_current_action('Exited with error.')
+                self._observe_alert(error=e)
                 await self.logger.error(f'平台适配器运行出错:\n{e}\n{traceback_str}')
 
         self.task_wrapper = self.ap.task_mgr.create_task(
@@ -1996,10 +2707,34 @@ class PlatformManager:
         )
         return instance_uuid, workspace_uuid, bot_uuid
 
+    def _invalidate_message_policy(self, key: tuple[str, str, str]) -> None:
+        """Drop compiled message policies of a bot whose runtime was replaced or removed."""
+        policy_mgr = getattr(self.ap, 'message_policy_mgr', None)
+        if policy_mgr is not None:
+            policy_mgr.invalidate_bot(key[1], key[2])
+
+    def find_runtime_bot(
+        self,
+        context: ExecutionContext | None,
+        bot_uuid: str,
+    ) -> RuntimeBot | None:
+        """Return a loaded bot of the caller's placement without touching the database.
+
+        For hot paths that already hold a validated execution scope. The
+        WebSocket proxy bot is not a stored bot and is never returned.
+        """
+        if context is None:
+            return None
+        bot = self._bots_by_key.get((context.instance_uuid, context.workspace_uuid, bot_uuid))
+        if bot is None or bot.placement_generation != context.placement_generation:
+            return None
+        return bot
+
     def _register_runtime_bot(self, bot: RuntimeBot) -> RuntimeBot | None:
         key = self._runtime_bot_key(bot)
         previous = self._bots_by_key.get(key)
         self._bots_by_key[key] = bot
+        self._invalidate_message_policy(key)
         self._bot_keys_by_workspace.setdefault(key[1], set()).add(key)
         self._bot_keys_by_uuid.setdefault(key[2], set()).add(key)
         return previous
@@ -2011,6 +2746,7 @@ class PlatformManager:
         bot = self._bots_by_key.pop(key, None)
         if bot is None:
             return None
+        self._invalidate_message_policy(key)
         workspace_keys = self._bot_keys_by_workspace.get(key[1])
         if workspace_keys is not None:
             workspace_keys.discard(key)
@@ -2114,12 +2850,7 @@ class PlatformManager:
         }
 
         self.adapter_components = self.ap.discover.get_components_by_kind('MessagePlatformAdapter')
-        adapter_dict: dict[str, type[abstract_platform_adapter.AbstractMessagePlatformAdapter]] = {}
-        for component in self.adapter_components:
-            if component.metadata.name in disabled_adapters:
-                continue
-            adapter_dict[component.metadata.name] = component.get_python_component_class()
-        self.adapter_dict = adapter_dict
+        self.adapter_dict = {}
 
         # Filter out disabled adapters from components list (for API responses)
         if disabled_adapters:
@@ -2190,6 +2921,15 @@ class PlatformManager:
             updates['pipeline_uuid'] = pipeline_uuid
         return dataclasses.replace(context, **updates) if updates else context
 
+    def has_websocket_proxy_bot(self, workspace_uuid: str) -> bool:
+        """Whether this Workspace currently has a live WebSocket debug proxy.
+
+        Never creates one. The proxy is in-memory only, so callers that would
+        otherwise look a bot up in the ``bots`` table use this for its reserved
+        UUID instead.
+        """
+        return workspace_uuid in self.websocket_proxy_bots
+
     async def get_websocket_proxy_bot(
         self,
         context: ExecutionContext | RequestContext,
@@ -2217,23 +2957,23 @@ class PlatformManager:
                 execution_context.workspace_uuid,
                 expected_generation=execution_context.placement_generation,
             )
-            websocket_adapter_class = self.adapter_dict['websocket']
+            websocket_adapter_class = self._get_adapter_class('websocket')
             websocket_logger = EventLogger(
                 name='websocket-adapter',
                 ap=self.ap,
                 execution_context=execution_context,
-                owner='websocket-proxy-bot',
+                owner=constants.WEBSOCKET_PROXY_BOT_UUID,
             )
             websocket_adapter_inst = websocket_adapter_class({}, websocket_logger, ap=self.ap)
             proxy_context = dataclasses.replace(
                 execution_context,
                 instance_uuid=binding.instance_uuid,
-                bot_uuid='websocket-proxy-bot',
+                bot_uuid=constants.WEBSOCKET_PROXY_BOT_UUID,
             )
             runtime_bot = RuntimeBot(
                 ap=self.ap,
                 bot_entity=persistence_bot.Bot(
-                    uuid='websocket-proxy-bot',
+                    uuid=constants.WEBSOCKET_PROXY_BOT_UUID,
                     workspace_uuid=binding.workspace_uuid,
                     name='WebSocket',
                     description='',
@@ -2414,10 +3154,7 @@ class PlatformManager:
             )
 
             bot_entity.adapter = canonical_adapter_name(bot_entity.adapter)
-            if bot_entity.adapter not in self.adapter_dict:
-                raise platform_errors.AdapterNotFoundError(bot_entity.adapter)
-
-            adapter_inst = self.adapter_dict[bot_entity.adapter](
+            adapter_inst = self._get_adapter_class(bot_entity.adapter)(
                 bot_entity.adapter_config,
                 logger,
             )
@@ -2535,16 +3272,53 @@ class PlatformManager:
                     await bot.shutdown()
                 self._pop_runtime_bot(key)
 
+    def _get_adapter_class(self, name: str) -> type[abstract_platform_adapter.AbstractMessagePlatformAdapter]:
+        name = canonical_adapter_name(name)
+        if name not in self.adapter_dict:
+            component = self.get_available_adapter_manifest_by_name(name)
+            if component is None:
+                raise platform_errors.AdapterNotFoundError(name)
+            # Keep unused platform SDKs out of the process until a Bot needs them.
+            self.adapter_dict[name] = component.get_python_component_class()
+        return self.adapter_dict[name]
+
     def get_available_adapters_info(self) -> list[dict]:
-        return [
-            component.to_plain_dict() for component in self.adapter_components if component.metadata.name != 'websocket'
-        ]
+        result = []
+        for component in self.adapter_components:
+            if component.metadata.name == 'websocket':
+                continue
+            item = component.to_plain_dict()
+            adapter_class = self.adapter_dict.get(component.metadata.name)
+            if adapter_class is not None and hasattr(adapter_class, 'command_registration_capability'):
+                item['spec']['command_registration'] = dataclasses.asdict(
+                    adapter_class.command_registration_capability()
+                )
+            result.append(item)
+        return result
+
+    async def sync_workspace_commands(self, context):
+        for bot in tuple(self.bots):
+            if (
+                bot.workspace_uuid == context.workspace_uuid
+                and bot.placement_generation == context.placement_generation
+                and isinstance(bot.adapter, PlatformCommandRegistrar)
+            ):
+                try:
+                    await self.ap.bot_service.sync_platform_commands(context, bot.bot_entity.uuid)
+                except Exception as exc:
+                    self.ap.logger.warning(f'Platform command synchronization failed: {type(exc).__name__}')
 
     def get_available_adapter_info_by_name(self, name: str) -> dict | None:
         name = canonical_adapter_name(name)
         for component in self.adapter_components:
             if component.metadata.name == name:
-                return component.to_plain_dict()
+                item = component.to_plain_dict()
+                adapter_class = self.adapter_dict.get(name)
+                if adapter_class is not None and hasattr(adapter_class, 'command_registration_capability'):
+                    item['spec']['command_registration'] = dataclasses.asdict(
+                        adapter_class.command_registration_capability()
+                    )
+                return item
         return None
 
     def get_available_adapter_manifest_by_name(self, name: str) -> engine.Component | None:

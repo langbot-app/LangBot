@@ -47,6 +47,8 @@ from ...agent.runner import RunnerRegistry, AgentRunOrchestrator, RunnerDefaultC
 from ...workspace import service as workspace_service_module
 from ...workspace import collaboration as workspace_collaboration_module
 from ...workspace import invitation_delivery as invitation_delivery_module
+from ...notification import email as email_notification_module
+from ...alerts import service as alert_service_module
 from ...cloud import bootstrap as cloud_bootstrap
 from ...cloud import launch as cloud_launch_module
 from ...cloud import support_admin as cloud_support_admin_module
@@ -55,6 +57,7 @@ from ...cloud.directory_projection import DirectoryProjectionService
 from ...cloud.entitlements import EntitlementResolver
 from ...cloud.model_catalog import CloudModelCatalogSyncService
 from ...api.http.context import ExecutionContext, PrincipalContext, PrincipalType
+from ...api.application import ApplicationAPI
 from ...api.http.authz import WorkspaceRequiredError
 
 
@@ -114,6 +117,12 @@ class BuildAppStage(stage.BootingStage):
         rerank_models_service_inst = model_service.RerankModelsService(ap)
         ap.rerank_models_service = rerank_models_service_inst
 
+        asr_models_service_inst = model_service.ASRModelsService(ap)
+        ap.asr_models_service = asr_models_service_inst
+
+        tts_models_service_inst = model_service.TTSModelsService(ap)
+        ap.tts_models_service = tts_models_service_inst
+
         provider_service_inst = provider_service.ModelProviderService(ap)
         ap.provider_service = provider_service_inst
 
@@ -145,6 +154,7 @@ class BuildAppStage(stage.BootingStage):
         ap.skill_repository = skill_repository.SkillRepository(ap)
         skill_service_inst = skill_service.SkillService(ap)
         ap.skill_service = skill_service_inst
+        ap.application_api = ApplicationAPI(ap)
 
         proxy_mgr = proxy.ProxyManager(ap)
         await proxy_mgr.initialize()
@@ -161,12 +171,20 @@ class BuildAppStage(stage.BootingStage):
         ap.storage_mgr = storage_mgr_inst
         await storage_mgr_inst.initialize()
 
+        from ...storage.artifacts import ArtifactService
+        from ...storage.artifact_publication import ArtifactPublicationService
+
+        ap.artifact_service = ArtifactService(ap)
+        ap.artifact_publication_service = ArtifactPublicationService(ap)
+
         persistence_mgr_inst = persistencemgr.PersistenceManager(
             ap,
             mode=persistencemgr.PersistenceMode(deployment.persistence_mode),
         )
         ap.persistence_mgr = persistence_mgr_inst
         await persistence_mgr_inst.initialize()
+
+        from ...persistence import bot_command_migration
 
         if deployment.multi_workspace_enabled:
             directory_projection_service = DirectoryProjectionService(
@@ -197,6 +215,7 @@ class BuildAppStage(stage.BootingStage):
         if not workspace_policy.multi_workspace_enabled:
             await workspace_service_inst.ensure_singleton_workspace()
         ap.workspace_service = workspace_service_inst
+        await bot_command_migration.migrate_global_command_config(ap)
         if workspace_policy.multi_workspace_enabled:
             # Directory refresh starts in Application.run(), after this serial
             # build graph. Share one validated immutable binding snapshot
@@ -225,7 +244,9 @@ class BuildAppStage(stage.BootingStage):
             ap,
             workspace_service_inst,
         )
+        ap.email_service = email_notification_module.EmailService(ap)
         ap.invitation_delivery_service = invitation_delivery_module.InvitationDeliveryService(ap)
+        ap.alert_service = alert_service_module.AlertService(ap)
         ap.support_admin_session_service = cloud_support_admin_module.SupportAdminSessionService(ap)
         ap.space_launch_service = cloud_launch_module.SpaceLaunchService(ap)
 
@@ -278,9 +299,26 @@ class BuildAppStage(stage.BootingStage):
         ap.box_service = box_service_inst
         await box_service_inst.initialize()
 
+        # No HTTP, plugin or bot writer may observe a partially imported catalog.
+        from ...skill.migration import initialize_skill_migration
+        from ...storage.migration import initialize_storage_migration
+
+        config = ap.instance_config.data
+        await initialize_skill_migration(
+            ap, source_required=config.get('skills', {}).get('migration', {}).get('require_source', False)
+        )
+        await initialize_storage_migration(
+            ap, source_required=config.get('storage', {}).get('migration', {}).get('require_source', False)
+        )
+
         llm_tool_mgr_inst = llm_tool_mgr.ToolManager(ap)
         ap.tool_mgr = llm_tool_mgr_inst
         await llm_tool_mgr_inst.initialize()
+
+        # Bot message policies are compiled lazily; routing and Messaging stages share this.
+        from ...message_policy import manager as message_policy_manager
+
+        ap.message_policy_mgr = message_policy_manager.MessagePolicyManager(ap)
 
         im_mgr_inst = im_mgr.PlatformManager(ap=ap)
         ap.platform_mgr = im_mgr_inst
@@ -313,7 +351,6 @@ class BuildAppStage(stage.BootingStage):
         # 初始化向量数据库管理器
         vectordb_mgr_inst = vectordb_mgr.VectorDBManager(ap)
         ap.vector_db_mgr = vectordb_mgr_inst
-        await vectordb_mgr_inst.initialize()
 
         http_ctrl = http_controller.HTTPController(ap)
         ap.http_ctrl = http_ctrl
@@ -351,6 +388,7 @@ class BuildAppStage(stage.BootingStage):
 
         agent_run_orchestrator_inst = AgentRunOrchestrator(ap, runner_registry_inst)
         ap.agent_run_orchestrator = agent_run_orchestrator_inst
+        await agent_run_orchestrator_inst.interaction_manager.store.cancel_orphaned_pending(set())
 
         ctrl = controller.Controller(ap)
         ap.ctrl = ctrl

@@ -1,19 +1,17 @@
 from __future__ import annotations
 
 from .....i18n import t
+from .....telemetry import usage
 
 import asyncio
 import base64
 import collections.abc
-import copy
 import quart
-import re
 import httpx
 import uuid
 import os
 import zipfile
 from urllib.parse import urlparse
-import posixpath
 import sqlalchemy
 
 from .....core import taskmgr
@@ -25,135 +23,20 @@ from .. import group
 from .....workspace.errors import WorkspaceNotFoundError
 from langbot_plugin.entities.io.errors import ActionCallError
 from .....plugin.github import validate_github_plugin_install_info
+from .....plugin.compatibility import compatibility
+from .....api.application.contracts import ApplicationAPIException
 from .....plugin.archive import inspect_plugin_archive_metadata
 from .....utils import httpclient
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 
 
-_SECRET_MASK = '***'
-_MISSING_SECRET = object()
-_SENSITIVE_CONFIG_NAMES = frozenset(
-    {
-        'api_key',
-        'apikey',
-        'auth',
-        'authorization',
-        'cookie',
-        'credentials',
-        'database_url',
-        'dsn',
-        'key',
-        'proxy_authorization',
-        'set_cookie',
-    }
+from .....plugin.management import (
+    count_plugin_components,
+    parse_github_repo_url,
+    normalize_plugin_asset_path as _normalize_plugin_asset_path,
+    redact_plugin_secrets,
+    restore_plugin_secret_placeholders,
 )
-_SENSITIVE_CONFIG_TOKENS = frozenset(
-    {
-        'credential',
-        'credentials',
-        'passwd',
-        'password',
-        'secret',
-        'token',
-    }
-)
-_SENSITIVE_KEY_QUALIFIERS = frozenset(
-    {
-        'access',
-        'api',
-        'auth',
-        'bearer',
-        'client',
-        'debug',
-        'encryption',
-        'private',
-        'signing',
-    }
-)
-
-
-def _normalize_config_key(key: object) -> str:
-    value = re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', str(key or ''))
-    return re.sub(r'[^a-zA-Z0-9]+', '_', value).strip('_').lower()
-
-
-def _is_sensitive_config_key(key: object) -> bool:
-    normalized = _normalize_config_key(key)
-    if normalized in _SENSITIVE_CONFIG_NAMES:
-        return True
-    tokens = frozenset(token for token in normalized.split('_') if token)
-    if tokens & _SENSITIVE_CONFIG_TOKENS:
-        return True
-    return 'key' in tokens and bool(tokens & _SENSITIVE_KEY_QUALIFIERS)
-
-
-def _mask_secret_structure(value):
-    """Mask every non-empty leaf while preserving container structure."""
-
-    if isinstance(value, dict):
-        return {key: _mask_secret_structure(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_mask_secret_structure(item) for item in value]
-    if isinstance(value, tuple):
-        return tuple(_mask_secret_structure(item) for item in value)
-    if value is None or value == '':
-        return value
-    return _SECRET_MASK
-
-
-def redact_plugin_secrets(value):
-    """Return a recursively redacted copy of plugin-facing data."""
-
-    if isinstance(value, dict):
-        return {
-            key: (_mask_secret_structure(item) if _is_sensitive_config_key(key) else redact_plugin_secrets(item))
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [redact_plugin_secrets(item) for item in value]
-    if isinstance(value, tuple):
-        return tuple(redact_plugin_secrets(item) for item in value)
-    return value
-
-
-def restore_plugin_secret_placeholders(value, current_value=_MISSING_SECRET, *, sensitive: bool = False):
-    """Restore masked leaves from the current config before a management write."""
-
-    if sensitive and value == _SECRET_MASK:
-        if current_value is _MISSING_SECRET:
-            raise ValueError('Masked plugin secret has no existing value')
-        return copy.deepcopy(current_value)
-    if isinstance(value, dict):
-        current_mapping = current_value if isinstance(current_value, dict) else {}
-        return {
-            key: restore_plugin_secret_placeholders(
-                item,
-                current_mapping.get(key, _MISSING_SECRET),
-                sensitive=sensitive or _is_sensitive_config_key(key),
-            )
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        current_items = current_value if isinstance(current_value, (list, tuple)) else ()
-        return [
-            restore_plugin_secret_placeholders(
-                item,
-                current_items[index] if index < len(current_items) else _MISSING_SECRET,
-                sensitive=sensitive,
-            )
-            for index, item in enumerate(value)
-        ]
-    if isinstance(value, tuple):
-        current_items = current_value if isinstance(current_value, (list, tuple)) else ()
-        return tuple(
-            restore_plugin_secret_placeholders(
-                item,
-                current_items[index] if index < len(current_items) else _MISSING_SECRET,
-                sensitive=sensitive,
-            )
-            for index, item in enumerate(value)
-        )
-    return value
 
 
 # Resolve the built-in page SDK JS from the langbot_plugin package
@@ -178,21 +61,6 @@ def _is_plugin_not_installed(exc: BaseException) -> bool:
     return 'is not installed in this workspace' in str(exc).lower()
 
 
-def _normalize_plugin_asset_path(filepath: str) -> str | None:
-    filepath = filepath.replace('\\', '/')
-    if filepath.startswith('/'):
-        return None
-
-    normalized = posixpath.normpath(filepath)
-    if normalized == '.' or normalized.startswith('../') or normalized == '..':
-        return None
-
-    if normalized.startswith('components/pages/'):
-        return normalized
-
-    return f'assets/{normalized}'
-
-
 def _get_request_origin() -> str:
     """Return the public request origin, respecting reverse-proxy headers."""
     forwarded_proto = quart.request.headers.get('X-Forwarded-Proto', '').split(',')[0].strip()
@@ -205,96 +73,8 @@ def _get_request_origin() -> str:
 
 @group.group_class('plugins', '/api/v1/plugins')
 class PluginsRouterGroup(group.RouterGroup):
-    @staticmethod
-    def _normalize_archive_path(path: str) -> str:
-        normalized = str(path or '').replace('\\', '/').strip('/')
-        return posixpath.normpath(normalized) if normalized else ''
-
-    @classmethod
-    def _component_source_path(cls, entry) -> str:
-        if isinstance(entry, dict):
-            return cls._normalize_archive_path(entry.get('path') or '')
-        return cls._normalize_archive_path(str(entry or ''))
-
-    @classmethod
-    def _count_component_configs(cls, component_config, archive_names: list[str]) -> int:
-        normalized_names = [cls._normalize_archive_path(name) for name in archive_names]
-        component_files: set[str] = set()
-
-        if isinstance(component_config, list):
-            return len(component_config)
-        if not isinstance(component_config, dict):
-            return 1 if component_config else 0
-
-        for entry in component_config.get('fromFiles') or []:
-            source_path = cls._component_source_path(entry)
-            if source_path and source_path in normalized_names:
-                component_files.add(source_path)
-
-        for entry in component_config.get('fromDirs') or []:
-            source_dir = cls._component_source_path(entry).rstrip('/')
-            if not source_dir:
-                continue
-            prefix = f'{source_dir}/'
-            for archive_name in normalized_names:
-                if not archive_name.startswith(prefix):
-                    continue
-                if archive_name.lower().endswith(('.yaml', '.yml')):
-                    component_files.add(archive_name)
-
-        if component_files:
-            return len(component_files)
-
-        return 1 if any(key in component_config for key in ('path', 'name', 'kind')) else 0
-
-    @classmethod
-    def _count_plugin_components(cls, components, archive_names: list[str]) -> dict[str, int]:
-        if not isinstance(components, dict):
-            return {}
-
-        component_counts: dict[str, int] = {}
-        for kind, component_config in components.items():
-            count = cls._count_component_configs(component_config, archive_names)
-            if count > 0:
-                component_counts[str(kind)] = count
-        return component_counts
-
-    @staticmethod
-    def _parse_github_repo_url(repo_url: str) -> dict | None:
-        raw_url = str(repo_url or '').strip()
-        if not raw_url:
-            return None
-
-        if not re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*://', raw_url):
-            raw_url = f'https://{raw_url}'
-
-        parsed = urlparse(raw_url)
-        if parsed.netloc.lower() not in ('github.com', 'www.github.com'):
-            return None
-
-        parts = [part for part in parsed.path.strip('/').split('/') if part]
-        if len(parts) < 2:
-            return None
-
-        owner = parts[0]
-        repo = parts[1]
-        if repo.endswith('.git'):
-            repo = repo[:-4]
-        if not owner or not repo:
-            return None
-
-        ref = ''
-        subdir = ''
-        if len(parts) >= 4 and parts[2] in ('tree', 'blob'):
-            ref = parts[3]
-            subdir = '/'.join(parts[4:]).strip('/')
-
-        return {
-            'owner': owner,
-            'repo': repo,
-            'ref': ref,
-            'subdir': subdir,
-        }
+    _count_plugin_components = staticmethod(count_plugin_components)
+    _parse_github_repo_url = staticmethod(parse_github_repo_url)
 
     async def _check_extensions_limit(self, request_context: RequestContext) -> str | None:
         """Check if extensions limit is reached. Returns error response if limit exceeded, None otherwise."""
@@ -383,7 +163,38 @@ class PluginsRouterGroup(group.RouterGroup):
         persisted_config = result.scalar_one_or_none()
         return persisted_config if persisted_config is not None else plugin['plugin_config']
 
+    async def _github_query(self, operation, request_context):
+        try:
+            data = await self.ap.application_api.execute(operation, request_context, await quart.request.get_json())
+            return self.success(data=data)
+        except ApplicationAPIException as exc:
+            return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+
     async def initialize(self) -> None:
+        @self.route(
+            '/<author>/<plugin_name>/permissions',
+            methods=['GET', 'PUT'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def permissions(author: str, plugin_name: str, request_context: RequestContext):
+            from .....api.application.contracts import ApplicationAPIException
+
+            payload = {'author': author, 'plugin_name': plugin_name}
+            operation_id = 'plugin.permissions.get'
+            if quart.request.method == 'PUT':
+                body = await quart.request.get_json()
+                if not isinstance(body, dict):
+                    return self.http_status(400, 'invalid_input', 'Expected an object')
+                payload = {**body, **payload}
+                operation_id = 'plugin.permissions.update'
+            try:
+                return self.success(data=await self.ap.application_api.execute(operation_id, request_context, payload))
+            except ApplicationAPIException as exc:
+                return quart.jsonify(
+                    {'code': exc.error.code, 'msg': exc.error.message, 'data': exc.error.details}
+                ), exc.error.status_code
+
         @self.route('/_sdk/page-sdk.js', methods=['GET'], auth_type=group.AuthType.NONE)
         async def _() -> quart.Response:
             """Serve the built-in LangBot page SDK JavaScript."""
@@ -404,6 +215,18 @@ class PluginsRouterGroup(group.RouterGroup):
             plugins = await self.ap.plugin_connector.list_plugins()
 
             return self.success(data={'plugins': redact_plugin_secrets(plugins)})
+
+        @self.route(
+            '/commands',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            """Get all commands registered by installed plugins"""
+            await self._require_authenticated_plugin_runtime_context(request_context)
+            commands = await self.ap.plugin_connector.list_commands()
+            return self.success(data={'commands': [c.model_dump() for c in commands]})
 
         @self.route(
             '/debug-info',
@@ -495,6 +318,7 @@ class PluginsRouterGroup(group.RouterGroup):
         )
         async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
             """Metadata and connection state for the "upload to Space" page."""
+            usage.inc(self.ap, request_context.workspace_uuid, 'ugc.share.preview', type='plugin')
             await self._require_authenticated_plugin_runtime_context(request_context)
             plugin = await _resolve_upload_target(author, plugin_name)
             if plugin is None:
@@ -523,9 +347,15 @@ class PluginsRouterGroup(group.RouterGroup):
                 except Exception:
                     self.ap.logger.exception('Failed to retrieve creator profile for space-upload/config')
 
+            is_debug = bool(plugin.get('debug'))
+            install_source = 'debug' if is_debug else str(plugin.get('install_source') or '')
             return self.success(
                 data={
-                    'debug': bool(plugin.get('debug')),
+                    'debug': is_debug,
+                    # LANG-439: locally installed plugins share their installed
+                    # package as-is (metadata locked, no GitHub sync).
+                    'source': install_source,
+                    'shareable': is_debug or install_source in ('local', 'github'),
                     'metadata': {
                         'author': metadata.get('author', author),
                         'name': metadata.get('name', plugin_name),
@@ -552,6 +382,7 @@ class PluginsRouterGroup(group.RouterGroup):
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
             permission=Permission.RESOURCE_MANAGE,
         )
+        @usage.observe_share(self.ap, 'plugin')
         async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
             """Build the debug plugin and publish it to LangBot Space.
 
@@ -573,12 +404,22 @@ class PluginsRouterGroup(group.RouterGroup):
             sync_github = data.get('sync_github') is True
             git_result: dict | None = None
 
+            target = await _resolve_upload_target(author, plugin_name)
+            if target is None:
+                return self.http_status(404, -1, 'plugin not found')
             try:
-                package_result = await self.ap.plugin_connector.get_plugin_package(
-                    author,
-                    plugin_name,
-                    manifest_overrides=overrides,
-                )
+                if target.get('debug'):
+                    package_result = await self.ap.plugin_connector.get_plugin_package(
+                        author,
+                        plugin_name,
+                        manifest_overrides=overrides,
+                    )
+                else:
+                    # An installed local/GitHub plugin is shared byte-for-byte:
+                    # its manifest is part of the reviewed artifact, so
+                    # overrides and GitHub sync do not apply.
+                    package_result = await self.ap.plugin_connector.get_installed_plugin_package(author, plugin_name)
+                    sync_github = False
             except Exception as exc:
                 self.ap.logger.warning('Building package for %s/%s failed: %s', author, plugin_name, exc)
                 message = str(exc)
@@ -641,6 +482,7 @@ class PluginsRouterGroup(group.RouterGroup):
                     changelog=str(data.get('changelog') or ''),
                 )
             except ValueError as exc:
+                quart.g.usage_error = type(exc).__name__
                 return self.http_status(400, -1, str(exc))
 
             quart.g.operation_log_resource_id = f'{author}/{plugin_name}'
@@ -989,84 +831,22 @@ class PluginsRouterGroup(group.RouterGroup):
             return self.success(data=result.get('data'))
 
         @self.route(
+            '/github/refs',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            return await self._github_query('plugin.github.refs', request_context)
+
+        @self.route(
             '/github/releases',
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(request_context: RequestContext) -> str:
-            """Get releases from a GitHub repository URL"""
-            await self._require_authenticated_plugin_runtime_context(request_context)
-            data = await quart.request.json
-            repo_url = data.get('repo_url', '')
-
-            parsed_repo = self._parse_github_repo_url(repo_url)
-            if not parsed_repo:
-                return self.http_status(400, -1, 'Invalid GitHub repository URL')
-
-            owner = parsed_repo['owner']
-            repo = parsed_repo['repo']
-            requested_ref = parsed_repo['ref']
-            requested_subdir = parsed_repo['subdir']
-
-            try:
-                if requested_ref:
-                    return self.success(
-                        data={
-                            'releases': [
-                                {
-                                    'id': 0,
-                                    'tag_name': requested_ref,
-                                    'name': requested_ref,
-                                    'published_at': '',
-                                    'prerelease': False,
-                                    'draft': False,
-                                    'source_type': 'branch',
-                                    'archive_url': f'https://api.github.com/repos/{owner}/{repo}/zipball/{requested_ref}',
-                                }
-                            ],
-                            'owner': owner,
-                            'repo': repo,
-                            'source_subdir': requested_subdir,
-                        }
-                    )
-
-                # Fetch releases from GitHub API
-                url = f'https://api.github.com/repos/{owner}/{repo}/releases'
-                async with httpx.AsyncClient(
-                    trust_env=True,
-                    follow_redirects=True,
-                    timeout=10,
-                    event_hooks=httpclient.httpx_response_limit_hooks(),
-                ) as client:
-                    response = await client.get(url)
-                    response.raise_for_status()
-                    releases = await httpclient.parse_json_response(response)
-
-                # Format releases data for frontend
-                formatted_releases = []
-                for release in releases:
-                    formatted_releases.append(
-                        {
-                            'id': release['id'],
-                            'tag_name': release['tag_name'],
-                            'name': release['name'],
-                            'published_at': release['published_at'],
-                            'prerelease': release['prerelease'],
-                            'draft': release['draft'],
-                        }
-                    )
-
-                return self.success(
-                    data={
-                        'releases': formatted_releases,
-                        'owner': owner,
-                        'repo': repo,
-                        'source_subdir': requested_subdir,
-                    }
-                )
-            except httpx.RequestError:
-                raise
+            return await self._github_query('plugin.github.releases', request_context)
 
         @self.route(
             '/github/release-assets',
@@ -1142,8 +922,14 @@ class PluginsRouterGroup(group.RouterGroup):
 
             data = await quart.request.json or {}
             try:
+                if any(key in data for key in ('mirror', 'mirrors', 'github_mirror', 'mirror_url')):
+                    raise ValueError('GitHub sources are configured by the operator')
                 install_info = validate_github_plugin_install_info(
                     {
+                        'source_type': data.get('source_type', 'release'),
+                        'allow_incompatible': data.get('allow_incompatible') is True,
+                        'ref': data.get('ref'),
+                        'source_subdir': data.get('source_subdir', ''),
                         'asset_url': data.get('asset_url'),
                         'asset_id': data.get('asset_id'),
                         'release_id': data.get('release_id'),
@@ -1158,7 +944,7 @@ class PluginsRouterGroup(group.RouterGroup):
 
             owner = install_info['owner']
             repo = install_info['repo']
-            release_tag = install_info['release_tag']
+            release_tag = install_info.get('release_tag') or install_info['ref']
             # Name the installed extension in the trace. GitHub installs carry
             # owner/repo in the body, which the audit identity resolver can also
             # read, but publishing it here keeps the trace correct regardless of
@@ -1210,14 +996,12 @@ class PluginsRouterGroup(group.RouterGroup):
             ctx = taskmgr.TaskContext.new()
             ctx.metadata['plugin_name'] = f'{plugin_author}/{plugin_name}'
             ctx.metadata['install_source'] = 'marketplace'
+            from .....api.application.plugin_operations import install_marketplace_task
+
             wrapper = self.ap.task_mgr.create_user_task(
                 self._run_fenced_plugin_operation(
                     execution_context,
-                    lambda: self.ap.plugin_connector.install_plugin(
-                        PluginInstallSource.MARKETPLACE,
-                        data,
-                        task_context=ctx,
-                    ),
+                    lambda: install_marketplace_task(self.ap, request_context, data, ctx),
                 ),
                 kind='plugin-operation',
                 name='plugin-install-marketplace',
@@ -1254,6 +1038,7 @@ class PluginsRouterGroup(group.RouterGroup):
             data = {
                 'plugin_file': file_bytes,
                 'administrator_force': administrator_force,
+                'allow_incompatible': form.get('allow_incompatible', '').lower() == 'true',
             }
 
             ctx = taskmgr.TaskContext.new()
@@ -1305,6 +1090,7 @@ class PluginsRouterGroup(group.RouterGroup):
                         'filename': file.filename or 'local plugin',
                         'size': len(file_bytes),
                         'manifest': manifest,
+                        'compatibility': compatibility(manifest),
                         'metadata': manifest.get('metadata') or {},
                         'component_types': component_types,
                         'component_counts': component_counts,

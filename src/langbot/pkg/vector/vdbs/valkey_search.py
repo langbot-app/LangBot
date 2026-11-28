@@ -129,8 +129,10 @@ class ValkeySearchVectorDatabase(VectorDatabase):
     def __init__(self, ap: app.Application):
         if not VALKEY_SEARCH_AVAILABLE:
             raise ImportError(
-                'valkey-glide is not installed or is unavailable on this platform. '
-                "On Linux or macOS, install it with: pip install 'valkey-glide>=2.5.2,<3.0.0'"
+                'Valkey Search support is not installed or is unavailable on this platform (no Windows wheels). '
+                "Install LangBot with the 'valkey' extra: uv sync --extra valkey (source), "
+                "uvx --from 'langbot[valkey]@latest' langbot (PyPI), "
+                'or use the rockchin/langbot:<tag>-valkey Docker image.'
             )
 
         self.ap = ap

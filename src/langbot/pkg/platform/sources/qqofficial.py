@@ -19,6 +19,7 @@ from langbot.libs.qq_official_api.api import (
     resolve_select_button_action,
 )
 from langbot.libs.qq_official_api.qqofficialevent import QQOfficialEvent
+from langbot.pkg.platform.qqofficial_faces import parse_qqofficial_face_components
 from ...utils import image
 from ..logger import EventLogger
 
@@ -104,7 +105,7 @@ class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConver
             base64_url = await image.get_qq_official_image_base64(pic_url=pic_url, content_type=content_type)
             yiri_msg_list.append(platform_message.Image(url=pic_url, base64=base64_url))
 
-        yiri_msg_list.append(platform_message.Plain(text=message))
+        yiri_msg_list.extend(parse_qqofficial_face_components(message))
         chain = platform_message.MessageChain(yiri_msg_list)
         return chain
 

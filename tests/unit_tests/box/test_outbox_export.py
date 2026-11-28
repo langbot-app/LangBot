@@ -16,16 +16,20 @@ from langbot_plugin.box.client import BoxRuntimeClient
 from langbot_plugin.box.errors import BoxError, BoxValidationError
 from langbot_plugin.box.models import BoxExecutionResult, BoxExecutionStatus
 from tests.unit_tests.box.test_box_service import make_app, make_query, _CONTEXT
+from tests.utils.artifact_store import seed_run, _artifact_store  # noqa: F401 -- fixture
 
 
 @pytest.fixture
-def env(tmp_path):
+async def env(tmp_path, artifact_store):
     app = make_app(Mock(), allowed_mount_roots=[str(tmp_path)], host_root=str(tmp_path / 'box'))
+    await artifact_store(app, _CONTEXT)
     box = BoxService(app, client=Mock(spec=BoxRuntimeClient))
     box._available = True
     box.default_workspace = str(tmp_path / 'box' / 'default')
     workspace = Path(box._tenant_workspace(_CONTEXT))
     query = make_query()
+    await seed_run(app, _CONTEXT, query._box_binding.run_id)
+    object.__setattr__(query, '_execution_context', _CONTEXT)
     outbox = workspace / 'outbox' / query.query_uuid
     outbox.mkdir(parents=True)
     # The actual generated exec reader runs against this test Workspace.
@@ -432,3 +436,42 @@ async def test_directory_export_still_rejects_absolute_response_paths(env, monke
     with pytest.raises(BoxExportError) as caught:
         await box.collect_outbound_attachments(query)
     assert caught.value.error.code == 'box.export.invalid_response'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('backend', ['e2b', 'docker'])
+async def test_selected_export_restores_only_e2b_workspace_mapping(env, backend):
+    box, query, _ = env
+    paths = ['/workspace/outbox/answer.txt', '/tmp/other.txt', '/home/user/workspace/direct.txt']
+    names = ['/home/user/workspace/outbox/answer.txt', *paths[1:]] if backend == 'e2b' else paths
+    reply = result(json.dumps([{'name': name, 'b64': 'YQ=='} for name in names]))
+    reply.backend_name = backend
+    box.client.execute = AsyncMock(return_value=reply)
+    items = await box.collect_selected_files(query, paths)
+    assert [item['_outbox_path'] for item in items] == paths
+    assert [base64.b64decode(item['base64']) for item in items] == [b'a'] * 3
+    await box.clear_selected_files(query, items)
+    cleanup = box.client.execute.await_args.args[0].cmd
+    assert all(path in cleanup for path in paths)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'backend,paths,names',
+    [
+        ('docker', ['/workspace/a.txt'], ['/home/user/workspace/a.txt']),
+        ('e2b', ['/workspace/a.txt'], ['/other/home/user/workspace/a.txt']),
+        ('e2b', ['/workspace/a.txt'], ['/home/user/workspace-other/a.txt']),
+        ('e2b', ['/workspace-other/a.txt'], ['/home/user/workspace-other/a.txt']),
+        ('e2b', ['/workspace/a.txt', '/workspace/b.txt'], ['/home/user/workspace/a.txt'] * 2),
+        ('e2b', ['/workspace/a.txt', '/workspace/b.txt'], ['/home/user/workspace/a.txt']),
+        ('e2b', ['/workspace/a.txt', '/home/user/workspace/a.txt'], ['/home/user/workspace/a.txt'] * 2),
+    ],
+)
+async def test_selected_export_rejects_unmapped_missing_duplicate_or_aliased_paths(env, backend, paths, names):
+    box, query, _ = env
+    reply = result(json.dumps([{'name': name, 'b64': 'YQ=='} for name in names]))
+    reply.backend_name = backend
+    box.client.execute = AsyncMock(return_value=reply)
+    with pytest.raises(BoxValidationError):
+        await box.collect_selected_files(query, paths)

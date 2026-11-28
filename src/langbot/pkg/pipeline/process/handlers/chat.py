@@ -5,11 +5,13 @@ from ....i18n import pipeline_notice
 import uuid
 import typing
 import traceback
+import re
 
 
 from .. import handler
 from ..stream_results import coalesce_stream_results
 from ... import entities
+from ... import monitoring_helper
 from ... import plugin_diagnostics
 
 import langbot_plugin.api.entities.events as events
@@ -82,12 +84,13 @@ class ChatMessageHandler(handler.MessageHandler):
         )
 
         # Get bound plugins for filtering
-        bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+        bound_plugins = getattr(query, '_listener_plugins', None)
         event_ctx = await self.ap.plugin_connector.emit_event(event, bound_plugins)
 
         is_create_card = False  # Track if streaming card was created
 
         if event_ctx.is_prevented_default():
+            monitoring_helper.mark_plugin_handled(query, event_ctx)
             if event_ctx.event.reply_message_chain is not None:
                 mc = event_ctx.event.reply_message_chain
                 plugin_diagnostics.record_pending_plugin_response_source(
@@ -118,6 +121,9 @@ class ChatMessageHandler(handler.MessageHandler):
 
             text_length = 0
             runner = None
+            runner_id = RunnerConfigResolver.resolve_runner_id(query.pipeline_config) if query.pipeline_config else None
+            if runner_id:
+                monitoring_helper.mark_handled_by(query, monitoring_helper.runner_handler(runner_id))
             try:
                 try_claim_steering = getattr(
                     self.ap.agent_run_orchestrator,
@@ -151,7 +157,8 @@ class ChatMessageHandler(handler.MessageHandler):
                 # Create a single resp_message_id for the entire streaming response
                 resp_message_id = uuid.uuid4()
                 chunk_count = 0
-                has_result = False
+                # Non-streaming: a result appended since the last downstream send.
+                pending_send = False
 
                 # Use AgentRunOrchestrator to run the agent
                 # This replaces direct runner lookup and PluginRunnerWrapper
@@ -159,7 +166,6 @@ class ChatMessageHandler(handler.MessageHandler):
                 if is_stream:
                     results = coalesce_stream_results(results)
                 async for result in results:
-                    has_result = True
                     self._check_response_size(result)
 
                     if is_stream and isinstance(result, provider_message.MessageChunk):
@@ -228,6 +234,15 @@ class ChatMessageHandler(handler.MessageHandler):
                             # A distinct later message needs a fresh card identity.
                             is_create_card = False
                             resp_message_id = uuid.uuid4()
+                    elif isinstance(result, provider_message.Message) and not result.tool_calls:
+                        # Each completed runner message is its own reply, matching Agent
+                        # bindings (e.g. progress messages before the answer). Deltas and
+                        # tool-call rounds stay aggregated into the turn's single send.
+                        yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
+                        pending_send = False
+                        resp_message_id = uuid.uuid4()
+                    else:
+                        pending_send = True
 
                 # Log final summary after streaming completes
                 if is_stream:
@@ -241,24 +256,43 @@ class ChatMessageHandler(handler.MessageHandler):
                 # history source for this path.
                 await self._ensure_conversation_for_history(query)
 
-                # Non-streaming adapters should receive only the completed runner turn.
-                # Keep every normalized result on the query for diagnostics and history,
-                # while running downstream response stages once with the final result.
-                if not is_stream and has_result:
+                # Non-streaming adapters receive completed runner messages, never partial
+                # deltas. Every normalized result stays on the query for diagnostics and
+                # history; a turn ending without a completed message sends its last result.
+                if not is_stream and pending_send:
                     yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
             except Exception as e:
                 error_info = f'{traceback.format_exc()}'
                 self.ap.logger.error(f'Conversation({query.query_id}) Request Failed: {error_info}')
 
-                # Handle specific runner errors with appropriate messages
-                if isinstance(e, RunnerNotFoundError):
+                strategy = query.pipeline_config['output']['misc'].get('exception-handling', 'show-hint')
+                if strategy == 'hide':
+                    user_notice = None
+                elif strategy == 'show-error':
+                    from ....telemetry.execution import redact_text
+
+                    first_line = (
+                        str(e)
+                        .partition('\n')[0]
+                        .partition('\r')[0]
+                        .partition('Traceback (most recent call last)')[0]
+                        .strip()
+                    )
+                    user_notice = redact_text(
+                        re.sub(r'(?i)\b(?:https?|wss?)://\S+', '[URL]', first_line)
+                    ) or pipeline_notice(query, 'failure-hint', 'Request failed.')
+                elif isinstance(e, RunnerNotFoundError):
                     user_notice = pipeline_notice(
-                        query, 'runner-not-found-hint', 'Agent runner not found: {runner}', runner=e.runner_id
+                        query,
+                        'runner-not-found-hint',
+                        'Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. '
+                        'If startup failed, check the installation task and runtime logs, then retry.',
+                        runner=e.runner_id,
                     )
                 elif isinstance(e, RunnerNotAuthorizedError):
                     user_notice = pipeline_notice(
-                        query, 'runner-not-authorized-hint', 'Agent runner not authorized for this pipeline.'
+                        query, 'runner-not-authorized-hint', 'Agent runner not authorized for this chat.'
                     )
                 elif isinstance(e, RunnerExecutionError):
                     if e.retryable:
@@ -268,15 +302,7 @@ class ChatMessageHandler(handler.MessageHandler):
                     else:
                         user_notice = pipeline_notice(query, 'failure-hint', 'Agent runner execution failed.')
                 else:
-                    # Use existing exception handling
-                    exception_handling = query.pipeline_config['output']['misc'].get('exception-handling', 'show-hint')
-
-                    if exception_handling == 'show-error':
-                        user_notice = f'{e}'
-                    elif exception_handling == 'show-hint':
-                        user_notice = pipeline_notice(query, 'failure-hint', 'Request failed.')
-                    else:  # hide
-                        user_notice = None
+                    user_notice = pipeline_notice(query, 'failure-hint', 'Request failed.')
 
                 yield entities.StageProcessResult(
                     result_type=entities.ResultType.INTERRUPT,
@@ -298,21 +324,11 @@ class ChatMessageHandler(handler.MessageHandler):
                         runner_name = self.ap.agent_run_orchestrator.resolve_runner_id_for_telemetry(query)
                         state.adapter = state.adapter or adapter_name
                         state.runner = state.runner or (runner_name or '')
-                        state.runner_category = state.runner_category or runner_utils.get_runner_category_from_runner(
-                            runner_name, None, query.pipeline_config
-                        )
-                        model_name = ''
-                        try:
-                            if getattr(query, 'use_llm_model_uuid', None):
-                                m = await self.ap.model_mgr.get_model_by_uuid(
-                                    get_query_execution_context(query),
-                                    query.use_llm_model_uuid,
-                                )
-                                if m and getattr(m, 'model_entity', None):
-                                    model_name = getattr(m.model_entity, 'name', '') or ''
-                        except Exception:
-                            model_name = ''
-                        state.model_name = state.model_name or model_name
+                        if not state.runner_category:
+                            config = query.pipeline_config or {}
+                            state.runner_category = runner_utils.get_telemetry_runner_category(
+                                runner_name, RunnerConfigResolver.resolve_runner_config(config, runner_name or '')
+                            )
                         if state.pipeline_plugins is None:
                             state.pipeline_plugins = query.variables.get('_pipeline_bound_plugins', None)
                 except Exception as ex:

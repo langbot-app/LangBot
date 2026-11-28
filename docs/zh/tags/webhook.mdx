@@ -83,9 +83,9 @@ Webhook 服务应返回 JSON 响应：
 ### 参数说明
 
 - **status**: 处理状态（建议返回 "ok"）
-- **skip_pipeline**: 是否跳过 LangBot 流水线处理
-  - `true`: 消息不会继续在流水线中处理
-  - `false`: 消息正常进入流水线处理
+- **skip_pipeline**: 是否跳过 LangBot 聊天处理
+  - `true`: 消息不会继续交给聊天处理
+  - `false`: 消息正常交给聊天处理
 
 <Tip>
 `skip_pipeline` 允许您完全接管消息处理。设置为 `true` 时，消息只由 Webhook 服务处理，不触发 LangBot 的 AI 对话功能。
@@ -103,4 +103,4 @@ Webhook 服务应返回 JSON 响应：
 - 请求超时时间为 15 秒
 - 请求失败不影响消息正常处理
 - 支持配置多个 Webhook 并行执行
-- 任一 Webhook 返回 `skip_pipeline: true` 时跳过流水线处理
+- 任一 Webhook 返回 `skip_pipeline: true` 时跳过聊天处理

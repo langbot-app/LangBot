@@ -2,6 +2,8 @@ import asyncio
 import json
 
 import httpx
+from langbot import __version__
+from ......plugin.compatibility import compatible_release
 import quart
 import sqlalchemy
 
@@ -12,6 +14,7 @@ from ......core import taskmgr
 from ......entity.persistence import metadata as persistence_metadata
 from ......workspace.errors import WorkspaceError, WorkspaceNotFoundError
 from ......utils import httpclient
+from ......telemetry import usage
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 
 LANGRAG_PLUGIN_AUTHOR = 'langbot-team'
@@ -157,8 +160,9 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
         plugin_id: str,
         task_context: taskmgr.TaskContext,
         space_url: str,
+        request_context: RequestContext | None = None,
     ) -> None:
-        """Install a single plugin from the marketplace."""
+        """Install a single plugin from the marketplace and confirm its declared permissions."""
         p_author, p_name = plugin_id.split('/', 1)
         self.ap.logger.info(f'RAG migration: installing plugin {plugin_id} from marketplace...')
         task_context.trace(f'Installing plugin {plugin_id} from marketplace...')
@@ -168,11 +172,13 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
             timeout=15,
             event_hooks=httpclient.httpx_response_limit_hooks(),
         ) as client:
-            resp = await client.get(f'{space_url}/api/v1/marketplace/plugins/{p_author}/{p_name}')
+            resp = await client.get(
+                f'{space_url}/api/v1/marketplace/plugins/{p_author}/{p_name}', params={'langbot_version': __version__}
+            )
             resp.raise_for_status()
             response_data = await httpclient.parse_json_response(resp)
             p_data = response_data.get('data', {}).get('plugin', {})
-            p_version = p_data.get('latest_version')
+            p_version = compatible_release(p_data) if 'compatible_version' in p_data else p_data.get('latest_version')
             if not p_version:
                 raise Exception(f'Could not determine latest version for {plugin_id}')
 
@@ -186,13 +192,31 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
             },
             task_context=task_context,
         )
+        if request_context is not None:
+            await self._confirm_plugin_permissions(request_context, p_author, p_name)
         self.ap.logger.info(f'RAG migration: plugin {plugin_id} install request sent.')
 
+    async def _confirm_plugin_permissions(self, request_context: RequestContext, author: str, name: str) -> None:
+        """Activate a freshly installed migration plugin on behalf of the member running the migration."""
+        from .....application.contracts import ApplicationAPIException
+        from .....application.plugin_permissions import auto_confirm_declared, permission_status
+        from .....authz import PermissionDeniedError
+
+        _, setting = await self.ap.plugin_connector._setting_for_plugin(author, name)
+        if not permission_status(self.ap, setting)['pending_confirmation']:
+            return
+        try:
+            await auto_confirm_declared(self.ap, request_context, setting)
+        except (ApplicationAPIException, PermissionDeniedError) as exc:
+            raise RuntimeError(f'plugin_permission_confirmation_required: {author}/{name}') from exc
+
+    @usage.observe_runtime('kb.migration.run')
     async def _execute_rag_migration(
         self,
         execution_context: ExecutionContext,
         task_context: taskmgr.TaskContext,
         install_plugin: bool = True,
+        request_context: RequestContext | None = None,
     ):
         """Execute RAG migration: install required plugins and restore backup data."""
         execution_context = await self._require_local_migration_context(execution_context)
@@ -234,6 +258,7 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
                         plugin_id,
                         task_context,
                         space_url,
+                        request_context=request_context,
                     )
                 except WorkspaceNotFoundError:
                     raise
@@ -478,6 +503,7 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
                     execution_context,
                     task_context=ctx,
                     install_plugin=install_plugin,
+                    request_context=request_context,
                 ),
                 kind='rag-migration',
                 name='rag-migration-execute',

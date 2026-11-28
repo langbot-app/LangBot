@@ -49,13 +49,19 @@ class RAGRuntimeService:
         self,
         execution_context: ExecutionContext,
         collection_id: str,
+        *,
+        for_write: bool = False,
     ) -> str:
-        """Resolve a plugin logical handle to a Workspace-owned KB UUID."""
+        """Resolve a plugin logical handle to a Workspace-owned KB UUID.
+
+        ``for_write`` refuses knowledge bases whose deletion has started, so an
+        ingestion that outlived its Core cannot repopulate a dropped collection.
+        """
 
         await self._validate_execution_context(execution_context)
         if not isinstance(collection_id, str) or not collection_id.strip():
             raise WorkspaceNotFoundError('Knowledge base not found')
-        result = await self.ap.persistence_mgr.execute_async(
+        statement = (
             sqlalchemy.select(persistence_rag.KnowledgeBase.uuid)
             .where(persistence_rag.KnowledgeBase.workspace_uuid == execution_context.workspace_uuid)
             .where(
@@ -66,6 +72,9 @@ class RAGRuntimeService:
             )
             .limit(1)
         )
+        if for_write:
+            statement = statement.where(persistence_rag.KnowledgeBase.deleting.is_(False))
+        result = await self.ap.persistence_mgr.execute_async(statement)
         kb_uuid = result.scalar_one_or_none()
         if kb_uuid is None:
             raise WorkspaceNotFoundError('Knowledge base not found')
@@ -81,7 +90,7 @@ class RAGRuntimeService:
         documents: list[str] | None = None,
     ) -> None:
         """Handle VECTOR_UPSERT action."""
-        knowledge_base_uuid = await self._resolve_knowledge_base_uuid(execution_context, collection_id)
+        knowledge_base_uuid = await self._resolve_knowledge_base_uuid(execution_context, collection_id, for_write=True)
         if len(vectors) != len(ids):
             raise ValueError('vectors and ids must have the same length')
         if metadata is not None and len(metadata) != len(vectors):
@@ -190,12 +199,51 @@ class RAGRuntimeService:
         self,
         execution_context: ExecutionContext,
         storage_path: str,
+        *,
+        plugin_id: str | None = None,
     ) -> bytes:
         """Handle GET_KNOWLEDEGE_FILE_STREAM action.
 
         Uses the storage manager abstraction to load file content,
         regardless of the underlying storage provider.
         """
+        if storage_path.startswith('artifact:'):
+            await self._validate_execution_context(execution_context)
+            if not plugin_id:
+                raise WorkspaceNotFoundError('Knowledge file not found')
+            file_uuid = storage_path.removeprefix('artifact:')
+            query = (
+                sqlalchemy.select(persistence_rag.File)
+                .join(
+                    persistence_rag.KnowledgeBase,
+                    sqlalchemy.and_(
+                        persistence_rag.File.kb_id == persistence_rag.KnowledgeBase.uuid,
+                        persistence_rag.File.workspace_uuid == persistence_rag.KnowledgeBase.workspace_uuid,
+                    ),
+                )
+                .where(persistence_rag.File.workspace_uuid == execution_context.workspace_uuid)
+                .where(persistence_rag.File.uuid == file_uuid)
+                .where(persistence_rag.File.artifact_id.is_not(None))
+                .where(persistence_rag.KnowledgeBase.knowledge_engine_plugin_id == plugin_id)
+                .limit(1)
+            )
+            result = await self.ap.persistence_mgr.execute_async(query)
+            file = result.first()
+            if file is None:
+                raise WorkspaceNotFoundError('Knowledge file not found')
+            read = await self.ap.artifact_service.read_business(
+                execution_context,
+                file.artifact_id,
+                holder_type='knowledge_file',
+                holder_id=file.uuid,
+                max_bytes=10 * 1024 * 1024,
+            )
+            # Do not return bytes if the KB engine/file binding changed during object-store IO.
+            await self._validate_execution_context(execution_context)
+            current = (await self.ap.persistence_mgr.execute_async(query)).first()
+            if current is None or current.artifact_id != file.artifact_id:
+                raise WorkspaceNotFoundError('Knowledge file not found')
+            return read['content']
         # Validate storage_path to prevent path traversal
         decoded_path = unquote(storage_path).replace('\\', '/')
         decoded_segments = decoded_path.split('/')

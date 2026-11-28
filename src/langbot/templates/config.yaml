@@ -21,29 +21,34 @@ workspace:
         # use api.webui_url, then api.webhook_prefix. Set via
         # WORKSPACE__INVITATIONS__PUBLIC_WEB_URL in container deployments.
         public_web_url: ''
-        email:
-            # Optional invitation email delivery. Empty provider keeps
-            # invitations link-only. Supported: resend, smtp.
-            provider: ''
-            from: ''
-            timeout_seconds: 10
-            resend:
-                api_url: 'https://api.resend.com/emails'
-                # Secret. Set via WORKSPACE__INVITATIONS__EMAIL__RESEND__API_KEY.
-                api_key: ''
-            smtp:
-                host: ''
-                port: 587
-                username: ''
-                # Secret. Set via WORKSPACE__INVITATIONS__EMAIL__SMTP__PASSWORD.
-                password: ''
-                starttls: true
-                ssl: false
+email:
+    # Instance mail service shared by Workspace invitations and alert emails.
+    # Empty provider disables email (invitations become link-only). Supported:
+    # resend, smtp. Older releases kept this section at workspace.invitations.email;
+    # it is moved here automatically and WORKSPACE__INVITATIONS__EMAIL__* env
+    # names keep working as aliases of EMAIL__*.
+    provider: ''
+    from: ''
+    timeout_seconds: 10
+    resend:
+        api_url: 'https://api.resend.com/emails'
+        # Secret. Set via EMAIL__RESEND__API_KEY.
+        api_key: ''
+    smtp:
+        host: ''
+        port: 587
+        username: ''
+        # Secret. Set via EMAIL__SMTP__PASSWORD.
+        password: ''
+        starttls: true
+        ssl: false
+alerts:
+    # Workspace failure alerts (in-app, email, LangBot Space, webhooks).
+    # false stops evaluating rules and sending notifications instance-wide.
+    enabled: true
+    # Seconds between delivery / auto-resolve passes.
+    tick_seconds: 30
 command:
-    enable: true
-    prefix:
-    - '!'
-    - ！
     privilege: {}
 concurrency:
     pipeline: 20
@@ -140,6 +145,16 @@ system:
         max_pipelines: -1
         max_extensions: -1
         max_knowledge_bases: -1
+    gc:
+        # Long-running processes with a large heap rarely reach CPython's
+        # automatic full-collection threshold, so cyclic garbage (for example
+        # closed TLS connections of reconnecting adapters) accumulates. A full
+        # collection runs every collect_interval_seconds (0 disables).
+        # freeze_after_seconds > 0 freezes the startup heap out of collection
+        # after that many seconds; it shortens collections but leaks startup
+        # objects that later become cyclic garbage, so it is off by default.
+        freeze_after_seconds: 0
+        collect_interval_seconds: 1800
     task_retention:
         # Keep at most this many completed async task records in memory
         completed_limit: 200
@@ -176,6 +191,10 @@ database:
     use: sqlite
     sqlite:
         path: 'data/langbot.db'
+        # Experimental: queue Artifact publication, Ledger and monitoring writes within this Core process.
+        # Set to artifact_ledger to leave monitoring writes out of the queue.
+        experimental_write_queue: false
+        experimental_write_timing: false
     postgresql:
         # Optional SQLAlchemy URL (postgresql[+asyncpg]://...). When set, it
         # overrides the structured fields and preserves TLS/query options.
@@ -234,7 +253,7 @@ vdb:
         # keep this false when deliberately using an external pgvector DB.
         use_business_database: false
         # Release migrations create one partial ANN index per enabled value.
-        allowed_dimensions: [384, 512, 768, 1024, 1536, 3072]
+        allowed_dimensions: [384, 512, 768, 1024, 1536, 2048, 3072]
         host: '127.0.0.1'
         port: 5433
         database: 'langbot'
@@ -251,7 +270,20 @@ vdb:
         distance_metric: 'COSINE' # COSINE | L2 | IP
         request_timeout: 5000     # per-request timeout in ms (glide default 250ms is too low for KNN)
 storage:
-    use: local
+    # 'persistent' stores uploaded assets/media in the database by default.
+    # Existing local/S3 deployments retain their explicit provider selection.
+    use: persistent
+    migration:
+        # Set true for a populated local-storage upgrade. Missing old volumes
+        # then stop startup instead of being mistaken for a new empty replica.
+        require_source: false
+    content:
+        backend: database
+        # Optional named S3 backends. Keep names and endpoint/bucket locations
+        # available while historical content references them. Credentials may rotate.
+        # Example: archive: {type: s3, endpoint_url: '...', bucket: '...',
+        #                    access_key_id: '...', secret_access_key: '...', region: us-east-1}
+        backends: {}
     # Bound every object materialized into Core memory. Built-in Local/S3
     # providers enforce this while reading (hard cap: 64 MiB).
     max_object_read_bytes: 10485760
@@ -260,8 +292,9 @@ storage:
         # Retention for CAS files and historical inline images (defaults to 30 days).
         # Inline images expire by record creation time; message text is retained.
         retention_days: 30
-        # Maximum disk storage for cached media in MB (0 means unlimited, defaults to 0)
-        max_size_mb: 0
+        # Maximum disk storage for cached media in MB; the oldest files are removed first
+        # (0 means unlimited, defaults to 1024)
+        max_size_mb: 1024
     cleanup:
         # Enable periodic cleanup of local/S3 uploaded files and old log files
         enabled: true
@@ -284,13 +317,20 @@ storage:
         # worker threads so an S3 slowdown cannot saturate the process.
         max_concurrency: 16
 plugin:
+    github_mirror:
+        enabled: true
+        probe_timeout: 5
+        mirrors:
+            - https://gh-proxy.com/
+            - https://ghfast.top/
+            - https://ghproxy.net/
     enable: true
     # Maximum time for the Runtime transport, handshake, and desired-state replay.
     connect_timeout_seconds: 180.0
     runtime_ws_url: 'ws://langbot_plugin_runtime:5400/control/ws'
     enable_marketplace: true
-    # Console debug endpoint; its port is also passed to managed Runtime
-    # subprocesses (stdio / Windows) as --ws-debug-port so a second Core
+    # Console debug endpoint; its port is also passed to Core-managed Runtime
+    # subprocesses as --ws-debug-port so a second Core
     # instance can listen elsewhere without Address already in use.
     display_plugin_debug_url: 'ws://localhost:5401/plugin/debug/ws'
     certification:
@@ -327,6 +367,19 @@ plugin:
         # Cloud shared Runtime sets this to true and fails closed unless
         # delegated cgroup v2 controllers are available.
         require_hard_limits: false
+    marketplace_upgrade:
+        # Operator-only bulk upgrade for multi-Workspace (Cloud) deployments.
+        # After the shared Plugin Runtime connects, every installation of the
+        # listed Marketplace plugins (author/name) that is behind the latest
+        # Marketplace version is upgraded in each Workspace. With
+        # confirm_permissions, installations that were enabled are re-enabled
+        # by confirming the plugin's declared permissions as an operator.
+        plugins: []
+        concurrency: 2
+        start_delay_seconds: 120.0
+        confirm_permissions: true
+        # Optional canary: limit the sweep to these Workspace UUIDs.
+        workspaces: []
     binary_storage:
         # Max bytes for a single plugin binary storage value
         max_value_bytes: 10485760
@@ -395,11 +448,15 @@ monitoring:
         # Supports MONITORING__AUTO_CLEANUP__MAX_BATCHES_PER_TABLE_PER_RUN.
         max_batches_per_table_per_run: 4
 skills:
-    # Core-owned SkillStore. Skill discovery, activation, resources, CRUD and
-    # revisions remain available when Box is disabled.
-    # TODO(next-major): change the fresh-install default to './data/skills'
-    # after the online-upgrade window for the historical Box path closes.
-    root: './data/box/skills'
+    # Metadata and retained versions live in the DB; content uses storage.content.
+    # Existing filesystem configurations remain explicit upgrade choices.
+    persistence: database
+    # Legacy import source and disposable legacy-mode cache, never DB authority.
+    root: './data/skills'
+    migration:
+        # For a populated upgrade, keep root pointing to the old Skill volume
+        # and set true. Completed imports no longer require the source volume.
+        require_source: false
 
 box:
     # Master switch for the Box sandbox runtime. When false, LangBot does NOT
@@ -413,6 +470,10 @@ box:
     # isolation. It is never auto-selected and is only for trusted local
     # development. Can be written via BOX__BACKEND.
     backend: 'local'  # 'local' (Docker/nsjail), 'docker', 'nsjail', 'e2b', or explicit unsafe 'host'.
+    # Requires a compatible Core SDK and Runtime; startup checks the handshake.
+    # 'legacy' explicitly preserves shared Core/Box transfer paths.
+    file_transfer_mode: 'network'
+    workspace_mode: 'private'
     runtime:
         # LANGBOT_BOX_CONTROL_TOKEN is optional for OSS external WebSocket
         # runtimes. To protect an exposed endpoint, set the same strong secret
@@ -431,6 +492,9 @@ box:
         # bound; Cloud may override this with BOX__LIMITS__MAX_ADMISSION_RECORDS.
         max_admission_records: 100000
         max_rpc_file_bytes: 20971520
+        # Runtime-owned immutable package cache; active session mounts stay pinned.
+        max_artifact_cache_bytes: 268435456
+        artifact_cache_ttl_sec: 300
     # Cloud v2 overrides these values through the instance config/environment.
     # OSS keeps admission disabled and preserves the existing multi-session
     # local behavior. These limits are Runtime-owned and cannot be relaxed by
@@ -451,6 +515,9 @@ box:
         # Cloud bootstrap requires a positive hard quota.
         workspace_quota_mb: 0
         readiness_cache_sec: 15
+    # Optional administrator ceilings for Workspace overrides; requires a matching SDK/Box Runtime.
+    # Omitted values use the Workspace settings defaults. Example: {memory_mb: 4096, max_sessions: 8}
+    workspace_limit_caps: {}
     local:
         profile: 'default'  # Network enabled by default. Use 'offline' to disable network by default.
         image: ''  # Custom local sandbox image. Leave empty to use the profile default.
@@ -476,6 +543,9 @@ box:
     default_memory_mb: 1536
     docker:
         cpu_limit_enabled: true  # When false, Docker sandbox containers are started without --cpus. Memory and PID limits still apply.
+    nsjail:
+        # Optional pre-created, delegated parent under each v1 memory/pids/cpu controller.
+        cgroup_v1_parent: ''
     e2b:
         api_key: ''  # Can also be set via E2B_API_KEY env var.
         api_url: ''  # Custom API URL for self-hosted deployments.
@@ -488,6 +558,8 @@ space:
     # OAuth authorization page URL (user will be redirected here)
     oauth_authorize_url: 'https://space.langbot.app/auth/authorize'
     disable_models_service: false
+    # Skip the startup release-list request when running without Space access.
+    disable_release_check: false
     # Optional telemetry is enabled by default. Set true to disable usage,
     # heartbeat and execution reporting; restart after changing this setting.
     disable_telemetry: false

@@ -139,6 +139,28 @@ class KnowledgeBaseRouterGroup(group.RouterGroup):
             return self.success({'task_id': task_id})
 
         @self.route(
+            '/<knowledge_base_uuid>/files/artifact',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def add_knowledge_artifact(knowledge_base_uuid: str, request_context: RequestContext):
+            payload = await quart.request.json
+            if not isinstance(payload, dict):
+                return self.http_status(400, 'invalid_input', 'Expected an object')
+            from .....application import ApplicationAPIException
+
+            try:
+                result = await self.ap.application_api.execute(
+                    'knowledge.file.store_artifact',
+                    request_context,
+                    {**payload, 'kb_uuid': knowledge_base_uuid},
+                )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+            return self.success({'task_id': result})
+
+        @self.route(
             '/<knowledge_base_uuid>/files/<file_id>',
             methods=['DELETE'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,

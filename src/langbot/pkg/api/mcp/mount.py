@@ -147,17 +147,13 @@ class MCPMount:
                 ),
                 entitlement_revision=entitlement_revision,
             )
-            tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
-            if not callable(tenant_scope):
-                raise RuntimeError('MCP request persistence scope is unavailable')
-            async with tenant_scope(identity.workspace_uuid):
-                token = bind_request_context(request_context)
-                try:
-                    await mcp_asgi(scope, receive, send)
-                    if deployment_admission is not None:
-                        deployment_admission.require_active()
-                finally:
-                    reset_request_context(token)
+            token = bind_request_context(request_context)
+            try:
+                await mcp_asgi(scope, receive, send)
+                if deployment_admission is not None:
+                    deployment_admission.require_active()
+            finally:
+                reset_request_context(token)
 
         async def dispatcher(scope, receive, send):  # type: ignore[no-untyped-def]
             # Non-MCP traffic keeps its existing Quart boundaries. In

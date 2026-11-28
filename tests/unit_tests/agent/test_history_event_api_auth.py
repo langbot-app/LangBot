@@ -11,6 +11,7 @@ from langbot.pkg.agent.runner.event_log_store import EventLogStore
 from langbot.pkg.agent.runner.session_registry import AgentRunSessionRegistry
 from langbot.pkg.entity.persistence import event_log as event_log_model
 from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.entity.persistence.plugin import PluginSetting
 from langbot.pkg.plugin.handler import RuntimeConnectionHandler
 from langbot_plugin.api.entities.builtin.runner.page_results import (
     AgentEventRecord,
@@ -18,7 +19,7 @@ from langbot_plugin.api.entities.builtin.runner.page_results import (
 )
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
 
-from .conftest import bind_runtime_action_context, make_resources
+from .conftest import TEST_RUNTIME_BINDING, bind_runtime_action_context, make_resources
 
 
 class FakeConnection:
@@ -30,6 +31,12 @@ class FakeApplication:
         self.logger = MagicMock()
         self.persistence_mgr = MagicMock()
         self.persistence_mgr.get_db_engine = MagicMock(return_value=db_engine)
+        self.persistence_mgr.execute_async = self.execute_async
+        self.engine = db_engine
+
+    async def execute_async(self, statement):
+        async with self.engine.begin() as connection:
+            return await connection.execute(statement)
 
 
 @pytest.fixture
@@ -48,6 +55,17 @@ async def db_engine():
     assert event_log_model.EventLog.__tablename__ == 'event_log'
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(
+            PluginSetting.__table__.insert().values(
+                workspace_uuid=TEST_RUNTIME_BINDING.workspace_uuid,
+                installation_uuid=TEST_RUNTIME_BINDING.installation_uuid,
+                artifact_digest=TEST_RUNTIME_BINDING.artifact_digest,
+                runtime_revision=TEST_RUNTIME_BINDING.runtime_revision,
+                plugin_author='test',
+                plugin_name='runner',
+                enabled=True,
+            )
+        )
     yield engine
     await engine.dispose()
 
@@ -69,7 +87,7 @@ async def _register_session(
     run_id='run_1',
     conversation_id='conv_1',
     bot_id=None,
-    workspace_id=None,
+    workspace_id=TEST_RUNTIME_BINDING.workspace_uuid,
     thread_id=None,
     available_apis=None,
 ):
@@ -181,6 +199,7 @@ async def test_event_get_returns_sdk_record_projection(session_registry, db_engi
     await _register_session(session_registry, available_apis={'event_get': True})
     store = EventLogStore(db_engine)
     event_id = await store.append_event(
+        workspace_id=TEST_RUNTIME_BINDING.workspace_uuid,
         event_id='evt_projection_1',
         event_type='message.received',
         source='platform',
@@ -216,11 +235,12 @@ async def test_event_get_returns_sdk_record_projection(session_registry, db_engi
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ('denial', 'message'),
-    [('missing_run', 'run_id is required'), ('expired_run', 'not found or expired'), ('capability', 'not authorized')],
+    [('missing_run', 'run_id is required'), ('expired_run', 'Run does not belong'), ('capability', 'not authorized')],
 )
 async def test_event_get_requires_active_run_capability(session_registry, db_engine, denial, message):
     await _register_session(session_registry, available_apis={'event_get': denial != 'capability'})
     await EventLogStore(db_engine).append_event(
+        workspace_id=TEST_RUNTIME_BINDING.workspace_uuid,
         event_id='evt_denied',
         event_type='message.received',
         source='platform',
@@ -234,7 +254,7 @@ async def test_event_get_requires_active_run_capability(session_registry, db_eng
     result = await _handler(db_engine, session_registry).actions[PluginToRuntimeAction.EVENT_GET.value](data)
     assert result.code != 0
     assert message in result.message
-    assert not result.data
+    assert result.data == {'code': 'application_error' if denial == 'capability' else 'permission_denied'}
 
 
 @pytest.mark.asyncio
@@ -261,7 +281,7 @@ async def test_event_get_enforces_run_scope(session_registry, db_engine, mismatc
     else:
         assert result.code != 0
         assert 'not accessible' in result.message
-        assert not result.data
+        assert result.data == {'code': 'application_error'}
 
 
 @pytest.mark.asyncio
@@ -269,6 +289,7 @@ async def test_event_page_returns_sdk_page_projection(session_registry, db_engin
     await _register_session(session_registry, available_apis={'event_page': True})
     store = EventLogStore(db_engine)
     await store.append_event(
+        workspace_id=TEST_RUNTIME_BINDING.workspace_uuid,
         event_id='evt_projection_page_1',
         event_type='message.received',
         source='platform',
@@ -309,6 +330,7 @@ async def test_history_page_filters_run_scope_thread_and_bot(session_registry, d
     )
     store = TranscriptStore(db_engine)
     await store.append_transcript(
+        workspace_id=TEST_RUNTIME_BINDING.workspace_uuid,
         transcript_id='tr_visible',
         event_id='evt_visible',
         conversation_id='conv_1',
@@ -318,6 +340,7 @@ async def test_history_page_filters_run_scope_thread_and_bot(session_registry, d
         content='visible',
     )
     await store.append_transcript(
+        workspace_id=TEST_RUNTIME_BINDING.workspace_uuid,
         transcript_id='tr_other_bot',
         event_id='evt_other_bot',
         conversation_id='conv_1',
@@ -327,6 +350,7 @@ async def test_history_page_filters_run_scope_thread_and_bot(session_registry, d
         content='hidden bot',
     )
     await store.append_transcript(
+        workspace_id=TEST_RUNTIME_BINDING.workspace_uuid,
         transcript_id='tr_other_thread',
         event_id='evt_other_thread',
         conversation_id='conv_1',
@@ -359,6 +383,7 @@ async def test_event_page_filters_run_scope_thread_and_bot(session_registry, db_
     )
     store = EventLogStore(db_engine)
     await store.append_event(
+        workspace_id=TEST_RUNTIME_BINDING.workspace_uuid,
         event_id='evt_visible',
         event_type='message.received',
         source='platform',
@@ -367,6 +392,7 @@ async def test_event_page_filters_run_scope_thread_and_bot(session_registry, db_
         thread_id='thread_1',
     )
     await store.append_event(
+        workspace_id=TEST_RUNTIME_BINDING.workspace_uuid,
         event_id='evt_other_bot',
         event_type='message.received',
         source='platform',
@@ -375,6 +401,7 @@ async def test_event_page_filters_run_scope_thread_and_bot(session_registry, db_
         thread_id='thread_1',
     )
     await store.append_event(
+        workspace_id=TEST_RUNTIME_BINDING.workspace_uuid,
         event_id='evt_other_thread',
         event_type='message.received',
         source='platform',

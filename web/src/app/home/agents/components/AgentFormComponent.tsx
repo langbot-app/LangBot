@@ -10,24 +10,38 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useForm, useWatch } from 'react-hook-form';
+import { useForm, useWatch, type Control } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Bot, Loader2, Wrench } from 'lucide-react';
+import {
+  BookOpen,
+  Bot,
+  Box,
+  Cpu,
+  Gauge,
+  Loader2,
+  MessagesSquare,
+  ScrollText,
+  Settings2,
+  SlidersHorizontal,
+  Wrench,
+  Zap,
+} from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import {
   Agent,
   AgentPlatformTool,
   ApiRespPluginSystemStatus,
+  DomainMeta,
   PluginTool,
+  WorkspaceOperationItem,
 } from '@/app/infra/entities/api';
 import {
   PipelineConfigStage,
   PipelineConfigTab,
 } from '@/app/infra/entities/pipeline';
-import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
 import {
   getErrorMessage,
   readPendingRunnerInstall,
@@ -35,21 +49,53 @@ import {
   type InstalledRunner,
 } from '@/app/home/agents/runner-marketplace';
 import { extractI18nObject } from '@/i18n/I18nProvider';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import { getDefaultValues } from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
+import {
+  PrimaryBlock,
+  RetrievalSettings,
+  SubsetForm,
+  Watch,
+  groupRunnerFields,
+  modifiedCount,
+} from '@/app/home/components/runner-layout/RunnerConfigLayout';
+import {
+  SettingGroup,
+  SettingRow,
+} from '@/app/home/components/setting-row/SettingRow';
 import {
   Card,
-  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
 import { Form, FormField, FormItem, FormMessage } from '@/components/ui/form';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import AgentEventPatternPicker from './AgentEventPatternPicker';
 import RunnerSelect from './RunnerSelect';
 import GuidedTour, {
   GuidedTourStep,
 } from '@/app/home/components/guided-tour/GuidedTour';
 import AgentApiToolPicker from './AgentApiToolPicker';
+import WorkspaceOperationsPicker from '@/app/home/components/workspace-operations/WorkspaceOperationsPicker';
+import { collectSensitiveTools } from '@/app/home/components/sensitive-tools/SensitiveToolsWarning';
+import { operationsForRunner } from '@/app/home/components/workspace-operations/runner-operation-grants';
 
 const OTHER_TOOL_SCOPES = [
   'platform',
@@ -58,6 +104,9 @@ const OTHER_TOOL_SCOPES = [
   'plugin',
   'skill',
 ] as const;
+
+// Prompt fields in Agent configuration search the Agent prompt library (LANG-439).
+const AGENT_FORM_SYSTEM_CONTEXT = { prompt_library_kind: 'agent' };
 
 export interface RunnerStatus {
   label: string;
@@ -74,6 +123,7 @@ interface AgentFormComponentProps {
   onRunnerStatusChange?: (status: RunnerStatus) => void;
   onSupportedEventPatternsChange?: (patterns: string[]) => void;
   onPlatformToolsChange?: (tools: AgentPlatformTool[]) => void;
+  onSensitiveToolsChange?: (tools: string[]) => void;
   guideEnabled?: boolean;
   debugGuideEnabled?: boolean;
 }
@@ -120,6 +170,29 @@ function isRunnerFieldVisible(
   );
 }
 
+/**
+ * Fill the active runner's schema defaults under its stored values, before
+ * the clean snapshot is taken: required-field status sees real values and
+ * reverting an edit returns to a clean form.
+ */
+function withRunnerDefaults(
+  schema: PipelineConfigTab | null,
+  runnerId: unknown,
+  configs: Record<string, unknown>,
+): Record<string, unknown> {
+  if (typeof runnerId !== 'string' || !runnerId) return configs;
+  const stage = schema?.stages.find((item) => item.name === runnerId);
+  if (!stage) return configs;
+  const stored = configs[runnerId];
+  return {
+    ...configs,
+    [runnerId]: {
+      ...getDefaultValues(stage.config),
+      ...(stored && typeof stored === 'object' ? stored : {}),
+    },
+  };
+}
+
 function AgentFormComponent(
   {
     agentId,
@@ -130,6 +203,7 @@ function AgentFormComponent(
     onRunnerStatusChange,
     onSupportedEventPatternsChange,
     onPlatformToolsChange,
+    onSensitiveToolsChange,
     guideEnabled = true,
     debugGuideEnabled = false,
   }: AgentFormComponentProps,
@@ -147,6 +221,16 @@ function AgentFormComponent(
   const [hostTools, setHostTools] = useState<PluginTool[]>([]);
   const [hostToolCatalogAvailable, setHostToolCatalogAvailable] =
     useState(true);
+  const [workspaceOperations, setWorkspaceOperations] = useState<
+    WorkspaceOperationItem[]
+  >([]);
+  const [domains, setDomains] = useState<DomainMeta[]>([]);
+  const [operationGrants, setOperationGrants] = useState<
+    Record<string, string[]>
+  >({});
+  const [dangerousModalOpen, setDangerousModalOpen] = useState(false);
+  const pendingSaveValuesRef = useRef<FormValues | null>(null);
+  const pendingResolveRef = useRef<((value: boolean) => void) | null>(null);
   const [pluginSystemStatus, setPluginSystemStatus] =
     useState<ApiRespPluginSystemStatus | null>(null);
   const [pluginStatusLoading, setPluginStatusLoading] = useState(true);
@@ -155,8 +239,7 @@ function AgentFormComponent(
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [runnerInstallRecovering, setRunnerInstallRecovering] = useState(false);
-  const [activeSection, setActiveSection] =
-    useState<AgentConfigSection>('runner');
+  const [toolsOpen, setToolsOpen] = useState(false);
   const isSavingRef = useRef(false);
   const loadedHostToolPolicyRef = useRef<string[] | undefined>(undefined);
 
@@ -171,6 +254,7 @@ function AgentFormComponent(
     supported_event_patterns: z.array(z.string()),
     allowed_platform_tools: z.array(z.string()),
     allowed_tools: z.array(z.string()),
+    allowed_workspace_operations: z.array(z.string()),
   });
   type FormValues = z.infer<typeof formSchema>;
 
@@ -187,6 +271,7 @@ function AgentFormComponent(
       supported_event_patterns: ['*'],
       allowed_platform_tools: [],
       allowed_tools: [],
+      allowed_workspace_operations: [],
     },
   });
   const runnerInstallScope = `agent:${agentId}`;
@@ -215,6 +300,31 @@ function AgentFormComponent(
     onSupportedEventPatternsChange?.(supportedEventPatterns);
   }, [onSupportedEventPatternsChange, supportedEventPatterns]);
 
+  const selectedPlatformTools = useWatch({
+    control: form.control,
+    name: 'allowed_platform_tools',
+  });
+  const selectedWorkspaceOperations = useWatch({
+    control: form.control,
+    name: 'allowed_workspace_operations',
+  });
+  useEffect(() => {
+    onSensitiveToolsChange?.(
+      collectSensitiveTools(
+        platformTools,
+        selectedPlatformTools ?? [],
+        workspaceOperations,
+        selectedWorkspaceOperations ?? [],
+      ),
+    );
+  }, [
+    onSensitiveToolsChange,
+    platformTools,
+    selectedPlatformTools,
+    workspaceOperations,
+    selectedWorkspaceOperations,
+  ]);
+
   useEffect(() => {
     let cancelled = false;
     setInitialDataLoaded(false);
@@ -237,6 +347,9 @@ function AgentFormComponent(
           : [];
         setHostToolCatalogAvailable(hasHostToolCatalog);
         setHostTools(availableHostTools);
+        setWorkspaceOperations(metadata.workspace_operations || []);
+        setOperationGrants(metadata.workspace_operation_grants || {});
+        setDomains(metadata.domains || []);
         const agent = resp.agent;
         const config = (agent.config ?? {}) as Record<string, any>;
         const configuredHostTools = Array.isArray(config.allowed_tools)
@@ -248,6 +361,13 @@ function AgentFormComponent(
           config.allowed_platform_tools,
         )
           ? config.allowed_platform_tools.filter(
+              (name): name is string => typeof name === 'string',
+            )
+          : [];
+        const configuredWorkspaceOperations = Array.isArray(
+          config.allowed_workspace_operations,
+        )
+          ? config.allowed_workspace_operations.filter(
               (name): name is string => typeof name === 'string',
             )
           : [];
@@ -267,8 +387,11 @@ function AgentFormComponent(
             emoji: agent.emoji || '🤖',
           },
           runner: (config.runner as Record<string, unknown>) ?? {},
-          runner_config:
+          runner_config: withRunnerDefaults(
+            metadata.runner_config ?? null,
+            (config.runner as Record<string, unknown>)?.id,
             (config.runner_config as Record<string, unknown>) ?? {},
+          ),
           supported_event_patterns: normalizedEventPatterns,
           allowed_platform_tools: configuredPlatformTools.filter((name) => {
             const tool = availablePlatformTools.find(
@@ -278,6 +401,7 @@ function AgentFormComponent(
           }),
           allowed_tools:
             configuredHostTools ?? availableHostTools.map((tool) => tool.name),
+          allowed_workspace_operations: configuredWorkspaceOperations,
         };
         form.reset(loadedValues);
         savedSnapshotRef.current = JSON.stringify(loadedValues);
@@ -359,6 +483,11 @@ function AgentFormComponent(
   const selectedRunnerOption = runnerOptions.find(
     (option) => option.name === currentRunner,
   );
+  const selectableWorkspaceOperations = operationsForRunner(
+    workspaceOperations,
+    currentRunner,
+    operationGrants,
+  );
   const runnerSelectorStage = runnerConfigSchema?.stages.find(
     (stage) => stage.name === 'runner',
   );
@@ -397,23 +526,6 @@ function AgentFormComponent(
   const missingRunnerFieldNames = missingRunnerFields
     .map((field) => extractI18nObject(field.label))
     .join(', ');
-  const primarySections: Array<{
-    name: AgentConfigSection;
-    label: string;
-    icon: React.ElementType;
-  }> = [
-    {
-      name: 'runner',
-      label: t('agents.runnerSettings'),
-      icon: Bot,
-    },
-    {
-      name: 'events_and_tools',
-      label: t('agents.eventsAndTools'),
-      icon: Wrench,
-    },
-  ];
-
   const runnerStatus = useMemo<RunnerStatus>(() => {
     if (loadFailed) return { label: t('common.loadFailed'), tone: 'error' };
     if (!initialDataLoaded || pluginStatusLoading) {
@@ -540,95 +652,83 @@ function AgentFormComponent(
     onRunnerStatusChange?.(runnerStatus);
   }, [onRunnerStatusChange, runnerStatus]);
 
-  function updateSnapshotIfInitial(stageKey: string, wasDirty: boolean) {
-    if (!initializedStagesRef.current.has(stageKey)) {
-      initializedStagesRef.current.add(stageKey);
-      if (!wasDirty) {
-        savedSnapshotRef.current = JSON.stringify(form.getValues());
-        refreshDirty();
-      }
+  // --- One-page layout: runner, then what the answer is built from and
+  // what the Agent handles, then folded rows with summaries. ---
+  const runnerGroups = useMemo(
+    () => groupRunnerFields(activeRunnerStage?.config ?? []),
+    [activeRunnerStage],
+  );
+  const runnerIdItems = useMemo(
+    () => (runnerSelectorStage?.config ?? []).filter((i) => i.name === 'id'),
+    [runnerSelectorStage],
+  );
+  const runnerExtraItems = useMemo(
+    () => (runnerSelectorStage?.config ?? []).filter((i) => i.name !== 'id'),
+    [runnerSelectorStage],
+  );
+  const readRunner = () =>
+    (form.getValues('runner') as Record<string, unknown>) ?? {};
+  const writeRunner = (next: Record<string, unknown>) => {
+    form.setValue('runner', next, { shouldDirty: true });
+    const id = next.id;
+    const configs =
+      (form.getValues('runner_config') as Record<string, unknown>) ?? {};
+    const stage = runnerConfigSchema?.stages.find((item) => item.name === id);
+    // A newly chosen runner starts from its schema defaults.
+    if (typeof id === 'string' && id && stage && !(id in configs)) {
+      form.setValue(
+        'runner_config',
+        { ...configs, [id]: getDefaultValues(stage.config) },
+        { shouldDirty: true },
+      );
     }
-  }
-
-  function handleDynamicFormEmit(
-    formName: 'runner' | 'runner_config',
-    stageName: string,
-    values: object,
-  ) {
-    const wasDirty = hasUnsavedChangesRef.current;
-    if (formName === 'runner') {
-      form.setValue('runner', values, { shouldDirty: true });
-      updateSnapshotIfInitial(`runner.${stageName}`, wasDirty);
-      return;
-    }
-
-    const currentRunnerConfigs =
-      (form.getValues('runner_config') as Record<string, unknown>) || {};
+  };
+  const readRunnerConfig = () =>
+    ((form.getValues('runner_config') as Record<string, any>) ?? {})[
+      currentRunner
+    ] ?? {};
+  const writeRunnerConfig = (next: Record<string, unknown>) =>
     form.setValue(
       'runner_config',
       {
-        ...currentRunnerConfigs,
-        [stageName]: values,
+        ...((form.getValues('runner_config') as Record<string, unknown>) ?? {}),
+        [currentRunner]: next,
       },
       { shouldDirty: true },
     );
-    updateSnapshotIfInitial(`runner_config.${stageName}`, wasDirty);
-  }
-
-  function renderDynamicStage(stage: PipelineConfigStage) {
-    const isRunnerSelector = stage.name === 'runner';
-    if (!isRunnerSelector && stage.name !== currentRunner) return null;
-
-    const initialValues = isRunnerSelector
-      ? (form.getValues('runner') as Record<string, unknown>) || {}
-      : ((form.getValues('runner_config') as Record<string, any>) || {})[
-          stage.name
-        ] || {};
-
-    return (
-      <Card
-        key={stage.name}
-        data-guide={isRunnerSelector ? 'runner-selector' : 'runner-parameters'}
-      >
-        <CardHeader>
-          <CardTitle>{extractI18nObject(stage.label)}</CardTitle>
-          {stage.description && (
-            <CardDescription>
-              {extractI18nObject(stage.description)}
-            </CardDescription>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <DynamicFormComponent
-            itemConfigList={stage.config}
-            initialValues={initialValues}
-            renderItem={
-              isRunnerSelector
-                ? ({ config, field }) =>
-                    config.name === 'id' ? (
-                      <RunnerSelect
-                        options={config.options ?? []}
-                        label={extractI18nObject(config.label)}
-                        value={String(field.value ?? '')}
-                        onValueChange={field.onChange}
-                        installScope={runnerInstallScope}
-                        onInstalled={applyInstalledRunner}
-                      />
-                    ) : undefined
-                : undefined
-            }
-            onSubmit={(values) =>
-              handleDynamicFormEmit(
-                isRunnerSelector ? 'runner' : 'runner_config',
-                stage.name,
-                values,
-              )
-            }
-          />
-        </CardContent>
-      </Card>
-    );
-  }
+  const runnerForm = (items: PipelineConfigStage['config']) => (
+    <SubsetForm
+      key={`${currentRunner}:${items.map((item) => item.name).join(',')}`}
+      items={items}
+      read={readRunnerConfig}
+      write={writeRunnerConfig}
+      systemContext={AGENT_FORM_SYSTEM_CONTEXT}
+    />
+  );
+  const ck = (key: string) => `pipelines.chatConfig.${key}`;
+  const watchControl = form.control as unknown as Control;
+  const firstRunnerBlock = runnerGroups.model.length
+    ? 'model'
+    : runnerGroups.prompt.length
+      ? 'prompt'
+      : runnerGroups.knowledge.length
+        ? 'knowledge'
+        : 'basic';
+  const parametersGuide = (block: string) =>
+    block === firstRunnerBlock ? 'runner-parameters' : undefined;
+  const changedSummary = (
+    items: PipelineConfigStage['config'],
+    configs: Record<string, Record<string, unknown>> | undefined,
+  ) => {
+    const changed = modifiedCount(items, configs?.[currentRunner] ?? {});
+    return changed ? t(ck('modified'), { count: changed }) : t(ck('default'));
+  };
+  const toolCount = (count: number, all?: number) =>
+    all !== undefined && all > 0 && count >= all
+      ? t(ck('all'))
+      : count > 0
+        ? t(ck('countItems'), { count })
+        : t(ck('none'));
 
   const saveValues = useCallback(
     async (values: FormValues) => {
@@ -639,6 +739,7 @@ function AgentFormComponent(
         runner,
         runner_config: values.runner_config ?? {},
         allowed_platform_tools: values.allowed_platform_tools,
+        allowed_workspace_operations: values.allowed_workspace_operations,
       };
       if (hostToolCatalogAvailable) {
         config.allowed_tools = values.allowed_tools;
@@ -688,14 +789,75 @@ function AgentFormComponent(
     ],
   );
 
+  const confirmAndSave = useCallback(
+    (values: FormValues): Promise<boolean> => {
+      const ungrantableOps = values.allowed_workspace_operations.filter(
+        (opId) => {
+          const op = selectableWorkspaceOperations.find(
+            (item) => item.id === opId,
+          );
+          return op && op.grantable === false;
+        },
+      );
+
+      let effectiveValues = values;
+      if (ungrantableOps.length > 0) {
+        const filteredOps = values.allowed_workspace_operations.filter(
+          (opId) => {
+            const op = selectableWorkspaceOperations.find(
+              (item) => item.id === opId,
+            );
+            return !op || op.grantable !== false;
+          },
+        );
+        toast.warning(
+          t('workspaceOperations.ungrantableRemoved', {
+            count: ungrantableOps.length,
+          }),
+        );
+        effectiveValues = {
+          ...values,
+          allowed_workspace_operations: filteredOps,
+        };
+        form.setValue('allowed_workspace_operations', filteredOps, {
+          shouldDirty: true,
+        });
+      }
+
+      const hasDangerous = effectiveValues.allowed_workspace_operations.some(
+        (opId) => {
+          const op = workspaceOperations.find((item) => item.id === opId);
+          return op?.risk === 'dangerous';
+        },
+      );
+      if (hasDangerous) {
+        return new Promise<boolean>((resolve) => {
+          pendingSaveValuesRef.current = effectiveValues;
+          pendingResolveRef.current = resolve;
+          setDangerousModalOpen(true);
+        });
+      }
+      return saveValues(effectiveValues);
+    },
+    [form, saveValues, t, workspaceOperations, selectableWorkspaceOperations],
+  );
+
   function handleSubmit(values: FormValues) {
-    void saveValues(values);
+    void confirmAndSave(values);
   }
 
   useImperativeHandle(
     ref,
     () => ({
-      openSection: setActiveSection,
+      openSection(section: AgentConfigSection) {
+        document
+          .querySelector(
+            section === 'runner'
+              ? '[data-guide="runner-selector"]'
+              : '[data-guide="agent-sections"]',
+          )
+          ?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      },
       syncBasicInfo(values) {
         form.setValue('basic', {
           ...form.getValues('basic'),
@@ -721,14 +883,14 @@ function AgentFormComponent(
         if (isSavingRef.current) return false;
         const valid = await form.trigger();
         if (!valid) return false;
-        return (await saveValues(form.getValues())) ?? false;
+        return (await confirmAndSave(form.getValues())) ?? false;
       },
     }),
     [
+      confirmAndSave,
       form,
       initialDataLoaded,
       loadFailed,
-      saveValues,
       hasUnsavedChangesRef,
       refreshDirty,
     ],
@@ -748,161 +910,414 @@ function AgentFormComponent(
           onSubmit={form.handleSubmit(handleSubmit)}
           className="mb-2 flex h-full min-h-0 min-w-0 flex-1 flex-col"
         >
-          <nav
-            className="mb-4 shrink-0 space-y-2 border-b pb-4"
-            data-guide="agent-sections"
-          >
-            <Tabs
-              value={activeSection}
-              onValueChange={(value) =>
-                setActiveSection(value as AgentConfigSection)
-              }
+          {/* relative: contain absolutely positioned form internals (hidden
+              native inputs) so they cannot stretch the page frame. */}
+          <div className="relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-none">
+            <div
+              className="mx-auto w-full min-w-0 max-w-5xl space-y-6 pb-8"
+              data-testid="agent-config"
             >
-              <div className="min-w-0">
-                <TabsList className="grid h-auto w-full min-w-0 grid-cols-2">
-                  {primarySections.map((section) => {
-                    const Icon = section.icon;
-                    return (
-                      <TabsTrigger
-                        key={section.name}
-                        value={section.name}
-                        className="min-w-0 gap-1.5 px-2"
-                      >
-                        <Icon className="size-4 shrink-0" />
-                        <span className="truncate">{section.label}</span>
-                      </TabsTrigger>
-                    );
-                  })}
-                </TabsList>
-              </div>
-            </Tabs>
-          </nav>
-
-          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-none">
-            <div className="mx-auto w-full min-w-0 max-w-5xl space-y-6 pb-8">
-              {activeSection === 'runner' && (
-                <div className="space-y-6">
-                  {runnerSelectorStage
-                    ? renderDynamicStage(runnerSelectorStage)
-                    : !runnerConfigSchema && (
-                        <Card>
-                          <CardHeader>
-                            <CardTitle>{t('agents.runnerSettings')}</CardTitle>
-                            <CardDescription>
-                              {t('agents.noRunnerMetadata')}
-                            </CardDescription>
-                          </CardHeader>
-                        </Card>
-                      )}
-                  {runnerInstallRecovering ? (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>{t('agents.runnerSettings')}</CardTitle>
-                        <CardDescription className="flex items-center gap-2">
-                          <Loader2 className="size-4 animate-spin" />
-                          {t('agents.restoringRunnerInstall')}
-                        </CardDescription>
-                      </CardHeader>
-                    </Card>
-                  ) : activeRunnerStage ? (
-                    renderDynamicStage(activeRunnerStage)
-                  ) : runnerConfigSchema ? (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>{t('agents.runnerSettings')}</CardTitle>
-                        <CardDescription>
-                          {t('agents.noRunnerMetadata')}
-                        </CardDescription>
-                      </CardHeader>
-                    </Card>
-                  ) : null}
-                </div>
+              {/* Who answers */}
+              {runnerSelectorStage ? (
+                <PrimaryBlock icon={Bot} guide="runner-selector">
+                  <SubsetForm
+                    items={runnerIdItems}
+                    read={readRunner}
+                    write={writeRunner}
+                    systemContext={AGENT_FORM_SYSTEM_CONTEXT}
+                    renderItem={({ config, field }) =>
+                      config.name === 'id' ? (
+                        <RunnerSelect
+                          options={config.options ?? []}
+                          label={extractI18nObject(config.label)}
+                          value={String(field.value ?? '')}
+                          onValueChange={field.onChange}
+                          installScope={runnerInstallScope}
+                          onInstalled={applyInstalledRunner}
+                        />
+                      ) : undefined
+                    }
+                  />
+                  {activeRunnerStage?.description && (
+                    <p className="text-xs text-muted-foreground">
+                      {extractI18nObject(activeRunnerStage.description)}
+                    </p>
+                  )}
+                </PrimaryBlock>
+              ) : (
+                !runnerConfigSchema && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>{t('agents.runnerSettings')}</CardTitle>
+                      <CardDescription>
+                        {t('agents.noRunnerMetadata')}
+                      </CardDescription>
+                    </CardHeader>
+                  </Card>
+                )
               )}
-
-              {activeSection === 'events_and_tools' && (
+              {runnerInstallRecovering ? (
                 <Card>
-                  <CardHeader className="pb-4">
-                    <CardTitle>{t('agents.eventsAndTools')}</CardTitle>
-                    <CardDescription>
-                      {t('agents.eventsAndToolsDescription')}
+                  <CardHeader>
+                    <CardTitle>{t('agents.runnerSettings')}</CardTitle>
+                    <CardDescription className="flex items-center gap-2">
+                      <Loader2 className="size-4 animate-spin" />
+                      {t('agents.restoringRunnerInstall')}
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-6">
-                    <section className="space-y-3">
-                      <div className="space-y-1">
-                        <h3 className="text-sm font-medium">
-                          {t('agents.bindableEvents')}
-                        </h3>
-                        <p className="text-xs text-muted-foreground">
-                          {t('agents.bindableEventsDescription')}
-                        </p>
-                      </div>
-                      <FormField
-                        control={form.control}
-                        name="supported_event_patterns"
-                        render={({ field }) => (
-                          <FormItem>
-                            <AgentEventPatternPicker
-                              events={availableEventTypes}
-                              value={field.value}
-                              onChange={field.onChange}
-                              tools={platformTools}
-                              catalogAvailable={platformToolCatalogAvailable}
-                            />
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </section>
-
-                    <section className="space-y-3 border-t pt-6">
-                      <div className="space-y-1">
-                        <h3 className="text-sm font-medium">
-                          {t('agents.otherTools')}
-                        </h3>
-                        <p className="text-xs text-muted-foreground">
-                          {t('agents.otherToolsDescription')}
-                        </p>
-                      </div>
-                      <FormField
-                        control={form.control}
-                        name="allowed_platform_tools"
-                        render={({ field }) => (
-                          <FormItem>
-                            <AgentApiToolPicker
-                              platformTools={platformTools}
-                              platformValue={field.value}
-                              onPlatformChange={field.onChange}
-                              hostTools={hostTools}
-                              hostValue={form.watch('allowed_tools')}
-                              onHostChange={(value) =>
-                                form.setValue('allowed_tools', value, {
-                                  shouldDirty: true,
-                                  shouldValidate: true,
-                                })
-                              }
-                              platformCatalogAvailable={
-                                platformToolCatalogAvailable
-                              }
-                              hostCatalogAvailable={hostToolCatalogAvailable}
-                              scopes={OTHER_TOOL_SCOPES}
-                            />
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </section>
-                  </CardContent>
                 </Card>
+              ) : (
+                !activeRunnerStage &&
+                runnerConfigSchema && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>{t('agents.runnerSettings')}</CardTitle>
+                      <CardDescription>
+                        {t('agents.noRunnerMetadata')}
+                      </CardDescription>
+                    </CardHeader>
+                  </Card>
+                )
+              )}
+
+              {/* What the answer is built from */}
+              {!runnerInstallRecovering && activeRunnerStage && (
+                <>
+                  {runnerGroups.model.length > 0 && (
+                    <PrimaryBlock icon={Cpu} guide={parametersGuide('model')}>
+                      {runnerForm(runnerGroups.model)}
+                    </PrimaryBlock>
+                  )}
+                  {runnerGroups.prompt.length > 0 && (
+                    <PrimaryBlock
+                      icon={ScrollText}
+                      guide={parametersGuide('prompt')}
+                    >
+                      {runnerForm(runnerGroups.prompt)}
+                    </PrimaryBlock>
+                  )}
+                </>
+              )}
+
+              {/* What this Agent handles, and what it may call */}
+              <PrimaryBlock
+                icon={Zap}
+                guide="agent-sections"
+                title={t('agents.bindableEvents')}
+                hint={t('agents.bindableEventsDescription')}
+              >
+                <FormField
+                  control={form.control}
+                  name="supported_event_patterns"
+                  render={({ field }) => (
+                    <FormItem>
+                      <AgentEventPatternPicker
+                        events={availableEventTypes}
+                        value={field.value}
+                        onChange={field.onChange}
+                        tools={platformTools}
+                        catalogAvailable={platformToolCatalogAvailable}
+                      />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </PrimaryBlock>
+              <PrimaryBlock
+                icon={Wrench}
+                title={t('agents.otherTools')}
+                hint={t('agents.otherToolsDescription')}
+                action={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setToolsOpen(true)}
+                    data-testid="agent-manage-tools"
+                  >
+                    {t(ck('manageTools'))}
+                  </Button>
+                }
+              >
+                <dl className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {[
+                    {
+                      label: t('agents.layout.platformTools'),
+                      value: toolCount(selectedPlatformTools?.length ?? 0),
+                    },
+                    {
+                      label: t('agents.layout.hostTools'),
+                      value: hostToolCatalogAvailable
+                        ? toolCount(
+                            form.watch('allowed_tools').length,
+                            hostTools.length,
+                          )
+                        : '—',
+                    },
+                    {
+                      label: t(ck('operations')),
+                      value: toolCount(
+                        selectedWorkspaceOperations?.length ?? 0,
+                      ),
+                    },
+                  ].map((stat) => (
+                    <div
+                      key={stat.label}
+                      className="rounded-md bg-muted/40 px-3 py-2"
+                    >
+                      <dt className="text-xs text-muted-foreground">
+                        {stat.label}
+                      </dt>
+                      <dd className="text-sm font-medium">{stat.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </PrimaryBlock>
+
+              {!runnerInstallRecovering && activeRunnerStage && (
+                <>
+                  {runnerGroups.knowledge.length > 0 && (
+                    <PrimaryBlock
+                      icon={BookOpen}
+                      guide={parametersGuide('knowledge')}
+                    >
+                      {runnerForm(runnerGroups.knowledge)}
+                      {runnerGroups.retrieval.length > 0 && (
+                        <RetrievalSettings label={t(ck('retrieval'))}>
+                          {runnerForm(runnerGroups.retrieval)}
+                        </RetrievalSettings>
+                      )}
+                    </PrimaryBlock>
+                  )}
+                  {runnerGroups.basic.length > 0 && (
+                    <PrimaryBlock
+                      icon={Settings2}
+                      guide={parametersGuide('basic')}
+                      title={t(ck('runnerSettings'), {
+                        runner: extractI18nObject(activeRunnerStage.label),
+                      })}
+                    >
+                      {runnerForm(runnerGroups.basic)}
+                    </PrimaryBlock>
+                  )}
+                  {(runnerExtraItems.length > 0 ||
+                    runnerGroups.context.length > 0 ||
+                    runnerGroups.runtime.length > 0 ||
+                    runnerGroups.sandbox.length > 0 ||
+                    runnerGroups.advanced.length > 0) && (
+                    <SettingGroup title={t(ck('more'))}>
+                      {(runnerExtraItems.length > 0 ||
+                        runnerGroups.context.length > 0) && (
+                        <Watch<Record<string, Record<string, unknown>>>
+                          control={watchControl}
+                          name="runner_config"
+                        >
+                          {(configs) => (
+                            <SettingRow
+                              id="context"
+                              icon={MessagesSquare}
+                              title={t(ck('context'))}
+                              summary={changedSummary(
+                                runnerGroups.context,
+                                configs,
+                              )}
+                            >
+                              <SubsetForm
+                                items={runnerExtraItems}
+                                read={readRunner}
+                                write={writeRunner}
+                                systemContext={AGENT_FORM_SYSTEM_CONTEXT}
+                              />
+                              {runnerForm(runnerGroups.context)}
+                            </SettingRow>
+                          )}
+                        </Watch>
+                      )}
+                      {runnerGroups.runtime.length > 0 && (
+                        <Watch<Record<string, Record<string, unknown>>>
+                          control={watchControl}
+                          name="runner_config"
+                        >
+                          {(configs) => (
+                            <SettingRow
+                              id="runtime"
+                              icon={Gauge}
+                              title={t(ck('runtime'))}
+                              summary={changedSummary(
+                                runnerGroups.runtime,
+                                configs,
+                              )}
+                            >
+                              {runnerForm(runnerGroups.runtime)}
+                            </SettingRow>
+                          )}
+                        </Watch>
+                      )}
+                      {runnerGroups.sandbox.length > 0 && (
+                        <Watch<Record<string, Record<string, unknown>>>
+                          control={watchControl}
+                          name="runner_config"
+                        >
+                          {(configs) => (
+                            <SettingRow
+                              id="sandbox"
+                              icon={Box}
+                              title={t(ck('sandbox'))}
+                              summary={
+                                configs?.[currentRunner]?.['box-enabled'] ===
+                                false
+                                  ? t(ck('off'))
+                                  : t(ck('on'))
+                              }
+                            >
+                              {runnerForm(runnerGroups.sandbox)}
+                            </SettingRow>
+                          )}
+                        </Watch>
+                      )}
+                      {runnerGroups.advanced.length > 0 && (
+                        <Watch<Record<string, Record<string, unknown>>>
+                          control={watchControl}
+                          name="runner_config"
+                        >
+                          {(configs) => (
+                            <SettingRow
+                              id="advanced"
+                              icon={SlidersHorizontal}
+                              title={t(ck('advanced'))}
+                              summary={changedSummary(
+                                runnerGroups.advanced,
+                                configs,
+                              )}
+                            >
+                              {runnerForm(runnerGroups.advanced)}
+                            </SettingRow>
+                          )}
+                        </Watch>
+                      )}
+                    </SettingGroup>
+                  )}
+                </>
               )}
             </div>
           </div>
+          <Sheet open={toolsOpen} onOpenChange={setToolsOpen}>
+            <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
+              <SheetHeader>
+                <SheetTitle>{t('agents.otherTools')}</SheetTitle>
+                <SheetDescription>
+                  {t('agents.layout.toolsSheetDescription')}
+                </SheetDescription>
+              </SheetHeader>
+              <div className="px-4 pb-6">
+                <FormField
+                  control={form.control}
+                  name="allowed_platform_tools"
+                  render={({ field }) => (
+                    <FormItem>
+                      <AgentApiToolPicker
+                        platformTools={platformTools}
+                        platformValue={field.value}
+                        onPlatformChange={field.onChange}
+                        hostTools={hostTools}
+                        hostValue={form.watch('allowed_tools')}
+                        onHostChange={(value) =>
+                          form.setValue('allowed_tools', value, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          })
+                        }
+                        platformCatalogAvailable={platformToolCatalogAvailable}
+                        hostCatalogAvailable={hostToolCatalogAvailable}
+                        scopes={OTHER_TOOL_SCOPES}
+                        workspaceTools={{
+                          count: workspaceOperations.length,
+                          selectedCount: form.watch(
+                            'allowed_workspace_operations',
+                          ).length,
+                          content: (
+                            <FormField
+                              control={form.control}
+                              name="allowed_workspace_operations"
+                              render={({ field: opsField }) => (
+                                <FormItem>
+                                  <WorkspaceOperationsPicker
+                                    operations={selectableWorkspaceOperations}
+                                    domains={domains}
+                                    value={opsField.value}
+                                    onChange={(next) =>
+                                      form.setValue(
+                                        'allowed_workspace_operations',
+                                        next,
+                                        {
+                                          shouldDirty: true,
+                                          shouldValidate: true,
+                                        },
+                                      )
+                                    }
+                                  />
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          ),
+                        }}
+                      />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </SheetContent>
+          </Sheet>
           <GuidedTour
             enabled={guideEnabled}
             storageKey="langbot_runner_setup_guide_v1"
             steps={runnerGuideSteps}
             testId="runner-setup-guide"
           />
+          <AlertDialog
+            open={dangerousModalOpen}
+            onOpenChange={setDangerousModalOpen}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {t('workspaceOperations.dangerousConfirmTitle')}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t('workspaceOperations.dangerousConfirmDescription')}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel
+                  onClick={() => {
+                    setDangerousModalOpen(false);
+                    pendingResolveRef.current?.(false);
+                    pendingSaveValuesRef.current = null;
+                    pendingResolveRef.current = null;
+                  }}
+                >
+                  {t('workspaceOperations.dangerousConfirmCancel')}
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={async () => {
+                    setDangerousModalOpen(false);
+                    if (pendingSaveValuesRef.current) {
+                      const vals = pendingSaveValuesRef.current;
+                      pendingSaveValuesRef.current = null;
+                      const resolve = pendingResolveRef.current;
+                      pendingResolveRef.current = null;
+                      const success = await saveValues(vals);
+                      resolve?.(success);
+                    }
+                  }}
+                >
+                  {t('workspaceOperations.dangerousConfirmAction')}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </form>
       </Form>
     </div>

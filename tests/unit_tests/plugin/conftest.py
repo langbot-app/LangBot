@@ -1,5 +1,6 @@
 """Database fixture for plugin persistence behavior tests."""
 
+import os
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -9,6 +10,17 @@ from langbot.pkg.entity.persistence.bstorage import BinaryStorage
 from langbot.pkg.entity.persistence.plugin import PluginSetting
 from langbot.pkg.entity.persistence.user import User
 from langbot.pkg.entity.persistence.workspace import Workspace
+from langbot_plugin.runtime.security import PLUGIN_FILE_STORAGE_DIR_ENV
+
+
+@pytest.fixture(autouse=True)
+def clean_file_transfer_env():
+    original = os.environ.get(PLUGIN_FILE_STORAGE_DIR_ENV)
+    yield
+    if original is None:
+        os.environ.pop(PLUGIN_FILE_STORAGE_DIR_ENV, None)
+    else:
+        os.environ[PLUGIN_FILE_STORAGE_DIR_ENV] = original
 
 
 @pytest.fixture

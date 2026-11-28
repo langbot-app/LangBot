@@ -1,33 +1,43 @@
 name: Test Migrations
 
 on:
-  push:
-    branches:
-      - main
-      - master
-      - dev
-    paths:
-      - 'src/langbot/pkg/persistence/**'
-      - 'src/langbot/pkg/entity/persistence/**'
-      - 'tests/integration/persistence/**'
-      - 'tests/unit_tests/api/service/test_monitoring_sessions.py'
-      - '.github/workflows/test-migrations.yml'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - 'src/langbot/pkg/persistence/**'
-      - 'src/langbot/pkg/entity/persistence/**'
-      - 'tests/integration/persistence/**'
-      - 'tests/unit_tests/api/service/test_monitoring_sessions.py'
-      - '.github/workflows/test-migrations.yml'
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-migrations-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    name: Select test migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      persistence: ${{ steps.select.outputs.persistence }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/classify-test-changes
+        id: select
+
   test-migrations-sqlite:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.persistence == 'true'
     name: Migrations (SQLite)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -38,12 +48,24 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --frozen
 
       - name: Run SQLite migration tests
-        run: uv run pytest tests/integration/persistence/test_migrations.py -q --tb=short
+        run: uv run --no-sync pytest tests/integration/persistence/test_migrations.py -q --tb=short -o xfail_strict=true --junitxml=migrations-sqlite.xml
+
+      - name: Require SQLite migration evidence
+        run: python3 tools/verify_junit.py migrations-sqlite.xml
+      - name: Preserve SQLite migration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrations-sqlite
+          path: migrations-sqlite.xml
+          if-no-files-found: warn
 
   test-migrations-postgres:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.persistence == 'true'
     name: Migrations (PostgreSQL)
     runs-on: ubuntu-latest
     services:
@@ -55,6 +77,7 @@ jobs:
           POSTGRES_USER: langbot
           POSTGRES_PASSWORD: langbot
           POSTGRES_DB: langbot_test
+          TZ: UTC
         ports:
           - 5432:5432
         options: >-
@@ -66,6 +89,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -76,17 +101,28 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --frozen
 
       - name: Run PostgreSQL migration tests
         env:
           TEST_POSTGRES_URL: postgresql+asyncpg://langbot:langbot@localhost:5432/langbot_test
         run: >-
-          uv run pytest
+          uv run --no-sync pytest
           tests/integration/persistence/test_migrations_postgres.py
           tests/integration/persistence/test_monitoring_postgres.py
           tests/unit_tests/api/service/test_monitoring_sessions.py::test_postgres_upgrade_rls_and_concurrent_bot_counts
           tests/integration/persistence/test_pgvector_postgres.py
           tests/integration/persistence/test_release_migration_postgres.py
           tests/integration/persistence/test_plugin_identity_migration.py
-          -q --tb=short
+          tests/integration/persistence/test_execution_lease_scopes_postgres.py
+          -q --tb=short -o xfail_strict=true
+          --junitxml=migrations-postgres.xml
+      - name: Require PostgreSQL migration evidence
+        run: python3 tools/verify_junit.py migrations-postgres.xml
+      - name: Preserve PostgreSQL migration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrations-postgres
+          path: migrations-postgres.xml
+          if-no-files-found: warn

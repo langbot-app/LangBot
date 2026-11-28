@@ -4,17 +4,17 @@ import dataclasses
 import typing
 import traceback
 import asyncio
+import contextlib
 
 import sqlalchemy
 
 from ..core import app
+from ..plugin.message_received import message_received_event
 from . import entities as pipeline_entities
 from ..entity.persistence import pipeline as persistence_pipeline
 from . import stage
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
-import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
-import langbot_plugin.api.entities.events as events
 from ..utils import importutil
 from ..api.http.authz import WorkspaceRequiredError
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType, RequestContext
@@ -26,7 +26,6 @@ from ..i18n.workspace import get_workspace_language
 from ..agent.runner.config_resolver import RunnerConfigResolver
 from .extension_preferences import normalize_extension_preferences
 
-import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 from . import (
@@ -39,6 +38,7 @@ from . import (
     wrapper,
     preproc,
     ratelimit,
+    speech,
 )
 
 importutil.import_modules_in_pkgs(
@@ -52,6 +52,7 @@ importutil.import_modules_in_pkgs(
         wrapper,
         preproc,
         ratelimit,
+        speech,
     ]
 )
 
@@ -129,6 +130,8 @@ class RuntimePipeline:
         extensions_prefs = normalize_extension_preferences(pipeline_entity.extensions_preferences)
         self.enable_all_plugins = extensions_prefs['enable_all_plugins'] is True
         self.enable_all_mcp_servers = extensions_prefs['enable_all_mcp_servers'] is True
+        self.workspace_operations = extensions_prefs.get('workspace_operations', [])
+        self.allowed_platform_tools = extensions_prefs.get('allowed_platform_tools', [])
         pipeline_config = pipeline_entity.config or {}
         runner_config: dict[str, typing.Any] = {}
         runner_id = RunnerConfigResolver.resolve_runner_id(pipeline_config)
@@ -191,12 +194,20 @@ class RuntimePipeline:
         ):
             raise WorkspaceRequiredError('Query execution scope does not match RuntimePipeline')
         await self._assert_execution_active(query)
-        query.pipeline_config = self.pipeline_entity.config
+        # The message policy of the route this message matched is laid over the
+        # Messaging config, so stages and plugins read it under the legacy keys.
+        policy = await self.ap.message_policy_mgr.bind_query(query, self.pipeline_entity.config)
         # Store bound plugins and MCP servers in query for filtering
         query.variables['_pipeline_bound_plugins'] = self.bound_plugins
+        if policy is await self.ap.message_policy_mgr.neutral_runtime():
+            # No bot policy (debug chat, pipeline.run): there is no bot plugin
+            # selection, so the Chat's plugin list keeps choosing the listeners.
+            object.__setattr__(query, '_listener_plugins', self.bound_plugins)
         query.variables['_pipeline_bound_mcp_servers'] = self.bound_mcp_servers
         query.variables['_pipeline_mcp_resource_attachments'] = self.mcp_resource_attachments
         query.variables['_pipeline_mcp_resource_agent_read_enabled'] = self.mcp_resource_agent_read_enabled
+        query.variables['_pipeline_workspace_operations'] = self.workspace_operations
+        query.variables['_pipeline_allowed_platform_tools'] = self.allowed_platform_tools
         # Telemetry: the bindings this lane runs with. None means "all enabled",
         # which the *_all flags make explicit in the chain record.
         try:
@@ -235,38 +246,42 @@ class RuntimePipeline:
 
         await self.process_query(query)
 
+    async def deliver_runner_result(self, query: pipeline_query.Query, result: provider_message.Message) -> None:
+        """Use the configured post-processing stages for an explicitly recovered Runner."""
+        processors = [
+            index for index, stage in enumerate(self.stage_containers) if stage.inst_name == 'MessageProcessor'
+        ]
+        if len(processors) != 1:
+            raise ValueError('Runner recovery requires exactly one MessageProcessor stage')
+        await self._assert_execution_active(query)
+        query.resp_messages.append(result)
+        await self._execute_from_stage(processors[0] + 1, query)
+
     async def _check_output(self, query: pipeline_query.Query, result: pipeline_entities.StageProcessResult):
         """检查输出"""
         if result.user_notice or result.debug_notice or result.console_notice or result.error_notice:
             await self._assert_execution_active(query)
         if result.user_notice:
-            # 处理str类型
+            if result.structured_error and '_cli_run_status' in query.variables:
+                query.variables['_cli_run_error'] = result.structured_error
+            policy = await self.ap.message_policy_mgr.for_query(query)
+            result.user_notice = policy.build_notice(query.message_event, result.user_notice)
 
-            if isinstance(result.user_notice, str):
-                result.user_notice = platform_message.MessageChain([platform_message.Plain(text=result.user_notice)])
-            elif isinstance(result.user_notice, list):
-                result.user_notice = platform_message.MessageChain(*result.user_notice)
+            async def before_send() -> None:
+                await self._assert_execution_active(query)
 
-            if query.pipeline_config['output']['misc']['at-sender'] and isinstance(
-                query.message_event, platform_events.GroupMessage
-            ):
-                result.user_notice.insert(0, platform_message.At(target=query.message_event.sender.id))
-            stream_output_supported = await query.adapter.is_stream_output_supported()
-            await self._assert_execution_active(query)
-            if stream_output_supported and query.resp_messages:
-                await query.adapter.reply_message_chunk(
-                    message_source=query.message_event,
-                    bot_message=query.resp_messages[-1],
-                    message=result.user_notice,
-                    quote_origin=query.pipeline_config['output']['misc']['quote-origin'],
-                    is_final=query.resp_messages[-1].is_final,
-                )
-            else:
-                await query.adapter.reply_message(
-                    message_source=query.message_event,
-                    message=result.user_notice,
-                    quote_origin=query.pipeline_config['output']['misc']['quote-origin'],
-                )
+            reply_options = {}
+            if result.structured_error:
+                from ..platform.sources.websocket_adapter import WebSocketAdapter
+
+                if isinstance(query.adapter, WebSocketAdapter):
+                    reply_options['error'] = result.structured_error
+            await policy.send_notice(
+                query,
+                result.user_notice,
+                before_send=before_send,
+                reply_options=reply_options,
+            )
         if result.debug_notice:
             self.ap.logger.debug(result.debug_notice)
         if result.console_notice:
@@ -277,7 +292,10 @@ class RuntimePipeline:
             query.variables['_monitoring_has_error'] = True
             # The lane reports failures as a value instead of raising, so record the
             # reason here: without it the uploaded trace would not explain the break.
-            self._record_lane_failure(query, str(result.error_notice))
+            detail = str(result.error_notice)
+            if result.debug_notice and str(result.debug_notice).strip() not in detail:
+                detail = f'{detail}\n{result.debug_notice}'
+            self._record_lane_failure(query, detail)
             # Record error to monitoring system
             try:
                 await self._assert_execution_active(query)
@@ -302,7 +320,7 @@ class RuntimePipeline:
                     bot_name=bot_name,
                     pipeline_id=self.pipeline_entity.uuid,
                     pipeline_name=pipeline_name,
-                    error_type='PipelineError',
+                    error_type=result.structured_error['error_code'] if result.structured_error else 'PipelineError',
                     error_message=result.error_notice,
                     session_id=session_id,
                     stack_trace=result.debug_notice if result.debug_notice else None,
@@ -310,6 +328,60 @@ class RuntimePipeline:
                 )
             except Exception as e:
                 self.ap.logger.error(f'Failed to record error to monitoring: {e}')
+
+    async def _mark_stage_interrupt(self, query: pipeline_query.Query, stage_name: str) -> None:
+        """Make rule-based drops visible: log them and attribute them in monitoring."""
+        from .monitoring_helper import FILTER_STAGES, mark_stage_interrupt
+
+        if stage_name not in FILTER_STAGES:
+            return
+        session = f'{getattr(query.launcher_type, "value", query.launcher_type)}_{query.launcher_id}'
+        self.ap.logger.info(f'Query {query.query_id} ({session}) stopped by pipeline stage {stage_name}')
+        mark_stage_interrupt(query, stage_name)
+        from ..message_policy import manager, schema
+
+        runtime = manager.get_query_policy(query)
+        if runtime is None or not runtime.bot_uuid:
+            return
+        bot = self.ap.platform_mgr.find_runtime_bot(get_query_execution_context(query), runtime.bot_uuid)
+        if bot is None:
+            return
+        route = manager.select_route(
+            bot.bot_entity.event_bindings, route_id=runtime.route_id, pipeline_uuid=query.pipeline_uuid
+        )
+        item = {
+            'BanSessionCheckStage': 'trigger.access-control',
+            'GroupRespondRuleCheckStage': 'trigger.group-respond-rules',
+            'RequireRateLimitOccupancy': 'safety.rate-limit',
+            'PreContentFilterStage': 'safety.content-filter',
+            'PostContentFilterStage': 'safety.content-filter',
+        }[stage_name]
+        item = query.variables.get('_policy_filter_item', item)
+        reason = schema.drop_reason(runtime.bot_uuid, route, item)
+        query.variables['message_policy_drop'] = reason
+        ingress = getattr(query, '_policy_ingress_id', None)
+        if ingress:
+            await self.ap.monitoring_service.record_policy_event(
+                get_query_execution_context(query),
+                ingress,
+                {
+                    'type': 'admission',
+                    'reason': reason,
+                    'policy_layer': reason.split(':', 1)[0],
+                    'policy_item': item.split('.', 1)[1],
+                },
+            )
+        await bot._record_event_route_trace(
+            event_type='message.received',
+            binding=route,
+            target_type='pipeline',
+            target_uuid=query.pipeline_uuid,
+            status='discarded',
+            failure_code='message_policy',
+            details={'policy_layer': reason.split(':', 1)[0], 'policy_item': item.split('.', 1)[1]},
+            text=reason,
+            reason=reason,
+        )
 
     async def _execute_from_stage(
         self,
@@ -357,6 +429,7 @@ class RuntimePipeline:
 
                 if result.result_type == pipeline_entities.ResultType.INTERRUPT:
                     self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query.query_id}')
+                    await self._mark_stage_interrupt(query, stage_container.inst_name)
                     break
                 elif result.result_type == pipeline_entities.ResultType.CONTINUE:
                     query = result.new_query
@@ -377,6 +450,7 @@ class RuntimePipeline:
 
                     if sub_result.result_type == pipeline_entities.ResultType.INTERRUPT:
                         self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query.query_id}')
+                        await self._mark_stage_interrupt(query, stage_container.inst_name)
                         break
                     elif sub_result.result_type == pipeline_entities.ResultType.CONTINUE:
                         query = sub_result.new_query
@@ -418,43 +492,63 @@ class RuntimePipeline:
         return event_type[:160] or 'message.received'
 
     async def process_query(self, query: pipeline_query.Query):
+        from langbot_plugin.utils.log import log_scope
+
         workspace_uuid = getattr(query, 'workspace_uuid', None) or getattr(self, 'workspace_uuid', '')
-        with language_scope(await get_workspace_language(self.ap, workspace_uuid)):
+        with (
+            log_scope(trace=getattr(query, '_message_log_trace', None), workspace=workspace_uuid),
+            language_scope(await get_workspace_language(self.ap, workspace_uuid)),
+        ):
             return await self._process_query_with_language(query)
 
     async def _process_query_with_language(self, query: pipeline_query.Query):
         from ..telemetry import trace as trace_mod
-        from ..telemetry.execution import ingress
+        from ..telemetry.execution import HANDOFF_EVENT_KEY, HANDOFF_SUPPRESSED_KEY, describe_exception, ingress
         from ..telemetry.execution import record as record_execution
+        from ..telemetry.execution import resume as resume_execution
         from ..telemetry.platform import processing_mode
         from ..telemetry.trace import stage_scope
 
         token = processing_mode.set('pipeline')
-        # The Workspace-scoped opaque query uuid is the execution identity Space
-        # shows for this lane; it is a stable UUID for every pooled query.
-        ingress_event_id = (query.variables or {}).get('_ingress_event_id')
-        execution_id = ingress_event_id or str(getattr(query, 'query_uuid', '') or '').strip() or str(query.query_id)
-        # A lane with no inbound platform event in flight (WebChat, WebUI debug,
-        # HTTP pipeline run) synthesizes its virtual inbound event here, so every
-        # execution starts at an event boundary and the Runner is never the trace
-        # origin. A lane running under a platform route nests inside that ingress.
-        synthesizing = trace_mod.current() is None and not ingress_event_id
+        variables = query.variables if isinstance(getattr(query, 'variables', None), dict) else {}
+        # A query queued by a platform route continues the chain the inbound
+        # event opened (see ``telemetry.execution.handoff``); a lane with no
+        # inbound platform event in flight (WebChat, WebUI debug, HTTP pipeline
+        # run) synthesizes its virtual inbound event, so every execution starts
+        # at an event boundary and the Runner is never the trace origin.
+        suppressed = bool(variables.get(HANDOFF_SUPPRESSED_KEY))
+        handed_off = bool(variables.get(HANDOFF_EVENT_KEY))
+        execution_id = (
+            variables.get(HANDOFF_EVENT_KEY)
+            or str(getattr(query, 'query_uuid', '') or '').strip()
+            or str(query.query_id)
+        )
         try:
-            with ingress(
-                self.ap,
-                'pipeline_done',
-                getattr(self, 'execution_context', None),
-                execution_id=execution_id,
-                debug=synthesizing,
-                origin=self._synthetic_origin(query) if synthesizing else 'platform',
-                synthetic_event=self._synthetic_event_type(query) if synthesizing else '',
-            ):
+            with contextlib.ExitStack() as stack:
+                if suppressed:
+                    # The event was discarded by its route: keep side effects local.
+                    stack.enter_context(trace_mod.suppress_reporting())
+                resumed = stack.enter_context(resume_execution(self.ap, variables)) if handed_off else None
+                if resumed is None:
+                    synthesizing = trace_mod.current() is None and not handed_off
+                    stack.enter_context(
+                        ingress(
+                            self.ap,
+                            'completed',
+                            getattr(self, 'execution_context', None),
+                            execution_id=execution_id,
+                            debug=synthesizing,
+                            origin=self._synthetic_origin(query) if synthesizing else 'platform',
+                            synthetic_event=self._synthetic_event_type(query) if synthesizing else '',
+                        )
+                    )
                 # The lane is its own workflow step: acknowledgements and replies it
                 # sends directly, and the runner it drives, hang under this node.
                 # When the lane runs under a platform route the node nests there.
                 with stage_scope() as node:
                     lane_outcome = 'success'
                     lane_error = ''
+                    self._note_adapter_on_trace(query)
                     try:
                         from ..platform.processing_indicator import processing_indicator
 
@@ -472,22 +566,22 @@ class RuntimePipeline:
                         raise
                     except BaseException as exc:
                         lane_outcome = 'failed'
-                        lane_error = str(exc) or type(exc).__name__
+                        lane_error = describe_exception(exc)
                         raise
                     finally:
                         try:
-                            variables = getattr(query, 'variables', None) or {}
-                            lane_has_error = bool(variables.get('_monitoring_has_error'))
+                            lane_has_error = bool(
+                                (getattr(query, 'variables', None) or {}).get('_monitoring_has_error')
+                            )
                         except Exception:
                             lane_has_error = False
                         if lane_outcome == 'success' and lane_has_error:
                             # The lane reported the failure as a value, not an exception.
                             lane_outcome = 'failed'
-                        config = getattr(query, 'pipeline_config', None)
-                        try:
-                            runner_id = (RunnerConfigResolver.resolve_runner_id(config) or '') if config else ''
-                        except Exception:
-                            runner_id = ''
+                        if lane_outcome == 'failed' and not lane_error:
+                            state = trace_mod.current()
+                            lane_error = (state.failure_reason or state.first_error) if state is not None else ''
+                        runner_id = self._engaged_runner()
                         record_execution(
                             self.ap,
                             getattr(self, 'execution_context', None),
@@ -611,39 +705,18 @@ class RuntimePipeline:
             self.ap.logger.error(f'Failed to record query start: {e}')
 
         try:
-            # Get bound plugins for this pipeline
-            bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
-
-            # ======== 触发 MessageReceived 事件 ========
-            event_type = (
-                events.PersonMessageReceived
-                if query.launcher_type == provider_session.LauncherTypes.PERSON
-                else events.GroupMessageReceived
-            )
-
-            event_obj = event_type(
-                query=query,
-                launcher_type=query.launcher_type.value,
-                launcher_id=query.launcher_id,
-                sender_id=query.sender_id,
-                message_event=query.message_event,
-                message_chain=query.message_chain,
-            )
-
-            await self._assert_execution_active(query)
-            event_ctx = await self.ap.plugin_connector.emit_event(event_obj, bound_plugins)
-            await self._assert_execution_active(query)
-
-            if event_ctx.is_prevented_default():
-                self.ap.logger.debug(
-                    f'MessageReceived event prevented default for query {query.query_id}, pipeline={pipeline_name}'
+            if not getattr(query, '_message_received_dispatched', False):
+                await self._assert_execution_active(query)
+                ctx = await self.ap.plugin_connector.emit_event(
+                    message_received_event(query),
+                    getattr(query, '_listener_plugins', query.variables.get('_pipeline_bound_plugins')),
                 )
-                return
-
-            # The Runtime returns a deserialized event, not the original Query.
-            # Carry plugin message edits into the following Pipeline stages.
-            query.message_chain = event_ctx.event.message_chain
-            query.message_event.message_chain = query.message_chain
+                await self._assert_execution_active(query)
+                if ctx.is_prevented_default():
+                    monitoring_helper.mark_plugin_handled(query, ctx)
+                    return
+                query.message_chain = ctx.event.message_chain
+                query.message_event.message_chain = query.message_chain
 
             self.ap.logger.debug(f'Processing query {query.query_id}')
 
@@ -683,6 +756,9 @@ class RuntimePipeline:
         except WorkspaceError as e:
             query.variables['_monitoring_has_error'] = True
             self.ap.logger.info(f'Dropped query {query.query_id} because its Workspace execution binding is stale: {e}')
+            from ..telemetry.execution import describe_exception
+
+            self._record_lane_failure(query, describe_exception(e))
         except Exception as e:
             query.variables['_monitoring_has_error'] = True
             inst_name = query.current_stage_name if query.current_stage_name else 'unknown'
@@ -690,7 +766,9 @@ class RuntimePipeline:
             self.ap.logger.error(f'Traceback: {traceback.format_exc()}')
             # The lane itself broke: land the reason on the execution trace so the
             # chain is uploaded even though the error never became a StageProcessResult.
-            self._record_lane_failure(query, str(e) or type(e).__name__)
+            from ..telemetry.execution import describe_exception
+
+            self._record_lane_failure(query, describe_exception(e))
 
             # Record query error
             try:
@@ -712,6 +790,38 @@ class RuntimePipeline:
 
         finally:
             self.ap.logger.debug(f'Query {query.query_id} processed')
+
+    @staticmethod
+    def _note_adapter_on_trace(query: pipeline_query.Query) -> None:
+        """Attach the platform adapter the lane serves, whichever handler runs.
+
+        Command queries never reach the chat handler, which used to be the only
+        place that named the adapter on the chain.
+        """
+        try:
+            from ..telemetry.trace import current as current_trace
+
+            state = current_trace()
+            adapter = getattr(query, 'adapter', None)
+            if state is not None and adapter is not None and not state.adapter:
+                state.adapter = adapter.__class__.__name__
+        except Exception:
+            pass
+
+    @staticmethod
+    def _engaged_runner() -> str:
+        """The Runner this chain actually handed work to; '' when none ran.
+
+        The Pipeline configuration always names a Runner, but a command or a
+        lane that broke before the chat handler never engaged it.
+        """
+        try:
+            from ..telemetry.trace import current as current_trace
+
+            state = current_trace()
+            return (state.runner or '') if state is not None else ''
+        except Exception:
+            return ''
 
     def _record_lane_failure(self, query: pipeline_query.Query, reason: str) -> None:
         """Land one failed ``runner/execute`` stage on the owning execution trace."""
@@ -736,7 +846,7 @@ class RuntimePipeline:
                         family='runner',
                         operation='execute',
                         mode='pipeline',
-                        runner=(RunnerConfigResolver.resolve_runner_id(query.pipeline_config) or ''),
+                        runner=self._engaged_runner(),
                         outcome='failed',
                         error=detail,
                         node=node,
@@ -912,15 +1022,25 @@ class PipelineManager:
             )
         coerce_pipeline_config(
             pipeline_entity.config,
-            getattr(self.ap, 'pipeline_config_meta_trigger', {'name': 'trigger', 'stages': []}),
-            getattr(self.ap, 'pipeline_config_meta_safety', {'name': 'safety', 'stages': []}),
             getattr(self.ap, 'pipeline_config_meta_ai', {'name': 'ai', 'stages': []}),
+            getattr(self.ap, 'pipeline_config_meta_speech', {'name': 'speech', 'stages': []}),
             getattr(self.ap, 'pipeline_config_meta_output', {'name': 'output', 'stages': []}),
         )
 
         # initialize stage containers according to pipeline_entity.stages
         stage_containers: list[StageInstContainer] = []
-        for stage_name in pipeline_entity.stages:
+        stages = list(pipeline_entity.stages)
+        if 'RequireDailyMessageQuota' not in stages:
+            # Stored pipelines predate this stage: meter right before the
+            # rate limiter (or the processor). Pipelines that never reach a
+            # processor have nothing to meter.
+            index = next(
+                (stages.index(name) for name in ('RequireRateLimitOccupancy', 'MessageProcessor') if name in stages),
+                None,
+            )
+            if index is not None:
+                stages.insert(index, 'RequireDailyMessageQuota')
+        for stage_name in stages:
             if stage_name not in self.stage_dict:
                 self.ap.logger.warning(f'Pipeline stage {stage_name} is not registered; skipping')
                 continue

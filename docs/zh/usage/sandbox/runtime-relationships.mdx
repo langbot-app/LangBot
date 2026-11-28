@@ -21,12 +21,14 @@ LangBot 里同时存在**插件、MCP、Skills、沙箱**四种扩展机制，�
 | MCP Server | LangBot MCP Loader（stdio 模式由 Box 托管） | 工具直接进入可用工具列表 | 接入已有的 MCP 服务 |
 | 插件 | Plugin Runtime | 由插件系统暴露能力 | 长期能力、需要配置页/事件监听/知识库组件 |
 
-## 流水线绑定
+## 聊天绑定
 
-Skills、MCP Server、插件都属于**流水线扩展**。在 WebUI 安装/创建后，还要在流水线扩展配置里决定启用范围：
+Skills、MCP Server、插件都属于**聊天扩展**。在 WebUI 安装/创建后，还要在聊天的扩展配置里决定启用范围：
 
 - 启用全部扩展，或
 - 只绑定指定的扩展
+
+插件在聊天里的绑定只授权 AI 调用插件的工具；插件的命令和事件监听器在机器人的「事件路由 → 插件」中启用。
 
 Skills 的绑定决定 Agent **能看到哪些技能**（影响 `<available_skills>` 列表）。具体技能内容只有 Agent 调用 `activate` 后才会注入。
 
@@ -38,8 +40,8 @@ Box API、Agent 工具、会话作用域、生命周期、Skills 和 stdio MCP �
 
 | 现象 | 优先检查 |
 |------|---------|
-| Agent 没有 `exec/read/write` 工具 | `box.enabled`、后端是否可用、流水线是否用内置 Agent |
-| Skill 列表为空 | Box Runtime 状态、`box.local.skills_root`、流水线绑定 |
+| Agent 没有 `exec/read/write` 工具 | `box.enabled`、后端是否可用、聊天是否用内置 Agent |
+| Skill 列表为空 | Box Runtime 状态、`box.local.skills_root`、聊天绑定 |
 | stdio MCP 启动失败 | Box Runtime 状态、MCP 命令和环境变量、启动超时 |
 | Docker 部署沙箱启不来 | `langbot_box` 是否挂载 `docker.sock`、Box 根目录路径是否一致 |
 | 文件读写失败 | `box.local.host_root`、`box.local.allowed_mount_roots` |

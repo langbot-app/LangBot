@@ -49,6 +49,77 @@ def request(key, operation='update', text='hello'):
     return ReplyStreamRequest(stream_id=key, operation=operation, text=text)
 
 
+@pytest.mark.parametrize('native', [True, False])
+async def test_agent_output_hooks_and_policy_follow_actual_delivery(native):
+    from unittest.mock import Mock
+    from tests.factories import group_text_query
+    from langbot.pkg.message_policy.runtime import MessagePolicyRuntime, FilterVerdict
+    from langbot_plugin.api.entities.context import EventContext
+
+    session, adapter, _ = make_session(native=native)
+    query = group_text_query()
+    session.source = query.message_event
+    observed = []
+
+    async def respond(event, selected):
+        observed.append((event.response_text, selected))
+        ctx = EventContext.from_event(event)
+        ctx.event.reply_message_chain = session._message('replacement')
+        return ctx
+
+    app = SimpleNamespace(plugin_connector=SimpleNamespace(emit_event=respond), logger=Mock())
+    policy = MessagePolicyRuntime(app, {'output': {'misc': {'at-sender': True, 'quote-origin': True}}})
+    policy.attach(query)
+    policy.filter_outbound = AsyncMock(return_value=FilterVerdict(True))
+    policy.process_long_text = AsyncMock(side_effect=lambda query, chain: chain)
+    policy.wait_force_delay = AsyncMock(return_value=0.125)
+    policy.record_output = AsyncMock()
+    session.policy_query, session.agent_hooks = query, True
+    key = uuid4()
+    await session.apply(request(key, 'update', 'partial'))
+    await session.apply(request(key, 'finish', 'complete'))
+    assert observed == [('complete', None)]
+    policy.wait_force_delay.assert_awaited_once()
+    if native:
+        call = adapter.reply_message_chunk.await_args.kwargs
+        policy.filter_outbound.assert_not_awaited()
+        policy.process_long_text.assert_not_awaited()
+        assert call['message'][-1].text == 'complete'
+    else:
+        call = adapter.reply_message.await_args.kwargs
+        policy.filter_outbound.assert_awaited_once_with(query, 'replacement')
+        policy.process_long_text.assert_awaited_once()
+        assert call['message'][-1].text == 'replacement'
+    assert isinstance(call['message'][0], message.At)
+    assert call['quote_origin'] is True
+    policy.record_output.assert_awaited_once_with(
+        query, [{'kind': 'delay', 'ms': 125}, {'kind': 'at'}, {'kind': 'quote'}]
+    )
+
+
+async def test_neutral_agent_reply_preserves_message():
+    from unittest.mock import Mock
+    from tests.factories import text_query
+    from langbot.pkg.message_policy.runtime import MessagePolicyRuntime
+    from langbot.pkg.message_policy.schema import neutral_policy
+    from langbot_plugin.api.entities.context import EventContext
+
+    session, adapter, _ = make_session(native=False)
+    query = text_query()
+    connector = SimpleNamespace(
+        emit_event=AsyncMock(side_effect=lambda event, selected: EventContext.from_event(event))
+    )
+    runtime = MessagePolicyRuntime(SimpleNamespace(plugin_connector=connector, logger=Mock()), neutral_policy())
+    runtime.attach(query)
+    session.policy_query, session.agent_hooks = query, True
+    await session.apply(request(uuid4(), 'finish', 'hello'))
+    assert adapter.reply_message.await_args.kwargs == {
+        'message_source': session.source,
+        'message': session._message('hello'),
+        'quote_origin': False,
+    }
+
+
 def proxy_for(session, *, allowed=True, advertised=True):
     if not hasattr(RunnerAPIProxy, 'reply_stream'):
         pytest.skip('SDK does not provide the optional streaming reply API')
@@ -120,6 +191,82 @@ async def test_sdk_stream_reuses_adapter_or_sends_one_final_message(native, sour
         else:
             adapter.send_message.assert_awaited_once()
             assert adapter.send_message.await_args.args[2][0].text == 'hello world'
+    await session.close()
+
+
+async def test_target_streaming_adapter_updates_card_without_source_message():
+    session, adapter, _ = make_session(source=False)
+    adapter.create_message_card_for_target = AsyncMock(return_value=True)
+    adapter.reply_message_chunk_for_target = AsyncMock()
+    key = uuid4()
+
+    await session.apply(request(key, text='hello'))
+    result = await session.apply(request(key, 'finish', 'hello world'))
+
+    assert result['delivery'] == 'streaming'
+    adapter.create_message_card_for_target.assert_awaited_once_with(
+        adapter.reply_message_chunk_for_target.await_args.kwargs['message_id'], 'person', 'user-1'
+    )
+    assert [call.kwargs['content'] for call in adapter.reply_message_chunk_for_target.await_args_list] == [
+        'hello',
+        'hello world',
+    ]
+    assert [call.kwargs['is_final'] for call in adapter.reply_message_chunk_for_target.await_args_list] == [False, True]
+    adapter.send_message.assert_not_awaited()
+    await session.close()
+
+
+async def test_non_message_event_buffers_one_final_reply():
+    event = SimpleNamespace(
+        event_type='platform.specific',
+        delivery=SimpleNamespace(
+            surface='platform',
+            platform_capabilities={},
+            reply_target={'target_type': 'person', 'target_id': 'user-1'},
+        ),
+    )
+    source = events.PlatformSpecificEvent(
+        type='platform.specific',
+        adapter_name='wecombot-omni',
+        action='test.event',
+        data={'callback_req_id': 'callback-1'},
+    )
+    adapter = SimpleNamespace(
+        is_stream_output_supported=AsyncMock(return_value=True),
+        send_message=AsyncMock(),
+    )
+    session = ReplyStreamSession(event, adapter, source)
+    key = uuid4()
+    await session.apply(request(key, text='partial'))
+    result = await session.apply(request(key, 'finish', 'complete'))
+
+    assert result['delivery'] == 'buffered'
+    adapter.send_message.assert_awaited_once()
+    assert adapter.send_message.await_args.args[2][0].text == 'complete'
+    await session.close()
+
+
+async def test_target_reply_is_sent_as_new_message():
+    event = SimpleNamespace(
+        event_type='message.received',
+        delivery=SimpleNamespace(
+            surface='platform',
+            platform_capabilities={},
+            reply_target={'target_type': 'person', 'target_id': 'user-1', 'message_id': 'original-1'},
+        ),
+    )
+    adapter = SimpleNamespace(
+        is_stream_output_supported=AsyncMock(return_value=True),
+        send_message=AsyncMock(),
+    )
+    session = ReplyStreamSession(event, adapter, source=None)
+    key = uuid4()
+    await session.apply(request(key, text='partial'))
+    result = await session.apply(request(key, 'finish', 'complete'))
+
+    assert result['delivery'] == 'buffered'
+    adapter.send_message.assert_awaited_once()
+    assert adapter.send_message.await_args.args[2][0].text == 'complete'
     await session.close()
 
 

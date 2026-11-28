@@ -4,7 +4,7 @@ metadata:
   author: langbot-team
   name: URLSummary
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/URLSummary
-  version: 0.1.9
+  version: 0.1.10
   description:
     en_US: Automatically summarize web page content from URLs shared in chat 
       using LLM.

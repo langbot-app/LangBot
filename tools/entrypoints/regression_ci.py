@@ -2,11 +2,16 @@
 """Prepare a disposable Linux CI stack from this checkout, then run a regression suite."""
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
+from hashlib import file_digest
+from html import escape
 import json
 import os
 from pathlib import Path
 import secrets
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -18,14 +23,29 @@ from tools.entrypoints.regression_coverage import write_report
 from tools.regression.regression_plugins import (
     PLUGIN_IDS,
     install_plugins,
+    package_marketplace,
     prepare_published_plugins,
     prepare_source_plugins,
 )
 from tools.regression.regression_local_cases import DEFAULT_GROUPS, api, require
-from tools.entrypoints.regression_suite import Suite
-from tools.entrypoints.regression_traffic import owned_box_containers, read_endpoint_snapshot
+from tools.entrypoints.regression_suite import Suite, number, validate
+from tools.entrypoints.regression_traffic import owned_box_containers
+from tools.regression.observations import read_endpoint_snapshot
 
 ROOT = Path(__file__).resolve().parents[2]
+# The Runtime CLI does not expose a bind address. Restrict both of its
+# listeners in the explicitly local Host lane without changing Runtime defaults.
+HOST_RUNTIME = """
+from langbot_plugin.runtime.io.controllers.ws import server
+
+class LocalController(server.WebSocketServerController):
+    def __init__(self, port, *, host="127.0.0.1", **kwargs):
+        super().__init__(port, host="127.0.0.1", **kwargs)
+
+server.WebSocketServerController = LocalController
+from langbot_plugin.cli.__init__ import main
+main()
+"""
 SUITE_BUDGETS = {
     'smoke': 60,
     'scenarios': 300,
@@ -41,7 +61,7 @@ sys.path.insert(0, str(ROOT))
 from tests.e2e.utils.config_factory import create_minimal_config, create_test_directories  # noqa: E402
 
 
-def suite_profile(name, run_id, groups=(), api_seed=1):
+def suite_profile(name, run_id, groups=(), api_seed=1, load_settings=None, *, api_fixed_only=False):
     profile_path = ROOT / 'tools/profiles' / ('endurance.json' if name == 'endurance' else 'smoke.json')
     if name in ('scenarios', 'daily'):
         from tools.regression.regression_scenarios import expanded_profile
@@ -57,8 +77,8 @@ def suite_profile(name, run_id, groups=(), api_seed=1):
         from tools.regression.regression_api_cases import add_cases
 
         profile.update(resources=[], cases=[], coverage_suite='api')
-        profile['vars']['api_seed'] = api_seed
-        add_cases(profile)
+        profile['vars'].update(api_seed=api_seed, api_fixed_only=api_fixed_only)
+        add_cases(profile, fixed_only=api_fixed_only)
     if name == 'isolation':
         from tools.regression.regression_isolation_cases import isolation_profile
 
@@ -78,6 +98,7 @@ def suite_profile(name, run_id, groups=(), api_seed=1):
                 'extensions_preferences',
                 {
                     'enable_all_plugins': False,
+                    'workspace_operations': [],
                     'plugins': [dict(zip(('author', 'name'), plugin.split('/'))) for plugin in PLUGIN_IDS],
                 },
             )
@@ -98,7 +119,55 @@ def suite_profile(name, run_id, groups=(), api_seed=1):
                     # This workload measures repeated tool use; each pipeline owns one sandbox per CI run.
                     config['box-session-id-template'] = f'qa-{run_id}-{resource["id"]}'
     profile.update(cleanup='always', performance_mode='observe')
+    if load_settings is not None:
+        if name != 'endurance':
+            raise ValueError('A load profile requires --suite endurance')
+        if not isinstance(load_settings, dict) or not load_settings:
+            raise ValueError('A load profile must be a non-empty object')
+        allowed = {'phases', 'thresholds', 'resource_limits', 'performance_mode', 'box_command_delay_seconds'}
+        if extra := load_settings.keys() - allowed:
+            raise ValueError(f'Unsupported load profile fields: {sorted(extra)}')
+        number(load_settings.get('box_command_delay_seconds', 1), 'box_command_delay_seconds')
+        profile.update({key: value for key, value in load_settings.items() if key != 'box_command_delay_seconds'})
+        validate(profile)
     return profile, profile_path
+
+
+def _remove_box_container(container: str) -> str | None:
+    """Remove one run-owned Box container without hanging suite teardown."""
+    try:
+        result = subprocess.run(
+            ['docker', 'rm', '-f', container],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except subprocess.TimeoutExpired:
+        try:
+            subprocess.run(['docker', 'kill', container], check=False, capture_output=True, timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        return 'timed out removing container'
+    if result.returncode:
+        message = (result.stderr or result.stdout or '').strip().replace('\n', ' ')
+        return message[:500] or f'exit code {result.returncode}'
+    return None
+
+
+def mixed_scenarios(box_command_delay_seconds=1):
+    """Build the measured mixed stimulus with an explicit Box command duration."""
+    number(box_command_delay_seconds, 'box_command_delay_seconds')
+    scenarios = json.loads((ROOT / 'tools/fixtures/mock_llm_scenarios.json').read_text())
+    for model in ('mock-chat', 'mock-smoke-box', 'mock-rag'):
+        scenarios[model]['delay_seconds'] = 0.6
+    for step in scenarios['mock-smoke-box']['steps']:
+        for call in step.get('tool_calls', []):
+            call['arguments']['command'] = (
+                'printf \'LB_BOX_HOST=%s\\n\' "$(hostname)"; '
+                f'sleep {box_command_delay_seconds}; ' + call['arguments']['command']
+            )
+    return scenarios
 
 
 def ready(url, processes, timeout=120):
@@ -107,27 +176,97 @@ def ready(url, processes, timeout=120):
         if any(p.poll() is not None for p in processes):
             raise RuntimeError('A regression dependency exited; inspect service logs')
         try:
-            read_endpoint_snapshot(url, timeout_seconds=1)
+            read_endpoint_snapshot(url, timeout_seconds=1, require_ready_json=True)
             return
         except (RuntimeError, OSError):
             time.sleep(0.2)
     raise RuntimeError(f'Service did not become ready: {url}')
 
 
+def allocate_ports():
+    # Keep reservations open together so this Job never selects the same port twice.
+    with ExitStack() as reservations:
+        ports = {}
+        for name in ('core', 'runtime', 'debug', 'box', 'mock', 'mock_box', 'mock_rag'):
+            listener = reservations.enter_context(socket.socket())
+            listener.bind(('127.0.0.1', 0))
+            ports[name] = listener.getsockname()[1]
+        return ports
+
+
+def host_wheel_index(private, wheelhouse):
+    """Publish a private, file-based PEP 503 index for the OSS installer."""
+    from packaging.utils import parse_wheel_filename
+
+    index = private / 'wheel-index'
+    index.mkdir()
+    entries = {}
+    for wheel in sorted(wheelhouse.glob('*.whl')):
+        package, _, _, _ = parse_wheel_filename(wheel.name)
+        with wheel.open('rb') as contents:
+            digest = file_digest(contents, 'sha256').hexdigest()
+        href = escape(f'{wheel.resolve().as_uri()}#sha256={digest}', quote=True)
+        entries.setdefault(package, []).append(f'<a href="{href}">{escape(wheel.name)}</a>')
+    for package, links in entries.items():
+        destination = index / package
+        destination.mkdir()
+        (destination / 'index.html').write_text('\n'.join(links) + '\n')
+    return index.as_uri() + '/'
+
+
+def host_environment(private, wheelhouse):
+    """Remove ambient credentials and use only prefetched dependency wheels."""
+    home = private / 'home'
+    home.mkdir(mode=0o700)
+    scratch = private / 'tmp'
+    scratch.mkdir(mode=0o700)
+    # Control tools and trusted fixture scripts only: Host Box is not a sandbox.
+    # These proxy settings are defense in depth for cooperative HTTP clients,
+    # not an operating-system network isolation boundary.
+    proxy = 'http://127.0.0.1:9'
+    loopback = '127.0.0.1,localhost,::1'
+    keep = ('PATH', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ')
+    env = {name: os.environ[name] for name in keep if name in os.environ}
+    env.update(
+        HOME=str(home),
+        TMPDIR=str(scratch),
+        PIP_CONFIG_FILE=os.devnull,
+        PIP_DISABLE_PIP_VERSION_CHECK='1',
+        LANGBOT_PLUGIN_PYPI_INDEX_URL=host_wheel_index(private, wheelhouse),
+        UV_OFFLINE='1',
+        ANONYMIZED_TELEMETRY='False',
+        HTTP_PROXY=proxy,
+        HTTPS_PROXY=proxy,
+        ALL_PROXY=proxy,
+        NO_PROXY=loopback,
+        http_proxy=proxy,
+        https_proxy=proxy,
+        all_proxy=proxy,
+        no_proxy=loopback,
+    )
+    return env
+
+
 def run(args):
-    if subprocess.check_output(
-        ['docker', 'ps', '-a', '--filter', 'label=langbot.box=true', '--format', '{{.ID}}'], text=True, timeout=10
-    ).strip():
+    host = args.box_backend == 'host'
+    ports = allocate_ports()
+    if (
+        not host
+        and subprocess.check_output(
+            ['docker', 'ps', '-a', '--filter', 'label=langbot.box=true', '--format', '{{.ID}}'], text=True, timeout=10
+        ).strip()
+    ):
         raise RuntimeError('CI needs a dedicated Docker daemon with no existing Box sandboxes')
     root = args.output.resolve()
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
     private = root / '.private'
     private.mkdir(mode=0o700)
     processes, logs = [], []
+    services = ExitStack()
     owned_services = {}
     key, runtime_token, box_token = (secrets.token_urlsafe(32) for _ in range(3))
     env = dict(
-        os.environ,
+        host_environment(private, args.plugin_wheelhouse.resolve()) if host else os.environ,
         LANGBOT_QA_API_KEY=key,
         LANGBOT_DATA_ROOT=str(private / 'data'),
         PYTHONPATH=str(ROOT / 'src'),
@@ -169,7 +308,7 @@ def run(args):
         processes.remove(process)
         pids[name] = start(name, command)
         if name == 'runtime':
-            ready('http://127.0.0.1:15340/healthz', processes, timeout=remaining())
+            ready(f'http://127.0.0.1:{ports["runtime"]}/healthz', processes, timeout=remaining())
         ready(profile['observe']['health']['core'], processes, timeout=remaining())
         while True:
             previous_timeout = suite.timeout
@@ -202,15 +341,28 @@ def run(args):
                 if args.plugins is not None
                 else prepare_published_plugins(root / 'plugins', args.plugin_manifest)
             )
-        config_path = create_minimal_config(private, port=15301)
+        config_path = create_minimal_config(private, port=ports['core'])
         create_test_directories(private)
         config = yaml.safe_load(config_path.read_text())
+        config.setdefault('space', {})['url'] = services.enter_context(package_marketplace(root / 'plugins', packages))
         config['api'].update(global_api_key=key, host='127.0.0.1')
-        config['plugin'].update(enable=True, runtime_ws_url='ws://127.0.0.1:15340/control/ws')
-        config['box'].update(enabled=True, backend='local', runtime={'endpoint': 'ws://127.0.0.1:15310/control/ws'})
-        config['box']['local'].update(
-            host_root=str(private / 'box'), allowed_mount_roots=[str(private / 'box')], image='python:3.12-alpine'
+        config['plugin'].update(enable=True, runtime_ws_url=f'ws://127.0.0.1:{ports["runtime"]}/control/ws')
+        config['box'].update(
+            enabled=True,
+            backend='host' if host else 'local',
+            runtime={'endpoint': f'ws://127.0.0.1:{ports["box"]}/control/ws'},
         )
+        config['box']['local'].update(
+            host_root=str(private / 'box'),
+            allowed_mount_roots=[str(private / 'box')],
+            image='' if host else 'python:3.12-alpine',
+        )
+        sqlite_queue = os.environ.get('LANGBOT_REGRESSION_SQLITE_WRITE_QUEUE')
+        if sqlite_queue is not None:
+            require(sqlite_queue in {'on', 'off'}, 'LANGBOT_REGRESSION_SQLITE_WRITE_QUEUE must be on or off')
+            sqlite_config = config.setdefault('database', {}).setdefault('sqlite', {})
+            sqlite_config['experimental_write_queue'] = sqlite_queue == 'on'
+            sqlite_config['experimental_write_timing'] = os.environ.get('LANGBOT_REGRESSION_SQLITE_WRITE_TIMING') == '1'
         config_path.write_text(yaml.safe_dump(config))
         groups = args.scenario_groups
         if groups is None:
@@ -219,7 +371,23 @@ def run(args):
                 groups = [args.suite]
             if 'plugins' in groups and not {'misc/EssentialCommands', 'misc/FAQManager'} <= set(args.extra_plugins):
                 groups.remove('plugins')
-        profile, profile_path = suite_profile(args.suite, secrets.token_hex(8), groups, args.api_seed)
+        profile, profile_path = suite_profile(
+            args.suite,
+            secrets.token_hex(8),
+            groups,
+            args.api_seed,
+            load_settings=args.load_settings,
+            api_fixed_only=args.api_fixed_only,
+        )
+        if host:
+            profile.get('resource_limits', {}).pop('containers', None)
+            if args.mixload_profile is None:
+                for case in profile['cases']:
+                    oracle = case.get('box_exec')
+                    if oracle and oracle.get('backend') == 'docker':
+                        # Preserve the full count/output/exit oracle, but insist
+                        # on actual Host execution rather than mislabel Docker.
+                        oracle['backend'] = 'host'
         cli_config = private / 'lbctl.yaml'
         cli_config.write_text(
             yaml.safe_dump(
@@ -228,7 +396,7 @@ def run(args):
                     'current_context': 'smoke',
                     'contexts': {
                         'smoke': {
-                            'endpoint': 'http://127.0.0.1:15301',
+                            'endpoint': f'http://127.0.0.1:{ports["core"]}',
                             'credential': {'type': 'env', 'name': 'LANGBOT_QA_API_KEY'},
                         }
                     },
@@ -237,13 +405,21 @@ def run(args):
         )
         profile['cli'] = {'executable': str(args.lbctl.resolve()), 'config': str(cli_config)}
         profile['vars'].update(
-            mock_base_url='http://127.0.0.1:18080/v1',
-            embedding_base_url='http://127.0.0.1:18080/v1',
-            core_base_url='http://127.0.0.1:15301',
-            core_health='http://127.0.0.1:15301/healthz',
+            mock_base_url=f'http://127.0.0.1:{ports["mock"]}/v1',
+            embedding_base_url=f'http://127.0.0.1:{ports["mock"]}/v1',
+            box_mock_base_url=f'http://127.0.0.1:{ports["mock_box"]}/v1',
+            rag_mock_base_url=f'http://127.0.0.1:{ports["mock_rag"]}/v1',
+            core_base_url=f'http://127.0.0.1:{ports["core"]}',
+            core_health=f'http://127.0.0.1:{ports["core"]}/healthz',
             core_db=str(private / 'data/langbot.db'),
             mock_records=str(root / 'mock-requests.jsonl'),
         )
+        if args.suite == 'endurance':
+            require(
+                len({profile['vars'][name] for name in ('mock_base_url', 'box_mock_base_url', 'rag_mock_base_url')})
+                == 3,
+                'Mixed generation Providers require three distinct endpoints',
+            )
         profile['plugins'] = []
         if 'smoke' in profile:
             profile['smoke']['required_plugins'] = [entry['id'] for entry in packages['plugins']]
@@ -253,28 +429,51 @@ def run(args):
             for document in resource.get('documents', []):
                 document['file'] = str((profile_path.parent / document['file']).resolve())
         pids = {}
-        pids['mock'] = start(
-            'mock',
-            [
-                sys.executable,
-                str(ROOT / 'tools/entrypoints/mock_llm.py'),
-                '--port',
-                '18080',
-                '--record',
-                str(root / 'mock-requests.jsonl'),
-            ],
-        )
+        mocks = {'mock': ports['mock']}
+        mock_args = []
+        if args.suite == 'endurance':
+            mocks.update(mock_box=ports['mock_box'], mock_rag=ports['mock_rag'])
+            # Fixed provider/tool latency makes overlap observable; this is not a performance baseline.
+            if args.mixload_profile is not None:
+                from tools.regression.mixload_cases import configure_mock_scenarios
+                from tools.regression.mixload_profile import load_mixload
+
+                scenarios = json.loads((ROOT / 'tools/fixtures/mock_llm_scenarios.json').read_text())
+                workload = load_mixload(args.mixload_profile).box_workload
+                scenarios = configure_mock_scenarios(
+                    scenarios,
+                    box_backend=args.box_backend,
+                    box_workload=workload,
+                )
+            else:
+                scenarios = mixed_scenarios((args.load_settings or {}).get('box_command_delay_seconds', 1))
+            scenario_path = private / 'mixed-scenarios.json'
+            scenario_path.write_text(json.dumps(scenarios, indent=2))
+            profile['vars']['mock_scenarios_file'] = str(scenario_path)
+            mock_args = ['--scenarios', str(scenario_path)]
+        for name, port in mocks.items():
+            pids[name] = start(
+                name,
+                [
+                    sys.executable,
+                    str(ROOT / 'tools/entrypoints/mock_llm.py'),
+                    '--port',
+                    str(port),
+                    '--record',
+                    str(root / (name + '-requests.jsonl')),
+                    *mock_args,
+                ],
+            )
         pids['runtime'] = start(
             'runtime',
             [
                 sys.executable,
-                '-m',
-                'langbot_plugin.cli.__init__',
+                *(['-c', HOST_RUNTIME] if host else ['-m', 'langbot_plugin.cli.__init__']),
                 'rt',
                 '--ws-control-port',
-                '15340',
+                str(ports['runtime']),
                 '--ws-debug-port',
-                '15341',
+                str(ports['debug']),
             ],
         )
         pids['box'] = start(
@@ -287,7 +486,7 @@ def run(args):
                 '--host',
                 '127.0.0.1',
                 '--ws-control-port',
-                '15310',
+                str(ports['box']),
             ],
         )
         pids['core'] = start(
@@ -295,14 +494,29 @@ def run(args):
         )
         profile['observe'] = {
             'health': {
-                'core': 'http://127.0.0.1:15301/healthz',
-                'box': 'http://127.0.0.1:15310/readyz',
-                'mock': 'http://127.0.0.1:18080/healthz',
+                'core': f'http://127.0.0.1:{ports["core"]}/healthz',
+                'box': f'http://127.0.0.1:{ports["box"]}/readyz',
+                **{name: f'http://127.0.0.1:{port}/healthz' for name, port in mocks.items()},
             },
             'pids': pids,
         }
-        if args.suite in ('daily', 'endurance'):
+        if not host and args.suite in ('daily', 'endurance'):
             profile['observe']['box_data_root'] = str(private / 'box')
+        if host:
+            profile['observe']['health']['runtime'] = f'http://127.0.0.1:{ports["runtime"]}/healthz'
+        budget = SUITE_BUDGETS[args.suite]
+        if args.mixload_profile is not None:
+            from tools.regression.profiled_mixload import prepare_profile
+
+            profile = prepare_profile(profile, args.mixload_profile, box_backend=args.box_backend)
+            if any(case['name'] == 'memory_chat' for case in profile['cases']):
+                require(
+                    any(entry['id'] == 'langbot-team/LongTermMemory' for entry in packages['plugins']),
+                    'memory_chat requires the LongTermMemory fixture (--extra-plugins KnowledgeEngine/LongTermMemory)',
+                )
+            budget = 120 + sum(
+                phase['duration_seconds'] + phase.get('cooldown_seconds', 0) for phase in profile['phases']
+            )
         for url in profile['observe']['health'].values():
             ready(url, processes)
         preparation = root / 'preparation'
@@ -314,7 +528,7 @@ def run(args):
         cli_data = yaml.safe_load(cli_config.read_text())
         cli_data['contexts']['smoke']['expected_workspace_uuid'] = identity['workspace_uuid']
         cli_config.write_text(yaml.safe_dump(cli_data))
-        if {'resources', 'api'} & set(groups) or args.restart_services:
+        if packages['plugins'] or {'resources', 'api'} & set(groups) or args.restart_services or args.suite == 'state':
             # Account creation is restricted to this runner's newly created private database.
             credentials = {'user': 'regression@langbot.test', 'password': secrets.token_urlsafe(32)}
             suite.secrets.append(credentials['password'])
@@ -325,7 +539,42 @@ def run(args):
             env['LANGBOT_QA_USER_TOKEN'] = response['data']['token']
             suite.env['LANGBOT_QA_USER_TOKEN'] = env['LANGBOT_QA_USER_TOKEN']
             suite.secrets.append(env['LANGBOT_QA_USER_TOKEN'])
-        install_plugins(suite.call, root / 'plugins', packages)
+
+        def install_confirmed_plugin(entry):
+            author, name = entry['id'].split('/')
+            headers = {'Authorization': 'Bearer ' + env['LANGBOT_QA_USER_TOKEN']}
+            status, response = api(
+                suite,
+                'POST',
+                '/api/v1/plugins/install/marketplace',
+                {
+                    'plugin_author': author,
+                    'plugin_name': name,
+                    'plugin_version': entry['version'],
+                    'auto_confirm_permissions': True,
+                },
+                headers=headers,
+            )
+            require(status == 200 and response.get('code') == 0, 'Wizard plugin installation was rejected')
+            task_id = response['data']['task_id']
+            deadline = time.monotonic() + suite.timeout(180)
+            while time.monotonic() < deadline:
+                status, response = api(suite, 'GET', f'/api/v1/system/tasks/{task_id}', headers=headers)
+                require(status == 200 and response.get('code') == 0, 'Plugin installation task unavailable')
+                task = response['data']
+                if task['runtime']['done']:
+                    require(not task['runtime']['exception'], f'Plugin installation/confirmation failed: {entry["id"]}')
+                    return
+                time.sleep(0.2)
+            raise TimeoutError(f'Plugin installation/confirmation timed out: {entry["id"]}')
+
+        install_plugins(
+            suite.call,
+            root / 'plugins',
+            packages,
+            install=install_confirmed_plugin,
+            readiness_timeout=suite.timeout(180),
+        )
         restart_result = None
         restart_elapsed = 0
         if args.restart_services:
@@ -362,10 +611,27 @@ def run(args):
                     str(root / 'gate/suite'),
                 ],
                 root / 'gate',
-                SUITE_BUDGETS[args.suite] - restart_elapsed,
+                (args.budget_seconds or budget) - restart_elapsed,
                 pids,
                 env,
             )
+        if args.suite == 'endurance':
+            provider_records = {
+                'chat': root / 'mock-requests.jsonl',
+                'box': root / 'mock_box-requests.jsonl',
+                'rag_chat': root / 'mock_rag-requests.jsonl',
+            }
+            if args.mixload_profile is not None:
+                from tools.regression.profiled_mixload import verify_profiled_run
+
+                mixed = verify_profiled_run(root / 'gate/suite', private / 'data/langbot.db', provider_records, profile)
+            else:
+                from tools.regression.regression_mixed import verify_mixed
+
+                mixed = verify_mixed(root / 'gate/suite', private / 'data/langbot.db', provider_records)
+            (root / 'gate/mixed.json').write_text(json.dumps(mixed, indent=2) + '\n')
+            result['mixed'] = mixed
+            result['passed'] = result['passed'] and mixed['passed']
         evidence = [root / 'gate/suite']
         if restart_result is not None:
             evidence.append(root / 'restart-checks')
@@ -374,13 +640,18 @@ def run(args):
         coverage = write_report(evidence, root / 'gate/suite', http_logs=[root / 'core.log'])
         result['coverage_errors'] = coverage['evidence_errors']
         result['scenario_groups'] = groups
+        result['box_backend'] = args.box_backend
+        if host:
+            result['docker_container_evidence'] = 'not_applicable_host'
         if args.suite == 'api':
-            result['api_seed'] = args.api_seed
+            result['api_fixed_only'] = args.api_fixed_only
+            result['api_seed'] = None if args.api_fixed_only else args.api_seed
             result['case_order'] = [case['name'] for case in profile['cases']]
         result['passed'] = result['passed'] and not result['coverage_errors']
         (root / 'gate/gate.json').write_text(json.dumps(result, indent=2) + '\n')
         return result
     finally:
+        services.close()
         for process in reversed(processes):
             if process.poll() is None:
                 os.killpg(process.pid, signal.SIGTERM)
@@ -392,8 +663,15 @@ def run(args):
         for log in logs:
             log.close()
         # This is a disposable CI daemon; still delete only this run's mounted sandboxes.
-        for container in owned_box_containers(private / 'box'):
-            subprocess.run(['docker', 'rm', '-f', container], check=True, capture_output=True)
+        if not host:
+            cleanup_errors = []
+            containers = owned_box_containers(private / 'box')
+            with ThreadPoolExecutor(max_workers=min(16, max(1, len(containers)))) as pool:
+                for container, error in zip(containers, pool.map(_remove_box_container, containers)):
+                    if error:
+                        cleanup_errors.append(f'{container}: {error}')
+            if cleanup_errors:
+                (root / 'cleanup-errors.json').write_text(json.dumps(cleanup_errors, indent=2) + '\n')
 
 
 def main():
@@ -407,6 +685,23 @@ def main():
         '--extra-plugins', nargs='*', default=[], help='Additional paths under --plugins, e.g. misc/HelloPlugin'
     )
     parser.add_argument('--suite', choices=tuple(SUITE_BUDGETS), default='smoke')
+    profiles = parser.add_mutually_exclusive_group()
+    profiles.add_argument(
+        '--load-profile',
+        type=Path,
+        help='Endurance JSON overrides for load geometry, thresholds, resource limits and Box command delay',
+    )
+    parser.add_argument('--budget-seconds', type=int, help='Endurance execution guard, excluding service preparation')
+    parser.add_argument(
+        '--box-backend',
+        choices=('docker', 'host'),
+        default='docker',
+        help='Host is an unsafe, loopback-only fixture lane, not Docker or a sandbox acceptance test',
+    )
+    parser.add_argument('--plugin-wheelhouse', type=Path, help='Prefetched local plugin dependency wheels for Host')
+    profiles.add_argument(
+        '--mixload-profile', type=Path, help='Run a configured mixed benchmark (endurance suite only)'
+    )
     parser.add_argument(
         '--scenario-groups',
         nargs='*',
@@ -414,12 +709,37 @@ def main():
         help='Local groups for scenarios/daily (default: all); an empty list selects only the base cases',
     )
     parser.add_argument('--api-seed', type=int, default=1, help='Replay the API suite chain shuffle (default: 1)')
+    parser.add_argument('--api-fixed-only', action='store_true', help='Run one fixed pass of the API chains')
     parser.add_argument('--restart-services', action='store_true', help='Check owned Core/Runtime restarts once')
     args = parser.parse_args()
+    if args.api_fixed_only and args.suite != 'api':
+        parser.error('--api-fixed-only requires --suite api')
     if args.extra_plugins and args.plugins is None:
         parser.error('--extra-plugins requires --plugins')
     if args.suite not in ('scenarios', 'daily') and (args.scenario_groups is not None or args.restart_services):
         parser.error('Optional scenarios and restarts require --suite scenarios or --suite daily')
+    if args.suite != 'endurance' and (args.load_profile is not None or args.budget_seconds is not None):
+        parser.error('--load-profile and --budget-seconds require --suite endurance')
+    if args.budget_seconds is not None and args.budget_seconds <= 0:
+        parser.error('--budget-seconds must be positive')
+    args.load_settings = None
+    if args.load_profile is not None:
+        try:
+            args.load_settings = json.loads(args.load_profile.read_text())
+            suite_profile('endurance', 'validation', load_settings=args.load_settings)
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
+    if args.mixload_profile is not None and args.suite != 'endurance':
+        parser.error('--mixload-profile requires --suite endurance')
+    if args.box_backend == 'host':
+        if args.plugins is None or args.plugins.resolve() != (ROOT / 'plugins').resolve():
+            parser.error('Host requires --plugins pointing to this checkout’s bundled trusted fixtures')
+        if args.plugin_wheelhouse is None or not any(args.plugin_wheelhouse.glob('*.whl')):
+            parser.error('Host requires --plugin-wheelhouse with prefetched local wheels')
+        if args.suite == 'endurance' and args.mixload_profile is None:
+            parser.error('Host endurance requires --mixload-profile; the stock verifier is Docker only')
+    elif args.plugin_wheelhouse is not None:
+        parser.error('--plugin-wheelhouse is only supported for --box-backend host')
     if args.output.exists():
         parser.error('--output must be a new directory')
     try:
@@ -427,7 +747,7 @@ def main():
     except Exception as exc:
         verdict = args.output / 'gate' / 'gate.json'
         result = json.loads(verdict.read_text()) if verdict.exists() else {}
-        result.update(passed=False, infrastructure_error=f'{type(exc).__name__}: {exc}')
+        result.update(passed=False, infrastructure_error=f'{type(exc).__name__}: {exc}', box_backend=args.box_backend)
         restart_summary = args.output / 'restart-checks/summary.json'
         if restart_summary.exists():
             result['restart_checks'] = json.loads(restart_summary.read_text())

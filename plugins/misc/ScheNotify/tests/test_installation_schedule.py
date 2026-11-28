@@ -15,10 +15,11 @@ released nothing because nothing was keyed by an installation.
 
 Second-round findings, also asserted below:
 
-* the detached scheduler ran in a fresh empty context and never re-established
-  the scheduling installation's invocation, so the Host saw ``None`` as the
-  binding of a relay that carried tenant data
-  (``test_detached_send_runs_under_the_captured_installation_binding``);
+* the detached scheduler first ran with no authority at all, then re-created one
+  with ``bind_invocation`` for the whole loop; certification review rejected
+  re-establishing an ended call's authority, so each delivery now passes the
+  installation binding as the explicit action context
+  (``test_detached_delivery_carries_the_installation_binding``);
 * lookups deleted/listed by ``target_id`` alone, so another bot of the same
   installation, or the other namespace with the same id, was treated as the same
   session (``test_schedule_commands_do_not_reach_another_session`` and
@@ -42,6 +43,8 @@ import logging
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from langbot_plugin.api.entities.builtin.command.context import ExecuteContext
 from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes, Session
@@ -69,18 +72,31 @@ sche_main = _load_main()
 
 
 class FlatHost:
-    """Stub Host that records notification relays (no live platform call)."""
+    """Stub Host that records deliveries (no live platform call).
+
+    Deliveries arrive as ``bot.message.send`` Workspace operations. The Host
+    authorizes those from the installation grant, so no invocation context is
+    involved; ``binding_seen`` records what the Context held at delivery time so
+    a test can prove the scheduler fabricated none.
+    """
 
     def __init__(self, *, fail_sends: int = 0, on_send=None):
         self.sent: list[dict] = []
-        # Binding the relay was made under, as the real Host would resolve it.
-        self.authorities: list = []
+        # Explicit action context each delivery carried.
+        self.action_contexts: list = []
+        # Context binding at delivery time: must stay None (no fake invocation).
+        self.binding_seen: list = []
         self.fail_sends = fail_sends
         self.on_send = on_send
 
     async def call_action(self, action, data, *args, **kwargs):
         if action == Action.SEND_MESSAGE:
-            self.authorities.append(current_binding(self))
+            # ``action_context`` is the explicit installation authority the Host
+            # validates against the live connection; ``current_binding`` is the
+            # task-local invocation, which must stay absent for a background
+            # delivery.
+            self.action_contexts.append(kwargs.get("action_context"))
+            self.binding_seen.append(current_binding(self))
             if self.fail_sends > 0:
                 self.fail_sends -= 1
                 raise RuntimeError("host refused the send")
@@ -121,12 +137,14 @@ def build_plugin(**host_kwargs):
 
 
 def _texts(payloads: list[dict]) -> list[str]:
+    """Plain text of each delivered ``message_chain_data`` argument list."""
     texts = []
     for payload in payloads:
+        chain = payload.get("message_chain_data") or payload.get("message_chain") or []
         texts.append(
             "".join(
                 part.get("text", "")
-                for part in payload["message_chain"]
+                for part in chain
                 if part.get("type") == "Plain"
             )
         )
@@ -177,7 +195,7 @@ def test_scheduler_is_registered_per_binding_and_stopped_on_revocation():
         first, second = binding("installation-a"), binding("installation-b")
         started: list[str] = []
 
-        async def fake_loop(scope, *_authority):
+        async def fake_loop(scope, *_extra):
             started.append(scope)
             await asyncio.sleep(3600)
 
@@ -258,7 +276,7 @@ def test_dedicated_binding_less_invocation_still_schedules():
         plugin, host = build_plugin()
         loop_scopes: list[str] = []
 
-        async def fake_loop(scope, *_authority):
+        async def fake_loop(scope, *_extra):
             loop_scopes.append(scope)
             await asyncio.sleep(3600)
 
@@ -300,13 +318,15 @@ async def _render(component, context) -> list[str]:
     return [ret.text async for ret in component._execute(context)]
 
 
-def test_detached_send_runs_under_the_captured_installation_binding():
-    """The background relay carries the scheduling installation's authority.
+def test_detached_delivery_carries_the_installation_binding():
+    """A background delivery fabricates no invocation and names its authority.
 
-    Pre-fix the scheduler started its task in a fresh ``contextvars.Context()``
-    and never re-entered an invocation, so the Host resolved the relay's binding
-    to ``None`` (``host.authorities`` was ``[None]``) although the payload
-    carried the tenant's reminder text and target.
+    The scheduling call has ended by the time the reminder fires, so the loop
+    must not re-establish that call's authority (the previous
+    ``bind_invocation`` in the loop did exactly that). It passes the immutable
+    installation binding as the explicit action context instead: the Host
+    validates it against the live connection on every delivery, so a detached
+    or upgraded installation cannot be used to send.
     """
 
     async def scenario():
@@ -325,10 +345,12 @@ def test_detached_send_runs_under_the_captured_installation_binding():
             await asyncio.sleep(0.01)
 
         assert _texts(host.sent) == ["[Notify] A reminder"]
-        assert host.authorities == [first]
+        # The delivery names the installation it belongs to...
+        assert host.action_contexts == [first]
+        # ...and holds no invocation of its own.
+        assert host.binding_seen == [None]
         assert plugin._events[plugin._scope(first)] == []
 
-        # The authority belongs to the loop, so revocation withdraws it with it.
         await plugin.on_installation_revoked(first)
         assert plugin._loops == {}
 
@@ -487,6 +509,7 @@ def test_failed_delivery_keeps_the_reminder_queued():
         pending = plugin._events[scope]
         assert [e["message"] for e in pending] == ["A reminder"]
         assert pending[0]["failed_attempts"] == 1
+        # The queued failure records the Host error, never tenant data.
         assert pending[0]["last_error"] == "host refused the send"
 
         # The next pass retries the still-pending reminder and delivers it.
@@ -625,7 +648,9 @@ def test_worker_upgrade_restarts_the_loop_under_the_new_binding():
                 break
             await asyncio.sleep(0.01)
         assert _texts(host.sent) == ["[Notify] new revision"]
-        assert host.authorities == [revised]
+        # Deliveries carry no fabricated invocation, only the new binding.
+        assert host.binding_seen == [None]
+        assert host.action_contexts[-1] == revised
 
         await plugin.on_installation_revoked(revised)
 

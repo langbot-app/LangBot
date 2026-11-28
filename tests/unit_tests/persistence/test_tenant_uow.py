@@ -1001,6 +1001,15 @@ async def test_resource_expansion_allows_only_the_fixed_function_and_media_colum
             _validate_scoped_statement_call((sa.select(expression),), {})
 
 
+async def test_bot_route_cas_cast_is_limited_to_event_bindings() -> None:
+    from langbot.pkg.entity.persistence.bot import Bot
+
+    _validate_scoped_statement_call((sa.select(sa.cast(Bot.event_bindings, sa.Text)),), {})
+    for column in (Bot.adapter_config, Bot.plugin_processors):
+        with pytest.raises(ScopedSessionTransactionError):
+            _validate_scoped_statement_call((sa.select(sa.cast(column, sa.Text)),), {})
+
+
 async def test_monitoring_json_casts_are_limited_to_journal_metadata() -> None:
     from langbot.pkg.entity.persistence.agent_run import AgentRun
     from langbot.pkg.entity.persistence.event_log import EventLog
@@ -1247,4 +1256,36 @@ async def test_scoped_statement_retains_custom_attribute_fallback(monkeypatch) -
 
     monkeypatch.setattr(sa.sql.elements.ColumnElement, '__getattr__', changed_attribute)
     with pytest.raises(ScopedSessionTransactionError, match='textual statement modifiers'):
+        _validate_scoped_statement_call((statement,), {})
+
+
+@pytest.mark.parametrize('nested', [False, True])
+async def test_scoped_statement_revalidates_shared_type_after_mutation(nested) -> None:
+    shared_type = sa.String()
+    column_type = sa.ARRAY(shared_type) if nested else shared_type
+    statement = sa.select(sa.column('a', column_type), sa.column('b', column_type))
+    _validate_scoped_statement_call((statement,), {})
+
+    shared_type.collation = quoted_name('unsafe collation', quote=False)
+    with pytest.raises(ScopedSessionTransactionError, match='forced-unquoted SQL type identifiers'):
+        _validate_scoped_statement_call((statement,), {})
+
+
+@pytest.mark.parametrize('unsafe_first', [False, True])
+async def test_scoped_statement_checks_distinct_instances_of_same_sql_type(unsafe_first) -> None:
+    safe = sa.String()
+    unsafe = sa.String(collation=quoted_name('unsafe collation', quote=False))
+    types = (unsafe, safe) if unsafe_first else (safe, unsafe)
+    statement = sa.select(sa.column('a', types[0]), sa.column('b', types[1]))
+    with pytest.raises(ScopedSessionTransactionError, match='forced-unquoted SQL type identifiers'):
+        _validate_scoped_statement_call((statement,), {})
+
+
+async def test_scoped_statement_revalidates_replaced_nested_type() -> None:
+    shared_type = sa.ARRAY(sa.String())
+    statement = sa.select(sa.column('a', shared_type), sa.column('b', shared_type))
+    _validate_scoped_statement_call((statement,), {})
+
+    shared_type.item_type = _UntrustedCastType()
+    with pytest.raises(ScopedSessionTransactionError, match='custom SQL types'):
         _validate_scoped_statement_call((statement,), {})

@@ -746,6 +746,17 @@ def _assemble(result, legacy, section, remove_think, preferences):
     return selected
 
 
+def _legacy_section(ai, legacy):
+    """The settings of a legacy runner: its ``ai.<name>`` section, else ``runner_config[<name>]``."""
+    section = ai.get(legacy)
+    if type(section) is dict:
+        return section
+    runner_configs = ai.get('runner_config')
+    if type(runner_configs) is dict and type(runner_configs.get(legacy)) is dict:
+        return runner_configs[legacy]
+    return None
+
+
 def plan_legacy_pipeline(config, extensions_preferences=None) -> dict:
     """Return a detached config candidate or safe, value-free diagnostics."""
     result = {
@@ -771,6 +782,7 @@ def plan_legacy_pipeline(config, extensions_preferences=None) -> dict:
         return _block(result, 'invalid_type', 'ai.runner')
     legacy = selection.get('runner')
     known_legacy = type(legacy) is str and legacy in _TARGETS
+    legacy_from_id = False
     if 'id' in selection:
         current = selection['id']
         valid_id = type(current) is str and bool(re.fullmatch(r'plugin:[^/\s]+/[^/\s]+/[^/\s]+', current))
@@ -788,11 +800,17 @@ def plan_legacy_pipeline(config, extensions_preferences=None) -> dict:
             # saved pipeline simply has no runner selected: nothing to migrate.
             if type(current) is str and not current.strip() and not any(name in ai for name in _TARGETS):
                 return result
-            if not valid_id:
+            if type(current) is str and current in _TARGETS and _legacy_section(ai, current) is not None:
+                # A pre-4.11 runner name saved in the 4.11 id field, with that
+                # runner's own section: unambiguous, so migrate it as legacy.
+                legacy, known_legacy, legacy_from_id = current, True, True
+                _warn(result, 'migration.value_coerced', 'ai.runner.id')
+            elif not valid_id:
                 return _block(result, 'invalid_runner_id', 'ai.runner.id')
-            result['state'] = 'already_current'
-            return result
-    if 'runner' not in selection:
+            else:
+                result['state'] = 'already_current'
+                return result
+    if 'runner' not in selection and not legacy_from_id:
         return result
     if type(legacy) is not str:
         return _block(result, 'invalid_type', 'ai.runner.runner')
@@ -814,7 +832,10 @@ def plan_legacy_pipeline(config, extensions_preferences=None) -> dict:
         target_runner_id=target,
         target_plugin={'author': 'langbot-team', 'name': name, 'version': version},
     )
-    if 'runner_config' in ai and (type(ai['runner_config']) is not dict or ai['runner_config']):
+    # runner_config[<legacy>] read as the section below is migrated, not replaced.
+    consumed = {legacy} if legacy_from_id and legacy not in ai else set()
+    runner_configs = ai.get('runner_config')
+    if 'runner_config' in ai and (type(runner_configs) is not dict or set(runner_configs) - consumed):
         _warn(result, 'migration.runner_config_replaced', 'ai.runner_config')
     expiry = selection.get('expire-time', 0)
     ok, expiry_value = _coerce('int', expiry)
@@ -827,9 +848,9 @@ def plan_legacy_pipeline(config, extensions_preferences=None) -> dict:
         _warn(result, 'migration.unknown_section_archived', 'ai')
     if set(selection) - {'runner', 'expire-time', 'id'}:
         _warn(result, 'migration.unknown_field_dropped', 'ai.runner')
-    if legacy not in ai:
+    section = _legacy_section(ai, legacy) if legacy_from_id else ai.get(legacy)
+    if legacy not in ai and section is None:
         return _block(result, 'missing_field', f'ai.{legacy}')
-    section = ai[legacy]
     if type(section) is not dict:
         return _block(result, 'invalid_type', f'ai.{legacy}')
     section = _normalize_section(result, legacy, section)

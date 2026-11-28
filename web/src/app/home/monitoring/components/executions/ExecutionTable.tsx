@@ -1,5 +1,12 @@
 import React from 'react';
-import { Bot, Workflow, Puzzle, CircleDashed } from 'lucide-react';
+import {
+  Bot,
+  Workflow,
+  Puzzle,
+  CircleDashed,
+  ShieldAlert,
+  SquareTerminal,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import {
@@ -29,6 +36,7 @@ const STATUS_GROUPS = [
   'queued',
   'cancelled',
   'ignored',
+  'denied',
 ];
 
 export function executionStatusLabel(row: ExecutionRow, t: TFunction): string {
@@ -58,14 +66,53 @@ export function executionKindLabel(row: ExecutionRow, t: TFunction): string {
   if (KIND_GROUPS.includes(row.target_kind)) {
     if (row.target_kind === 'event_processor')
       return t('monitoring.execution.kind.processor');
-    if (row.target_kind === 'event') return t('monitoring.unified.unhandled');
+    if (row.target_kind === 'event')
+      return row.handling && row.handling !== 'ai'
+        ? t(`monitoring.execution.handling.${row.handling}`)
+        : t('monitoring.unified.unhandled');
     return t(`monitoring.execution.kind.${row.target_kind}`);
   }
   return row.target_kind;
 }
 
+/**
+ * Name of an ingress event that started no processor: the command, policy
+ * rule or plugin that handled it, else "not handled".
+ */
+export function eventRowTitle(row: ExecutionRow, t: TFunction): string {
+  if (row.handling === 'command' && row.command_name)
+    return `/${row.command_name}`;
+  if (row.handling === 'policy' && row.policy_item)
+    return policyItemLabel(row.policy_item, t);
+  if (row.handling === 'plugin') {
+    const plugin = pluginHandlerName(row.handled_by);
+    if (plugin && plugin !== 'unknown') return plugin;
+  }
+  return t('monitoring.unified.unhandled');
+}
+
 export function ExecutionKindBadge({ row }: { row: ExecutionRow }) {
   const { t } = useTranslation();
+  if (row.target_kind === 'event' && row.handling && row.handling !== 'ai') {
+    const Icon =
+      row.handling === 'command'
+        ? SquareTerminal
+        : row.handling === 'policy'
+          ? ShieldAlert
+          : Puzzle;
+    const color =
+      row.handling === 'command'
+        ? 'border-sky-200/70 bg-sky-50/70 text-sky-700 dark:border-sky-800/50 dark:bg-sky-950/30 dark:text-sky-300'
+        : row.handling === 'policy'
+          ? 'border-amber-200/70 bg-amber-50/70 text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300'
+          : 'border-violet-200/70 bg-violet-50/70 text-violet-700 dark:border-violet-800/50 dark:bg-violet-950/30 dark:text-violet-300';
+    return (
+      <Badge variant="outline" className={`gap-1 whitespace-nowrap ${color}`}>
+        <Icon className="size-3 shrink-0" aria-hidden="true" />
+        {executionKindLabel(row, t)}
+      </Badge>
+    );
+  }
   const Icon =
     row.target_kind === 'pipeline'
       ? Workflow
@@ -102,6 +149,152 @@ export function executionTargetLabel(row: ExecutionRow, t: TFunction): string {
 // Agent was deleted still names the Runner that executed it.
 export function executionProcessorLabel(row: ExecutionRow): string {
   return row.target_name || row.runner_id || row.target_id || '—';
+}
+
+// `plugin:<author>/<name>` when a plugin took the message over from the
+// pipeline (prevent_default) and replied itself; null otherwise.
+export function pluginHandlerName(
+  handledBy: string | null | undefined,
+): string | null {
+  if (!handledBy || !handledBy.startsWith('plugin:')) return null;
+  return handledBy.slice('plugin:'.length);
+}
+
+// `filtered:<StageName>` when a pipeline rule (access control, group respond
+// rules, content filter, rate limit) dropped the message; null otherwise.
+export function filteredStageName(
+  handledBy: string | null | undefined,
+): string | null {
+  if (!handledBy || !handledBy.startsWith('filtered:')) return null;
+  return handledBy.slice('filtered:'.length);
+}
+
+function FilteredStageBadge({ stage }: { stage: string }) {
+  const { t } = useTranslation();
+  const label = t(`monitoring.execution.filterStages.${stage}`, {
+    defaultValue: stage,
+  });
+  return (
+    <Badge
+      variant="outline"
+      title={stage}
+      className="whitespace-nowrap border-amber-200/70 bg-amber-50/70 text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300"
+    >
+      {stage
+        ? t('monitoring.execution.filteredByStage', { stage: label })
+        : t('monitoring.execution.filteredByUnknownStage')}
+    </Badge>
+  );
+}
+
+export function PluginHandledBadge({
+  handledBy,
+  hook,
+}: {
+  handledBy: string | null | undefined;
+  hook?: string | null;
+}) {
+  const { t } = useTranslation();
+  const stage = filteredStageName(handledBy);
+  if (stage !== null) return <FilteredStageBadge stage={stage} />;
+  const plugin = pluginHandlerName(handledBy);
+  if (plugin === null) return null;
+  const name =
+    plugin === 'unknown'
+      ? t('monitoring.execution.handledByUnknownPlugin')
+      : t('monitoring.execution.handledByPlugin', { plugin });
+  return (
+    <Badge
+      variant="outline"
+      title={hook ?? undefined}
+      className="whitespace-nowrap border-violet-200/70 bg-violet-50/70 text-violet-700 dark:border-violet-800/50 dark:bg-violet-950/30 dark:text-violet-300"
+    >
+      {hook
+        ? t('monitoring.execution.badges.pluginIntercepted', {
+            plugin: plugin === 'unknown' ? '?' : plugin,
+            hook,
+          })
+        : name}
+    </Badge>
+  );
+}
+
+/** Localized name of a message policy rule (`rate-limit`, ...). */
+export function policyItemLabel(
+  item: string | null | undefined,
+  t: TFunction,
+): string {
+  if (!item) return '';
+  return t(`monitoring.execution.policyItems.${item}`, { defaultValue: item });
+}
+
+const POLICY_BADGE =
+  'whitespace-nowrap border-amber-200/70 bg-amber-50/70 text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300';
+const COMMAND_BADGE =
+  'whitespace-nowrap border-sky-200/70 bg-sky-50/70 text-sky-700 dark:border-sky-800/50 dark:bg-sky-950/30 dark:text-sky-300';
+const DENIED_BADGE =
+  'whitespace-nowrap border-red-200/70 bg-red-50/70 text-red-700 dark:border-red-800/50 dark:bg-red-950/30 dark:text-red-300';
+
+/**
+ * How the bot handled the message: system/plugin command, permission denial,
+ * message policy drop or plugin interception. AI handling has no badge.
+ */
+export function ExecutionHandlingBadge({ row }: { row: ExecutionRow }) {
+  const { t } = useTranslation();
+  if (row.handling === 'policy' && (row.policy_item || row.policy_layer)) {
+    return (
+      <Badge
+        variant="outline"
+        className={POLICY_BADGE}
+        title={
+          row.policy_layer
+            ? t(`monitoring.execution.policyLayer.${row.policy_layer}`, {
+                defaultValue: row.policy_layer,
+              })
+            : undefined
+        }
+        data-testid="execution-badge-policy"
+      >
+        {row.policy_item
+          ? t('monitoring.execution.badges.policyBlocked', {
+              item: policyItemLabel(row.policy_item, t),
+            })
+          : t('monitoring.execution.badges.policyBlockedUnknown')}
+      </Badge>
+    );
+  }
+  if (row.handling === 'command') {
+    if (row.command_denied) {
+      return (
+        <Badge
+          variant="outline"
+          className={DENIED_BADGE}
+          title={row.command_name ? `/${row.command_name}` : undefined}
+          data-testid="execution-badge-denied"
+        >
+          {t('monitoring.execution.badges.commandDenied')}
+        </Badge>
+      );
+    }
+    return (
+      <Badge
+        variant="outline"
+        className={COMMAND_BADGE}
+        data-testid="execution-badge-command"
+      >
+        {row.command_kind === 'processor'
+          ? t('monitoring.execution.badges.commandProcessor')
+          : row.command_kind === 'builtin'
+            ? t('monitoring.execution.badges.builtinCommand', {
+                name: row.command_name ?? '',
+              })
+            : t('monitoring.execution.badges.pluginCommand', {
+                name: row.command_name ?? '',
+              })}
+      </Badge>
+    );
+  }
+  return <PluginHandledBadge handledBy={row.handled_by} hook={row.hook} />;
 }
 
 export default function ExecutionTable({
@@ -163,7 +356,7 @@ export default function ExecutionTable({
                       <ExecutionKindBadge row={row} />
                       <span className="truncate font-medium">
                         {row.source === 'event'
-                          ? t('monitoring.unified.unhandled')
+                          ? eventRowTitle(row, t)
                           : executionProcessorLabel(row)}
                       </span>
                     </div>
@@ -194,6 +387,7 @@ export default function ExecutionTable({
                         {t('monitoring.execution.debug')}
                       </Badge>
                     )}
+                    <ExecutionHandlingBadge row={row} />
                   </div>
                 </TableCell>
                 <TableCell className="text-right tabular-nums">

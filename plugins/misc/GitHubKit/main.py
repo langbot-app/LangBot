@@ -6,18 +6,17 @@ from __future__ import annotations
 import os
 import sys
 import json
+import base64
 import asyncio
+import contextvars
 import datetime
 from typing import Any, Optional
 
 import httpx
 
 from langbot_plugin.api.definition.plugin import BasePlugin
-from langbot_plugin.api.proxies.invocation import (
-    bind_invocation,
-    current_binding,
-    current_config,
-)
+from langbot_plugin.api.proxies.invocation import current_binding
+from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
 
 # Allow importing the plugin-level i18n module.
 sys.path.insert(0, os.path.dirname(__file__))
@@ -192,8 +191,6 @@ class GitHubKitPlugin(BasePlugin):
         """
         scope = self._current_scope()
         binding = self.get_installation_binding()
-        handler = getattr(self, "plugin_runtime_handler", None)
-        inv_config = current_config(handler)
         config = self._poller_config()
         poller = self._pollers.get(scope)
         if poller is not None and poller.binding == binding:
@@ -203,8 +200,12 @@ class GitHubKitPlugin(BasePlugin):
             poller.task.cancel()
         poller = _Poller(scope, binding, config)
         try:
+            # Empty Context: the scheduling call's task-local invocation is
+            # closed once that call returns (looking it up then raises), and the
+            # loop must not inherit tenant state. Its authority travels as the
+            # explicit action context of each Host call instead.
             poller.task = asyncio.create_task(
-                self._poll_loop(poller, handler, inv_config, binding)
+                self._poll_loop(poller), context=contextvars.Context()
             )
         except RuntimeError:
             poller.task = None
@@ -432,9 +433,30 @@ class GitHubKitPlugin(BasePlugin):
 
     # ------------------------------------------------------- subscriptions
 
-    async def _load_subs(self, scope: str) -> dict[str, Any]:
+    async def _host_call(self, action, payload: dict, binding):
+        """Call a Host action naming the installation it belongs to.
+
+        A background task has no live invocation, so it supplies the immutable
+        installation binding as the explicit ``action_context``. The Host
+        validates that context against the live connection (Workspace,
+        installation, revision and artifact) instead of trusting the plugin, and
+        a detached or upgraded installation is refused.
+        """
+        return await self.plugin_runtime_handler.call_action(
+            action, payload, action_context=binding
+        )
+
+    async def _load_subs(self, scope: str, binding=None) -> dict[str, Any]:
         try:
-            raw = await self.get_plugin_storage(storage_key(scope))
+            if binding is None:
+                raw = await self.get_plugin_storage(storage_key(scope))
+            else:
+                resp = await self._host_call(
+                    PluginToRuntimeAction.GET_PLUGIN_STORAGE,
+                    {"key": storage_key(scope)},
+                    binding,
+                )
+                raw = base64.b64decode(resp["value_base64"]) if resp.get("value_base64") else None
         except Exception:
             raw = None
         if not raw:
@@ -444,9 +466,15 @@ class GitHubKitPlugin(BasePlugin):
         except Exception:
             return {}
 
-    async def _save_subs(self, scope: str, subs: dict[str, Any]) -> None:
-        await self.set_plugin_storage(
-            storage_key(scope), json.dumps(subs, ensure_ascii=False).encode("utf-8")
+    async def _save_subs(self, scope: str, subs: dict[str, Any], binding=None) -> None:
+        value = json.dumps(subs, ensure_ascii=False).encode("utf-8")
+        if binding is None:
+            await self.set_plugin_storage(storage_key(scope), value)
+            return
+        await self._host_call(
+            PluginToRuntimeAction.SET_PLUGIN_STORAGE,
+            {"key": storage_key(scope), "value_base64": base64.b64encode(value).decode("utf-8")},
+            binding,
         )
 
     async def subscribe(
@@ -497,8 +525,9 @@ class GitHubKitPlugin(BasePlugin):
         if not repo:
             return self.t("unsub.usage")
         poller = self._ensure_poller()
+        binding = poller.binding
         async with poller.lock:
-            subs = await self._load_subs(poller.scope)
+            subs = await self._load_subs(poller.scope, binding)
             entry = subs.get(repo)
             if not entry or session_id not in entry.get("subscribers", {}):
                 return self.t("unsub.not_subbed", repo=repo)
@@ -524,27 +553,29 @@ class GitHubKitPlugin(BasePlugin):
 
     # --------------------------------------------------------- poller
 
-    async def _poll_loop(self, poller: _Poller, handler, inv_config, binding) -> None:
-        """Poll one installation's subscriptions inside its captured invocation.
+    async def _poll_loop(self, poller: _Poller) -> None:
+        """Poll one installation's subscriptions without an invocation.
 
-        A detached task does not inherit a live invocation, so the config and
-        binding captured when the poller started are re-entered explicitly; this
-        keeps every storage/send call inside the originating installation.
+        The task keeps no invocation: every Host call it makes names
+        ``poller.binding`` explicitly, so the Host decides whether that
+        installation may still act. A worker upgrade (new revision) or a
+        detachment makes the Host refuse, and ``on_installation_revoked`` stops
+        the task.
         """
-        with bind_invocation(handler, config=inv_config, binding=binding):
-            await asyncio.sleep(POLL_START_DELAY)
-            while True:
-                try:
-                    await self._poll_once(poller)
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    pass
-                await asyncio.sleep(poller.config["poll_interval"])
+        await asyncio.sleep(POLL_START_DELAY)
+        while True:
+            try:
+                await self._poll_once(poller)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                pass
+            await asyncio.sleep(poller.config["poll_interval"])
 
     async def _poll_once(self, poller: _Poller) -> None:
+        binding = poller.binding
         async with poller.lock:
-            subs = await self._load_subs(poller.scope)
+            subs = await self._load_subs(poller.scope, binding)
             repos = list(subs.keys())
         if not repos:
             return
@@ -562,8 +593,9 @@ class GitHubKitPlugin(BasePlugin):
         )
         if status != 200 or not isinstance(events, list):
             return
+        binding = poller.binding
         async with poller.lock:
-            subs = await self._load_subs(poller.scope)
+            subs = await self._load_subs(poller.scope, binding)
             entry = subs.get(repo)
             if not entry or not entry.get("subscribers"):
                 return
@@ -576,7 +608,7 @@ class GitHubKitPlugin(BasePlugin):
             if events:
                 entry["last_event_id"] = events[0]["id"]
             subscribers = dict(entry["subscribers"])
-            await self._save_subs(poller.scope, subs)
+            await self._save_subs(poller.scope, subs, binding)
 
         if not new_events or last_id is None:
             return
@@ -598,21 +630,31 @@ class GitHubKitPlugin(BasePlugin):
             if not msgs:
                 continue
             text = get_text(lang, "push.header", repo=repo) + "\n" + "\n".join(msgs)
-            await self._push(sub, text)
+            await self._push(sub, text, poller.binding)
 
-    async def _push(self, sub: dict, text: str) -> None:
+    async def _push(self, sub: dict, text: str, binding=None) -> None:
         from langbot_plugin.api.entities.builtin.platform import (
             message as platform_message,
         )
 
+        chain = platform_message.MessageChain([platform_message.Plain(text=text)])
         try:
-            await self.send_message(
-                sub["bot_uuid"],
-                sub["target_type"],
-                str(sub["target_id"]),
-                platform_message.MessageChain(
-                    [platform_message.Plain(text=text)]
-                ),
+            if binding is None:
+                await self.send_message(
+                    sub["bot_uuid"], sub["target_type"], str(sub["target_id"]), chain
+                )
+                return
+            # Background push: name the installation instead of re-creating an
+            # invocation for a call that already ended.
+            await self._host_call(
+                PluginToRuntimeAction.SEND_MESSAGE,
+                {
+                    "bot_uuid": sub["bot_uuid"],
+                    "target_type": sub["target_type"],
+                    "target_id": str(sub["target_id"]),
+                    "message_chain": chain.model_dump(),
+                },
+                binding,
             )
         except Exception:
             pass

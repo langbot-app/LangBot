@@ -37,10 +37,9 @@ from pkg.daemon_relay import (
     get_agent_runtime_daemon_hub,
 )
 from pkg.runtime_support import local_workspace, serialize_codex_session, terminate_process_group
-from pkg.steering import run_with_steering
+from pkg.steering import resume_checkpoint, run_with_steering
 
 SESSION_STATE_KEY = "external.codex_session_id"
-PENDING_INTERACTION_STATE_KEY = "external.codex_pending_interaction"
 SUPPORTED_LOCATIONS = {"local", "remote-ssh", "daemon"}
 DEFAULT_TIMEOUT_SECONDS = 1800.0
 CODEX_STDIO_LIMIT_BYTES = 16 * 1024 * 1024
@@ -523,7 +522,7 @@ def _interaction_from_questions(
         title=request_title,
         description=description.strip()[:10000] or None,
         fields=fields,
-        actions=[InteractionAction(id="submit", label="Submit", style="primary")],
+        actions=[],
         fallback_text=f"{request_title}: " + "; ".join(field.label for field in fields),
     )
     continuation = {
@@ -566,11 +565,6 @@ def _interaction_from_codex_request(
         }
     )
     return request, continuation
-
-
-def _pending_interaction(ctx: RunnerContext) -> dict[str, typing.Any] | None:
-    value = ctx.state.conversation.get(PENDING_INTERACTION_STATE_KEY)
-    return dict(value) if isinstance(value, dict) else None
 
 
 def _approval_item(params: dict[str, typing.Any], items: dict[str, dict[str, typing.Any]]) -> dict[str, typing.Any]:
@@ -695,61 +689,6 @@ def _interaction_from_codex_approval(
     return request, continuation
 
 
-def _interaction_resume_prompt(
-    submission: InteractionSubmission,
-    continuation: dict[str, typing.Any],
-) -> str:
-    if submission.interaction_id != continuation.get("interaction_id"):
-        raise NativeCliError(
-            "interaction submission does not match the pending Codex request", code="codex.interaction_mismatch"
-        )
-    question_by_id = {
-        str(item.get("id")): str(item.get("question") or item.get("id"))
-        for item in continuation.get("questions", [])
-        if isinstance(item, dict) and item.get("id")
-    }
-    answers = [
-        {"id": field_id, "question": question_by_id.get(field_id, field_id), "answer": value}
-        for field_id, value in submission.values.items()
-    ]
-    payload = {"action": submission.action_id, "answers": answers}
-    return (
-        "The user answered the previously paused ask_user_question call. "
-        "Treat these values as the authoritative response and continue the interrupted task.\n"
-        + json.dumps(payload, ensure_ascii=False)
-    )
-
-
-def _approval_resume(
-    submission: InteractionSubmission,
-    continuation: dict[str, typing.Any],
-) -> tuple[str, dict[str, str] | None]:
-    if submission.interaction_id != continuation.get("interaction_id"):
-        raise NativeCliError(
-            "interaction submission does not match the pending Codex approval", code="codex.interaction_mismatch"
-        )
-    action_id = str(submission.action_id or "")
-    summary = str(continuation.get("approval_summary") or "")
-    if action_id == APPROVE_ONCE_ACTION:
-        category = str(continuation.get("approval_category") or "")
-        fingerprint = str(continuation.get("approval_fingerprint") or "")
-        if not category or not fingerprint:
-            raise NativeCliError("pending Codex approval has no operation fingerprint", code="codex.approval_invalid")
-        prompt = (
-            "The user approved exactly one retry of the previously paused Codex operation. "
-            "Retry that same operation now. This approval does not authorize any different command or file change.\n"
-            + summary
-        )
-        return prompt, {"category": category, "fingerprint": fingerprint}
-    if action_id == REJECT_ACTION:
-        prompt = (
-            "The user rejected the previously paused Codex operation. Do not retry that exact operation. "
-            "Continue with a safe alternative or explain why the task cannot proceed.\n" + summary
-        )
-        return prompt, None
-    raise NativeCliError(f"unsupported Codex approval action: {action_id}", code="codex.approval_invalid")
-
-
 class NativeCodexRunner(Runner):
     def _validate_config(self, ctx: RunnerContext) -> dict[str, typing.Any]:
         data = ctx.config or {}
@@ -804,18 +743,25 @@ class NativeCodexRunner(Runner):
         }
 
     def _stored_session_id(self, ctx: RunnerContext) -> str:
+        checkpoint = resume_checkpoint(ctx, SESSION_STATE_KEY)
+        if checkpoint is not None:
+            return checkpoint
         return str(ctx.state.conversation.get(SESSION_STATE_KEY) or "").strip()
 
     def _resume_session_id(self, ctx: RunnerContext, config: dict[str, typing.Any]) -> str:
         stored = self._stored_session_id(ctx)
-        if not stored or not config["reuse_session"]:
+        recovering = ctx.runtime.metadata.get("recovery", {}).get("mode") == "resume"
+        if not stored or (not config["reuse_session"] and not recovering):
             return ""
-        if ctx.input.interaction is not None and _pending_interaction(ctx) is not None:
-            return stored
         if config["location"] == "local":
             env = {**os.environ, **config["env"]}
             pending_calls = _pending_session_tool_calls(_shared_codex_home(env), stored)
             if pending_calls:
+                if recovering:
+                    raise NativeCliError(
+                        "Source session has tool calls without output; inspect their effects",
+                        code="codex.resume_unsafe",
+                    )
                 logger.warning(
                     "Starting a new Codex session because %s has %d tool call(s) without output",
                     stored,
@@ -847,53 +793,14 @@ class NativeCodexRunner(Runner):
     async def run(self, ctx: RunnerContext) -> typing.AsyncGenerator[RunnerResult, None]:
         try:
             config = self._validate_config(ctx)
-            submission = ctx.input.interaction
-            approval_grant: dict[str, str] | None = None
-            if submission is not None:
-                continuation = _pending_interaction(ctx)
-                if continuation is None:
-                    raise NativeCliError(
-                        "pending Codex interaction state was not found", code="codex.interaction_not_found"
-                    )
-                if continuation.get("kind") == "approval":
-                    prompt, approval_grant = _approval_resume(submission, continuation)
-                else:
-                    prompt = _interaction_resume_prompt(submission, continuation)
-                yield RunnerResult.state_updated(
-                    ctx.run_id,
-                    PENDING_INTERACTION_STATE_KEY,
-                    None,
-                    scope="conversation",
-                )
-            else:
-                prompt = _input_text(ctx)
-                if not prompt:
-                    raise NativeCliError("input text is required", code="codex.empty_input")
-
-            approval_grant_holder = {"value": approval_grant}
+            prompt = _input_text(ctx)
+            if not prompt:
+                raise NativeCliError("input text is required", code="codex.empty_input")
 
             def run_turn(turn_prompt: str, resume_session_id: str) -> typing.AsyncGenerator[RunnerResult, None]:
-                turn_approval_grant = approval_grant_holder["value"]
-                approval_grant_holder["value"] = None
                 if config["location"] == "daemon":
-                    if turn_approval_grant is None:
-                        return self._run_daemon(ctx, config, turn_prompt, resume_session_id)
-                    return self._run_daemon(
-                        ctx,
-                        config,
-                        turn_prompt,
-                        resume_session_id,
-                        approval_grant=turn_approval_grant,
-                    )
-                if turn_approval_grant is None:
-                    return self._run_local_or_ssh(ctx, config, turn_prompt, resume_session_id)
-                return self._run_local_or_ssh(
-                    ctx,
-                    config,
-                    turn_prompt,
-                    resume_session_id,
-                    approval_grant=turn_approval_grant,
-                )
+                    return self._run_daemon(ctx, config, turn_prompt, resume_session_id)
+                return self._run_local_or_ssh(ctx, config, turn_prompt, resume_session_id)
 
             async for result in run_with_steering(
                 ctx,
@@ -994,6 +901,12 @@ class NativeCodexRunner(Runner):
         )
         tools = AgentRunExternalTools(self.get_run_api(ctx), ctx) if config["langbot_assets_enabled"] else None
         await hub.wait_for_daemon(config["daemon_id"], config["daemon_connect_timeout"])
+        if ctx.runtime.metadata.get("recovery", {}).get("mode") == "resume":
+            daemon = next((item for item in await hub.list_daemons() if item["daemon_id"] == config["daemon_id"]), {})
+            if daemon.get("metadata", {}).get("checkpoint_resume") is not True:
+                raise NativeCliError(
+                    "Upgrade the Codex daemon before resuming a checkpoint", code="codex.resume_unavailable"
+                )
         payload = {
             "prompt": prompt,
             "session_id": session_id,
@@ -1009,6 +922,7 @@ class NativeCodexRunner(Runner):
                 "sandbox_mode": config["sandbox_mode"],
                 "mcp_servers": config["mcp_servers"],
                 "langbot_assets_enabled": config["langbot_assets_enabled"],
+                "require_resume": ctx.runtime.metadata.get("recovery", {}).get("mode") == "resume",
             },
             "approval_grant": approval_grant,
         }
@@ -1026,6 +940,8 @@ class NativeCodexRunner(Runner):
 
 
 class NativeCodexDaemon(AgentRuntimeDaemonClient):
+    checkpoint_resume = True
+
     async def run_job(self, job_id: str, payload: dict[str, typing.Any]) -> None:
         proxy = None
         config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
@@ -1065,6 +981,7 @@ class NativeCodexDaemon(AgentRuntimeDaemonClient):
                         timeout=float(config.get("timeout") or DEFAULT_TIMEOUT_SECONDS),
                         streaming=bool(config.get("streaming", True)),
                         resume_session_id=session_id,
+                        require_resume=bool(config.get("require_resume", False)),
                         prompt=str(payload.get("prompt") or ""),
                         agent_cwd=cwd,
                         approval_policy=config.get("approval_policy"),
@@ -1112,6 +1029,7 @@ async def _run_cli_process(
             _run_cli_process_events(
                 command,
                 args,
+                ctx=ctx,
                 cwd=cwd,
                 env=env,
                 timeout=timeout,
@@ -1165,6 +1083,8 @@ class _CodexAppServerClient:
         streaming: bool,
         approval_grant: dict[str, str] | None,
         approval_policy: str | None,
+        ctx: RunnerContext | None = None,
+        operation_timeout: float = 120,
     ) -> None:
         self.process = process
         self.streaming = streaming
@@ -1179,11 +1099,27 @@ class _CodexAppServerClient:
         self.final_error = ""
         self.seen_agent_message_item_ids: set[str] = set()
         self.final_chunk_emitted = False
-        self.interaction_request: InteractionRequest | None = None
-        self.interaction_continuation: dict[str, typing.Any] | None = None
         self.approval_grant = dict(approval_grant) if approval_grant else None
         self.approval_policy = approval_policy
+        self.ctx = ctx
+        self.operation_timeout = operation_timeout
+        self.timeout_scope: asyncio.Timeout | None = None
         self.items: dict[str, dict[str, typing.Any]] = {}
+
+    async def _wait_for_user(self, request: InteractionRequest) -> InteractionSubmission:
+        if self.ctx is None:
+            raise NativeCliError("No active run for interaction", code="codex.interaction_invalid")
+        loop = asyncio.get_running_loop()
+        if self.timeout_scope is not None:
+            self.timeout_scope.reschedule(loop.time() + 3600 + self.operation_timeout)
+        try:
+            result = await self.ctx.request_interaction(request, timeout=3600, on_unsupported="degrade")
+            if result.status != "submitted" or result.submission is None:
+                raise NativeCliError(f"User interaction {result.status}", code="codex.interaction_expired")
+            return result.submission
+        finally:
+            if self.timeout_scope is not None:
+                self.timeout_scope.reschedule(loop.time() + self.operation_timeout)
 
     async def _write_json(self, payload: dict[str, typing.Any]) -> None:
         assert self.process.stdin is not None
@@ -1229,6 +1165,7 @@ class _CodexAppServerClient:
         *,
         approval_policy: str | None,
         sandbox_mode: str | None,
+        require_resume: bool = False,
     ) -> str:
         if resume_session_id:
             try:
@@ -1249,6 +1186,10 @@ class _CodexAppServerClient:
                     self.thread_id = thread_id
                     return thread_id
             except Exception as exc:
+                if require_resume:
+                    raise NativeCliError(
+                        "Failed to resume the source Codex thread", code="codex.resume_failed"
+                    ) from exc
                 logger.debug(
                     "Failed to resume Codex thread; starting a new thread: thread_id=%s error=%s",
                     resume_session_id,
@@ -1256,6 +1197,8 @@ class _CodexAppServerClient:
                     exc_info=True,
                 )
 
+        if require_resume:
+            raise NativeCliError("Source Codex thread could not be resumed", code="codex.resume_failed")
         result = await self.request(
             "thread/start",
             {
@@ -1363,12 +1306,11 @@ class _CodexAppServerClient:
                 self.approval_grant = None
                 await self.respond(request_id, {"decision": "accept"})
                 return
-            request, continuation = _interaction_from_codex_approval(method, params, item)
-            self.interaction_request = request
-            self.interaction_continuation = continuation
-            await self.respond(request_id, {"decision": "cancel"})
-            await self._interrupt_turn(params)
-            self.finish_turn()
+            request, _ = _interaction_from_codex_approval(method, params, item)
+            submission = await self._wait_for_user(request)
+            await self.respond(
+                request_id, {"decision": "accept" if submission.action_id == APPROVE_ONCE_ACTION else "cancel"}
+            )
         elif method in {"item/tool/call", "item/tool/requestUserInput"}:
             params = raw.get("params")
             if not isinstance(params, dict):
@@ -1377,49 +1319,35 @@ class _CodexAppServerClient:
                 await self.respond_error(request_id, f"unhandled dynamic tool: {params.get('tool')}")
                 return
             try:
-                request, continuation = _interaction_from_codex_request(method, params)
+                request, _ = _interaction_from_codex_request(method, params)
             except NativeCliError as exc:
                 await self.respond_error(request_id, exc.message)
                 return
-            self.interaction_request = request
-            self.interaction_continuation = continuation
+            submission = await self._wait_for_user(request)
             if method == "item/tool/call":
                 await self.respond(
                     request_id,
                     {
                         "success": True,
                         "contentItems": [
-                            {
-                                "type": "inputText",
-                                "text": "LangBot paused this run for user input; the answer will arrive in a later turn.",
-                            }
+                            {"type": "inputText", "text": json.dumps(submission.values, ensure_ascii=False)}
                         ],
                     },
                 )
             else:
-                empty_answers = {field.id: {"answers": []} for field in request.fields}
-                await self.respond(request_id, {"answers": empty_answers})
-            await self._interrupt_turn(params)
-            self.finish_turn()
+                await self.respond(
+                    request_id,
+                    {
+                        "answers": {
+                            field_id: {"answers": value if isinstance(value, list) else [str(value)]}
+                            for field_id, value in submission.values.items()
+                        }
+                    },
+                )
         elif method == "mcpServer/elicitation/request":
             await self.respond(request_id, {"action": "accept", "content": None, "_meta": None})
         else:
             await self.respond_error(request_id, f"unhandled server request: {method}")
-
-    async def _interrupt_turn(self, params: dict[str, typing.Any]) -> None:
-        thread_id = str(params.get("threadId") or self.thread_id)
-        turn_id = str(params.get("turnId") or "")
-        if not thread_id or not turn_id:
-            return
-        self.next_id += 1
-        await self._write_json(
-            {
-                "jsonrpc": "2.0",
-                "id": self.next_id,
-                "method": "turn/interrupt",
-                "params": {"threadId": thread_id, "turnId": turn_id},
-            }
-        )
 
     async def handle_notification(self, raw: dict[str, typing.Any]) -> None:
         method = str(raw.get("method") or "")
@@ -1560,6 +1488,8 @@ async def _run_cli_process_events(
     command: str,
     args: list[str],
     *,
+    ctx: RunnerContext | None = None,
+    require_resume: bool = False,
     cwd: str | None,
     env: dict[str, str],
     timeout: float,
@@ -1598,6 +1528,8 @@ async def _run_cli_process_events(
         streaming=streaming,
         approval_grant=approval_grant,
         approval_policy=approval_policy,
+        ctx=ctx,
+        operation_timeout=timeout,
     )
     reader_task = asyncio.create_task(client.read_stdout())
     stderr_task = asyncio.create_task(process.stderr.read())
@@ -1606,15 +1538,18 @@ async def _run_cli_process_events(
         if initial_stdin:
             process.stdin.write(initial_stdin)
             await process.stdin.drain()
-        async with asyncio.timeout(timeout):
+        async with asyncio.timeout(timeout) as timeout_scope:
+            client.timeout_scope = timeout_scope
             await client.initialize()
             thread_id = await client.start_or_resume_thread(
                 resume_session_id,
                 agent_cwd,
                 approval_policy=approval_policy,
                 sandbox_mode=sandbox_mode,
+                require_resume=require_resume
+                or bool(ctx and ctx.runtime.metadata.get("recovery", {}).get("mode") == "resume"),
             )
-            if thread_id and thread_id != resume_session_id:
+            if thread_id:
                 result_sequence += 1
                 yield {
                     "type": "state.updated",
@@ -1632,27 +1567,6 @@ async def _run_cli_process_events(
             raise NativeCliError(
                 stderr or f"Codex app-server exited with status {process.returncode}", code="codex.process_failed"
             )
-        if client.interaction_request is not None and client.interaction_continuation is not None:
-            result_sequence += 1
-            yield {
-                "type": "state.updated",
-                "sequence": result_sequence,
-                "data": {
-                    "key": PENDING_INTERACTION_STATE_KEY,
-                    "value": client.interaction_continuation,
-                    "scope": "conversation",
-                },
-            }
-            result_sequence += 1
-            yield {
-                "type": "action.requested",
-                "sequence": result_sequence,
-                "data": {
-                    "action": "interaction.requested",
-                    "payload": client.interaction_request.model_dump(mode="json"),
-                },
-            }
-            return
         if client.final_error:
             raise NativeCliError(client.final_error, code="codex.turn_failed")
         final_text = "".join(client.final_parts).strip()

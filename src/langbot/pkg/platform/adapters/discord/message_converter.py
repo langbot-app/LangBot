@@ -66,7 +66,35 @@ class DiscordMessageConverter:
         elements.extend(DiscordMessageConverter._text_components(message.content))
 
         for attachment in message.attachments:
-            if DiscordMessageConverter._is_image_attachment(attachment):
+            if DiscordMessageConverter._is_audio_attachment(attachment):
+                audio_data = b''
+                mime_type = getattr(attachment, 'content_type', None) or 'audio/ogg'
+                try:
+                    audio_data, downloaded_mime = await DiscordMessageConverter._download(attachment.url)
+                    if downloaded_mime:
+                        mime_type = downloaded_mime
+                except Exception:
+                    pass
+                from ....utils import audio as audio_utils
+
+                detected_fmt = audio_utils.detect_audio_format(audio_data) if audio_data else 'unknown'
+                duration = getattr(attachment, 'duration_secs', None)
+                if duration is not None:
+                    duration = int(round(duration))
+                elif audio_data:
+                    duration = int(round(audio_utils.estimate_audio_duration(audio_data, detected_fmt)))
+
+                import base64 as _b64
+
+                b64_val = _b64.b64encode(audio_data).decode('utf-8') if audio_data else ''
+                elements.append(
+                    platform_message.Voice(
+                        url=attachment.url,
+                        base64=f'data:{mime_type};base64,{b64_val}' if b64_val else '',
+                        length=duration,
+                    )
+                )
+            elif DiscordMessageConverter._is_image_attachment(attachment):
                 elements.append(platform_message.Image(url=attachment.url))
             else:
                 elements.append(
@@ -134,22 +162,22 @@ class DiscordMessageConverter:
 
     @staticmethod
     async def _load_voice(element: platform_message.Voice) -> tuple[bytes | None, str]:
-        filename = f'{uuid.uuid4()}.mp3'
-        if element.base64:
-            header, _, payload = element.base64.partition(',')
-            data = payload or header
-            for ext in ('wav', 'mp3', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'webm'):
-                if ext in header:
-                    filename = f'{uuid.uuid4()}.{ext}'
-                    break
-            return await asyncio.to_thread(_decode_discord_base64_limited, data), filename
-        if element.url:
-            data, _ = await DiscordMessageConverter._download(element.url)
-            return data, filename
-        return None, filename
+        from ....utils import audio as audio_utils
+
+        raw_bytes = await DiscordMessageConverter._load_file(element)
+        fmt = audio_utils.detect_audio_format(raw_bytes) if raw_bytes else 'unknown'
+        if fmt in ('silk', 'amr') and audio_utils.is_ffmpeg_available() and raw_bytes:
+            try:
+                raw_bytes = await audio_utils.transcode_audio(raw_bytes, 'mp3', fmt)
+                fmt = 'mp3'
+            except Exception:
+                pass
+        ext = fmt if fmt != 'unknown' else 'mp3'
+        filename = getattr(element, 'name', '') or f'{uuid.uuid4()}.{ext}'
+        return raw_bytes, filename
 
     @staticmethod
-    async def _load_file(element: platform_message.File) -> bytes | None:
+    async def _load_file(element: platform_message.File | platform_message.Voice) -> bytes | None:
         if element.base64:
             return await asyncio.to_thread(_decode_discord_base64_limited, element.base64)
         if element.url:
@@ -169,7 +197,20 @@ class DiscordMessageConverter:
 
     @staticmethod
     def _is_image_attachment(attachment: discord.Attachment) -> bool:
-        content_type = attachment.content_type or ''
-        return content_type.startswith('image/') or attachment.filename.lower().endswith(
+        content_type = getattr(attachment, 'content_type', '') or ''
+        filename = getattr(attachment, 'filename', '') or ''
+        return content_type.startswith('image/') or filename.lower().endswith(
             ('.png', '.jpg', '.jpeg', '.gif', '.webp')
+        )
+
+    @staticmethod
+    def _is_audio_attachment(attachment: discord.Attachment) -> bool:
+        content_type = getattr(attachment, 'content_type', '') or ''
+        filename = (getattr(attachment, 'filename', '') or '').lower()
+        flags = getattr(attachment, 'flags', None)
+        is_voice = getattr(flags, 'voice', False) if flags else False
+        return (
+            is_voice
+            or content_type.startswith('audio/')
+            or filename.endswith(('.mp3', '.ogg', '.oga', '.opus', '.wav', '.m4a', '.aac', '.flac', '.weba'))
         )

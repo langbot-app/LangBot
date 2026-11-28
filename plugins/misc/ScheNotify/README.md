@@ -23,6 +23,14 @@ You can select the language for reminder messages in plugin configuration:
 - `zh_Hans` (Simplified Chinese) - Default
 - `en_US` (English)
 
+### Timezone Setting
+
+Set `timezone` to the timezone you are in. It applies to every tool and command: `get_current_time_str` reports the current time in it, the time given to `schedule_notify` is interpreted in it, and `!sche` / `!dsche` display reminder times in it.
+
+- IANA name, e.g. `Asia/Shanghai`, `America/New_York`, `Europe/London`
+- `UTC`, or a fixed offset such as `UTC+8`, `UTC-05:30`
+- Empty (default): the server's local timezone
+
 ## Usage
 
 ### 1. Schedule via LLM
@@ -75,7 +83,7 @@ Example:
 ### Tools
 
 1. **get_current_time_str** - Get current time
-   - Return format: `YYYY-MM-DD HH:MM:SS`
+   - Return format: `YYYY-MM-DD HH:MM:SS (<timezone>)`, e.g. `2026-01-01 08:00:00 (Asia/Shanghai, UTC+08:00)`
    - LLM must call this tool before setting reminders
 
 2. **schedule_notify** - Schedule notification

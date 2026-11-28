@@ -4,7 +4,7 @@ metadata:
   author: RockChinQ
   name: WebSearch
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/WebSearch
-  version: 0.1.10
+  version: 0.1.11
   description:
     en_US: Tool for llm to search web
     zh_Hans: 用于供 LLM 访问网页的工具

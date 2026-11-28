@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "seed": 20261118,
+  "include": ["chat", "box", "rag_chat", "media_chat"],
+  "weights": {"chat": 3, "box": 1, "rag_chat": 1, "media_chat": 1},
+  "phases": [
+    {"name": "all-families", "duration_seconds": 44, "rps": 1.5, "workers": 8, "groups": 12, "members_per_group": 3, "cooldown_seconds": 22, "min_delivery_ratio": 0.80},
+    {"name": "text-only", "duration_seconds": 36, "rps": 1, "workers": 4, "groups": 6, "members_per_group": 2, "cooldown_seconds": 22, "weights": {"box": 0, "rag_chat": 0, "media_chat": 0}, "min_delivery_ratio": 0.85}
+  ]
+}

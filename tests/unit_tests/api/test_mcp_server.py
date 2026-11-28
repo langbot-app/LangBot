@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -12,6 +13,7 @@ from langbot.pkg.api.mcp.server import LangBotMCPServer
 
 def _make_app() -> SimpleNamespace:
     app = SimpleNamespace()
+    app.persistence_mgr = SimpleNamespace(tenant_scope=lambda workspace_uuid: nullcontext())
     app.instance_config = SimpleNamespace(data={'system': {'edition': 'community', 'instance_id': 'inst-1'}})
     app.ver_mgr = SimpleNamespace(get_current_version=lambda: 'test-version')
     app.bot_service = SimpleNamespace(
@@ -105,3 +107,24 @@ async def test_monitoring_sessions_accept_only_conversation_filters(monkeypatch,
     else:
         await server.mcp.call_tool('get_monitoring_records', arguments)
         app.monitoring_service.get_sessions.assert_awaited_once_with(context, limit=100, offset=0, **filters)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'tool,operation,args',
+    [
+        ('get_workspace_sandbox', 'get', {'refresh': True}),
+        ('set_workspace_sandbox', 'update', {'backend': 'docker', 'e2b': None, 'limits': None}),
+        ('check_workspace_sandbox', 'check', {'e2b': None}),
+        ('test_workspace_sandbox', 'test', {'e2b': None}),
+    ],
+)
+async def test_sandbox_mcp_uses_application_boundary(monkeypatch, tool, operation, args):
+    app = _make_app()
+    context = SimpleNamespace(workspace_uuid='workspace-1')
+    app.application_api = SimpleNamespace(execute=AsyncMock(return_value={'backend': 'docker'}))
+    monkeypatch.setattr(mcp_server, 'get_request_context', lambda: context)
+    monkeypatch.setattr(mcp_server, '_authorized', lambda permission: context)
+    monkeypatch.setattr(mcp_server, 'get_workspace_language', AsyncMock(return_value='en_US'))
+    await LangBotMCPServer(app).mcp.call_tool(tool, args)
+    app.application_api.execute.assert_awaited_once_with('workspace.sandbox.' + operation, context, args)

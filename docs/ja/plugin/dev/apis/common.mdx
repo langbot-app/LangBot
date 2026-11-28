@@ -6,6 +6,10 @@ title: "LangBot API"
 
 リトライ、タイムアウト、数値思考予算、prompt caching、ヘッダー、ストリーム終了は [LLM リクエスト設定](/ja/plugin/dev/apis/llm-requests)を参照してください。
 
+<Info>
+このページのほとんどのメソッドには、プラグインが `manifest.yaml` で宣言し、インストール後にワークスペースのメンバーが許可した機能が必要です。たとえば `invoke_llm` には `models.invoke`、`send_message` には `bot.message.send` が必要です。許可のない呼び出しは `permission_denied` になります。各メソッドに必要な機能は[プラグインの権限](/ja/plugin/dev/permissions#機能)を参照してください。Agent、チャット、ボットなどのワークスペースリソースを管理するには[ワークスペース API](/ja/plugin/dev/apis/workspace) を使います。
+</Info>
+
 ## LangBot API
 
 これらのAPIは、通常のプラグインコンポーネントで呼び出すことができます。アクセス方法:
@@ -90,6 +94,8 @@ async def send_message(
     target_type: str,
     target_id: str,
     message_chain: platform_message.MessageChain,
+    *,
+    timeout: float | None = None,
 ) -> None:
     """セッションにメッセージを送信する"""
 
@@ -100,7 +106,22 @@ await self.plugin.send_message(
     target_id="1010553892",
     message_chain=platform_message.MessageChain([platform_message.Plain(text="Hello, world!")]),
 )
+
+# 画像などのメディアメッセージでは待ち時間を明示的に延ばせます
+await self.plugin.send_message(
+    bot_uuid="de639861-be05-4018-859b-c2e2d3e0d603",
+    target_type="person",
+    target_id="1010553892",
+    message_chain=platform_message.MessageChain([platform_message.Image(url="https://example.com/a.png")]),
+    timeout=180,
+)
 ```
+
+`timeout` はプラグインが LangBot の送信完了を待つ秒数です。デフォルトは 60 秒で、キーワード引数としてのみ指定でき、正の数である必要があります。そうでない場合は `ValueError` が発生します。画像・ファイル・音声などのメディアメッセージは送信前にメッセージプラットフォームへアップロードされるため時間がかかることがあり、必要に応じて大きくしてください。タイムアウトはプラグインが待つのをやめるだけで、LangBot で進行中の送信は取り消されません。重複送信を避けるため、タイムアウト後にすぐ再送しないでください。
+
+<Info>
+0.7.22 より後にリリースされる `langbot-plugin` が必要です。`timeout` を渡すにはプラグインがその SDK を使う必要があり、60 秒のデフォルトとプラグイン指定のタイムアウトを適用するには Plugin Runtime もそのバージョンである必要があります。0.7.22 以前は 15 秒固定で待機します。
+</Info>
 
 ### 設定済みLLMモデルリストの取得
 
@@ -271,6 +292,28 @@ print(result)
 ツール名は `metadata.name`（例: `echo_tool`、`get_weather_alerts`）を使用します。作者やプラグイン名のプレフィックスは不要です。
 </Tip>
 
+### データ永続化のルール
+
+<Warning>
+プラグインは、保持が必要なデータをファイルシステム（プラグインディレクトリ、`data/`、カレントディレクトリ、独自の SQLite / JSON ファイルなど）に書き込まないでください。永続化が必要なデータは、すべて API を通じて LangBot Core の永続化データベースに書き込みます。
+</Warning>
+
+プラグインは Plugin Runtime 内で動作し、そのディスクは永続ストレージではありません。プラグインのアップグレードや再インストールでディレクトリは置き換えられ、Runtime は別のコンテナや別のマシンで動作する場合があるため、再起動・移行・スケールアウト後にローカルファイルが失われることがあります。また、ローカルファイルはプラグインやワークスペースごとに分離されず、LangBot のデータと一緒にバックアップされません。
+
+データの種類に応じて API を選択します：
+
+| データ | 使用する API |
+| --- | --- |
+| プラグイン専用の状態、キャッシュ、カウンター、カーソルなど | `set_plugin_storage` / `get_plugin_storage`（`storage.plugin` 機能が必要） |
+| 複数のプラグインで共有するデータ | `set_workspace_storage` / `get_workspace_storage`（`storage.workspace` 機能が必要） |
+| Runner の会話・ユーザー・ランナー状態 | [`ctx.state_get` / `ctx.state_set`](/ja/plugin/dev/apis/agent-run) |
+| ベクトルとナレッジベースのデータ | [RAG API](#rag-api)：`vector_upsert` / `vector_search` / `vector_delete` |
+| ユーザーがアップロードした設定ファイル | `get_config_file` |
+
+値はバイト列です。構造化データは自分でシリアライズしてください（例：`json.dumps(data).encode()`）。1 つの値の上限はデフォルトで 10 MiB です（インスタンス設定 `plugin.binary_storage.max_value_bytes`）。それより大きいデータは複数のキーに分割してください。
+
+処理中にどうしてもディスクが必要な一時ファイル（外部ツールへの入力など）は、システムの一時ディレクトリ（`tempfile`）にのみ書き込み、使用後に削除してください。次回の呼び出し時に残っていることを前提にしてはいけません。
+
 ### プラグイン永続データの設定
 
 プラグインデータを永続的に保存します。このインターフェースを通じて保存されたデータは、このプラグインのみがアクセスできます。値は手動でbytesに変換する必要があります。
@@ -369,7 +412,7 @@ file_bytes = await self.plugin.get_config_file("key")
 
 ## ナレッジベース API
 
-これらのAPIは通常のコンポーネントから`self.plugin`経由でアクセスでき、パイプライン制限なしにLangBotインスタンス内のすべてのナレッジベースの一覧取得と検索が可能です。
+これらのAPIは通常のコンポーネントから`self.plugin`経由でアクセスでき、チャットの制限なしにLangBotインスタンス内のすべてのナレッジベースの一覧取得と検索が可能です。
 
 ### すべてのナレッジベースの一覧取得
 
@@ -427,7 +470,7 @@ for entry in results:
 ```
 
 <Tip>
-これらのAPIは`query_id`を必要とせず、通常のコンポーネント（Toolコンポーネントを含む）で使用できます。現在のパイプライン設定に制限されることなく、すべてのナレッジベースにアクセスできます。
+これらのAPIは`query_id`を必要とせず、通常のコンポーネント（Toolコンポーネントを含む）で使用できます。現在のチャット設定に制限されることなく、すべてのナレッジベースにアクセスできます。
 </Tip>
 
 ## RAG API
@@ -709,3 +752,22 @@ commands = await self.plugin.list_commands()
 不明な数量は `None` です。残数がゼロでも既存 Box の再利用は可能です。新規作成時の上限は Runtime が原子的に確認します。キーは Runner が計算しますが、`required_reuse_key` が返された場合はその値を使います。異なるワークスペース間では同じキーでも共有されません。
 
 取得後は[Runner コンテキスト](/ja/plugin/dev/apis/agent-run#runner)でバインドしてから、添付のインポートやツール実行を行います。
+
+## 型付き Artifact ヘルパー
+
+プラグインでは `self.plugin.artifacts`、Runner では `ctx.api.artifacts` を使用します。ヘルパーは明示的に許可された七つの Workspace 操作を再利用し、新しい転送 action や capability は追加しません。run 呼び出しには実行中の run と固定された `workspace_operations` も必要です。インストールへの許可だけでは run の権限を拡張できません。
+
+```python
+asset = await self.plugin.artifacts.create("notes.txt", b"bounded content", mime_type="text/plain")
+body = await self.plugin.artifacts.read(asset.id, max_bytes=262144)
+assert body.content == b"bounded content"
+await self.plugin.artifacts.delete(asset.id)
+```
+
+`create(filename, content: bytes, mime_type=..., ttl_seconds=...)`、`get`、`retain`、`release` は `ArtifactMetadata` を返します。`read` は `ArtifactData(metadata, content: bytes)` を返します。`read_content` は共通の構造化コンテンツリストを返し、`mode`、`offset`、`max_chars`、`page_start`、`page_end` を受け取ります。`delete` は結果辞書を返します。SDK が 256 KiB の JSON RPC エンベロープを符号化・復号するため、base64 を通常のモデルテキストに入れないでください。
+
+操作失敗時は Host の `code` と `details` を保持する `ArtifactOperationError` が発生します。既存の Workspace カタログ（`workspace.list` と create schema の `content_base64`）で利用可否を確認します。新しい feature flag はありません。古い Host や未許可の呼び出しは `not_found`、`permission_denied` などの操作エラーを返します。内部ストレージパスにフォールバックしないでください。
+
+既存の Workspace action は独立配置された古い Runtime でも転送できますが、Artifact のキャンセル伝播には対応する Core/SDK/Runtime の組み合わせを使用してください。古い経路を通るキャンセルはベストエフォートであり、Host の変更処理が停止した証拠ではありません。従来の run `file_id`、アップロード、配信の契約は変更しません。新しいヘルパーを利用する前に実際の配置構成を検証してください。
+
+便宜ヘルパーと生成された `workspace.artifact` メソッドは異なります。後者は通常の `ok/result/error` エンベロープを返し、転送フィールド `content_base64` を公開します。二つの結果形式を混同しないでください。共有プラグインヘルパーは現在の run 呼び出しを引き継ぎ、保持した呼び出しコンテキストの終了後は利用を拒否します。

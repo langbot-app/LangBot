@@ -45,7 +45,11 @@ test('select a plugin before creation and retain debug state while browsing run 
     ) {
       const payload = route.request().postDataJSON();
       creations.push(payload);
-      Object.assign(processor, payload);
+      // Like the backend, keep the prepared runner config next to the payload.
+      Object.assign(processor, {
+        ...payload,
+        config: { ...processor.config, ...payload.config },
+      });
       await route.fulfill({
         json: { code: 0, data: { uuid: processor.uuid, kind: processor.kind } },
       });
@@ -228,7 +232,10 @@ test('select a plugin before creation and retain debug state while browsing run 
     name: 'Welcome processor',
   });
   expect(creations[0]).toHaveProperty('component_ref', ref);
-  expect(creations[0]).not.toHaveProperty('config');
+  // Plugin processors start with no workspace operations selected.
+  expect(creations[0]).toHaveProperty('config', {
+    allowed_workspace_operations: [],
+  });
   const panel = page.getByRole('region', { name: 'Event Debug' });
   const settings = page.getByRole('region', { name: 'Plugin processor' });
   const logs = page.getByRole('region', { name: 'Run logs', exact: true });

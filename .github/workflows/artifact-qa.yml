@@ -1,0 +1,129 @@
+name: Artifact QA
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/artifact-qa.yml'
+      - 'tools/verify_junit.py'
+      - 'tests/**/test_artifact*.py'
+      - 'tests/utils/**/*artifact*'
+      - 'tests/utils/required_suites.py'
+      - 'tests/utils/legacy_plugin_contract.py'
+      - 'tests/e2e/**'
+      - 'src/langbot/pkg/api/**'
+      - 'src/langbot/pkg/agent/**'
+      - 'src/langbot/pkg/box/**'
+      - 'src/langbot/pkg/core/**'
+      - 'src/langbot/pkg/entity/persistence/**'
+      - 'src/langbot/pkg/persistence/**'
+      - 'src/langbot/pkg/pipeline/**'
+      - 'src/langbot/pkg/platform/**'
+      - 'src/langbot/pkg/plugin/**'
+      - 'src/langbot/pkg/provider/**'
+      - 'src/langbot/pkg/storage/**'
+      - 'src/langbot/templates/**'
+      - 'plugins/Runner/LocalAgent/**'
+      - 'sdk/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'pytest.ini'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: artifact-qa-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  deterministic:
+    name: Deterministic Artifact QA
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SPACE__DISABLE_RELEASE_CHECK: 'true'
+      SPACE__DISABLE_MODELS_SERVICE: 'true'
+      SPACE__DISABLE_TELEMETRY: 'true'
+      # The test installs its local Runner archive, not Marketplace packages.
+      SPACE__URL: http://127.0.0.1:9
+      CLOUD_SERVICE_URL: http://127.0.0.1:9
+      LITELLM_LOCAL_MODEL_COST_MAP: 'True'
+      LANGBOT_LEGACY_PLUGIN_ROOT: ${{ github.workspace }}/plugins
+      LANGBOT_NETWORK_PLUGIN_E2E: '1'
+      LANGBOT_CORE_NETWORK_BACKEND: host
+      LANGBOT_ARTIFACT_MIXED_E2E: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Install locked Core and verify in-tree SDK
+        run: |
+          mkdir -p .qa/artifact-ci
+          uv sync --dev --frozen
+          uv run --no-sync python - <<'PY' | tee .qa/artifact-ci/environment.txt
+          from importlib.metadata import version
+          import os
+          from pathlib import Path
+          import sys
+          import langbot_plugin
+          import yaml
+
+          sdk = Path('sdk/src').resolve()
+          source = Path(langbot_plugin.__file__).resolve()
+          if not source.is_relative_to(sdk):
+              raise SystemExit(f'Expected the in-tree SDK, got {source}')
+          print(f"SHA: {os.environ['GITHUB_SHA']}")
+          print(f'Python: {sys.version}')
+          print(f"Core: {version('langbot')}")
+          print(f"SDK: {version('langbot-plugin')} ({source.relative_to(sdk)})")
+          manifest = yaml.safe_load(Path('plugins/Runner/LocalAgent/manifest.yaml').read_text())
+          print(f"LocalAgent source version: {manifest['metadata']['version']}")
+          print('Storage: SQLite/database; Box: host fixture; model: deterministic')
+          PY
+      - name: Run Artifact fixture, HTTP and MCP contracts
+        run: |
+          uv run --no-sync pytest -q -rs -o xfail_strict=true --junitxml=.qa/artifact-ci/contracts.xml \
+            tests/unit_tests/storage/test_artifact_reader.py \
+            tests/integration/storage/test_artifact_content.py -k 'not postgres'
+      - name: Run real-process mixed attachment lifecycle
+        if: ${{ !cancelled() }}
+        run: |
+          uv run --no-sync pytest -q -rs -o xfail_strict=true --junitxml=.qa/artifact-ci/mixed.xml \
+            tests/e2e/test_artifact_mixed_acceptance.py --required-suite artifact_mixed
+      - name: Run real LocalAgent compaction and old attachment reads
+        if: ${{ !cancelled() }}
+        run: |
+          uv run --no-sync pytest -q -rs -o xfail_strict=true --junitxml=.qa/artifact-ci/compaction.xml \
+            tests/e2e/test_local_runner_fake_provider.py::test_local_runner_compacts_without_persisting_artifact_bytes
+      - name: Require evidence with no skipped or expected-failure cases
+        if: ${{ !cancelled() }}
+        run: >-
+          python tools/verify_junit.py
+          .qa/artifact-ci/contracts.xml
+          .qa/artifact-ci/mixed.xml
+          .qa/artifact-ci/compaction.xml
+      - name: Upload Artifact QA evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifact-qa-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .qa/artifact-ci/*.xml
+            .qa/artifact-ci/*.txt
+            .qa/artifact-ci/*.json
+            .qa/artifact-ci/*.ndjson
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14

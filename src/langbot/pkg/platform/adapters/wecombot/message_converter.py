@@ -112,13 +112,46 @@ class WecomBotMessageConverter(abstract_platform_adapter.AbstractMessageConverte
         voice_payload = voice_info.get('base64') or voice_info.get('url')
         if not voice_payload:
             return
+        length = voice_info.get('length')
+        import base64
+        from langbot.pkg.utils import audio as audio_utils
+
         if voice_info.get('base64') and not voice_payload.startswith('data:'):
-            voice_payload = f'data:audio/mpeg;base64,{voice_info.get("base64")}'
+            try:
+                raw_bytes = base64.b64decode(voice_info.get('base64'), validate=False)
+                fmt = audio_utils.detect_audio_format(raw_bytes)
+                if length is None and raw_bytes:
+                    length = int(round(audio_utils.estimate_audio_duration(raw_bytes, fmt)))
+                if fmt in ('amr', 'silk') and audio_utils.is_ffmpeg_available():
+                    try:
+                        mp3_bytes = audio_utils.transcode_audio_sync(raw_bytes, 'mp3', fmt)
+                        voice_payload = f'data:audio/mpeg;base64,{base64.b64encode(mp3_bytes).decode("utf-8")}'
+                    except Exception:
+                        voice_payload = f'data:audio/{fmt};base64,{voice_info.get("base64")}'
+                else:
+                    mime = 'audio/mpeg' if fmt == 'mp3' else ('audio/wav' if fmt == 'wav' else f'audio/{fmt}')
+                    voice_payload = f'data:{mime};base64,{voice_info.get("base64")}'
+            except Exception:
+                voice_payload = f'data:audio/mpeg;base64,{voice_info.get("base64")}'
+        elif voice_payload.startswith('data:'):
+            header, _, b64_body = voice_payload.partition(',')
+            if ('amr' in header or 'silk' in header or 'octet-stream' in header) and audio_utils.is_ffmpeg_available():
+                try:
+                    raw_bytes = base64.b64decode(b64_body, validate=False)
+                    fmt = audio_utils.detect_audio_format(raw_bytes)
+                    if fmt in ('amr', 'silk'):
+                        if length is None and raw_bytes:
+                            length = int(round(audio_utils.estimate_audio_duration(raw_bytes, fmt)))
+                        mp3_bytes = audio_utils.transcode_audio_sync(raw_bytes, 'mp3', fmt)
+                        voice_payload = f'data:audio/mpeg;base64,{base64.b64encode(mp3_bytes).decode("utf-8")}'
+                except Exception:
+                    pass
+
         try:
             if voice_payload.startswith('data:'):
-                components.append(platform_message.Voice(base64=voice_payload))
+                components.append(platform_message.Voice(base64=voice_payload, length=length))
             else:
-                components.append(platform_message.Voice(url=voice_payload))
+                components.append(platform_message.Voice(url=voice_payload, length=length))
         except Exception:
             components.append(platform_message.Unknown(text='[voice message unsupported]'))
 

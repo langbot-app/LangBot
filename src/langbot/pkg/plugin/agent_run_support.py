@@ -448,9 +448,7 @@ def _project_runner_descriptor_for_api(descriptor: Any) -> dict[str, Any]:
     }
 
 
-async def _record_runner_admin_action(
-    ap: app.Application,
-    store: Any,
+def _runner_admin_audit_data(
     *,
     action: str,
     caller_plugin_identity: str | None,
@@ -458,8 +456,7 @@ async def _record_runner_admin_action(
     durable_run_id: str | None = None,
     target_runtime_id: str | None = None,
     detail: dict[str, Any] | None = None,
-) -> None:
-    """Record a small audit trail for privileged Runner operations."""
+) -> dict[str, Any]:
     audit_data: dict[str, Any] = {
         'action': action,
         'caller_plugin_identity': caller_plugin_identity,
@@ -472,6 +469,29 @@ async def _record_runner_admin_action(
     if detail:
         audit_data['detail'] = detail
 
+    return audit_data
+
+
+async def _record_runner_admin_action(
+    ap: app.Application,
+    store: Any,
+    *,
+    action: str,
+    caller_plugin_identity: str | None,
+    permission: str,
+    durable_run_id: str | None = None,
+    target_runtime_id: str | None = None,
+    detail: dict[str, Any] | None = None,
+) -> None:
+    """Record a small audit trail for privileged Runner operations."""
+    audit_data = _runner_admin_audit_data(
+        action=action,
+        caller_plugin_identity=caller_plugin_identity,
+        permission=permission,
+        durable_run_id=durable_run_id,
+        target_runtime_id=target_runtime_id,
+        detail=detail,
+    )
     ap.logger.info('Agent runner admin action: %s', audit_data)
     if not durable_run_id or store is None or not hasattr(store, 'append_audit_event'):
         return

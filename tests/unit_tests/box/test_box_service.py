@@ -6,7 +6,7 @@ import os
 import pathlib
 import tempfile
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -259,6 +259,32 @@ async def test_box_service_without_explicit_client_initializes_internal_connecto
 
     assert service.client is connector.client
     connector.initialize.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure', ['offline', 'incompatible', 'wrapped-incompatible'])
+async def test_network_startup_distinguishes_offline_and_incompatible_runtime(failure):
+    from langbot_plugin.box import errors
+
+    compatibility = getattr(errors, 'BoxRuntimeCompatibilityError', None)
+    if compatibility is None:
+        pytest.skip('typed network compatibility requires the coordinated SDK')
+    app = make_app(Mock())
+    app.instance_config.data['box']['file_transfer_mode'] = 'network'
+    error = errors.BoxRuntimeUnavailableError('offline')
+    if failure == 'incompatible':
+        error = compatibility('unsupported protocol')
+    elif failure == 'wrapped-incompatible':
+        error.__cause__ = compatibility('unsupported protocol')
+    client = Mock(spec=BoxRuntimeClient)
+    client.initialize = AsyncMock(side_effect=error)
+    service = BoxService(app, client=client)
+    if failure == 'offline':
+        await service.initialize()
+        assert service.available is False
+    else:
+        with pytest.raises(errors.BoxRuntimeUnavailableError):
+            await service.initialize()
 
 
 @pytest.mark.asyncio
@@ -695,6 +721,50 @@ async def test_box_runtime_reuses_request_session():
 
     assert backend.start_calls == ['req-1']
     assert backend.exec_calls == [('req-1', 'echo first'), ('req-1', 'echo second')]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('outcome', ['success', 'exit_error', 'box_error', 'timeout'])
+async def test_execution_telemetry_counts_sandbox_outcomes(outcome):
+    from langbot.pkg.telemetry import trace
+    from tests.unit_tests.telemetry.test_trace import make_counters
+
+    logger = Mock()
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    app = make_app(logger)
+    _, counters = make_counters()
+    app.telemetry = SimpleNamespace(execution=counters)
+    service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
+    await service.initialize()
+    if outcome == 'box_error':
+        service.client.execute = AsyncMock(side_effect=BoxError('backend failed'))
+    elif outcome in {'exit_error', 'timeout'}:
+        service.client.execute = AsyncMock(
+            return_value=BoxExecutionResult(
+                session_id='person_test_user',
+                backend_name='fake',
+                status=BoxExecutionStatus.TIMED_OUT if outcome == 'timeout' else BoxExecutionStatus.COMPLETED,
+                exit_code=None if outcome == 'timeout' else 1,
+                stdout='',
+                stderr='private output',
+                duration_ms=1,
+            )
+        )
+    binding = trace.bind()
+    try:
+        if outcome == 'box_error':
+            with pytest.raises(BoxError):
+                await service.execute_tool({'command': 'private command'}, make_query())
+        else:
+            await service.execute_tool({'command': 'private command'}, make_query())
+        expected = {'execs': 1}
+        if outcome != 'success':
+            expected['errors'] = 1
+        assert binding.state.features == {'sandbox': expected}
+    finally:
+        trace.unbind_root(binding)
+        await service.shutdown()
 
 
 @pytest.mark.asyncio
@@ -1369,6 +1439,27 @@ async def test_runtime_get_backend_info_when_no_backend():
     info = await runtime.get_backend_info()
     assert info['name'] is None
     assert info['available'] is False
+
+
+@pytest.mark.asyncio
+async def test_workspace_selection_reuses_connected_runtime_backend_info():
+    logger = Mock()
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    client = _InProcessBoxRuntimeClient(logger, runtime)
+    client.get_backend_info = AsyncMock(return_value={'name': 'fake', 'available': True})
+    service = BoxService(make_app(logger), client=client)
+    await service.initialize()
+
+    with patch(
+        'langbot.pkg.box.settings.get_settings',
+        new=AsyncMock(return_value={'backend': None, 'e2b': {}, 'limits': {}}),
+    ):
+        first = await service.resolve_workspace_selection(_CONTEXT)
+        second = await service.resolve_workspace_selection(_CONTEXT)
+
+    assert first['backend'] == second['backend'] == 'fake'
+    client.get_backend_info.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -2511,3 +2602,34 @@ async def test_execute_tool_preserves_trusted_read_only_mounts(tmp_path):
         assert mount.mode == BoxHostMountMode.READ_ONLY
     finally:
         await service.shutdown()
+
+
+@pytest.mark.skipif('backend' not in BoxSpec.model_fields, reason='requires in-tree Box SDK')
+def test_workspace_admin_caps_also_constrain_inherited_defaults_and_numeric_strings():
+    app = make_app(Mock())
+    app.instance_config.data['box']['workspace_limit_caps'] = {
+        'memory_mb': 64,
+        'cpus': 0.5,
+        'pids_limit': 16,
+        'timeout_sec': 5,
+        'idle_ttl_sec': 60,
+        'max_sessions': 2,
+        'workspace_quota_mb': 10,
+    }
+    box = BoxService(app, client=Mock())
+    for payload in ({}, {'memory_mb': '2048', 'cpus': '4', 'pids_limit': '512', 'timeout_sec': '90'}):
+        spec = box.build_spec({'session_id': 'limits', 'backend': 'docker', **payload}, skip_host_mount_validation=True)
+        assert spec.memory_mb == 64 and spec.cpus == 0.5 and spec.pids_limit == 16
+        assert spec.timeout_sec == 5 and spec.idle_ttl_sec == 60 and spec.workspace_max_sessions == 2
+        assert spec.workspace_quota_mb == 10
+
+
+def test_default_template_can_build_a_box_with_the_installed_sdk():
+    import yaml
+
+    template = pathlib.Path(__file__).resolve().parents[3] / 'src/langbot/templates/config.yaml'
+    app = make_app(Mock())
+    app.instance_config.data = yaml.safe_load(template.read_text())
+    box = BoxService(app, client=Mock())
+    spec = box.build_spec({'session_id': 'fresh-install'}, skip_host_mount_validation=True)
+    assert spec.session_id == 'fresh-install' and spec.timeout_sec > 0

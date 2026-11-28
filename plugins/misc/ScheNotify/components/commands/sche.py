@@ -53,7 +53,7 @@ class ScheCommand(Command):
 
                 index = 1
                 for event in scheduled_events:
-                    reply += f'#{index} {event["time"]}：{event["message"]}\n'
+                    reply += f'#{index} {self.plugin.format_event_time(event["time"])}：{event["message"]}\n'
                     index += 1
 
             yield CommandReturn(text=reply)

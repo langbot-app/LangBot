@@ -18,7 +18,10 @@ from langbot.pkg.api.http.service.tenant import TenantContext, require_workspace
 from langbot.pkg.core import app, taskmgr
 from langbot.pkg.core.task_boundary import run_in_workspace_uow
 from langbot.pkg.entity.persistence import rag as persistence_rag
+from langbot.pkg.i18n import t
+from langbot.pkg.plugin.errors import PluginNotInstalledError
 from langbot.pkg.workspace.errors import WorkspaceInvariantError, WorkspaceNotFoundError
+from langbot.pkg.telemetry import usage
 
 from .base import KnowledgeBaseInterface
 
@@ -126,12 +129,14 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         except (WorkspaceRequiredError, ValueError) as exc:
             raise WorkspaceNotFoundError('Upload not found') from exc
 
+    @usage.observe_runtime('kb.file.ingest')
     async def _store_file_task(
         self,
         execution_context: ExecutionContext,
         file: persistence_rag.File,
         task_context: taskmgr.TaskContext,
         parser_plugin_id: str | None = None,
+        file_size: int | None = None,
     ):
         key = (execution_context.workspace_uuid, self.get_uuid(), file.uuid)
         current_task = asyncio.current_task()
@@ -150,7 +155,8 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                 execution_context.workspace_uuid,
                 lambda: self._assert_execution_context(execution_context),
             )
-            self._require_upload_object_key(execution_context, file.file_name)
+            if not file.artifact_id:
+                self._require_upload_object_key(execution_context, file.file_name)
             # Claim only pending work. Recovered/terminal rows cannot be replayed.
             status_visible = False
             for retry_delay in (0.0, 0.01, 0.05, 0.1):
@@ -169,11 +175,14 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             task_context.set_current_action('Processing file')
 
             # Get file size from storage
-            file_size = await self.ap.storage_mgr.size_scoped_object_key(
-                execution_context,
-                file.file_name,
-                expected_owner_type='upload_document',
-            )
+            if file.artifact_id and file_size is None:
+                file_size = (await self._read_artifact_file(execution_context, file))['metadata']['size']
+            if file_size is None:
+                file_size = await self.ap.storage_mgr.size_scoped_object_key(
+                    execution_context,
+                    file.file_name,
+                    expected_owner_type='upload_document',
+                )
 
             # Detect MIME type from extension
             mime_type, _ = mimetypes.guess_type(file.file_name)
@@ -184,11 +193,14 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             parsed_content = None
             if parser_plugin_id:
                 task_context.set_current_action('Parsing file')
-                file_bytes = await self.ap.storage_mgr.load_scoped_object_key(
-                    execution_context,
-                    file.file_name,
-                    expected_owner_type='upload_document',
-                )
+                if file.artifact_id:
+                    file_bytes = (await self._read_artifact_file(execution_context, file))['content']
+                else:
+                    file_bytes = await self.ap.storage_mgr.load_scoped_object_key(
+                        execution_context,
+                        file.file_name,
+                        expected_owner_type='upload_document',
+                    )
                 parse_context = {
                     'mime_type': mime_type,
                     'filename': file.file_name,
@@ -210,7 +222,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                     'file_size': file_size,
                     'mime_type': mime_type,
                 },
-                file.file_name,  # storage path
+                f'artifact:{file.uuid}' if file.artifact_id else file.file_name,  # scoped runtime handle
                 parsed_content=parsed_content,
             )
 
@@ -263,7 +275,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             if self._ingestion_tasks.get(key) is current_task:
                 self._ingestion_tasks.pop(key, None)
             # Only release recovery material after an acknowledged terminal write.
-            if cleanup_upload:
+            if cleanup_upload and not file.artifact_id:
                 try:
                     await run_in_workspace_uow(
                         self.ap,
@@ -336,7 +348,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         execution_context: ExecutionContext,
         file_id: str,
         parser_plugin_id: str | None = None,
-    ) -> str:
+    ) -> int:
         await self._assert_execution_context(execution_context)
         self._require_upload_object_key(execution_context, file_id)
         # pre checking
@@ -354,6 +366,9 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         if extension == 'zip':
             return await self._store_zip_file(execution_context, file_id, parser_plugin_id=parser_plugin_id)
 
+        file_size = await self.ap.storage_mgr.size_scoped_object_key(
+            execution_context, file_id, expected_owner_type='upload_document'
+        )
         file_uuid = str(uuid.uuid4())
         kb_id = self.knowledge_base_entity.uuid
 
@@ -366,14 +381,75 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             'status': 'pending',
         }
 
-        file_obj = persistence_rag.File(**file_obj_data)
+        return await self._schedule_file(execution_context, file_obj_data, parser_plugin_id, file_size)
 
+    async def _read_artifact_file(self, execution_context, file):
+        await self._assert_execution_context(execution_context)
+        return await self.ap.artifact_service.read_business(
+            execution_context,
+            file.artifact_id,
+            holder_type='knowledge_file',
+            holder_id=file.uuid,
+            max_bytes=10 * 1024 * 1024,
+        )
+
+    async def store_artifact(self, context: RequestContext, artifact_id: str, parser_plugin_id=None) -> int:
+        execution_context = ExecutionContext.from_request(context)
+        await self._assert_execution_context(execution_context)
+        metadata = await self.ap.artifact_service.get(context, artifact_id)
+        file_name = metadata['name']
+        extension = os.path.splitext(file_name)[1].lstrip('.').lower()
+        if extension == 'zip':
+            raise ValueError(t('Artifact ZIP ingestion is not supported; use the existing document upload entrypoint'))
+        file_uuid = str(uuid.uuid4())
+        file_obj_data = dict(
+            uuid=file_uuid,
+            workspace_uuid=execution_context.workspace_uuid,
+            kb_id=self.get_uuid(),
+            file_name=file_name,
+            extension=extension,
+            status='pending',
+            artifact_id=artifact_id,
+        )
+        return await self._schedule_file(
+            execution_context,
+            file_obj_data,
+            parser_plugin_id,
+            metadata['size'],
+            source_context=context,
+        )
+
+    async def _schedule_file(self, execution_context, file_obj_data, parser_plugin_id, file_size, source_context=None):
+        file_uuid = file_obj_data['uuid']
+        file_id = file_obj_data['file_name']
+        extension = file_obj_data['extension']
+        kb_id = self.get_uuid()
+        file_obj = persistence_rag.File(**file_obj_data)
         # Serialize admission with reconciliation, not with remote ingestion.
         async with self.ingestion_admission_lock:
-            await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_rag.File).values(file_obj_data))
+            async with self.ap.persistence_mgr.tenant_uow(execution_context.workspace_uuid) as uow:
+                admitted = await uow.execute(
+                    sqlalchemy.update(persistence_rag.KnowledgeBase)
+                    .where(persistence_rag.KnowledgeBase.workspace_uuid == execution_context.workspace_uuid)
+                    .where(persistence_rag.KnowledgeBase.uuid == kb_id)
+                    .where(persistence_rag.KnowledgeBase.deleting.is_(False))
+                    .values(deleting=False)
+                )
+                if admitted.rowcount != 1:
+                    raise ValueError(t('Knowledge base deletion is pending; retry deletion before admitting new files'))
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.insert(persistence_rag.File).values(file_obj_data)
+                )
+                if source_context is not None:
+                    await self.ap.artifact_service.bind_business(
+                        source_context,
+                        file_obj.artifact_id,
+                        holder_type='knowledge_file',
+                        holder_id=file_uuid,
+                    )
             ctx = taskmgr.TaskContext.new()
             coroutine = self._store_file_task(
-                execution_context, file_obj, task_context=ctx, parser_plugin_id=parser_plugin_id
+                execution_context, file_obj, task_context=ctx, parser_plugin_id=parser_plugin_id, file_size=file_size
             )
             try:
                 wrapper = self.ap.task_mgr.create_user_task(
@@ -386,12 +462,21 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                     workspace_uuid=execution_context.workspace_uuid,
                     placement_generation=execution_context.placement_generation,
                 )
-            except taskmgr.TaskCapacityError:
-                await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.delete(persistence_rag.File)
-                    .where(persistence_rag.File.workspace_uuid == execution_context.workspace_uuid)
-                    .where(persistence_rag.File.uuid == file_uuid)
-                )
+            except BaseException:
+                coroutine.close()
+                async with self.ap.persistence_mgr.tenant_uow(execution_context.workspace_uuid):
+                    if file_obj.artifact_id:
+                        await self.ap.artifact_service.release_business(
+                            execution_context,
+                            file_obj.artifact_id,
+                            holder_type='knowledge_file',
+                            holder_id=file_uuid,
+                        )
+                    await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.delete(persistence_rag.File)
+                        .where(persistence_rag.File.workspace_uuid == execution_context.workspace_uuid)
+                        .where(persistence_rag.File.uuid == file_uuid)
+                    )
                 raise
             key = (execution_context.workspace_uuid, kb_id, file_uuid)
             self._ingestion_tasks[key] = wrapper.task
@@ -405,14 +490,28 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                     self._ingestion_tasks.pop(key, None)
 
             wrapper.task.add_done_callback(forget_task)
+        self._record_upload(execution_context, extension, file_size)
         return wrapper.id
+
+    def _record_upload(self, execution_context, extension, file_size):
+        try:
+            usage.inc(
+                self.ap,
+                execution_context.workspace_uuid,
+                'kb.file.upload',
+                engine=self.get_knowledge_engine_plugin_id(),
+                ext=extension,
+                size=usage.bucket(file_size, (1024**2, 10 * 1024**2, 50 * 1024**2), ('<1M', '<10M', '<50M', '>=50M')),
+            )
+        except Exception:
+            pass
 
     async def _store_zip_file(
         self,
         execution_context: ExecutionContext,
         zip_file_id: str,
         parser_plugin_id: str | None = None,
-    ) -> str:
+    ) -> int:
         """Handle ZIP file by extracting each document and storing them separately."""
         await self._assert_execution_context(execution_context)
         self._require_upload_object_key(execution_context, zip_file_id)
@@ -423,6 +522,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             zip_file_id,
             expected_owner_type='upload_document',
         )
+        self._record_upload(execution_context, 'zip', len(zip_bytes))
 
         supported_extensions = {'txt', 'pdf', 'docx', 'md', 'html'}
         stored_file_tasks = []
@@ -516,7 +616,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             self.ap.logger.info(
                 f'Successfully processed ZIP file {zip_file_id}, extracted {len(stored_file_tasks)} files'
             )
-            return stored_file_tasks[0] if stored_file_tasks else ''
+            return stored_file_tasks[0]
         finally:
             try:
                 await self._assert_execution_context(execution_context)
@@ -532,6 +632,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             except Exception as e:
                 self.ap.logger.warning(f'Failed to cleanup ZIP file {zip_file_id}: {e}')
 
+    @usage.observe_runtime('kb.retrieve')
     async def retrieve(
         self,
         execution_context: ExecutionContext,
@@ -556,6 +657,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                 entries.append(r)
         return entries
 
+    @usage.observe_runtime('kb.file.delete')
     async def delete_file(self, execution_context: ExecutionContext, file_id: str):
         await self._assert_execution_context(execution_context)
         result = await self.ap.persistence_mgr.execute_async(
@@ -590,12 +692,20 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
 
         # The plugin call may outlive the original placement generation.
         await self._assert_execution_context(execution_context)
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.delete(persistence_rag.File)
-            .where(persistence_rag.File.workspace_uuid == execution_context.workspace_uuid)
-            .where(persistence_rag.File.kb_id == self.knowledge_base_entity.uuid)
-            .where(persistence_rag.File.uuid == file_id)
-        )
+        async with self.ap.persistence_mgr.tenant_uow(execution_context.workspace_uuid):
+            if file.artifact_id:
+                await self.ap.artifact_service.release_business(
+                    execution_context,
+                    file.artifact_id,
+                    holder_type='knowledge_file',
+                    holder_id=file.uuid,
+                )
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.delete(persistence_rag.File)
+                .where(persistence_rag.File.workspace_uuid == execution_context.workspace_uuid)
+                .where(persistence_rag.File.kb_id == self.knowledge_base_entity.uuid)
+                .where(persistence_rag.File.uuid == file_id)
+            )
 
     def get_uuid(self) -> str:
         """Get the UUID of the knowledge base"""
@@ -647,8 +757,20 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                 f'Calling RAG plugin {plugin_id}: on_knowledge_base_delete(kb_id={self.knowledge_base_entity.uuid})'
             )
             await self.ap.plugin_connector.rag_on_kb_delete(plugin_id, self.knowledge_base_entity.uuid)
+        except PluginNotInstalledError:
+            # The engine was uninstalled after the KB was created, so no plugin can
+            # clean up anymore. Purge the Host-owned vectors ourselves so the user
+            # can still delete the KB instead of being stuck with a permanent 500.
+            self.ap.logger.warning(
+                f'RAG plugin {plugin_id} is not installed; purging Host vectors for KB '
+                f'{self.knowledge_base_entity.uuid} without plugin cleanup'
+            )
+            vector_db_mgr = getattr(self.ap, 'vector_db_mgr', None)
+            if vector_db_mgr is not None:
+                await vector_db_mgr.delete_collection(execution_context, self.knowledge_base_entity.uuid)
         except Exception as e:
             self.ap.logger.error(f'Failed to notify plugin {plugin_id} on KB delete: {e}')
+            raise
 
     async def _ingest_document(
         self,
@@ -992,6 +1114,7 @@ class RAGManager:
                 raise
 
         self.ap.logger.info(f'Created new Knowledge Base {name} ({kb_uuid}) using plugin {knowledge_engine_plugin_id}')
+        usage.inc(self.ap, execution_context.workspace_uuid, 'kb.create', engine=knowledge_engine_plugin_id)
         return kb
 
     async def load_knowledge_bases_from_db(self):
@@ -1110,8 +1233,23 @@ class RAGManager:
         kb_uuid: str,
     ) -> None:
         execution_context = await self._to_execution_context(context)
-        kb = self._pop_runtime(execution_context, kb_uuid)
-        if kb is not None:
-            await kb.dispose(execution_context)
-        else:
-            self.ap.logger.warning(f'Knowledge base {kb_uuid} not found in runtime, skipping plugin notification')
+        kb = await self.get_knowledge_base_by_uuid(execution_context, kb_uuid)
+        if kb is None:
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(persistence_rag.KnowledgeBase)
+                .where(persistence_rag.KnowledgeBase.workspace_uuid == execution_context.workspace_uuid)
+                .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+            )
+            entity = result.first()
+            if entity is None:
+                raise WorkspaceNotFoundError('Knowledge base not found')
+            if entity.initialized is False:
+                # Drafts have never created upstream state and are intentionally not cached.
+                return
+            if isinstance(entity, sqlalchemy.Row):
+                entity = persistence_rag.KnowledgeBase(**entity._mapping)
+            # Retry after restart without creating upstream state or reopening admission.
+            kb = RuntimeKnowledgeBase(self.ap, entity, execution_context)
+            self._cache_runtime(kb)
+        await kb.dispose(execution_context)
+        self._pop_runtime(execution_context, kb_uuid)

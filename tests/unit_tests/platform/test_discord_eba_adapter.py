@@ -22,6 +22,7 @@ from langbot_plugin.api.definition.abstract.platform.event_logger import Abstrac
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
+from langbot_plugin.api.entities.builtin.runner.interaction import InteractionRequest, InteractionHandle
 
 
 class DummyLogger(AbstractEventLogger):
@@ -88,7 +89,7 @@ def test_discord_interaction_custom_id_parser_uses_host_indexes():
 @pytest.mark.asyncio
 async def test_discord_interaction_view_and_delivery():
     adapter = make_adapter()
-    channel = SimpleNamespace(send=AsyncMock(return_value=SimpleNamespace(id=321)))
+    channel = SimpleNamespace(id=789, send=AsyncMock(return_value=SimpleNamespace(id=321)))
     adapter._get_channel = AsyncMock(return_value=channel)
     request = {
         'interaction_id': 'form-1',
@@ -100,17 +101,52 @@ async def test_discord_interaction_view_and_delivery():
     view = build_interaction_view(request, 'callback-token')
     assert view.children[0].custom_id == 'lbi:callback-token:a:0'
 
-    result = await adapter.call_platform_api(
-        'interaction.request',
-        {
-            'request': request,
-            'callback_token': 'callback-token',
-            'reply_target': {'target_type': 'group', 'target_id': '789'},
-        },
+    result = await adapter.send_interaction(
+        'group', '789', InteractionRequest.model_validate(request), 'callback-token'
     )
 
-    assert result == {'ok': True, 'message_id': 321, 'rich': True}
+    assert isinstance(result, InteractionHandle)
+    assert result.message_id == 321 and result.rich is True
+    assert result.context['channel_id'] == '789'
     assert channel.send.await_args.kwargs['view'].children[0].label == 'Approve'
+
+
+@pytest.mark.asyncio
+async def test_discord_guild_interaction_targets_the_originating_channel():
+    adapter = make_adapter()
+    channel = SimpleNamespace(id=555, send=AsyncMock(return_value=SimpleNamespace(id=321)))
+    adapter._get_channel = AsyncMock(return_value=channel)
+    adapter._remember_message_channel(SimpleNamespace(id=42, channel=SimpleNamespace(id=555)))
+    request = InteractionRequest.model_validate(
+        {'interaction_id': 'form-1', 'title': 'Approve?', 'actions': [{'id': 'approve', 'label': 'Approve'}]}
+    )
+
+    # Pipeline group conversations are keyed by guild id; the card must go to the message's channel.
+    result = await adapter.send_interaction('group', '1558675416288333856', request, 'callback-token', reply_to='42')
+
+    adapter._get_channel.assert_awaited_once_with(555)
+    assert result.context['channel_id'] == '555'
+    assert result.context['target_id'] == '1558675416288333856'
+
+    message = SimpleNamespace(edit=AsyncMock())
+    channel.fetch_message = AsyncMock(return_value=message)
+    adapter._get_channel.reset_mock()
+    await adapter.update_interaction(result, 'submitted')
+    adapter._get_channel.assert_awaited_once_with('555')
+    message.edit.assert_awaited_once_with(content='Approve?\n\nSubmitted', view=None)
+
+    # The click happens in the channel, but the Host recorded the guild conversation.
+    interaction = SimpleNamespace(
+        user=SimpleNamespace(id=7),
+        channel=SimpleNamespace(id=555),
+        guild=SimpleNamespace(id=1558675416288333856),
+        message=SimpleNamespace(id=321),
+    )
+    event = interaction_event_from_component(
+        interaction, {'callback_token': 'callback-token', 'action_ref': 0}, adapter._interaction_targets.get('321')
+    )
+    assert (event.target_type, event.target_id) == ('group', '1558675416288333856')
+    assert event.callback_context == {'channel_id': '555'}
 
 
 def test_discord_interaction_component_builds_scoped_host_event():
@@ -125,10 +161,31 @@ def test_discord_interaction_component_builds_scoped_host_event():
         {'callback_token': 'callback-token', 'action_ref': 0},
     )
 
-    assert event.action == 'interaction.submitted'
-    assert event.data['actor_id'] == '123'
-    assert event.data['target_type'] == 'group'
-    assert event.data['target_id'] == '789'
+    assert isinstance(event, platform_events.InteractionCallbackEvent)
+    assert event.actor_id == '123'
+    assert event.target_type == 'group'
+    assert event.target_id == '789'
+
+
+@pytest.mark.asyncio
+async def test_discord_update_interaction_removes_components():
+    adapter = make_adapter()
+    message = SimpleNamespace(edit=AsyncMock())
+    channel = SimpleNamespace(fetch_message=AsyncMock(return_value=message))
+    adapter._get_channel = AsyncMock(return_value=channel)
+    handle = InteractionHandle(
+        message_id=321,
+        context={
+            'target_id': '789',
+            'request': {'title': 'Approve?'},
+        },
+    )
+
+    assert 'update_interaction' in adapter.get_supported_apis()
+    await adapter.update_interaction(handle, 'cancelled')
+
+    channel.fetch_message.assert_awaited_once_with(321)
+    message.edit.assert_awaited_once_with(content='Approve?\n\nCancelled', view=None)
 
 
 @pytest.mark.asyncio
@@ -179,6 +236,38 @@ async def test_discord_message_converter_maps_mentions_and_text_to_target():
 
     assert content == 'hi <@123> all @everyone'
     assert files == []
+
+
+@pytest.mark.asyncio
+async def test_discord_message_converter_maps_audio_attachments_to_voice(monkeypatch):
+    wav_header = b'RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x00}\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00'
+    attachment = SimpleNamespace(
+        id=999,
+        filename='voice-message.ogg',
+        url='https://cdn.discordapp.com/attachments/1/2/voice-message.ogg',
+        size=len(wav_header),
+        content_type='audio/ogg',
+        flags=SimpleNamespace(voice=True),
+        duration_secs=4.5,
+    )
+    message = SimpleNamespace(
+        id=123,
+        content='Voice test',
+        created_at=datetime.datetime.now(),
+        attachments=[attachment],
+    )
+    monkeypatch.setattr(
+        DiscordMessageConverter,
+        '_download',
+        AsyncMock(return_value=(wav_header, 'audio/ogg')),
+    )
+
+    chain = await DiscordMessageConverter.target2yiri(message)
+    voices = [c for c in chain if isinstance(c, platform_message.Voice)]
+    assert len(voices) == 1
+    assert voices[0].url == attachment.url
+    assert voices[0].length == 4
+    assert voices[0].base64.startswith('data:audio/ogg;base64,')
 
 
 def test_discord_message_converter_splits_discord_mentions():
@@ -500,4 +589,95 @@ async def test_guild_event_reply_without_system_channel_does_not_pick_another_ch
             'group', guild_id, platform_message.MessageChain([platform_message.Plain(text='Welcome')])
         )
     get_guild.assert_called_once_with(expected_guild_id)
+    adapter._get_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('quote', [False, True])
+@pytest.mark.parametrize('frozen_channel', [False, True])
+async def test_discord_recovered_reply_preserves_channel_quote_and_file(monkeypatch, quote, frozen_channel):
+    adapter = make_adapter()
+    channel = SimpleNamespace(id=789, send=AsyncMock(return_value=SimpleNamespace(id=901)))
+    adapter._get_channel = AsyncMock(return_value=channel)
+    get_guild = Mock(return_value=SimpleNamespace(system_channel=Mock()) if frozen_channel else None)
+    monkeypatch.setattr(adapter.bot, 'get_guild', get_guild)
+    target = {'target_type': 'group', 'target_id': '123' if frozen_channel else '789', 'message_id': '88'}
+    if frozen_channel:
+        target['chat_id'] = '789'
+    chain = platform_message.MessageChain(
+        [
+            platform_message.At(target='456'),
+            platform_message.Plain(text='recovered'),
+            platform_message.File(name='result.txt', base64='ZXZpZGVuY2U='),
+        ]
+    )
+    result = await adapter.reply_to_event(
+        context={'quote_origin': quote, 'delivery': {'reply_target': target}},
+        target_type='group',
+        target_id=target['target_id'],
+        message=chain,
+    )
+    adapter._get_channel.assert_awaited_once_with('789')
+    if frozen_channel:
+        get_guild.assert_not_called()
+    kwargs = channel.send.await_args.kwargs
+    assert kwargs['content'] == '<@456>recovered'
+    document = kwargs['files'][0]
+    assert document.filename == 'result.txt'
+    assert document.fp.read() == b'evidence'
+    document.close()
+    if quote:
+        assert kwargs['reference'].message_id == 88
+        assert kwargs['reference'].channel_id == 789
+        assert kwargs['mention_author'] is True
+    else:
+        assert 'reference' not in kwargs
+    assert result.message_id == 901
+
+
+@pytest.mark.asyncio
+async def test_discord_event_reply_without_recovery_context_keeps_guild_delivery(monkeypatch):
+    adapter = make_adapter()
+    channel = SimpleNamespace(send=AsyncMock(return_value=SimpleNamespace(id=901)))
+    monkeypatch.setattr(adapter.bot, 'get_guild', Mock(return_value=SimpleNamespace(system_channel=channel)))
+    adapter._get_channel = AsyncMock()
+    await adapter.reply_to_event(
+        context={'delivery': {'reply_target': {'message_id': '88'}}},
+        target_type='group',
+        target_id='123',
+        message=platform_message.MessageChain([platform_message.Plain(text='welcome')]),
+    )
+    channel.send.assert_awaited_once_with(content='welcome')
+    adapter._get_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('target_type', ['group', 'person'])
+async def test_discord_recovered_reply_rejects_missing_original_channel(monkeypatch, target_type):
+    adapter = make_adapter()
+    channel = SimpleNamespace(send=AsyncMock())
+    monkeypatch.setattr(adapter.bot, 'get_guild', Mock(return_value=SimpleNamespace(system_channel=channel)))
+    adapter._get_channel = AsyncMock()
+    with pytest.raises(ValueError, match='original channel ID'):
+        await adapter.reply_to_event(
+            context={'quote_origin': False, 'delivery': {'reply_target': {'target_id': '123'}}},
+            target_type=target_type,
+            target_id='123',
+            message=platform_message.MessageChain([platform_message.Plain(text='recovered')]),
+        )
+    channel.send.assert_not_awaited()
+    adapter._get_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_discord_recovered_quote_requires_original_message():
+    adapter = make_adapter()
+    adapter._get_channel = AsyncMock()
+    with pytest.raises(ValueError, match='message ID is required'):
+        await adapter.reply_to_event(
+            context={'quote_origin': True, 'delivery': {'reply_target': {'chat_id': '789'}}},
+            target_type='group',
+            target_id='123',
+            message=platform_message.MessageChain([platform_message.Plain(text='recovered')]),
+        )
     adapter._get_channel.assert_not_awaited()

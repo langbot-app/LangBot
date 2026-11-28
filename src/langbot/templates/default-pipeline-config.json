@@ -1,63 +1,32 @@
 {
-    "trigger": {
-        "group-respond-rules": {
-            "at": true,
-            "prefix": [
-                "ai"
-            ],
-            "regexp": [],
-            "random": 0.0
-        },
-        "access-control": {
-            "mode": "blacklist",
-            "blacklist": [],
-            "whitelist": []
-        },
-        "ignore-rules": {
-            "prefix": [],
-            "regexp": []
-        },
-        "message-aggregation": {
-            "enabled": false,
-            "delay": 1.5
-        },
-        "misc": {
-            "combine-quote-message": true
-        }
-    },
-    "safety": {
-        "content-filter": {
-            "scope": "all",
-            "check-sensitive-words": true
-        },
-        "rate-limit": {
-            "window-length": 60,
-            "limitation": 60,
-            "strategy": "drop"
-        }
-    },
     "ai": {
         "runner": {
+            "group-context": "member",
             "id": "",
             "expire-time": 0
         },
         "runner_config": {}
     },
+    "speech": {
+        "speech-recognition": {
+            "enable": false,
+            "model": "",
+            "max-duration": 60,
+            "keep-original-voice": false,
+            "on-failure": "notify"
+        },
+        "text-to-speech": {
+            "enable": false,
+            "model": "",
+            "trigger": "voice-input-only",
+            "output": "voice-only",
+            "max-text-length": 500,
+            "voice": "",
+            "on-failure": "fallback"
+        }
+    },
     "output": {
-        "long-text-processing": {
-            "threshold": 1000,
-            "strategy": "none",
-            "font-path": ""
-        },
-        "force-delay": {
-            "min": 0,
-            "max": 0
-        },
         "misc": {
-            "exception-handling": "show-hint",
-            "failure-hint": "",
-            "at-sender": true,
-            "quote-origin": true,
             "track-function-calls": false,
             "remove-think": false
         }

@@ -75,6 +75,8 @@
       margin: 0;
       letter-spacing: 0;
     }
+    .review-approval { display: inline-flex; align-items: center; gap: 8px; margin: 0; }
+    .review-approval input[type="checkbox"] { width: 16px; height: 16px; min-height: 16px; padding: 0; margin: 0; flex-shrink: 0; }
     h1 {
       font-size: 24px;
       line-height: 1.2;
@@ -512,6 +514,16 @@
           </div>
           <div id="fenceOutput" class="list"></div>
           <div class="section-head" style="margin-top: 16px;">
+            <h3 data-i18n="consolidationReview">Review Memory Summary</h3>
+          </div>
+          <p class="muted" data-i18n="consolidationHint">The summary is an inference, not a verified fact. Compare it with every complete source record before applying. The model and run policy are configured on the memory KB.</p>
+          <div class="actions">
+            <button id="previewConsolidationBtn" data-i18n="previewConsolidation">Preview Summary</button>
+            <label class="review-approval"><input id="reviewConsolidation" type="checkbox" disabled> <span data-i18n="consolidationReviewed">I checked the inference against the source records.</span></label>
+            <button id="applyConsolidationBtn" disabled data-i18n="applyConsolidation">Apply Reviewed Summary</button>
+          </div>
+          <div id="consolidationOutput" class="list" style="margin-top:12px;"></div>
+          <div class="section-head" style="margin-top: 16px;">
             <h3 data-i18n="rawSummary">Raw summary</h3>
           </div>
           <div class="notice"><pre id="diagnosticsOutput"></pre></div>
@@ -526,8 +538,16 @@
     const EPISODE_STATUSES = ['active', 'superseded', 'archived', 'deleted'];
     let summary = null;
     let lastEpisodeMode = 'list';
+    let consolidationProposal = null;
+    let consolidationEpoch = 0;
 
     const text = {
+      consolidationLoading: 'Generating a proposal for review...',
+      consolidationApplying: 'Applying reviewed summary...',
+      consolidationInference: 'Inferred summary — verify against the sources',
+      consolidationSources: 'Complete source records',
+      consolidationApplied: 'Reviewed summary applied. Source records remain available.',
+      consolidationUnavailable: 'No reviewable summary proposal is available. Check the KB configuration and risk notes.',
       empty: 'No data',
       noScope: 'No memory space selected.',
       noKb: 'No memory knowledge base is configured.',
@@ -739,6 +759,7 @@
 
     function applyKb(kb) {
       if (!kb) return;
+      clearConsolidation();
       setValue('collectionId', kb.id || '');
       setValue('embeddingModel', kb.embedding_model_uuid || '');
       setValue('isolation', kb.isolation || 'session');
@@ -779,6 +800,7 @@
     }
 
     function updateScopePreview() {
+      clearConsolidation();
       $('scopePreview').textContent = value('scopeKey') || '-';
       $('userPreview').textContent = value('userKey') || '-';
     }
@@ -1162,6 +1184,91 @@
       }
     }
 
+    function consolidationKey() {
+      return JSON.stringify([value('collectionId'), value('scopeKey'), value('userKey')]);
+    }
+
+    function clearConsolidation() {
+      consolidationEpoch += 1;
+      consolidationProposal = null;
+      $('reviewConsolidation').checked = false;
+      $('reviewConsolidation').disabled = true;
+      $('applyConsolidationBtn').disabled = true;
+      $('previewConsolidationBtn').disabled = false;
+      $('consolidationOutput').replaceChildren();
+    }
+
+    function consolidationText(parent, tag, content) {
+      const element = document.createElement(tag);
+      element.textContent = String(content == null ? '' : content);
+      parent.appendChild(element);
+      return element;
+    }
+
+    async function previewConsolidation() {
+      clearConsolidation();
+      const target = $('consolidationOutput');
+      const scope = requireScope(target);
+      const kb = requireKb(target, false);
+      if (!scope || !kb) return;
+      const epoch = consolidationEpoch;
+      const key = consolidationKey();
+      $('previewConsolidationBtn').disabled = true;
+      target.textContent = text.consolidationLoading;
+      try {
+        const data = await api('/consolidation/preview', {
+          collection_id: kb.collectionId, scope_key: scope.scopeKey, user_key: scope.userKey,
+        });
+        if (epoch !== consolidationEpoch || key !== consolidationKey()) return;
+        target.replaceChildren();
+        consolidationText(target, 'h4', text.consolidationInference);
+        consolidationText(target, 'pre', data.summary_episode || text.consolidationUnavailable);
+        consolidationText(target, 'h4', text.consolidationSources);
+        (data.source_records || []).forEach((source) => {
+          consolidationText(target, 'pre', JSON.stringify({
+            id: source.id, sender_id: source.sender_id, timestamp: source.timestamp,
+            event_at: source.event_at, valid_from: source.valid_from, valid_until: source.valid_until,
+            claim_type: source.claim_type, source_ref: source.source_ref,
+          }, null, 2));
+          consolidationText(target, 'pre', source.content);
+        });
+        (data.risk_notes || []).forEach((note) => consolidationText(target, 'p', note));
+        if (data.proposal_id && data.summary_episode) {
+          consolidationProposal = { id: data.proposal_id, key: key };
+          $('reviewConsolidation').disabled = false;
+        }
+      } catch (err) {
+        if (epoch === consolidationEpoch) target.textContent = readableError(err);
+      } finally {
+        if (epoch === consolidationEpoch) $('previewConsolidationBtn').disabled = false;
+      }
+    }
+
+    async function applyConsolidation() {
+      const proposal = consolidationProposal;
+      if (!proposal || proposal.key !== consolidationKey() || !$('reviewConsolidation').checked) return;
+      const scope = selectedScope();
+      const kb = selectedKb();
+      const key = consolidationKey();
+      clearConsolidation();
+      const epoch = consolidationEpoch;
+      $('previewConsolidationBtn').disabled = true;
+      $('consolidationOutput').textContent = text.consolidationApplying;
+      try {
+        await api('/consolidation/run', {
+          collection_id: kb.collectionId, scope_key: scope.scopeKey, user_key: scope.userKey,
+          proposal_id: proposal.id,
+        });
+        if (epoch === consolidationEpoch && key === consolidationKey()) {
+          $('consolidationOutput').textContent = text.consolidationApplied;
+        }
+      } catch (err) {
+        if (epoch === consolidationEpoch) $('consolidationOutput').textContent = readableError(err);
+      } finally {
+        if (epoch === consolidationEpoch) $('previewConsolidationBtn').disabled = false;
+      }
+    }
+
     function bindTabs() {
       document.querySelectorAll('.tab').forEach((button) => {
         button.addEventListener('click', () => {
@@ -1183,6 +1290,14 @@
       $('searchEpisodesBtn').addEventListener('click', searchEpisodes);
       $('loadAuditBtn').addEventListener('click', loadAudit);
       $('runHealthBtn').addEventListener('click', runHealth);
+      $('previewConsolidationBtn').addEventListener('click', previewConsolidation);
+      $('applyConsolidationBtn').addEventListener('click', applyConsolidation);
+      $('reviewConsolidation').addEventListener('change', () => {
+        $('applyConsolidationBtn').disabled = !consolidationProposal || !$('reviewConsolidation').checked;
+      });
+      ['collectionId', 'scopeKey', 'userKey'].forEach((id) => {
+        $(id).addEventListener('input', clearConsolidation);
+      });
       $('clearFenceBtn').addEventListener('click', clearFence);
       $('loadInjectionBtn').addEventListener('click', loadInjection);
       $('exportProfilesBtn').addEventListener('click', exportProfiles);

@@ -377,7 +377,8 @@
           "ai": {
             "runner": {
               "id": "plugin:langbot-team/LocalAgent/default",
-              "expire-time": 0
+              "expire-time": 0,
+              "group-context": "group"
             },
             "runner_config": {
               "plugin:langbot-team/LocalAgent/default": {
@@ -397,28 +398,6 @@
                 "max-round": 20
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
-          },
-          "trigger": {
-            "group-respond-rules": {
-              "prefix": [
-                "ai "
-              ]
-            }
           }
         }
       }
@@ -433,7 +412,8 @@
           "ai": {
             "runner": {
               "id": "plugin:langbot-team/LocalAgent/default",
-              "expire-time": 0
+              "expire-time": 0,
+              "group-context": "group"
             },
             "runner_config": {
               "plugin:langbot-team/LocalAgent/default": {
@@ -454,21 +434,6 @@
                 "max-tool-iterations": 5
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
           }
         }
       }
@@ -483,7 +448,8 @@
           "ai": {
             "runner": {
               "id": "plugin:langbot-team/LocalAgent/default",
-              "expire-time": 0
+              "expire-time": 0,
+              "group-context": "group"
             },
             "runner_config": {
               "plugin:langbot-team/LocalAgent/default": {
@@ -504,21 +470,6 @@
                 "timeout": 30,
                 "retrieval-top-k": 5
               }
-            }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
             }
           }
         }
@@ -546,7 +497,31 @@
             "target_type": "pipeline",
             "target_uuid": "${chat_pipeline}",
             "enabled": true,
-            "filters": []
+            "filters": [],
+            "policy": {
+              "trigger": {
+                "group-respond-rules": {
+                  "prefix": [
+                    "ai "
+                  ]
+                }
+              },
+              "safety": {
+                "rate-limit": {
+                  "limitation": 10000
+                }
+              },
+              "output": {
+                "force-delay": {
+                  "min": 0,
+                  "max": 0
+                },
+                "misc": {
+                  "at-sender": false,
+                  "quote-origin": false
+                }
+              }
+            }
           }
         ],
         "plugin_processors": []
@@ -562,7 +537,8 @@
           "ai": {
             "runner": {
               "id": "plugin:langbot-team/LocalAgent/default",
-              "expire-time": 0
+              "expire-time": 0,
+              "group-context": "group"
             },
             "runner_config": {
               "plugin:langbot-team/LocalAgent/default": {
@@ -583,21 +559,6 @@
                 "max-tool-iterations": 5
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
           }
         }
       }
@@ -612,7 +573,8 @@
           "ai": {
             "runner": {
               "id": "plugin:langbot-team/LocalAgent/default",
-              "expire-time": 0
+              "expire-time": 0,
+              "group-context": "group"
             },
             "runner_config": {
               "plugin:langbot-team/LocalAgent/default": {
@@ -632,28 +594,6 @@
                 "max-round": 20
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
-          },
-          "trigger": {
-            "group-respond-rules": {
-              "prefix": [
-                "ai "
-              ]
-            }
           }
         }
       }
@@ -668,7 +608,8 @@
           "ai": {
             "runner": {
               "id": "plugin:langbot-team/LocalAgent/default",
-              "expire-time": 0
+              "expire-time": 0,
+              "group-context": "group"
             },
             "runner_config": {
               "plugin:langbot-team/LocalAgent/default": {
@@ -688,28 +629,6 @@
                 "max-round": 20
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
-          },
-          "trigger": {
-            "group-respond-rules": {
-              "prefix": [
-                "ai "
-              ]
-            }
           }
         }
       }
@@ -724,7 +643,8 @@
           "ai": {
             "runner": {
               "id": "plugin:langbot-team/LocalAgent/default",
-              "expire-time": 0
+              "expire-time": 0,
+              "group-context": "group"
             },
             "runner_config": {
               "plugin:langbot-team/LocalAgent/default": {
@@ -746,28 +666,6 @@
                 "max-round": 20
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
-          },
-          "trigger": {
-            "group-respond-rules": {
-              "prefix": [
-                "ai "
-              ]
-            }
           }
         }
       }
@@ -782,7 +680,8 @@
           "ai": {
             "runner": {
               "id": "plugin:langbot-team/LocalAgent/default",
-              "expire-time": 0
+              "expire-time": 0,
+              "group-context": "group"
             },
             "runner_config": {
               "plugin:langbot-team/LocalAgent/default": {
@@ -804,28 +703,6 @@
                 "max-round": 20
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
-          },
-          "trigger": {
-            "group-respond-rules": {
-              "prefix": [
-                "ai "
-              ]
-            }
           }
         }
       }
@@ -840,7 +717,8 @@
           "ai": {
             "runner": {
               "id": "plugin:langbot-team/LocalAgent/default",
-              "expire-time": 0
+              "expire-time": 0,
+              "group-context": "group"
             },
             "runner_config": {
               "plugin:langbot-team/LocalAgent/default": {
@@ -862,28 +740,6 @@
                 "max-round": 20
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
-          },
-          "trigger": {
-            "group-respond-rules": {
-              "prefix": [
-                "ai "
-              ]
-            }
           }
         }
       }
@@ -898,7 +754,8 @@
           "ai": {
             "runner": {
               "id": "plugin:langbot-team/LocalAgent/default",
-              "expire-time": 0
+              "expire-time": 0,
+              "group-context": "group"
             },
             "runner_config": {
               "plugin:langbot-team/LocalAgent/default": {
@@ -919,21 +776,6 @@
                 "max-tool-iterations": 5
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
           }
         }
       }
@@ -948,7 +790,8 @@
           "ai": {
             "runner": {
               "id": "plugin:langbot-team/LocalAgent/default",
-              "expire-time": 0
+              "expire-time": 0,
+              "group-context": "group"
             },
             "runner_config": {
               "plugin:langbot-team/LocalAgent/default": {
@@ -969,21 +812,6 @@
                 "max-tool-iterations": 5
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
           }
         }
       }
@@ -998,7 +826,8 @@
           "ai": {
             "runner": {
               "id": "plugin:langbot-team/LocalAgent/default",
-              "expire-time": 0
+              "expire-time": 0,
+              "group-context": "group"
             },
             "runner_config": {
               "plugin:langbot-team/LocalAgent/default": {
@@ -1019,21 +848,6 @@
                 "max-tool-iterations": 5
               }
             }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
-            }
           }
         }
       }
@@ -1048,7 +862,8 @@
           "ai": {
             "runner": {
               "id": "plugin:langbot-team/LocalAgent/default",
-              "expire-time": 0
+              "expire-time": 0,
+              "group-context": "group"
             },
             "runner_config": {
               "plugin:langbot-team/LocalAgent/default": {
@@ -1069,21 +884,6 @@
                 "timeout": 30,
                 "retrieval-top-k": 5
               }
-            }
-          },
-          "safety": {
-            "rate-limit": {
-              "limitation": 10000
-            }
-          },
-          "output": {
-            "force-delay": {
-              "min": 0,
-              "max": 0
-            },
-            "misc": {
-              "at-sender": false,
-              "quote-origin": false
             }
           }
         }
@@ -1111,7 +911,24 @@
             "target_type": "pipeline",
             "target_uuid": "${box_pipeline}",
             "enabled": true,
-            "filters": []
+            "filters": [],
+            "policy": {
+              "safety": {
+                "rate-limit": {
+                  "limitation": 10000
+                }
+              },
+              "output": {
+                "force-delay": {
+                  "min": 0,
+                  "max": 0
+                },
+                "misc": {
+                  "at-sender": false,
+                  "quote-origin": false
+                }
+              }
+            }
           }
         ],
         "plugin_processors": []
@@ -1139,7 +956,24 @@
             "target_type": "pipeline",
             "target_uuid": "${rag_pipeline}",
             "enabled": true,
-            "filters": []
+            "filters": [],
+            "policy": {
+              "safety": {
+                "rate-limit": {
+                  "limitation": 10000
+                }
+              },
+              "output": {
+                "force-delay": {
+                  "min": 0,
+                  "max": 0
+                },
+                "misc": {
+                  "at-sender": false,
+                  "quote-origin": false
+                }
+              }
+            }
           }
         ],
         "plugin_processors": []

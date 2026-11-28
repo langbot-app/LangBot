@@ -15,24 +15,111 @@ def _extract_content(message_chain: platform_message.MessageChain) -> tuple[str,
     """从消息链提取展示内容。
 
     返回 (content_type, content):
-    - 优先文本;若仅有图片则返回图片 url/base64。
+    - 优先文本;若仅有图片返回图片 url/base64,仅有语音返回语音 url/base64,
+      仅有文件返回 [文件] 描述。
     """
     text_parts: list[str] = []
     image_ref = ""
+    voice_ref = ""
+    file_ref = ""
     for comp in message_chain:
         if isinstance(comp, platform_message.Plain):
             text_parts.append(comp.text)
         elif isinstance(comp, platform_message.Image):
             image_ref = comp.url or comp.base64 or "[图片]"
+        elif isinstance(comp, platform_message.Voice):
+            voice_ref = comp.url or comp.base64 or "[语音]"
         elif isinstance(comp, platform_message.At):
             text_parts.append(f"@{comp.display or comp.target} ")
+        elif isinstance(comp, platform_message.AtAll):
+            text_parts.append("@All ")
+        elif isinstance(comp, platform_message.Quote):
+            origin = comp.origin
+            if origin is not None:
+                text_parts.append("[引用] " + str(origin))
+        elif isinstance(comp, platform_message.File):
+            file_ref = f"[文件] {comp.name or 'file'}"
+        else:
+            # Unknown/Forward/WeChat* 组件:尽量提取可读文本,不猜测语义
+            readable = getattr(comp, "text", None)
+            if readable:
+                text_parts.append(str(readable))
 
     text = "".join(text_parts).strip()
     if text:
         return "text", text
     if image_ref:
         return "image", image_ref
+    if voice_ref:
+        return "voice", voice_ref
+    if file_ref:
+        return "file", file_ref
     return "text", ""
+
+
+def _extract_message_id(event) -> str:
+    """Best-effort extraction of the platform message id.
+
+    The plugin-facing EBA event does not always carry the id, so this also looks
+    at the platform sub-event and its raw source object. Never guesses from content.
+    """
+
+    def _pick(obj) -> str:
+        for attr in ("message_id", "id", "msg_id"):
+            value = getattr(obj, attr, None)
+            if value not in (None, ""):
+                return str(value)
+        return ""
+
+    value = _pick(event)
+    if value:
+        return value
+    platform_event = getattr(event, "message_event", None)
+    value = _pick(platform_event)
+    if value:
+        return value
+    source = getattr(platform_event, "source_platform_object", None)
+    if isinstance(source, dict):
+        for attr in ("message_id", "id", "msg_id"):
+            value = source.get(attr)
+            if value not in (None, ""):
+                return str(value)
+        return ""
+    if source is not None:
+        return _pick(source)
+    return ""
+
+
+def _extract_sender_extras(sender) -> dict:
+    """Return whitelisted display fields for a sender (avatar/source IM)."""
+
+    if sender is None:
+        return {}
+    extra: dict = {}
+    avatar = getattr(sender, "avatar_url", None)
+    if avatar:
+        extra["avatar"] = str(avatar)
+    remark = getattr(sender, "remark", None)
+    if remark:
+        extra["remark"] = str(remark)
+    username = getattr(sender, "username", None)
+    if username:
+        extra["username"] = str(username)
+    nickname = (
+        getattr(sender, "nickname", None)
+        or getattr(sender, "member_name", None)
+        or getattr(sender, "display_name", None)
+    )
+    if nickname:
+        extra["platform"] = str(nickname)
+    return extra
+
+
+def _operator_id(event) -> str:
+    operator = getattr(event, "operator", None)
+    if operator is None:
+        return ""
+    return str(getattr(operator, "id", "") or "")
 
 
 class DefaultEventListener(EventListener):
@@ -51,6 +138,10 @@ class DefaultEventListener(EventListener):
         @self.handler(events.NormalMessageResponded)
         async def on_ai_responded(event_context: context.EventContext):
             await self._handle_ai_responded(event_context)
+
+        @self.handler(events.MessageDeleted)
+        async def on_message_deleted(event_context: context.EventContext):
+            await self._handle_deleted(event_context)
 
     async def _bot_uuid_for(self, event_context: context.EventContext) -> str:
         """Return the trusted bot identity of this event, or "" when unavailable.
@@ -98,9 +189,11 @@ class DefaultEventListener(EventListener):
         sender_id = str(event.sender_id)
         sender_name = sender_id
         session_name = ""
+        sender_extras: dict = {}
         try:
             msg_event = event.message_event
             sender = getattr(msg_event, "sender", None)
+            sender_extras = _extract_sender_extras(sender)
             if session_type == "group":
                 if sender is not None:
                     sender_name = getattr(sender, "member_name", "") or sender_id
@@ -122,6 +215,9 @@ class DefaultEventListener(EventListener):
 
         content_type, content = _extract_content(event.message_chain)
 
+        # 来源 IM = 适配器;头像/备注/用户名随消息记录,供 Profile card 展示。
+        sender_extras.setdefault("source_im", adapter)
+
         await plugin.record_message(
             session_key=session_key,
             session_type=session_type,
@@ -134,6 +230,8 @@ class DefaultEventListener(EventListener):
             content_type=content_type,
             content=content,
             adapter=adapter,
+            message_id=_extract_message_id(event),
+            extra=sender_extras,
         )
 
         # 触发词匹配:命中则标记未处理(红点),并按配置自动接管
@@ -156,6 +254,64 @@ class DefaultEventListener(EventListener):
             logger.info(
                 "HumanTakeover blocked AI for session %s (taken over)", session_key
             )
+
+    async def _handle_deleted(self, event_context: context.EventContext):
+        """防撤回:把平台的删除/撤回事件落到已记录的会话历史上。
+
+        只标记本插件已记录且仍保留在 300 条窗口内的消息,不会凭空建立空会话,
+        也不会调用平台接口取回被删内容(很多平台并不返回)。
+        """
+        event = event_context.event
+        plugin = self.plugin
+
+        bot_uuid = await self._bot_uuid_for(event_context)
+        if not bot_uuid:
+            return
+
+        message_id = str(getattr(event, "message_id", "") or "")
+        if not message_id:
+            return
+
+        chat_type = getattr(event, "chat_type", None)
+        chat_id = getattr(event, "chat_id", None)
+        if chat_type is None or chat_id is None:
+            return
+        raw_type = (
+            getattr(chat_type, "value", chat_type) or getattr(chat_type, "name", "")
+        )
+        if str(raw_type).lower() == "private":
+            launcher_type = "person"
+        elif str(raw_type).lower() == "group":
+            launcher_type = "group"
+        else:
+            launcher_type = str(raw_type) or "person"
+        launcher_id = str(chat_id)
+
+        try:
+            session_key = plugin.make_session_key(launcher_type, launcher_id, bot_uuid)
+        except ValueError:
+            return
+
+        if plugin.sessions.get(session_key) is None:
+            logger.debug(
+                "HumanTakeover anti-recall no retained session for %s", session_key
+            )
+            return
+
+        actor = _operator_id(event) or "platform"
+        try:
+            async with plugin._session_update(session_key):
+                plugin._mark_recalled(
+                    plugin._current_state(), session_key, message_id, actor=actor
+                )
+            logger.info(
+                "HumanTakeover marked message %s recalled in %s by %s",
+                message_id,
+                session_key,
+                actor,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("HumanTakeover anti-recall failed: %s", e)
 
     async def _handle_ai_responded(self, event_context: context.EventContext):
         """记录 AI 的回复内容,便于在面板中查看完整对话。"""

@@ -5,7 +5,6 @@ from typing import Any
 
 from langbot_plugin.api.definition.components.tool.tool import Tool
 from langbot_plugin.api.entities.builtin.provider import session as provider_session
-from langbot_plugin.api.proxies.query_based_api import QueryBasedAPIProxy
 
 logger = logging.getLogger(__name__)
 
@@ -18,12 +17,7 @@ class Forget(Tool):
         query_id: int,
     ) -> str:
         store = self.plugin.memory_store
-        api = QueryBasedAPIProxy(
-            query_id=query_id,
-            plugin_runtime_handler=self.plugin.plugin_runtime_handler,
-        )
-        bot_uuid = await api.get_bot_uuid()
-        query_vars = await api.get_query_vars()
+        bot_uuid = session.bot_uuid or ""
         session_key, user_key, kb_id, _, config = await store.resolve_user_context(
             session, bot_uuid
         )
@@ -48,6 +42,8 @@ class Forget(Tool):
             episode_id=episode_id,
             user_key=user_key,
         )
+        if not deleted:
+            return "No matching memory found in the current scope."
         await store.append_audit_entry(
             scope_key=session_key,
             user_key=user_key,
@@ -55,8 +51,7 @@ class Forget(Tool):
             target_type="episode",
             target_id=str(episode_id),
             summary=f"Deleted episode {episode_id}",
-            sender_id=str(query_vars.get("sender_id", "") or ""),
-            sender_name=str(query_vars.get("sender_name", "") or ""),
+            sender_id=str(session.sender_id or ""),
             query_id=query_id,
             metadata={"kb_id": kb_id, "deleted": deleted},
         )

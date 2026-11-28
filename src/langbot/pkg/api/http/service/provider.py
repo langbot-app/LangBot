@@ -203,6 +203,8 @@ class ModelProviderService:
             (persistence_model.LLMModel, 'LLM', 'remove_llm_model'),
             (persistence_model.EmbeddingModel, 'Embedding', 'remove_embedding_model'),
             (persistence_model.RerankModel, 'Rerank', 'remove_rerank_model'),
+            (persistence_model.ASRModel, 'ASR', 'remove_asr_model'),
+            (persistence_model.TTSModel, 'TTS', 'remove_tts_model'),
         )
         deleted_models: list[tuple[str, list[str]]] = []
         async with persistence.tenant_uow(workspace_uuid):
@@ -335,7 +337,35 @@ class ModelProviderService:
         )
         rerank_count = rerank_result.scalar() or 0
 
-        return {'llm_count': llm_count, 'embedding_count': embedding_count, 'rerank_count': rerank_count}
+        asr_result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.select(sqlalchemy.func.count())
+                .select_from(persistence_model.ASRModel)
+                .where(persistence_model.ASRModel.provider_uuid == provider_uuid),
+                persistence_model.ASRModel,
+                workspace_uuid,
+            )
+        )
+        asr_count = asr_result.scalar() or 0
+
+        tts_result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.select(sqlalchemy.func.count())
+                .select_from(persistence_model.TTSModel)
+                .where(persistence_model.TTSModel.provider_uuid == provider_uuid),
+                persistence_model.TTSModel,
+                workspace_uuid,
+            )
+        )
+        tts_count = tts_result.scalar() or 0
+
+        return {
+            'llm_count': llm_count,
+            'embedding_count': embedding_count,
+            'rerank_count': rerank_count,
+            'asr_count': asr_count,
+            'tts_count': tts_count,
+        }
 
     async def find_or_create_provider(
         self,
@@ -439,9 +469,19 @@ class ModelProviderService:
             if rerank_service is not None
             else []
         )
+        asr_service = getattr(self.ap, 'asr_models_service', None)
+        asr_models = (
+            await asr_service.get_asr_models_by_provider(context, provider_uuid) if asr_service is not None else []
+        )
+        tts_service = getattr(self.ap, 'tts_models_service', None)
+        tts_models = (
+            await tts_service.get_tts_models_by_provider(context, provider_uuid) if tts_service is not None else []
+        )
         existing_llm_names = {model['name'] for model in llm_models}
         existing_embedding_names = {model['name'] for model in embedding_models}
         existing_rerank_names = {model['name'] for model in rerank_models}
+        existing_asr_names = {model['name'] for model in asr_models}
+        existing_tts_names = {model['name'] for model in tts_models}
 
         filtered_models = []
         for model in scanned_models:
@@ -470,6 +510,10 @@ class ModelProviderService:
                         if scanned_type == 'embedding'
                         else model_name in existing_rerank_names
                         if scanned_type == 'rerank'
+                        else model_name in existing_asr_names
+                        if scanned_type == 'asr'
+                        else model_name in existing_tts_names
+                        if scanned_type == 'tts'
                         else model_name in existing_llm_names
                     ),
                 }

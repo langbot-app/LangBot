@@ -10,6 +10,7 @@ import pytest
 import sqlalchemy
 import jwt
 from quart import Quart
+from langbot_plugin.box.models import BoxSpec
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.api.http.controller.groups.workspaces import (
@@ -58,6 +59,9 @@ async def workspace_api(tmp_path):
             'api': {'global_api_key': '', 'webui_url': 'https://langbot.example'},
         }
     )
+    from langbot.pkg.api.application import ApplicationAPI
+
+    application.application_api = ApplicationAPI(application)
     application.logger = logging.getLogger('workspace-api-test')
     application.workspace_service = WorkspaceService(
         application,
@@ -100,6 +104,275 @@ def _auth(token: str, workspace_uuid: str | None = None) -> dict[str, str]:
     if workspace_uuid is not None:
         headers['X-Workspace-Id'] = workspace_uuid
     return headers
+
+
+async def test_daily_message_quota(workspace_api, monkeypatch):
+    import asyncio
+    from langbot.pkg.cloud import message_quota
+
+    ap, client, _, token = workspace_api
+    current = '/api/v1/workspaces/current'
+    start = datetime.datetime(2026, 11, 20, tzinfo=datetime.UTC)
+    monkeypatch.setattr(message_quota, 'period_start', lambda: start)
+
+    async def get(path):
+        response = await client.get(path, headers=_auth(token))
+        assert response.status_code == 200
+        return (await response.get_json())['data']
+
+    workspace = await get(current)
+    ws = workspace['workspace']['uuid']
+    unlimited = await get(current + '/message-quota')
+    assert (
+        unlimited
+        == workspace['message_quota']
+        == {
+            'enforced': False,
+            'limit': -1,
+            'used': 0,
+            'remaining': -1,
+            'period': 'day',
+            'timezone': 'UTC',
+            'period_start': '2026-11-20T00:00:00Z',
+            'resets_at': '2026-11-21T00:00:00Z',
+        }
+    )
+    assert await message_quota.daily_message_quota(ap, ws, reserve=True) == (True, unlimited)
+    ap.deployment = SimpleNamespace(mode='cloud')
+    snapshot = SimpleNamespace(limits={})
+    ap.entitlement_resolver = SimpleNamespace(resolve=AsyncMock(return_value=snapshot))
+    for limits in ({}, {'messages.daily': 0}):
+        snapshot.limits = limits
+        assert await message_quota.daily_message_quota(ap, ws, reserve=True) == (True, unlimited)
+    snapshot.limits = {'messages.daily': 2}
+    limited = await get(current + '/message-quota')
+    assert limited == dict(unlimited, enforced=True, limit=2, remaining=2)
+    results = await asyncio.gather(*(message_quota.daily_message_quota(ap, ws, reserve=True) for _ in range(10)))
+    assert sum(accepted for accepted, _ in results) == 2
+    exhausted = await get(current + '/message-quota')
+    assert exhausted == (await get(current))['message_quota'] == dict(limited, used=2, remaining=0)
+    start += datetime.timedelta(days=1)
+    accepted, fresh = await message_quota.daily_message_quota(ap, ws, reserve=True)
+    assert accepted and fresh['used'] == 1 and fresh['period_start'] == exhausted['resets_at']
+
+
+async def test_daily_message_quota_warning_email(workspace_api, monkeypatch):
+    import asyncio
+    from langbot.pkg.cloud import message_quota, quota_warning
+    from langbot.pkg.entity.persistence.workspace import WorkspaceMessageUsageDaily as Usage
+    from langbot.pkg.notification.email import EmailSendResult, EmailService
+
+    ap, client, engine, token = workspace_api
+    start = datetime.datetime(2026, 11, 20, tzinfo=datetime.UTC)
+    monkeypatch.setattr(message_quota, 'period_start', lambda: start)
+    monkeypatch.setattr(quota_warning, '_settled', set())
+    sent: list[dict] = []
+    outcome = {'status': 'sent'}
+
+    async def fake_send(self, *, to, subject, text, html, purpose='email'):
+        sent.append({'to': to, 'subject': subject, 'text': text, 'html': html})
+        return EmailSendResult(status=outcome['status'], provider='resend')
+
+    monkeypatch.setattr(EmailService, 'capability', lambda self: {'enabled': True, 'provider': 'resend'})
+    monkeypatch.setattr(EmailService, 'send', fake_send)
+
+    response = await client.get('/api/v1/workspaces/current', headers=_auth(token))
+    ws = (await response.get_json())['data']['workspace']['uuid']
+    ap.deployment = SimpleNamespace(mode='cloud')
+    snapshot = SimpleNamespace(limits={'messages.daily': 10})
+    ap.entitlement_resolver = SimpleNamespace(resolve=AsyncMock(return_value=snapshot))
+
+    async def reserve(count):
+        for _ in range(count):
+            await message_quota.daily_message_quota(ap, ws, reserve=True)
+        await asyncio.gather(*list(quota_warning._tasks))
+
+    async def warned_at(day):
+        async with engine.connect() as connection:
+            return (
+                await connection.execute(
+                    sqlalchemy.select(Usage.quota_warning_at).where(Usage.workspace_uuid == ws, Usage.usage_date == day)
+                )
+            ).scalar_one()
+
+    await reserve(7)
+    assert sent == [] and await warned_at(start.date()) is None
+
+    # A failed delivery releases the claim so the next message retries.
+    outcome['status'] = 'failed'
+    await reserve(1)
+    assert len(sent) == 1 and await warned_at(start.date()) is None
+
+    outcome['status'] = 'sent'
+    await asyncio.gather(*(message_quota.daily_message_quota(ap, ws, reserve=True) for _ in range(4)))
+    await asyncio.gather(*list(quota_warning._tasks))
+    assert len(sent) == 2 and await warned_at(start.date()) is not None
+    mail = sent[-1]
+    assert mail['to'] == ['owner@example.com']
+    assert "of today's messages (" in mail['subject'] and '/10)' in mail['subject']
+    assert 'https://langbot.example/home/monitoring?workspace=' + ws + '&amp;open=plans' in mail['html']
+    assert '2026-11-21 00:00 UTC' in mail['text']
+
+    # Once settled, more messages the same day never mail again, even from a new process.
+    quota_warning._settled.clear()
+    quota_warning.maybe_schedule(ap, ws, used=10, limit=10, usage_date=start.date())
+    await reserve(3)
+    assert len(sent) == 2
+
+    # The next UTC day warns again; unlimited plans never warn.
+    start += datetime.timedelta(days=1)
+    await reserve(8)
+    assert len(sent) == 3
+    start += datetime.timedelta(days=1)
+    snapshot.limits = {}
+    await reserve(20)
+    assert len(sent) == 3
+
+
+def test_daily_quota_warning_email_render():
+    from langbot.pkg.cloud.quota_warning import render_quota_warning_email, warning_threshold
+
+    assert [warning_threshold(limit) for limit in (1, 2, 10, 50, 51)] == [1, 2, 8, 40, 41]
+    subject, text, body = render_quota_warning_email(
+        workspace_name='客服 <bot>',
+        used=40,
+        limit=50,
+        resets_at=datetime.datetime(2026, 11, 22),
+        message_language='zh_Hans',
+        plans_url='https://cloud.langbot.app/home/monitoring?workspace=w&open=plans',
+    )
+    assert subject == '[LangBot] 「客服 <bot>」今日消息已用 80%（40/50）'
+    assert '客服 &lt;bot&gt;' in body and '<bot>' not in body
+    assert '2026-11-22 00:00 UTC（北京时间 08:00）' in text and '剩余: 10 条' in text
+    assert 'width:80%' in body and '查看套餐' in body
+    _, text, body = render_quota_warning_email(
+        workspace_name='Support',
+        used=55,
+        limit=50,
+        resets_at=datetime.datetime(2026, 11, 22),
+        message_language='en_US',
+        plans_url=None,
+    )
+    assert 'Remaining: 0 messages' in text and 'width:100%' in body and 'View plans' not in body
+
+
+@pytest.mark.skipif('backend' not in BoxSpec.model_fields, reason='requires in-tree Box SDK')
+async def test_workspace_sandbox_reset_clears_only_its_overrides_and_is_idempotent(workspace_api):
+    from langbot.pkg.box.service import BoxService
+    from langbot.pkg.box.settings import get_settings, set_backend
+
+    ap, client, engine, token = workspace_api
+    current = (await (await client.get('/api/v1/workspaces/current', headers=_auth(token))).get_json())['data']
+    ws = current['workspace']['uuid']
+    created = await client.post(
+        '/api/v1/apikeys',
+        headers=_auth(token, ws),
+        json={'name': 'Reset test', 'scopes': ['workspace.view', 'workspace.update']},
+    )
+    key = (await created.get_json())['data']['key']['key']
+    headers = {'X-API-Key': key, 'X-Workspace-Id': 'reset-other'}
+    async with engine.begin() as connection:
+        await connection.execute(
+            sqlalchemy.insert(Workspace).values(
+                uuid='reset-other', instance_uuid='reset-other-instance', name='Other', slug='reset-other'
+            )
+        )
+        await connection.execute(
+            sqlalchemy.insert(WorkspaceMetadata).values(workspace_uuid=ws, key='unrelated', value='keep')
+        )
+    await set_backend(ap, ws, 'e2b', e2b_config={'api_key': 'workspace-private-key'}, limits={'timeout_sec': 60})
+    await set_backend(ap, 'reset-other', 'nsjail', e2b_config={'api_key': 'other-private-key'}, limits={'cpus': 1})
+    other = await get_settings(ap, 'reset-other')
+    ap.instance_config.data['box'] = {'e2b': {'api_key': 'deployment-private-key'}}
+    box = BoxService(
+        ap,
+        client=SimpleNamespace(
+            get_backends=AsyncMock(return_value=[{'name': 'docker', 'available': True}]),
+            get_backend_info=AsyncMock(return_value={'name': 'docker'}),
+        ),
+    )
+    box._available = True
+    ap.box_service = box
+    for _ in range(2):
+        reset = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+        assert reset.status_code == 200
+        assert (await reset.get_json())['data'] == {'reset': True}
+        visible = await client.get('/api/v1/workspaces/current/sandbox', headers=headers)
+        public = (await visible.get_json())['data']
+        assert public['backend'] is None and public['effective_backend'] == 'docker'
+        assert public['limits'] == {} and public['e2b']['source'] == 'deployment'
+        assert public['e2b']['api_key_configured']
+        assert 'private-key' not in await reset.get_data(as_text=True)
+        assert await get_settings(ap, ws) == {'backend': None, 'e2b': None, 'limits': None}
+        assert await get_settings(ap, 'reset-other') == other
+    async with engine.begin() as connection:
+        kept = await connection.execute(
+            sqlalchemy.select(WorkspaceMetadata.value).where(
+                WorkspaceMetadata.workspace_uuid == ws, WorkspaceMetadata.key == 'unrelated'
+            )
+        )
+        assert kept.scalar_one() == 'keep'
+
+    await set_backend(ap, ws, 'docker', limits={'timeout_sec': 30})
+    box.client.get_backends.reset_mock()
+    box.client.get_backends.side_effect = RuntimeError('Runtime unavailable')
+    reset = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+    assert reset.status_code == 200 and (await reset.get_json())['data'] == {'reset': True}
+    assert await get_settings(ap, ws) == {'backend': None, 'e2b': None, 'limits': None}
+    box.client.get_backends.assert_not_awaited()
+
+
+@pytest.mark.parametrize('failure_stage', ['execute', 'commit'])
+async def test_workspace_sandbox_reset_rolls_back_and_masks_storage_errors(workspace_api, monkeypatch, failure_stage):
+    from sqlalchemy.ext.asyncio import AsyncSessionTransaction
+
+    from langbot.pkg.box.service import BoxService
+    from langbot.pkg.box.settings import get_settings, set_backend
+    from langbot.pkg.persistence.tenant_uow import TenantUnitOfWork
+
+    ap, client, _, token = workspace_api
+    current = (await (await client.get('/api/v1/workspaces/current', headers=_auth(token))).get_json())['data']
+    workspace_uuid = current['workspace']['uuid']
+    headers = _auth(token, workspace_uuid)
+    ap.box_service = BoxService(ap, client=SimpleNamespace())
+    await set_backend(
+        ap, workspace_uuid, 'docker', e2b_config={'api_key': 'saved-private-key'}, limits={'timeout_sec': 60}
+    )
+    before = await get_settings(ap, workspace_uuid)
+    original_execute = TenantUnitOfWork.execute
+    original_commit = AsyncSessionTransaction.commit
+    deleted = False
+    private_error = 'storage-private-error-must-not-escape'
+
+    async def execute(uow, statement, *args, **kwargs):
+        nonlocal deleted
+        result = await original_execute(uow, statement, *args, **kwargs)
+        if isinstance(statement, sqlalchemy.sql.dml.Delete) and statement.table.name == WorkspaceMetadata.__tablename__:
+            deleted = True
+            if failure_stage == 'execute':
+                raise RuntimeError(private_error)
+        return result
+
+    async def commit(transaction):
+        if deleted:
+            raise RuntimeError(private_error)
+        return await original_commit(transaction)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(TenantUnitOfWork, 'execute', execute)
+        if failure_stage == 'commit':
+            patch.setattr(AsyncSessionTransaction, 'commit', commit)
+        failed = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+
+    assert deleted
+    assert failed.status_code == 400
+    public = await failed.get_data(as_text=True)
+    assert 'Sandbox settings could not be reset' in public
+    assert private_error not in public and 'saved-private-key' not in public
+    assert await get_settings(ap, workspace_uuid) == before
+    retried = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+    assert retried.status_code == 200 and (await retried.get_json())['data'] == {'reset': True}
+    assert await get_settings(ap, workspace_uuid) == {'backend': None, 'e2b': None, 'limits': None}
 
 
 async def test_account_bootstrap_uses_the_account_resolved_from_the_token(workspace_api):
@@ -498,10 +771,15 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
     assert capabilities['schema_version'] == 1
     assert sorted(capabilities['operations']) == sorted(
         [
+            'operation.invoke',
+            'operation.stream',
+            'operation.binary_base64',
+            'plugin.permissions.confirm_api_key',
             'bot.list',
             'bot.get',
             'bot.create',
             'bot.update',
+            'bot.routes.bind',
             'bot.delete',
             'pipeline.list',
             'pipeline.get',
@@ -526,6 +804,7 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
             'plugin.install.local',
             'plugin.upgrade',
             'plugin.get',
+            'plugin.permissions.get',
             'plugin.list',
             'plugin.config.get',
             'plugin.config.update',
@@ -565,6 +844,8 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
             'skill.files.read',
             'skill.files.write',
             'skill.preview',
+            'skill.package.preview',
+            'skill.package.publish',
             'skill.install.github',
             'skill.install.upload',
             'mcp_server.list',
@@ -595,6 +876,11 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
             'sandbox.status',
             'sandbox.sessions',
             'sandbox.errors',
+            'workspace.sandbox.get',
+            'workspace.sandbox.update',
+            'workspace.sandbox.reset',
+            'workspace.sandbox.check',
+            'workspace.sandbox.test',
         ]
     )
     assert all(item == {'supported': True} for item in capabilities['operations'].values())
@@ -1003,3 +1289,316 @@ async def test_workspace_language_persists_and_controls_api_errors(workspace_api
     # An untrusted selector never causes us to read another tenant's language.
     unauthorized = await client.get('/api/v1/workspaces/current/language', headers=_auth(owner_token, 'language-other'))
     assert unauthorized.status_code in (403, 404)
+
+
+@pytest.mark.skipif(
+    'backend' not in BoxSpec.model_fields,
+    reason='requires in-tree Box SDK',
+)
+async def test_workspace_sandbox_setting_routes_new_boxes_and_preserves_old(workspace_api, tmp_path):
+    from langbot.pkg.box.service import BoxService
+    from langbot.pkg.box.runner import RunnerBoxService
+    from langbot.pkg.box.settings import get_backend
+    from langbot.pkg.api.http.context import ExecutionContext
+    from langbot_plugin.box.runtime import BoxRuntime
+    from langbot_plugin.box.models import BoxSpec
+    from tests.unit_tests.box.test_box_service import FakeBackend, _InProcessBoxRuntimeClient
+
+    application, client, engine, owner_token = workspace_api
+    current = (await (await client.get('/api/v1/workspaces/current', headers=_auth(owner_token))).get_json())['data']
+    workspace_uuid = current['workspace']['uuid']
+    headers = _auth(owner_token, workspace_uuid)
+    docker, e2b = FakeBackend(application.logger), FakeBackend(application.logger)
+    docker.name, e2b.name = 'docker', 'e2b'
+    runtime = BoxRuntime(application.logger, backends=[docker, e2b], session_ttl_sec=0, data_dir=tmp_path / 'identity')
+    runtime._box_config = {'backend': 'docker'}
+
+    class Client(_InProcessBoxRuntimeClient):
+        async def get_backends(self, *, refresh=False, **options):
+            return await self._runtime.get_backends(refresh=refresh)
+
+    application.instance_config.data['box'] = {'local': {'host_root': str(tmp_path / 'boxes')}}
+    box = BoxService(application, client=Client(application.logger, runtime))
+    application.box_service = box
+    await box.initialize()
+    binding = await application.workspace_service.get_execution_binding(workspace_uuid)
+    context = ExecutionContext(
+        instance_uuid=binding.instance_uuid,
+        workspace_uuid=workspace_uuid,
+        placement_generation=binding.placement_generation,
+    )
+    runner = RunnerBoxService(box)
+    try:
+        initial = await client.get('/api/v1/workspaces/current/sandbox?refresh=true', headers=headers)
+        assert initial.status_code == 200
+        assert (await initial.get_json())['data']['effective_backend'] == 'docker'
+        old_query = SimpleNamespace(variables={}, _sandbox_backend=await box.resolve_workspace_backend(context))
+        old = await runner.acquire(context, {'reuse_key': 'shared'}, old_query)
+        await runner.bind(context, old_query, 'old-run', old['id'])
+
+        saved = await client.put('/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'e2b'})
+        assert saved.status_code == 200
+        assert await get_backend(SimpleNamespace(persistence_mgr=application.persistence_mgr), workspace_uuid) == 'e2b'
+        new_query = SimpleNamespace(variables={}, _sandbox_backend=await box.resolve_workspace_backend(context))
+        new = await runner.acquire(context, {'reuse_key': 'shared'}, new_query)
+        await runner.bind(context, new_query, 'new-run', new['id'])
+        assert old['id'] != new['id']
+        assert old_query._box_binding.spec['backend'] == 'docker'
+        assert new_query._box_binding.spec['backend'] == 'e2b'
+        for query, expected in [(old_query, 'docker'), (new_query, 'e2b')]:
+            info = runtime.get_session(query._box_binding.session_id)
+            spec = BoxSpec.model_validate(
+                {
+                    **{key: value for key, value in info.items() if key in BoxSpec.model_fields},
+                    'backend': expected,
+                    'cmd': 'still-running',
+                }
+            )
+            assert (await runtime.execute(spec)).backend_name == expected
+        assert (await box.get_status(context))['backend']['name'] == 'e2b'
+
+        unavailable = await client.put(
+            '/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'nsjail'}
+        )
+        invalid = await client.put('/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'host'})
+        assert unavailable.status_code == invalid.status_code == 400
+        assert await get_backend(application, workspace_uuid) == 'e2b'
+        reset = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+        assert reset.status_code == 200
+        assert (await reset.get_json())['data'] == {'reset': True}
+        visible = await client.get('/api/v1/workspaces/current/sandbox', headers=headers)
+        assert (await visible.get_json())['data']['effective_backend'] == 'docker'
+        assert await get_backend(application, workspace_uuid) is None
+        assert new_query._box_binding.spec['backend'] == 'e2b'
+        assert runtime.get_session(new_query._box_binding.session_id) is not None
+        async with engine.begin() as connection:
+            await connection.execute(
+                sqlalchemy.update(WorkspaceMembership)
+                .where(
+                    WorkspaceMembership.workspace_uuid == workspace_uuid,
+                    WorkspaceMembership.account_uuid == current['membership']['account_uuid'],
+                )
+                .values(role='viewer')
+            )
+        assert (await client.get('/api/v1/workspaces/current/sandbox', headers=headers)).status_code == 200
+        assert (await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)).status_code == 403
+        assert (
+            await client.put('/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'docker'})
+        ).status_code == 403
+    finally:
+        await box.shutdown()
+
+
+@pytest.mark.skipif('backend' not in BoxSpec.model_fields, reason='requires in-tree Box SDK')
+async def test_workspace_e2b_drafts_are_private_and_only_saved_after_confirmation(workspace_api):
+    from langbot.pkg.box.service import BoxService
+    from langbot.pkg.box.settings import get_settings
+
+    ap, client, engine, token = workspace_api
+    current = (await (await client.get('/api/v1/workspaces/current', headers=_auth(token))).get_json())['data']
+    ws = current['workspace']['uuid']
+    headers = _auth(token, ws)
+    key = 'workspace-private-key-for-test'
+    draft = {
+        'api_url': 'http://api.example.test:3000',
+        'sandbox_url': 'http://sandbox.example.test:3001',
+        'api_key': key,
+        'template': 'base',
+    }
+    observed = []
+
+    async def probe(*, refresh=False, e2b_config=None, **options):
+        observed.append(e2b_config.model_dump() if e2b_config is not None else None)
+        available = e2b_config is not None and e2b_config.api_key == key
+        return [
+            {'name': 'docker', 'available': True, 'reason': None},
+            {'name': 'e2b', 'available': available, 'reason': None if available else 'authentication_failed'},
+            {'name': 'nsjail', 'available': False, 'reason': 'nsjail_missing'},
+        ]
+
+    rpc = SimpleNamespace(
+        get_backends=AsyncMock(side_effect=probe),
+        get_backend_info=AsyncMock(return_value={'name': 'docker', 'available': True}),
+    )
+    box = BoxService(ap, client=rpc)
+    box._available = True
+    ap.box_service = box
+    checked = await client.post('/api/v1/workspaces/current/sandbox/check', headers=headers, json={'e2b': draft})
+    assert checked.status_code == 200
+    assert key not in await checked.get_data(as_text=True)
+    assert (await get_settings(ap, ws)) == {'backend': None, 'e2b': None, 'limits': None}
+    saved = await client.put(
+        '/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'e2b', 'e2b': draft}
+    )
+    assert saved.status_code == 200
+    assert key not in await saved.get_data(as_text=True)
+    stored = await get_settings(ap, ws)
+    assert stored['backend'] == 'e2b' and stored['e2b']['config'] == draft
+    assert observed[-1] == stored['e2b']['config']
+    visible = await client.get('/api/v1/workspaces/current/sandbox', headers=headers)
+    public = (await visible.get_json())['data']['e2b']
+    assert public['api_key_configured'] and 'api_key' not in public
+    assert key not in await visible.get_data(as_text=True)
+
+    bad = {**draft, 'api_key': 'invalid-new-key'}
+    checked = await client.post('/api/v1/workspaces/current/sandbox/check', headers=headers, json={'e2b': bad})
+    assert checked.status_code == 200
+    assert (
+        next(item for item in (await checked.get_json())['data']['backends'] if item['name'] == 'e2b')['reason']
+        == 'authentication_failed'
+    )
+    refused = await client.put(
+        '/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'e2b', 'e2b': bad}
+    )
+    assert refused.status_code == 400
+    assert await get_settings(ap, ws) == stored
+
+    changed_url = {**draft, 'api_key': '', 'api_url': 'http://different.example.test'}
+    calls = len(observed)
+    refused = await client.post('/api/v1/workspaces/current/sandbox/check', headers=headers, json={'e2b': changed_url})
+    assert refused.status_code == 400 and len(observed) == calls
+    assert key not in await refused.get_data(as_text=True)
+    keep_key = {**draft, 'api_key': '', 'template': 'python'}
+    saved = await client.put(
+        '/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'e2b', 'e2b': keep_key}
+    )
+    assert saved.status_code == 200
+    newer = await get_settings(ap, ws)
+    assert newer['e2b']['config']['api_key'] == key
+    assert newer['e2b']['revision'] != stored['e2b']['revision']
+    async with engine.begin() as connection:
+        await connection.execute(
+            sqlalchemy.update(WorkspaceMembership)
+            .where(
+                WorkspaceMembership.workspace_uuid == ws,
+                WorkspaceMembership.account_uuid == current['membership']['account_uuid'],
+            )
+            .values(role='viewer')
+        )
+    assert (
+        await client.post('/api/v1/workspaces/current/sandbox/check', headers=headers, json={'e2b': draft})
+    ).status_code == 403
+    assert (
+        await client.put('/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'docker'})
+    ).status_code == 403
+    assert (await client.get('/api/v1/workspaces/current/sandbox', headers=headers)).status_code == 200
+
+
+@pytest.mark.skipif('backend' not in BoxSpec.model_fields, reason='requires in-tree Box SDK')
+@pytest.mark.asyncio
+async def test_workspace_limits_and_explicit_test_run_are_separate(workspace_api):
+    from langbot.pkg.box.service import BoxService
+    from langbot.pkg.box.settings import get_settings
+    from langbot.pkg.api.http.context import ExecutionContext
+    from langbot.pkg.box.runner import RunnerBoxService
+
+    ap, http, _, token = workspace_api
+    current = (await (await http.get('/api/v1/workspaces/current', headers=_auth(token))).get_json())['data']
+    ws = current['workspace']['uuid']
+    headers = _auth(token, ws)
+    common = dict.fromkeys(('timeout_sec', 'idle_ttl_sec', 'max_sessions'), True)
+    local = {**common, **dict.fromkeys(('cpus', 'memory_mb', 'pids_limit', 'workspace_quota_mb'), True)}
+    calls = []
+
+    async def probe(**options):
+        calls.append(options)
+        return [
+            {'name': 'docker', 'available': True, 'reason': None, 'limit_capabilities': local},
+            {
+                'name': 'e2b',
+                'available': True,
+                'reason': None,
+                'template_validation': 'unsupported',
+                'limit_capabilities': common,
+            },
+        ]
+
+    rpc = SimpleNamespace(
+        get_backends=AsyncMock(side_effect=probe), get_backend_info=AsyncMock(return_value={'name': 'docker'})
+    )
+    ap.box_service = box = BoxService(ap, client=rpc)
+    box._available = True
+    limits = {'timeout_sec': 2, 'idle_ttl_sec': 60, 'max_sessions': 2, 'cpus': 0.5, 'memory_mb': 64, 'pids_limit': 16}
+    response = await http.put(
+        '/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'docker', 'limits': limits}
+    )
+    assert response.status_code == 200, await response.get_json()
+    assert (await response.get_json())['data']['limits'] == limits
+    assert not any(call.get('validate_e2b_template') for call in calls)
+    stored = await get_settings(ap, ws)
+    for invalid in ({'cpus': 999}, {'timeout_sec': 0}, {'max_sessions': True}, {'unknown': 1}):
+        response = await http.put(
+            '/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'docker', 'limits': invalid}
+        )
+        assert response.status_code == 400, await response.get_json()
+        assert await get_settings(ap, ws) == stored
+    response = await http.put(
+        '/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'e2b', 'limits': {'memory_mb': 64}}
+    )
+    assert response.status_code == 400
+    assert await get_settings(ap, ws) == stored
+    response = await http.put('/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'e2b'})
+    assert response.status_code == 400  # Existing unsupported Docker limits must also be checked.
+    assert await get_settings(ap, ws) == stored
+    binding = await ap.workspace_service.get_execution_binding(ws)
+    context = ExecutionContext(
+        instance_uuid=binding.instance_uuid, workspace_uuid=ws, placement_generation=binding.placement_generation
+    )
+    old = await box.resolve_workspace_selection(context)
+    payload = {'session_id': 'snapshot', 'timeout_sec': 90}
+    before = await box._workspace_backend_payload(
+        context, payload, backend='docker', e2b_selection={}, limits_selection=old['limits']
+    )
+    assert before['timeout_sec'] == 2 and before['workspace_max_sessions'] == 2
+    assert before['cpus'] == 0.5 and before['idle_ttl_sec'] == 60
+    response = await http.put(
+        '/api/v1/workspaces/current/sandbox',
+        headers=headers,
+        json={'backend': 'docker', 'limits': {'timeout_sec': 1, 'max_sessions': 1}},
+    )
+    assert response.status_code == 200
+    again = await box._workspace_backend_payload(
+        context, payload, backend='docker', e2b_selection={}, limits_selection=old['limits']
+    )
+    after = await box._workspace_backend_payload(context, payload)
+    assert before == again and after['session_id'] != before['session_id']
+    assert after['timeout_sec'] == 1 and after['workspace_max_sessions'] == 1
+    rpc.get_sessions = AsyncMock(return_value=[{'session_id': before['session_id'], 'backend_name': 'docker'}])
+    query = SimpleNamespace(
+        _sandbox_backend='docker',
+        _sandbox_e2b_config={},
+        _sandbox_limits=(await box.resolve_workspace_selection(context))['limits'],
+    )
+    with pytest.raises(Exception, match='workspace limits'):
+        await RunnerBoxService(box).bind(context, query, 'new-run', before['session_id'])
+    calls.clear()
+    assert (await http.post('/api/v1/workspaces/current/sandbox/check', headers=headers, json={})).status_code == 200
+    assert not any(call.get('validate_e2b_template') for call in calls)
+    calls.clear()
+    assert (await http.post('/api/v1/workspaces/current/sandbox/test', headers=headers, json={})).status_code == 200
+    assert calls[0]['validate_e2b_template'] is True
+    assert await get_settings(ap, ws) != stored  # Only the confirmed limits update changed metadata.
+
+
+async def test_workspace_sandbox_requires_supported_sdk_without_exposing_draft(workspace_api, monkeypatch):
+    from langbot.pkg.box.service import BoxService
+    from langbot.pkg.box import service
+
+    ap, http, _, token = workspace_api
+    monkeypatch.setattr(service, 'BoxSpec', SimpleNamespace(model_fields={}))
+    ap.box_service = BoxService(ap, client=SimpleNamespace())
+    response = await http.post(
+        '/api/v1/workspaces/current/sandbox/check', headers=_auth(token), json={'e2b': {'api_key': 'private-draft-key'}}
+    )
+    assert response.status_code == 400
+    text = await response.get_data(as_text=True)
+    assert 'upgraded Box SDK' in text and 'private-draft-key' not in text
+    current = (await (await http.get('/api/v1/workspaces/current', headers=_auth(token))).get_json())['data']
+    from langbot.pkg.api.http.context import ExecutionContext
+
+    selection = await ap.box_service.resolve_workspace_selection(
+        ExecutionContext(
+            instance_uuid='instance-workspace-api', workspace_uuid=current['workspace']['uuid'], placement_generation=1
+        )
+    )
+    assert selection == {'backend': None, 'e2b': {}, 'limits': {}}

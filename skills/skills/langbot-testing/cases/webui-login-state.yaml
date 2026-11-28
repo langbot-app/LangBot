@@ -27,7 +27,7 @@ steps:
   - "Check that the sidebar or dashboard shows a logged-in user."
   - "If login is missing, use langbot-env-setup OAuth browser profile guidance."
 checks:
-  - "UI: The WebUI shows LangBot navigation such as Dashboard, Bots, Pipelines, or Knowledge."
+  - "UI: The WebUI shows LangBot navigation such as Dashboard, Bots, Processors, or Knowledge."
   - "UI: The page is not stuck on /login after the configured profile is loaded."
   - "Console: No unexpected frontend errors appear during initial load."
   - "Secret safety: The agent does not print token values while checking auth state."

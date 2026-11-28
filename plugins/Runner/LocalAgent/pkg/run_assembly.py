@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from langbot_plugin.api.agent_tools.external_tools import AgentRunExternalTools
 from langbot_plugin.api.entities.builtin.provider.message import Message
 from langbot_plugin.api.entities.builtin.resource.tool import LLMTool
 from langbot_plugin.api.entities.builtin.runner import RunnerContext
@@ -21,6 +22,12 @@ from pkg.config import (
 )
 from pkg.context_pipeline import ContextAssembler, ContextBudget, HostContextTokenCounter, LLMContextSummarizer
 from pkg.model_calling import build_llm_tools
+from pkg.workspace_tools import WorkspaceToolsManager
+
+NO_AUTHORIZED_MODEL_MESSAGE = (
+    "No available model for local-agent: the configured model is missing, deleted or temporarily "
+    "unavailable. Check the model selection in this pipeline's Agent settings."
+)
 
 
 class NoAuthorizedModelError(Exception):
@@ -52,9 +59,17 @@ class AgentRunAssembler:
     async def assemble(self) -> AgentRunAssembly:
         model_ids = self._resolve_model_ids()
         if not model_ids:
-            raise NoAuthorizedModelError("No authorized model for local-agent")
+            raise NoAuthorizedModelError(NO_AUTHORIZED_MODEL_MESSAGE)
 
         allowed_tools = self._allowed_tool_names()
+        input_tools = AgentRunExternalTools(self.api, self.ctx)
+        readers = [
+            tool
+            for tool in input_tools.mcp_tools()
+            if tool["name"] == "langbot_read_input_attachment"
+            or (tool["name"] == "langbot_read_run_file" and self.ctx.config.get("box-enabled", True))
+        ]
+        allowed_tools.difference_update(tool["name"] for tool in readers)
 
         max_tool_iterations = get_max_tool_iterations(self.ctx.config)
         max_tool_result_chars = get_max_tool_result_chars(self.ctx.config)
@@ -65,7 +80,35 @@ class AgentRunAssembler:
         summarizer = LLMContextSummarizer(
             self.api, model_ids[0], remove_think=remove_think, reasoning_level=reasoning_level
         )
+
+        workspace_manager = await WorkspaceToolsManager.discover(self.api, self.ctx)
+        workspace_manager.resolve_conflicts(allowed_tools)
+
         tools = await self._build_tools(allowed_tools)
+        tools.extend(workspace_manager.tools)
+        all_allowed_tools = allowed_tools | workspace_manager._tool_names
+        local_tools = {}
+
+        def reader(name):
+            async def read(**arguments):
+                return await input_tools.call_tool(name, arguments)
+
+            return read
+
+        for spec in readers:
+            read = reader(spec["name"])
+            tools.append(
+                LLMTool(
+                    name=spec["name"],
+                    human_desc=spec["description"],
+                    description=spec["description"],
+                    parameters=spec["inputSchema"],
+                    func=read,
+                )
+            )
+            all_allowed_tools.add(spec["name"])
+            local_tools[spec["name"]] = read
+
         token_counter = HostContextTokenCounter(self.api, model_ids[0], tools, reasoning_level=reasoning_level)
 
         context_assembly = await ContextAssembler(
@@ -74,17 +117,21 @@ class AgentRunAssembler:
             budget=context_budget,
             summarizer=summarizer,
             token_counter=token_counter,
+            workspace_manager=workspace_manager,
         ).assemble()
 
+        tool_executor = LangBotToolExecutor(
+            self.api,
+            all_allowed_tools,
+            max_result_chars=max_tool_result_chars,
+            workspace_manager=workspace_manager,
+        )
+        tool_executor.local_tools.update(local_tools)
         return AgentRunAssembly(
             model_ids=model_ids,
             messages=context_assembly.messages,
             tools=tools,
-            tool_executor=LangBotToolExecutor(
-                self.api,
-                allowed_tools,
-                max_result_chars=max_tool_result_chars,
-            ),
+            tool_executor=tool_executor,
             hooks=LangBotContextHooks(
                 context_budget,
                 summarizer=summarizer,

@@ -12,9 +12,13 @@ class RunnerError(Exception):
 class RunnerNotFoundError(RunnerError):
     """Runner not found in registry."""
 
-    def __init__(self, runner_id: str):
+    def __init__(self, runner_id: str, detail: str | None = None):
         self.runner_id = runner_id
-        super().__init__(f'Agent runner not found: {runner_id}')
+        self.detail = detail
+        message = f'Agent runner not found: {runner_id}'
+        if detail:
+            message = f'{message}. {detail}'
+        super().__init__(message)
 
 
 class RunnerNotAuthorizedError(RunnerError):

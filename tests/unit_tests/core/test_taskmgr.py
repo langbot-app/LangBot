@@ -379,6 +379,24 @@ class TestTaskWrapper:
         assert 'traceback' not in str(result).lower()
 
     @pytest.mark.asyncio
+    async def test_public_dict_preserves_permission_failure_code_without_details(self):
+        from langbot.pkg.api.application.contracts import ApplicationAPIError, ApplicationAPIException
+
+        _, TaskWrapper, _ = get_taskmgr_classes()
+
+        async def failing_coro():
+            raise ApplicationAPIException(
+                ApplicationAPIError('permission_denied', 'private failure', 403, {'internal': 'private detail'})
+            )
+
+        wrapper = TaskWrapper(create_mock_app(), failing_coro())
+        with pytest.raises(ApplicationAPIException):
+            await wrapper.task
+        result = wrapper.to_public_dict()
+        assert result['error']['code'] == 'permission_denied'
+        assert 'private' not in str(result)
+
+    @pytest.mark.asyncio
     async def test_public_dict_does_not_change_success_when_result_is_not_json_serializable(self):
         _, TaskWrapper, _ = get_taskmgr_classes()
         mock_app = create_mock_app()

@@ -4,12 +4,12 @@ description: "Integrate any backend with LangBot over plain HTTP: push messages 
 icon: "/images/platforms/http-bot.svg"
 ---
 
-The `HTTP Bot` adapter integrates **any backend system** with a LangBot pipeline over plain HTTP. Ticketing systems, CRMs, internal tools, custom web apps — all can drive a pipeline through it:
+The `HTTP Bot` adapter integrates **any backend system** with a LangBot Chat over plain HTTP. Ticketing systems, CRMs, internal tools, custom web apps — all can drive a Chat through it:
 
 - **Inbound**: your backend POSTs a signed message to a fixed LangBot URL;
 - **Outbound**: LangBot POSTs replies to a callback URL you configure.
 
-It needs **no long-lived connection** and fully preserves two native pipeline capabilities:
+It needs **no long-lived connection** and fully preserves two native LangBot capabilities:
 
 - **Message aggregation (N→1)**: a user fires several messages in a row, merged into one turn;
 - **Multi-part replies (1→M)**: one turn may produce several replies (function calls, multi-message plugins, streamed chunks).
@@ -22,11 +22,11 @@ If you want an **in-browser**, real-time chat widget, use the [Web Page Bot](/en
 
 ```
 Your backend  ──(1) POST signed message──►  LangBot   /bots/<bot_uuid>
-                                            (pipeline: aggregate → think → reply)
+                                            (message policy → Chat or Agent: aggregate → think → reply)
 Your callback ◄─(2) POST signed reply(s)──  LangBot   one POST per reply part
 ```
 
-- **(1) Inbound** is *fire-and-collect*: LangBot returns `202 Accepted` immediately and does **not** carry the pipeline result on that response;
+- **(1) Inbound** is *fire-and-collect*: LangBot returns `202 Accepted` immediately and does **not** carry the processing result on that response;
 - **(2) Outbound** replies arrive later as separate signed POSTs to your `callback_url`; a single turn may produce several callbacks;
 - Everything is keyed by a **`session_id` you choose** (e.g. a ticket number); each `session_id` maps to one isolated session.
 
@@ -46,7 +46,7 @@ In the LangBot WebUI, go to **Bots > Create Bot**, fill in a name, and pick `HTT
 | Callback Timeout (seconds) | no | Per-callback HTTP timeout, default 15. |
 | Callback Max Retries | no | Retries on timeout or 5xx with exponential backoff, default 3. |
 
-After binding a **pipeline** and **enabling** the bot, the config page shows the **Inbound Webhook URL**, like `https://your-langbot/bots/<bot_uuid>`. Copy it.
+After binding a **Chat** and **enabling** the bot, the config page shows the **Inbound Webhook URL**, like `https://your-langbot/bots/<bot_uuid>`. Copy it.
 
 ## Signature scheme
 
@@ -111,7 +111,7 @@ The callback URL is **not** accepted in the body — it is taken only from bot c
 
 ### Aggregation (N → 1)
 
-If the pipeline has **message aggregation** enabled, send several messages with the **same `session_id`** inside the aggregation window and they merge into **one** turn. No special flag — just reuse the `session_id`.
+If the bot's message policy has **message aggregation** enabled, send several messages with the **same `session_id`** inside the aggregation window and they merge into **one** turn. No special flag — just reuse the `session_id`.
 
 ## Outbound callback format
 
@@ -143,6 +143,8 @@ seq=3 is_final=true   "Fixed — please try again."
 
 Stitch by `session_id` + `sequence`; the turn is complete when `is_final: true` arrives.
 
+A streamed reply (`stream: true`) arrives as several callbacks, each carrying the **full text of that reply so far**, not a delta. Replace the previous `stream: true` part with the newest one instead of appending it; the last one (`is_final: true`) holds the complete reply.
+
 ## Reset a session
 
 Start a fresh conversation for a `session_id` (drops history):
@@ -157,7 +159,7 @@ Signed exactly like an inbound message.
 
 ## Synchronous convenience mode
 
-If you don't need streaming/multi-part and just want one reply back on the same HTTP call, POST to `/sync`. LangBot waits for the turn to finish and returns all reply parts **collapsed** into one array:
+If you don't need streaming/multi-part and just want one reply back on the same HTTP call, POST to `/sync`. LangBot waits for the turn to finish and returns all reply parts **collapsed** into one array. Each reply appears once, with its final content (streamed snapshots are not repeated):
 
 ```
 POST /bots/{bot_uuid}/sync
@@ -199,7 +201,7 @@ PUBLIC_IP=<your-host-ip> ./.venv/bin/python examples/http-bot/playground.py
 # then open  http://<your-host-ip>:8920/
 ```
 
-On startup it reads the API key + the `http_bot` bot from `data/langbot.db` and points that bot's `callback_url` + secrets back at itself via the LangBot API (live reload, no restart). Requires an enabled `http_bot` bot bound to a working pipeline.
+On startup it reads the API key + the `http_bot` bot from `data/langbot.db` and points that bot's `callback_url` + secrets back at itself via the LangBot API (live reload, no restart). Requires an enabled `http_bot` bot bound to a working Chat.
 
 ### Command-line reference clients
 

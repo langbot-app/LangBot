@@ -63,6 +63,11 @@ services:
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
+      - LANGBOT_BOX_DATA_DIR=${LANGBOT_BOX_ROOT:-${PWD}/data/box}/runtime
+      # Network INIT keeps Runtime-owned roots. Docker artifact projections
+      # must live on this host-visible mount, never the container's private /tmp.
+      - 'LANGBOT_BOX_CONFIG={"local":{"host_root":"${LANGBOT_BOX_ROOT:-${PWD}/data/box}","allowed_mount_roots":["${LANGBOT_BOX_ROOT:-${PWD}/data/box}"]}}'
+      - LANGBOT_BOX_INSTANCE_ID=${LANGBOT_BOX_INSTANCE_ID:-}
       # Optional shared control-plane secret used to authenticate both the RPC
       # socket and managed-process relay. Leave unset on both OSS services, or
       # generate one with ``openssl rand -hex 32`` and set the same value on
@@ -72,9 +77,8 @@ services:
       - LANGBOT_BLOCKING_EXECUTOR_MAX_WORKERS=${LANGBOT_BLOCKING_EXECUTOR_MAX_WORKERS:-8}
       - LANGBOT_BLOCKING_EXECUTOR_MAX_PENDING=${LANGBOT_BLOCKING_EXECUTOR_MAX_PENDING:-128}
       - LANGBOT_BLOCKING_EXECUTOR_MAX_INFLIGHT_PER_SCOPE=${LANGBOT_BLOCKING_EXECUTOR_MAX_INFLIGHT_PER_SCOPE:-4}
-      # The Box runtime does NOT read box.local.* from config.yaml or env; it
-      # receives its functional configuration from LangBot via the INIT RPC
-      # action. Do not add BOX__* here because those would be ignored.
+      # Runtime-owned roots come from LANGBOT_BOX_CONFIG above. Other settings
+      # arrive through Core's INIT RPC. BOX__* variables here are not interpreted.
     # Launched through the same CLI entry point as the plugin runtime
     # (`langbot_plugin.cli.__init__ <subcommand>`). WebSocket is the default
     # control transport — mirrors `rt`, which also runs with no flag. Pass
@@ -99,9 +103,8 @@ services:
     container_name: langbot
     volumes:
       - ./data:/app/data
-      # Core owns the SkillRepository even when the Box profile is disabled.
-      # Keep this path identical to langbot_box so optional execution can
-      # consume the same Workspace-scoped package revisions.
+      # Retained for existing explicit legacy deployments. After network
+      # migration, Core can remove this mount; Box keeps its own host-visible root.
       - ${LANGBOT_BOX_ROOT:-${PWD}/data/box}:${LANGBOT_BOX_ROOT:-${PWD}/data/box}
     restart: on-failure
     environment:

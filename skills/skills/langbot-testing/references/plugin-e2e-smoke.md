@@ -24,7 +24,7 @@ When validating a local SDK build, install it into the LangBot worktree virtuale
 
 ```bash
 cd "$LANGBOT_REPO"
-uv pip install -e /absolute/path/to/langbot-plugin-sdk-test-build
+uv pip install -e ./sdk          # or another SDK build under test
 uv run --no-sync python -c "import langbot_plugin, pathlib; print(pathlib.Path(langbot_plugin.__file__).resolve())"
 ```
 

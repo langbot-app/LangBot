@@ -18,8 +18,14 @@ pip install uv
 uv sync
 ```
 
-The default installation does not include optional SeekDB support. If you need
-the SeekDB vector store or built-in embedding model, use:
+The default installation does not include the optional vector stores. To use one
+of these backends, add its extra to `uv sync` (extras can be combined):
+
+| Backend | extra |
+| --- | --- |
+| SeekDB vector store / built-in embedding model | `seekdb` |
+| Milvus | `milvus` |
+| Valkey Search (not on Windows) | `valkey` |
 
 ```bash
 uv sync --extra seekdb
@@ -28,6 +34,20 @@ uv sync --extra seekdb
 Embedded-mode platform support depends on the available `pylibseekdb` wheels;
 Apple Silicon currently requires macOS 15 or later. All other LangBot features
 can use the default `uv sync` installation.
+
+### Optional Voice Transcoding Support (SILK / WeChat Native Voice)
+
+If you need native voice bubbles on platforms like WeChat (SILK encoding) or audio transcoding support, install system `ffmpeg` and the `audio` extra:
+
+- **System Dependency**: `ffmpeg` (macOS: `brew install ffmpeg`, Ubuntu/Debian: `sudo apt-get install -y ffmpeg`, Windows: `winget install Gyan.FFmpeg`)
+- **Python Extra**:
+  ```bash
+  uv sync --extra audio
+  # or combine with seekdb
+  uv sync --extra seekdb --extra audio
+  ```
+
+If transcoding dependencies are not installed, LangBot performs **graceful degradation** by delivering the audio as a playable audio file attachment rather than dropping the message.
 
 3. Run the main program once to generate configuration files
 

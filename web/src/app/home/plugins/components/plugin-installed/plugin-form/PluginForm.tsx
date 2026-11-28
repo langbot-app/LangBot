@@ -16,6 +16,30 @@ import {
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 
+// 服务端会把敏感字段（含其中的 file_key）脱敏为该占位符，它不是真实文件
+const REDACTED_FILE_KEY = '***';
+
+const extractFileKeys = (obj: any): string[] => {
+  const keys: string[] = [];
+  if (obj && typeof obj === 'object') {
+    if (
+      'file_key' in obj &&
+      typeof obj.file_key === 'string' &&
+      obj.file_key !== REDACTED_FILE_KEY
+    ) {
+      keys.push(obj.file_key);
+    }
+    for (const value of Object.values(obj)) {
+      if (Array.isArray(value)) {
+        value.forEach((item) => keys.push(...extractFileKeys(item)));
+      } else if (typeof value === 'object' && value !== null) {
+        keys.push(...extractFileKeys(value));
+      }
+    }
+  }
+  return keys;
+};
+
 export default function PluginForm({
   pluginAuthor,
   pluginName,
@@ -58,23 +82,6 @@ export default function PluginForm({
         setPluginConfig(res);
 
         // 提取初始配置中的所有文件 key
-        const extractFileKeys = (obj: any): string[] => {
-          const keys: string[] = [];
-          if (obj && typeof obj === 'object') {
-            if ('file_key' in obj && typeof obj.file_key === 'string') {
-              keys.push(obj.file_key);
-            }
-            for (const value of Object.values(obj)) {
-              if (Array.isArray(value)) {
-                value.forEach((item) => keys.push(...extractFileKeys(item)));
-              } else if (typeof value === 'object' && value !== null) {
-                keys.push(...extractFileKeys(value));
-              }
-            }
-          }
-          return keys;
-        };
-
         const fileKeys = extractFileKeys(res.config);
         initialFileKeys.current = new Set(fileKeys);
       })
@@ -98,23 +105,6 @@ export default function PluginForm({
       );
 
       // 提取最终保存的配置中的所有文件 key
-      const extractFileKeys = (obj: any): string[] => {
-        const keys: string[] = [];
-        if (obj && typeof obj === 'object') {
-          if ('file_key' in obj && typeof obj.file_key === 'string') {
-            keys.push(obj.file_key);
-          }
-          for (const value of Object.values(obj)) {
-            if (Array.isArray(value)) {
-              value.forEach((item) => keys.push(...extractFileKeys(item)));
-            } else if (typeof value === 'object' && value !== null) {
-              keys.push(...extractFileKeys(value));
-            }
-          }
-        }
-        return keys;
-      };
-
       const finalFileKeys = new Set(extractFileKeys(currentFormValues.current));
 
       // 计算需要删除的文件：

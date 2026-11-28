@@ -4,7 +4,7 @@ metadata:
   author: langbot-team
   name: GroupChatSummary
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/GroupChatSummary
-  version: 0.1.4
+  version: 0.1.5
   description:
     en_US: Summarize group chat messages using LLM. Supports manual commands, LLM
       tool calls, and scheduled auto-summaries.

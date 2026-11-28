@@ -562,6 +562,15 @@ class WecomClient:
             await self.logger.error('Voice对象出错')
             raise ValueError('voice对象出错')
 
+        from ...pkg.utils import audio as audio_utils
+
+        if audio_utils.is_ffmpeg_available():
+            try:
+                file_bytes = await audio_utils.transcode_audio(file_bytes, 'amr')
+                file_name = 'voice.amr'
+            except Exception:
+                pass
+
         if len(file_bytes) > _MAX_MEDIA_BYTES:
             raise ValueError('WeCom media exceeds the size limit')
         boundary = '-------------------------acebdf13572468'

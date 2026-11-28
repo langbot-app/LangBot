@@ -63,8 +63,10 @@ function MonitoringPageContent() {
     setCustomDateRange,
     setExecutionMode,
     setExecutionStatus,
+    setExecutionHandling,
     resetFilters,
   } = useMonitoringFilters();
+  const executionHandling = filterState.handling ?? 'all';
   const executionMode = filterState.mode ?? 'all';
   const executionStatus = filterState.statusGroup ?? 'all';
   const {
@@ -93,6 +95,7 @@ function MonitoringPageContent() {
     selectedAgents: [],
     source: 'all',
     mode: executionMode,
+    handling: executionHandling,
     statusGroup: executionStatus,
     timeRange: filterState.timeRange,
     customDateRange: filterState.customDateRange,
@@ -105,6 +108,7 @@ function MonitoringPageContent() {
     setExecutionOffset(0);
   }, [
     executionMode,
+    executionHandling,
     executionStatus,
     filterState.selectedBots,
     filterState.selectedPipelines,
@@ -239,6 +243,8 @@ function MonitoringPageContent() {
                 onModeChange={setExecutionMode}
                 statusGroup={executionStatus}
                 onStatusGroupChange={setExecutionStatus}
+                handling={executionHandling}
+                onHandlingChange={setExecutionHandling}
               />
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t pt-3 xl:border-l xl:border-t-0 xl:pl-4 xl:pt-0 [&_button]:h-9">
                 <Button variant="outline" size="sm" onClick={resetFilters}>

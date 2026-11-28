@@ -386,5 +386,42 @@ async def test_pgvector_first_write_binds_dimension_and_later_mismatch_fails(ten
 
     with pytest.raises(ValueError, match='dimension is 1, not 2'):
         await manager.upsert(context, 'kb-a', [[0.1, 0.2]], ['chunk-b'])
+    with pytest.raises(ValueError, match=r'Embedding dimension 3 is not enabled .*\(enabled: 1, 2\)'):
+        await manager.search(context, 'kb-a', [0.1, 0.2, 0.3], 3)
+
+
+async def test_pgvector_search_on_empty_knowledge_base_returns_no_results(tenant_rag):
+    """A knowledge base that never stored a vector has no bound dimension.
+
+    Retrieval must treat it as empty instead of failing, otherwise every
+    query against a new KB (or a LongTermMemory KB before its first memory)
+    fails with "no selected pgvector embedding dimension".
+    """
+    app, engine = tenant_rag
+    manager = VectorDBManager(app)
+    pgvector = object.__new__(PgVectorDatabase)
+    pgvector.allowed_dimensions = frozenset({1, 2})
+    pgvector.add_embeddings = AsyncMock()
+    pgvector.search = AsyncMock(return_value={'ids': [['chunk-a']], 'distances': [[0.1]], 'metadatas': [[{}]]})
+    manager.vector_db = pgvector
+    context = _context(WORKSPACE_A)
+
+    assert await manager.search(context, 'kb-a', [0.1, 0.2], 3) == []
+    pgvector.search.assert_not_awaited()
+
+    # A read must not bind the dimension; the first write still decides it.
+    async with engine.connect() as connection:
+        selected_dimension = await connection.scalar(
+            sqlalchemy.select(KnowledgeBase.embedding_dimension).where(
+                KnowledgeBase.workspace_uuid == WORKSPACE_A,
+                KnowledgeBase.uuid == 'kb-a',
+            )
+        )
+    assert selected_dimension is None
+
+    await manager.upsert(context, 'kb-a', [[0.1]], ['chunk-a'])
+    assert len(await manager.search(context, 'kb-a', [0.1], 3)) == 1
+    with pytest.raises(ValueError, match='dimension is 1, not 2'):
+        await manager.search(context, 'kb-a', [0.1, 0.2], 3)
     with pytest.raises(ValueError, match='not enabled'):
         await manager.search(context, 'kb-a', [0.1, 0.2, 0.3], 3)

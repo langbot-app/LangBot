@@ -77,16 +77,23 @@ class TraceState:
         'last_outcome',
         'first_error',
         'failure_reason',
+        'cancelled',
         'runner_failed',
         'closed',
         'adapter',
         'runner',
         'runner_category',
         'model_name',
+        'features',
         'pipeline_plugins',
         'node_adapter',
         'node_runner',
         'open_frames',
+        'pending',
+        'root_exited',
+        'merged_into',
+        'close_reason',
+        'resources',
     )
 
     def __init__(self, execution_id: str | None = None) -> None:
@@ -111,6 +118,8 @@ class TraceState:
         self.last_outcome = ''
         self.first_error = ''
         self.failure_reason = ''
+        # Set when the boundary of this chain was cancelled rather than broken.
+        self.cancelled = False
         # Set when a runner node already reported a non-success outcome.
         self.runner_failed = False
         self.closed = False
@@ -119,14 +128,26 @@ class TraceState:
         self.runner = ''
         self.runner_category = ''
         self.model_name = ''
+        self.features: dict[str, int | dict[str, int]] = {}
         self.pipeline_plugins: typing.Any = None
-        # First adapter/runner seen on a node, used for the chain record.
+        # Platform adapter (inbound event first) and first runner seen on a
+        # node, used for the chain record.
         self.node_adapter = ''
         self.node_runner = ''
         # Steps currently open anywhere in this chain, in the order they were
         # opened. A record emitted by a task that owns no step of its own
         # attaches to the innermost entry here.
         self.open_frames: dict[str, NodeFrame] = {}
+        # Downstream work handed off to another task (a queued Pipeline query)
+        # that still belongs to this execution. The chain closes only once the
+        # ingress boundary exited *and* every handoff was released.
+        self.pending = 0
+        self.root_exited = False
+        # Set when message aggregation folded this event into another chain.
+        self.merged_into = ''
+        self.close_reason = ''
+        # Bound-resource collection dict shared by every task of this chain.
+        self.resources: dict | None = None
 
     def allocate_seq(self) -> int:
         """Mint the next chain-local node order."""
@@ -157,7 +178,10 @@ class TraceState:
         """Remember only what the terminal chain record needs from a node."""
         self.stage_count += 1
         self.last_outcome = outcome or 'unknown'
-        if adapter and not self.node_adapter:
+        # A tool node's adapter is its tool source (native/plugin/mcp/skill),
+        # never a platform. The inbound platform event closes last, so it
+        # overrides whatever platform stage finished first.
+        if adapter and family != 'tool' and (not self.node_adapter or family == 'platform_event'):
             self.node_adapter = adapter
         if runner and not self.node_runner:
             self.node_runner = runner
@@ -175,10 +199,17 @@ class TraceState:
         if not self.failure_reason:
             self.failure_reason = reason
 
+    def mark_cancelled(self) -> None:
+        """Remember that this chain was cancelled: a cancellation is not a failure."""
+        self.cancelled = True
+
     def outcome(self) -> str:
         """Terminal outcome of this chain; a broken chain never reports success."""
-        if self.failure_reason and self.last_outcome in ('', 'success', 'skipped', 'unknown'):
-            return 'failed'
+        if self.last_outcome in ('', 'success', 'skipped', 'unknown'):
+            if self.failure_reason:
+                return 'failed'
+            if self.cancelled:
+                return 'cancelled'
         return self.last_outcome or 'unknown'
 
 
@@ -225,6 +256,27 @@ def current() -> TraceState | None:
 
 def reporting_suppressed() -> bool:
     return _reporting_suppressed.get()
+
+
+@contextlib.contextmanager
+def adopt(state: TraceState, parent: NodeFrame | None = None) -> typing.Iterator[None]:
+    """Continue an in-flight chain in a task that did not inherit its context.
+
+    Used when downstream work of one execution runs in another task, e.g. a
+    queued Pipeline query. ``parent`` is the step that handed the work off; it
+    becomes the base of this task's step stack, so steps opened here nest under
+    it and keep allocating from the chain's own sequence.
+    """
+    current_token = _current.set(state)
+    node_token = _node.set((parent,) if parent is not None else ())
+    try:
+        yield
+    finally:
+        for var, token in ((_node, node_token), (_current, current_token)):
+            try:
+                var.reset(token)
+            except (ValueError, RuntimeError):
+                pass
 
 
 def admit() -> None:

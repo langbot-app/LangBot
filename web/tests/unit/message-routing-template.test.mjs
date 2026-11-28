@@ -51,3 +51,21 @@ test('reapplying preserves manual destinations, disabled rules and filter order 
   );
   assert.deepEqual(routes, before);
 });
+
+test('template routes carry notes that name private and group messages', () => {
+  const routes = append(
+    [],
+    { target_type: 'pipeline', target_uuid: 'p' },
+    { person: 'Private messages', group: 'Group messages that @ the bot' },
+  );
+  assert.deepEqual(
+    routes.map((route) => route.description),
+    ['Private messages', 'Group messages that @ the bot'],
+  );
+  // Without notes the routes keep no description, as before.
+  assert.ok(
+    append([], { target_type: 'pipeline', target_uuid: 'p' }).every(
+      (route) => route.description === undefined,
+    ),
+  );
+});

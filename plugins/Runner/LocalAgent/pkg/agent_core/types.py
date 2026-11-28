@@ -111,6 +111,7 @@ class ToolExecutionOutcome:
     event_result: typing.Any = None
     error: str | None = None
     message: Message | None = None
+    model_only_messages: list[Message] = field(default_factory=list)
     terminate: bool = False
 
     @property

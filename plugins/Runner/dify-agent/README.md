@@ -20,6 +20,7 @@ Configuration is **static** and should not contain runtime state. Only the follo
 | app-type | select | yes | chat | Application type (chat/chatflow/agent/workflow) |
 | base-prompt | text | yes | File-handling instruction | Fallback instruction when LangBot input is empty |
 | timeout | integer | no | 30 | Request timeout (seconds) |
+| stream-budget-mb | integer | no | 16 | Byte budget (MiB) for one streaming response; a single event may use 1/16 of it (at least 1 MiB) |
 | langbot-assets-enabled | boolean | no | false | Register a short-lived LangBot asset token for each run and pass it to Dify inputs |
 | langbot-assets-gateway-host | string | no | 0.0.0.0 | Host for the local LangBot Asset Gateway |
 | langbot-assets-gateway-port | integer | no | 8765 | Port for the local LangBot Asset Gateway |
@@ -54,20 +55,20 @@ events, which are used only when no explicit answer was produced.
 
 ## Workflow Human Input
 
-When Dify emits `workflow_paused` with a `human_input_required` reason, the
-runner asks LangBot to deliver a structured interaction. A validated
-`interaction.submitted` event resumes Dify through
-`/form/human_input/{form_token}` and `/workflow/{workflow_run_id}/events`.
+When Dify emits `workflow_paused` with a `human_input_required` reason, or a
+direct `human_input_required` event, the runner asks LangBot to deliver a
+structured interaction and waits for the validated submission in the same run.
+It then resumes Dify through `/form/human_input/{form_token}`. The response may itself
+stream events; otherwise the runner reads `/workflow/{workflow_run_id}/events`.
 Workflows that pause again produce a new interaction and can be resumed again.
 Forms are emitted as atomic steps: the runner collects one field at a time and
 then emits the action buttons. This matches LangBot delivery adapters that
 support a single select or an action-only confirmation.
 
 Provider continuation data is not included in the interaction payload. The
-runner stores `form_token`, `workflow_run_id`, the Dify user tag, and field/action
-mappings in authorized plugin storage under a random LangBot `interaction_id`.
-The continuation is deleted after a successful terminal event or after it is
-replaced by a later pause.
+runner keeps `form_token`, `workflow_run_id`, the Dify user tag, and field/action
+mappings in the active run only; they are not stored, so an expired or
+interrupted interaction must be restarted.
 
 The selected Runner binding must allow interactions, and the delivery
 adapter must support the requested field/action shape. Adapters with a smaller
@@ -82,31 +83,32 @@ Conversation state is managed through `RunnerContext.state` and `RunnerResult.st
 
 ### Reading State
 
-The runner reads `external.conversation_id` from scoped state:
+Dify binds every conversation to the end user (`user`) that created it. Groups
+that share context use the group as provider user (see `user-id-source`), but a
+LangBot conversation can still carry several provider users (for example runs
+without a Host session id, or state written by older plugin versions). The runner therefore keeps one Dify conversation ID per
+provider user under `external.conversation_ids` (keyed by a hash of the user,
+bounded to the 256 most recent users):
 
 ```python
-conversation_id = ctx.state.conversation.get("external.conversation_id")
+conversation_id = ctx.state.conversation.get("external.conversation_ids", {}).get(owner_hash)
 ```
 
 Priority:
-1. `ctx.state.conversation["external.conversation_id"]` when it is a Dify UUID
-2. Empty string (start a new Dify conversation)
+1. `external.conversation_ids[owner_hash]` when it is a Dify UUID
+2. `external.conversation_id` (legacy, last conversation) only while the per-user map does not exist yet
+3. Empty string (start a new Dify conversation)
+
+If Dify answers `404 Conversation Not Exists` for a stored ID (deleted, or owned
+by another user), the runner retries once with a new conversation.
 
 Host-provided LangBot conversation IDs are intentionally not sent to Dify,
 because Dify rejects non-UUID `conversation_id` values.
 
 ### Updating State
 
-The runner outputs `state.updated` with proper scope:
-
-```python
-yield RunnerResult.state_updated(
-    ctx.run_id,
-    "external.conversation_id",
-    dify_conversation_id,
-    scope="conversation",
-)
-```
+The runner outputs `state.updated` for `external.conversation_ids` and the
+legacy `external.conversation_id`, both with `scope="conversation"`.
 
 LangBot host persists this state and loads it on the next run.
 
@@ -316,6 +318,7 @@ Migrated from `dify-service-api` in LangBot.
 
 Per-pipeline Runner parameter, not plugin-global configuration. `sender` remains the default.
 A `sender` run whose Host actor is missing or empty is refused before any upstream request, instead of minting a per-run provider user; select `legacy-session` explicitly when a conversation-scoped provider user is intended.
+In a group whose pipeline shares context across the group (Host `conversation.session_id` = `group_<group id>`), `sender` uses that group session as the provider user, because Dify binds a conversation to its `user` and all members must continue one conversation. With per-member group context (`groupmember_...`) and in private chats, `sender` is the message sender.
 Explicit `legacy-session` preserves native provider identity using trusted Host run context only;
 missing identity fails before any upstream request, never falls back to the sender or business params.
 `legacy-session` uses `conversation.launcher_type` (`group`/`person`) plus `_` plus the exact `conversation.launcher_id`. Host must project the native Query.session launcher into those fields, including interaction/resume runs. Older Hosts that leave these fields empty must be upgraded.

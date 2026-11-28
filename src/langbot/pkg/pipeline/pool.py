@@ -261,8 +261,14 @@ class QueryPool:
         routed_by_rule: bool = False,
         variables: dict[str, typing.Any] | None = None,
         execution_context: ExecutionContext | None = None,
+        route_id: str | None = None,
+        enqueue: bool = True,
     ) -> pipeline_query.Query:
-        """Create a query and cache it under an opaque, Workspace-scoped key."""
+        """Create a query and cache it under an opaque, Workspace-scoped key.
+
+        ``route_id`` names the bot route the message matched; it selects the
+        message policy override the query runs under.
+        """
 
         query_uuid = str(uuid.uuid4())
         execution_context = await self.resolve_execution_context(
@@ -278,6 +284,8 @@ class QueryPool:
             initial_variables: dict[str, typing.Any] = {'_routed_by_rule': routed_by_rule}
             if variables:
                 initial_variables.update(variables)
+            if route_id:
+                initial_variables['_message_route_id'] = route_id
             query = pipeline_query.Query(
                 instance_uuid=execution_context.instance_uuid,
                 workspace_uuid=execution_context.workspace_uuid,
@@ -309,7 +317,8 @@ class QueryPool:
             object.__setattr__(query, 'query_uuid', query_uuid)
             object.__setattr__(query, '_execution_context', execution_context)
 
-            self.queries.append(query)
+            if enqueue:
+                self.queries.append(query)
             self.cached_queries[(execution_context.workspace_uuid, query_uuid)] = query
             self.active_query_count_by_workspace[execution_context.workspace_uuid] = (
                 self.active_query_count_by_workspace.get(execution_context.workspace_uuid, 0) + 1
@@ -331,6 +340,14 @@ class QueryPool:
             self.query_count_by_scope[counter_key] = self.query_count_by_scope.get(counter_key, 0) + 1
             self.condition.notify_all()
             return query
+
+    async def enqueue_registered(self, query):
+        async with self.condition:
+            scope = get_query_execution_context(query)
+            if self.cached_queries.get((scope.workspace_uuid, query.query_uuid)) is not query:
+                raise QueryNotFoundError('Query is no longer registered')
+            self.queries.append(query)
+            self.condition.notify_all()
 
     def get_query_count(self, execution_context: ExecutionContext) -> int:
         """Return the lifetime query count for one active placement scope."""

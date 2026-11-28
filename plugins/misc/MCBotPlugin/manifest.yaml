@@ -4,7 +4,7 @@ metadata:
   author: RockChinQ
   name: MCBotPlugin
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/MCBotPlugin
-  version: 0.1.2
+  version: 0.1.3
   description:
     en_US: Bind a Minecraft server to your chat group, query live server status
       and online players, and track per-player playtime. Migrated to the new LangBot

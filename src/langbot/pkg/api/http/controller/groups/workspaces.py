@@ -4,6 +4,8 @@ import typing
 
 import quart
 
+from .....cloud.message_quota import message_quota_display, message_quota_status
+
 from ...authz import Permission, permissions_for_role
 from ...context import PrincipalType, RequestContext
 from ...service.user import AccountExistsLoginRequiredError, ControlPlaneDirectoryRequiredError
@@ -76,6 +78,61 @@ class WorkspacesRouterGroup(group.RouterGroup):
         return await operation()
 
     async def initialize(self) -> None:
+        async def sandbox_operation(operation_id, context, payload):
+            from langbot.pkg.api.application import ApplicationAPIException
+
+            try:
+                return self.success(data=await self.ap.application_api.execute(operation_id, context, payload))
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+
+        @self.route(
+            '/current/sandbox',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.WORKSPACE_VIEW,
+        )
+        async def get_sandbox(request_context: RequestContext):
+            return await sandbox_operation(
+                'workspace.sandbox.get', request_context, {'refresh': quart.request.args.get('refresh') == 'true'}
+            )
+
+        @self.route(
+            '/current/sandbox',
+            methods=['PUT'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.WORKSPACE_UPDATE,
+        )
+        async def update_sandbox(request_context: RequestContext):
+            return await sandbox_operation('workspace.sandbox.update', request_context, await quart.request.get_json())
+
+        @self.route(
+            '/current/sandbox',
+            methods=['DELETE'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.WORKSPACE_UPDATE,
+        )
+        async def reset_sandbox(request_context: RequestContext):
+            return await sandbox_operation('workspace.sandbox.reset', request_context, {})
+
+        @self.route(
+            '/current/sandbox/check',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.WORKSPACE_UPDATE,
+        )
+        async def check_sandbox(request_context: RequestContext):
+            return await sandbox_operation('workspace.sandbox.check', request_context, await quart.request.get_json())
+
+        @self.route(
+            '/current/sandbox/test',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.WORKSPACE_UPDATE,
+        )
+        async def test_sandbox(request_context: RequestContext):
+            return await sandbox_operation('workspace.sandbox.test', request_context, await quart.request.get_json())
+
         @self.route(
             '/current/language',
             methods=['GET'],
@@ -154,6 +211,10 @@ class WorkspacesRouterGroup(group.RouterGroup):
                 )
             return self.http_status(403, 'edition_limit', 'This edition supports one Workspace per instance')
 
+        @self.route('/current/message-quota', methods=['GET'], permission=Permission.WORKSPACE_VIEW)
+        async def _(request_context: RequestContext) -> typing.Any:
+            return self.success(data=await message_quota_status(self.ap, request_context.workspace_uuid))
+
         @self.route('/current', methods=['GET'], permission=Permission.WORKSPACE_VIEW)
         async def _(request_context: RequestContext) -> typing.Any:
             membership = quart.g.workspace_membership
@@ -161,6 +222,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
             plan_name: str | None = None
             limitation = None
             current_plan = None
+            quota = await message_quota_display(self.ap, request_context.workspace_uuid)
             resolver = getattr(self.ap, 'entitlement_resolver', None)
             if workspace.source == WorkspaceSource.CLOUD_PROJECTION.value and resolver is not None:
                 entitlement = await resolver.resolve(
@@ -177,9 +239,9 @@ class WorkspacesRouterGroup(group.RouterGroup):
                         'limits': entitlement.limits,
                         'entitlement_features': entitlement.features,
                     }
-                from ...service.workspace_limits import LIMIT_KEYS
+                from ...service.workspace_limits import entitlement_limitation
 
-                limitation = {key: entitlement.limit(value) for key, value in LIMIT_KEYS.items()}
+                limitation = entitlement_limitation(entitlement)
             if request_context.principal.principal_type == PrincipalType.SUPPORT_ADMIN:
                 return self.success(
                     data={
@@ -199,6 +261,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
                         'placement_generation': request_context.placement_generation,
                         'plan_name': plan_name,
                         'current_plan': current_plan,
+                        'message_quota': quota,
                         'limitation': limitation,
                     }
                 )
@@ -217,6 +280,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
                     'placement_generation': request_context.placement_generation,
                     'plan_name': plan_name,
                     'current_plan': current_plan,
+                    'message_quota': quota,
                     'limitation': limitation,
                 }
             )

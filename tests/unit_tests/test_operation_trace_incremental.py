@@ -275,3 +275,103 @@ async def test_invalidation_clears_every_cached_view(trace_env):
 
     # A deletion invalidates *all* views for the Workspace, not just one.
     assert _cached_views(service) == []
+
+
+@pytest.fixture
+async def mixed_history(trace_env):
+    service, engine = trace_env
+    previous_hash = None
+    ids = []
+    for index, resource_type in enumerate(['bot', 'pipeline', 'bot', 'model', 'bot', 'pipeline']):
+        row = _build_row(index, previous_hash, created_at=datetime.datetime(2026, 1, index + 1))
+        row.update(
+            resource_type=resource_type,
+            action='update' if resource_type == 'bot' else 'view',
+            level=1 if resource_type == 'bot' else 2,
+            actor_account_uuid='bot-operator' if resource_type == 'bot' else 'reader',
+        )
+        row['record_hash'] = service_module.compute_record_hash(row)
+        previous_hash = row['record_hash']
+        foreign_row = _build_row(index, None)
+        foreign_row['workspace_uuid'] = 'other-workspace'
+        foreign_row['record_hash'] = service_module.compute_record_hash(foreign_row)
+        async with engine.begin() as connection:
+            result = await connection.execute(sqlalchemy.insert(MODEL).values(**row))
+            ids.append(result.inserted_primary_key[0])
+            await connection.execute(sqlalchemy.insert(MODEL).values(**foreign_row))
+    return service, engine, ids
+
+
+@pytest.mark.parametrize(
+    'filters, expected_count',
+    [
+        ({}, 6),
+        ({'resource_type': 'bot'}, 3),
+        ({'action': 'update'}, 3),
+        ({'level': 1}, 3),
+        ({'actor_account_uuid': 'bot-operator'}, 3),
+        ({'search': 'bot'}, 3),
+        ({'since': datetime.datetime(2026, 1, 2), 'until': datetime.datetime(2026, 1, 5)}, 4),
+        ({'resource_type': 'missing'}, 0),
+    ],
+)
+async def test_filtered_history_uses_workspace_predecessors(mixed_history, filters, expected_count):
+    service, _engine, _ids = mixed_history
+    for offset in (0, 1):
+        result = await service.query_logs(WORKSPACE, limit=2, offset=offset, **filters)
+        assert result['total'] == expected_count
+        assert result['scanned_count'] == expected_count
+        assert result['tampered_count'] == result['chain_failed_count'] == result['integrity_failed_count'] == 0
+        assert all(row['chain_ok'] and row['integrity_ok'] for row in result['records'])
+
+
+@pytest.mark.parametrize('field', ['summary', 'prev_hash'])
+async def test_filtered_history_detects_tampering(mixed_history, monkeypatch, field):
+    service, engine, ids = mixed_history
+    monkeypatch.setattr(service_module, 'INTEGRITY_CACHE_TTL_SECONDS', 0.0)
+    await service.query_logs(WORKSPACE, resource_type='bot')
+    async with engine.begin() as connection:
+        await connection.execute(sqlalchemy.update(MODEL).where(MODEL.id == ids[2]).values(**{field: 'tampered'}))
+    for filters in ({}, {'resource_type': 'bot'}, {'resource_type': 'bot', 'integrity': 'issues'}):
+        result = await service.query_logs(WORKSPACE, **filters)
+        assert result['tampered_count'] == result['integrity_failed_count'] == 1
+        assert result['chain_failed_count'] == (1 if field == 'prev_hash' else 0)
+        damaged = next(row for row in result['records'] if row['id'] == ids[2])
+        assert damaged['integrity_ok'] is False
+        assert damaged['chain_ok'] is (field != 'prev_hash')
+        assert all(row['chain_ok'] for row in result['records'] if row['id'] != ids[2])
+
+
+async def test_filter_values_have_distinct_cache_entries(mixed_history):
+    service, engine, ids = mixed_history
+    async with engine.begin() as connection:
+        await connection.execute(sqlalchemy.update(MODEL).where(MODEL.id == ids[2]).values(summary='tampered'))
+    for resource_type, scanned, tampered in [('bot', 3, 1), ('pipeline', 2, 0), ('model', 1, 0), ('bot', 3, 1)]:
+        result = await service.query_logs(WORKSPACE, resource_type=resource_type)
+        assert result['scanned_count'] == scanned
+        assert result['tampered_count'] == tampered
+        assert result['chain_failed_count'] == 0
+    assert len(_cached_views(service)) == 3
+
+
+async def test_integrity_drilldown_keeps_real_predecessors(mixed_history):
+    service, engine, ids = mixed_history
+    damaged_ids = {ids[0], ids[4]}
+    async with engine.begin() as connection:
+        await connection.execute(sqlalchemy.update(MODEL).where(MODEL.id.in_(damaged_ids)).values(summary='tampered'))
+    result = await service.query_logs(WORKSPACE, resource_type='bot', integrity='hash_mismatch')
+    assert {row['id'] for row in result['records']} == damaged_ids
+    assert result['tampered_count'] == result['integrity_failed_count'] == 2
+    assert result['chain_failed_count'] == 0
+    assert all(row['chain_ok'] and not row['integrity_ok'] for row in result['records'])
+
+
+async def test_filtered_scan_limit_keeps_real_predecessors(mixed_history, monkeypatch):
+    service, _engine, _ids = mixed_history
+    monkeypatch.setattr(service_module, 'MAX_INTEGRITY_SCAN_ROWS', 2)
+    result = await service.query_logs(WORKSPACE, resource_type='bot')
+    assert result['total'] == 3
+    assert result['scanned_count'] == 2
+    assert result['scan_truncated'] is True
+    assert result['tampered_count'] == 0
+    assert all(row['chain_ok'] for row in result['records'])

@@ -39,10 +39,35 @@ from langbot.pkg.platform.adapters.telegram.interaction import (
     parse_interaction_callback,
     send_interaction,
 )
+from langbot_plugin.api.entities.builtin.runner.interaction import (
+    InteractionHandle,
+    InteractionRequest,
+    InteractionSubmission,
+)
 
 
 class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
     """Telegram adapter (EBA version)."""
+
+    _command_sync: typing.Any = pydantic.PrivateAttr(default=None)
+
+    @staticmethod
+    def command_registration_capability():
+        from ...command_registration import TELEGRAM_COMMANDS
+
+        return TELEGRAM_COMMANDS
+
+    def configure_platform_commands(self, prefix, callback):
+        self._command_sync = callback
+
+    async def sync_platform_commands(self, specs):
+        for locale, commands in specs.items():
+            await self.bot.set_my_commands(
+                [telegram.BotCommand(command=item['name'], description=item['description']) for item in commands],
+                scope=telegram.BotCommandScopeDefault(),
+                language_code=locale,
+            )
+        return {'success': True}
 
     bot: telegram.Bot = pydantic.Field(exclude=True)
     application: telegram.ext.Application = pydantic.Field(exclude=True)
@@ -179,6 +204,7 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
             'bot.muted',
             'bot.unmuted',
             'platform.specific',
+            'interaction.callback',
         ]
 
     def get_supported_apis(self) -> list[str]:
@@ -198,15 +224,79 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
             'kick_member',
             'leave_group',
             'call_platform_api',
-            'interaction.request',
+            'send_interaction',
+            'update_interaction',
+            'get_interaction_capabilities',
         ]
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:
         return interaction_delivery_capabilities()
 
+    async def send_interaction(
+        self,
+        target_type: str,
+        target_id: str,
+        request: InteractionRequest,
+        callback_token: str,
+        reply_to: str | None = None,
+    ) -> InteractionHandle:
+        result = await send_interaction(
+            self.bot,
+            {
+                'request': request.model_dump(mode='json'),
+                'callback_token': callback_token,
+                'reply_target': {'target_type': target_type, 'target_id': target_id, 'message_id': reply_to},
+            },
+        )
+        handle = InteractionHandle.model_validate(result)
+        handle.context['request'] = request.model_dump(mode='json')
+        handle.context['target_id'] = target_id
+        return handle
+
+    async def update_interaction(
+        self,
+        handle: InteractionHandle,
+        state: str,
+        submission: InteractionSubmission | None = None,
+    ) -> InteractionHandle:
+        del submission
+        target_id = str(handle.context['target_id']).split('#', 1)[0]
+        request = handle.context['request']
+        label = {'submitted': 'Submitted', 'expired': 'Expired', 'cancelled': 'Cancelled'}[state]
+        await self.bot.edit_message_text(
+            chat_id=int(target_id) if target_id.lstrip('-').isdigit() else target_id,
+            message_id=handle.message_id,
+            text=f'{request["title"]}\n\n{label}',
+            reply_markup=None,
+        )
+        return handle
+
     # ---- Message Send / Reply (preserving original logic) ----
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
+        return await self._send_to_target(target_id, message)
+
+    async def reply_to_event(
+        self, *, context: dict, target_type: str, target_id: str, message: platform_message.MessageChain
+    ) -> platform_events.MessageResult:
+        if 'quote_origin' not in context:
+            return await self.send_message(target_type, target_id, message)
+        target = (context.get('delivery') or {}).get('reply_target') or {}
+        quote_origin = context.get('quote_origin', False)
+        if not isinstance(quote_origin, bool):
+            raise ValueError('quote_origin must be a boolean')
+        message_id = target.get('message_id') if quote_origin else None
+        if quote_origin and not message_id:
+            raise ValueError('The original Telegram message ID is required to quote a recovered reply')
+        return await self._send_to_target(
+            str(target.get('target_id') or target_id),
+            message,
+            reply_to_message_id=int(message_id) if message_id is not None else None,
+        )
+
+    async def _send_to_target(
+        self, target_id: str, message: platform_message.MessageChain, *, reply_to_message_id: int | None = None
+    ) -> platform_events.MessageResult:
         components = await TelegramMessageConverter.yiri2target(message, self.bot)
 
         chat_id_str, _, thread_id_str = str(target_id).partition('#')
@@ -219,6 +309,8 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
             args = {'chat_id': chat_id}
             if message_thread_id is not None:
                 args['message_thread_id'] = message_thread_id
+            if reply_to_message_id is not None:
+                args['reply_to_message_id'] = reply_to_message_id
 
             if component_type == 'text':
                 text = component.get('text', '')
@@ -239,6 +331,14 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
                 filename = component.get('filename', 'file')
                 args['document'] = telegram.InputFile(doc, filename=filename)
                 sent_messages.append(await self.bot.send_document(**args))
+            elif component_type == 'voice':
+                voice = component.get('voice')
+                if voice is None:
+                    continue
+                args['voice'] = telegram.InputFile(voice, filename='voice.ogg')
+                if component.get('duration'):
+                    args['duration'] = component['duration']
+                sent_messages.append(await self.bot.send_voice(**args))
 
         return platform_events.MessageResult(
             message_id=sent_messages[-1].message_id if sent_messages else None,
@@ -290,6 +390,14 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
                 filename = component.get('filename', 'file')
                 args['document'] = telegram.InputFile(doc, filename=filename)
                 sent_messages.append(await self.bot.send_document(**args))
+            elif component_type == 'voice':
+                voice = component.get('voice')
+                if voice is None:
+                    continue
+                args['voice'] = telegram.InputFile(voice, filename='voice.ogg')
+                if component.get('duration'):
+                    args['duration'] = component['duration']
+                sent_messages.append(await self.bot.send_voice(**args))
 
         return platform_events.MessageResult(
             message_id=sent_messages[-1].message_id if sent_messages else None,
@@ -382,7 +490,11 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
         # through the regular reply path, including attachment-only completions.
         if is_final and not bot_message.tool_calls:
             attachments = platform_message.MessageChain(
-                [part for part in message if isinstance(part, (platform_message.Image, platform_message.File))]
+                [
+                    part
+                    for part in message
+                    if isinstance(part, (platform_message.Image, platform_message.File, platform_message.Voice))
+                ]
             )
             if attachments:
                 await self.reply_message(message_source, attachments, quote_origin=quote_origin)
@@ -425,6 +537,8 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
             if is_final and bot_message.tool_calls is None:
                 # Finalise: send the real message, discard the draft
                 args = self._build_message_args(chat_id, content, message_thread_id)
+                if quote_origin and effective_message:
+                    args['reply_to_message_id'] = effective_message.id
                 try:
                     await self.bot.send_message(**args)
                 except telegram.error.BadRequest as exc:
@@ -465,6 +579,10 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
                     if 'Message_too_long' in str(exc):
                         args['text'] = self._process_markdown(content[:4000] + '\n\n… (truncated)')
                         await self.bot.edit_message_text(**args)
+                    elif 'Message is not modified' in str(exc):
+                        # The message already shows this exact content (e.g. the
+                        # final chunk repeats the last edit); nothing to deliver.
+                        pass
                     else:
                         raise
                 self.msg_stream_id[message_id] = (chat_mode, stream_id, True)
@@ -537,8 +655,6 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
         params: dict = {},
     ) -> dict:
         """Call a Telegram-specific platform API."""
-        if action == 'interaction.request':
-            return await send_interaction(self.bot, params)
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedError
@@ -553,6 +669,8 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
         self.bot_account_id = (await self.bot.get_me()).username
         await self.application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
         await self.application.start()
+        if self._command_sync is not None:
+            await self._command_sync()
         await self.logger.info('Telegram adapter running')
 
     async def kill(self) -> bool:

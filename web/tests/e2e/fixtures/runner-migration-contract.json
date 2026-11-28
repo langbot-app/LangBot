@@ -5583,6 +5583,60 @@
             "required": true
           },
           {
+            "name": "group-context",
+            "label": {
+              "en_US": "Group chat context",
+              "zh_Hans": "群聊上下文",
+              "zh_Hant": "群聊上下文",
+              "ja_JP": "グループチャットのコンテキスト",
+              "es_ES": "Contexto de chats grupales",
+              "ru_RU": "Контекст групповых чатов",
+              "th_TH": "บริบทแชทกลุ่ม",
+              "vi_VN": "Ngữ cảnh trò chuyện nhóm"
+            },
+            "description": {
+              "en_US": "How the conversation context is kept in group chats. \"Separate for each member\" gives every member their own conversation history, so members do not see each other's context. \"Shared by the group\" keeps one conversation for the whole group. Private chats are not affected.",
+              "zh_Hans": "群聊中如何保存对话上下文。「每个成员独立」时，群里每个人有自己的对话记录，互不影响； 「整个群共享」时，全群使用同一段对话。私聊不受此设置影响。",
+              "zh_Hant": "群聊中如何保存對話上下文。「每個成員獨立」時，群裡每個人有自己的對話記錄，互不影響； 「整個群共享」時，全群使用同一段對話。私聊不受此設定影響。",
+              "ja_JP": "グループチャットでの会話コンテキストの保持方法です。「メンバーごとに独立」では各メンバーが 自分の会話履歴を持ち、互いに影響しません。「グループで共有」ではグループ全体で 1 つの会話を使います。個人チャットには影響しません。",
+              "es_ES": "Cómo se guarda el contexto de la conversación en los chats grupales. \"Independiente por miembro\" da a cada miembro su propio historial; \"Compartido por el grupo\" usa una sola conversación para todo el grupo. Los chats privados no se ven afectados.",
+              "ru_RU": "Как хранится контекст беседы в групповых чатах. «Отдельно для каждого участника» — у каждого участника своя история диалога. «Общий для группы» — одна беседа на всю группу. Личные чаты не затрагиваются.",
+              "th_TH": "วิธีเก็บบริบทการสนทนาในแชทกลุ่ม \"แยกตามสมาชิก\" ให้สมาชิกแต่ละคนมีประวัติการสนทนาของตัวเอง \"ใช้ร่วมกันทั้งกลุ่ม\" ใช้การสนทนาเดียวทั้งกลุ่ม ไม่มีผลกับแชทส่วนตัว",
+              "vi_VN": "Cách lưu ngữ cảnh hội thoại trong trò chuyện nhóm. \"Riêng cho từng thành viên\" cho mỗi thành viên một lịch sử hội thoại riêng; \"Dùng chung cho cả nhóm\" dùng một cuộc hội thoại cho cả nhóm. Không ảnh hưởng đến trò chuyện riêng."
+            },
+            "type": "select",
+            "required": true,
+            "default": "member",
+            "options": [
+              {
+                "name": "member",
+                "label": {
+                  "en_US": "Separate for each member",
+                  "zh_Hans": "每个成员独立",
+                  "zh_Hant": "每個成員獨立",
+                  "ja_JP": "メンバーごとに独立",
+                  "es_ES": "Independiente por miembro",
+                  "ru_RU": "Отдельно для каждого участника",
+                  "th_TH": "แยกตามสมาชิก",
+                  "vi_VN": "Riêng cho từng thành viên"
+                }
+              },
+              {
+                "name": "group",
+                "label": {
+                  "en_US": "Shared by the group",
+                  "zh_Hans": "整个群共享",
+                  "zh_Hant": "整個群共享",
+                  "ja_JP": "グループで共有",
+                  "es_ES": "Compartido por el grupo",
+                  "ru_RU": "Общий для группы",
+                  "th_TH": "ใช้ร่วมกันทั้งกลุ่ม",
+                  "vi_VN": "Dùng chung cho cả nhóm"
+                }
+              }
+            ]
+          },
+          {
             "name": "expire-time",
             "label": {
               "en_US": "Conversation expire time (seconds)",
@@ -5608,113 +5662,6 @@
     },
     "stages": [
       {
-        "name": "long-text-processing",
-        "label": {
-          "en_US": "Long Text Processing",
-          "zh_Hans": "长文本处理"
-        },
-        "config": [
-          {
-            "name": "threshold",
-            "label": {
-              "en_US": "Threshold",
-              "zh_Hans": "阈值"
-            },
-            "description": {
-              "en_US": "The threshold of the long text",
-              "zh_Hans": "超过此长度的文本将被处理"
-            },
-            "type": "integer",
-            "required": true,
-            "default": 1000
-          },
-          {
-            "name": "strategy",
-            "label": {
-              "en_US": "Strategy",
-              "zh_Hans": "策略"
-            },
-            "description": {
-              "en_US": "The strategy of the long text",
-              "zh_Hans": "长文本的处理策略"
-            },
-            "type": "select",
-            "required": true,
-            "default": "none",
-            "options": [
-              {
-                "name": "forward",
-                "label": {
-                  "en_US": "Forward Message Component",
-                  "zh_Hans": "转换为转发消息组件（部分平台不支持）"
-                }
-              },
-              {
-                "name": "image",
-                "label": {
-                  "en_US": "Convert to Image",
-                  "zh_Hans": "转换为图片"
-                }
-              },
-              {
-                "name": "none",
-                "label": {
-                  "en_US": "None",
-                  "zh_Hans": "不处理"
-                }
-              }
-            ]
-          },
-          {
-            "name": "font-path",
-            "label": {
-              "en_US": "Font Path",
-              "zh_Hans": "字体路径"
-            },
-            "description": {
-              "en_US": "The path of the font to be used when converting to image",
-              "zh_Hans": "选用转换为图片时，所使用的字体路径"
-            },
-            "type": "string",
-            "required": false,
-            "default": ""
-          }
-        ]
-      },
-      {
-        "name": "force-delay",
-        "label": {
-          "en_US": "Force Delay",
-          "zh_Hans": "强制延迟"
-        },
-        "description": {
-          "en_US": "Force the output to be delayed for a while",
-          "zh_Hans": "强制延迟一段时间后再回复给用户"
-        },
-        "config": [
-          {
-            "name": "min",
-            "label": {
-              "en_US": "Min Seconds",
-              "zh_Hans": "最小秒数"
-            },
-            "type": "integer",
-            "required": true,
-            "default": 0
-          },
-          {
-            "name": "max",
-            "label": {
-              "en_US": "Max Seconds",
-              "zh_Hans": "最大秒数"
-            },
-            "type": "integer",
-            "required": true,
-            "default": 0
-          }
-        ]
-      },
-      {
         "name": "misc",
         "label": {
           "en_US": "Misc",
@@ -5722,61 +5669,10 @@
         },
         "config": [
           {
-            "name": "exception-handling",
+            "name": "daily-message-quota-exceeded",
             "label": {
-              "en_US": "Exception Handling Strategy",
-              "zh_Hans": "异常处理策略"
-            },
-            "description": {
-              "en_US": "Controls how error messages are displayed to the user when an AI request fails",
-              "zh_Hans": "控制 AI 请求失败时向用户展示错误信息的方式"
-            },
-            "type": "select",
-            "required": true,
-            "default": "show-hint",
-            "options": [
-              {
-                "name": "show-error",
-                "label": {
-                  "en_US": "Show Full Error",
-                  "zh_Hans": "显示完整报错信息"
-                }
-              },
-              {
-                "name": "show-hint",
-                "label": {
-                  "en_US": "Show Failure Hint",
-                  "zh_Hans": "仅文字提示"
-                }
-              },
-              {
-                "name": "hide",
-                "label": {
-                  "en_US": "Hide All",
-                  "zh_Hans": "不显示任何异常信息"
-                }
-              }
-            ]
-          },
-          {
-            "name": "failure-hint",
-            "label": {
-              "en_US": "Failure Hint Text",
-              "zh_Hans": "失败提示文本"
-            },
-            "description": {
-              "en_US": "Leave empty to use the Workspace language. Used for request and runner execution failures; custom text is not translated.",
-              "zh_Hans": "留空时使用工作区语言的默认提示。用于请求和运行器执行失败；自定义文本不会自动翻译。"
-            },
-            "type": "string",
-            "required": false,
-            "default": ""
-          },
-          {
-            "name": "rate-limit-hint",
-            "label": {
-              "en_US": "Rate Limit Hint",
-              "zh_Hans": "限速提示"
+              "en_US": "Daily Message Quota Reached",
+              "zh_Hans": "每日消息额度已用完"
             },
             "description": {
               "en_US": "Leave empty to use the Workspace language.",
@@ -5784,35 +5680,12 @@
             },
             "type": "string",
             "required": false,
-            "default": ""
-          },
-          {
-            "name": "content-filter-hint",
-            "label": {
-              "en_US": "Content Filter Hint",
-              "zh_Hans": "内容过滤提示"
-            },
-            "description": {
-              "en_US": "Leave empty to use the Workspace language.",
-              "zh_Hans": "留空时使用工作区语言的默认提示。"
-            },
-            "type": "string",
-            "required": false,
-            "default": ""
-          },
-          {
-            "name": "content-filter-error-hint",
-            "label": {
-              "en_US": "Content Check Failure Hint",
-              "zh_Hans": "内容检查失败提示"
-            },
-            "description": {
-              "en_US": "Leave empty to use the Workspace language.",
-              "zh_Hans": "留空时使用工作区语言的默认提示。"
-            },
-            "type": "string",
-            "required": false,
-            "default": ""
+            "default": "",
+            "show_if": {
+              "field": "__system.is_cloud",
+              "operator": "eq",
+              "value": true
+            }
           },
           {
             "name": "tool-call-hint",
@@ -5869,26 +5742,6 @@
             "type": "string",
             "required": false,
             "default": ""
-          },
-          {
-            "name": "at-sender",
-            "label": {
-              "en_US": "At Sender",
-              "zh_Hans": "在群聊回复中@发送者"
-            },
-            "type": "boolean",
-            "required": true,
-            "default": true
-          },
-          {
-            "name": "quote-origin",
-            "label": {
-              "en_US": "Quote Origin Message",
-              "zh_Hans": "引用原消息"
-            },
-            "type": "boolean",
-            "required": true,
-            "default": false
           },
           {
             "name": "track-function-calls",

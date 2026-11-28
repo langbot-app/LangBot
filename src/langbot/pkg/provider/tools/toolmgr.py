@@ -13,6 +13,7 @@ from . import loader as tool_loader
 from .errors import ToolNotFoundError
 from ...pipeline.pool import get_query_execution_context
 from ...api.http.service.tenant import TenantContext
+from ...telemetry import features as telemetry_features
 
 if TYPE_CHECKING:
     from ...core import app
@@ -410,8 +411,13 @@ class ToolManager:
         if launcher_type is None or launcher_id is None:
             return None
 
-        launcher_type_value = launcher_type.value if hasattr(launcher_type, 'value') else launcher_type
-        return f'{launcher_type_value}_{launcher_id}'
+        from ...pipeline.monitoring_helper import build_monitoring_session_id
+
+        return build_monitoring_session_id(
+            launcher_type,
+            launcher_id,
+            getattr(query, 'sender_id', None),
+        )
 
     async def _record_tool_call(
         self,
@@ -463,6 +469,7 @@ class ToolManager:
         invoke: typing.Callable[[], typing.Awaitable[typing.Any]],
     ) -> typing.Any:
         start_time = time.perf_counter()
+        telemetry_features.increment(self.ap, 'tool_calls', source, query=query)
         try:
             result = await invoke()
         except asyncio.CancelledError:

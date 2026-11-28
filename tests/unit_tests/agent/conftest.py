@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from langbot_plugin.entities.io.context import InstallationBinding
+from tests.utils.plugin_installations import install_legacy_plugin
 
 
 TEST_RUNTIME_BINDING = InstallationBinding(
@@ -43,6 +44,7 @@ def bind_runtime_action_context(
         plugin_name=plugin_name,
     )
     handler._current_action_context.set(TEST_RUNTIME_BINDING)
+    install_legacy_plugin(application, TEST_RUNTIME_BINDING, plugin_author, plugin_name)
     return handler
 
 

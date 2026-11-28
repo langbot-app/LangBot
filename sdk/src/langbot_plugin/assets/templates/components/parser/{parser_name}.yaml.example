@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Parser
+metadata:
+  name: {{ parser_name }}
+  label:
+    en_US: {{ parser_label }}
+    zh_Hans: {{ parser_label }}
+    th_TH: {{ parser_label }}
+    vi_VN: {{ parser_label }}
+    es_ES: {{ parser_label }}
+  description:
+    en_US: '{{ parser_description }}'
+    zh_Hans: '{{ parser_description }}'
+    th_TH: '{{ parser_description }}'
+    vi_VN: '{{ parser_description }}'
+    es_ES: '{{ parser_description }}'
+spec:
+  supported_mime_types:
+    - application/pdf
+execution:
+  python:
+    path: {{ parser_name }}.py
+    attr: {{ parser_attr }}

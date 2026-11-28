@@ -62,6 +62,7 @@ class VoiceItem:
     bits_per_sample: Optional[int] = None
     sample_rate: Optional[int] = None
     playtime: Optional[int] = None
+    size: Optional[int] = None
     text: Optional[str] = None
     _downloaded_bytes: Optional[bytes] = field(default=None, repr=False)
 
@@ -169,6 +170,8 @@ class GetConfigResponse:
 class GetUploadUrlResponse:
     upload_param: Optional[str] = None
     thumb_upload_param: Optional[str] = None
+    # Complete, server-selected upload URL; preferred over upload_param when set.
+    upload_full_url: Optional[str] = None
 
 
 @dataclass

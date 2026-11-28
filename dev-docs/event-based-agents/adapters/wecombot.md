@@ -19,6 +19,16 @@ The adapter is registered as `wecombot-omni`.
 
 This is separate from regular WeCom internal applications (`wecom-omni`). WeComBot supports WebSocket long connection mode, which does not require a webhook URL. Webhook mode remains available when `enable-webhook=true`.
 
+## AI Interactions
+
+In WebSocket mode, `interaction.request` renders actions as a
+`button_interaction` template card. A single `select` field renders as a native
+`multiple_interaction` dropdown with a Submit button (up to 10 options). The
+callback's `selected_items.selected_item[].option_ids.option_id` carries the
+selected option ID, as documented in the WeCom AI Bot event protocol. The Host
+resolves the original option value from its persisted interaction request.
+Webhook mode does not offer this proactive card API.
+
 ## Configuration
 
 | Field | Required | Default | Description |
@@ -75,7 +85,7 @@ WeComBot declares these EBA events:
 Covered by:
 
 ```bash
-PYTHONPATH=/Users/wangqiang/code/python/langbot-plugin-sdk/src uv run pytest tests/unit_tests/platform/test_wecombot_eba_adapter.py
+PYTHONPATH=/path/to/LangBot/sdk/src uv run pytest tests/unit_tests/platform/test_wecombot_eba_adapter.py
 ```
 
 The unit tests cover:
@@ -92,7 +102,7 @@ The unit tests cover:
 The direct adapter probe is:
 
 ```bash
-PYTHONPATH=/absolute/path/to/langbot-plugin-sdk/src uv run python tests/e2e/live_wecombot_eba_probe.py --help
+PYTHONPATH=/absolute/path/to/LangBot/sdk/src uv run python tests/e2e/live_wecombot_eba_probe.py --help
 ```
 
 Default mode is WebSocket long connection and requires:

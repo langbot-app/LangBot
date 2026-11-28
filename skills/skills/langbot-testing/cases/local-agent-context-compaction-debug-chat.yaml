@@ -49,7 +49,7 @@ setup_provides_env:
 preconditions:
   - "The selected model route can follow short deterministic instructions across multiple Debug Chat turns, or LANGBOT_E2E_FAKE_PROVIDER_BASE_URL points to scripts/e2e/fake-openai-provider.mjs."
 steps:
-  - "Open the target local-agent pipeline through LANGBOT_FRONTEND_URL."
+  - "Open the target local-agent Chat through LANGBOT_FRONTEND_URL."
   - "Use the authenticated browser token only inside automation to GET and PUT /api/v1/pipelines/{uuid}."
   - "Assert the saved runner is plugin:langbot-team/LocalAgent/default."
   - "Temporarily set context-window-tokens, context-reserve-tokens, context-keep-recent-tokens, and context-summary-tokens to force compaction, and clear knowledge-bases so RAG does not answer the memory question."
@@ -75,7 +75,7 @@ evidence_required:
   - backend_log
   - api_diagnostic
 diagnostics:
-  - "For token-free deterministic UI coverage, start scripts/e2e/fake-openai-provider.mjs and pass LANGBOT_E2E_FAKE_PROVIDER_BASE_URL to this case; setup will bind the local-agent pipeline to that fake OpenAI-compatible model."
+  - "For token-free deterministic UI coverage, start scripts/e2e/fake-openai-provider.mjs and pass LANGBOT_E2E_FAKE_PROVIDER_BASE_URL to this case; setup will bind the local-agent Chat to that fake OpenAI-compatible model."
   - "If the final sentinel is missing, inspect whether pipeline-config-diagnostic.json targeted ai.runner_config[runnerId], cleared knowledge-bases, whether pipeline-extensions-diagnostic.json isolated unrelated tools, and whether the backend log shows the local-agent runner loading the small context settings."
   - "If the model ignores deterministic replies, rerun with a known-good model route before diagnosing ContextAssembler."
   - "If restore fails, use pipeline-config-restore-diagnostic.json and GET /api/v1/pipelines/{uuid} to confirm the current saved config before retrying."

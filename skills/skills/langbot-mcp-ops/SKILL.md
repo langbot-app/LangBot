@@ -1,14 +1,27 @@
 ---
 name: langbot-mcp-ops
-description: Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, agents, pipelines, models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (web-UI lbk_ keys and the config.yaml global key), the tool surface, and client configuration. Triggers on "langbot mcp", "manage langbot via mcp", "langbot /mcp", "langbot mcp server".
+description: Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, agents, Chats, models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (web-UI lbk_ keys and the config.yaml global key), the tool surface, and client configuration. Triggers on "langbot mcp", "manage langbot via mcp", "langbot /mcp", "langbot mcp server".
 ---
 
 # LangBot MCP Operations
 
 LangBot exposes an **MCP server** so AI agents can manage an instance
-programmatically. It mirrors a curated subset of the HTTP service API.
+programmatically. It mirrors a curated subset of the HTTP service API. Workspace
+capabilities are being unified under the Application API catalog
+(`pkg/api/application/`; see Unified API in the root `AGENTS.md`); MCP tool names
+are not necessarily the catalog operation IDs.
 
 ## Endpoint
+
+### Naming, message policy and plugin enablement
+
+The WebUI calls the pipeline processor **Chat** (zh 聊天). Tool names, HTTP paths, fields (`pipeline_uuid`, `target_type: "pipeline"`) and the `pipeline` processor kind keep their old identifiers.
+
+`bot_data.message_policy` holds the bot-level message policy: `trigger` (group response rules, access control, ignore rules, message aggregation), `safety` (content filter, rate limit), `output` (long text, forced delay, `at-sender`, `quote-origin`, exception handling and hint texts) and `plugins`. It applies to `message.received` on every route: Chat, Agent and plugin commands. Each `event_bindings[]` item may carry a `policy` override with the same shape. On `update_bot`, an omitted `policy` keeps the stored override; send `"policy": null` to remove it. HTTP `GET /api/v1/platform/bots/_/message-policy/metadata` (no MCP tool) returns the form schema plus `default` (new bots) and `neutral` (admit everything, change nothing) values. Chat configs no longer hold `trigger`/`safety` or the general `output` items; old clients that send them are accepted and the keys are ignored.
+
+`message_policy.plugins` enables plugins on the bot, for example `{"enable_all":false,"plugins":[{"author":"example","name":"assistant"}]}`. Enabling a plugin enables both its commands and its EventListener hooks (`*MessageReceived`, `*NormalMessageReceived`, `*CommandSent`, `NormalMessageResponded`, `PromptPreProcessing`, platform notifications such as `MessageDeleted`). Hooks are dispatched in list order. Use `event_bindings[].policy.plugins` for a route override; send `"plugins": null` inside a route policy to clear it. A Chat's own plugin extension list only authorizes AI-callable tools. `list_bot_plugin_registrations` and `GET /api/v1/platform/bots/<uuid>/plugin-registrations` optionally take `route_id`; by default they list only plugins enabled there, and `include_disabled` (HTTP `?include_disabled=1`) lists every installed plugin. Each plugin's `event_processors` maps hook names to `messaging` (Chat), `agent` or `command`; `plugins: null` means the Runtime cannot report registrations. `PromptPreProcessing` applies only to Chats, and `NormalMessageResponded` only observes streamed replies.
+
+Route diagnostics (`list_bot_event_route_statuses`, HTTP `POST /api/v1/platform/bots/<uuid>/event-routes/dry-run`) report policy drops with `failure_code: "message_policy"` and a reason such as `route:r1: safety.rate-limit`.
 
 ```
 http://<langbot-host>:5300/mcp
@@ -58,10 +71,37 @@ To inspect key identity and permissions, call `GET /api/v1/system/context` with 
 }
 ```
 
+## Plugin permissions
+
+Plugin authorization management uses `get_plugin_permissions(author, plugin_name)`
+and `revoke_plugin_permissions(author, plugin_name, workspace_operations,
+capabilities)`. Revocation replaces grants with a subset; it requires
+`resource.manage`. API-key MCP clients cannot confirm/add grants. After installing
+or upgrading a plugin, direct a member to WebUI to review pending permissions.
+The marketplace HTTP install option `auto_confirm_permissions` is used by the
+setup wizard and remains member-only; setting it with an API key cannot grant
+permissions. Migration with plugin installation enabled uses the same checks.
+Chat extensions accept `allowed_platform_tools` as model preferences, not
+installation grants. See `docs/en/plugin/dev/permissions.mdx` for HTTP contracts.
+
+
+## Workspace execution environment
+
+Use `get_workspace_sandbox(refresh=true)` to detect selectable environments and supported limit controls. `check_workspace_sandbox(e2b)` performs read-only validation and never creates a sandbox. If the E2B service does not expose template queries, it reports the template as unverified; saving is still allowed. `set_workspace_sandbox(backend, e2b, limits)` requires `workspace.update`, applies only to new tasks, and never creates a sandbox. Limits may include `timeout_sec`, `idle_ttl_sec`, `max_sessions`, `cpus`, `memory_mb`, `pids_limit`, and `workspace_quota_mb`; only supported values within deployment ceilings are accepted. Empty limits inherit defaults. Existing tasks retain their Box and limit snapshot. Disk quotas are checked before/after commands, not continuous filesystem quotas.
+
+`test_workspace_sandbox(e2b)` is a separate, explicit operation that creates, executes in, and deletes a temporary E2B sandbox without saving. It consumes a provider slot and may incur charges. Users supply their provider's template name or ID. Stored API keys are never returned; a blank key retains the prior key only if service URLs are unchanged. Do not modify an E2B service to enable template queries.
+
 ## Tool surface
 
-Workflows are message-event processors alongside Agents, Pipelines and plugin
-processors. Use `list_workflows` and `get_workflow` to inspect the current
+`create_bot` requires `bot_data.name` and `bot_data.adapter` as non-empty strings,
+and `bot_data.adapter_config` as an object with the adapter's settings.
+For `update_pipeline`, fetch the current Chat before editing: `config`
+preserves omitted top-level sections and replaces each supplied section in full,
+without deep merging. Supplied sections must be objects. The merged configuration
+is validated before persistence; secret placeholders retain existing values.
+
+Workflows are message-event processors alongside Agents, Chats (Pipelines),
+plugin processors and command processors. Use `list_workflows` and `get_workflow` to inspect the current
 Workspace. `run_workflow(workflow_uuid, message, session_type)` requires runtime
 permission and returns `execution_uuid`, `status`, and collected text `replies`.
 Manual runs do not send messages to a bot; nodes requiring an explicit bot fail.
@@ -86,21 +126,23 @@ The tools wrap the LangBot service layer. Current tools (v1):
 `create_pipeline` and HTTP `POST /api/v1/pipelines` preserve a supplied `config`
 and `extensions_preferences`; omit `config` to use installed Runner defaults.
 Selecting `ai.runner.id` never grants extension access: an empty `plugins` list
-with `enable_all_plugins=false` still denies that plugin's Tool, EventListener
-and Command components, while allowing its selected Runner. Editing and copying
-a pipeline retain these independent settings.
+with `enable_all_plugins=false` denies its AI-callable tools, while allowing its selected Runner. Commands and Chat event hooks use the bot's plugin selection instead.
 
 | Tool | Purpose |
 | --- | --- |
 | `get_system_info` | Version, edition, instance id |
-| `list_bots` / `get_bot` / `create_bot` / `update_bot` / `delete_bot` | Manage messaging-platform bots (secrets redacted on read) |
+| `list_bots` / `get_bot` / `create_bot` / `update_bot` / `delete_bot` | Manage messaging-platform bots (secrets redacted on read); supports `message_policy` and `command_settings` |
+| `list_plugin_commands` | List commands provided by installed plugins in the current Workspace |
 | `list_bot_event_route_statuses` | Inspect bot event-route runtime status |
-| `list_processors` / `get_processor` / `create_processor` / `update_processor` / `delete_processor` | Manage the peer Agent, Pipeline and Event processor types |
-| `get_processor_metadata` | Discover installed event-capable Runner components, schemas and supported event patterns. |
-| `list_processor_runs` / `get_processor_run_events` | Read one Agent or plugin processor run history and logs; paginate with `before_id` / `after_sequence`. |
+| `list_bot_plugin_registrations` | Inspect bot or route plugin commands and Chat event hooks |
+| `list_message_upgrade_checks` | List message-policy upgrade checks and migration reports |
+| `sync_bot_platform_commands` | Synchronize the running bot’s platform command menu |
+| `list_processors` / `get_processor` / `create_processor` / `update_processor` / `delete_processor` | Manage the peer Agent, Chat, Event processor and Command processor types |
+| `get_processor_metadata` | Discover installed event-capable Runner components and command-providing plugins, schemas and supported event patterns. |
+| `list_processor_runs` / `get_processor_run_events` | Read one Agent, Event processor or Command processor run history and logs; paginate with `before_id` / `after_sequence`. |
 | `debug_agent` | Execute a synthetic Agent event (`processor_uuid`, `payload`); requires `runtime.operate`. Returns final text and up to 1000 execution events (thinking, text, tool arguments/results). Platform tools use Mock; other configured tools execute normally. Optional `payload.mock`: `errors`/`results` keyed by platform tool name, `unsupported_apis` lists unavailable platform APIs. |
-| `list_pipelines` / `get_pipeline` / `create_pipeline` / `update_pipeline` / `delete_pipeline` | Manage pipelines |
-| `list_llm_models` / `get_llm_model` / `list_embedding_models` / `list_model_providers` | Inspect models & providers |
+| `list_pipelines` / `get_pipeline` / `create_pipeline` / `update_pipeline` / `delete_pipeline` | Manage Chats |
+| `list_llm_models` / `get_llm_model` / `list_embedding_models` / `list_asr_models` / `list_tts_models` / `list_model_providers` | Inspect models & providers |
 | `list_knowledge_bases` / `get_knowledge_base` / `retrieve_knowledge_base` | RAG knowledge bases (incl. semantic search) |
 | `list_mcp_servers` | External MCP servers LangBot connects to (as a client) |
 | `list_skills` / `get_skill` | Installed skills |
@@ -116,12 +158,13 @@ shape as the corresponding HTTP API request body. Discover resources with the
 `resource.view`; mutations require `resource.manage`. All service calls inherit
 the immutable Workspace context authenticated at the MCP transport boundary.
 Pass `is_default: true` to `create_pipeline` only when the Workspace does not
-already have a default pipeline.
+already have a default Chat.
 
 ## How to use
 
-Pipeline plugin extension switches authorize only EventListener, Tool and Command
-components. Select the Runner independently in AI settings. An empty extension
+Chat plugin extension switches authorize only the AI-callable Tool
+components; EventListener hooks and Commands are enabled on the bot through
+`message_policy.plugins`. Select the Runner independently in AI settings. An empty extension
 allowlist does not prevent saving, copying or running that Runner. Never enable
 all plugins or add its plugin to the allowlist as a Runner workaround: that also
 authorizes its other components. The Runner plugin must still be installed and
@@ -192,15 +235,15 @@ state as well; it is not the same operation as disconnecting an account.
 
 `create_bot` without non-empty `event_bindings` adds two explicit message routes:
 private chat (`chat_type eq person`) and group chat (`chat_type eq group` plus
-`is_at_bot eq true`). Both use the Workspace's default Pipeline, or the first
-available Pipeline. If none exists, first-bot setup creates one with the full
-default config. Creating a Pipeline via `create_agent(kind="pipeline")` also uses
+`is_at_bot eq true`). Both use the Workspace's default Chat, or the first
+available Chat. If none exists, first-bot setup creates one with the full
+default config. Creating a Chat via `create_agent(kind="pipeline")` also uses
 that full default config. Configure an authorized model before testing replies.
 
 Explicit routes on create are preserved; `update_bot` never automatically
 replaces manual routes, including an intentionally empty list. The WebUI message
 template uses the same private/group conditions and preserves existing routes
-when applied repeatedly. Unmentioned group messages do not enter the Pipeline.
+when applied repeatedly. Unmentioned group messages do not enter the Chat.
 An existing broad route can still match first; inspect route order and diagnostics
 before changing a member's configuration.
 
@@ -213,14 +256,53 @@ optional `parameters`. API callers may also supply these when creating an instan
 Bind an instance by updating the bot's `plugin_processors` array with
 `{"processor_uuid": "<instance UUID>", "enabled": true}`. This replaces the full
 subscription list; preserve bindings you want to keep. Do not add plugin processors
-to `event_bindings`, which remains exclusive Agent/Pipeline routing.
+to `event_bindings`, which remains exclusive Agent/Chat routing.
 Each enabled subscription independently receives the installed Runner's declared
 events. Slow or failed subscribers do not prevent other subscribers or the primary
 route from executing. Installation alone never activates a handler. Reusing an
 instance shares its configuration and runtime state. Use a separate instance for
 independent settings. Optional plugin behavior belongs in the Runner config schema.
 `debug_agent` accepts the complete typed event in `payload.data` for this kind.
-Legacy EventListener plugins remain in the Pipeline lifecycle.
+EventListener plugins are message lifecycle hooks on the bot and are enabled through `message_policy.plugins`; they fire for Chat, Agent and command routes alike (see above).
+
+## Command processors
+
+Read and update `command_settings` on the bot. `enabled` controls command matching; `prefixes` is an ordered list such as `["/", "!"]`. `builtin` maps system command names to `{enabled, permission}`. An enabled system command takes precedence over a plugin command of the same name. `plugin_permissions` maps `author/plugin/command` to `everyone` or `admins`. `denied_reply` is `silent` or `notice`. Grant bot administrator status in session monitoring, not in `command_settings`. Inspect available system commands with `GET /api/v1/platform/bots/_/builtin-commands`.
+
+Telegram and Discord expose `spec.command_registration` in adapter metadata.
+Set `command_settings.platform_commands` to `{"enabled": true, "selected": ["draw"]}`
+alongside the bot prefixes and processor bindings. This replaces all platform commands,
+including manually configured commands; disabling registration clears previously managed lists.
+Save first, then call `sync_bot_platform_commands(bot_uuid)` (HTTP:
+`POST /api/v1/bots/{uuid}/platform-commands/sync`, `resource.manage`). The bot must be running.
+Read `platform_command_sync` and `platform_command_registration` from `get_bot` for
+sync time, errors and per-command filtering reasons. Unchanged command lists skip
+platform writes. Synchronization also runs on startup and plugin installation changes.
+Telegram menu commands need `/` among the bot prefixes; Discord interactions bypass
+prefix matching and reply through interaction followups. Only `message.received` is handled.
+
+A command processor (`kind: "command_processor"`) is one configuration instance of a
+plugin's Command components. Create it with `component_ref: "plugin:<author>/<name>"`
+from `command_processors` in `get_processor_metadata`, plus optional `parameters`
+keyed by command name; each command's values are validated against its manifest
+`spec.config`. Plugins without `spec.config` get an empty configuration and work
+unchanged. Create several instances of one plugin for different settings and bind
+one per bot through `command_settings.processors` (`[{"processor_uuid", "enabled"}]`,
+priority order). Bot-level commands only react to `message.received`; a message whose
+first word after a bot prefix equals a registered command name is handled by that
+command and skips plugin processors and the Chat or Agent. Only plugins enabled in
+`message_policy.plugins` match; an enabled plugin without a command processor uses its
+default command config, and a processor binding with `enabled: false` turns that
+plugin's commands off. Commands use the policy of the route the message would otherwise
+match (bot default when none), fire `*MessageReceived` and then `*CommandSent`, and can
+call `context.reply()` because the entry Query is registered.
+
+Every command execution, from a bot or from debugging, is recorded as a run of its
+command processor: `list_processor_runs` lists them and `get_processor_run_events`
+returns one `command.output` event per command reply (`text`, `image_url`,
+`file_url` or `error`). To debug, call `debug_agent` with `payload.text` set to a
+command line without the bot prefix, such as `"draw a cat"`; it runs once with admin
+privilege, never replies on a platform, and returns `outputs`, `status` and `run_id`.
 
 `list_processor_runs` includes `created_at_ms`, `started_at_ms`, and
 `finished_at_ms`: Host lifecycle times in epoch milliseconds. Use the start and finish times for elapsed processing time; select a run and call `get_processor_run_events` for its
@@ -244,7 +326,7 @@ reported stage, not an estimated completion percentage. The UI uses the shared
 
 Use `get_monitoring_executions` for the execution list and
 its legacy `pipeline_ids` parameter to filter any processor kind (Agent,
-Pipeline or event processor); the summary uses the same processor scope. Use
+Chat or event processor); the summary uses the same processor scope. Use
 `get_monitoring_execution_detail` with `source=auto` to resolve a run,
 message or event identifier outside the current list page. The detail exposes
 `inputs`, `outputs` (generated content), `deliveries` (recorded platform sends),
@@ -263,10 +345,10 @@ execution, not the individual model/tool call outcome. Calls without a recorded
 execution link are excluded when an execution filter is active.
 
 Session lists support `bot_ids`, `pipeline_ids`, `start_time`, `end_time`,
-`user_query`, `is_active`, and pagination. For execution status or real/debug
+`user_query`, `launcher_id`, `is_active`, and pagination. For execution status or real/debug
 filters, use `get_monitoring_executions`; HTTP `/monitoring/sessions` rejects
 them. In HTTP `/monitoring/data`, `sessions` and `totalCount.sessions` use only
-bot/pipeline/time filters; execution filters apply to the other records.
+bot/Chat/time filters; execution filters apply to the other records.
 
 ### Workspace message language
 
@@ -277,7 +359,7 @@ bot/pipeline/time filters; execution filters apply to the other records.
 `/api/v1/workspaces/current/language` (PUT body: `{"language":"ja_JP"}`).
 The API key's Workspace remains authoritative. The setting controls new backend
 messages and default bot notices, independently of personal UI language.
-Pipeline `output.misc` hint fields override defaults; empty values inherit this
+Message policy `output.misc` hint fields (and the Chat AI-specific hints) override defaults; empty values inherit this
 setting. Existing custom text and historical logs are not rewritten.
 
 ### Workspace default LLM model
@@ -321,3 +403,97 @@ request construction and `preparation_cache_hits` counts retry preparation reuse
 `transport_setup_ms` measures managed pool acquisition, including first-use TLS
 initialization; it is not network TTFT. See `dev-docs/LLM_LATENCY_BENCHMARK.md` for
 controlled request-layer measurements and their scope.
+
+
+## Caller-owned Artifacts
+
+`create_artifact(filename, content_base64, mime_type, ttl_seconds)` uploads at most
+10 MiB and returns an opaque ID and metadata. Use `get_artifact(artifact_id)` to
+inspect it. Prefer `read_artifact_content(artifact_id, mode, offset, max_chars,
+page_start, page_end)` for model consumption: it returns bounded text or native
+MCP image/PDF content. Continue using the returned text/page offsets when a result
+is truncated. PDF text excludes visual content; `native` needs a supporting model,
+and `pages` currently reports unsupported. `read_artifact(artifact_id, max_bytes)`
+returns base64 for raw file transfer. Use authenticated HTTP downloads for users.
+See [Artifact API](../../../docs/en/develop/artifacts.mdx) for limits and modes.
+
+Reads require `resource.view`; writes require `resource.manage`. The authenticated
+account or API key must own the asset in the current Workspace. An ID is not an
+access grant. Plugin/run references are not accepted by this account API, and
+Account-owned files do not become accessible through plugin grants or default
+model tools. The installation-owned plugin operation boundary is described below.
+Runner attachment tools use their existing run-scoped grant and
+Host-only input references; an account upload can be passed to Agent debug with
+`artifact_ids` after ownership validation. The management assistant does not
+accept attachments in this phase.
+
+Temporary files expire after 24 hours by default (`ttl_seconds`: 1 to 604800).
+`retain_artifact` adds a persistent pin without broadening access.
+`release_artifact` removes the caller pin and restores a 24-hour grace period;
+repeating release does not extend it. `delete_artifact` refuses pinned files;
+release first when deletion is authorized. Expired references cannot be revived.
+Never treat a denied reference as permission to use a storage key or run handle.
+
+Run outputs use a separate ExecutionAPI path: `langbot_export_box_files` registers
+temporary Artifacts and `langbot_read_run_file` reads an exported UUID handle as
+bounded structured content. Runner code explicitly calls `ctx.commit_run_files`
+under the producer policy below; export, read and reply do not commit, and commit
+is not a default model tool. The authorized recipient can use the account
+Artifact APIs with `artifact_id` after the run ends or Core restarts. Another
+account, key or run gains no access. The `file_id` remains local to its live run.
+Commit retries preserve a recipient's later release.
+Finalization attempts bounded expiry cleanup of uncommitted outputs; crashes,
+cleanup failures and timeouts fall back to their original 24-hour expiry.
+Use the [Runner API](../../../docs/en/plugin/dev/apis/agent-run.mdx#box-and-attachments)
+for batch acceptance, warning and delivery semantics. No run-file HTTP endpoint
+is provided.
+
+
+### Publish producer outputs to the current caller
+
+Use `set_artifact_publication(producer_type, producer_id, enabled=true)` only
+when asked to retain that producer's generated files for the authenticated caller.
+`producer_type` is `agent`, `pipeline` or `event_processor`. The server chooses
+this named account or API key as recipient; never pass a recipient ID in config
+or tool arguments. Existing policies can only be changed by their recipient.
+`get_artifact_publication` reads the caller-owned policy;
+`disable_artifact_publication` revokes future commits, including frozen old run
+grants. Creating or copying a producer does not authorize publication. Agent debug
+and IM runs follow the same explicit policy. These operations are unavailable to
+plugins and default model tools.
+
+Setting or disabling a policy requires both `resource.view` and `resource.manage`.
+The recipient needs the `artifact_id` returned by commit for subsequent management;
+there is no listing tool. Runner implementations must include it in their result.
+
+## Fixed-version Skill resources
+
+Use `create_skill_resource_artifact(skill_name, revision, path, ttl_seconds=86400)`
+to register one immutable database-backed Skill package file without Box or an
+upload. Both `resource.view` and `resource.manage` are required. Then use the
+existing Artifact metadata, raw-read or structured-read tools. IDs remain private
+to the creator; retain does not share access, and release/GC does not delete the
+Skill package. Filesystem-only sources are unsupported. See
+`docs/en/develop/artifacts.mdx` and `dev-docs/architecture/artifacts.md` for bounds
+and run-consumer authorization. Do not claim that byte transfer proves a model
+understands an image or PDF.
+
+## Artifact knowledge-file imports
+
+`add_knowledge_file_artifact(kb_uuid, artifact_id, parser_plugin_id=None)` indexes
+an authorized account-owned Artifact and returns the existing ingestion task ID.
+It creates a knowledge-file business reference without reuploading bytes. Skill
+sources and run-owned files are not accepted by this path. Deleting the knowledge
+file/base releases its own holder only; another holder still protects the bytes.
+MCP retains account/API-key authorization and does not impersonate a plugin.
+
+Plugins have separate installation-owned access through explicitly granted
+Workspace `artifact.create/get/read/read_content/retain/release/delete` operations.
+Do not use account MCP tools as a fallback for a denied plugin call. Publication
+and Skill-source operations remain account-only; `artifact.*` is not a valid
+plugin wildcard because it includes those excluded operations. See the localized
+Workspace API documentation for the 256 KiB RPC envelope and compatibility rules.
+
+Use `list_message_upgrade_checks` to inspect pending message-policy upgrades and
+`list_bot_event_route_statuses` for per-route 24-hour counts. Upgrade actions
+and acknowledgments are administrator decisions: under `/api/v1/platform/bots/_/upgrade-checks`, GET lists items and reports; POST `action` with `{id,action}`, `confirm` with `{id}`, or `confirm-all` without a body. MCP exposes only the read operation. In execution monitoring, filter `handling` by `ai`, `command`, `plugin` or `policy`; inspect `policy_layer`, `policy_item`, `command_kind`, `command_name`, `command_denied` and `hook`. Reply formatting actions appear in input event `metadata.policy_events`.

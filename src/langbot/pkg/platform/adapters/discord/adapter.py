@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections
 import os
 import time
 import traceback
@@ -7,6 +8,7 @@ import typing
 
 import discord
 import pydantic
+from langbot.pkg.i18n import t
 
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
@@ -22,9 +24,81 @@ from langbot.pkg.platform.adapters.discord.interaction import (
 )
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
+from langbot_plugin.api.entities.builtin.runner.interaction import (
+    InteractionHandle,
+    InteractionRequest,
+    InteractionSubmission,
+)
+from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 
 
 class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
+    _command_sync: typing.Any = pydantic.PrivateAttr(default=None)
+    _command_prefix: str = pydantic.PrivateAttr(default='/')
+
+    @staticmethod
+    def command_registration_capability():
+        from ...command_registration import DISCORD_COMMANDS
+
+        return DISCORD_COMMANDS
+
+    def configure_platform_commands(self, prefix, callback):
+        self._command_prefix = prefix
+        self._command_sync = callback
+
+    async def sync_platform_commands(self, specs):
+        payload = []
+        for item in specs.get('', []):
+            localized = {
+                locale: next(command['description'] for command in commands if command['name'] == item['name'])
+                for locale, commands in specs.items()
+                if locale and any(command['name'] == item['name'] for command in commands)
+            }
+            payload.append(
+                {
+                    'type': 1,
+                    'name': item['name'],
+                    'description': item['description'],
+                    'description_localizations': localized,
+                    'options': [{'type': 3, 'name': 'args', 'description': t('Command arguments'), 'required': False}],
+                }
+            )
+        await self.bot.http.bulk_upsert_global_commands(int(self.config['client_id']), payload=payload)
+        return {'success': True}
+
+    async def _receive_platform_command(self, interaction):
+        from ...command_registration import PlatformCommandEvent
+
+        if (
+            interaction.type != discord.InteractionType.application_command
+            or (interaction.data or {}).get('type', 1) != 1
+        ):
+            return
+        await interaction.response.defer(thinking=True)
+        data = interaction.data or {}
+        name = data['name']
+        args = next(
+            (str(option.get('value', '')) for option in data.get('options', []) if option['name'] == 'args'), ''
+        )
+        event = PlatformCommandEvent(
+            command_name=name,
+            command_args=args,
+            message_id=str(interaction.id),
+            message_chain=platform_message.MessageChain(
+                [platform_message.Plain(text=f'{self._command_prefix}{name} {args}'.rstrip())]
+            ),
+            sender=platform_entities.User(id=str(interaction.user.id), nickname=interaction.user.name),
+            chat_type=platform_entities.ChatType.GROUP if interaction.guild_id else platform_entities.ChatType.PRIVATE,
+            chat_id=str(interaction.channel_id),
+            timestamp=interaction.created_at.timestamp(),
+            source_platform_object=interaction,
+        )
+        if interaction.guild_id:
+            event.group = platform_entities.UserGroup(
+                id=str(interaction.channel_id), name=getattr(interaction.channel, 'name', '')
+            )
+        await self._dispatch_eba_event(event)
+
     bot: discord.Client = pydantic.Field(exclude=True)
 
     message_converter: DiscordMessageConverter = DiscordMessageConverter()
@@ -32,6 +106,13 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
 
     _stream_buffer: dict = pydantic.PrivateAttr(default_factory=dict)
     _STREAM_EDIT_INTERVAL: typing.ClassVar[int] = 8
+    # Guild conversations are keyed by guild id, so interaction replies resolve
+    # their channel from the message they answer.
+    _message_channels: collections.OrderedDict = pydantic.PrivateAttr(default_factory=collections.OrderedDict)
+    # Callbacks must report the conversation the card was sent for, which may be
+    # a guild rather than the channel the button lives in.
+    _interaction_targets: collections.OrderedDict = pydantic.PrivateAttr(default_factory=collections.OrderedDict)
+    _MESSAGE_CHANNEL_LIMIT: typing.ClassVar[int] = 1024
     config: dict
     listeners: dict[
         typing.Type[platform_events.Event],
@@ -48,12 +129,15 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
             async def on_ready(self: discord.Client):
                 adapter_self.bot_account_id = str(self.user.id) if self.user else ''
                 await adapter_self.logger.info(f'Discord adapter running as {self.user}')
+                if adapter_self._command_sync is not None:
+                    await adapter_self._command_sync()
 
             async def on_message(self: discord.Client, message: discord.Message):
                 if self.user and message.author.id == self.user.id:
                     return
                 if message.author.bot:
                     return
+                adapter_self._remember_message_channel(message)
                 try:
                     if (
                         platform_events.FriendMessage in adapter_self.listeners
@@ -73,6 +157,9 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
                     await adapter_self.logger.error(f'Error in discord on_message: {traceback.format_exc()}')
 
             async def on_interaction(self: discord.Client, interaction: discord.Interaction):
+                if interaction.type == discord.InteractionType.application_command:
+                    await adapter_self._receive_platform_command(interaction)
+                    return
                 custom_id = (interaction.data or {}).get('custom_id') if isinstance(interaction.data, dict) else None
                 try:
                     parsed = parse_interaction_custom_id(custom_id)
@@ -85,7 +172,12 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
                 if not interaction.response.is_done():
                     await interaction.response.defer()
                 try:
-                    await adapter_self._dispatch_eba_event(interaction_event_from_component(interaction, parsed))
+                    conversation = adapter_self._interaction_targets.get(
+                        str(interaction.message.id) if interaction.message is not None else ''
+                    )
+                    await adapter_self._dispatch_eba_event(
+                        interaction_event_from_component(interaction, parsed, conversation)
+                    )
                     if interaction.message is not None:
                         await interaction.message.edit(view=None)
                 except Exception:
@@ -185,6 +277,7 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
             'bot.invited_to_group',
             'bot.removed_from_group',
             'platform.specific',
+            'interaction.callback',
         ]
 
     def get_supported_apis(self) -> list[str]:
@@ -204,11 +297,71 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
             'kick_member',
             'leave_group',
             'call_platform_api',
-            'interaction.request',
+            'send_interaction',
+            'update_interaction',
+            'get_interaction_capabilities',
         ]
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:
         return interaction_delivery_capabilities()
+
+    async def send_interaction(
+        self,
+        target_type: str,
+        target_id: str,
+        request: InteractionRequest,
+        callback_token: str,
+        reply_to: str | None = None,
+    ) -> InteractionHandle:
+        result = await send_interaction(
+            self,
+            {
+                'request': request.model_dump(mode='json'),
+                'callback_token': callback_token,
+                'reply_target': {'target_type': target_type, 'target_id': target_id, 'message_id': reply_to},
+            },
+        )
+        handle = InteractionHandle.model_validate(result)
+        handle.context['request'] = request.model_dump(mode='json')
+        handle.context['target_id'] = target_id
+        self._remember(self._interaction_targets, str(handle.message_id), (target_type, str(target_id)))
+        return handle
+
+    def _remember_message_channel(self, message: discord.Message) -> None:
+        self._remember(self._message_channels, str(message.id), message.channel.id)
+
+    def _remember(self, cache: collections.OrderedDict, key: str, value: typing.Any) -> None:
+        cache[key] = value
+        cache.move_to_end(key)
+        while len(cache) > self._MESSAGE_CHANNEL_LIMIT:
+            cache.popitem(last=False)
+
+    async def _resolve_interaction_channel(
+        self, target_type: str, target_id: str, reply_to: str | None
+    ) -> discord.abc.Messageable:
+        channel_id = self._message_channels.get(str(reply_to)) if reply_to is not None else None
+        if channel_id is not None:
+            return await self._get_channel(channel_id)
+        guild = self.bot.get_guild(int(target_id)) if target_type == 'group' else None
+        if guild is not None:
+            # Match send_message: without an originating message, use the system channel.
+            if guild.system_channel is None:
+                raise ValueError('Discord guild has no system channel configured for interactions')
+            return guild.system_channel
+        return await self._get_channel(target_id)
+
+    async def update_interaction(
+        self,
+        handle: InteractionHandle,
+        state: str,
+        submission: InteractionSubmission | None = None,
+    ) -> InteractionHandle:
+        del submission
+        channel = await self._get_channel(str(handle.context.get('channel_id') or handle.context['target_id']))
+        message = await channel.fetch_message(int(handle.message_id))
+        label = {'submitted': 'Submitted', 'expired': 'Expired', 'cancelled': 'Cancelled'}[state]
+        await message.edit(content=f'{handle.context["request"]["title"]}\n\n{label}', view=None)
+        return handle
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         content, files = await self.message_converter.yiri2target(message)
@@ -227,14 +380,47 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
         sent = await channel.send(**kwargs)
         return platform_events.MessageResult(message_id=sent.id, raw={'message_id': sent.id})
 
+    async def reply_to_event(
+        self, *, context: dict, target_type: str, target_id: str, message: platform_message.MessageChain
+    ) -> platform_events.MessageResult:
+        if 'quote_origin' not in context:
+            return await self.send_message(target_type, target_id, message)
+        quote_origin = context['quote_origin']
+        if not isinstance(quote_origin, bool):
+            raise ValueError('quote_origin must be a boolean')
+        target = (context.get('delivery') or {}).get('reply_target') or {}
+        message_id = target.get('message_id')
+        if quote_origin and not message_id:
+            raise ValueError('The original Discord message ID is required to quote a recovered reply')
+        channel_id = target.get('chat_id')
+        if not channel_id:
+            if target_type != 'group' or self.bot.get_guild(int(target_id)) is not None:
+                raise ValueError('Discord recovery requires the original channel ID')
+            channel_id = target_id
+        channel = await self._get_channel(channel_id)
+        content, files = await self.message_converter.yiri2target(message)
+        kwargs = {'content': content}
+        if files:
+            kwargs['files'] = files
+        if quote_origin:
+            kwargs['reference'] = discord.MessageReference(message_id=int(message_id), channel_id=int(channel.id))
+            kwargs['mention_author'] = any(isinstance(component, platform_message.At) for component in message.root)
+        sent = await channel.send(**kwargs)
+        return platform_events.MessageResult(message_id=sent.id, raw={'message_id': sent.id})
+
     async def reply_message(
         self,
         message_source: platform_events.MessageEvent,
         message: platform_message.MessageChain,
         quote_origin: bool = False,
     ):
-        assert isinstance(message_source.source_platform_object, discord.Message)
         content, files = await self.message_converter.yiri2target(message)
+        if isinstance(message_source.source_platform_object, discord.Interaction):
+            sent = await message_source.source_platform_object.followup.send(
+                content=content or None, files=files, wait=True
+            )
+            return platform_events.MessageResult(message_id=sent.id, raw={'message_id': sent.id})
+        assert isinstance(message_source.source_platform_object, discord.Message)
         kwargs = {'content': content}
         if files:
             kwargs['files'] = files
@@ -278,8 +464,6 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
         self.listeners.pop(event_type, None)
 
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
-        if action == 'interaction.request':
-            return await send_interaction(self, params)
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedError

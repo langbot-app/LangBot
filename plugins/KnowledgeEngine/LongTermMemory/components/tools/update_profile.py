@@ -5,7 +5,6 @@ from typing import Any
 
 from langbot_plugin.api.definition.components.tool.tool import Tool
 from langbot_plugin.api.entities.builtin.provider import session as provider_session
-from langbot_plugin.api.proxies.query_based_api import QueryBasedAPIProxy
 
 logger = logging.getLogger(__name__)
 
@@ -94,24 +93,14 @@ class UpdateProfile(Tool):
         if not isinstance(previous_value, str):
             return "Error: previous_value must be a string."
 
-        api = QueryBasedAPIProxy(
-            query_id=query_id,
-            plugin_runtime_handler=self.plugin.plugin_runtime_handler,
-        )
-        bot_uuid = await api.get_bot_uuid()
-        query_vars = await api.get_query_vars()
-        sender_id = str(query_vars.get("sender_id", "") or "")
-        sender_name = str(query_vars.get("sender_name", "") or "")
+        bot_uuid = session.bot_uuid or ""
+        sender_id = str(session.sender_id or "")
 
         session_key, user_key, kb_id, _isolation, _ = await store.resolve_user_context(
             session, bot_uuid
         )
         if not kb_id:
             return "Error: no memory knowledge base configured. Create one first."
-
-        pipeline_kbs = await api.list_pipeline_knowledge_bases()
-        if not any(kb.get("uuid") == kb_id for kb in pipeline_kbs):
-            return "Error: memory knowledge base is not configured for the current pipeline."
 
         target_scope = self._infer_scope(field, scope)
         logger.info(
@@ -165,7 +154,6 @@ class UpdateProfile(Tool):
                 f"{f' ({fact_key})' if fact_key else ''}: {self._preview_text(str(value))}"
             ),
             sender_id=sender_id,
-            sender_name=sender_name,
             query_id=query_id,
             metadata={
                 "field": field,

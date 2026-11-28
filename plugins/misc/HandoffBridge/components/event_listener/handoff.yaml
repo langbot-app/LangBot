@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: EventListener
+metadata:
+  name: handoff
+  label:
+    en_US: Customer handoff
+    zh_Hans: 客户转人工
+    zh_Hant: 客戶轉真人
+    ja_JP: 顧客の引き継ぎ
+    es_ES: Transferencia del cliente
+    ru_RU: Передача клиента
+    th_TH: ส่งต่อลูกค้า
+    vi_VN: Chuyển khách hàng
+  description:
+    en_US: Forward customer messages to staff and suppress AI replies during takeover.
+    zh_Hans: 把客户消息转给员工，并在接管期间阻断 AI 回复。
+    zh_Hant: 將客戶訊息轉給員工，並在接管期間阻止 AI 回覆。
+    ja_JP: 顧客のメッセージを担当者に転送し、引き継ぎ中は AI の返信を停止します。
+    es_ES: Reenvía mensajes del cliente al personal y suspende la IA durante la atención humana.
+    ru_RU: Пересылает сообщения клиента сотрудникам и отключает ИИ во время обслуживания.
+    th_TH: ส่งต่อข้อความของลูกค้าไปยังเจ้าหน้าที่และหยุด AI ระหว่างที่เจ้าหน้าที่ดูแล
+    vi_VN: Chuyển tin nhắn của khách cho nhân viên và ngăn AI trả lời khi nhân viên tiếp quản.
+spec: {}
+execution:
+  python:
+    path: handoff.py
+    attr: HandoffListener

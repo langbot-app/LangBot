@@ -7,7 +7,11 @@ import React, {
   useEffect,
 } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { AsyncTask } from '@/app/infra/entities/api';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { showPluginEnablementHint } from './plugin-enablement-hint';
+import { AsyncTask, AsyncTaskCreatedResp } from '@/app/infra/entities/api';
+import type { PluginCompatibility } from '@/app/infra/entities/plugin';
 import {
   InstallStage,
   INSTALL_PROGRESS_CAP,
@@ -19,7 +23,30 @@ export { InstallStage } from './install-progress';
 
 export type PluginTaskOperation = 'install' | 'upgrade';
 
+/** Re-submit the same install with an explicit `allow_incompatible=true`. */
+export type ResubmitIncompatibleInstall = () => Promise<AsyncTaskCreatedResp>;
+
+/**
+ * The structured rejection Core reports when a package's declared LangBot
+ * range excludes this version (`plugin_incompatible_langbot_version`).
+ */
+export function incompatibilityFromTask(
+  task: Pick<AsyncTask, 'runtime'>,
+): PluginCompatibility | undefined {
+  const error = task.runtime?.error;
+  if (error?.code !== 'plugin_incompatible_langbot_version') return undefined;
+  const details = (error.details ?? {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' ? v : null);
+  return {
+    status: details.status === 'invalid' ? 'invalid' : 'incompatible',
+    current: str(details.current) ?? '',
+    min: str(details.min),
+    max: str(details.max),
+  };
+}
+
 export interface PluginInstallTask {
+  pendingConfirmation?: boolean;
   id: string; // unique key: `${source}-${taskId}`
   taskId: number; // backend async task id
   pluginName: string; // display name
@@ -35,10 +62,16 @@ export interface PluginInstallTask {
   downloadTotal?: number; // total bytes to download
   downloadSpeed?: number; // bytes per second
   error?: string;
+  /** Set when the install was rejected for the declared LangBot range. */
+  incompatibility?: PluginCompatibility;
+  /** Present for sources that may retry with explicit confirmation. */
+  resubmitIncompatible?: ResubmitIncompatibleInstall;
   startedAt: number; // timestamp
   /** When the current stage began, used to bound in-stage drift. */
   stageStartedAt: number;
   currentAction: string; // raw backend action string
+  /** Installed from a bot's plugin list, which enables it there; no "not enabled" hint. */
+  skipEnablementHint?: boolean;
 }
 
 type OnTaskCompleteCallback = (
@@ -57,6 +90,8 @@ interface PluginInstallTaskContextValue {
     extensionType: 'plugin' | 'mcp' | 'skill';
     fileSize?: number;
     operation?: PluginTaskOperation;
+    skipEnablementHint?: boolean;
+    resubmitIncompatible?: ResubmitIncompatibleInstall;
   }) => void;
   removeTask: (id: string) => void;
   clearCompletedTasks: () => void;
@@ -188,9 +223,14 @@ export function asyncTaskToPluginInstallTask(
     downloadTotal: num(md.download_total),
     downloadSpeed: num(md.download_speed),
     error,
+    incompatibility: done ? incompatibilityFromTask(task) : undefined,
     startedAt: task.created_at ? task.created_at * 1000 : Date.now(),
     stageStartedAt: Date.now(),
     currentAction: action,
+    pendingConfirmation:
+      typeof md.pending_permission_confirmation === 'boolean'
+        ? md.pending_permission_confirmation
+        : undefined,
   };
 }
 
@@ -200,6 +240,8 @@ export function PluginInstallTaskProvider({
   children: React.ReactNode;
 }) {
   const [tasks, setTasks] = useState<PluginInstallTask[]>([]);
+  const { t: translate } = useTranslation();
+  const navigate = useNavigate();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const intervalRefs = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -236,14 +278,20 @@ export function PluginInstallTaskProvider({
       success: boolean,
       error?: string,
       operation?: PluginTaskOperation,
+      installedPlugin?: string,
     ) => {
       if (notifiedTaskIds.current.has(taskId)) return;
       notifiedTaskIds.current.add(taskId);
       onTaskCompleteCallbacks.current.forEach((cb) => {
         cb(taskId, success, error, operation);
       });
+      if (success && installedPlugin) {
+        showPluginEnablementHint(installedPlugin, translate, () =>
+          navigate('/home/bots'),
+        ).catch(() => {});
+      }
     },
-    [],
+    [navigate, translate],
   );
 
   const pollTask = useCallback(
@@ -276,6 +324,10 @@ export function PluginInstallTaskProvider({
                 if (t.id !== taskKey) return t;
 
                 const progressFields = {
+                  pendingConfirmation:
+                    typeof md.pending_permission_confirmation === 'boolean'
+                      ? md.pending_permission_confirmation
+                      : undefined,
                   downloadCurrent: downloadCurrent ?? t.downloadCurrent,
                   downloadTotal: downloadTotal ?? t.downloadTotal,
                   downloadSpeed: downloadSpeed ?? t.downloadSpeed,
@@ -296,6 +348,7 @@ export function PluginInstallTaskProvider({
                       stage: InstallStage.ERROR,
                       failedStage: mapActionToStage(action),
                       error: exception,
+                      incompatibility: incompatibilityFromTask(res),
                       overallProgress: computeStageProgress({
                         stage: mapActionToStage(action),
                         stageElapsedSeconds: 0,
@@ -305,7 +358,18 @@ export function PluginInstallTaskProvider({
                     };
                   }
 
-                  notifyTaskComplete(taskId, true, undefined, t.operation);
+                  notifyTaskComplete(
+                    taskId,
+                    true,
+                    undefined,
+                    t.operation,
+                    t.extensionType === 'plugin' &&
+                      t.operation === 'install' &&
+                      !t.skipEnablementHint &&
+                      typeof md.plugin_name === 'string'
+                      ? md.plugin_name
+                      : undefined,
+                  );
                   return {
                     ...t,
                     stage: InstallStage.DONE,
@@ -402,6 +466,7 @@ export function PluginInstallTaskProvider({
                 converted.pluginName = existing.pluginName;
                 converted.fileSize = existing.fileSize;
                 converted.extensionType = existing.extensionType;
+                converted.resubmitIncompatible = existing.resubmitIncompatible;
                 updatedTasks[idx] = converted;
               }
             }
@@ -450,6 +515,8 @@ export function PluginInstallTaskProvider({
       extensionType: 'plugin' | 'mcp' | 'skill';
       fileSize?: number;
       operation?: PluginTaskOperation;
+      skipEnablementHint?: boolean;
+      resubmitIncompatible?: ResubmitIncompatibleInstall;
     }) => {
       const operation = params.operation ?? 'install';
       const taskKey = pluginTaskKey(params.taskId, params.source, operation);
@@ -470,9 +537,11 @@ export function PluginInstallTaskProvider({
             : InstallStage.DOWNLOADING,
         overallProgress: operation === 'upgrade' ? 3 : 5,
         fileSize: params.fileSize,
+        resubmitIncompatible: params.resubmitIncompatible,
         startedAt: Date.now(),
         stageStartedAt: Date.now(),
         currentAction: '',
+        skipEnablementHint: params.skipEnablementHint,
       };
 
       setTasks((prev) => {

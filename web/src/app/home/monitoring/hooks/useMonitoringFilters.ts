@@ -3,7 +3,10 @@ import { useSearchParams } from 'react-router-dom';
 import { useCurrentWorkspace } from '@/app/infra/http';
 import { FilterState, TimeRangeOption, DateRange } from '../types/monitoring';
 import { getPresetDateRange } from '../utils/dateUtils';
-import type { ExecutionModeFilter } from '@/app/infra/entities/api/monitoring-executions';
+import type {
+  ExecutionHandlingFilter,
+  ExecutionModeFilter,
+} from '@/app/infra/entities/api/monitoring-executions';
 
 const defaults = (): FilterState => ({
   selectedBots: [],
@@ -12,7 +15,9 @@ const defaults = (): FilterState => ({
   customDateRange: null,
   mode: 'all',
   statusGroup: 'all',
+  handling: 'all',
 });
+const handlings = ['all', 'ai', 'command', 'plugin', 'policy'];
 const timeRanges = [
   'lastHour',
   'last6Hours',
@@ -49,6 +54,7 @@ function restore(key: string): FilterState {
     if (['all', 'real', 'debug'].includes(saved.mode)) state.mode = saved.mode;
     if (statuses.includes(saved.statusGroup))
       state.statusGroup = saved.statusGroup;
+    if (handlings.includes(saved.handling)) state.handling = saved.handling;
     if (saved.customDateRange) {
       const from = new Date(saved.customDateRange.from);
       const to = new Date(saved.customDateRange.to);
@@ -123,6 +129,8 @@ export function useMonitoringFilters() {
       update({ customDateRange }),
     setExecutionMode: (mode: ExecutionModeFilter) => update({ mode }),
     setExecutionStatus: (statusGroup: string) => update({ statusGroup }),
+    setExecutionHandling: (handling: ExecutionHandlingFilter) =>
+      update({ handling }),
     getActiveDateRange: () =>
       filterState.timeRange === 'custom'
         ? filterState.customDateRange

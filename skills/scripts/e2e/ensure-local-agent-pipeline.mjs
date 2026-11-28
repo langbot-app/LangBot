@@ -169,7 +169,7 @@ try {
     .catch(() => {});
   const text = await bodyText(page);
   result.page_signal =
-    ["Pipelines", "流水线", pipelineName].find((signal) =>
+    ["Processors", "处理器", "Chat", "聊天", "Pipelines", "流水线", pipelineName].find((signal) =>
       text.includes(signal),
     ) || "";
 } catch (error) {
@@ -301,6 +301,7 @@ async function ensureLocalRunner({ backendUrl, token }) {
         plugin_author: author,
         plugin_name: name,
         plugin_version: version,
+        auto_confirm_permissions: true,
       },
     },
   );
@@ -529,7 +530,7 @@ async function ensureLocalAgentPipeline({
   if (!pipeline?.uuid) {
     return {
       status: "fail",
-      reason: "Pipeline was not created or resolved.",
+      reason: "Chat was not created or resolved.",
       model_count: models.length,
       space_model_count: spaceModels.length,
     };

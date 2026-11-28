@@ -1,0 +1,8 @@
+{
+  "repository": "langbot-app/langbot-plugin-sdk",
+  "revision": "76443bb83b4bd969588a0e6a85884fd1e1b3b6ee",
+  "tag": "v0.7.24",
+  "version": "0.7.24",
+  "tracked_files": 430,
+  "note": "Snapshot import without history. Earlier history, issues and pull requests stay in the archived langbot-app/langbot-plugin-sdk repository. Its .github/ workflows were replaced by sdk-*.yml workflows at the LangBot repository root."
+}

@@ -100,33 +100,38 @@ async def send_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -
     reply_target = params.get('reply_target')
     callback_token = str(params.get('callback_token') or '')
     if not isinstance(request, dict) or not isinstance(reply_target, dict) or not callback_token:
-        raise ValueError('interaction.request requires request, reply_target, and callback_token')
+        raise ValueError('send_interaction requires request, reply_target, and callback_token')
     target_id = str(reply_target.get('target_id') or '')
     if not target_id:
-        raise ValueError('interaction.request has no target_id')
-    channel = await adapter._get_channel(target_id)
+        raise ValueError('send_interaction has no target_id')
+    channel = await adapter._resolve_interaction_channel(
+        str(reply_target.get('target_type') or ''), target_id, reply_target.get('message_id')
+    )
     view = build_interaction_view(request, callback_token)
     sent = await channel.send(content=_content(request, rich=view is not None), view=view)
-    return {'ok': True, 'message_id': sent.id, 'rich': view is not None}
+    return {'ok': True, 'message_id': sent.id, 'rich': view is not None, 'context': {'channel_id': str(channel.id)}}
 
 
 def interaction_event_from_component(
     interaction: discord.Interaction,
     parsed: dict[str, typing.Any],
-) -> platform_events.PlatformSpecificEvent:
+    conversation: tuple[str, str] | None = None,
+) -> platform_events.InteractionCallbackEvent:
+    """Build a callback event; ``conversation`` is the target the card was sent for."""
     if interaction.user is None or interaction.channel is None:
         raise ValueError('Discord interaction has no actor or channel')
-    return platform_events.PlatformSpecificEvent(
-        type='platform.specific',
+    target_type, target_id = conversation or (
+        'group' if interaction.guild is not None else 'person',
+        str(interaction.channel.id),
+    )
+    return platform_events.InteractionCallbackEvent(
         adapter_name='discord-omni',
-        action='interaction.submitted',
-        data={
-            **parsed,
-            'actor_id': str(interaction.user.id),
-            'target_type': 'group' if interaction.guild is not None else 'person',
-            'target_id': str(interaction.channel.id),
-            'display_text': 'submitted',
-        },
+        callback_token=str(parsed.get('callback_token') or ''),
+        actor_id=str(interaction.user.id),
+        target_type=target_type,
+        target_id=target_id,
+        callback_context={'channel_id': str(interaction.channel.id)},
+        raw_submission=parsed,
         timestamp=time.time(),
         source_platform_object=interaction,
     )

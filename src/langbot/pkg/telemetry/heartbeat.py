@@ -13,6 +13,8 @@ credentials.
 from __future__ import annotations
 
 import asyncio
+import os
+import re
 import time
 import typing
 from datetime import datetime, timezone
@@ -20,6 +22,7 @@ from datetime import datetime, timezone
 import sqlalchemy
 
 from ..utils import constants, platform as platform_utils
+from . import usage
 
 if typing.TYPE_CHECKING:
     from ..core import app as core_app
@@ -82,6 +85,45 @@ async def _workspace_agent_kind_counts(ap: core_app.Application, workspace_uuid:
     return counts
 
 
+def _message_policy_counts(bots):
+    from ..message_policy import schema
+    from ..command.catalog import DESCRIPTIONS
+    from ..command.permissions import builtin_settings
+
+    counts = dict.fromkeys(
+        (
+            'non_neutral_policy_bots',
+            'commands_disabled_bots',
+            'custom_prefix_bots',
+            'builtin_disabled_bots',
+            'silent_denial_bots',
+            'all_plugins_bots',
+            'route_policy_overrides',
+        ),
+        0,
+    )
+    neutral = schema.neutral_policy()
+    for bot in bots:
+        entity = getattr(bot, 'bot_entity', bot)
+        policy = schema.resolve_policy(getattr(entity, 'message_policy', None))
+        settings = getattr(entity, 'command_settings', None) or {}
+        counts['non_neutral_policy_bots'] += policy != neutral
+        counts['commands_disabled_bots'] += not settings.get('enabled', True)
+        counts['custom_prefix_bots'] += settings.get('prefixes', ['/']) != ['/']
+        # Only a built-in that is on by default and turned off counts: /model is
+        # off by default, so "any disabled" would count every bot.
+        counts['builtin_disabled_bots'] += any(
+            builtin_settings({}, name)['enabled'] and not builtin_settings(settings, name)['enabled']
+            for name in DESCRIPTIONS
+        )
+        counts['silent_denial_bots'] += settings.get('denied_reply', 'silent') == 'silent'
+        counts['all_plugins_bots'] += schema.enabled_plugins(policy) is None
+        counts['route_policy_overrides'] += sum(
+            bool(route.get('policy')) for route in getattr(entity, 'event_bindings', None) or []
+        )
+    return counts
+
+
 def _bot_processor_counts(bots) -> tuple[int, int]:
     """Count plugin-processor subscriptions and event bindings across bots."""
     processors = 0
@@ -131,6 +173,7 @@ async def _cloud_workspace_resource_counts(ap: core_app.Application, bindings) -
     counts: dict[str, WorkspaceResourceSnapshot] = {
         binding.workspace_uuid: {
             'workspace_uuid': binding.workspace_uuid,
+            **_message_policy_counts([]),
             'bot_count': 0,
             'pipeline_count': 0,
             'knowledge_base_count': 0,
@@ -152,6 +195,8 @@ async def _cloud_workspace_resource_counts(ap: core_app.Application, bindings) -
     for key, bot in getattr(ap.platform_mgr, '_bots_by_key', {}).items():
         if len(key) >= 2 and key[1] in counts:
             counts[key[1]]['bot_count'] += 1
+            for metric, count in _message_policy_counts([bot]).items():
+                counts[key[1]][metric] += count
             processors, bindings = _bot_processor_counts([bot])
             counts[key[1]]['plugin_processor_count'] += processors
             counts[key[1]]['event_binding_count'] += bindings
@@ -229,6 +274,7 @@ async def build_heartbeat_payload(
         if platform_mgr is not None and getattr(platform_mgr, 'bots', None) is not None:
             enabled_bots = [bot for bot in platform_mgr.bots if getattr(bot, 'enable', False)]
             features['bot_count'] = len(platform_mgr.bots)
+            features.update(_message_policy_counts(platform_mgr.bots))
             adapters = sorted({bot.adapter.__class__.__name__ for bot in enabled_bots if getattr(bot, 'adapter', None)})
             features['adapters'] = adapters
             processors, bindings = _bot_processor_counts(platform_mgr.bots)
@@ -287,6 +333,56 @@ async def build_heartbeat_payload(
     if workspace_resource is not None:
         features.update({key: value for key, value in workspace_resource.items() if key != 'workspace_uuid'})
 
+    features['kb_engines'] = []
+    try:
+        features['kb_engines'] = sorted(
+            {
+                kb.get_knowledge_engine_plugin_id()[:64]
+                for (ws, _kb_uuid), kb in ap.rag_mgr.knowledge_bases.items()
+                if ws == workspace_uuid and kb.get_knowledge_engine_plugin_id()
+            }
+        )[:16]
+    except Exception:
+        pass
+    features['kb_file_count'] = -1
+    cloud_runtime = getattr(getattr(ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+    if not cloud_runtime:
+        try:
+            result = await ap.persistence_mgr.execute_async(
+                sqlalchemy.select(sqlalchemy.func.count())
+                .select_from(persistence_rag.File)
+                .where(persistence_rag.File.workspace_uuid == workspace_uuid)
+            )
+            features['kb_file_count'] = result.scalar() or 0
+        except Exception:
+            pass
+    for field, pattern in (('deploy_source', r'[a-z0-9_-]{1,32}'), ('deploy_tool_version', r'[0-9A-Za-z.+_-]{1,32}')):
+        value = os.environ.get(f'LANGBOT_{field.upper()}', '')
+        if re.fullmatch(pattern, value):
+            features[field] = value
+    if usage.enabled(ap):
+        try:
+            alert_service = getattr(ap, 'alert_service', None)
+            if alert_service is not None:
+                settings = await asyncio.wait_for(alert_service._settings(workspace_uuid), timeout=1.0)
+                usage.inc(
+                    ap,
+                    workspace_uuid,
+                    'alert.state',
+                    enabled='yes' if alert_service.enabled() and settings['enabled'] else 'no',
+                    channel=settings['email_channel'],
+                )
+        except Exception:
+            pass
+    batch = usage.take_batch(workspace_uuid) if usage.enabled(ap) else None
+    features['lbctl_versions'] = (
+        sorted({dims['version'] for metric, dims, _count in batch['c'] if metric == 'lbctl.client'})[:5]
+        if batch
+        else []
+    )
+    if batch:
+        features['usage'] = batch
+
     return {
         'event_type': 'instance_heartbeat',
         'query_id': '',
@@ -315,6 +411,9 @@ async def build_heartbeat_payloads(ap: core_app.Application) -> list[dict]:
     """Build one heartbeat per active Workspace."""
     bindings = await ap.workspace_service.list_active_execution_bindings()
     workspace_uuids = sorted({binding.workspace_uuid for binding in bindings})
+    cloud_runtime = getattr(getattr(ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+    if len(workspace_uuids) == 1 and not cloud_runtime:
+        ap._telemetry_default_workspace = workspace_uuids[0]
     workspace_create_ts = {
         binding.workspace_uuid: _workspace_created_timestamp(getattr(binding, 'workspace_created_at', None))
         for binding in bindings
@@ -343,7 +442,16 @@ async def heartbeat_loop(ap: core_app.Application) -> None:
                 # Heartbeats are a daily bounded batch, not best-effort query events.
                 # Await each send so the TelemetryManager's 8-task queue cannot drop
                 # Workspaces after the first batch.
-                await ap.telemetry.send(payload)
+                batch = payload['features'].get('usage')
+                try:
+                    sent = await ap.telemetry.send(payload)
+                except Exception:
+                    usage.nack(payload['workspace_uuid'], batch)
+                    raise
+                if sent is True:
+                    usage.ack(payload['workspace_uuid'], batch)
+                else:
+                    usage.nack(payload['workspace_uuid'], batch)
         except Exception as e:
             try:
                 ap.logger.debug(f'Telemetry heartbeat failed: {e}')
@@ -353,4 +461,11 @@ async def heartbeat_loop(ap: core_app.Application) -> None:
         # discovered after startup. A transient startup/projection failure must
         # not suppress synchronization for an entire day.
         cloud_runtime = getattr(getattr(ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
-        await asyncio.sleep(300 if cloud_runtime else HEARTBEAT_INTERVAL_SECONDS)
+        await asyncio.sleep(heartbeat_interval(cloud_runtime))
+
+
+def heartbeat_interval(cloud_runtime: bool) -> int:
+    try:
+        return max(30, int(os.environ['LANGBOT_TELEMETRY_HEARTBEAT_SECONDS']))
+    except (KeyError, ValueError):
+        return 300 if cloud_runtime else HEARTBEAT_INTERVAL_SECONDS

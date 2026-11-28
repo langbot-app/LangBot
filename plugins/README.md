@@ -25,6 +25,7 @@ publication. Plugins are not included in Core release artifacts.
 - [DifyAgent](Runner/dify-agent/README.md)
 - [LangflowAgent](Runner/langflow-agent/README.md)
 - [LocalAgent](Runner/LocalAgent/README.md)
+- [MulticaAgent](Runner/multica-agent/README.md)
 - [N8nAgent](Runner/n8n-agent/README.md)
 - [RunnerDemo](Runner/RunnerDemo/README.md)
 - [TboxAgent](Runner/tbox-agent/README.md)
@@ -50,13 +51,16 @@ publication. Plugins are not included in Core release artifacts.
 - [GitHubKit](misc/GitHubKit/README.md)
 - [GoogleSearch](misc/GoogleSearch/README.md)
 - [GroupChatSummary](misc/GroupChatSummary/README.md)
+- [HandoffBridge](misc/HandoffBridge/README.md)
 - [HelloPlugin](misc/HelloPlugin/README.md)
 - [HumanTakeover](misc/HumanTakeover/README.md)
 - [KeywordAlert](misc/KeywordAlert/README.md)
+- [LeadCapture](misc/LeadCapture/README.md)
 - [MCBotPlugin](misc/MCBotPlugin/README.md)
 - [PowerContext](misc/PowerContext/README.md)
 - [QWeather](misc/QWeather/README.md)
 - [ScheNotify](misc/ScheNotify/README.md)
+- [StickerHub](misc/StickerHub/README.md)
 - [SysStatPlugin](misc/SysStatPlugin/README.md)
 - [TavilySearch](misc/TavilySearch/README.md)
 - [URLSummary](misc/URLSummary/README.md)
@@ -77,7 +81,7 @@ execution:
 ```
 
 `sharedRuntime` without `componentModel: stateless-v1` is not eligible. The normative contract is
-[`langbot-plugin-sdk/docs/stateless-components.md`](https://github.com/langbot-app/langbot-plugin-sdk/blob/main/docs/stateless-components.md):
+[`sdk/docs/stateless-components.md`](../sdk/docs/stateless-components.md):
 component objects are process-wide singletons, `initialize()` runs once per worker and sees no tenant config,
 configuration and credentials are resolved per invocation, tenant state in a process cache is keyed by the full
 installation binding and released in `on_installation_revoked()`, components must be re-entrant, and blocking work

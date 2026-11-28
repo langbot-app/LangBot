@@ -35,6 +35,7 @@ from ....entity.errors import account as account_errors
 from ....workspace.collaboration import normalize_email
 from ....workspace.errors import WorkspaceNotFoundError
 from ....utils import bounded_executor
+from ....workspace.space_dedicated import SpaceDedicatedMembers, SpaceMembershipLookupError
 
 if typing.TYPE_CHECKING:
     from ....core.app import Application
@@ -46,6 +47,10 @@ _SPACE_OAUTH_STATE_HEAP_MAX_MULTIPLIER = 4
 _PASSKEY_CHALLENGE_MAX_ENTRIES = 4096
 _PASSKEY_CHALLENGE_HEAP_COMPACT_FLOOR = 64
 _PASSKEY_CHALLENGE_HEAP_MAX_MULTIPLIER = 4
+
+
+# Marks a Space membership lookup that could not be answered.
+_DEDICATED_ROLE_UNKNOWN = object()
 
 
 class AccountExistsLoginRequiredError(ValueError):
@@ -719,7 +724,16 @@ class UserService:
             # Check if user with this Space UUID already exists
             existing_user = await self.get_user_by_space_account_uuid(space_account_uuid)
 
+            dedicated = self._space_dedicated_members()
             if existing_user:
+                # A Space-managed member of a dedicated instance must still be
+                # a member on Space; the owner and local accounts are untouched.
+                if dedicated is not None:
+                    role = await self._lookup_dedicated_role(dedicated, access_token)
+                    if role is not _DEDICATED_ROLE_UNKNOWN and not await dedicated.reconcile_account(
+                        existing_user, role
+                    ):
+                        raise account_errors.SpaceDedicatedMemberRequiredError()
                 # Update existing user's tokens
                 await self._identity_execute(
                     sqlalchemy.update(user.User)
@@ -748,7 +762,25 @@ class UserService:
             # Check if system is already initialized
             is_initialized = await self.is_initialized()
             if is_initialized:
-                raise account_errors.SpaceAccountNotRegisteredError()
+                if dedicated is None:
+                    raise account_errors.SpaceAccountNotRegisteredError()
+                # Dedicated Cloud instance: only accounts Space reports as
+                # invited members may join, with the role Space assigned.
+                role = await self._lookup_dedicated_role(dedicated, access_token)
+                if role is _DEDICATED_ROLE_UNKNOWN or role is None:
+                    raise account_errors.SpaceDedicatedMemberRequiredError()
+                created_member = await dedicated.create_member_account(
+                    space_account_uuid=space_account_uuid,
+                    email=email,
+                    role=role,
+                    token_values={
+                        'space_access_token': access_token,
+                        'space_refresh_token': refresh_token,
+                        'space_api_key': api_key,
+                        'space_access_token_expires_at': expires_at,
+                    },
+                )
+                return await self.get_user_by_uuid(created_member.uuid)
 
             # Create new Space user (first time initialization)
             if hasattr(self.ap.persistence_mgr, 'get_db_engine') and hasattr(self.ap, 'workspace_service'):
@@ -790,7 +822,27 @@ class UserService:
             created_user = await self.get_user_by_space_account_uuid(space_account_uuid)
             if created_user is not None:
                 await self._update_space_provider_for_account(created_user, api_key)
+            if dedicated is not None:
+                # Lets Space know this instance supports members (owner login).
+                await self._lookup_dedicated_role(dedicated, access_token)
             return created_user
+
+    def _space_dedicated_members(self) -> SpaceDedicatedMembers | None:
+        """Return the dedicated-member helper only on dedicated Cloud instances."""
+        dedicated = getattr(self, '_space_dedicated', None)
+        if dedicated is None:
+            dedicated = SpaceDedicatedMembers(self.ap)
+            self._space_dedicated = dedicated
+        if not dedicated.enabled() or not hasattr(self.ap.persistence_mgr, 'get_db_engine'):
+            return None
+        return dedicated
+
+    async def _lookup_dedicated_role(self, dedicated: SpaceDedicatedMembers, access_token: str) -> typing.Any:
+        try:
+            return await dedicated.lookup_role(access_token)
+        except SpaceMembershipLookupError:
+            self.ap.logger.warning('Space dedicated membership lookup failed; keeping current access')
+            return _DEDICATED_ROLE_UNKNOWN
 
     async def _update_projected_space_user(
         self,

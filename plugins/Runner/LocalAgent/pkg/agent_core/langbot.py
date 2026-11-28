@@ -6,9 +6,11 @@ import json
 import logging
 import re
 import typing
+import uuid
 
 from langbot_plugin.api.entities.builtin.provider.message import ContentElement, Message, MessageChunk
 from langbot_plugin.api.entities.builtin.resource.tool import LLMTool
+from langbot_plugin.api.entities.builtin.runner.result import RunnerResult
 from langbot_plugin.api.proxies.runner import PermissionDeniedError, RunnerAPIProxy
 
 from pkg.config import DEFAULT_MAX_TOOL_RESULT_CHARS
@@ -32,6 +34,7 @@ from pkg.model_calling import (
     model_call_error_from_exception,
     normalize_llm_call_result,
     serialize_tool_result_content,
+    split_tool_content,
 )
 
 from .types import (
@@ -205,10 +208,12 @@ class LangBotToolExecutor:
         api: RunnerAPIProxy,
         allowed_tools: set[str],
         max_result_chars: int = DEFAULT_MAX_TOOL_RESULT_CHARS,
+        workspace_manager: typing.Any = None,
     ):
         self.api = api
         self.allowed_tools = allowed_tools
         self.max_result_chars = max_result_chars
+        self.workspace_manager = workspace_manager
         self.local_tools = {}
 
     def prepare(self, request: ToolCallRequest) -> PreparedToolCall:
@@ -244,10 +249,96 @@ class LangBotToolExecutor:
         if prepared.error is not None:
             return self.finalize(prepared, result=None, error=prepared.error)
 
+        results_queue = getattr(self.api, "_results", None)
+        raw_run_id = getattr(self.api, "_run_id", None)
+        run_id = raw_run_id if isinstance(raw_run_id, str) and raw_run_id else "local-run"
+        call_id = prepared.request.id or str(uuid.uuid4())
+        is_traced_queue = (
+            results_queue is not None
+            and hasattr(results_queue, "put")
+            and hasattr(results_queue, "get")
+            and type(results_queue).__name__ not in ("Mock", "AsyncMock", "MagicMock")
+        )
+
+        if self.workspace_manager is not None and self.workspace_manager.is_workspace_tool(prepared.request.name):
+            if is_traced_queue:
+                await results_queue.put(
+                    RunnerResult.tool_call_started(
+                        run_id,
+                        call_id,
+                        prepared.request.name,
+                        prepared.parameters,
+                    )
+                )
+            try:
+                result = await self.workspace_manager.execute(
+                    api=self.api,
+                    tool_name=prepared.request.name,
+                    parameters=prepared.parameters,
+                    max_result_chars=self.max_result_chars,
+                )
+                if is_traced_queue:
+                    await results_queue.put(
+                        RunnerResult.tool_call_completed(
+                            run_id,
+                            call_id,
+                            prepared.request.name,
+                            result=result if isinstance(result, dict) else {"value": result},
+                        )
+                    )
+                return self.finalize(prepared, result=result, error=None)
+            except Exception as e:
+                if is_deadline_exceeded_error(e):
+                    raise
+                error_msg = f"Workspace tool execution failed: {e}"
+                if is_traced_queue:
+                    await results_queue.put(
+                        RunnerResult.tool_call_completed(
+                            run_id,
+                            call_id,
+                            prepared.request.name,
+                            error=error_msg,
+                        )
+                    )
+                return self.finalize(prepared, result=None, error=error_msg)
+
         try:
             if prepared.request.name in self.local_tools:
-                result = await self.local_tools[prepared.request.name](**prepared.parameters)
-                return self.finalize(prepared, result=result, error=None)
+                if is_traced_queue:
+                    await results_queue.put(
+                        RunnerResult.tool_call_started(
+                            run_id,
+                            call_id,
+                            prepared.request.name,
+                            prepared.parameters,
+                        )
+                    )
+                try:
+                    result = await self.local_tools[prepared.request.name](**prepared.parameters)
+                    outcome = self.finalize(prepared, result=result, error=None)
+                    if is_traced_queue:
+                        await results_queue.put(
+                            RunnerResult.tool_call_completed(
+                                run_id,
+                                call_id,
+                                prepared.request.name,
+                                result=outcome.event_result
+                                if outcome.event_result is not None
+                                else (result if isinstance(result, dict) else {"value": result}),
+                            )
+                        )
+                    return outcome
+                except Exception as exc:
+                    if is_traced_queue:
+                        await results_queue.put(
+                            RunnerResult.tool_call_completed(
+                                run_id,
+                                call_id,
+                                prepared.request.name,
+                                error=str(exc),
+                            )
+                        )
+                    raise
             result = await self.api.call_tool(
                 tool_name=prepared.request.name,
                 parameters=prepared.parameters,
@@ -273,6 +364,24 @@ class LangBotToolExecutor:
         terminate = error is None and _tool_result_terminates(result)
         model_result = _strip_tool_runtime_hints(result) if error is None else result
         if error is None:
+            structured = split_tool_content(model_result)
+            if structured is not None:
+                text, media = structured
+                message = build_tool_call_message(
+                    prepared.request.id,
+                    prepared.request.name,
+                    text,
+                    max_result_chars=self.max_result_chars,
+                )
+                return ToolExecutionOutcome(
+                    request=prepared.request,
+                    parameters=prepared.parameters,
+                    result=result,
+                    event_result={"type": "langbot_tool_content", "summary": message.content},
+                    message=message,
+                    model_only_messages=[Message(role="user", content=media)],
+                    terminate=terminate,
+                )
             references = extract_tool_result_references(model_result)
             if references["file_refs"]:
                 message, event_result = build_tool_reference_message(
@@ -357,6 +466,12 @@ class LangBotContextHooks(AgentLoopHooks):
     async def prepare_model_turn(self, messages: list[Message]) -> list[Message]:
         usage_anchor = self._usage_anchor
         self._usage_anchor = None
+        if any(
+            isinstance(message.content, list)
+            and any(item.type.startswith(("image", "file")) for item in message.content)
+            for message in messages
+        ):
+            usage_anchor = None
         assembly = await ContextCompactor(
             self.budget,
             summarizer=self.summarizer,
@@ -448,7 +563,9 @@ class LangBotSteeringPuller:
             return []
 
         try:
-            response = await steering_pull(mode=mode)
+            capabilities = getattr(getattr(getattr(self.api, "ctx", None), "context", None), "available_apis", None)
+            claim = getattr(capabilities, "steering_ack", False) is True
+            response = await steering_pull(mode=mode, claim=True) if claim else await steering_pull(mode=mode)
         except PermissionDeniedError:
             return []
         except Exception:
@@ -460,10 +577,20 @@ class LangBotSteeringPuller:
             return []
 
         messages: list[Message] = []
+        delivery_ids: list[str] = []
         for item in items:
             message = self._message_from_item(item)
             if message is not None:
                 messages.append(message)
+                delivery_id = _model_or_mapping_get(item, "delivery_id")
+                if claim and delivery_id:
+                    delivery_ids.append(delivery_id)
+        if delivery_ids:
+            try:
+                await self.api.steering_ack(delivery_ids)
+            except Exception:
+                logger.warning("Failed to acknowledge steering inputs", exc_info=True)
+                return []
         return messages
 
     def _message_from_item(self, item: typing.Any) -> Message | None:

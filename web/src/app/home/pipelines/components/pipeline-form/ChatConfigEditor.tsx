@@ -1,0 +1,610 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { Control } from 'react-hook-form';
+import {
+  BookOpen,
+  Bot,
+  Box,
+  Copy,
+  Cpu,
+  FileOutput,
+  Gauge,
+  MessageSquareText,
+  MessagesSquare,
+  Mic,
+  ScrollText,
+  Settings2,
+  SlidersHorizontal,
+  Trash2,
+  Volume2,
+  Wrench,
+  type LucideIcon,
+} from 'lucide-react';
+import type { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
+import type {
+  PipelineConfigStage,
+  PipelineConfigTab,
+} from '@/app/infra/entities/pipeline';
+import { backendClient } from '@/app/infra/http';
+import { extractI18nObject } from '@/i18n/I18nProvider';
+import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
+import { collectSensitiveTools } from '@/app/home/components/sensitive-tools/SensitiveToolsWarning';
+import {
+  SettingGroup,
+  SettingRow,
+} from '@/app/home/components/setting-row/SettingRow';
+import PipelineExtension from '@/app/home/pipelines/components/pipeline-extensions/PipelineExtension';
+import { Button } from '@/components/ui/button';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  PrimaryBlock,
+  RetrievalSettings,
+  SubsetForm,
+  Watch,
+  groupRunnerFields,
+  modifiedCount,
+} from '@/app/home/components/runner-layout/RunnerConfigLayout';
+
+type Values = Record<string, unknown>;
+type FormName = 'ai' | 'speech' | 'output';
+
+const k = (key: string) => `pipelines.chatConfig.${key}`;
+
+/** Mirrored by the reply-content row (`output.misc.remove-think`). */
+const MIRRORED_FIELDS = new Set(['remove-think']);
+
+type Extensions = Awaited<
+  ReturnType<typeof backendClient.getPipelineExtensions>
+>;
+
+function ToolsBlock({
+  pipelineId,
+  onSensitiveToolsChange,
+}: {
+  pipelineId: string;
+  onSensitiveToolsChange?: (tools: string[]) => void;
+}) {
+  const { t } = useTranslation();
+  const [data, setData] = useState<Extensions | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const load = useCallback(() => {
+    backendClient
+      .getPipelineExtensions(pipelineId)
+      .then((next) => {
+        setData(next);
+        onSensitiveToolsChange?.(
+          collectSensitiveTools(
+            next.available_platform_tools ?? [],
+            next.allowed_platform_tools ?? [],
+            next.available_workspace_operations ?? [],
+            next.workspace_operations ?? [],
+          ),
+        );
+      })
+      .catch(() => setData(null));
+  }, [pipelineId, onSensitiveToolsChange]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const count = (all: boolean, bound: number) =>
+    all
+      ? t(k('all'))
+      : bound > 0
+        ? t(k('countItems'), { count: bound })
+        : t(k('none'));
+  const stats = data
+    ? [
+        {
+          label: t(k('plugins')),
+          value: count(data.enable_all_plugins, data.bound_plugins.length),
+        },
+        {
+          label: t(k('mcp')),
+          value: count(
+            data.enable_all_mcp_servers,
+            data.bound_mcp_servers.length,
+          ),
+        },
+        {
+          label: t(k('skills')),
+          value: count(data.enable_all_skills, data.bound_skills.length),
+        },
+        {
+          label: t(k('operations')),
+          value: count(
+            false,
+            (data.allowed_platform_tools?.length ?? 0) +
+              (data.workspace_operations?.length ?? 0),
+          ),
+        },
+      ]
+    : [];
+
+  return (
+    <PrimaryBlock
+      icon={Wrench}
+      guide="pipeline-section-extensions"
+      title={t(k('tools'))}
+      hint={t(k('toolsHint'))}
+      action={
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setOpen(true)}
+          data-testid="chat-manage-tools"
+        >
+          {t(k('manageTools'))}
+        </Button>
+      }
+    >
+      {data ? (
+        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {stats.map((stat) => (
+            <div key={stat.label} className="rounded-md bg-muted/40 px-3 py-2">
+              <dt className="text-xs text-muted-foreground">{stat.label}</dt>
+              <dd className="text-sm font-medium">{stat.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <Skeleton className="h-12 w-full" />
+      )}
+      <Sheet
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) load();
+        }}
+      >
+        <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
+          <SheetHeader>
+            <SheetTitle>{t(k('tools'))}</SheetTitle>
+            <SheetDescription>{t(k('toolsSheetDescription'))}</SheetDescription>
+          </SheetHeader>
+          <div className="px-4 pb-6">
+            <PipelineExtension
+              pipelineId={pipelineId}
+              onSensitiveToolsChange={onSensitiveToolsChange}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
+    </PrimaryBlock>
+  );
+}
+
+/**
+ * Chat (pipeline) settings, arranged by importance: who answers, then the
+ * model, prompt, tools and knowledge the answer is built from, then
+ * everything else as collapsed rows with a one-line summary.
+ */
+export default function ChatConfigEditor({
+  control,
+  getValues,
+  aiTab,
+  speechTab,
+  outputTab,
+  runnerId,
+  onStage,
+  onRunnerConfig,
+  renderRunnerSelect,
+  systemContext,
+  pipelineId,
+  onSensitiveToolsChange,
+  onCopy,
+  onDelete,
+  isDefaultPipeline,
+}: {
+  control: Control<any>;
+  getValues: (path: string) => unknown;
+  aiTab: PipelineConfigTab;
+  speechTab?: PipelineConfigTab;
+  outputTab?: PipelineConfigTab;
+  runnerId: string;
+  /** Write one stage. `fromEdit` marks a user edit (not a mount emission). */
+  onStage: (
+    formName: FormName,
+    stage: string,
+    values: Values,
+    fromEdit?: boolean,
+  ) => void;
+  onRunnerConfig: (stage: string, values: Values) => void;
+  renderRunnerSelect: Parameters<typeof DynamicFormComponent>[0]['renderItem'];
+  systemContext: Values;
+  pipelineId: string;
+  onSensitiveToolsChange?: (tools: string[]) => void;
+  onCopy: () => void;
+  onDelete: () => void;
+  isDefaultPipeline: boolean;
+}) {
+  const { t } = useTranslation();
+  const runnerStage = aiTab.stages.find((stage) => stage.name === 'runner');
+  const runnerConfigStage = aiTab.stages.find(
+    (stage) => stage.name === runnerId,
+  );
+  // Stable field lists: a new list identity makes the form re-sync.
+  const groups = useMemo(
+    () => groupRunnerFields(runnerConfigStage?.config ?? [], MIRRORED_FIELDS),
+    [runnerConfigStage],
+  );
+  const runnerIdItems = useMemo(
+    () => (runnerStage?.config ?? []).filter((item) => item.name === 'id'),
+    [runnerStage],
+  );
+  const runnerContextItems = useMemo(
+    () => (runnerStage?.config ?? []).filter((item) => item.name !== 'id'),
+    [runnerStage],
+  );
+
+  const readRunner = () => (getValues('ai.runner') as Values) ?? {};
+  const writeRunner = (next: Values) => onStage('ai', 'runner', next, true);
+  const readRunnerConfig = () =>
+    ((getValues('ai.runner_config') as Record<string, Values>) ?? {})[
+      runnerId
+    ] ?? {};
+  const writeRunnerConfig = (next: Values) => onRunnerConfig(runnerId, next);
+  const outputMisc = outputTab?.stages.find((stage) => stage.name === 'misc');
+  const readOutputMisc = () =>
+    ((getValues('output') as Record<string, Values>) ?? {}).misc ?? {};
+  const writeOutputMisc = (next: Values) =>
+    onStage('output', 'misc', next, true);
+  const replyItems = useMemo(
+    () => (outputMisc?.config ?? []).filter((item) => item.type === 'boolean'),
+    [outputMisc],
+  );
+  const hintItems = useMemo(
+    () => (outputMisc?.config ?? []).filter((item) => item.type !== 'boolean'),
+    [outputMisc],
+  );
+
+  const runnerForm = (items: IDynamicFormItemSchema[]) => (
+    <SubsetForm
+      key={`${runnerId}:${items.map((item) => item.name).join(',')}`}
+      items={items}
+      read={readRunnerConfig}
+      write={writeRunnerConfig}
+      systemContext={systemContext}
+    />
+  );
+  const runnerLabel = runnerConfigStage
+    ? extractI18nObject(runnerConfigStage.label)
+    : '';
+  const configPath = `ai.runner_config`;
+
+  function speechRow(stage: PipelineConfigStage, icon: LucideIcon) {
+    return (
+      <Watch<Values>
+        key={stage.name}
+        control={control}
+        name={`speech.${stage.name}`}
+      >
+        {(value) => (
+          <SettingRow
+            id={stage.name}
+            icon={icon}
+            guide={
+              stage.name === 'speech-recognition'
+                ? 'pipeline-section-speech'
+                : undefined
+            }
+            title={extractI18nObject(stage.label)}
+            summary={value?.enable ? t(k('on')) : t(k('off'))}
+          >
+            {stage.description && (
+              <p className="text-xs text-muted-foreground">
+                {extractI18nObject(stage.description)}
+              </p>
+            )}
+            <DynamicFormComponent
+              itemConfigList={stage.config}
+              initialValues={
+                (getValues(`speech.${stage.name}`) as Values) ?? {}
+              }
+              systemContext={systemContext}
+              onSubmit={(values) =>
+                onStage('speech', stage.name, values as Values)
+              }
+            />
+          </SettingRow>
+        )}
+      </Watch>
+    );
+  }
+
+  return (
+    <div className="space-y-6" data-testid="chat-config">
+      {/* Who answers */}
+      <PrimaryBlock icon={Bot} guide="pipeline-section-ai">
+        <SubsetForm
+          items={runnerIdItems}
+          read={readRunner}
+          write={writeRunner}
+          systemContext={systemContext}
+          renderItem={renderRunnerSelect}
+        />
+        <p className="text-xs text-muted-foreground">
+          {t('pipelines.extensions.runnerScopeHint')}
+        </p>
+        {runnerConfigStage?.description && (
+          <p className="text-xs text-muted-foreground">
+            {extractI18nObject(runnerConfigStage.description)}
+          </p>
+        )}
+      </PrimaryBlock>
+
+      {/* What the answer is built from */}
+      {groups.model.length > 0 && (
+        <PrimaryBlock icon={Cpu}>{runnerForm(groups.model)}</PrimaryBlock>
+      )}
+      {groups.prompt.length > 0 && (
+        <PrimaryBlock icon={ScrollText}>
+          {runnerForm(groups.prompt)}
+        </PrimaryBlock>
+      )}
+      <ToolsBlock
+        pipelineId={pipelineId}
+        onSensitiveToolsChange={onSensitiveToolsChange}
+      />
+      {groups.knowledge.length > 0 && (
+        <PrimaryBlock icon={BookOpen}>
+          {runnerForm(groups.knowledge)}
+          {groups.retrieval.length > 0 && (
+            <RetrievalSettings label={t(k('retrieval'))}>
+              {runnerForm(groups.retrieval)}
+            </RetrievalSettings>
+          )}
+        </PrimaryBlock>
+      )}
+      {groups.basic.length > 0 && (
+        <PrimaryBlock
+          icon={Settings2}
+          title={t(k('runnerSettings'), { runner: runnerLabel })}
+        >
+          {runnerForm(groups.basic)}
+        </PrimaryBlock>
+      )}
+
+      {/* Everything else, folded. Tour steps for speech and replies point
+          at their rows, or at this group when the runner has none. */}
+      <div
+        data-guide={
+          speechTab?.stages.length ? undefined : 'pipeline-section-speech'
+        }
+      >
+        <div
+          data-guide={replyItems.length ? undefined : 'pipeline-section-output'}
+        >
+          <SettingGroup title={t(k('more'))}>
+            {(runnerContextItems.length > 0 || groups.context.length > 0) && (
+              <Watch<Values> control={control} name="ai.runner">
+                {(runner) => (
+                  <SettingRow
+                    id="context"
+                    icon={MessagesSquare}
+                    title={t(k('context'))}
+                    summary={[
+                      runner?.['group-context'] === 'group'
+                        ? t(k('scopeGroup'))
+                        : t(k('scopeMember')),
+                      Number(runner?.['expire-time'] ?? 0) > 0
+                        ? t(k('expireAfter'), {
+                            seconds: Number(runner?.['expire-time']),
+                          })
+                        : t(k('expireNever')),
+                    ].join(' · ')}
+                  >
+                    <SubsetForm
+                      items={runnerContextItems}
+                      read={readRunner}
+                      write={writeRunner}
+                      systemContext={systemContext}
+                    />
+                    {runnerForm(groups.context)}
+                  </SettingRow>
+                )}
+              </Watch>
+            )}
+            {groups.runtime.length > 0 && (
+              <Watch<Record<string, Values>>
+                control={control}
+                name={configPath}
+              >
+                {(configs) => {
+                  const changed = modifiedCount(
+                    groups.runtime,
+                    configs?.[runnerId] ?? {},
+                  );
+                  return (
+                    <SettingRow
+                      id="runtime"
+                      icon={Gauge}
+                      title={t(k('runtime'))}
+                      summary={
+                        changed
+                          ? t(k('modified'), { count: changed })
+                          : t(k('default'))
+                      }
+                    >
+                      {runnerForm(groups.runtime)}
+                    </SettingRow>
+                  );
+                }}
+              </Watch>
+            )}
+            {groups.sandbox.length > 0 && (
+              <Watch<Record<string, Values>>
+                control={control}
+                name={configPath}
+              >
+                {(configs) => (
+                  <SettingRow
+                    id="sandbox"
+                    icon={Box}
+                    title={t(k('sandbox'))}
+                    summary={
+                      configs?.[runnerId]?.['box-enabled'] === false
+                        ? t(k('off'))
+                        : t(k('on'))
+                    }
+                  >
+                    {runnerForm(groups.sandbox)}
+                  </SettingRow>
+                )}
+              </Watch>
+            )}
+            {speechTab?.stages.map((stage) =>
+              speechRow(stage, stage.name === 'text-to-speech' ? Volume2 : Mic),
+            )}
+            {replyItems.length > 0 && (
+              <Watch<Values> control={control} name="output.misc">
+                {(misc) => {
+                  const on = replyItems.filter((item) => misc?.[item.name]);
+                  return (
+                    <SettingRow
+                      id="reply"
+                      icon={FileOutput}
+                      guide="pipeline-section-output"
+                      title={t(k('reply'))}
+                      summary={
+                        on.length
+                          ? on
+                              .map((item) => extractI18nObject(item.label))
+                              .join(' · ')
+                          : t(k('default'))
+                      }
+                    >
+                      <p className="text-xs text-muted-foreground">
+                        {t('pipelines.outputMovedToPolicy')}
+                      </p>
+                      <SubsetForm
+                        items={replyItems}
+                        read={readOutputMisc}
+                        write={writeOutputMisc}
+                        systemContext={systemContext}
+                      />
+                    </SettingRow>
+                  );
+                }}
+              </Watch>
+            )}
+            {hintItems.length > 0 && (
+              <Watch<Values> control={control} name="output.misc">
+                {(misc) => {
+                  const custom = hintItems.filter((item) =>
+                    String(misc?.[item.name] ?? '').trim(),
+                  ).length;
+                  return (
+                    <SettingRow
+                      id="hints"
+                      icon={MessageSquareText}
+                      title={t(k('hints'))}
+                      summary={
+                        custom
+                          ? t(k('hintsCustom'), { count: custom })
+                          : t(k('default'))
+                      }
+                    >
+                      <SubsetForm
+                        items={hintItems}
+                        read={readOutputMisc}
+                        write={writeOutputMisc}
+                        systemContext={systemContext}
+                      />
+                    </SettingRow>
+                  );
+                }}
+              </Watch>
+            )}
+            {groups.advanced.length > 0 && (
+              <Watch<Record<string, Values>>
+                control={control}
+                name={configPath}
+              >
+                {(configs) => {
+                  const changed = modifiedCount(
+                    groups.advanced,
+                    configs?.[runnerId] ?? {},
+                  );
+                  return (
+                    <SettingRow
+                      id="advanced"
+                      icon={SlidersHorizontal}
+                      title={t(k('advanced'))}
+                      summary={
+                        changed
+                          ? t(k('modified'), { count: changed })
+                          : t(k('default'))
+                      }
+                    >
+                      {runnerForm(groups.advanced)}
+                    </SettingRow>
+                  );
+                }}
+              </Watch>
+            )}
+            <SettingRow
+              id="manage"
+              icon={Settings2}
+              guide="pipeline-section-basic"
+              title={t(k('manage'))}
+              summary={t(k('manageSummary'))}
+            >
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium">
+                    {t('pipelines.copyPipelineAction')}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {t('pipelines.copyPipelineHint')}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={onCopy}
+                >
+                  <Copy className="size-4" />
+                  {t('common.copy')}
+                </Button>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium text-destructive">
+                    {t('pipelines.deletePipelineAction')}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {isDefaultPipeline
+                      ? t('pipelines.defaultPipelineCannotDelete')
+                      : t('pipelines.deletePipelineHint')}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  disabled={isDefaultPipeline}
+                  onClick={onDelete}
+                >
+                  <Trash2 className="size-4" />
+                  {t('common.delete')}
+                </Button>
+              </div>
+            </SettingRow>
+          </SettingGroup>
+        </div>
+      </div>
+    </div>
+  );
+}

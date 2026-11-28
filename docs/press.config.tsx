@@ -9,10 +9,12 @@ import { update } from "fumadocs-core/source";
 import { uiTranslations } from "fumadocs-ui/i18n";
 import { defineDocs } from "fumadocs-mdx/macro";
 import { createOpenAPI, type OpenAPIServer } from "fumadocs-openapi/server";
-import { Blocks, Bot, Cloud, ExternalLink, Map as MapIcon, Newspaper } from "lucide-react";
+import { Bot, ExternalLink } from "lucide-react";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { LocalePreferenceProvider } from "./src/locale-preference-provider";
+
+const RECIPE_TITLE_FILLER = /\b(?:Connect|to|Build|a|AI|Bot|with)\b|^把|接入|^用 |搭建|机器人|を|に接続する|で|の|ボットを作る/g;
 
 const SITE_URL = "https://langbot.app/docs";
 const LOCALES = ["en", "zh", "ja"] as const;
@@ -211,12 +213,14 @@ function GithubMark(props: import("react").ComponentProps<"svg">) {
   </svg>;
 }
 
+function LangBotMark(props: import("react").ComponentProps<"img">) {
+  return <img src="/langbot-logo.png" alt="" {...props} className={`${props.className ?? ""} rounded-sm object-contain`} />;
+}
+
+// The sidebar keeps only the product site and the source repository.
 const QUICK_LINK_ICONS = {
-  blocks: Blocks,
-  cloud: Cloud,
   github: GithubMark,
-  map: MapIcon,
-  newspaper: Newspaper,
+  langbot: LangBotMark,
 } as const;
 
 type QuickLinkIcon = keyof typeof QUICK_LINK_ICONS;
@@ -363,6 +367,8 @@ export default defineConfig({
     const locale = LOCALES.includes(lang as (typeof LOCALES)[number]) ? lang as (typeof LOCALES)[number] : "en";
     return {
       links: localizedNavbar(locale),
+      // Offer Light / Dark / System; "system" (the default) follows the device.
+      themeSwitch: { mode: "light-dark-system" as const },
       nav: {
         title: docsBrand(),
         url: `/${locale}/insight/guide`,
@@ -429,7 +435,10 @@ export default defineConfig({
         // opening content so search remains useful without exceeding Pages'
         // hard 25 MiB per-file limit. OpenAPI endpoints intentionally omit the
         // schema body, which is duplicated across every generated operation.
-        const isOpenAPI = page.url.includes("/api-reference/");
+        // Generated integration recipes (/recipes/) are many short, similar
+        // pages: index only their title and description, like OpenAPI pages.
+        const isRecipe = page.url.includes("/recipes/");
+        const isOpenAPI = page.url.includes("/api-reference/") || isRecipe;
         const headings = isOpenAPI
           ? []
           : sourceStructuredData.headings.slice(0, 4).map((heading) => ({
@@ -438,15 +447,20 @@ export default defineConfig({
             }));
         const openingContent = isOpenAPI
           ? []
-          : sourceStructuredData.contents.slice(0, 2).map((content) => content.content.slice(0, 300));
+          : sourceStructuredData.contents.slice(0, 2).map((content) => content.content.slice(0, 100));
         const structuredData = {
           headings,
           contents: [{
             heading: undefined,
-            content: [title, description, ...openingContent, page.url].filter(Boolean).join(" "),
+            // Recipe titles share template words ("Connect … to …"); indexing
+            // them would map every recipe under each shared token and push
+            // the search file past the Pages limit. Keep only the names.
+            content: isRecipe
+              ? String(title).replace(RECIPE_TITLE_FILLER, " ").replace(/\s+/g, " ").trim()
+              : [title, description, ...openingContent, page.url].filter(Boolean).join(" "),
           }],
         };
-        return { id: page.url, title, description, url: page.url, structuredData };
+        return { id: page.url, title, description: isRecipe ? undefined : description, url: page.url, structuredData };
       },
     }),
     mintlifyPlugin({ path: "content/fumapress-docs.json", features: { navbar: false } }),

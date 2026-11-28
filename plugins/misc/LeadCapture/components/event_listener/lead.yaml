@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: EventListener
+metadata:
+  name: lead
+  label:
+    en_US: Purchase intent lead capture
+    zh_Hans: 购买意向留资
+    zh_Hant: 購買意向留資
+    ja_JP: 購入意向リード獲得
+    es_ES: Captación de clientes con intención de compra
+    ru_RU: Сбор контактов при намерении купить
+    th_TH: เก็บข้อมูลลูกค้าที่ตั้งใจซื้อ
+    vi_VN: Thu thập khách hàng có ý định mua
+  description:
+    en_US: Judge purchase intent after AI replies, ask once for contact details, and email the lead.
+    zh_Hans: 在 AI 回复后判断购买意愿，只请求一次联系方式，并把线索发到邮箱。
+    zh_Hant: 在 AI 回覆後判斷購買意願，只請求一次聯絡方式，並將線索寄到信箱。
+    ja_JP: AI の返信後に購入意向を判定し、連絡先を一度だけ尋ね、リードをメールで送ります。
+    es_ES: Evalúa la intención de compra tras la respuesta de la IA, pide el contacto una vez y envía el cliente por correo.
+    ru_RU: Оценивает намерение купить после ответа ИИ, однажды просит контакты и отправляет лид на почту.
+    th_TH: ประเมินความตั้งใจซื้อหลัง AI ตอบ ขอช่องทางติดต่อหนึ่งครั้ง และส่งข้อมูลทางอีเมล
+    vi_VN: Đánh giá ý định mua sau khi AI trả lời, hỏi liên hệ một lần và gửi khách hàng tiềm năng qua email.
+spec: {}
+execution:
+  python:
+    path: lead.py
+    attr: LeadListener

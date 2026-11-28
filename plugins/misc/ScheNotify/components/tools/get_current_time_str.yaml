@@ -6,14 +6,14 @@ metadata:
     en_US: Get Current Time
     zh_Hans: 获取当前时间
   description:
-    en_US: 'Get the current time as a string'
-    zh_Hans: '获取当前时间的字符串'
+    en_US: 'Get the current time in the configured timezone as a string'
+    zh_Hans: '获取配置时区下当前时间的字符串'
 spec:
   parameters:
     type: object
     properties: {}
     required: []
-  llm_prompt: 'Get the current time. Call this function before scheduling any notification to ensure you have the latest current time.'
+  llm_prompt: 'Get the current time in the configured timezone, e.g. "2026-01-01 08:00:00 (Asia/Shanghai, UTC+08:00)". Call this function before scheduling any notification to ensure you have the latest current time. Times passed to schedule_notify are in this same timezone.'
 execution:
   python:
     path: get_current_time_str.py

@@ -5,33 +5,37 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import LoginLayout from '@/app/login/layout';
 import RegisterLayout from '@/app/register/layout';
 import ResetPasswordLayout from '@/app/reset-password/layout';
-import HomeLayout from '@/app/home/layout';
 
 // Pages
 import LoginPage from '@/app/login/page';
 import RegisterPage from '@/app/register/page';
 import ResetPasswordPage from '@/app/reset-password/page';
-import WizardPage from '@/app/wizard/page';
 import SpaceCallbackPage from '@/app/auth/space/callback/page';
-import HomePage from '@/app/home/page';
-import MonitoringPage from '@/app/home/monitoring/page';
-import BotsPage from '@/app/home/bots/page';
-import AgentsPage from '@/app/home/agents/page';
-import PipelinesPage from '@/app/home/pipelines/page';
-import WorkflowsPage from '@/app/home/workflows/page';
-import PluginsPage from '@/app/home/plugins/page';
-import AddExtensionPage from '@/app/home/add-extension/page';
-import MCPPage from '@/app/home/mcp/page';
-import KnowledgePage from '@/app/home/knowledge/page';
-import SkillsPage from '@/app/home/skills/page';
 import ErrorPage from '@/components/ErrorPage';
 import BackendUnavailablePage from '@/components/BackendUnavailablePage';
-import PluginPagesPage from '@/app/home/plugin-pages/page';
 import RootLayout from '@/app/RootLayout';
 import AcceptInvitationPage from '@/app/invitations/accept/page';
 import WorkspaceSelectPage from '@/app/workspaces/select/page';
+import { PageLoading } from '@/components/RouteLoading';
 
-const Loading = () => <div>Loading...</div>;
+const HomeLayout = React.lazy(() => import('@/app/home/layout'));
+const WizardPage = React.lazy(() => import('@/app/wizard/page'));
+const HomePage = React.lazy(() => import('@/app/home/page'));
+const MonitoringPage = React.lazy(() => import('@/app/home/monitoring/page'));
+const BotsPage = React.lazy(() => import('@/app/home/bots/page'));
+const AgentsPage = React.lazy(() => import('@/app/home/agents/page'));
+const PipelinesPage = React.lazy(() => import('@/app/home/pipelines/page'));
+const WorkflowsPage = React.lazy(() => import('@/app/home/workflows/page'));
+const PluginsPage = React.lazy(() => import('@/app/home/plugins/page'));
+const AddExtensionPage = React.lazy(
+  () => import('@/app/home/add-extension/page'),
+);
+const MCPPage = React.lazy(() => import('@/app/home/mcp/page'));
+const KnowledgePage = React.lazy(() => import('@/app/home/knowledge/page'));
+const SkillsPage = React.lazy(() => import('@/app/home/skills/page'));
+const PluginPagesPage = React.lazy(
+  () => import('@/app/home/plugin-pages/page'),
+);
 
 export const router = createBrowserRouter([
   {
@@ -76,7 +80,11 @@ export const router = createBrowserRouter([
       },
       {
         path: '/wizard',
-        element: <WizardPage />,
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <WizardPage />
+          </Suspense>
+        ),
       },
       {
         path: '/backend-unavailable',
@@ -89,7 +97,7 @@ export const router = createBrowserRouter([
       {
         path: '/home',
         element: (
-          <Suspense fallback={<Loading />}>
+          <Suspense fallback={<PageLoading />}>
             <HomeLayout>
               <HomePage />
             </HomeLayout>
@@ -99,7 +107,7 @@ export const router = createBrowserRouter([
       {
         path: '/home/monitoring',
         element: (
-          <Suspense fallback={<Loading />}>
+          <Suspense fallback={<PageLoading />}>
             <HomeLayout>
               <MonitoringPage />
             </HomeLayout>
@@ -109,7 +117,7 @@ export const router = createBrowserRouter([
       {
         path: '/home/bots',
         element: (
-          <Suspense fallback={<Loading />}>
+          <Suspense fallback={<PageLoading />}>
             <HomeLayout>
               <BotsPage />
             </HomeLayout>
@@ -119,7 +127,7 @@ export const router = createBrowserRouter([
       {
         path: '/home/agents',
         element: (
-          <Suspense fallback={<Loading />}>
+          <Suspense fallback={<PageLoading />}>
             <HomeLayout>
               <AgentsPage />
             </HomeLayout>
@@ -129,7 +137,7 @@ export const router = createBrowserRouter([
       {
         path: '/home/pipelines',
         element: (
-          <Suspense fallback={<Loading />}>
+          <Suspense fallback={<PageLoading />}>
             <HomeLayout>
               <PipelinesPage />
             </HomeLayout>
@@ -149,7 +157,7 @@ export const router = createBrowserRouter([
       {
         path: '/home/extensions',
         element: (
-          <Suspense fallback={<Loading />}>
+          <Suspense fallback={<PageLoading />}>
             <HomeLayout>
               <PluginsPage />
             </HomeLayout>
@@ -159,7 +167,7 @@ export const router = createBrowserRouter([
       {
         path: '/home/add-extension',
         element: (
-          <Suspense fallback={<Loading />}>
+          <Suspense fallback={<PageLoading />}>
             <HomeLayout>
               <AddExtensionPage />
             </HomeLayout>
@@ -169,7 +177,7 @@ export const router = createBrowserRouter([
       {
         path: '/home/mcp',
         element: (
-          <Suspense fallback={<Loading />}>
+          <Suspense fallback={<PageLoading />}>
             <HomeLayout>
               <MCPPage />
             </HomeLayout>
@@ -179,7 +187,7 @@ export const router = createBrowserRouter([
       {
         path: '/home/knowledge',
         element: (
-          <Suspense fallback={<Loading />}>
+          <Suspense fallback={<PageLoading />}>
             <HomeLayout>
               <KnowledgePage />
             </HomeLayout>
@@ -189,7 +197,7 @@ export const router = createBrowserRouter([
       {
         path: '/home/skills',
         element: (
-          <Suspense fallback={<Loading />}>
+          <Suspense fallback={<PageLoading />}>
             <HomeLayout>
               <SkillsPage />
             </HomeLayout>
@@ -199,7 +207,7 @@ export const router = createBrowserRouter([
       {
         path: '/home/plugin-pages',
         element: (
-          <Suspense fallback={<Loading />}>
+          <Suspense fallback={<PageLoading />}>
             <HomeLayout>
               <PluginPagesPage />
             </HomeLayout>

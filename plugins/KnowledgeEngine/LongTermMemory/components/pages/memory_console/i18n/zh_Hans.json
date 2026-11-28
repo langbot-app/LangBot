@@ -77,5 +77,16 @@
   "Traits": "特征",
   "Preferences": "偏好",
   "Notes": "备注",
-  "Updated": "更新时间"
+  "Updated": "更新时间",
+  "consolidationReview": "审核记忆摘要",
+  "consolidationHint": "摘要是推断，不是已核实事实。应用前请逐条核对完整来源。模型和执行开关在记忆知识库中配置。",
+  "previewConsolidation": "预览摘要",
+  "consolidationReviewed": "我已将推断摘要与来源记录核对。",
+  "applyConsolidation": "应用已审核摘要",
+  "consolidationLoading": "正在生成待审核提案……",
+  "consolidationInference": "推断摘要——请与来源核对",
+  "consolidationSources": "完整来源记录",
+  "consolidationApplied": "已应用审核后的摘要，来源记录仍保留。",
+  "consolidationUnavailable": "没有可审核的摘要提案。请检查知识库配置与风险说明。",
+  "consolidationApplying": "正在应用已审核摘要……"
 }

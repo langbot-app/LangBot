@@ -1,8 +1,60 @@
 ---
-title: "Pipeline Events and APIs"
+title: "Message Lifecycle Events and APIs"
 ---
 
-LangBot plugins can register and handle pipeline events. For usage instructions, see [Component: Event Listener](/en/plugin/dev/components/event-listener).
+LangBot plugins can hook into each stage a bot goes through after receiving a message (the message lifecycle) using a [Component: Event Listener](/en/plugin/dev/components/event-listener). These hooks belong to the **bot**: they fire by the same rules whether the message ends up in a Chat, an Agent, or a plugin command.
+
+<Info>
+This page was formerly called "Pipeline Events". Event classes and fields are unchanged, so existing plugins keep working.
+</Info>
+
+## Where plugins are enabled
+
+Plugins are enabled on the **bot**. The bot's "Event routing → Plugins" tab works like the former Chat plugin setting: enable all plugins, or pick plugins manually. A single route can override the bot setting. Enabling a plugin enables all of its commands and event listeners; a plugin that is not enabled receives no events from this bot and its commands do not match.
+
+The plugin list in a Chat now only controls which plugin tools the AI may call. It no longer decides whether listeners fire.
+
+An event is dispatched to plugins in the order of the bot's plugin list. Plugins that did not register the event are skipped.
+
+## Message lifecycle
+
+When a bot receives a message (`message.received`), it goes through these steps:
+
+```text
+Route preselection (only works out which route matches; nothing runs yet)
+→ *MessageReceived                (prevent_default ends the whole message)
+→ Plugin command?
+    yes → Inbound policy (group response rules, access control, rate limit, content filter)
+          → *CommandSent           (prevent_default skips the command)
+          → Run the command → Outbound policy (long text, delay, @mention, quote)
+    no  → Inbound policy
+          → Chat:  PromptPreProcessing → *NormalMessageReceived → AI → NormalMessageResponded
+          → Agent: *NormalMessageReceived → Agent → NormalMessageResponded
+          → Outbound policy
+```
+
+- Each message creates one Query. Hooks, commands and the processor share it, so `reply()`, `get_bot_uuid()` and query variables work in every hook and command.
+- `*MessageReceived` fires **before** inbound policy such as group response rules, so plugins see group messages that do not mention the bot. Messages that a route rule discards fire it too.
+- Inbound and outbound policy come from the bot's "Message policy"; see [Bots](/en/usage/platforms/readme).
+
+## Which processors each hook applies to
+
+| Event | Chat | Agent | Plugin command |
+| --- | --- | --- | --- |
+| `*MessageReceived` | ✓ | ✓ | ✓ |
+| `*NormalMessageReceived` | ✓ | ✓ | — |
+| `*CommandSent` | — | — | ✓ |
+| `NormalMessageResponded` | ✓ | ✓ (observe only for streaming replies) | — |
+| `PromptPreProcessing` | ✓ | — | — |
+| Platform notifications (below) | ✓ | ✓ | ✓ |
+
+Known limitations:
+
+- `PromptPreProcessing` fires only in Chats, not for Agents.
+- A streaming reply has already reached the user while it is being generated, so `NormalMessageResponded` is only a notification and cannot rewrite or replace it. Non-streaming replies can be rewritten.
+- Plugin processors (events a route hands straight to a plugin) skip inbound interception, but their replies go through the same outbound policy.
+
+The bot's "Plugins" tab labels each hook as active or inactive for the processor of the selected route.
 
 ## List of Events
 
@@ -10,7 +62,7 @@ Some events have `settable attributes`, which can be modified by plugin code and
 
 ### \*MessageReceived
 
-Triggered when any message is received in group chat or private chat.
+Triggered when the bot receives any group or private message, before group response rules and command matching. After `prevent_default()` the message is not processed further; a rewritten `message_chain` is passed on to later steps.
 
 ```python
 class PersonMessageReceived(BaseEventModel):
@@ -61,7 +113,7 @@ class GroupMessageReceived(BaseEventModel):
 
 ### \*NormalMessageReceived
 
-Triggered when a group chat or private chat message is received and determined to be a message that needs to be processed by LLM (non-command message).
+Triggered when a message has passed inbound policy and is handed to a Chat or an Agent (it is not a command). A plugin that prevents default and replies replaces the AI reply; a plugin that rewrites the input makes the AI receive the rewritten content.
 
 ```python
 class PersonNormalMessageReceived(BaseEventModel):
@@ -134,11 +186,7 @@ class GroupNormalMessageReceived(BaseEventModel):
 
 ### \*CommandSent
 
-<Warning>
-  No longer recommended for use, please use [Component: Command](/en/plugin/dev/components/command) instead.
-</Warning>
-
-Triggered when a group chat or private chat command is received.
+Triggered after a plugin command passes inbound policy and before it runs. `prevent_default()` skips the command; set `reply_message_chain` to reply instead. Implement the command itself with a [Component: Command](/en/plugin/dev/components/command).
 
 ```python
 class PersonCommandSent(BaseEventModel):
@@ -191,7 +239,7 @@ class GroupCommandSent(BaseEventModel):
 
 ### NormalMessageResponded
 
-Triggered when a message receives an LLM response.
+Triggered after a Chat or an Agent produces a reply. For non-streaming replies it fires before sending and can rewrite or replace the reply; for streaming replies it is a notification only.
 
 ```python
 class NormalMessageResponded(BaseEventModel):
@@ -228,7 +276,7 @@ class NormalMessageResponded(BaseEventModel):
 
 ### PromptPreProcessing
 
-Triggered when building the LLM response context (prompt).
+Triggered when a Chat builds the LLM context (prompt). Agents do not trigger this event.
 
 ```python
 class PromptPreProcessing(BaseEventModel):
@@ -247,6 +295,28 @@ class PromptPreProcessing(BaseEventModel):
     prompt: list[typing.Union[provider_message.Message, provider_message.MessageChunk]]
     """Existing message records for this conversation, can be modified, langbot_plugin.api.entities.builtin.provider.message.Message or langbot_plugin.api.entities.builtin.provider.message.MessageChunk type"""
 ```
+
+For turn-specific retrieved evidence, append a `Message(role="system", content=...)` to `prompt` or `default_prompt`. The Host exposes new or modified system messages from `prompt` through the Runner's `get_prompt()` API, after the effective `default_prompt`. Their final hook order is preserved, and the projection is rebuilt for each turn. The Runner applies its context budget before invoking the model. Conversation history continues to use the Runner's history API. Prompt preprocessing context is scoped to the current run.
+
+The post-hook `_knowledge_base_uuids` query variable selects automatic retrieval for that run. An empty list disables automatic retrieval, and an unset variable retains the configured selection. Explicit retrieval APIs continue to validate the run's frozen resource grants. A memory plugin should finish its own query-scoped retrieval before removing its KB from the automatic selection.
+
+## Platform notifications
+
+These events notify enabled plugins when the messaging platform produces the corresponding event. They are **notifications only**: they cannot be intercepted and do not affect routing. `MessageReceived` (without a Person/Group prefix) is the generic notification for `message.received` and is sent before `*MessageReceived`.
+
+| Event | Platforms that produce it |
+| --- | --- |
+| `MessageReceived` | All platforms |
+| `MessageDeleted` | OneBot v11, Discord, Lark, LINE, Slack, WeCom Customer Service |
+| `MessageEdited` | Discord, Slack, Telegram |
+| `MessageReactionReceived` | Discord, Lark, QQ Official, Slack, Telegram |
+| `GroupMemberJoined` / `GroupMemberLeft` / `BotInvitedToGroup` / `BotRemovedFromGroup` | Discord, Lark, LINE, OneBot v11, QQ Official, Slack, Telegram |
+| `GroupMemberBanned` | OneBot v11, Telegram |
+| `BotMuted` / `BotUnmuted` | Telegram |
+| `FeedbackReceived` | DingTalk, WeCom Bot |
+| `PlatformSpecificEventReceived` | DingTalk, KOOK, Lark, LINE, WeChat Official Account, OneBot v11, QQ Official, Slack, Telegram, WeCom, WeCom Bot, WeCom Customer Service |
+
+Whether a plugin receives them depends on the platform delivering the event to the bot.
 
 ## EventListener context
 
@@ -269,3 +339,13 @@ Only the following events can prevent default behavior:
 </Info>
 
 Call `event_context.prevent_postorder()` to stop later plugins from handling the current event.
+
+#### How it shows up in monitoring
+
+When a plugin calls `prevent_default()` on a message event to take the message over, LangBot's monitoring marks the message as "Handled by plugin author/name", and the Chat or Agent is no longer shown as its handler. What the plugin sends while handling the event is recorded too:
+
+- Replies sent with `event_context.reply()` are recorded as replies to the message. A failed send records a `PluginReplyError` error.
+- Messages sent with `self.plugin.send_message()` are recorded as plugin-sent messages. A failed send records a `PluginSendError` error.
+- Calls to `self.plugin.invoke_llm()` / `invoke_llm_stream()` are recorded as LLM calls.
+
+Linking the plugin's messages and LLM calls to the triggering message needs a Plugin Runtime (`langbot-plugin`) that supports event origin attribution. Older Runtimes still get these records, without the link. Background work that runs after the handler returns is not linked to the message.

@@ -1,5 +1,29 @@
+import type {
+  AlertDelivery,
+  AlertIncident,
+  AlertSettings,
+  AlertSettingsResponse,
+  AlertSummary,
+} from '@/app/infra/entities/alerts';
+import type {
+  ContentSubmissionResult,
+  LibraryPrompt,
+  MCPSharePreview,
+  MyContentSubmission,
+  SpaceOwnedItem,
+  PromptKind,
+  PromptMessage,
+  ShareFinding,
+  ShareMetadata,
+  SpaceShareContext,
+} from '@/app/infra/entities/space-share';
+import type {
+  WorkspaceSandboxSettings,
+  E2BConfigInput,
+} from '@/app/infra/entities/workspace';
 import { BaseHttpClient, type RequestConfig } from './BaseHttpClient';
 import { notifyAfterModelConfigurationChange } from './modelConfigEvents';
+import type { ComponentManifest } from '@/app/infra/entities/common';
 import type {
   PipelineMigrationPreview,
   PipelineMigrationRequest,
@@ -9,6 +33,7 @@ import type {
   InflightFrame,
   ExecutionDetail,
   ExecutionListResult,
+  ExecutionHandlingFilter,
   ExecutionModeFilter,
   ExecutionSource,
   ExecutionSourceFilter,
@@ -28,6 +53,7 @@ import {
   ApiRespAgents,
   ApiRespAgent,
   Agent,
+  CreateAgentRequest,
   Pipeline,
   ApiRespPlatformAdapters,
   ApiRespPlatformAdapter,
@@ -39,12 +65,16 @@ import {
   ApiRespPluginConfig,
   ApiRespExtensions,
   AsyncTaskCreatedResp,
+  GithubRefsResp,
   ApiRespSystemInfo,
   ApiRespAsyncTasks,
   ApiRespUserToken,
   GetPipelineResponseData,
   GetPipelineMetadataResponseData,
   GetAgentMetadataResponseData,
+  AgentPlatformTool,
+  WorkspaceOperationItem,
+  DomainMeta,
   AsyncTask,
   ApiRespWebChatMessages,
   ApiRespKnowledgeBases,
@@ -58,6 +88,12 @@ import {
   ApiRespProviderRerankModels,
   ApiRespProviderRerankModel,
   RerankModel,
+  ApiRespProviderASRModels,
+  ApiRespProviderASRModel,
+  ASRModel,
+  ApiRespProviderTTSModels,
+  ApiRespProviderTTSModel,
+  TTSModel,
   ApiRespPluginSystemStatus,
   ApiRespBoxStatus,
   BoxSessionInfo,
@@ -90,9 +126,10 @@ import {
   BotRouteDryRunRequest,
   BotRouteDryRunResult,
   BotEventRouteStatusResponse,
+  UpgradeChecksResponse,
   ApiRespLangBotModelAvailability,
 } from '@/app/infra/entities/api';
-import { Plugin } from '@/app/infra/entities/plugin';
+import { Plugin, PluginCompatibility } from '@/app/infra/entities/plugin';
 import type {
   PluginLogEntry,
   PluginSpaceUploadConfig,
@@ -106,6 +143,7 @@ import { GetBotLogsRequest } from '@/app/infra/http/requestParam/bots/GetBotLogs
 import { GetBotLogsResponse } from '@/app/infra/http/requestParam/bots/GetBotLogsResponse';
 import type {
   CurrentWorkspace,
+  MessageQuota,
   Workspace,
   WorkspaceInvitation,
   WorkspaceInvitationDelivery,
@@ -127,6 +165,41 @@ import type {
  * 负责与后端 API 的所有交互
  */
 export class BackendClient extends BaseHttpClient {
+  public getWorkspaceSandbox(
+    refresh = false,
+  ): Promise<WorkspaceSandboxSettings> {
+    return this.get(
+      `/api/v1/workspaces/current/sandbox${refresh ? '?refresh=true' : ''}`,
+    );
+  }
+
+  public setWorkspaceSandbox(
+    backend: string,
+    e2b?: E2BConfigInput,
+    limits?: import('@/app/infra/entities/workspace').WorkspaceLimits,
+  ): Promise<WorkspaceSandboxSettings> {
+    return this.put('/api/v1/workspaces/current/sandbox', {
+      backend,
+      ...(e2b ? { e2b } : {}),
+      ...(limits ? { limits } : {}),
+    });
+  }
+
+  public checkWorkspaceSandbox(
+    e2b?: E2BConfigInput,
+  ): Promise<WorkspaceSandboxSettings> {
+    return this.post(
+      '/api/v1/workspaces/current/sandbox/check',
+      e2b ? { e2b } : {},
+    );
+  }
+
+  public testWorkspaceSandbox(
+    e2b: E2BConfigInput,
+  ): Promise<WorkspaceSandboxSettings> {
+    return this.post('/api/v1/workspaces/current/sandbox/test', { e2b });
+  }
+
   public getWorkspaceLanguage(): Promise<{
     language: string;
     supported_languages: string[];
@@ -243,7 +316,7 @@ export class BackendClient extends BaseHttpClient {
 
   public scanProviderModels(
     uuid: string,
-    modelType?: 'llm' | 'embedding' | 'rerank',
+    modelType?: 'llm' | 'embedding' | 'rerank' | 'asr' | 'tts',
   ): Promise<ApiRespScannedProviderModels> {
     const params = modelType ? { type: modelType } : {};
     return this.get(`/api/v1/provider/providers/${uuid}/scan-models`, params);
@@ -357,6 +430,68 @@ export class BackendClient extends BaseHttpClient {
     return this.post(`/api/v1/provider/models/rerank/${uuid}/test`, model);
   }
 
+  // ============ Provider Model ASR ============
+  public getProviderASRModels(
+    providerUuid?: string,
+  ): Promise<ApiRespProviderASRModels> {
+    const params = providerUuid ? { provider_uuid: providerUuid } : {};
+    return this.get('/api/v1/provider/models/asr', params);
+  }
+
+  public getProviderASRModel(uuid: string): Promise<ApiRespProviderASRModel> {
+    return this.get(`/api/v1/provider/models/asr/${uuid}`);
+  }
+
+  public createProviderASRModel(model: ASRModel): Promise<object> {
+    return this.post('/api/v1/provider/models/asr', model);
+  }
+
+  public deleteProviderASRModel(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/models/asr/${uuid}`);
+  }
+
+  public updateProviderASRModel(
+    uuid: string,
+    model: ASRModel,
+  ): Promise<object> {
+    return this.put(`/api/v1/provider/models/asr/${uuid}`, model);
+  }
+
+  public testASRModel(uuid: string, model: ASRModel): Promise<object> {
+    return this.post(`/api/v1/provider/models/asr/${uuid}/test`, model);
+  }
+
+  // ============ Provider Model TTS ============
+  public getProviderTTSModels(
+    providerUuid?: string,
+  ): Promise<ApiRespProviderTTSModels> {
+    const params = providerUuid ? { provider_uuid: providerUuid } : {};
+    return this.get('/api/v1/provider/models/tts', params);
+  }
+
+  public getProviderTTSModel(uuid: string): Promise<ApiRespProviderTTSModel> {
+    return this.get(`/api/v1/provider/models/tts/${uuid}`);
+  }
+
+  public createProviderTTSModel(model: TTSModel): Promise<object> {
+    return this.post('/api/v1/provider/models/tts', model);
+  }
+
+  public deleteProviderTTSModel(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/models/tts/${uuid}`);
+  }
+
+  public updateProviderTTSModel(
+    uuid: string,
+    model: TTSModel,
+  ): Promise<object> {
+    return this.put(`/api/v1/provider/models/tts/${uuid}`, model);
+  }
+
+  public testTTSModel(uuid: string, model: TTSModel): Promise<object> {
+    return this.post(`/api/v1/provider/models/tts/${uuid}/test`, model);
+  }
+
   // ============ Pipeline API ============
   public getAgents(
     sortBy?: string,
@@ -396,7 +531,9 @@ export class BackendClient extends BaseHttpClient {
     );
   }
 
-  public createAgent(agent: Agent): Promise<{ uuid: string; kind: string }> {
+  public createAgent(
+    agent: CreateAgentRequest,
+  ): Promise<{ uuid: string; kind: string }> {
     return this.post('/api/v1/agents', agent);
   }
 
@@ -443,6 +580,13 @@ export class BackendClient extends BaseHttpClient {
     }>;
   }> {
     return this.post(`/api/v1/agents/${uuid}/debug`, payload);
+  }
+
+  public debugCommandProcessor(
+    uuid: string,
+    text: string,
+  ): Promise<import('../entities/api').CommandDebugResult> {
+    return this.post(`/api/v1/agents/${uuid}/debug`, { text });
   }
 
   public async streamDebugAgent(
@@ -599,6 +743,8 @@ export class BackendClient extends BaseHttpClient {
   }
 
   public getPipelineExtensions(uuid: string): Promise<{
+    available_platform_tools?: AgentPlatformTool[];
+    allowed_platform_tools?: string[];
     enable_all_plugins: boolean;
     enable_all_mcp_servers: boolean;
     enable_all_skills: boolean;
@@ -618,6 +764,9 @@ export class BackendClient extends BaseHttpClient {
     }>;
     bound_skills: string[];
     available_skills: Skill[];
+    workspace_operations?: string[];
+    available_workspace_operations?: WorkspaceOperationItem[];
+    domains?: DomainMeta[];
   }> {
     return this.get(`/api/v1/pipelines/${uuid}/extensions`);
   }
@@ -640,6 +789,8 @@ export class BackendClient extends BaseHttpClient {
       max_tokens?: number;
     }>,
     mcp_resource_agent_read_enabled?: boolean,
+    workspace_operations?: string[],
+    allowed_platform_tools?: string[],
   ): Promise<object> {
     const payload: Record<string, unknown> = {
       bound_plugins,
@@ -654,6 +805,12 @@ export class BackendClient extends BaseHttpClient {
     }
     if (mcp_resource_agent_read_enabled !== undefined) {
       payload.mcp_resource_agent_read_enabled = mcp_resource_agent_read_enabled;
+    }
+    if (workspace_operations !== undefined) {
+      payload.workspace_operations = workspace_operations;
+    }
+    if (allowed_platform_tools !== undefined) {
+      payload.allowed_platform_tools = allowed_platform_tools;
     }
     return this.put(`/api/v1/pipelines/${uuid}/extensions`, payload);
   }
@@ -742,12 +899,54 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/platform/bots/${uuid}`);
   }
 
+  public getBuiltinCommands(): Promise<{
+    commands: import('../entities/api').BuiltinCommandDescriptor[];
+  }> {
+    return this.get('/api/v1/platform/bots/_/builtin-commands');
+  }
+
+  public getMessagePolicyMetadata(): Promise<
+    import('../entities/api').MessagePolicyMetadata
+  > {
+    return this.get('/api/v1/platform/bots/_/message-policy/metadata');
+  }
+
+  public getBotPluginRegistrations(
+    uuid: string,
+    options: { routeId?: string; includeDisabled?: boolean } = {},
+  ): Promise<import('../entities/api').ApiRespPluginRegistrations> {
+    const params = new URLSearchParams();
+    if (options.routeId) params.set('route_id', options.routeId);
+    if (options.includeDisabled) params.set('include_disabled', '1');
+    const query = params.toString();
+    return this.get(
+      `/api/v1/platform/bots/${uuid}/plugin-registrations${query ? `?${query}` : ''}`,
+    );
+  }
+
+  public syncBotPlatformCommands(
+    uuid: string,
+  ): Promise<import('../entities/api').PlatformCommandSync> {
+    return this.post(`/api/v1/bots/${uuid}/platform-commands/sync`, {});
+  }
+
   public createBot(bot: Bot): Promise<{ uuid: string }> {
     return this.post('/api/v1/platform/bots', bot);
   }
 
   public updateBot(uuid: string, bot: Partial<Bot>): Promise<object> {
     return this.put(`/api/v1/platform/bots/${uuid}`, bot);
+  }
+
+  public callBotPlatformApi<T = Record<string, unknown>>(
+    botId: string,
+    action: string,
+    params: Record<string, unknown> = {},
+  ): Promise<T> {
+    return this.post(`/api/v1/platform/bots/${botId}/platform-api`, {
+      action,
+      params,
+    });
   }
 
   public dryRunBotEventRoute(
@@ -758,6 +957,28 @@ export class BackendClient extends BaseHttpClient {
       `/api/v1/platform/bots/${botId}/event-routes/dry-run`,
       request,
     );
+  }
+
+  public getUpgradeChecks(): Promise<UpgradeChecksResponse> {
+    return this.get('/api/v1/platform/bots/_/upgrade-checks');
+  }
+
+  public runUpgradeCheckAction(
+    id: string,
+    action: string,
+  ): Promise<{ id?: string; action?: string; task_id?: number }> {
+    return this.post('/api/v1/platform/bots/_/upgrade-checks/action', {
+      id,
+      action,
+    });
+  }
+
+  public confirmUpgradeCheck(id: string): Promise<{ confirmed: string[] }> {
+    return this.post('/api/v1/platform/bots/_/upgrade-checks/confirm', { id });
+  }
+
+  public confirmAllUpgradeChecks(): Promise<{ confirmed: string[] }> {
+    return this.post('/api/v1/platform/bots/_/upgrade-checks/confirm-all');
   }
 
   public getBotEventRouteStatuses(
@@ -815,6 +1036,7 @@ export class BackendClient extends BaseHttpClient {
       startTime?: string;
       endTime?: string;
       userQuery?: string;
+      launcherId?: string;
     },
   ): Promise<{
     sessions: Array<{
@@ -845,6 +1067,9 @@ export class BackendClient extends BaseHttpClient {
     }
     if (options.userQuery) {
       queryParams.append('userQuery', options.userQuery);
+    }
+    if (options.launcherId) {
+      queryParams.append('launcherId', options.launcherId);
     }
     return this.get(`/api/v1/monitoring/sessions?${queryParams.toString()}`);
   }
@@ -1001,6 +1226,10 @@ export class BackendClient extends BaseHttpClient {
     return this.get('/api/v1/plugins');
   }
 
+  public getPluginCommands(): Promise<{ commands: ComponentManifest[] }> {
+    return this.get('/api/v1/plugins/commands');
+  }
+
   public getPlugin(author: string, name: string): Promise<ApiRespPlugin> {
     return this.get(`/api/v1/plugins/${author}/${name}`);
   }
@@ -1098,10 +1327,12 @@ export class BackendClient extends BaseHttpClient {
   private async getAuthenticatedObjectURL(
     path: string,
     rewritePluginPageSdk = false,
+    workspaceUuid?: string | null,
   ): Promise<string> {
     const response = await this.instance.get<Blob>(path, {
       responseType: 'blob',
-    });
+      workspaceUuid,
+    } as RequestConfig);
     let blob = response.data;
     if (rewritePluginPageSdk && blob.type.startsWith('text/html')) {
       const apiBase =
@@ -1127,10 +1358,12 @@ export class BackendClient extends BaseHttpClient {
     author: string,
     name: string,
     filepath: string,
+    workspaceUuid?: string | null,
   ): Promise<string> {
     return this.getAuthenticatedObjectURL(
       `/api/v1/plugins/${author}/${name}/authenticated-assets/${filepath}`,
       true,
+      workspaceUuid,
     );
   }
 
@@ -1181,6 +1414,7 @@ export class BackendClient extends BaseHttpClient {
     owner: string,
     repo: string,
     releaseTag: string,
+    allowIncompatible = false,
   ): Promise<AsyncTaskCreatedResp> {
     return this.post('/api/v1/plugins/install/github', {
       asset_id: assetId,
@@ -1188,7 +1422,29 @@ export class BackendClient extends BaseHttpClient {
       owner,
       repo,
       release_tag: releaseTag,
+      ...(allowIncompatible ? { allow_incompatible: true } : {}),
     });
+  }
+
+  public installPluginFromGithubBranch(
+    owner: string,
+    repo: string,
+    ref: string,
+    sourceSubdir: string,
+    allowIncompatible = false,
+  ): Promise<AsyncTaskCreatedResp> {
+    return this.post('/api/v1/plugins/install/github', {
+      source_type: 'branch',
+      owner,
+      repo,
+      ref,
+      source_subdir: sourceSubdir,
+      ...(allowIncompatible ? { allow_incompatible: true } : {}),
+    });
+  }
+
+  public getGithubRefs(repoUrl: string): Promise<GithubRefsResp> {
+    return this.post('/api/v1/plugins/github/refs', { repo_url: repoUrl });
   }
 
   public getGithubReleases(repoUrl: string): Promise<{
@@ -1235,9 +1491,15 @@ export class BackendClient extends BaseHttpClient {
     });
   }
 
-  public installPluginFromLocal(file: File): Promise<AsyncTaskCreatedResp> {
+  public installPluginFromLocal(
+    file: File,
+    allowIncompatible = false,
+  ): Promise<AsyncTaskCreatedResp> {
     const formData = new FormData();
     formData.append('file', file);
+    if (allowIncompatible) {
+      formData.append('allow_incompatible', 'true');
+    }
     return this.postFile('/api/v1/plugins/install/local', formData);
   }
 
@@ -1257,6 +1519,8 @@ export class BackendClient extends BaseHttpClient {
     component_counts: Record<string, number>;
     requirements: string[];
     file_count: number;
+    /** Absent on Core builds that predate version compatibility. */
+    compatibility?: PluginCompatibility;
   }> {
     const formData = new FormData();
     formData.append('file', file);
@@ -1322,11 +1586,13 @@ export class BackendClient extends BaseHttpClient {
     author: string,
     name: string,
     version: string,
+    autoConfirmPermissions = false,
   ): Promise<AsyncTaskCreatedResp> {
     return this.post('/api/v1/plugins/install/marketplace', {
       plugin_author: author,
       plugin_name: name,
       plugin_version: version,
+      ...(autoConfirmPermissions ? { auto_confirm_permissions: true } : {}),
     });
   }
 
@@ -1552,6 +1818,121 @@ export class BackendClient extends BaseHttpClient {
       `/api/v1/plugins/${encodeURIComponent(author)}/${encodeURIComponent(name)}/space-upload/git-sync`,
       payload,
     );
+  }
+
+  // ============ LangBot Space sharing / prompt library (LANG-439) ============
+  public getSpaceShareContext(): Promise<SpaceShareContext> {
+    return this.get('/api/v1/space-share/context');
+  }
+
+  public listLibraryPrompts(params: {
+    kind?: PromptKind;
+    q?: string;
+    sort?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<{ prompts: LibraryPrompt[]; total: number }> {
+    return this.get('/api/v1/space-share/prompts/library', params);
+  }
+
+  public trackLibraryPromptUse(
+    author: string,
+    name: string,
+    kind?: PromptKind,
+  ): Promise<object> {
+    return this.post(
+      `/api/v1/space-share/prompts/library/${encodeURIComponent(author)}/${encodeURIComponent(name)}/use`,
+      { kind },
+    );
+  }
+
+  public listFavoritePrompts(kind?: PromptKind): Promise<{
+    available: boolean;
+    prompts: LibraryPrompt[];
+    prompt_ids: string[];
+  }> {
+    return this.get('/api/v1/space-share/prompts/favorites', { kind });
+  }
+
+  public setPromptFavorite(
+    author: string,
+    name: string,
+    favorite: boolean,
+  ): Promise<{ favorited: boolean; favorite_count: number }> {
+    const url = `/api/v1/space-share/prompts/favorites/${encodeURIComponent(author)}/${encodeURIComponent(name)}`;
+    return favorite ? this.put(url) : this.delete(url);
+  }
+
+  public previewPromptShare(payload: {
+    kind: PromptKind;
+    messages: PromptMessage[];
+  }): Promise<{ payload: object; findings: ShareFinding[] }> {
+    return this.post('/api/v1/space-share/prompts/preview', payload);
+  }
+
+  public sharePrompt(
+    payload: ShareMetadata & {
+      kind: PromptKind;
+      language: string;
+      messages: PromptMessage[];
+      variables: { name: string; description?: string }[];
+      acknowledge_warnings?: boolean;
+    },
+  ): Promise<ContentSubmissionResult> {
+    return this.post('/api/v1/space-share/prompts', payload);
+  }
+
+  public previewSkillShare(skillName: string): Promise<{
+    files: { path: string; size: number }[];
+    findings: ShareFinding[];
+    size: number;
+  }> {
+    return this.get(
+      `/api/v1/space-share/skills/${encodeURIComponent(skillName)}/preview`,
+    );
+  }
+
+  public shareSkill(
+    skillName: string,
+    payload: ShareMetadata,
+  ): Promise<ContentSubmissionResult> {
+    return this.post(
+      `/api/v1/space-share/skills/${encodeURIComponent(skillName)}`,
+      payload,
+    );
+  }
+
+  public previewMCPShare(
+    serverName: string,
+    overrides?: object,
+  ): Promise<MCPSharePreview> {
+    return this.post(
+      `/api/v1/space-share/mcp/${encodeURIComponent(serverName)}/preview`,
+      { overrides },
+    );
+  }
+
+  public shareMCP(
+    serverName: string,
+    payload: ShareMetadata & { overrides?: object },
+  ): Promise<ContentSubmissionResult> {
+    return this.post(
+      `/api/v1/space-share/mcp/${encodeURIComponent(serverName)}`,
+      payload,
+    );
+  }
+
+  public listMySpaceItems(
+    type: SpaceOwnedItem['item_type'],
+  ): Promise<{ available: boolean; items: SpaceOwnedItem[] }> {
+    return this.get('/api/v1/space-share/items', { type });
+  }
+
+  public listMyContentSubmissions(): Promise<{
+    available: boolean;
+    submissions: MyContentSubmission[];
+  }> {
+    return this.get('/api/v1/space-share/submissions');
   }
 
   public getBoxRuntimeStatus(): Promise<ApiRespBoxStatus> {
@@ -1901,6 +2282,10 @@ export class BackendClient extends BaseHttpClient {
     return this.get('/api/v1/workspaces/current');
   }
 
+  public getMessageQuota(): Promise<MessageQuota> {
+    return this.get('/api/v1/workspaces/current/message-quota');
+  }
+
   public getWorkspace(
     workspaceUuid: string,
   ): Promise<{ workspace: Workspace }> {
@@ -1989,6 +2374,34 @@ export class BackendClient extends BaseHttpClient {
   }
 
   // ============ Workspace governance / operation traceability ============
+
+  public getAlertSettings(): Promise<AlertSettingsResponse> {
+    return this.get('/api/v1/alerts/settings');
+  }
+
+  public updateAlertSettings(
+    settings: AlertSettings,
+  ): Promise<{ settings: AlertSettings }> {
+    return this.put('/api/v1/alerts/settings', settings);
+  }
+
+  public getAlertSummary(): Promise<AlertSummary> {
+    return this.get('/api/v1/alerts/summary');
+  }
+
+  public getAlertIncidents(
+    state?: 'firing' | 'resolved',
+  ): Promise<{ incidents: AlertIncident[] }> {
+    return this.get('/api/v1/alerts/incidents', state ? { state } : undefined);
+  }
+
+  public getAlertDeliveries(): Promise<{ deliveries: AlertDelivery[] }> {
+    return this.get('/api/v1/alerts/deliveries');
+  }
+
+  public sendTestAlert(): Promise<{ deliveries: AlertDelivery[] }> {
+    return this.post('/api/v1/alerts/test', {});
+  }
 
   public getOperationGovernance(): Promise<OperationGovernance> {
     return this.get('/api/v1/settings/governance');
@@ -2231,6 +2644,7 @@ export class BackendClient extends BaseHttpClient {
       start_time: string;
       platform?: string;
       user_id?: string;
+      user_name?: string;
     }>;
     errors: Array<{
       id: string;
@@ -2321,6 +2735,7 @@ export class BackendClient extends BaseHttpClient {
     status?: string[];
     source?: ExecutionSourceFilter;
     mode?: ExecutionModeFilter;
+    handling?: ExecutionHandlingFilter;
     startTime?: string;
     endTime?: string;
     limit?: number;
@@ -2357,8 +2772,28 @@ export class BackendClient extends BaseHttpClient {
     if (params.offset) {
       queryParams.append('offset', params.offset.toString());
     }
+    if (params.handling && params.handling !== 'all') {
+      queryParams.append('handling', params.handling);
+    }
 
     return this.get(`/api/v1/monitoring/executions?${queryParams.toString()}`);
+  }
+
+  /** Count-only read of the current Workspace's executions (no aggregates). */
+  public async getExecutionTotal(params: {
+    source: ExecutionSourceFilter;
+    mode?: ExecutionModeFilter;
+  }): Promise<number> {
+    const queryParams = new URLSearchParams({
+      source: params.source,
+      mode: params.mode ?? 'all',
+      limit: '1',
+      summary: 'false',
+    });
+    const result = await this.get<{ total: number }>(
+      `/api/v1/monitoring/executions?${queryParams.toString()}`,
+    );
+    return Number(result?.total) || 0;
   }
 
   public getExecutionDetail(

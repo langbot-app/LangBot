@@ -105,6 +105,6 @@ async def test_normal_query_sends_no_legacy_payload_and_annotates_the_trace(monk
     ap.survey.record_bot_response_success.assert_awaited_once()
     # Execution-scoped fields are attached to the owning trace instead.
     assert binding.state.runner == 'runner-1'
-    assert binding.state.runner_category == 'unknown'
+    assert binding.state.runner_category == 'embedded'
     assert binding.state.pipeline_plugins == ['plugin:a']
     assert binding.state.model_name == ''

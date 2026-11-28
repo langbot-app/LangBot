@@ -191,7 +191,9 @@ async def test_marketplace_version_selection_keeps_certificate_gate_and_single_a
         binding,
         artifact_package=package,
         enabled=True,
-        execution_mode=(PluginExecutionMode.SHARED_CERTIFIED if archive_kind == 'signed_shared' else PluginExecutionMode.DEDICATED),
+        execution_mode=(
+            PluginExecutionMode.SHARED_CERTIFIED if archive_kind == 'signed_shared' else PluginExecutionMode.DEDICATED
+        ),
     )
     connector._refresh_runner_registry.assert_awaited_once()
     assert task_context.metadata['progress_percent'] == 100
@@ -237,11 +239,32 @@ def _connector(deployment: str, trusted_public_keys: dict[str, str]):
     connector._current_execution_context = AsyncMock(return_value=execution_context)
     connector._store_artifact_package = AsyncMock()
     connector._persist_installation_package = AsyncMock(return_value=(binding, None, False))
+    # The persisted installation decides whether the Runtime starts it enabled.
+    connector._setting_for_plugin = AsyncMock(return_value=(execution_context, SimpleNamespace(enabled=True)))
     connector._wait_for_installed_plugin_ready = AsyncMock()
     return connector, execution_context, binding
 
 
-def _archive(kind: str) -> tuple[bytes, dict[str, str]]:
+@pytest.mark.asyncio
+async def test_incompatible_local_archive_requires_confirmation_before_storage():
+    from langbot.pkg.api.application.contracts import ApplicationAPIException
+
+    package, keys = _archive('legacy', {'langbot': {'min': '99'}})
+    connector, _, _ = _connector('oss', keys)
+    with pytest.raises(ApplicationAPIException) as error:
+        await connector.install_plugin(PluginInstallSource.LOCAL, {'plugin_file': package})
+    assert error.value.error.code == 'plugin_incompatible_langbot_version'
+    assert error.value.error.details['min'] == '99'
+    assert (
+        error.value.error.message
+        == f'The declared LangBot version range is incompatible with the current version ({error.value.error.details["current"]})'
+    )
+    connector._store_artifact_package.assert_not_awaited()
+    await connector.install_plugin(PluginInstallSource.LOCAL, {'plugin_file': package, 'allow_incompatible': True})
+    connector._store_artifact_package.assert_awaited_once()
+
+
+def _archive(kind: str, compatibility=None) -> tuple[bytes, dict[str, str]]:
     manifest = {
         'metadata': {'author': 'certified', 'name': 'example', 'version': '1.0.0'},
         'execution': {
@@ -251,6 +274,8 @@ def _archive(kind: str) -> tuple[bytes, dict[str, str]]:
     }
     if kind == 'legacy':
         manifest.pop('execution')
+    if compatibility is not None:
+        manifest['metadata']['compatibility'] = compatibility
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, 'w') as package:
         package.writestr('manifest.yaml', yaml.safe_dump(manifest))

@@ -4,7 +4,7 @@ metadata:
   author: RockChinQ
   name: GitHubKit
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/GitHubKit
-  version: 0.2.2
+  version: 0.2.3
   description:
     en_US: 'GitHub integration for your IM: query repos / issues / PRs / releases / users, search, and subscribe chats to repository event push (commits, PRs, issues, releases, stars) via background polling.'
     zh_Hans: 'IM 里的 GitHub 工具箱:查询仓库/Issue/PR/Release/用户、搜索,并可订阅仓库事件推送(提交、PR、Issue、Release、Star),后台轮询自动播报到当前会话。'

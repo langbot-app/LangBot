@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import sys
 import uuid
 
 import sqlalchemy
@@ -10,7 +12,7 @@ from ..core import app
 from ..entity.persistence import rag as persistence_rag
 from ..entity.persistence import workspace as persistence_workspace
 from ..workspace.errors import WorkspaceNotFoundError
-from .vdb import VectorDatabase, SearchType
+from .vdb import VectorDatabase
 
 
 class VectorDBManager:
@@ -19,8 +21,43 @@ class VectorDBManager:
 
     def __init__(self, ap: app.Application):
         self.ap = ap
+        self.vector_db = None
+        self._closed = False
+        self._init_lock = asyncio.Lock()
 
     async def initialize(self):
+        await self._ensure_backend()
+
+    async def _ensure_backend(self) -> VectorDatabase:
+        """Create the backend off the event loop on first use.
+
+        Importing a backend and opening its client (Chroma in particular) can
+        block for tens of seconds on slow hosts. Doing that on the loop stalls
+        every connection Core owns, and the plugin Runtime WebSocket drops in
+        the middle of the first knowledge-base ingestion.
+        """
+        if self.vector_db is not None:
+            return self.vector_db
+        async with self._init_lock:
+            if self._closed:
+                raise RuntimeError('Vector database manager is closed')
+            if self.vector_db is None:
+                await asyncio.to_thread(self._initialize_backend)
+            if self._closed and self.vector_db is not None:
+                vector_db, self.vector_db = self.vector_db, None
+                await vector_db.close()
+                raise RuntimeError('Vector database manager is closed')
+        return self.vector_db
+
+    def _get_backend(self) -> VectorDatabase:
+        if self._closed:
+            raise RuntimeError('Vector database manager is closed')
+        if self.vector_db is None:
+            # Constructors do not await, so concurrent requests on this loop share one backend.
+            self._initialize_backend()
+        return self.vector_db
+
+    def _initialize_backend(self):
         kb_config = self.ap.instance_config.data.get('vdb')
         if kb_config:
             vdb_type = kb_config.get('use')
@@ -67,7 +104,7 @@ class VectorDBManager:
                 use_business_database = pgvector_config.get('use_business_database', False)
                 allowed_dimensions = pgvector_config.get(
                     'allowed_dimensions',
-                    [384, 512, 768, 1024, 1536, 3072],
+                    [384, 512, 768, 1024, 1536, 2048, 3072],
                 )
                 common_options = {
                     'use_business_database': use_business_database,
@@ -116,6 +153,7 @@ class VectorDBManager:
     async def shutdown(self) -> None:
         """Release the active vector backend deterministically."""
 
+        self._closed = True
         vector_db = self.vector_db
         self.vector_db = None
         if vector_db is not None:
@@ -123,9 +161,7 @@ class VectorDBManager:
 
     def get_supported_search_types(self) -> list[str]:
         """Return the search types supported by the current VDB backend."""
-        if self.vector_db is None:
-            return [SearchType.VECTOR.value]
-        return [st.value for st in self.vector_db.supported_search_types()]
+        return [st.value for st in self._get_backend().supported_search_types()]
 
     @staticmethod
     def physical_collection_name(
@@ -226,10 +262,12 @@ class VectorDBManager:
 
         return self.physical_collection_name(execution_context, knowledge_base_uuid)
 
-    def _pgvector_database(self):
-        from .vdbs.pgvector_db import PgVectorDatabase
-
-        return self.vector_db if isinstance(self.vector_db, PgVectorDatabase) else None
+    async def _pgvector_database(self):
+        backend = await self._ensure_backend()
+        pgvector_module = sys.modules.get(f'{__package__}.vdbs.pgvector_db')
+        if pgvector_module is None:
+            return None
+        return backend if isinstance(backend, pgvector_module.PgVectorDatabase) else None
 
     async def _resolve_pgvector_scope(
         self,
@@ -238,16 +276,26 @@ class VectorDBManager:
         *,
         expected_dimension: int | None,
         initialize_dimension: bool,
+        allow_unbound: bool = False,
     ):
-        """Bind and verify the server-owned knowledge-base vector dimension."""
+        """Bind and verify the server-owned knowledge-base vector dimension.
+
+        With ``allow_unbound`` a knowledge base that has never stored a vector
+        (no dimension selected yet) yields a scope whose dimension is None
+        instead of raising, so read paths can treat it as empty.
+        """
 
         from .vdbs.pgvector_db import PgVectorScope
 
-        pgvector = self._pgvector_database()
+        pgvector = await self._pgvector_database()
         if pgvector is None:  # pragma: no cover - private call invariant
             raise RuntimeError('pgvector scope requested for another vector backend')
         if expected_dimension is not None and expected_dimension not in pgvector.allowed_dimensions:
-            raise ValueError(f'Embedding dimension {expected_dimension} is not enabled for this deployment')
+            enabled = ', '.join(str(item) for item in sorted(pgvector.allowed_dimensions))
+            raise ValueError(
+                f'Embedding dimension {expected_dimension} is not enabled for this deployment '
+                f'(enabled: {enabled}); choose an embedding model with an enabled dimension'
+            )
 
         async with self.ap.persistence_mgr.tenant_uow(execution_context.workspace_uuid):
             query = sqlalchemy.select(persistence_rag.KnowledgeBase.embedding_dimension).where(
@@ -269,6 +317,12 @@ class VectorDBManager:
 
             if expected_dimension is not None and current_dimension != expected_dimension:
                 if current_dimension is None:
+                    if allow_unbound:
+                        return PgVectorScope(
+                            workspace_uuid=execution_context.workspace_uuid,
+                            knowledge_base_uuid=knowledge_base_uuid,
+                            embedding_dimension=None,
+                        )
                     raise ValueError('Knowledge base has no selected pgvector embedding dimension')
                 raise ValueError(f'Knowledge base embedding dimension is {current_dimension}, not {expected_dimension}')
 
@@ -303,7 +357,7 @@ class VectorDBManager:
             }
             for item in source_metadata
         ]
-        pgvector = self._pgvector_database()
+        pgvector = await self._pgvector_database()
         if pgvector is not None:
             if not vectors:
                 return
@@ -351,7 +405,7 @@ class VectorDBManager:
             execution_context,
             knowledge_base_uuid,
         )
-        pgvector = self._pgvector_database()
+        pgvector = await self._pgvector_database()
         if pgvector is not None:
             scope = await self._resolve_pgvector_scope(
                 execution_context,
@@ -361,7 +415,14 @@ class VectorDBManager:
                 # mask the backend capability error.
                 expected_dimension=len(query_vector) or None,
                 initialize_dimension=False,
+                allow_unbound=True,
             )
+            if scope.embedding_dimension is None and query_vector:
+                # No vector has ever been written, so the knowledge base is
+                # empty: a vector search has nothing to match. Failing here
+                # broke retrieval for every new or still-empty knowledge base
+                # (e.g. LongTermMemory before its first memory is stored).
+                return []
             results = await pgvector.search(
                 collection=collection_name,
                 query_embedding=query_vector,
@@ -422,7 +483,7 @@ class VectorDBManager:
             execution_context,
             knowledge_base_uuid,
         )
-        pgvector = self._pgvector_database()
+        pgvector = await self._pgvector_database()
         scope = None
         if pgvector is not None:
             scope = await self._resolve_pgvector_scope(
@@ -448,7 +509,7 @@ class VectorDBManager:
             execution_context,
             knowledge_base_uuid,
         )
-        pgvector = self._pgvector_database()
+        pgvector = await self._pgvector_database()
         if pgvector is not None:
             scope = await self._resolve_pgvector_scope(
                 execution_context,
@@ -475,7 +536,7 @@ class VectorDBManager:
             execution_context,
             knowledge_base_uuid,
         )
-        pgvector = self._pgvector_database()
+        pgvector = await self._pgvector_database()
         if pgvector is not None:
             scope = await self._resolve_pgvector_scope(
                 execution_context,
@@ -503,7 +564,7 @@ class VectorDBManager:
             execution_context,
             knowledge_base_uuid,
         )
-        pgvector = self._pgvector_database()
+        pgvector = await self._pgvector_database()
         if pgvector is not None:
             scope = await self._resolve_pgvector_scope(
                 execution_context,

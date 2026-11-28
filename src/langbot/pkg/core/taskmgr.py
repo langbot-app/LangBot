@@ -8,10 +8,12 @@ import typing
 import datetime
 import time
 
-from . import app
 from . import entities as core_entities
 from .errors import TaskCapacityError
 from .task_boundary import create_detached_task
+
+if typing.TYPE_CHECKING:
+    from . import app
 
 
 class TaskContext:
@@ -170,6 +172,15 @@ class TaskWrapper:
 
     def to_dict(self) -> dict:
         exception_traceback = None
+        from ..api.application.contracts import ApplicationAPIException
+
+        exception = self.assume_exception()
+        error = {}
+        if (
+            isinstance(exception, ApplicationAPIException)
+            and exception.error.code == 'plugin_incompatible_langbot_version'
+        ):
+            error = {'error': {'code': exception.error.code, 'details': exception.error.details}}
         if self.assume_exception() is not None:
             exception_traceback = 'Traceback (most recent call last):\n'
 
@@ -192,6 +203,7 @@ class TaskWrapper:
             'created_at': self.created_at,
             'task_context': self.task_context.to_dict(),
             'runtime': {
+                **error,
                 'done': self.task.done(),
                 'state': self.task._state,
                 'exception': self.assume_exception().__str__() if self.assume_exception() is not None else None,
@@ -215,6 +227,15 @@ class TaskWrapper:
             if exception is not None:
                 status = 'failed'
                 error = {'type': 'task_failed', 'message': t('Task execution failed')}
+                from ..api.application.contracts import ApplicationAPIException
+                from ..api.authz import PermissionDeniedError
+
+                if isinstance(exception, ApplicationAPIException):
+                    error['code'] = exception.error.code
+                    if exception.error.code == 'plugin_incompatible_langbot_version':
+                        error.update(details=exception.error.details, message=exception.error.message)
+                elif isinstance(exception, PermissionDeniedError):
+                    error['code'] = exception.error_code
                 result = None
             else:
                 status = 'succeeded'
@@ -225,7 +246,7 @@ class TaskWrapper:
                 except (TypeError, ValueError):
                     result = None
 
-        return {
+        projection = {
             'id': self.id,
             'task_type': self.task_type,
             'kind': self.kind,
@@ -234,6 +255,9 @@ class TaskWrapper:
             'result': result,
             'created_at': self.created_at,
         }
+        if self.task_context.metadata.get('pending_permission_confirmation'):
+            projection['pending_permission_confirmation'] = True
+        return projection
 
     def cancel(self):
         self.task.cancel()

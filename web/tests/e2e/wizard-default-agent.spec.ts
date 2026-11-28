@@ -37,7 +37,7 @@ for (const failsFirst of [false, true]) {
       });
     });
     await page.route(
-      '**/api/v1/marketplace/plugins/langbot-team/LocalAgent',
+      /\/api\/v1\/marketplace\/plugins\/langbot-team\/LocalAgent(\?.*)?$/,
       async (route) => {
         await route.fulfill({
           contentType: 'application/json',
@@ -58,6 +58,7 @@ for (const failsFirst of [false, true]) {
         plugin_author: 'langbot-team',
         plugin_name: 'LocalAgent',
         plugin_version: '0.1.7',
+        auto_confirm_permissions: true,
       });
       order.push('install');
       await route.fulfill({

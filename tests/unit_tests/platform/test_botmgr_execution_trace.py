@@ -49,6 +49,7 @@ def make_bot(event_bindings: list[dict], config=None, agent=None):
     bot.placement_generation = TEST_CONTEXT.placement_generation
     bot.logger = SimpleNamespace(info=AsyncMock(), warning=AsyncMock(), error=AsyncMock(), debug=AsyncMock())
     bot.adapter = FakeAdapter()
+    bot._begin_message = AsyncMock(return_value=(None, False))
     bot.ap = SimpleNamespace(
         workspace_service=SimpleNamespace(get_execution_binding=AsyncMock()),
         telemetry=SimpleNamespace(execution=counters),
@@ -261,7 +262,8 @@ async def test_matched_target_failure_is_retained_even_after_root_success(mode):
     records = await flushed_records(counters, manager)
     (chain,) = execution_chains(records)
     assert chain['outcome'] == 'failed'
-    assert chain['error'] == 'processor_not_found'
+    # The failure code leads; the human reason follows for debugging.
+    assert chain['error'].startswith('processor_not_found')
     if mode == 'failures':
         assert execution_nodes(records) == []
     await counters.shutdown()
@@ -338,7 +340,12 @@ async def test_matching_subscription_admits_chain_regardless_of_primary_order(pr
     assert all(node['outcome'] == 'success' for node in nodes)
     (root,) = [node for node in nodes if node['root']]
     assert root['family'] == 'platform_event'
-    assert all(node['parent_node_id'] == root['node_id'] for node in nodes if not node['root'])
+    # The route step opens before delivery, so the run it delivered to nests under it.
+    (route,) = [node for node in nodes if node['family'] == 'event_route']
+    (runner,) = [node for node in nodes if node['family'] == 'runner']
+    assert route['parent_node_id'] == root['node_id']
+    assert runner['parent_node_id'] == route['node_id']
+    assert root['seq'] < route['seq'] < runner['seq']
     assert all(node['event_id'] == chain['event_id'] for node in nodes)
     await counters.shutdown()
 
@@ -359,8 +366,16 @@ async def test_unmatched_subscription_cannot_admit_event(kind):
     await assert_no_upload(counters, manager)
 
 
-@pytest.mark.parametrize('failure', [RuntimeError('runner failed'), TimeoutError('timeout'), asyncio.CancelledError()])
-async def test_matched_subscription_keeps_failed_timeout_and_cancelled_execution(failure):
+@pytest.mark.parametrize(
+    ('failure', 'outcome'),
+    [
+        (RuntimeError('runner failed'), 'failed'),
+        (TimeoutError('timeout'), 'failed'),
+        # A stopped run, a superseding message or a shutdown is not a failure.
+        (asyncio.CancelledError(), 'cancelled'),
+    ],
+)
+async def test_matched_subscription_keeps_failed_timeout_and_cancelled_execution(failure, outcome):
     bot, manager, counters = make_bot([], config={'url': 'https://space.example.test', 'execution_trace': 'failures'})
     install_processor(bot)
 
@@ -371,34 +386,59 @@ async def test_matched_subscription_keeps_failed_timeout_and_cancelled_execution
     bot.ap.agent_run_orchestrator.run = run
     await bot._handle_platform_event(message_received_event(), FakeAdapter())
     (chain,) = execution_chains(await flushed_records(counters, manager))
-    assert chain['outcome'] == 'failed'
+    assert chain['outcome'] == outcome
     assert chain['error']
+
+
+async def test_agent_route_failure_reports_the_exception_not_only_the_failure_code():
+    bot, manager, counters = make_bot(
+        [business_route()],
+        agent={'kind': 'agent', 'supported_event_patterns': ['*'], 'component_ref': 'plugin:test/runner/default'},
+    )
+    bot._agent_product_to_binding = Mock(return_value=SimpleNamespace())
+    bot._eba_event_to_agent_envelope = Mock(return_value=SimpleNamespace(delivery=SimpleNamespace()))
+
+    async def run(*args, **kwargs):
+        raise RuntimeError('model endpoint refused the request')
+        yield
+
+    bot.ap.agent_run_orchestrator = SimpleNamespace(
+        run=run, try_claim_steering_from_event=AsyncMock(return_value=False)
+    )
+    await bot._handle_platform_event(message_received_event(), FakeAdapter())
+    records = await flushed_records(counters, manager)
+    (chain,) = execution_chains(records)
+    assert chain['outcome'] == 'failed'
+    assert chain['error'].startswith('RuntimeError: model endpoint refused the request')
+    (route,) = [node for node in execution_nodes(records) if node['family'] == 'event_route']
+    assert route['error'].startswith('RuntimeError: model endpoint refused the request')
     await counters.shutdown()
 
 
-@pytest.mark.parametrize('processor', ['agent', 'pipeline', 'invalid', 'expired', 'duplicate'])
-async def test_interaction_admission_requires_valid_callback(processor):
-    from langbot_plugin.api.entities.builtin.platform import events
+async def test_invalid_agent_configuration_reports_the_exception():
+    bot, manager, counters = make_bot(
+        [business_route()],
+        agent={'kind': 'agent', 'supported_event_patterns': ['*'], 'component_ref': 'plugin:test/runner/default'},
+    )
+    bot._agent_product_to_binding = Mock(side_effect=KeyError('runner_config'))
+    await bot._handle_platform_event(message_received_event(), FakeAdapter())
+    (chain,) = execution_chains(await flushed_records(counters, manager))
+    assert chain['outcome'] == 'failed'
+    assert chain['error'].startswith("KeyError: 'runner_config'")
+    await counters.shutdown()
+    await counters.shutdown()
+
+
+async def test_interaction_callback_failure_does_not_start_a_traced_run():
+    from langbot_plugin.api.entities.builtin.platform.events import InteractionCallbackEvent
 
     bot, manager, counters = make_bot([])
-    callbacks = SimpleNamespace(
-        consume_callback=AsyncMock(return_value={'processor_type': processor, 'processor_id': 'target'}),
-        acknowledge_submission=AsyncMock(),
-    )
-    if processor in {'expired', 'duplicate'}:
-        callbacks.consume_callback.side_effect = ValueError(processor)
+    callbacks = SimpleNamespace(consume_callback=AsyncMock(side_effect=RuntimeError('store unavailable')))
     bot.ap.agent_run_orchestrator = SimpleNamespace(interaction_manager=callbacks)
-    bot._resume_agent_interaction = AsyncMock(side_effect=ValueError('target unavailable'))
-    event = events.PlatformSpecificEvent(platform='test', action='interaction.submitted', data={})
+    event = InteractionCallbackEvent(callback_token='token-1', actor_id='user-1')
     await bot._handle_platform_event(event, FakeAdapter())
-    if processor in {'agent', 'pipeline'}:
-        (chain,) = execution_chains(await flushed_records(counters, manager))
-        assert chain['outcome'] == 'failed'
-        callbacks.acknowledge_submission.assert_awaited_once()
-        await counters.shutdown()
-    else:
-        callbacks.acknowledge_submission.assert_not_awaited()
-        await assert_no_upload(counters, manager)
+    callbacks.consume_callback.assert_awaited_once()
+    await assert_no_upload(counters, manager)
 
 
 async def test_rejected_event_does_not_contaminate_next_matched_event_or_monitoring():
@@ -537,32 +577,17 @@ async def test_retry_of_matched_batch_cannot_include_intervening_unrouted_event(
     assert counters.dropped == 0
 
 
-async def test_valid_interaction_success_keeps_acknowledgement_and_execution():
-    from langbot.pkg.telemetry.execution import record
-    from langbot_plugin.api.entities.builtin.platform import events
+async def test_valid_interaction_callback_wakes_waiter_without_new_execution():
+    from langbot_plugin.api.entities.builtin.platform.events import InteractionCallbackEvent
 
     bot, manager, counters = make_bot([])
-
-    async def acknowledge(*args):
-        record(bot.ap, TEST_CONTEXT, family='platform_api', operation='ack', outcome='success')
-
-    async def resume(*args):
-        record(bot.ap, TEST_CONTEXT, family='runner', operation='execute', outcome='success')
-
-    bot.ap.agent_run_orchestrator = SimpleNamespace(
-        interaction_manager=SimpleNamespace(
-            consume_callback=AsyncMock(return_value={'processor_type': 'agent'}),
-            acknowledge_submission=acknowledge,
-        )
-    )
-    bot._resume_agent_interaction = resume
-    event = events.PlatformSpecificEvent(platform='test', action='interaction.submitted', data={})
+    record = {'run_id': 'run-1', 'submission': {'action_id': 'approve'}}
+    callbacks = SimpleNamespace(consume_callback=AsyncMock(return_value=record), wake_waiter=Mock(return_value=True))
+    bot.ap.agent_run_orchestrator = SimpleNamespace(interaction_manager=callbacks)
+    event = InteractionCallbackEvent(callback_token='token-1', actor_id='user-1')
     await bot._handle_platform_event(event, FakeAdapter())
-    records = await flushed_records(counters, manager)
-    (chain,) = execution_chains(records)
-    assert chain['outcome'] == 'success'
-    assert {node['family'] for node in execution_nodes(records)} == {'platform_event', 'platform_api', 'runner'}
-    await counters.shutdown()
+    callbacks.wake_waiter.assert_called_once_with(record, 'user-1', {})
+    await assert_no_upload(counters, manager)
 
 
 @pytest.mark.parametrize('channel_id', ['channel-1', 'channel-2'])
@@ -617,3 +642,40 @@ def test_agent_event_keeps_image_file_and_voice_attachments():
     assert agent_input.attachments[1].name == 'input.txt'
     assert agent_input.attachments[1].url == 'https://cdn.example.test/input.txt'
     assert agent_input.attachments[2].content == 'dGVzdA=='
+
+
+async def test_binding_to_deleted_pipeline_fails_visibly_instead_of_queueing():
+    bot, manager, counters = make_bot(
+        [business_route(target_type='pipeline', target_uuid='deleted-pipeline', event_pattern='message.received')],
+        config={'url': 'https://space.example.test', 'execution_trace': 'all'},
+    )
+    bot.ap.pipeline_mgr = SimpleNamespace(get_pipeline_by_uuid=AsyncMock(return_value=None))
+    bot._dispatch_eba_message_to_pipeline = AsyncMock()
+
+    await bot._handle_platform_event(message_received_event(), FakeAdapter())
+
+    bot._dispatch_eba_message_to_pipeline.assert_not_awaited()
+    metadata = bot.logger.warning.await_args.kwargs['metadata']
+    assert metadata['status'] == 'failed'
+    assert metadata['failure_code'] == 'processor_not_found'
+    assert metadata['target_uuid'] == 'deleted-pipeline'
+    records = await flushed_records(counters, manager)
+    (chain,) = execution_chains(records)
+    assert chain['outcome'] == 'failed'
+    assert 'Pipeline target not found' in chain['error']
+    await counters.shutdown()
+
+
+async def test_pipeline_missing_from_memory_but_persisted_is_still_delivered():
+    bot, manager, counters = make_bot(
+        [business_route(target_type='pipeline', target_uuid='reloading-pipeline', event_pattern='message.received')],
+    )
+    bot.ap.pipeline_mgr = SimpleNamespace(get_pipeline_by_uuid=AsyncMock(return_value=None))
+    bot.ap.pipeline_service.get_pipeline = AsyncMock(return_value={'uuid': 'reloading-pipeline'})
+    bot._dispatch_eba_message_to_pipeline = AsyncMock()
+
+    await bot._handle_platform_event(message_received_event(), FakeAdapter())
+
+    bot._dispatch_eba_message_to_pipeline.assert_awaited_once()
+    assert bot.logger.info.await_args.kwargs['metadata']['status'] == 'delivered'
+    await counters.shutdown()

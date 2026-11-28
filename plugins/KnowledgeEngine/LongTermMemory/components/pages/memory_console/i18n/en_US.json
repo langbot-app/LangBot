@@ -77,5 +77,16 @@
   "Traits": "Traits",
   "Preferences": "Preferences",
   "Notes": "Notes",
-  "Updated": "Updated"
+  "Updated": "Updated",
+  "consolidationReview": "Review Memory Summary",
+  "consolidationHint": "The summary is an inference, not a verified fact. Compare it with every complete source record before applying. The model and run policy are configured on the memory KB.",
+  "previewConsolidation": "Preview Summary",
+  "consolidationReviewed": "I checked the inference against the source records.",
+  "applyConsolidation": "Apply Reviewed Summary",
+  "consolidationLoading": "Generating a proposal for review...",
+  "consolidationInference": "Inferred summary — verify against the sources",
+  "consolidationSources": "Complete source records",
+  "consolidationApplied": "Reviewed summary applied. Source records remain available.",
+  "consolidationUnavailable": "No reviewable summary proposal is available. Check the KB configuration and risk notes.",
+  "consolidationApplying": "Applying reviewed summary..."
 }

@@ -7,6 +7,7 @@ Tests CommandManager initialization, execute, and privilege handling.
 from __future__ import annotations
 
 import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 from langbot.pkg.command import operator
@@ -15,6 +16,57 @@ from langbot.pkg.api.http.context import ExecutionContext
 from tests.factories import FakeApp, command_query
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
+
+
+@pytest.mark.asyncio
+async def test_pipeline_command_uses_schema_defaults_and_bound_plugins():
+    from types import SimpleNamespace
+    from langbot_plugin.api.entities.builtin.command.context import CommandReturn
+
+    fake_app = FakeApp()
+    manager = CommandManager(fake_app)
+    manager.cmd_list = []
+    manager.is_admin = AsyncMock(return_value=False)
+    manifest = SimpleNamespace(
+        metadata=SimpleNamespace(name='draw'),
+        spec={
+            'config': [
+                {'name': 'style', 'default': 'plain'},
+            ]
+        },
+    )
+    fake_app.plugin_connector.list_commands = AsyncMock(return_value=[manifest])
+    received = []
+
+    async def execute(context, plugins):
+        received.append((context, plugins))
+        yield CommandReturn(text='ok')
+
+    fake_app.plugin_connector.execute_command = execute
+    query = command_query('draw cat')
+    query.variables['_pipeline_bound_plugins'] = ['author/draw']
+    session = provider_session.Session(
+        launcher_type=provider_session.LauncherTypes.PERSON, launcher_id='user', sender_id='user'
+    )
+    results = [result async for result in manager.execute('draw cat', '/draw cat', query, session)]
+    assert results[0].text == 'ok'
+    assert received[0][1] == ['author/draw']
+    if 'config' in type(received[0][0]).model_fields:
+        assert received[0][0].config == {'style': 'plain'}
+
+
+def test_command_config_skips_context_without_sdk_field():
+    from types import SimpleNamespace
+    from pydantic import BaseModel
+
+    class LegacyContext(BaseModel):
+        command: str
+
+    context = LegacyContext(command='draw')
+    CommandManager._apply_command_config(
+        context, SimpleNamespace(spec={'config': [{'name': 'style', 'default': 'plain'}]})
+    )
+    assert context.model_dump() == {'command': 'draw'}
 
 
 class TestCommandManagerInit:
@@ -488,3 +540,62 @@ class TestEmptyAndEdgeInputs:
         # Should yield CommandNotFoundError (no such command registered)
         assert len(results) == 1
         assert results[0].error is not None
+
+
+class TestResolvePrivilegeIdentity:
+    """Bot admins are people; group IDs must never grant privilege."""
+
+    def _query(self, **overrides):
+        values = {
+            'workspace_uuid': 'ws-1',
+            'bot_uuid': 'bot-1',
+            'sender_id': 'user-1',
+            'launcher_type': provider_session.LauncherTypes.GROUP,
+            'launcher_id': 'group-1',
+        }
+        values.update(overrides)
+        return SimpleNamespace(**values)
+
+    @pytest.mark.asyncio
+    async def test_group_command_resolves_admin_by_sender_id(self):
+        app = FakeApp()
+        result = Mock()
+        result.first.return_value = object()
+        app.persistence_mgr.execute_async = AsyncMock(return_value=result)
+
+        privilege = await CommandManager(app).resolve_privilege(self._query())
+
+        assert privilege == 2
+        statement = app.persistence_mgr.execute_async.await_args.args[0]
+        values = list(statement.compile().params.values())
+        assert 'person' in values
+        assert 'user-1' in values
+        assert 'group-1' not in values
+
+    @pytest.mark.asyncio
+    async def test_group_without_sender_is_not_admin(self):
+        app = FakeApp()
+        privilege = await CommandManager(app).resolve_privilege(self._query(sender_id=None))
+
+        assert privilege == 1
+        app.persistence_mgr.execute_async.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_private_chat_falls_back_to_launcher_id(self):
+        app = FakeApp()
+        result = Mock()
+        result.first.return_value = object()
+        app.persistence_mgr.execute_async = AsyncMock(return_value=result)
+
+        privilege = await CommandManager(app).resolve_privilege(
+            self._query(
+                sender_id=None,
+                launcher_type=provider_session.LauncherTypes.PERSON,
+                launcher_id='private-user',
+            )
+        )
+
+        assert privilege == 2
+        statement = app.persistence_mgr.execute_async.await_args.args[0]
+        values = list(statement.compile().params.values())
+        assert 'private-user' in values

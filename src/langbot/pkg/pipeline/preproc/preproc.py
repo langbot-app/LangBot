@@ -6,17 +6,17 @@ import typing
 from .. import stage, entities
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 import langbot_plugin.api.entities.events as events
-import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 from ...pipeline.pool import get_query_execution_context
 
-from ...agent.runner.descriptor import RunnerDescriptor
+from ...agent.runner.descriptor import RunnerDescriptor, is_local_agent
 from ...agent.runner.config_resolver import RunnerConfigResolver
-from ...agent.runner import config_schema
+from ...agent.runner import config_schema, input_media
 from ...agent.runner.resource_policy import ResourcePolicyProjector
 from ...provider.tools.toolmgr import ToolManager
 from ..extension_preferences import normalize_extension_preferences
+from .prompt_context import PREPROCESSED_SYSTEM_CONTEXT, added_system_context, system_messages
 
 
 DEFAULT_PROMPT_CONFIG = [
@@ -105,6 +105,9 @@ class PreProcessor(stage.PipelineStage):
         policy = ResourcePolicyProjector.from_runner_config(
             runner_config,
             resolved_tool_names=ResourcePolicyProjector.extract_tool_names(catalog),
+            allowed_workspace_operations=(query.variables or {}).get('_pipeline_workspace_operations')
+            if isinstance(getattr(query, 'variables', None), dict)
+            else None,
         )
         catalog = ResourcePolicyProjector.filter_tools(catalog, policy)
         ToolManager.bind_query_tool_sources(query, catalog)
@@ -224,6 +227,15 @@ class PreProcessor(stage.PipelineStage):
         llm_model = None
         if uses_host_models:
             primary_uuid, fallback_uuids = config_schema.extract_model_selection(descriptor, runner_config)
+            override = getattr(session, '_command_model_uuid', None)
+            if override and is_local_agent(descriptor):
+                primary_uuid = override
+                ai = query.pipeline_config['ai']
+                runner_config = {**runner_config, 'model': {'primary': override, 'fallbacks': fallback_uuids}}
+                query.pipeline_config = {
+                    **query.pipeline_config,
+                    'ai': {**ai, 'runner_config': {**ai.get('runner_config', {}), runner_id: runner_config}},
+                }
             llm_model = await self._resolve_llm_model(query, primary_uuid)
             valid_fallbacks = await self._resolve_fallback_models(query, fallback_uuids)
             if valid_fallbacks:
@@ -261,8 +273,10 @@ class PreProcessor(stage.PipelineStage):
         conversation.update_time = now
 
         # Attach resolved session state to the query.
-        query.session = session
-        query.prompt = conversation.prompt.copy()
+        # Keep per-request identity separate from cached conversation state.
+        query.session = session.model_copy(update={'sender_id': query.sender_id, 'bot_uuid': query.bot_uuid})
+        query.session.inherit_execution_scope(get_query_execution_context(query))
+        query.prompt = conversation.prompt.copy(deep=True)
         query.messages = await self._resolve_history_messages(
             runner_id,
             conversation,
@@ -338,60 +352,15 @@ class PreProcessor(stage.PipelineStage):
         if not keep_image_inputs:
             self._strip_images_from_history(query)
 
-        content_list: list[provider_message.ContentElement] = []
-
-        plain_text = ''
         quote_msg = query.pipeline_config['trigger'].get('misc', {}).get('combine-quote-message', False)
-
-        for me in query.message_chain:
-            if isinstance(me, platform_message.Plain):
-                content_list.append(provider_message.ContentElement.from_text(me.text))
-                plain_text += me.text
-            elif isinstance(me, platform_message.Image):
-                if keep_image_inputs:
-                    if me.base64:
-                        content_list.append(provider_message.ContentElement.from_image_base64(me.base64))
-                    elif me.url:
-                        content_list.append(provider_message.ContentElement.from_image_url(me.url))
-                else:
-                    content_list.append(provider_message.ContentElement.from_text('[Image]'))
-                    plain_text += '[Image]'
-            elif isinstance(me, platform_message.Voice):
-                # Convert voice input into file content for downstream model upload.
-                if me.base64:
-                    content_list.append(provider_message.ContentElement.from_file_base64(me.base64, 'voice.silk'))
-                elif me.url:
-                    content_list.append(provider_message.ContentElement.from_file_url(me.url, 'voice'))
-            elif isinstance(me, platform_message.File):
-                if me.base64:
-                    content_list.append(provider_message.ContentElement.from_file_base64(me.base64, me.name))
-                elif me.url:
-                    content_list.append(provider_message.ContentElement.from_file_url(me.url, me.name))
-            elif isinstance(me, platform_message.Quote) and quote_msg:
-                for msg in me.origin:
-                    if isinstance(msg, platform_message.Plain):
-                        content_list.append(provider_message.ContentElement.from_text(msg.text))
-                    elif isinstance(msg, platform_message.Image):
-                        if keep_image_inputs:
-                            if msg.base64:
-                                content_list.append(provider_message.ContentElement.from_image_base64(msg.base64))
-                            elif msg.url:
-                                content_list.append(provider_message.ContentElement.from_image_url(msg.url))
-                        else:
-                            content_list.append(provider_message.ContentElement.from_text('[Image]'))
-                            plain_text += '[Image]'
-                    elif isinstance(msg, platform_message.File):
-                        if msg.base64:
-                            content_list.append(provider_message.ContentElement.from_file_base64(msg.base64, msg.name))
-                        elif msg.url:
-                            content_list.append(provider_message.ContentElement.from_file_url(msg.url, msg.name))
-                    elif isinstance(msg, platform_message.Voice):
-                        if msg.base64:
-                            content_list.append(
-                                provider_message.ContentElement.from_file_base64(msg.base64, 'voice.silk')
-                            )
-                        elif msg.url:
-                            content_list.append(provider_message.ContentElement.from_file_url(msg.url, 'voice'))
+        rendered = input_media.render_input(
+            query.message_chain,
+            include_quotes=bool(quote_msg),
+        )
+        # Runner attachments and Box imports address exactly the media rendered here.
+        input_media.remember_media(query, rendered.media)
+        content_list = rendered.contents
+        plain_text = rendered.plain_text
 
         query.variables['user_message_text'] = plain_text
 
@@ -399,10 +368,11 @@ class PreProcessor(stage.PipelineStage):
 
         # Extract configured KB UUIDs into query variables so PromptPreProcessing
         # plugins can still adjust the authorized retrieval set before run_runner.
-        query.variables['_knowledge_base_uuids'] = config_schema.extract_knowledge_base_uuids(
-            descriptor,
-            runner_config,
-        )
+        configured_kb_uuids = config_schema.extract_knowledge_base_uuids(descriptor, runner_config)
+        query.variables['_knowledge_base_uuids'] = configured_kb_uuids
+        # Management commands need the Pipeline binding even when a prompt
+        # hook narrows the effective retrieval list. Plugins cannot set _host_ vars.
+        query.variables['_host_configured_knowledge_base_uuids'] = configured_kb_uuids.copy()
         # Telemetry: the knowledge bases this lane may retrieve from, plus the
         # schema-declared selector fields that selected them.
         try:
@@ -418,6 +388,7 @@ class PreProcessor(stage.PipelineStage):
 
         # Emit PromptPreProcessing before the runner receives the query.
 
+        original_system_messages = system_messages(query.messages)
         event = events.PromptPreProcessing(
             session_name=f'{query.session.launcher_type.value}_{query.session.launcher_id}',
             default_prompt=query.prompt.messages,
@@ -426,11 +397,12 @@ class PreProcessor(stage.PipelineStage):
         )
 
         # Get bound plugins for filtering
-        bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+        bound_plugins = getattr(query, '_listener_plugins', None)
         event_ctx = await self.ap.plugin_connector.emit_event(event, bound_plugins)
 
         query.prompt.messages = event_ctx.event.default_prompt
         query.messages = event_ctx.event.prompt
+        query.variables[PREPROCESSED_SYSTEM_CONTEXT] = added_system_context(original_system_messages, query.messages)
 
         if getattr(self.ap, 'skill_mgr', None) is not None:
             skill_execution_context = get_query_execution_context(query)

@@ -12,6 +12,7 @@ import pytest
 from unittest.mock import Mock, AsyncMock, patch
 
 import litellm
+import httpx
 
 from langbot.pkg.provider.modelmgr.requesters import litellmchat
 from langbot.pkg.provider.modelmgr import errors
@@ -24,6 +25,7 @@ class MockRuntimeModel:
         self.model_entity = Mock()
         self.model_entity.name = model_name
         self.model_entity.extra_args = {}
+        self.model_entity.abilities = []
         self.provider = Mock()
         self.provider.token_mgr = Mock()
         self.provider.token_mgr.get_token = Mock(return_value=api_key)
@@ -110,6 +112,17 @@ class TestBuildLiteLLMModelName:
         requester = litellmchat.LiteLLMRequester(ap=Mock(), config={'custom_llm_provider': 'openai'})
         result = requester._build_litellm_model_name('claude-3', custom_llm_provider='anthropic')
         assert result == 'anthropic/claude-3'
+
+
+class TestStreamEOFWithoutFinish:
+    def test_does_not_swallow_transport_failure_after_content(self):
+        error = litellm.exceptions.MidStreamFallbackError(
+            message='incomplete chunked response',
+            model='test',
+            llm_provider='openai',
+            original_exception=Exception('transport disconnected'),
+        )
+        assert not litellmchat.LiteLLMRequester._is_stream_eof_without_finish(error)
 
 
 class TestExtractUsage:
@@ -812,6 +825,33 @@ class TestHandleLiteLLMError:
             requester._handle_litellm_error(error)
 
         assert 'Context length exceeded' in str(exc_info.value)
+
+    def test_internal_server_error(self):
+        """Test InternalServerError translation"""
+        requester = litellmchat.LiteLLMRequester(ap=Mock(), config={})
+
+        error = litellm.InternalServerError(message='server error', model='gpt-4o', llm_provider='openai')
+
+        with pytest.raises(errors.RequesterError) as exc_info:
+            requester._handle_litellm_error(error)
+
+        assert 'Internal server error' in str(exc_info.value)
+        assert exc_info.value.retryable
+
+    def test_permission_denied_error(self):
+        """Test PermissionDeniedError translation"""
+        requester = litellmchat.LiteLLMRequester(ap=Mock(), config={})
+
+        response = httpx.Response(403, request=httpx.Request('POST', 'https://example.com'))
+        error = litellm.PermissionDeniedError(
+            message='forbidden', model='gpt-4o', llm_provider='openai', response=response
+        )
+
+        with pytest.raises(errors.RequesterError) as exc_info:
+            requester._handle_litellm_error(error)
+
+        assert 'Permission denied' in str(exc_info.value)
+        assert not exc_info.value.retryable
 
     def test_unknown_error(self):
         """Test unknown error translation"""

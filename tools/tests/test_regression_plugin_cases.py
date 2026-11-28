@@ -64,6 +64,7 @@ class PluginCasesTests(unittest.TestCase):
             pipeline['body']['extensions_preferences'],
             {
                 'enable_all_plugins': False,
+                'workspace_operations': [],
                 'plugins': [
                     {'author': 'langbot-team', 'name': name}
                     for name in ('LocalAgent', 'LangRAG', 'GeneralParsers', 'EssentialCommands')
@@ -98,7 +99,7 @@ class PluginCasesTests(unittest.TestCase):
                 return success({'uuid': 'owned-bot'})
             if path == '/bots/owned-bot/sync':
                 self.assertEqual(body['session_type'], 'person')
-                self.assertEqual(body['message'], [{'type': 'Plain', 'text': '!version'}])
+                self.assertEqual(body['message'], [{'type': 'Plain', 'text': '/version'}])
                 signed = headers['X-LB-Timestamp'].encode() + b'.' + json.dumps(body).encode()
                 expected = 'sha256=' + hmac.new(b'private-signing-secret', signed, hashlib.sha256).hexdigest()
                 self.assertEqual(headers['X-LB-Signature'], expected)
@@ -118,7 +119,7 @@ class PluginCasesTests(unittest.TestCase):
                         'message': [
                             {
                                 'type': 'Plain',
-                                'text': '[bot] LangBot Version: ' + ('9.4.0' if failure == 'version' else '9.5.1'),
+                                'text': 'LangBot Version: ' + ('9.4.0' if failure == 'version' else '9.5.1'),
                             }
                         ],
                     }

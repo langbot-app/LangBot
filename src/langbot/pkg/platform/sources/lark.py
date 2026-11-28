@@ -600,6 +600,13 @@ class LarkMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             elif isinstance(msg, platform_message.Voice):
                 data = await LarkMessageConverter._get_media_bytes(msg)
                 if data:
+                    from ...utils import audio as audio_utils
+
+                    if audio_utils.is_ffmpeg_available():
+                        try:
+                            data = await audio_utils.transcode_audio(data, 'opus')
+                        except Exception:
+                            pass
                     duration = int(msg.length * 1000) if msg.length else None
                     file_key = await LarkMessageConverter.upload_file_to_lark(
                         data, api_client, file_type='opus', file_name='voice.opus', duration=duration

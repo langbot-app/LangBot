@@ -37,9 +37,23 @@ _resources: contextvars.ContextVar[dict[str, typing.Any] | None] = contextvars.C
 )
 
 
-def begin() -> None:
+def begin() -> dict[str, typing.Any]:
     """Start collecting for one execution (called when a chain is opened)."""
-    _resources.set({})
+    root: dict[str, typing.Any] = {}
+    _resources.set(root)
+    return root
+
+
+def attach(root: dict[str, typing.Any] | None) -> typing.Any:
+    """Collect into an existing execution's dict from another task."""
+    return _resources.set(root if isinstance(root, dict) else {})
+
+
+def detach(token: typing.Any) -> None:
+    try:
+        _resources.reset(token)
+    except (ValueError, RuntimeError):
+        pass
 
 
 def end() -> None:
@@ -206,10 +220,11 @@ def note_agent(
         return
 
 
-def snapshot() -> dict[str, typing.Any] | None:
+def snapshot(root: dict[str, typing.Any] | None = None) -> dict[str, typing.Any] | None:
     """Return the bounded snapshot of this execution; None when nothing was noted."""
     try:
-        root = _resources.get()
+        if root is None:
+            root = _resources.get()
         if not isinstance(root, dict) or not root:
             return None
 

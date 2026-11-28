@@ -21,6 +21,7 @@ import sqlalchemy
 import json
 
 from langbot.pkg.api.http.service.pipeline import PipelineService, default_stage_order
+from langbot.pkg.agent.runner.platform_tools import default_pipeline_platform_tools
 from langbot.pkg.entity.persistence.pipeline import LegacyPipeline
 from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 
@@ -73,9 +74,8 @@ class TestPipelineServiceGetPipelineMetadata:
         """Returns list of pipeline metadata configs."""
         # Setup
         ap = SimpleNamespace()
-        ap.pipeline_config_meta_trigger = {'trigger': {}}
-        ap.pipeline_config_meta_safety = {'safety': {}}
         ap.pipeline_config_meta_ai = {'ai': {}}
+        ap.pipeline_config_meta_speech = {'speech': {}}
         ap.pipeline_config_meta_output = {'output': {}}
 
         service = PipelineService(ap)
@@ -86,11 +86,11 @@ class TestPipelineServiceGetPipelineMetadata:
         )
 
         # Verify
-        assert len(result) == 4
-        assert 'trigger' in result[0]
-        assert 'safety' in result[1]
-        assert 'ai' in result[2]
-        assert 'output' in result[3]
+        # Trigger and safety settings belong to the bot message policy now.
+        assert len(result) == 3
+        assert 'ai' in result[0]
+        assert 'speech' in result[1]
+        assert 'output' in result[2]
 
 
 class TestPipelineServiceGetPipelines:
@@ -104,7 +104,7 @@ class TestPipelineServiceGetPipelines:
         mock_result = _create_mock_result([])
         ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
         ap.persistence_mgr.serialize_model = Mock(
-            side_effect=lambda model_cls, entity: {
+            side_effect=lambda model_cls, entity, masked_columns=None: {
                 'uuid': entity.uuid,
                 'name': entity.name,
             }
@@ -132,7 +132,7 @@ class TestPipelineServiceGetPipelines:
         mock_result = _create_mock_result([pipeline1, pipeline2])
         ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
         ap.persistence_mgr.serialize_model = Mock(
-            side_effect=lambda model_cls, entity: {
+            side_effect=lambda model_cls, entity, masked_columns=None: {
                 'uuid': entity.uuid,
                 'name': entity.name,
             }
@@ -384,7 +384,14 @@ class TestPipelineServiceCreatePipeline:
             'mcp_servers': [],
             'mcp_resources': [],
             'mcp_resource_agent_read_enabled': True,
+            'allowed_platform_tools': default_pipeline_platform_tools(),
         }
+        allowed = insert_params[0]['extensions_preferences']['allowed_platform_tools']
+        # Pipelines auto-reply with LLM text; explicit reply tools stay off by default.
+        assert 'event_reply' not in allowed
+        assert 'platform_send_message' not in allowed
+        assert 'event_get_actor' in allowed
+        assert 'platform_get_user_info' in allowed
 
 
 class _MockResultWithBots:
@@ -411,6 +418,8 @@ class TestPipelineServiceUpdatePipeline:
         ap.pipeline_mgr = SimpleNamespace()
         ap.pipeline_mgr.remove_pipeline = AsyncMock()
         ap.pipeline_mgr.load_pipeline = AsyncMock()
+        ap.pipeline_mgr.prepare_pipeline = AsyncMock()
+        ap.pipeline_mgr.publish_pipeline = Mock()
         ap.sess_mgr = SimpleNamespace()
         ap.sess_mgr.session_list = []
         ap.bot_service = None  # No bot_service when not updating name
@@ -444,6 +453,8 @@ class TestPipelineServiceUpdatePipeline:
         ap.pipeline_mgr = SimpleNamespace()
         ap.pipeline_mgr.remove_pipeline = AsyncMock()
         ap.pipeline_mgr.load_pipeline = AsyncMock()
+        ap.pipeline_mgr.prepare_pipeline = AsyncMock()
+        ap.pipeline_mgr.publish_pipeline = Mock()
         ap.sess_mgr = SimpleNamespace()
         ap.sess_mgr.session_list = []
         ap.bot_service = SimpleNamespace()
@@ -497,6 +508,8 @@ class TestPipelineServiceUpdatePipeline:
         ap.pipeline_mgr = SimpleNamespace()
         ap.pipeline_mgr.remove_pipeline = AsyncMock()
         ap.pipeline_mgr.load_pipeline = AsyncMock()
+        ap.pipeline_mgr.prepare_pipeline = AsyncMock()
+        ap.pipeline_mgr.publish_pipeline = Mock()
         ap.sess_mgr = SimpleNamespace()
 
         # Mock session with conversation using this pipeline
@@ -529,11 +542,13 @@ class TestPipelineServiceDeletePipeline:
         ap.persistence_mgr.execute_async = AsyncMock()
         ap.pipeline_mgr = SimpleNamespace()
         ap.pipeline_mgr.remove_pipeline = AsyncMock()
+        ap.bot_service = SimpleNamespace(require_processor_unbound=AsyncMock())
 
         service = PipelineService(ap)
 
         # Execute
         await service.delete_pipeline(WORKSPACE_UUID, 'test-uuid')
+        ap.bot_service.require_processor_unbound.assert_awaited_once_with(WORKSPACE_UUID, 'test-uuid')
 
         # Verify
         ap.pipeline_mgr.remove_pipeline.assert_called_once_with(WORKSPACE_UUID, 'test-uuid')
@@ -547,6 +562,7 @@ class TestPipelineServiceDeletePipeline:
         ap.persistence_mgr.execute_async = AsyncMock(return_value=SimpleNamespace(rowcount=0))
         ap.pipeline_mgr = SimpleNamespace()
         ap.pipeline_mgr.remove_pipeline = AsyncMock()
+        ap.bot_service = SimpleNamespace(require_processor_unbound=AsyncMock())
 
         service = PipelineService(ap)
 
@@ -609,6 +625,7 @@ class TestPipelineServiceCopyPipeline:
         """Creates a copy with (Copy) suffix."""
         # Setup
         ap = SimpleNamespace()
+        ap.application_api = SimpleNamespace(_operations={})
         ap.persistence_mgr = SimpleNamespace()
         ap.instance_config = SimpleNamespace()
         ap.instance_config.data = {'system': {'limitation': {'max_pipelines': -1}}}
@@ -672,6 +689,7 @@ class TestPipelineServiceCopyPipeline:
         """Copy is never set as default."""
         # Setup
         ap = SimpleNamespace()
+        ap.application_api = SimpleNamespace(_operations={})
         ap.persistence_mgr = SimpleNamespace()
         ap.instance_config = SimpleNamespace()
         ap.instance_config.data = {'system': {'limitation': {'max_pipelines': -1}}}
@@ -965,7 +983,7 @@ class TestPipelineSecretRoundtrip:
         write_result = Mock(rowcount=1)
         ap = SimpleNamespace(
             persistence_mgr=SimpleNamespace(execute_async=AsyncMock(return_value=write_result)),
-            pipeline_mgr=SimpleNamespace(remove_pipeline=AsyncMock(), load_pipeline=AsyncMock()),
+            pipeline_mgr=SimpleNamespace(prepare_pipeline=AsyncMock(), publish_pipeline=Mock()),
             sess_mgr=SimpleNamespace(session_list=[]),
         )
         service = PipelineService(ap)
@@ -976,27 +994,33 @@ class TestPipelineSecretRoundtrip:
             'pipeline-secret',
             {
                 'config': {
+                    'trigger': {},
+                    'safety': {},
+                    'output': {},
                     'ai': {
                         'n8n': {
                             'webhook-url': '***',
                             'headers': {'Authorization': '***'},
                             'timeout': 60,
                         }
-                    }
+                    },
                 }
             },
         )
 
         statement = ap.persistence_mgr.execute_async.await_args.args[0]
         stored_config = next(value.value for column, value in statement._values.items() if column.key == 'config')
+        # ``trigger`` / ``safety`` from clients that predate the message policy
+        # are accepted and dropped.
         assert stored_config == {
+            'output': {},
             'ai': {
                 'n8n': {
                     'webhook-url': 'https://hook.invalid/bearer-secret',
                     'headers': {'Authorization': 'Bearer secret'},
                     'timeout': 60,
                 }
-            }
+            },
         }
 
 
@@ -1011,3 +1035,67 @@ class TestDefaultStageOrder:
         """Default stage order contains key processing stages."""
         assert 'MessageProcessor' in default_stage_order
         assert 'SendResponseBackStage' in default_stage_order
+
+
+class TestPipelineDeleteBoundToBot:
+    """A Pipeline that a Bot still routes to cannot be deleted (LANG-357)."""
+
+    def _bot_service(self, bots):
+        from langbot.pkg.api.http.service.bot import BotService
+
+        service = object.__new__(BotService)
+        service.get_bots = AsyncMock(return_value=bots)
+        return service
+
+    async def test_delete_refused_while_bound_and_nothing_is_removed(self):
+        from langbot.pkg.api.application.contracts import ApplicationAPIException
+
+        ap = SimpleNamespace()
+        ap.persistence_mgr = SimpleNamespace(execute_async=AsyncMock())
+        ap.pipeline_mgr = SimpleNamespace(remove_pipeline=AsyncMock())
+        ap.bot_service = self._bot_service(
+            [
+                {
+                    'uuid': 'bot-1',
+                    'name': 'QQ Bot',
+                    'event_bindings': [
+                        {'event_pattern': 'message.received', 'target_type': 'pipeline', 'target_uuid': 'p-1'}
+                    ],
+                    'plugin_processors': [],
+                },
+                {'uuid': 'bot-2', 'name': 'Other', 'event_bindings': [], 'plugin_processors': []},
+            ]
+        )
+
+        with pytest.raises(ApplicationAPIException) as exc_info:
+            await PipelineService(ap).delete_pipeline(WORKSPACE_UUID, 'p-1')
+
+        assert exc_info.value.error.code == 'resource_in_use'
+        assert exc_info.value.error.status_code == 409
+        assert exc_info.value.error.details == {'bots': ['QQ Bot']}
+        assert 'QQ Bot' in exc_info.value.error.message
+        ap.persistence_mgr.execute_async.assert_not_awaited()
+        ap.pipeline_mgr.remove_pipeline.assert_not_awaited()
+
+    async def test_unbound_pipeline_and_string_bindings_are_handled(self):
+        bot_service = self._bot_service(
+            [
+                {
+                    'uuid': 'bot-1',
+                    'name': 'Bot',
+                    # Legacy rows may still hold the JSON-encoded form.
+                    'event_bindings': json.dumps(
+                        [{'event_pattern': 'message.received', 'target_type': 'pipeline', 'target_uuid': 'p-2'}]
+                    ),
+                    'plugin_processors': [{'processor_uuid': 'proc-1', 'enabled': True}],
+                }
+            ]
+        )
+        await bot_service.require_processor_unbound(WORKSPACE_UUID, 'p-1')
+
+        from langbot.pkg.api.application.contracts import ApplicationAPIException
+
+        with pytest.raises(ApplicationAPIException):
+            await bot_service.require_processor_unbound(WORKSPACE_UUID, 'p-2')
+        with pytest.raises(ApplicationAPIException):
+            await bot_service.require_processor_unbound(WORKSPACE_UUID, 'proc-1')

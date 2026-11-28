@@ -488,4 +488,8 @@ file_bytes = await self.plugin.get_knowledge_file_stream(context.file_object.sto
 2. 「ナレッジベースを作成」をクリック
 3. プラグインが提供するRAGエンジンを選択し、エンジンの`creation_schema`に基づいて設定を入力
 4. 作成後、ドキュメントをアップロードして取り込み機能をテスト（エンジンが`DOC_INGESTION`能力を宣言している場合）
-5. パイプラインにナレッジベースをバインドし、検索機能をテスト
+5. チャットにナレッジベースをバインドし、検索機能をテスト
+
+## Artifact 取り込みの互換性
+
+既存の取り込みコールバックと `get_knowledge_file_stream(context.file_object.storage_path)` は Artifact ベースのナレッジファイルにも対応します。`storage_path` は不透明な値です。`artifact:<knowledge_file_uuid>` は Core が管理する業務参照であり、ローカルパスや譲渡可能な権限ではありません。Core がインストール済みエンジンの対象ベースへのアクセスを確認してから、有界バイトを返します。直接ストレージにアクセスするコードへ置き換えないでください。従来のアップロードと `file_id` の呼び出し元は既存インターフェースを維持します。取り込みと削除の意味は [Artifact の取り込み](/ja/develop/artifacts) を参照してください。

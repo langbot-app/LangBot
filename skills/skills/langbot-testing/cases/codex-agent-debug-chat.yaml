@@ -38,11 +38,11 @@ automation_response_timeout_ms: "600000"
 preconditions:
   - "Codex CLI is installed, authenticated, and runnable non-interactively by the LangBot plugin process."
   - "The configured workspace exists and is writable, with approval policy never and sandbox mode appropriate for the QA host."
-  - "The pipeline has reuse-session=false so the second turn cannot use Codex CLI thread memory."
+  - "The Chat has reuse-session=false so the second turn cannot use Codex CLI thread memory."
 steps:
   - "Open LANGBOT_FRONTEND_URL."
   - "Open the Codex Agent QA pipeline."
-  - "Confirm the pipeline runner is plugin:langbot-team/CodexAgent/default."
+  - "Confirm the Chat runner is plugin:langbot-team/CodexAgent/default."
   - "Open Debug Chat, seed the passcode, then ask a fresh Codex CLI turn to recover it through langbot_agent.langbot_history_page."
 checks:
   - "UI: The first Bot message contains CODEX_HISTORY_SEEDED and the second contains codex-history-proof-9157."

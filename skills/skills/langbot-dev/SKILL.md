@@ -43,6 +43,7 @@ src/langbot/
 ├── __main__.py             # entrypoint, CLI flags (--standalone-runtime/-box/--debug)
 ├── pkg/
 │   ├── api/
+│   │   ├── application/    # Unified API: Workspace operation catalog + ExecutionAPI
 │   │   ├── http/           # Quart controllers + services
 │   │   │   ├── controller/groups/   # route groups (@group.group_class)
 │   │   │   └── service/             # business logic (called by controllers AND MCP)
@@ -51,9 +52,16 @@ src/langbot/
 │   ├── platform/ provider/ pipeline/ plugin/ box/ skill/ rag/ vector/
 │   ├── command/ persistence/ storage/ config/ entity/ telemetry/
 │   └── templates/config.yaml        # config template (top-level: api, system, plugin, box, space...)
-├── web/                    # Vite SPA
-└── docker/                 # compose deployment
+web/                        # Vite SPA
+docs/                       # public docs site (zh/en/ja), published to langbot.app/docs
+dev-docs/                   # internal design notes, contracts, reviews (not published)
+plugins/                    # official plugins, released independently of Core
+skills/                     # agent skills + lbs QA harness
+tests/  tools/  scripts/    # Core tests, regression harness, maintenance scripts
+docker/                     # compose / k8s deployment
 ```
+
+See "Repository Layout" in the root `AGENTS.md` for the `docs/` vs `dev-docs/` rule.
 
 ## HTTP API auth model
 
@@ -86,17 +94,21 @@ the opaque owning resource rather than a header.
 Route groups self-register via `@group.group_class(name, path)` and are
 discovered by `importutil.import_modules_in_pkg`.
 
-## Adding an API endpoint
+## Adding an API capability
 
-1. Add/extend a controller in `pkg/api/http/controller/groups/` and the matching
-   service method in `pkg/api/http/service/`.
-2. Pick the right `AuthType`.
-3. **If the endpoint should be agent-accessible, add/adjust the matching MCP tool
-   in `pkg/api/mcp/server.py` and update the `langbot-mcp-ops` skill.** API and
-   MCP surface must stay aligned (see `AGENTS.md`).
-4. If `lbctl` uses the route or capability, check the separate
-   [`langbot-cli`](https://github.com/langbot-app/langbot-cli) client for compatibility.
-5. Update `dev-docs/service-api-openapi.json` if you maintain the OpenAPI overview.
+1. Implement business logic once in a service under `pkg/api/http/service/` (or
+   the owning package) and register it as an Application API operation:
+   allowlist in `pkg/api/application/service_operations.py`, docs/risk/exposure in
+   `operation_docs.py`. Design: `dev-docs/architecture/application-api.md`.
+2. Wire each consumer that should support it and note the decision in the PR:
+   HTTP controller in `pkg/api/http/controller/groups/` (pick the right
+   `AuthType`), MCP tool in `pkg/api/mcp/server.py` + `langbot-mcp-ops` skill,
+   Workspace assistant/LocalAgent tools, plugin exposure/permissions, and
+   [`langbot-cli`](https://github.com/langbot-app/langbot-cli) compatibility.
+3. If plugins can call it, regenerate the SDK proxy with
+   `uv run python scripts/generate_plugin_workspace_api.py` and update
+   `docs/*/plugin/dev/apis/workspace.mdx` / `permissions.mdx`.
+4. Update `dev-docs/service-api-openapi.json` if you maintain the OpenAPI overview.
 
 ## Database migrations (Alembic)
 
@@ -110,8 +122,8 @@ uv run python -m langbot.pkg.persistence.alembic_runner autogenerate "descriptio
 
 ## Standards
 
-- All code comments/docstrings in **English**; user-facing strings need **i18n**
-  (`en_US` + `zh_Hans` minimum, `ja_JP` where present).
+- All code comments/docstrings in **English**. Backend messages use `pkg/i18n`
+  with all eight locale catalogs; see "Backend Message Language" in `AGENTS.md`.
 - Consider toC and toB compatibility + security.
 - Commit format: `<type>(<scope>): <subject>` (feat/fix/docs/refactor/...).
 

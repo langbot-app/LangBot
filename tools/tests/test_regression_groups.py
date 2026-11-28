@@ -61,6 +61,33 @@ class GroupTests(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(ValueError):
                 validate(current)
 
+    def test_mixed_profiles_route_models_to_independent_backends_and_multiple_box_groups(self):
+        root = Path(__file__).resolve().parents[1] / 'profiles'
+        for name in ('groups', 'endurance'):
+            with self.subTest(profile=name):
+                profile = json.loads((root / (name + '.json')).read_text())
+                validate(profile)
+                resources = {item['id']: item for item in profile['resources']}
+                endpoints = set()
+                for model, provider, endpoint in (
+                    ('chat_model', 'mock_provider', 'mock_base_url'),
+                    ('box_model', 'box_provider', 'box_mock_base_url'),
+                    ('rag_model', 'rag_provider', 'rag_mock_base_url'),
+                ):
+                    self.assertEqual(resources[model]['body']['provider_uuid'], '${' + provider + '}')
+                    self.assertEqual(resources[provider]['body']['base_url'], '${' + endpoint + '}')
+                    endpoints.add(profile['vars'][endpoint])
+                self.assertEqual(len(endpoints), 3)
+                cases = [case['name'] for case in profile['cases'] for _ in range(case.get('weight', 1))]
+                for phase in profile['phases']:
+                    assignments = [cases[index % len(cases)] for index in range(phase['groups'])]
+                    self.assertGreaterEqual(assignments.count('box'), 2)
+                    self.assertGreaterEqual(phase['workers'], len(cases))
+                runner = resources['box_pipeline']['body']['config']['ai']['runner_config']
+                self.assertEqual(
+                    next(iter(runner.values()))['box-session-id-template'], '{launcher_type}_{launcher_id}'
+                )
+
     def test_signed_groups_continue_across_phases_and_stop_after_bad_reply(self):
         secret = 'test-group-signing-key'
         histories = {}
@@ -194,6 +221,27 @@ class GroupTests(unittest.TestCase):
                     self.assertEqual(len(second[group]['members_this_phase']), 2)
                 self.assertFalse(failures)
                 self.assertNotIn(secret, state.read_text())
+                for limit in (8, 1000):
+                    output = root / f'limited-{limit}'
+                    result = subprocess.run(
+                        [*command, '--groups', '4', '--max-requests', str(limit), '--output', str(output)],
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                        timeout=15,
+                    )
+                    summary = json.loads((output / 'summary.json').read_text())
+                    self.assertEqual(result.returncode, int(limit == 1000), result.stdout + result.stderr)
+                    self.assertEqual(summary['request_limit'], limit)
+                    self.assertFalse(summary['group_failures'])
+                    if limit == 8:
+                        self.assertEqual(summary['requests'], 8)
+                        self.assertTrue(
+                            all(row['requests_this_phase'] == 2 for row in summary['groups']['sessions'].values())
+                        )
+                    else:
+                        self.assertLess(summary['requests'], limit)
+                self.assertFalse(failures)
                 bad_reply = True
                 output = root / 'failed'
                 result = subprocess.run(

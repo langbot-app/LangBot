@@ -132,3 +132,13 @@ class TestVectorDatabaseAbstractMethods:
         # list_by_filter should return empty list and -1 for total
         result = await db.list_by_filter('test_collection')
         assert result == ([], -1)
+
+
+def test_vector_interface_does_not_import_numpy():
+    import subprocess
+    import sys
+
+    subprocess.run(
+        [sys.executable, '-c', 'import sys; import langbot.pkg.vector.vdb; assert "numpy" not in sys.modules'],
+        check=True,
+    )

@@ -1,0 +1,82 @@
+{
+  "kb_id": "a46641d2-d953-46fc-a828-012348d4cb91",
+  "user_key": "bot:websocket-proxy-bot",
+  "active_count": 419,
+  "unique_ids": 419,
+  "conv26_tag_count": 419,
+  "pilot_tag_count": 419,
+  "all_tags": [
+    "conv-26",
+    "locomo",
+    "session_1",
+    "session_10",
+    "session_11",
+    "session_12",
+    "session_13",
+    "session_14",
+    "session_15",
+    "session_16",
+    "session_17",
+    "session_18",
+    "session_19",
+    "session_2",
+    "session_3",
+    "session_4",
+    "session_5",
+    "session_6",
+    "session_7",
+    "session_8",
+    "session_9",
+    "unified-pilot"
+  ],
+  "pages": [
+    {
+      "page": 1,
+      "total": -1,
+      "count": 50
+    },
+    {
+      "page": 2,
+      "total": -1,
+      "count": 50
+    },
+    {
+      "page": 3,
+      "total": -1,
+      "count": 50
+    },
+    {
+      "page": 4,
+      "total": -1,
+      "count": 50
+    },
+    {
+      "page": 5,
+      "total": -1,
+      "count": 50
+    },
+    {
+      "page": 6,
+      "total": -1,
+      "count": 50
+    },
+    {
+      "page": 7,
+      "total": -1,
+      "count": 50
+    },
+    {
+      "page": 8,
+      "total": -1,
+      "count": 50
+    },
+    {
+      "page": 9,
+      "total": 419,
+      "count": 19
+    }
+  ],
+  "candidate_extraction_enabled_effective": false,
+  "candidate_auto_apply_effective": false,
+  "candidate_flags_basis": "KB creation_settings absent; MemoryInjector._candidate_config defaults false"
+}

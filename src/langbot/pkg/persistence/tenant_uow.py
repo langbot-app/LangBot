@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql.dml import OnConflictDoUpdate as PostgreSQLO
 from sqlalchemy.dialects.sqlite.dml import OnConflictDoNothing as SQLiteOnConflictDoNothing
 from sqlalchemy.dialects.sqlite.dml import OnConflictDoUpdate as SQLiteOnConflictDoUpdate
 
+from .write_admission import commit_write
 from .media import MediaReferenceText, MediaReferenceJSON
 
 
@@ -29,6 +30,7 @@ INVITATION_HASH_SETTING = 'langbot.invitation_hash'
 INSTANCE_SETTING = 'langbot.instance_uuid'
 IDENTITY_DIGEST_SETTING = 'langbot.identity_digest'
 DIRECTORY_INSTANCE_SETTING = 'langbot.directory_instance_uuid'
+PUBLIC_MEDIA_KEY_SETTING = 'langbot.public_media_key'
 
 TENANT_POLICY_NAME = 'langbot_workspace_isolation'
 LOCAL_DIRECTORY_WRITE_POLICY_NAME = 'langbot_workspace_local_directory_write'
@@ -37,6 +39,7 @@ API_KEY_DISCOVERY_POLICY_NAME = 'langbot_api_key_discovery'
 INVITATION_DISCOVERY_POLICY_NAME = 'langbot_invitation_discovery'
 INSTANCE_DISCOVERY_POLICY_NAME = 'langbot_instance_discovery'
 DIRECTORY_PROJECTION_POLICY_NAME = 'langbot_directory_projection'
+PUBLIC_MEDIA_POLICY_NAME = 'langbot_public_media_read'
 
 # Keep this contract explicit. A new tenant-owned table must be added to both
 # this runtime list and the corresponding Alembic migration before release.
@@ -53,12 +56,21 @@ TENANT_TABLE_COLUMNS: dict[str, str] = {
     'bots': 'workspace_uuid',
     'bot_admins': 'workspace_uuid',
     'binary_storages': 'workspace_uuid',
+    'content_objects': 'workspace_uuid',
+    'content_aliases': 'workspace_uuid',
+    'artifacts': 'workspace_uuid',
+    'artifact_references': 'workspace_uuid',
+    'artifact_publications': 'workspace_uuid',
+    'skill_registry': 'workspace_uuid',
+    'skill_versions': 'workspace_uuid',
     'mcp_servers': 'workspace_uuid',
     'model_providers': 'workspace_uuid',
     'codex_credentials': 'workspace_uuid',
     'llm_models': 'workspace_uuid',
     'embedding_models': 'workspace_uuid',
     'rerank_models': 'workspace_uuid',
+    'asr_models': 'workspace_uuid',
+    'tts_models': 'workspace_uuid',
     'legacy_pipelines': 'workspace_uuid',
     'pipeline_run_records': 'workspace_uuid',
     'workflows': 'workspace_uuid',
@@ -82,6 +94,11 @@ TENANT_TABLE_COLUMNS: dict[str, str] = {
     # Administrative traceability for member and resource operations. Owned by
     # the Workspace and therefore protected by the same RLS contract.
     'workspace_operation_logs': 'workspace_uuid',
+    # Failure alerts: per-Workspace settings, incidents and delivery log.
+    'alert_settings': 'workspace_uuid',
+    'alert_incidents': 'workspace_uuid',
+    'alert_deliveries': 'workspace_uuid',
+    'workspace_message_usage_daily': 'workspace_uuid',
     # Created by 0013 rather than ORM metadata; it is still part of the same
     # business-database RLS contract and permits no discovery policies.
     'langbot_vectors': 'workspace_uuid',
@@ -109,6 +126,7 @@ class PersistenceScopeKind(enum.StrEnum):
     INSTANCE_DISCOVERY = 'instance_discovery'
     IDENTITY_DISCOVERY = 'identity_discovery'
     DIRECTORY_PROJECTION = 'directory_projection'
+    PUBLIC_MEDIA = 'public_media'
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -148,6 +166,14 @@ class PersistenceScope:
             PersistenceScopeKind.DIRECTORY_PROJECTION,
             DIRECTORY_INSTANCE_SETTING,
             instance_uuid,
+        )
+
+    @classmethod
+    def public_media(cls, key: str) -> PersistenceScope:
+        # Clear the OSS singleton default; this scope grants only the media SELECT policy.
+        return cls(
+            PersistenceScopeKind.PUBLIC_MEDIA,
+            ((TENANT_SETTING, ''), (PUBLIC_MEDIA_KEY_SETTING, cls._normalize(key, 'public media key'))),
         )
 
     @classmethod
@@ -225,7 +251,9 @@ _ALLOWED_SCOPED_BUILTIN_FUNCTION_TYPES = {
     'now': sqlalchemy.sql.functions.now,
     'sum': sqlalchemy.sql.functions.sum,
 }
-_ALLOWED_SCOPED_GENERIC_FUNCTIONS = frozenset({'date_trunc', 'length', 'nullif', 'row_number', 'strftime'})
+_ALLOWED_SCOPED_GENERIC_FUNCTIONS = frozenset(
+    {'date_trunc', 'length', 'nullif', 'row_number', 'strftime', 'substr', 'trim'}
+)
 _ALLOWED_SCOPED_CUSTOM_OPERATORS = frozenset({'<=>'})
 _ALLOWED_SCOPED_STATEMENT_TYPES = (
     sqlalchemy.sql.dml.UpdateBase,
@@ -398,7 +426,10 @@ def _iter_scoped_statement_elements(
                 children.extend(_validate_opaque_identifier(target, label='ON CONFLICT target'))
             children.extend(_collect_embedded_clause_elements(getattr(element, 'inferred_target_whereclause', None)))
             children.extend(_collect_embedded_clause_elements(getattr(element, 'update_whereclause', None)))
-            for update_pair in getattr(element, 'update_values_to_set', ()):
+            update_values = getattr(element, 'update_values_to_set', ())
+            if isinstance(update_values, collections.abc.Mapping):
+                update_values = update_values.items()
+            for update_pair in update_values:
                 if not isinstance(update_pair, (list, tuple)) or len(update_pair) != 2:
                     raise ScopedSessionTransactionError(
                         'TenantUnitOfWork does not allow an unknown ON CONFLICT update shape'
@@ -435,6 +466,7 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
 
     from .resource_urls import ExpandedResourceURLs
 
+    seen_sql_types: set[int] = set()
     for element in _iter_scoped_statement_elements(statement):
         resource_expansion_allowed = (
             type(element) is ExpandedResourceURLs
@@ -447,7 +479,7 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
                 'TenantUnitOfWork does not allow custom SQL AST nodes in public statements'
             )
 
-        _validate_scoped_sql_type(getattr(element, 'type', None))
+        _validate_scoped_sql_type(getattr(element, 'type', None), seen=seen_sql_types)
 
         if isinstance(element, sqlalchemy.sql.selectable.Values):
             raise ScopedSessionTransactionError(
@@ -464,20 +496,18 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
             if isinstance(identifier, sqlalchemy.sql.elements.quoted_name) and identifier.quote is False:
                 raise ScopedSessionTransactionError('TenantUnitOfWork does not allow forced-unquoted SQL identifiers')
 
-        if any(
-            _scoped_sql_attribute(element, attribute_name, None)
-            for attribute_name in (
-                '_prefixes',
-                '_suffixes',
-                '_hints',
-                '_statement_hints',
-                '_execution_options',
-                '_with_options',
-            )
+        for attribute_name in (
+            '_prefixes',
+            '_suffixes',
+            '_hints',
+            '_statement_hints',
+            '_execution_options',
+            '_with_options',
         ):
-            raise ScopedSessionTransactionError(
-                'TenantUnitOfWork does not allow textual statement modifiers or execution options'
-            )
+            if _scoped_sql_attribute(element, attribute_name, None):
+                raise ScopedSessionTransactionError(
+                    'TenantUnitOfWork does not allow textual statement modifiers or execution options'
+                )
 
         if (
             isinstance(element, sqlalchemy.sql.elements.TextClause)
@@ -506,16 +536,21 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
             raise ScopedSessionTransactionError('TenantUnitOfWork does not allow literal-execute SQL parameters')
 
         if isinstance(element, sqlalchemy.sql.elements.Cast) and type(element.type) not in {Vector, HALFVEC}:
-            # Manual Pipeline migration compares DB-native JSON text, because
+            # Conditional configuration updates compare DB-native JSON text, because
             # PostgreSQL JSON has no equality operator. Permit only these fixed
             # mapped columns and a built-in Text target, never arbitrary casts.
             source = element.clause
-            pipeline_json_cas = (
+            json_cas = (
                 type(element.type) is sqlalchemy.Text
                 and isinstance(source, sqlalchemy.Column)
                 and type(source.type) is sqlalchemy.JSON
-                and getattr(getattr(source, 'table', None), 'name', None) == 'legacy_pipelines'
-                and source.name in {'config', 'stages', 'extensions_preferences'}
+                and (getattr(getattr(source, 'table', None), 'name', None), source.name)
+                in {
+                    ('legacy_pipelines', 'config'),
+                    ('legacy_pipelines', 'stages'),
+                    ('legacy_pipelines', 'extensions_preferences'),
+                    ('bots', 'event_bindings'),
+                }
             )
             monitoring_metadata = (
                 type(element.type) is sqlalchemy.JSON
@@ -526,9 +561,9 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
                     source.name == 'metadata_json' or (source.table.name == 'event_log' and source.name == 'input_json')
                 )
             )
-            if not (pipeline_json_cas or monitoring_metadata):
+            if not (json_cas or monitoring_metadata):
                 raise ScopedSessionTransactionError(
-                    'TenantUnitOfWork only allows trusted pgvector, Pipeline JSON CAS and monitoring metadata casts'
+                    'TenantUnitOfWork only allows trusted pgvector, JSON CAS and monitoring metadata casts'
                 )
 
         if isinstance(element, sqlalchemy.sql.functions.FunctionElement):
@@ -924,7 +959,7 @@ class TenantScopedAsyncSession(sqlalchemy_asyncio.AsyncSession):
             # alone can then return that poisoned connection to the pool.
             connection = await super().connection()
             try:
-                await transaction.commit()
+                await commit_write(transaction)
             except BaseException as exc:
                 cleanup = asyncio.create_task(connection.invalidate())
                 # Invalidation does not access the task-owned Session. Shield
@@ -973,6 +1008,7 @@ class TenantScopedAsyncSession(sqlalchemy_asyncio.AsyncSession):
             INSTANCE_SETTING,
             IDENTITY_DIGEST_SETTING,
             DIRECTORY_INSTANCE_SETTING,
+            PUBLIC_MEDIA_KEY_SETTING,
         }:
             self._reject_transaction_escape('unknown tenant scope configuration')
         self._require_owner_task()
@@ -1359,6 +1395,7 @@ class TenantUnitOfWork:
                         PersistenceScopeKind.INVITATION_DISCOVERY,
                         PersistenceScopeKind.INSTANCE_DISCOVERY,
                         PersistenceScopeKind.IDENTITY_DISCOVERY,
+                        PersistenceScopeKind.PUBLIC_MEDIA,
                     }
                 )
                 if not workspace_to_discovery:

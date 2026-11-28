@@ -1,0 +1,153 @@
+apiVersion: langbot/v1
+kind: Runner
+metadata:
+  name: default
+  label:
+    en_US: Multica Agent
+    zh_Hans: Multica 智能体
+  description:
+    en_US: Forward each conversation to a Multica agent chat session and reply with the agent's answer.
+    zh_Hans: 将每个会话转发到 Multica 智能体的聊天会话，并以智能体的回答回复。
+spec:
+  usages: [agent]
+  config:
+    - name: server-url
+      label:
+        en_US: Multica API URL
+        zh_Hans: Multica API 地址
+      description:
+        en_US: Multica server API base URL. Use https://api.multica.ai for Multica Cloud, or your self-hosted server URL.
+        zh_Hans: Multica 服务端 API 地址。Multica Cloud 使用 https://api.multica.ai，自托管填写你的服务端地址。
+      type: string
+      required: true
+      default: 'https://api.multica.ai'
+    - name: api-token
+      label:
+        en_US: Personal Access Token
+        zh_Hans: 个人访问令牌
+      description:
+        en_US: A Multica personal access token (mul_...). Chats are created as the token's owner, who must be able to use the selected agent.
+        zh_Hans: Multica 个人访问令牌（mul_...）。聊天以令牌所属用户身份创建，该用户需有权使用所选智能体。
+      type: secret
+      required: true
+      default: ''
+    - name: workspace-id
+      label:
+        en_US: Workspace ID
+        zh_Hans: 工作区 ID
+      description:
+        en_US: The Multica workspace UUID that owns the agent.
+        zh_Hans: 智能体所在的 Multica 工作区 UUID。
+      type: string
+      required: true
+      default: ''
+    - name: agent
+      label:
+        en_US: Default Agent
+        zh_Hans: 默认智能体
+      description:
+        en_US: Name or UUID of the Multica agent used by default. A name is matched exactly (case-insensitive), then by a unique substring; an ambiguous name fails and lists the candidates. Users can switch with the chat command when agent switching is enabled.
+        zh_Hans: 默认使用的 Multica 智能体，名称或 UUID 均可。名称先按完整名称（忽略大小写）匹配，再按唯一的子串匹配；匹配到多个时报错并列出候选。启用切换后，用户可在聊天中用命令切换。
+      type: string
+      required: false
+      default: ''
+    - name: agent-id
+      label:
+        en_US: Default Agent ID (deprecated)
+        zh_Hans: 默认智能体 ID（已废弃）
+      description:
+        en_US: Deprecated since 0.2.0; use Default Agent instead. Kept for existing pipelines and used as an agent UUID only when Default Agent is empty.
+        zh_Hans: 0.2.0 起废弃，请改用“默认智能体”。为兼容已有流水线保留，仅在“默认智能体”为空时作为智能体 UUID 使用。
+      type: string
+      required: false
+      default: ''
+    - name: allow-agent-switch
+      label:
+        en_US: Allow Switching Agents in Chat
+        zh_Hans: 允许在聊天中切换智能体
+      description:
+        en_US: Let users pick an agent per conversation with "<prefix> use <number, name or id>" after listing or searching with "<prefix> agents [keyword]".
+        zh_Hans: 允许用户先用 “<前缀> agents [关键词]” 列出或搜索，再用 “<前缀> use <序号、名称或 ID>” 按会话选择智能体。
+      type: boolean
+      required: false
+      default: true
+    - name: command-prefix
+      label:
+        en_US: Command Prefix
+        zh_Hans: 命令前缀
+      description:
+        en_US: Messages starting with this prefix are handled by the runner instead of being sent to the agent.
+        zh_Hans: 以该前缀开头的消息由运行器处理，不会发给智能体。
+      type: string
+      required: false
+      default: '/multica'
+    - name: timeout
+      label:
+        en_US: Reply Timeout (seconds)
+        zh_Hans: 回复超时（秒）
+      description:
+        en_US: How long to wait for the agent's reply. Agent runs can take minutes.
+        zh_Hans: 等待智能体回复的时长。智能体运行可能需要数分钟。
+      type: integer
+      required: false
+      default: 600
+    - name: poll-interval
+      label:
+        en_US: Poll Interval (seconds)
+        zh_Hans: 轮询间隔（秒）
+      type: number
+      required: false
+      default: 2
+    - name: progress-mode
+      label:
+        en_US: Progress Output
+        zh_Hans: 进度输出
+      description:
+        en_US: How to show progress while the agent works. Multica only exposes the task lifecycle (submitted, started, still running), not individual agent steps. "messages" sends each update as its own message and the answer last; "stream" updates one message in place (platforms without streaming receive it once at the end); "off" sends only the answer, as in 0.1.x.
+        zh_Hans: 智能体运行期间如何显示进度。Multica 只提供任务生命周期（已提交、开始执行、仍在执行），不提供智能体内部步骤。“多条消息”逐条发送进度、最后一条是答案；“流式”在同一条消息内追加（不支持流式的平台会在结束时一次性收到）；“关闭”只发送答案，与 0.1.x 一致。
+      type: select
+      required: false
+      default: messages
+      options:
+        - name: messages
+          label:
+            en_US: Separate messages
+            zh_Hans: 多条消息
+        - name: stream
+          label:
+            en_US: One streamed message
+            zh_Hans: 流式（单条消息）
+        - name: "off"
+          label:
+            en_US: "Off"
+            zh_Hans: 关闭
+    - name: progress-interval
+      label:
+        en_US: Progress Interval (seconds)
+        zh_Hans: 进度间隔（秒）
+      description:
+        en_US: Minimum seconds between "still running" updates (5-300). State changes are reported when they happen.
+        zh_Hans: “仍在执行”进度的最小间隔秒数（5-300）。状态变化发生时立即报告。
+      type: number
+      required: false
+      default: 15
+    - name: progress-max-messages
+      label:
+        en_US: Max Progress Messages
+        zh_Hans: 进度消息上限
+      description:
+        en_US: Most progress messages sent per run in "messages" mode (1-20), the answer not included. Some platforms cap replies per user message (QQ Official allows 5), so the default 4 always leaves room for the answer.
+        zh_Hans: “多条消息”模式下每次运行最多发送的进度消息条数（1-20），不含答案。部分平台限制每条用户消息的回复数（QQ 官方机器人为 5 条），默认 4 保证答案一定能发出。
+      type: integer
+      required: false
+      default: 4
+  capabilities:
+    streaming: true
+    tool_calling: false
+    knowledge_retrieval: false
+    multimodal_input: false
+    interrupt: false
+execution:
+  python:
+    path: default.py
+    attr: DefaultRunner

@@ -1,1 +1,1 @@
-langbot-plugin>=0.7.4,<0.8
+langbot-plugin>=0.7.20,<0.8

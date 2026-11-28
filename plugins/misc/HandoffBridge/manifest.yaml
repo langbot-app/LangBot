@@ -1,0 +1,156 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: HandoffBridge
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/HandoffBridge
+  version: 0.1.0
+  description:
+    en_US: Hand keyword-triggered conversations from any bot to human staff on another platform (Slack, Lark, QQ…), and send staff replies back.
+    zh_Hans: 关键词触发后，把任意平台的用户对话转给另一平台（Slack、飞书、QQ 等）上的人工客服，员工回复会发回给用户。
+    zh_Hant: 關鍵字觸發後，將任意平台的使用者對話轉給另一平台上的真人客服，員工回覆會傳回給使用者。
+    ja_JP: キーワードをきっかけに、任意のボットの会話を別プラットフォームの担当者へ引き継ぎ、返信をユーザーへ届けます。
+    es_ES: Transfiere conversaciones activadas por palabras clave de cualquier bot a personal humano en otra plataforma y devuelve sus respuestas.
+    ru_RU: Передаёт диалоги из любого бота сотрудникам на другой платформе по ключевым словам и возвращает их ответы пользователю.
+    th_TH: ส่งต่อบทสนทนาจากบอทใดก็ได้ไปยังเจ้าหน้าที่บนแพลตฟอร์มอื่นเมื่อพบคำสำคัญ และส่งคำตอบกลับไปยังผู้ใช้
+    vi_VN: Chuyển cuộc trò chuyện từ bất kỳ bot nào sang nhân viên trên nền tảng khác khi gặp từ khóa và gửi phản hồi về cho người dùng.
+  label:
+    en_US: Human Handoff Bridge
+    zh_Hans: 人工客服转接
+    zh_Hant: 真人客服轉接
+    ja_JP: 有人対応ブリッジ
+    es_ES: Puente de atención humana
+    ru_RU: Мост передачи оператору
+    th_TH: สะพานส่งต่อเจ้าหน้าที่
+    vi_VN: Cầu nối chuyển nhân viên
+  icon: assets/icon.svg
+spec:
+  permissions:
+    capabilities: [bot.read, bot.message.send, storage.plugin]
+    workspace_operations:
+      - monitoring.messages
+  config:
+    - name: source_bot
+      type: bot-selector
+      required: true
+      label:
+        en_US: Customer-facing bot
+        zh_Hans: 客户所在 Bot
+      description:
+        en_US: The bot your customers talk to (any platform). It must support sending messages proactively; for a WeChat Official Account use auto mode.
+        zh_Hans: 客户聊天用的 Bot（任意平台）。需要支持主动发消息；微信公众号请使用 auto 模式。
+    - name: staff_bot
+      type: bot-selector
+      required: true
+      label:
+        en_US: Staff bot
+        zh_Hans: 员工所在 Bot
+      description:
+        en_US: "The bot that posts handoff requests to your staff. Its platform must return message IDs and pass replies through as quotes: Slack, Lark and QQ (OneBot v11) are supported."
+        zh_Hans: 把转人工请求发给员工的 Bot。该平台需要支持返回消息 ID 和引用回复，目前支持 Slack、飞书、QQ（OneBot v11）。
+    - name: staff_target_type
+      type: select
+      default: group
+      options:
+        - name: group
+          label:
+            en_US: Group / channel
+            zh_Hans: 群 / 频道
+        - name: person
+          label:
+            en_US: Private chat
+            zh_Hans: 私聊
+      label:
+        en_US: Staff chat type
+        zh_Hans: 员工会话类型
+    - name: staff_target_id
+      type: string
+      required: true
+      label:
+        en_US: Staff group / channel / user ID
+        zh_Hans: 员工群 / 频道 / 用户 ID
+      description:
+        en_US: Where handoff requests are posted. See the README for how to find the ID on each platform.
+        zh_Hans: 转人工请求发到哪里。各平台如何查找 ID 见 README。
+    - name: keywords
+      type: array[string]
+      default: []
+      label:
+        en_US: Takeover keywords
+        zh_Hans: 接管关键词
+    - name: case_sensitive
+      type: boolean
+      default: false
+      label:
+        en_US: Case-sensitive matching
+        zh_Hans: 区分大小写
+    - name: takeover_minutes
+      type: integer
+      default: 60
+      label:
+        en_US: Takeover duration (minutes)
+        zh_Hans: 接管时长（分钟）
+    - name: reply_window_hours
+      type: integer
+      default: 0
+      label:
+        en_US: Platform reply window (hours)
+        zh_Hans: 平台回复时限（小时）
+      description:
+        en_US: Stop staff replies this many hours after the customer's last message. 0 means no limit. Use 48 for WeChat Official Accounts and WeCom customer service.
+        zh_Hans: 用户最后一次发言超过这么多小时后，不再允许员工回复。0 表示不限。微信公众号、企业微信客服请填 48。
+    - name: forward_followups
+      type: boolean
+      default: true
+      label:
+        en_US: Forward follow-up messages
+        zh_Hans: 转发接管期间的后续消息
+    - name: send_user_details
+      type: boolean
+      default: true
+      label:
+        en_US: Post user details for staff
+        zh_Hans: 给员工发送用户详情
+      description:
+        en_US: After the handoff request, reply to it with the user's ID, message count, first contact time and recent conversation.
+        zh_Hans: 转人工请求发出后，回复一条用户详情：用户 ID、历史消息数、首次联系时间和最近对话。
+    - name: history_messages
+      type: integer
+      default: 10
+      label:
+        en_US: Recent messages in user details
+        zh_Hans: 用户详情中的最近对话条数
+      description:
+        en_US: How many recent messages (user and AI) to include, up to 50. 0 omits the conversation.
+        zh_Hans: 附带最近多少条对话（含用户和 AI），最多 50；0 表示不附带对话。
+    - name: start_notice
+      type: string
+      default: "已为您转接人工客服，请稍候，客服会在这里回复您。"
+      label:
+        en_US: Notice to the user when takeover starts
+        zh_Hans: 进入人工时发给用户的提示
+      description:
+        en_US: Sent to the user when a keyword starts a takeover. Leave empty to disable.
+        zh_Hans: 命中关键词进入人工接管时发给用户。留空则不发送。
+    - name: end_notice
+      type: string
+      default: "人工客服已结束本次服务，后续将由 AI 助手继续为您解答。"
+      label:
+        en_US: Notice to the user when takeover ends
+        zh_Hans: 退出人工时发给用户的提示
+      description:
+        en_US: Sent to the user when staff send !close or the takeover expires. Not sent after the reply window. Leave empty to disable.
+        zh_Hans: 员工发送 !close 或接管到期时发给用户；超过回复时限时不发送。留空则不发送。
+  components:
+    Runner:
+      fromDirs:
+        - path: components/runner/
+    EventListener:
+      fromDirs:
+        - path: components/event_listener/
+execution:
+  python:
+    path: main.py
+    attr: HandoffBridge
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

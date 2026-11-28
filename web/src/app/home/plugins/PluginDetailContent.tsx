@@ -1,4 +1,5 @@
 import EntityLoadState from '@/components/EntityLoadState';
+import PluginPermissions from './components/PluginPermissions';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PluginForm from '@/app/home/plugins/components/plugin-installed/plugin-form/PluginForm';
@@ -27,16 +28,67 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { httpClient } from '@/app/infra/http/HttpClient';
-import { Plugin } from '@/app/infra/entities/plugin';
+import { installableVersion, Plugin } from '@/app/infra/entities/plugin';
+import { PluginCompatibilityWarning } from '@/app/home/plugins/components/plugin-compatibility/PluginCompatibilityNotice';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useAsyncTask, AsyncTaskStatus } from '@/hooks/useAsyncTask';
-import { Bug, Puzzle, Trash2 } from 'lucide-react';
+import {
+  ArrowUp,
+  Bug,
+  Loader2,
+  Puzzle,
+  ShieldAlert,
+  Trash2,
+  Upload,
+} from 'lucide-react';
+import { getCloudServiceClient } from '@/app/infra/http';
+import { isNewerVersion } from '@/app/utils/versionCompare';
+import {
+  pluginTaskKey,
+  usePluginInstallTasks,
+} from '@/app/home/plugins/components/plugin-install-task';
+import PluginSpaceUploadDialog from './components/plugin-installed/PluginSpaceUploadDialog';
 import { toast } from 'sonner';
 
 /**
  * Plugin detail page content.
  * The `id` prop is the composite key "author/name".
  */
+/**
+ * Settings and docs come from the running plugin. Until its permissions are
+ * confirmed (or while it is starting) say so instead of a generic load error.
+ */
+function PluginNotReady({
+  awaitingPermission,
+}: {
+  awaitingPermission: boolean;
+}) {
+  const { t } = useTranslation();
+  return awaitingPermission ? (
+    <div
+      role="status"
+      data-testid="plugin-awaiting-permission"
+      className="flex items-start gap-3 rounded-lg border border-amber-300/60 bg-amber-50 p-4 text-sm dark:border-amber-500/40 dark:bg-amber-950/30"
+    >
+      <ShieldAlert className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-400" />
+      <div className="space-y-1">
+        <p className="font-medium">{t('plugins.notReady.awaitingTitle')}</p>
+        <p className="text-muted-foreground">
+          {t('plugins.notReady.awaitingDescription')}
+        </p>
+      </div>
+    </div>
+  ) : (
+    <div
+      role="status"
+      className="flex items-center gap-2 rounded-lg border p-4 text-sm text-muted-foreground"
+    >
+      <Loader2 className="size-4 animate-spin" />
+      {t('plugins.notReady.starting')}
+    </div>
+  );
+}
+
 export default function PluginDetailContent({ id }: { id: string }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -46,6 +98,19 @@ export default function PluginDetailContent({ id }: { id: string }) {
   const [pluginInfo, setPluginInfo] = useState<Plugin | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteData, setDeleteData] = useState(false);
+  const [showSpaceUpload, setShowSpaceUpload] = useState(false);
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
+  const [showUpdateConfirm, setShowUpdateConfirm] = useState(false);
+  const [updateSubmitting, setUpdateSubmitting] = useState(false);
+  // Bumped once a freshly confirmed plugin is running, so panels that load
+  // their own data (settings form, readme, logs) fetch again.
+  const [panelsKey, setPanelsKey] = useState(0);
+  const {
+    addTask,
+    setSelectedTaskId,
+    registerOnTaskComplete,
+    unregisterOnTaskComplete,
+  } = usePluginInstallTasks();
 
   // Parse "author/name" composite key
   const slashIndex = id.indexOf('/');
@@ -53,6 +118,13 @@ export default function PluginDetailContent({ id }: { id: string }) {
   const pluginName = slashIndex >= 0 ? id.substring(slashIndex + 1) : id;
 
   const plugin = plugins.find((p) => p.id === id);
+  // Same rule as the installed-plugin card menu: debug, local and GitHub
+  // installs can be uploaded to the marketplace as-is.
+  const canUploadToSpace =
+    !!plugin &&
+    (plugin.debug ||
+      plugin.installSource === 'local' ||
+      plugin.installSource === 'github');
   const title =
     pluginInfo?.manifest.manifest.metadata.label &&
     extractI18nObject(pluginInfo.manifest.manifest.metadata.label)
@@ -92,6 +164,103 @@ export default function PluginDetailContent({ id }: { id: string }) {
       cancelled = true;
     };
   }, [pluginAuthor, pluginName, loadAttempt]);
+
+  // Confirming permissions starts the plugin in the background; poll until it
+  // is initialized instead of showing a half-loaded page until a manual refresh.
+  async function reloadUntilMounted() {
+    void refreshPlugins();
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      try {
+        const { plugin: latest } = await httpClient.getPlugin(
+          pluginAuthor,
+          pluginName,
+        );
+        setPluginInfo(latest);
+        if (
+          latest.status === 'initialized' &&
+          !latest.permission_status?.pending_confirmation
+        )
+          break;
+      } catch {
+        // Transient while the runtime restarts the plugin; keep polling.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    void refreshPlugins();
+    setPanelsKey((key) => key + 1);
+  }
+
+  const installedVersion = pluginInfo?.manifest.manifest.metadata.version ?? '';
+  const installSource = pluginInfo?.install_source ?? plugin?.installSource;
+  const isMarketplaceInstall =
+    !pluginInfo?.debug && installSource === 'marketplace';
+  const hasUpdate =
+    isMarketplaceInstall &&
+    !!latestVersion &&
+    isNewerVersion(latestVersion, installedVersion);
+
+  // Ask the marketplace for this plugin's latest version directly, so update
+  // detection does not depend on the plugin appearing in a paged list.
+  useEffect(() => {
+    if (!isMarketplaceInstall) {
+      setLatestVersion(null);
+      return;
+    }
+    let cancelled = false;
+    getCloudServiceClient()
+      .then((client) => client.getPluginDetail(pluginAuthor, pluginName))
+      .then((res) => {
+        if (!cancelled)
+          setLatestVersion(res.plugin ? installableVersion(res.plugin) : null);
+      })
+      .catch(() => {
+        if (!cancelled) setLatestVersion(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isMarketplaceInstall, pluginAuthor, pluginName, loadAttempt]);
+
+  useEffect(() => {
+    const onComplete = (
+      _taskId: number,
+      success: boolean,
+      error?: string,
+      operation?: 'install' | 'upgrade',
+    ) => {
+      if (operation !== 'upgrade') return;
+      if (success) {
+        toast.success(t('plugins.updateSuccess'));
+        void refreshPlugins();
+        setLoadAttempt((attempt) => attempt + 1);
+      } else {
+        toast.error(t('plugins.updateError') + (error ?? ''));
+      }
+    };
+    registerOnTaskComplete(onComplete);
+    return () => unregisterOnTaskComplete(onComplete);
+  }, [registerOnTaskComplete, unregisterOnTaskComplete, refreshPlugins, t]);
+
+  function executeUpdate() {
+    setUpdateSubmitting(true);
+    httpClient
+      .upgradePlugin(pluginAuthor, pluginName)
+      .then((res) => {
+        addTask({
+          taskId: res.task_id,
+          pluginName: `${pluginAuthor}/${pluginName}`,
+          source: 'marketplace',
+          extensionType: 'plugin',
+          operation: 'upgrade',
+        });
+        setSelectedTaskId(pluginTaskKey(res.task_id, 'marketplace', 'upgrade'));
+        setShowUpdateConfirm(false);
+      })
+      .catch((error) => {
+        toast.error(t('plugins.updateError') + error.message);
+      })
+      .finally(() => setUpdateSubmitting(false));
+  }
 
   function handleFormSubmit(timeout?: number) {
     if (timeout) {
@@ -201,6 +370,12 @@ export default function PluginDetailContent({ id }: { id: string }) {
       <EntityLoadState error onRetry={() => setLoadAttempt((n) => n + 1)} />
     );
   if (!pluginInfo) return <EntityLoadState />;
+  const awaitingPermission = Boolean(
+    pluginInfo.permission_status?.pending_confirmation,
+  );
+  // Only a plugin that is not loaded at all is "starting"; once mounted its
+  // own panels report their state (runtime: unmounted → mounted → initialized).
+  const pluginReady = !awaitingPermission && pluginInfo.status !== 'unmounted';
 
   return (
     <>
@@ -208,10 +383,44 @@ export default function PluginDetailContent({ id }: { id: string }) {
         <div className="flex shrink-0 flex-col gap-2 pb-4">
           <div className="flex min-w-0 flex-wrap items-center gap-3">
             <h1 className="truncate text-xl font-semibold">{title}</h1>
+            {canUploadToSpace && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="order-last ml-auto shrink-0"
+                onClick={() => setShowSpaceUpload(true)}
+              >
+                <Upload className="mr-1.5 size-4" />
+                {t('plugins.spaceUpload.menuAction')}
+              </Button>
+            )}
+            {hasUpdate && (
+              <Button
+                type="button"
+                size="sm"
+                className="order-last ml-auto shrink-0"
+                onClick={() => setShowUpdateConfirm(true)}
+              >
+                <ArrowUp className="mr-1.5 size-4" />
+                {t('plugins.updateToVersion', { version: latestVersion })}
+              </Button>
+            )}
             <Badge variant="outline" className="shrink-0 text-[0.7rem]">
               <Puzzle className="size-3.5" />
               {t('market.typePlugin')}
             </Badge>
+            {installedVersion && (
+              <Badge
+                variant="outline"
+                className="shrink-0 font-mono text-[0.7rem]"
+                title={t('plugins.installedVersion', {
+                  version: installedVersion,
+                })}
+              >
+                v{installedVersion}
+              </Badge>
+            )}
             {sourceBadge}
             {componentBadges}
           </div>
@@ -220,14 +429,29 @@ export default function PluginDetailContent({ id }: { id: string }) {
               {description}
             </p>
           )}
+          <PluginCompatibilityWarning
+            compatibility={pluginInfo.compatibility}
+            context="installed"
+            className="mt-1"
+          />
         </div>
 
         <div className="flex min-h-0 max-w-full flex-1 flex-col gap-6 overflow-y-auto overscroll-none md:flex-row md:overflow-hidden">
           <div className="min-w-0 max-w-full space-y-4 pb-6 md:min-h-0 md:w-[380px] md:flex-shrink-0 md:overflow-y-auto md:overflow-x-hidden md:overscroll-none xl:w-[420px]">
-            <PluginForm
-              pluginAuthor={pluginAuthor}
-              pluginName={pluginName}
-              onFormSubmit={handleFormSubmit}
+            {pluginReady ? (
+              <PluginForm
+                key={`form-${panelsKey}`}
+                pluginAuthor={pluginAuthor}
+                pluginName={pluginName}
+                onFormSubmit={handleFormSubmit}
+              />
+            ) : (
+              <PluginNotReady awaitingPermission={awaitingPermission} />
+            )}
+            <PluginPermissions
+              author={pluginAuthor}
+              name={pluginName}
+              onChange={() => void reloadUntilMounted()}
             />
             {dangerZone}
           </div>
@@ -246,16 +470,22 @@ export default function PluginDetailContent({ id }: { id: string }) {
                 value="docs"
                 className="min-h-0 flex-1 md:overflow-y-auto md:overflow-x-hidden md:overscroll-none"
               >
-                <PluginReadme
-                  pluginAuthor={pluginAuthor}
-                  pluginName={pluginName}
-                />
+                {pluginReady ? (
+                  <PluginReadme
+                    key={`readme-${panelsKey}`}
+                    pluginAuthor={pluginAuthor}
+                    pluginName={pluginName}
+                  />
+                ) : (
+                  <PluginNotReady awaitingPermission={awaitingPermission} />
+                )}
               </TabsContent>
               <TabsContent
                 value="logs"
                 className="min-h-0 flex-1 md:overflow-hidden"
               >
                 <PluginLogs
+                  key={`logs-${panelsKey}`}
                   pluginAuthor={pluginAuthor}
                   pluginName={pluginName}
                 />
@@ -329,6 +559,48 @@ export default function PluginDetailContent({ id }: { id: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={showUpdateConfirm} onOpenChange={setShowUpdateConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('plugins.updateConfirm')}</DialogTitle>
+            <DialogDescription>
+              {t('plugins.confirmUpdatePluginVersion', {
+                author: pluginAuthor,
+                name: pluginName,
+                from: installedVersion,
+                to: latestVersion,
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowUpdateConfirm(false)}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button onClick={executeUpdate} disabled={updateSubmitting}>
+              {updateSubmitting
+                ? t('plugins.updating')
+                : t('plugins.confirmUpdate')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {showSpaceUpload && (
+        <PluginSpaceUploadDialog
+          author={pluginAuthor}
+          name={pluginName}
+          open
+          onOpenChange={(open) => {
+            if (!open) setShowSpaceUpload(false);
+          }}
+          onUploaded={() => {
+            void refreshPlugins();
+            setLoadAttempt((attempt) => attempt + 1);
+          }}
+        />
+      )}
     </>
   );
 }

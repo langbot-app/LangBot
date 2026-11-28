@@ -1,5 +1,6 @@
 """Full-group gateway messages retain group identity and passive replies."""
 
+import asyncio
 import base64
 import json
 import time
@@ -76,6 +77,9 @@ async def receive_message(monkeypatch, adapter_class, transport, event_type, pay
     try:
         if transport == 'gateway':
             await adapter.run_async()
+            # Gateway events are dispatched in background tasks; drain them before shutdown.
+            while pending := [task for task in getattr(adapter, '_gateway_tasks', ()) if not task.done()]:
+                await asyncio.gather(*pending, return_exceptions=True)
         else:
             app = Quart(__name__)
 

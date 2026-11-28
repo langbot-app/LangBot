@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import re
 from types import SimpleNamespace
 from langbot_plugin.api.entities.builtin.platform.events import event_summary
 
@@ -54,6 +55,58 @@ def event_preview(payload, fallback='', event_type=''):
     return ''
 
 
+def _entity(value):
+    if isinstance(value, dict):
+        identity = value.get('id')
+        name = value.get('nickname') or value.get('member_name') or value.get('name')
+        return (str(identity) if identity not in (None, '') else None), (str(name) if name else None)
+    if value not in (None, ''):
+        return str(value), None
+    return None, None
+
+
+def chat_context(row, events=()):
+    """Who sent the triggering event and in which chat, for display and routing.
+
+    ``chat_id`` is exactly the value the bot routing ``chat_id`` condition
+    matches, so the UI can offer it for copy/route creation.
+    """
+    from ....persistence.session_summary_contract import parse_group_member_id
+
+    chat = {'type': None, 'id': None, 'name': None, 'sender_id': None, 'sender_name': None}
+    for event in events:
+        data = parsed(event.input_json, None)
+        if not isinstance(data, dict):
+            continue
+        chat_type = data.get('chat_type')
+        chat_type = getattr(chat_type, 'value', chat_type)
+        group_id, group_name = _entity(data.get('group'))
+        sender_id, sender_name = _entity(data.get('sender') or data.get('user'))
+        if chat_type in ('group', 'private', 'person') or group_id:
+            chat.update(
+                type='group' if chat_type == 'group' or (group_id and chat_type is None) else 'person',
+                id=str(data.get('chat_id') or group_id or sender_id or '') or None,
+                name=group_name if chat_type == 'group' or group_id else None,
+                sender_id=sender_id or event.actor_id,
+                sender_name=sender_name or event.actor_name,
+            )
+            break
+    scope = row.get('session_id') or row.get('conversation_id') or ''
+    if not chat['id'] and scope:
+        member = parse_group_member_id(scope)
+        if member:
+            chat.update(type='group', id=member[0], sender_id=chat['sender_id'] or member[1])
+        else:
+            kind, _, identity = scope.partition('_')
+            if kind in ('group', 'person') and identity and '#' not in identity:
+                chat.update(type=kind, id=identity)
+    if not chat['sender_id']:
+        chat['sender_id'] = row.get('user_id')
+    if not chat['sender_name']:
+        chat['sender_name'] = row.get('user_name')
+    return chat if chat['id'] or chat['sender_id'] else None
+
+
 def event_item(row):
     metadata = parsed(row.metadata_json, {})
     return {
@@ -81,6 +134,7 @@ def message_item(row):
         'status': row.status,
         'event_id': row.event_id,
         'run_id': row.run_id,
+        'handled_by': getattr(row, 'handled_by', None),
         'origin': 'delivery' if row.role == 'assistant' else 'input',
         'delivery': parsed(row.variables, {}) if row.role == 'assistant' else None,
     }
@@ -97,6 +151,66 @@ def transcript_item(row):
         'run_id': row.run_id,
         'origin': 'generated' if row.role == 'assistant' else 'input',
     }
+
+
+# Chat filter stages and the message policy item each one enforces.
+_FILTER_STAGE_POLICY_ITEMS = {
+    'BanSessionCheckStage': 'access-control',
+    'GroupRespondRuleCheckStage': 'group-respond-rules',
+    'PreContentFilterStage': 'content-filter',
+    'PostContentFilterStage': 'content-filter',
+    'RequireRateLimitOccupancy': 'rate-limit',
+}
+
+
+_DROP_REASON = re.compile(r'^(bot|route):[^ ]*: (?:trigger|safety|output)\.([a-z-]+)$')
+
+
+def pipeline_handling(handled_by: str | None) -> dict:
+    """Handling facts of a Chat query from its recorded owner."""
+    handled_by = handled_by or ''
+    if handled_by.startswith('filtered:'):
+        return {
+            'handling': 'policy',
+            'policy_item': _FILTER_STAGE_POLICY_ITEMS.get(handled_by.removeprefix('filtered:')),
+        }
+    if handled_by.startswith('plugin:'):
+        return {'handling': 'plugin'}
+    return {'handling': 'ai'}
+
+
+def event_handling(metadata: dict) -> dict:
+    """Handling facts of an ingress event from its first (primary) route."""
+    routes = [route for route in metadata.get('routes') or () if isinstance(route, dict)]
+    route = routes[0] if routes else {}
+    target = route.get('target_type')
+    facts: dict = {}
+    if route.get('failure_code') == 'message_policy' or metadata.get('policy_item'):
+        # Rows written before structured fields only carry the drop reason,
+        # ``<bot|route>:<id>: <section>.<item>``.
+        legacy = _DROP_REASON.match(str(metadata.get('reason') or route.get('reason') or ''))
+        facts = {
+            'handling': 'policy',
+            'policy_item': metadata.get('policy_item')
+            or route.get('policy_item')
+            or (legacy.group(2) if legacy else None),
+            'policy_layer': metadata.get('policy_layer')
+            or route.get('policy_layer')
+            or (legacy.group(1) if legacy else None),
+        }
+    elif target in {'builtin_command', 'plugin_command'}:
+        name = str(route.get('target_uuid') or '')
+        facts = {
+            'handling': 'command',
+            'command_kind': 'builtin' if target == 'builtin_command' else 'plugin',
+            'command_name': name.rsplit('/', 1)[-1] or None,
+            'command_denied': route.get('status') == 'denied',
+        }
+    elif target in {'plugin', 'event_processor'}:
+        facts = {'handling': 'plugin', 'hook': route.get('hook')}
+    elif target in {'pipeline', 'agent'}:
+        facts = {'handling': 'ai'}
+    return facts
 
 
 class ExecutionDetailsMixin:
@@ -138,6 +252,25 @@ class ExecutionDetailsMixin:
                 ),
             ),
         )
+        group_id = sa.func.substr(conversation, 7)
+        actor_id = sa.func.trim(EventLog.actor_id)
+        monitoring_session = sa.case(
+            (
+                sa.and_(
+                    conversation.like('group\\_%', escape='\\'),
+                    ~conversation.like('%#%', escape='\\'),
+                    EventLog.actor_id.is_not(None),
+                    actor_id != '',
+                ),
+                sa.literal('groupmember_')
+                .concat(sa.func.length(group_id))
+                .concat('_')
+                .concat(group_id)
+                .concat('_')
+                .concat(actor_id),
+            ),
+            else_=conversation,
+        )
         values = {
             'id': EventLog.event_id,
             'workspace_uuid': EventLog.workspace_id,
@@ -151,7 +284,7 @@ class ExecutionDetailsMixin:
                 self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'target_type')), ''
             ),
             'message_content': sa.func.coalesce(EventLog.input_json, EventLog.input_summary, ''),
-            'session_id': conversation,
+            'session_id': monitoring_session,
             'status': sa.func.coalesce(self._execution_json_text(EventLog.metadata_json, 'status'), 'success'),
             'level': sa.literal('info'),
             'platform': self._execution_json_text(EventLog.metadata_json, 'platform'),
@@ -253,7 +386,7 @@ class ExecutionDetailsMixin:
             )
             .values(run_id=run_id, event_id=sa.func.coalesce(models.MonitoringMessage.event_id, event_id))
         )
-        async with self._summary_write_session(workspace) as session:
+        async with self._summary_write_session(workspace, 'monitoring.link_event') as session:
             message = (
                 await session.execute(
                     sa.select(
@@ -268,6 +401,62 @@ class ExecutionDetailsMixin:
             await session.execute(statement)
             if message is not None and not message.event_id and message.role != 'assistant':
                 await self._summary_writer().link_event(session, workspace, message.bot_id, message_id, event_id)
+
+    def _event_handling_expression(self):
+        """SQL form of ``event_handling``: ai/command/plugin/policy or NULL."""
+
+        def route_field(name):
+            return self._execution_json_text(EventLog.metadata_json, ('routes', 0, name))
+
+        target = route_field('target_type')
+        return sa.case(
+            (
+                sa.or_(
+                    route_field('failure_code') == 'message_policy',
+                    self._execution_json_text(EventLog.metadata_json, 'policy_item').is_not(None),
+                ),
+                'policy',
+            ),
+            (target.in_(['builtin_command', 'plugin_command']), 'command'),
+            (target.in_(['plugin', 'event_processor']), 'plugin'),
+            (target.in_(['pipeline', 'agent']), 'ai'),
+        )
+
+    async def route_counts_24h(self, context, bot_uuid):
+        workspace = require_workspace_uuid(context)
+        binding = self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'binding_id'))
+        category = self._event_handling_expression()
+        rows = await self._execution_query(
+            workspace,
+            sa.select(binding, category, sa.func.count())
+            .where(
+                EventLog.workspace_id == workspace,
+                EventLog.bot_id == bot_uuid,
+                EventLog.event_type == 'message.received',
+                EventLog.created_at
+                >= datetime.datetime.now(datetime.UTC).replace(tzinfo=None) - datetime.timedelta(days=1),
+            )
+            .group_by(binding, category),
+        )
+        counts = {}
+        for route_id, kind, count in rows:
+            if route_id and kind:
+                counts.setdefault(route_id, {})[kind] = count
+        return counts
+
+    async def record_policy_event(self, context, event_id, policy_event):
+        workspace = self._require_write_context(context)
+        scoped = (EventLog.workspace_id == workspace, EventLog.event_id == event_id)
+        async with self._summary_write_session(workspace, 'monitoring.policy') as session:
+            raw = (await session.execute(sa.select(EventLog.metadata_json).where(*scoped).with_for_update())).first()
+            if raw is not None:
+                metadata = parsed(raw[0], {})
+                metadata.setdefault('policy_events', []).append(policy_event)
+                if policy_event['type'] == 'admission':
+                    metadata.update(
+                        {key: policy_event[key] for key in ('policy_item', 'policy_layer', 'reason')}, status='ignored'
+                    )
+                await session.execute(sa.update(EventLog).where(*scoped).values(metadata_json=json.dumps(metadata)))
 
     async def record_ingress_event(
         self,
@@ -309,13 +498,32 @@ class ExecutionDetailsMixin:
                             'target_uuid',
                             'run_id',
                             'failure_code',
+                            'binding_id',
+                            'route_ref',
+                            'policy_layer',
+                            'policy_item',
+                            'hook',
+                            'denied_reply',
+                            'command_kind',
                         )
                     }
                 )
         metadata = {'status': status, 'bot_name': bot_name, 'platform': platform}
         if routes is not None:
             metadata['routes'] = safe_routes
-        async with self._summary_write_session(workspace) as session:
+            if safe_routes and safe_routes[0].get('failure_code') == 'message_policy':
+                metadata['reason'] = safe_routes[0]['reason']
+                if status == 'completed':
+                    metadata['status'] = 'ignored'
+            if safe_routes and safe_routes[0].get('target_type') == 'plugin':
+                metadata['handled_by'] = safe_routes[0]['target_uuid']
+            elif safe_routes and safe_routes[0].get('target_type') == 'builtin_command':
+                metadata['handled_by'] = 'builtin_command:' + safe_routes[0]['target_uuid']
+                if safe_routes[0]['status'] == 'failed':
+                    metadata['status'] = 'failed'
+            if any(route.get('status') == 'denied' and route.get('denied_reply') == 'notice' for route in safe_routes):
+                metadata['status'] = 'denied'
+        async with self._summary_write_session(workspace, 'monitoring.ingress') as session:
             await store.append_event(
                 event_id=event_id,
                 event_type=event_type,
@@ -332,6 +540,21 @@ class ExecutionDetailsMixin:
                 session=session,
             )
             if routes is not None:
+                previous = (
+                    await session.execute(
+                        sa.select(EventLog.metadata_json)
+                        .where(EventLog.workspace_id == workspace, EventLog.event_id == event_id)
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                policy_events = parsed(previous, {}).get('policy_events')
+                if policy_events:
+                    metadata['policy_events'] = policy_events
+                    for event in policy_events:
+                        if event['type'] == 'admission':
+                            metadata.update(
+                                {key: event[key] for key in ('policy_item', 'policy_layer', 'reason')}, status='ignored'
+                            )
                 await session.execute(
                     sa.update(EventLog)
                     .where(
@@ -502,6 +725,7 @@ class ExecutionDetailsMixin:
             'target_kind': 'event',
             'target_id': None,
             'target_name': None,
+            'handled_by': metadata.get('handled_by'),
             'bot_id': row.bot_id,
             'bot_name': metadata.get('bot_name'),
             'platform': metadata.get('platform') or row.source,
@@ -528,10 +752,33 @@ class ExecutionDetailsMixin:
                 if isinstance(route, dict) and route.get('status') == 'failed'
             )
             or None,
+            **event_handling(metadata),
         }
 
     async def enrich_execution_rows(self, workspace, items, *, summary_only=False):
         pipeline_items = {item['id']: item for item in items if item.get('source') == 'pipeline'}
+        dropped = {
+            item['event_id']: item
+            for item in pipeline_items.values()
+            if item.get('handling') == 'policy' and item.get('event_id')
+        }
+        if dropped and not summary_only:
+            # Chat filter stages record which layer dropped the message on the
+            # ingress event; the query row only knows the stage.
+            result = await self._execution_query(
+                workspace,
+                sa.select(EventLog.event_id, EventLog.metadata_json).where(
+                    EventLog.workspace_id == workspace, EventLog.event_id.in_(list(dropped))
+                ),
+            )
+            for event_id, raw in result.all():
+                metadata = parsed(raw, {})
+                item = dropped[event_id]
+                legacy = _DROP_REASON.match(str(metadata.get('reason') or ''))
+                item['policy_layer'] = metadata.get('policy_layer') or (legacy.group(1) if legacy else None)
+                item['policy_item'] = (
+                    metadata.get('policy_item') or item.get('policy_item') or (legacy.group(2) if legacy else None)
+                )
         if pipeline_items:
             # Pipeline rows own the UI identity; their linked Runner ledger owns
             # timing and usage. Read them in one batch for both list and detail.
@@ -803,6 +1050,15 @@ class ExecutionDetailsMixin:
                 transcript_item,
             )
 
+        counts = {}
+        if section in (None, 'overview'):
+            # Cheap totals let collapsed diagnostics show their size up front.
+            for name in ('llm_calls', 'tool_calls', 'events'):
+                query = statements[name][0].order_by(None)
+                counts[name] = (
+                    await self._execution_query(workspace, sa.select(sa.func.count()).select_from(query.subquery()))
+                ).scalar_one()
+
         pages = {}
         for name, (query, convert) in statements.items():
             if name in requested:
@@ -912,9 +1168,18 @@ class ExecutionDetailsMixin:
                 'next_offset': offset + min(len(refs), limit),
             }
 
+        ingress = await self._execution_rows(
+            workspace,
+            sa.select(EventLog)
+            .where(*event_conditions, EventLog.input_json.is_not(None))
+            .order_by(EventLog.id.asc())
+            .limit(5),
+        )
         result = {
             'source': row['source'],
             'row': row,
+            'chat': chat_context(row, ingress),
+            'counts': counts,
             'pages': pages,
             'legacy_context': bool(message and not message.event_id),
         }

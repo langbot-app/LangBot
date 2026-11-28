@@ -28,9 +28,18 @@ class Plugin(Command):
             plugin_list_str = ''
 
             for plugin in plugins:
-                plugin_manifest = plugin['manifest']
-                name = plugin_manifest['metadata']['name']
-                description = plugin_manifest['metadata']['description'][language]
+                if not isinstance(plugin, dict):
+                    continue
+                plugin_manifest = plugin.get('manifest', plugin)
+                metadata = plugin_manifest.get('metadata', {}) if isinstance(plugin_manifest, dict) else {}
+                name = metadata.get('name', '')
+                desc = metadata.get('description', {})
+                if isinstance(desc, dict):
+                    description = desc.get(language) or desc.get('en_US') or (next(iter(desc.values())) if desc else '')
+                elif isinstance(desc, str):
+                    description = desc
+                else:
+                    description = ''
                 plugin_list_str += get_text(language, "plugin.item", name=name, description=description) + "\n\n"
 
             title = get_text(language, "plugin.title")

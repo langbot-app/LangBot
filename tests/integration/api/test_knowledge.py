@@ -123,7 +123,7 @@ def fake_knowledge_app():
     app.knowledge_service.get_files_by_knowledge_base = AsyncMock(
         return_value=[{'uuid': 'test-file-uuid', 'filename': 'test.pdf'}]
     )
-    app.knowledge_service.store_file = AsyncMock(return_value='test-task-id')
+    app.knowledge_service.store_file = AsyncMock(return_value=17)
     app.knowledge_service.delete_file = AsyncMock()
     app.knowledge_service.retrieve_knowledge_base = AsyncMock(return_value=[{'content': 'test result', 'score': 0.95}])
 
@@ -304,7 +304,7 @@ class TestKnowledgeBaseFilesEndpoints:
         assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
         assert called.await_args.args[1:] == ('test-kb-uuid', 'test-file-id')
         assert called.await_args.kwargs == {'parser_plugin_id': 'test/parser'}
-        assert data['data'] == {'task_id': 'test-task-id'}
+        assert data['data'] == {'task_id': 17}
 
     @pytest.mark.asyncio
     async def test_delete_file_from_knowledge_base(self, quart_test_client, fake_knowledge_app):

@@ -4,7 +4,7 @@ metadata:
   author: langbot-team
   name: GoogleSearch
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/GoogleSearch
-  version: 0.1.7
+  version: 0.1.8
   description:
     en_US: Search A tool for performing a Google SERP search and extracting snippets
       and webpages.Input should be a search query.

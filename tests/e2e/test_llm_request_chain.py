@@ -12,6 +12,7 @@ from pathlib import Path
 import shutil
 import select
 import socket
+import contextlib
 import sqlite3
 import threading
 import time
@@ -393,7 +394,7 @@ def test_cancellation_releases_upstream_and_next_request_works(chain, surface):
     assert result['text'] == 'hello ', result
     time.sleep(1.5)
     cancelled = [row for row in records if row['case'] == case]
-    with sqlite3.connect(tmpdir / 'data/langbot.db') as db:
+    with contextlib.closing(sqlite3.connect(tmpdir / 'data/langbot.db')) as db:
         diagnostics = db.execute('SELECT session_id, details FROM monitoring_llm_calls').fetchall()
     assert len(cancelled) == 1
     assert invoke('runner-events', 'after-' + case)['text'] == 'hello world'
@@ -424,7 +425,7 @@ def test_invalid_budget_fails_before_network_and_recovers(chain):
 def test_monitoring_persists_complete_usage_and_structured_errors(chain):
     invoke, _, tmpdir = chain
     invoke('runner-events', 'monitoring')
-    with sqlite3.connect(tmpdir / 'data/langbot.db') as db:
+    with contextlib.closing(sqlite3.connect(tmpdir / 'data/langbot.db')) as db:
         rows = db.execute('SELECT details FROM monitoring_llm_calls').fetchall()
     details = [json.loads(row[0]) for row in rows if row[0]]
     assert any(x.get('usage', {}).get('prompt_tokens_details', {}).get('cached_tokens') == 16 for x in details)

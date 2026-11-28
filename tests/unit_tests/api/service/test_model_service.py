@@ -1486,3 +1486,23 @@ class TestModelSecretRoundtrip:
             'headers': {'Authorization': 'Bearer secret', 'X-API-Key': ''},
             'timeout': 60,
         }
+
+
+def test_llm_model_list_resolves_runtime_capabilities_without_scanning_other_workspaces():
+    from langbot.pkg.api.http.service.model import _runtime_llm_models_by_uuid
+    from langbot.pkg.provider.modelmgr.modelmgr import ModelManager
+
+    def runtime(workspace_uuid, model_uuid):
+        return SimpleNamespace(model_entity=SimpleNamespace(uuid=model_uuid, workspace_uuid=workspace_uuid))
+
+    model_mgr = ModelManager(SimpleNamespace())
+    old = runtime('ws-a', 'm1')
+    new = runtime('ws-a', 'm1')
+    other = runtime('ws-b', 'm2')
+    model_mgr._cache_set(model_mgr.llm_model_dict, ('inst', 'ws-a', 1, 'm1'), old)
+    model_mgr._cache_set(model_mgr.llm_model_dict, ('inst', 'ws-a', 2, 'm1'), new)
+    model_mgr._cache_set(model_mgr.llm_model_dict, ('inst', 'ws-b', 1, 'm2'), other)
+
+    assert model_mgr.runtime_llm_models_for_workspace('ws-a') == {'m1': new}
+    assert model_mgr.runtime_llm_models_for_workspace('ws-c') == {}
+    assert _runtime_llm_models_by_uuid(SimpleNamespace(model_mgr=model_mgr), 'ws-b') == {'m2': other}

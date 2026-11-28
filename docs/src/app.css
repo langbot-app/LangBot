@@ -3,13 +3,117 @@
 @import "fumadocs-ui/css/preset.css";
 @import "fumapress/css/preset.css";
 @import "fumadocs-openapi/css/preset.css";
+/* Self-hosted variable fonts (same families as multica.ai/docs); no Google
+   Fonts request, so the docs stay fast where Google is unreachable. */
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/source-serif-4";
+@import "@fontsource-variable/geist-mono";
 
+/* Typography: Inter for Latin text, the platform CJK face for Chinese and
+   Japanese, Source Serif 4 for display headings, Geist Mono for code. */
 :root {
-  --color-fd-primary: #4692dd;
+  --font-inter: "Inter Variable", "Inter";
+  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", sans-serif;
+  --font-serif: "Source Serif 4 Variable", "Source Serif 4", ui-serif, "Iowan Old Style", "Apple Garamond", Baskerville, "Times New Roman", serif;
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --default-font-family: var(--font-sans);
+  --default-mono-font-family: var(--font-mono);
+}
+
+html[lang|="ja"] {
+  --font-sans: var(--font-inter), "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "YuGothic", "Meiryo", "Noto Sans CJK JP", "Noto Sans JP", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", sans-serif;
 }
 
 body {
-  font-family: "Noto Sans SC", "Noto Sans", system-ui, sans-serif;
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code, kbd, pre, samp {
+  font-family: var(--font-mono);
+}
+
+/* Theme: warm paper and ink in light mode, soft graphite in dark mode, with
+   LangBot blue reserved for links, focus and the active page. */
+:root {
+  --color-fd-background: #fbfaf8;
+  --color-fd-foreground: #1c1b19;
+  --color-fd-muted: #f3f2ef;
+  --color-fd-muted-foreground: #6b6862;
+  --color-fd-popover: #ffffff;
+  --color-fd-popover-foreground: #1c1b19;
+  --color-fd-card: #ffffff;
+  --color-fd-card-foreground: #1c1b19;
+  --color-fd-border: #e7e4de;
+  --color-fd-primary: #2f6fcf;
+  --color-fd-primary-foreground: #ffffff;
+  --color-fd-secondary: #f3f2ef;
+  --color-fd-secondary-foreground: #1c1b19;
+  --color-fd-accent: #ebf1fb;
+  --color-fd-accent-foreground: #1d4f9a;
+  --color-fd-ring: #2f6fcf;
+  --color-fd-overlay: rgb(28 27 25 / 0.18);
+}
+
+.dark,
+.dark #nd-sidebar {
+  --color-fd-background: #121214;
+  --color-fd-foreground: #ececea;
+  --color-fd-muted: #1b1b1e;
+  --color-fd-muted-foreground: #9b9ba1;
+  --color-fd-popover: #19191c;
+  --color-fd-popover-foreground: #ececea;
+  --color-fd-card: #17171a;
+  --color-fd-card-foreground: #ececea;
+  --color-fd-border: #2a2a2e;
+  --color-fd-primary: #7aaef2;
+  --color-fd-primary-foreground: #0f1420;
+  --color-fd-secondary: #1e1e22;
+  --color-fd-secondary-foreground: #ececea;
+  --color-fd-accent: #1b2535;
+  --color-fd-accent-foreground: #a9c9f7;
+  --color-fd-ring: #7aaef2;
+  --color-fd-overlay: rgb(0 0 0 / 0.45);
+}
+
+/* Display headings in a light serif; section headings stay in the sans face. */
+#nd-page h1,
+.prose h2:not(.not-prose) {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+}
+
+#nd-page h1 {
+  font-size: 1.875rem;
+  line-height: 1.15;
+}
+
+.prose h2:not(.not-prose) {
+  font-size: 1.5rem;
+  line-height: 1.3;
+}
+
+.prose h3:not(.not-prose),
+.prose h4:not(.not-prose) {
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.prose blockquote {
+  border-inline-start-width: 2px;
+  border-inline-start-color: var(--color-fd-primary);
+  font-style: normal;
+}
+
+.prose :where(code):not(:where(pre *, .not-prose *)) {
+  font-size: 0.875em;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-fd-primary) 22%, transparent);
 }
 
 

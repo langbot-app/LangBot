@@ -203,10 +203,14 @@ class BoxStdioSessionRuntime:
         mount_path: str = '/workspace',
     ) -> BoxWorkspaceSession:
         resolved_host_path = self.resolve_host_path() if host_path is ... else host_path
+        session_id = self.owner._build_box_session_id()
         return BoxWorkspaceSession(
             self.ap.box_service,
             self.owner.execution_context,
-            self.owner._build_box_session_id(),
+            session_id,
+            selected_backend=self.owner.sandbox_backend,
+            selected_e2b_config=self.owner.sandbox_e2b_config,
+            selected_limits=getattr(self.owner, 'sandbox_limits', None),
             host_path=resolved_host_path,
             host_path_mode=self.config.host_path_mode,
             workdir=workdir,
@@ -234,7 +238,8 @@ class BoxStdioSessionRuntime:
     @property
     def process_id(self) -> str:
         """Each MCP server gets a unique process_id within the shared session."""
-        return self.owner.server_uuid
+        task_id = self.owner.server_config.get('_sandbox_task_id')
+        return f'{self.owner.server_uuid}-{task_id}' if task_id else self.owner.server_uuid
 
     def uses_box_stdio(self) -> bool:
         if self.server_config.get('mode') != 'stdio':
@@ -249,6 +254,17 @@ class BoxStdioSessionRuntime:
 
     async def initialize(self) -> None:
         await self._wait_for_box_runtime()
+        if (
+            self.owner.sandbox_backend is None
+            or self.owner.sandbox_limits is None
+            or self.owner.sandbox_e2b_config is None
+        ):
+            selection = await self.ap.box_service.resolve_workspace_selection(self.owner.execution_context)
+            self.owner.sandbox_backend = self.owner.sandbox_backend or selection['backend']
+            if getattr(self.owner, 'sandbox_limits', None) is None:
+                self.owner.sandbox_limits = selection.get('limits', {})
+            if self.owner.sandbox_e2b_config is None:
+                self.owner.sandbox_e2b_config = selection['e2b']
 
         # All stdio MCP servers share one Box session. Per-server host paths
         # are staged into the shared workspace instead of becoming session

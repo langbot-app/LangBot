@@ -19,6 +19,7 @@ metadata:
     es_ES: Adaptador de LINE, requiere una URL pública para recibir notificaciones de mensajes de LINE, consulte la documentación para obtener detalles de uso
   icon: line.png
 spec:
+  legacy: true
   categories:
     - popular
     - global

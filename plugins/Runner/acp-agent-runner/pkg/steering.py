@@ -50,9 +50,26 @@ def steering_enabled(ctx: RunnerContext) -> bool:
         return False
 
 
+def resume_checkpoint(ctx: RunnerContext, key: str) -> str | None:
+    """Resolve the source attempt's session, never another conversation run's state."""
+    recovery = ctx.runtime.metadata.get("recovery", {})
+    if recovery.get("mode") != "resume":
+        return None
+    for event in reversed(recovery.get("events", [])):
+        data = event.get("data", {})
+        if event.get("type") == "state.updated" and data.get("key") == key and data.get("scope") == "conversation":
+            session_id = str(data.get("value") or "").strip()
+            if session_id:
+                return session_id
+    raise ValueError("Source run has no committed native session checkpoint")
+
+
 async def _pull_followup_prompts(api: RunnerAPIProxy, mode: str) -> list[str]:
-    result = await api.steering_pull(mode=mode)
+    capabilities = getattr(getattr(getattr(api, "ctx", None), "context", None), "available_apis", None)
+    claim = getattr(capabilities, "steering_ack", False) is True
+    result = await api.steering_pull(mode=mode, claim=True) if claim else await api.steering_pull(mode=mode)
     prompts: list[str] = []
+    delivery_ids: list[str] = []
     for item in result.items:
         try:
             text = item.input.to_text().strip()
@@ -60,6 +77,10 @@ async def _pull_followup_prompts(api: RunnerAPIProxy, mode: str) -> list[str]:
             text = ""
         if text:
             prompts.append(text)
+            if claim and item.delivery_id:
+                delivery_ids.append(item.delivery_id)
+    if delivery_ids:
+        await api.steering_ack(delivery_ids)
     return prompts
 
 
@@ -93,6 +114,13 @@ async def run_with_steering(
             ``"one"`` to pull a single item per round.
         max_followups: Safety cap on the number of follow-up turns.
     """
+    checkpoint = resume_checkpoint(ctx, session_state_key)
+    if checkpoint is not None:
+        initial_resume_session_id = checkpoint
+        initial_prompt = (
+            "Continue the interrupted task in this session. Keep completed actions and their results; "
+            "do not repeat them. Original request:\n" + initial_prompt
+        )
     enabled = steering_enabled(ctx)
     pending: collections.deque[str] = collections.deque()
     prompt = initial_prompt

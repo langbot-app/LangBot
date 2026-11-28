@@ -51,47 +51,41 @@
       "name": "regression chat", "description": "Normal deterministic chat",
       "config": {
         "ai": {
-          "runner": {"id": "plugin:langbot-team/LocalAgent/default", "expire-time": 0},
+          "runner": {"id": "plugin:langbot-team/LocalAgent/default", "expire-time": 0, "group-context": "group"},
           "runner_config": {"plugin:langbot-team/LocalAgent/default": {
             "model": {"primary": "${chat_model}", "fallbacks": []},
             "prompt": [{"role": "system", "content": "You are a QA regression assistant."}],
             "knowledge-bases": [], "box-enabled": false, "timeout": 30
           }}
-        },
-        "safety": {"rate-limit": {"limitation": 10000}},
-        "output": {"force-delay": {"min": 0, "max": 0}}
+        }
       }
     }},
     {"id": "box_pipeline", "kind": "pipeline", "body": {
       "name": "regression Box", "description": "Real Box write and read",
       "config": {
         "ai": {
-          "runner": {"id": "plugin:langbot-team/LocalAgent/default", "expire-time": 0},
+          "runner": {"id": "plugin:langbot-team/LocalAgent/default", "expire-time": 0, "group-context": "group"},
           "runner_config": {"plugin:langbot-team/LocalAgent/default": {
             "model": {"primary": "${box_model}", "fallbacks": []},
             "prompt": [{"role": "system", "content": "You are a QA regression assistant."}],
             "knowledge-bases": [], "box-enabled": true, "box-session-id-template": "{global}",
             "timeout": 30, "max-tool-iterations": 5
           }}
-        },
-        "safety": {"rate-limit": {"limitation": 10000}},
-        "output": {"force-delay": {"min": 0, "max": 0}}
+        }
       }
     }},
     {"id": "rag_pipeline", "kind": "pipeline", "body": {
       "name": "regression RAG", "description": "Retrieved model input oracle",
       "config": {
         "ai": {
-          "runner": {"id": "plugin:langbot-team/LocalAgent/default", "expire-time": 0},
+          "runner": {"id": "plugin:langbot-team/LocalAgent/default", "expire-time": 0, "group-context": "group"},
           "runner_config": {"plugin:langbot-team/LocalAgent/default": {
             "model": {"primary": "${rag_model}", "fallbacks": []},
             "prompt": [{"role": "system", "content": "You are a QA regression assistant."}],
             "knowledge-bases": ["${knowledge_base}"], "box-enabled": false,
             "timeout": 30, "retrieval-top-k": 5
           }}
-        },
-        "safety": {"rate-limit": {"limitation": 10000}},
-        "output": {"force-delay": {"min": 0, "max": 0}}
+        }
       }
     }}
   ],

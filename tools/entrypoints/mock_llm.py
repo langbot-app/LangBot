@@ -51,13 +51,28 @@ def fault_scope(body, embedding):
     return scope
 
 
+def _text_parts(content):
+    if isinstance(content, str):
+        return [content]
+    if not isinstance(content, list):
+        return []
+    return [part['text'] for part in content if isinstance(part, dict) and isinstance(part.get('text'), str)]
+
+
+def group_markers(message):
+    """Deduplicate equivalent representations within one provider user message, never across turns."""
+    if message.get('role') != 'user':
+        return []
+    return list(
+        dict.fromkeys(
+            match.groups() for text in _text_parts(message.get('content')) for match in GROUP_TURN.finditer(text)
+        )
+    )
+
+
 def group_ack(messages, start):
     """Require a real previous user turn and reply, with no other group's history."""
-    turns = []
-    for index, message in enumerate(messages):
-        if message.get('role') == 'user':
-            for match in GROUP_TURN.finditer(str(message.get('content', ''))):
-                turns.append((index, *match.groups()))
+    turns = [(index, *marker) for index, message in enumerate(messages) for marker in group_markers(message)]
     if not turns:
         return ''
     position, group, turn, token, previous = turns[-1]
@@ -116,6 +131,62 @@ def mock_embeddings(body):
     return {'object': 'list', 'model': body['model'], 'data': data, 'usage': {'prompt_tokens': 10, 'total_tokens': 10}}
 
 
+def _typed_payloads(message, kind):
+    for text in _text_parts(message.get('content')):
+        for line in text.splitlines():
+            if not line.lstrip().startswith('{'):
+                continue
+            try:
+                context = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(context, dict) and context.get('type') == kind:
+                yield context
+
+
+def retrieved_context_contains(message, expected):
+    """Match only JSON retrieval chunks merged into this model user turn."""
+    for context in _typed_payloads(message, 'langbot_retrieved_context'):
+        data = context.get('data')
+        chunks = data.get('chunks') if isinstance(data, dict) else None
+        if isinstance(chunks, list) and any(
+            isinstance(chunk, dict) and isinstance(chunk.get('content'), str) and expected in chunk['content']
+            for chunk in chunks
+        ):
+            return True
+    return False
+
+
+def current_image_ref(message):
+    """Resolve the opaque reference from this user turn, not a guessed path or earlier turn."""
+    attachments = [
+        attachment
+        for context in _typed_payloads(message, 'langbot_input_attachments')
+        for attachment in (context['attachments'] if isinstance(context.get('attachments'), list) else [])
+        if isinstance(attachment, dict)
+        and attachment.get('type') == 'image'
+        and attachment.get('mime_type') == 'image/png'
+        and attachment.get('source') == 'message'
+    ]
+    if len(attachments) != 1 or not isinstance(attachments[0].get('ref'), str):
+        raise ValueError('current model user message lacks exactly one expected image reference')
+    ref = attachments[0]['ref']
+    if not re.fullmatch(r'[A-Za-z0-9_.:-]{1,160}', ref):
+        raise ValueError('current model image reference has unexpected shape')
+    return ref
+
+
+def _has_exact_image(messages, expected):
+    images = [
+        part.get('image_url')
+        for message in messages
+        if message.get('role') == 'user' and isinstance(message.get('content'), list)
+        for part in message['content']
+        if isinstance(part, dict) and part.get('type') == 'image_url'
+    ]
+    return len(images) == 1 and isinstance(images[0], dict) and images[0].get('url') == expected
+
+
 def select_message(body, scenario):
     messages = body.get('messages')
     if not isinstance(messages, list) or not messages or any(not isinstance(m, dict) for m in messages):
@@ -134,6 +205,14 @@ def select_message(body, scenario):
     )
     if start is None:
         raise ValueError('a user message is required')
+    if scenario.get('read_current_image'):
+        # LocalAgent appends a dedicated provider user-image message after a
+        # multimodal tool result. Anchor to the real signed turn, not that
+        # synthetic follow-up that has no user marker.
+        start = next((i for i in range(start, -1, -1) if group_markers(messages[i])), start)
+        attachment_ref = current_image_ref(messages[start])
+    else:
+        attachment_ref = None
     acknowledgement = group_ack(messages, start)
     turn = messages[start:]
     calls = [i for i, m in enumerate(turn) if m.get('role') == 'assistant' and m.get('tool_calls')]
@@ -144,12 +223,29 @@ def select_message(body, scenario):
         if len(returned) != len(requested) or set(returned) != requested:
             raise ValueError('each tool call must have exactly one matching tool result')
     steps = scenario['steps']
+    memory_marker = None
+    if scenario.get('session_memory'):
+        marker = group_markers(messages[start])
+        if len(marker) != 1:
+            raise ValueError('memory transaction needs one signed group marker')
+        group, turn_number, _, _ = marker[0]
+        memory_marker = 'QA session memory ' + group
+        if int(turn_number) == 1:
+            steps = scenario['first_turn_steps']
     if len(calls) >= len(steps):
         raise ValueError('tool history exceeds the configured scenario')
     step = steps[len(calls)]
     if expected_prompt := step.get('expect_prompt'):
         if expected_prompt not in json.dumps(messages, ensure_ascii=False):
             raise ValueError(f'model input must contain {expected_prompt!r}')
+    if expected_retrieved := step.get('expect_current_retrieved'):
+        if not retrieved_context_contains(messages[start], expected_retrieved):
+            raise ValueError('current model user message lacks the expected retrieved chunk')
+    if expected_image := step.get('expect_tool_image'):
+        results = turn[calls[-1] + 1 :] if calls else []
+        position = next((index for index, item in enumerate(results) if item.get('role') == 'tool'), None)
+        if position is None or not _has_exact_image(results[position + 1 :], expected_image):
+            raise ValueError('current attachment tool result must carry the exact expected image')
     if any(value in json.dumps(messages, ensure_ascii=False) for value in step.get('forbid_prompt', [])):
         raise ValueError('model input contains forbidden knowledge content')
     expected = step.get('expect_tool_output')
@@ -158,6 +254,25 @@ def select_message(body, scenario):
         result_text = '\n'.join(str(m.get('content', '')) for m in results if m.get('role') == 'tool')
         if expected not in result_text:
             raise ValueError(f'tool result must contain {expected!r}')
+    if memory_marker and (step.get('expect_memory_write') or step.get('expect_memory_episode')):
+        results = turn[calls[-1] + 1 :] if calls else []
+        text = '\n'.join(
+            part for msg in results if msg.get('role') == 'tool' for part in _text_parts(msg.get('content'))
+        )
+        if step.get('expect_memory_write') and text != 'Remembered: ' + memory_marker:
+            raise ValueError('remember did not return the exact current group receipt')
+        if step.get('expect_memory_episode'):
+            try:
+                episodes = json.loads(text)['episodes']
+            except (ValueError, KeyError, TypeError) as error:
+                raise ValueError('recall did not return structured episodes') from error
+            if (
+                not isinstance(episodes, list)
+                or len(episodes) != 1
+                or not isinstance(episodes[0], dict)
+                or episodes[0].get('content') != memory_marker
+            ):
+                raise ValueError('recall did not return exactly the current session memory')
     content = step.get('content')
     message = {'role': 'assistant', 'content': content + acknowledgement if content is not None else None}
     if tool_calls := step.get('tool_calls'):
@@ -169,15 +284,25 @@ def select_message(body, scenario):
         available = {t.get('function', {}).get('name') for t in tools if t.get('type') == 'function'}
         if body.get('tool_choice') == 'none' or any(call['name'] not in available for call in tool_calls):
             raise ValueError('scenario tools must be advertised and enabled by the caller')
+
+        def arguments(call):
+            value = dict(call['arguments'])
+            if call['name'] == 'langbot_read_input_attachment' and value.get('ref') == '{current_image_ref}':
+                if attachment_ref is None:
+                    raise ValueError('tool expected a current image reference')
+                value['ref'] = attachment_ref
+            if memory_marker:
+                value = {k: memory_marker if v == '{memory_marker}' else v for k, v in value.items()}
+            encoded = json.dumps(value)
+            return encoded.replace('{mock_scope}', scope) if scope is not None else encoded
+
         message['tool_calls'] = [
             {
                 'id': f'call_mock_{len(calls)}_{i}',
                 'type': 'function',
                 'function': {
                     'name': call['name'],
-                    'arguments': json.dumps(call['arguments']).replace('{mock_scope}', scope)
-                    if scope is not None
-                    else json.dumps(call['arguments']),
+                    'arguments': arguments(call),
                 },
             }
             for i, call in enumerate(tool_calls)
@@ -288,6 +413,7 @@ class Handler(BaseHTTPRequestHandler):
             entry['faults'].append({'kind': kind, 'seconds': seconds, 'elapsed_seconds': time.monotonic() - start})
 
     def do_POST(self):
+        started = time.monotonic()
         entry = {
             'request_id': uuid.uuid4().hex,
             'time': time.time(),
@@ -385,6 +511,7 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             entry['disconnected'] = True
         finally:
+            entry['duration_seconds'] = time.monotonic() - started
             self.server.record(entry)
 
     def stream_response(self, body, scenario, message, base, finish, entry):
@@ -476,6 +603,8 @@ def validate_scenarios(scenarios):
             raise ValueError(f'{name}: scenario must be an object')
         if scenario.get('kind', 'chat') not in ('chat', 'embedding'):
             raise ValueError(f'{name}: kind must be chat or embedding')
+        if 'read_current_image' in scenario and type(scenario['read_current_image']) is not bool:
+            raise ValueError(f'{name}: read_current_image must be boolean')
         if 'substitute_mock_scope' in scenario and not isinstance(scenario['substitute_mock_scope'], bool):
             raise ValueError(f'{name}: substitute_mock_scope must be a boolean')
         steps = scenario.get('steps', [])
@@ -483,6 +612,13 @@ def validate_scenarios(scenarios):
             raise ValueError(f'{name}: steps must be a non-empty array')
         if any(not isinstance(step, dict) for step in steps):
             raise ValueError(f'{name}: each step must be an object')
+        if 'session_memory' in scenario:
+            first = scenario.get('first_turn_steps')
+            if scenario['session_memory'] is not True or not isinstance(first, list) or len(first) != 3:
+                raise ValueError(f'{name}: session_memory requires three first_turn_steps')
+            if not all(isinstance(step, dict) for step in first):
+                raise ValueError(f'{name}: first_turn_steps must be objects')
+            steps = [*steps, *first]
         for step in steps:
             if not isinstance(step.get('content'), str) and not step.get('tool_calls'):
                 raise ValueError(f'{name}: each step needs content or tool_calls')
@@ -490,6 +626,22 @@ def validate_scenarios(scenarios):
                 raise ValueError(f'{name}: expect_tool_output must be a string')
             if 'expect_prompt' in step and not isinstance(step['expect_prompt'], str):
                 raise ValueError(f'{name}: expect_prompt must be a string')
+            if 'expect_current_retrieved' in step and (
+                not isinstance(step['expect_current_retrieved'], str)
+                or not 1 <= len(step['expect_current_retrieved']) <= 256
+            ):
+                raise ValueError(f'{name}: expect_current_retrieved must be a non-empty fixture marker')
+            if 'expect_tool_image' in step:
+                image = step['expect_tool_image']
+                prefix = 'data:image/png;base64,'
+                if not isinstance(image, str) or not image.startswith(prefix) or not len(prefix) < len(image) <= 4096:
+                    raise ValueError(f'{name}: expect_tool_image must be a small PNG data URL')
+                try:
+                    image_bytes = base64.b64decode(image.removeprefix(prefix), validate=True)
+                except ValueError as error:
+                    raise ValueError(f'{name}: expect_tool_image has malformed base64') from error
+                if not image_bytes.startswith(b'\x89PNG\r\n\x1a\n'):
+                    raise ValueError(f'{name}: expect_tool_image must start with a PNG header')
             if 'forbid_prompt' in step and (
                 not isinstance(step['forbid_prompt'], list)
                 or any(not isinstance(value, str) or not value for value in step['forbid_prompt'])

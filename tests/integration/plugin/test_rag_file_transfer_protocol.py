@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from langbot.pkg.entity.persistence.plugin import PluginSetting
 from langbot.pkg.plugin.handler import RuntimeConnectionHandler
 from langbot_plugin.entities.io.actions.enums import CommonAction, LangBotToRuntimeAction, PluginToRuntimeAction
 from langbot_plugin.entities.io.context import ActionContext, InstallationBinding, PluginWorkerPolicy, RuntimeIdentity
@@ -33,7 +34,7 @@ from langbot_plugin.runtime.plugin.mgr import PluginManager
 from langbot_plugin.runtime.security import PLUGIN_FILE_STORAGE_DIR_ENV
 
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.sdk_core, pytest.mark.contract('rag_file_transfer')]
 PAYLOAD = bytes(range(256)) * 161 + b'\x00original RAG file\xff'
 BINDING = InstallationBinding(
     instance_uuid='instance-a',
@@ -83,7 +84,9 @@ async def protocol_stack(tmp_path, monkeypatch, profile='oss_dev', binding=LEGAC
     stored.write_bytes(PAYLOAD)
     storage_calls = []
 
-    async def get_file_stream(execution_context, storage_path):
+    async def get_file_stream(execution_context, storage_path, *, plugin_id=None):
+        # Direct engine requests carry identity; legacy parser reads remain internal.
+        assert plugin_id in {None, 'tester/engine'}
         storage_calls.append((execution_context, storage_path))
         assert execution_context.workspace_uuid == BINDING.workspace_uuid
         assert storage_path == 'knowledge/original.bin'
@@ -94,17 +97,30 @@ async def protocol_stack(tmp_path, monkeypatch, profile='oss_dev', binding=LEGAC
         assert expected_generation == BINDING.placement_generation
         return BINDING
 
-    setting = SimpleNamespace(
+    setting = PluginSetting(
+        workspace_uuid=BINDING.workspace_uuid,
         plugin_author='tester',
         plugin_name='engine',
         installation_uuid=BINDING.installation_uuid,
         runtime_revision=BINDING.runtime_revision,
         artifact_digest=BINDING.artifact_digest,
+        enabled=True,
+        permission_declaration=None,
+        permission_grants=None,
+        permission_snapshot=None,
     )
+
+    class SettingRow(tuple):
+        # Callers read either the ORM entity (``row[0]``) or its columns.
+        def __getattr__(self, name):
+            return getattr(self[0], name)
+
     app = SimpleNamespace(
         deployment=SimpleNamespace(mode='oss' if profile == 'oss_dev' else 'cloud'),
         logger=logging.getLogger(__name__),
-        persistence_mgr=SimpleNamespace(execute_async=AsyncMock(return_value=SimpleNamespace(first=lambda: setting))),
+        persistence_mgr=SimpleNamespace(
+            execute_async=AsyncMock(return_value=SimpleNamespace(first=lambda: SettingRow((setting,))))
+        ),
         workspace_service=SimpleNamespace(get_execution_binding=get_execution_binding),
         rag_runtime_service=SimpleNamespace(get_file_stream=get_file_stream),
     )

@@ -466,32 +466,32 @@ test('pipeline guide follows its configuration sections, debug, history and bot 
   });
   await page.goto('/home/agents?id=pipeline-guide');
   const guide = page.getByTestId('pipeline-setup-guide');
+  // A step stored before the entry settings moved to bots restarts the tour.
   await expect(
-    guide.getByRole('heading', { name: 'Choose which messages to answer' }),
+    guide.getByRole('heading', { name: 'Configure AI capabilities' }),
   ).toBeVisible();
   const highlight = await page
     .getByTestId('pipeline-setup-guide-highlight')
     .elementHandle();
   await guide.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(
-    page.locator('[data-guide="pipeline-section-ai"]'),
-  ).toHaveAttribute('data-state', 'active');
+    page.locator('[data-guide="pipeline-section-speech"]'),
+  ).toBeVisible();
   await expect(
-    guide.getByRole('heading', { name: 'Configure AI capabilities' }),
+    guide.getByRole('heading', { name: 'Configure speech capabilities' }),
   ).toBeVisible();
   await guide.getByRole('button', { name: 'Previous', exact: true }).click();
   await expect(
-    page.locator('[data-guide="pipeline-section-trigger"]'),
-  ).toHaveAttribute('data-state', 'active');
+    page.locator('[data-guide="pipeline-section-ai"]'),
+  ).toBeVisible();
   expect(await highlight!.evaluate((element) => element.isConnected)).toBe(
     true,
   );
   for (const title of [
-    'Configure AI capabilities',
+    'Configure speech capabilities',
     'Adjust replies',
-    'Set safety controls',
     'Choose available extensions',
-    'Manage the pipeline',
+    'Manage the chat',
     'Test a conversation',
     'Review run history',
     'Save and connect a bot',
@@ -537,11 +537,11 @@ test('pipeline guide restores its section without appearing on creation', async 
   ).toBeVisible();
   await expect(
     page.locator('[data-guide="pipeline-section-output"]'),
-  ).toHaveAttribute('data-state', 'active');
+  ).toBeVisible();
   await guide.getByRole('button', { name: 'Previous', exact: true }).click();
   await expect(
-    page.locator('[data-guide="pipeline-section-ai"]'),
-  ).toHaveAttribute('data-state', 'active');
+    page.locator('[data-guide="pipeline-section-speech"]'),
+  ).toBeVisible();
 });
 
 for (const available of [true, false]) {

@@ -6,11 +6,12 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
-from tools.entrypoints.regression_coverage import checked
-from tools.regression.regression_lifecycle_cases import ledger
+from tools.regression.evidence import checked
+from tools.regression.run_ledger import ledger
 from tools.regression.regression_local_cases import api, require
-from tools.regression.regression_resource_cases import cleanup, journal
-from tools.regression.regression_smoke import check_mock_requests, signed_headers
+from tools.regression.resource_cleanup import cleanup, journal
+from tools.regression.http_bot import signed_headers
+from tools.regression.regression_smoke import check_mock_requests
 from tools.entrypoints.regression_suite import resolve
 
 GROUP = 'plugins'
@@ -28,6 +29,7 @@ def add_cases(profile):
     pipeline['body']['name'] = 'regression plugin commands'
     pipeline['body']['extensions_preferences'] = {
         'enable_all_plugins': False,
+        'workspace_operations': [],
         'plugins': copy.deepcopy(COMMAND_PLUGINS),
     }
     profile['resources'].append(pipeline)
@@ -82,6 +84,8 @@ def command_version(suite, case, row):
         }
     ]
     body['plugin_processors'] = []
+    body['message_policy'] = {'plugins': {'enable_all': False, 'plugins': COMMAND_PLUGINS}}
+    body['command_settings'] = {'builtin': {'version': {'enabled': False}}}
     owned = {'kind': 'bot', 'name': body['name'], 'state': 'creating'}
     row.setdefault('owned_resources', []).append(owned)
     journal(suite, row)
@@ -115,7 +119,7 @@ def command_version(suite, case, row):
         payload = {
             'session_id': session,
             'session_type': 'person',
-            'message': [{'type': 'Plain', 'text': '!version'}],
+            'message': [{'type': 'Plain', 'text': '/version'}],
         }
         offset = records.stat().st_size
         reply = data(
@@ -135,7 +139,7 @@ def command_version(suite, case, row):
                 and bool(reply.get('reply_to'))
                 and isinstance(parts, list)
                 and all(isinstance(part, dict) and part.get('type') == 'Plain' for part in parts)
-                and ''.join(part.get('text', '') for part in parts) == f'[bot] LangBot Version: {version}',
+                and ''.join(part.get('text', '') for part in parts) == f'LangBot Version: {version}',
                 'Version command did not return the exact Core version in the originating session',
             ),
         )

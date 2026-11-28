@@ -1,16 +1,7 @@
 name: Plugins / LocalAgent tests
 
 on:
-  push:
-    paths:
-      - "plugins/pytest.ini"
-      - "plugins/Runner/LocalAgent/**"
-      - ".github/workflows/plugins-local-agent-tests.yml"
-  pull_request:
-    paths:
-      - "plugins/pytest.ini"
-      - "plugins/Runner/LocalAgent/**"
-      - ".github/workflows/plugins-local-agent-tests.yml"
+  # PRs exercise this consumer via plugins-runner-tests.yml; keep isolated manual repro.
   workflow_dispatch:
 
 permissions:
@@ -57,3 +48,10 @@ jobs:
       - name: Pytest
         run: uv run --no-sync pytest
         working-directory: plugins/Runner/LocalAgent
+
+      - name: Test LocalAgent with the in-tree SDK
+        working-directory: plugins/Runner/LocalAgent
+        run: |
+          uv pip install --python "$UV_PROJECT_ENVIRONMENT/bin/python" ../../../sdk
+          uv pip check --python "$UV_PROJECT_ENVIRONMENT/bin/python"
+          uv run --no-sync pytest

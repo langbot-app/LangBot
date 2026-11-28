@@ -93,10 +93,10 @@ async def test_real_completion_and_count_tokens_build_boundary(provider, name, l
         assert built.get('stream', False) is stream
     build = AsyncMock(wraps=request._build_completion_args)
     monkeypatch.setattr(request, '_build_completion_args', build)
-    # Only the tokenizer is stubbed; count_tokens and completion construction are real.
+    # Only the tokenizer is stubbed; counting must not build generation arguments.
     monkeypatch.setattr(litellmchat.litellm, 'token_counter', lambda **kwargs: 37)
     assert await request.count_tokens(clone, messages) == 37
-    assert build.await_args.args[0] is clone
+    build.assert_not_awaited()
     assert model.reasoning_config_override is None
 
 

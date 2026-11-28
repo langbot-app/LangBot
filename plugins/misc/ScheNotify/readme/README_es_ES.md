@@ -23,6 +23,14 @@ Puede seleccionar el idioma de los mensajes recordatorios en la configuración d
 -`zh_Hans`(chino simplificado) - Predeterminado
 -`en_US`(inglés)
 
+### Configuración de zona horaria
+
+Configure `timezone` con su zona horaria. Se aplica a todas las herramientas y comandos: `get_current_time_str` devuelve la hora actual en ella, la hora que recibe `schedule_notify` se interpreta en ella y `!sche` / `!dsche` muestran las horas en ella.
+
+- Nombre IANA, p. ej. `Europe/Madrid`, `America/Mexico_City`
+- `UTC` o un desfase fijo como `UTC+1`, `UTC-05:30`
+- Vacío (predeterminado): la zona horaria local del servidor
+
 ## Uso
 
 ### 1. Programar a través de LLM

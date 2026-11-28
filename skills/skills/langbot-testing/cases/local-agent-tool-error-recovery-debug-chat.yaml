@@ -52,12 +52,12 @@ preconditions:
   - "The selected model route supports function/tool calling, or LANGBOT_E2E_FAKE_PROVIDER_BASE_URL points to scripts/e2e/fake-openai-provider.mjs."
   - "qa-plugin-smoke exposes qa_plugin_fail; the setup case reinstalls the fixture if an older installed package is missing it."
 steps:
-  - "Ensure the local-agent pipeline and qa-plugin-smoke fixture plugin are available."
+  - "Ensure the local-agent Chat and qa-plugin-smoke fixture plugin are available."
   - "Temporarily bind only langbot-team/LocalAgent plus qa/plugin-smoke and clear RAG knowledge bases."
   - "Reset the person Debug Chat session for the target pipeline."
   - "Send the TOOL_ERROR_RECOVERY prompt."
   - "Verify the failing plugin tool result is fed back into the model and the final answer contains the recovery sentinel."
-  - "Restore the original runner config and pipeline extension bindings."
+  - "Restore the original runner config and Chat extension bindings."
 checks:
   - "UI: The final Bot message contains TOOL_ERROR_RECOVERY_FINAL qa-plugin-smoke forced failure observed."
   - "API diagnostic: pipeline-config-diagnostic.json shows max-tool-iterations=3 and knowledge-bases cleared."

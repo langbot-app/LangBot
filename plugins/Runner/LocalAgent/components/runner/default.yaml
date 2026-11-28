@@ -9,6 +9,7 @@ metadata:
     en_US: Built-in agent with model fallback, tools, and knowledge retrieval.
     zh_Hans: 内置 Agent，支持模型 fallback、工具调用和知识库检索。
 spec:
+  resume: true
   usages: [agent]
   config:
     - name: model
@@ -50,6 +51,16 @@ spec:
       type: boolean
       required: false
       default: true
+    - name: box-local-mounts
+      label:
+        en_US: Local Box mounts
+        zh_Hans: Box 本地挂载
+      description:
+        en_US: Comma-separated names configured by the administrator of a self-hosted Docker Box.
+        zh_Hans: 自托管 Docker Box 管理员配置的挂载名称，多个名称用逗号分隔。
+      type: string
+      required: false
+      default: ''
     - name: box-session-id-template
       label:
         en_US: Sandbox reuse
@@ -247,6 +258,20 @@ spec:
         field: advanced-settings
         operator: eq
         value: true
+    - name: workspace-direct-threshold
+      label:
+        en_US: Workspace Operations Direct Mode Threshold
+        zh_Hans: 工作区操作直接模式阈值
+      description:
+        en_US: Maximum number of authorized workspace operations to expose directly as individual tools before switching to progressive search/describe/call tools.
+        zh_Hans: 直接作为独立工具暴露给模型的工作区操作数量上限。超过此阈值时切换为搜索/描述/调用的渐进式披露模式。
+      type: integer
+      required: false
+      default: 8
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
     - name: context-history-fetch-limit
       label:
         en_US: History Fetch Limit
@@ -310,6 +335,7 @@ spec:
     skill_authoring: true
     interrupt: true
     steering: true
+    interactions: true
   permissions:
     models:
       - count_tokens
@@ -324,6 +350,8 @@ spec:
       - retrieve
     history:
       - page
+    interactions:
+      - request
 execution:
   python:
     path: default.py

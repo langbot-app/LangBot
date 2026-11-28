@@ -86,6 +86,50 @@ def test_box_runtime_connector_ws_with_standalone_flag(monkeypatch: pytest.Monke
     assert connector._uses_websocket() is True
 
 
+@pytest.mark.parametrize('platform_name', ['win32', 'linux', 'darwin'])
+def test_box_runtime_connector_stdio_on_every_local_platform(monkeypatch: pytest.MonkeyPatch, platform_name):
+    """A Core-launched Box uses stdio on Windows exactly as on Linux/macOS."""
+    monkeypatch.setattr('langbot.pkg.utils.platform.get_platform', lambda: platform_name)
+    monkeypatch.setattr('langbot.pkg.utils.platform.standalone_box', False)
+    connector = BoxRuntimeConnector(make_app(Mock()))
+
+    assert connector.uses_websocket() is False
+
+
+@pytest.mark.parametrize(
+    ('platform_name', 'standalone', 'endpoint'),
+    [
+        ('docker', False, ''),
+        ('win32', True, ''),
+        ('win32', False, 'ws://box-runtime:5410'),
+    ],
+)
+def test_box_runtime_connector_ws_for_external_runtime_on_windows(
+    monkeypatch: pytest.MonkeyPatch, platform_name, standalone, endpoint
+):
+    monkeypatch.setattr('langbot.pkg.utils.platform.get_platform', lambda: platform_name)
+    monkeypatch.setattr('langbot.pkg.utils.platform.standalone_box', standalone)
+    connector = BoxRuntimeConnector(make_app(Mock(), runtime_endpoint=endpoint))
+
+    assert connector.uses_websocket() is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('use_reconnect', [False, True])
+async def test_box_runtime_connector_windows_initialize_uses_stdio(monkeypatch: pytest.MonkeyPatch, use_reconnect):
+    monkeypatch.setattr('langbot.pkg.utils.platform.get_platform', lambda: 'win32')
+    monkeypatch.setattr('langbot.pkg.utils.platform.standalone_box', False)
+    connector = BoxRuntimeConnector(make_app(Mock()))
+    connector._start_local_stdio = AsyncMock()
+    connector._connect_remote_ws = AsyncMock()
+
+    await (connector.reconnect() if use_reconnect else connector.initialize())
+
+    connector._start_local_stdio.assert_awaited_once()
+    connector._connect_remote_ws.assert_not_awaited()
+    await connector.aclose()
+
+
 def test_box_runtime_connector_ws_relay_url_default(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr('langbot.pkg.utils.platform.get_platform', lambda: 'linux')
     monkeypatch.setattr('langbot.pkg.utils.platform.standalone_box', False)
@@ -132,13 +176,13 @@ async def test_box_runtime_connector_cleans_partial_transport_on_connect_failure
     connector = BoxRuntimeConnector(make_app(Mock()))
     connector._start_local_stdio = AsyncMock(side_effect=RuntimeError('bind failed'))
     connector._stop_transport = AsyncMock()
-    connector._close_managed_subprocess = AsyncMock()
+    connector._close_local_subprocess = AsyncMock()
 
     with pytest.raises(RuntimeError, match='bind failed'):
         await connector.initialize()
 
     assert connector._stop_transport.await_count == 2
-    connector._close_managed_subprocess.assert_awaited_once()
+    connector._close_local_subprocess.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -150,7 +194,7 @@ async def test_box_runtime_connector_starts_heartbeat_after_reconnect(
     connector = BoxRuntimeConnector(make_app(Mock()))
     connector._start_local_stdio = AsyncMock(side_effect=[RuntimeError('bind failed'), None])
     connector._stop_transport = AsyncMock()
-    connector._close_managed_subprocess = AsyncMock()
+    connector._close_local_subprocess = AsyncMock()
 
     with pytest.raises(RuntimeError, match='bind failed'):
         await connector.initialize()
@@ -176,7 +220,7 @@ async def test_box_stdio_connection_does_not_capture_unconsumed_stderr(
         def __init__(self, connection):
             self.release = asyncio.Event()
 
-        async def call_action(self, action, data):
+        async def call_action(self, action, data, **kwargs):
             return None
 
         async def run(self):
@@ -222,7 +266,7 @@ async def test_box_disconnect_notifies_once_and_clears_handler(
         def __init__(self, connection):
             pass
 
-        async def call_action(self, action, data):
+        async def call_action(self, action, data, **kwargs):
             return None
 
         async def run(self):
@@ -332,10 +376,27 @@ def test_external_box_runtime_rejects_invalid_configured_control_token(monkeypat
         connector.get_control_headers()
 
 
+@pytest.mark.parametrize(
+    ('core_id', 'configured_id', 'environment_id', 'expected_id'),
+    [
+        ('instance-a', None, None, 'instance-a'),
+        ('instance_12345678-abcd', None, None, 'instance_12345678-abcd'),
+        ('instance-a', None, 'env-id', 'env-id'),
+        ('instance-a', 'config-id', 'env-id', 'config-id'),
+    ],
+)
 async def test_local_stdio_injects_generated_token_and_trusted_instance(
     monkeypatch: pytest.MonkeyPatch,
+    core_id,
+    configured_id,
+    environment_id,
+    expected_id,
 ):
     monkeypatch.delenv(BOX_CONTROL_TOKEN_ENV, raising=False)
+    if environment_id:
+        monkeypatch.setenv('LANGBOT_BOX_INSTANCE_ID', environment_id)
+    else:
+        monkeypatch.delenv('LANGBOT_BOX_INSTANCE_ID', raising=False)
     captured = {}
 
     class FakeStdioClientController:
@@ -350,7 +411,11 @@ async def test_local_stdio_injects_generated_token_and_trusted_instance(
         'langbot_plugin.runtime.io.controllers.stdio.client.StdioClientController',
         FakeStdioClientController,
     )
-    connector = BoxRuntimeConnector(make_app(Mock()))
+    app = make_app(Mock())
+    app.workspace_service.instance_uuid = core_id
+    if configured_id:
+        app.instance_config.data['box']['instance_id'] = configured_id
+    connector = BoxRuntimeConnector(app)
 
     def fake_callback(_transport_name, connected, _connect_error, _generation):
         async def callback(_connection):
@@ -363,7 +428,8 @@ async def test_local_stdio_injects_generated_token_and_trusted_instance(
     await connector._start_local_stdio()
 
     assert len(captured['env'][BOX_CONTROL_TOKEN_ENV]) >= 32
-    assert captured['env'][BOX_TRUSTED_INSTANCE_ENV] == 'instance-a'
+    assert captured['env'][BOX_TRUSTED_INSTANCE_ENV] == core_id
+    assert captured['env']['LANGBOT_BOX_INSTANCE_ID'] == expected_id
 
 
 async def test_websocket_controller_receives_control_headers(monkeypatch: pytest.MonkeyPatch):

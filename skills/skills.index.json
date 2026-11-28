@@ -64,7 +64,7 @@
     {
       "directory": "langbot-mcp-ops",
       "name": "langbot-mcp-ops",
-      "description": "Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, agents, pipelines, models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (web-UI lbk_ keys and the config.yaml global key), the tool surface, and client configuration. Triggers on \"langbot mcp\", \"manage langbot via mcp\", \"langbot /mcp\", \"langbot mcp server\".",
+      "description": "Operate a LangBot instance through its built-in MCP (Model Context Protocol) server. Use when an AI agent needs to manage LangBot — list/create/update/delete bots, agents, Chats, models, knowledge bases, MCP servers, and skills — over MCP instead of raw HTTP. Covers the /mcp endpoint, API-key auth (web-UI lbk_ keys and the config.yaml global key), the tool surface, and client configuration. Triggers on \"langbot mcp\", \"manage langbot via mcp\", \"langbot /mcp\", \"langbot mcp server\".",
       "references": [],
       "cases": [],
       "case_summaries": [],
@@ -77,9 +77,10 @@
     {
       "directory": "langbot-plugin-dev",
       "name": "langbot-plugin-dev",
-      "description": "Develop, debug, and test LangBot plugins. Use when creating new LangBot plugins, fixing plugin bugs, setting up a LangBot test environment, or testing plugins via WebSocket. Covers plugin component architecture (EventListener, Command, Tool), the plugin SDK API (invoke_llm, get_llm_models, send_message, plugin storage), common pitfalls, and automated WebSocket-based testing. Triggers on \"langbot plugin\", \"lbp\", \"GroupChatSummary\", \"plugin debug\", \"langbot test\".",
+      "description": "Develop, debug, test, and publish LangBot plugins. Use when creating or fixing a LangBot plugin or official plugin under plugins/, choosing component types (EventListener, Command, Tool, Runner, KnowledgeEngine, KnowledgeRetriever, Parser, Page), calling the Workspace API, platform API or execution APIs from a plugin, persisting plugin data (storage APIs, never the filesystem), declaring plugin permissions, debugging with lbp run, or publishing to LangBot Space. Triggers on \"langbot plugin\", \"lbp\", \"plugin permissions\", \"workspace api\", \"call_platform_api\", \"plugin debug\".",
       "references": [
-        "references/test-env-setup.md"
+        "references/sdk-pitfalls.md",
+        "references/testing.md"
       ],
       "cases": [],
       "case_summaries": [],
@@ -657,7 +658,7 @@
         },
         {
           "id": "dify-agent-debug-chat",
-          "title": "Dify Runner returns a response through Pipeline Debug Chat",
+          "title": "Dify Runner returns a response through Chat Debug Chat",
           "mode": "agent-browser",
           "area": "pipeline",
           "type": "provider",
@@ -1681,7 +1682,7 @@
         },
         {
           "id": "pipeline-debug-chat",
-          "title": "Pipeline Debug Chat returns a bot response",
+          "title": "Chat Debug Chat returns a bot response",
           "mode": "agent-browser",
           "area": "pipeline",
           "type": "smoke",
@@ -1704,7 +1705,7 @@
         },
         {
           "id": "pipeline-debug-chat-performance",
-          "title": "Pipeline Debug Chat user-path performance probe",
+          "title": "Chat Debug Chat user-path performance probe",
           "mode": "agent-browser",
           "area": "pipeline",
           "type": "performance",

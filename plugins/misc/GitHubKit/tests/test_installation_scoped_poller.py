@@ -72,6 +72,8 @@ class FakeHost:
         self.writes: list[tuple[str, bytes]] = []
         self.sent: list[dict] = []
         self.bound_action_context = None
+        # Explicit action contexts carried by background Host calls.
+        self.action_contexts: list = []
 
     def _scope(self) -> tuple[str, str]:
         binding = current_binding(self)
@@ -83,7 +85,11 @@ class FakeHost:
             self.bound_action_context.workspace_uuid,
         )
 
-    async def call_action(self, action, data):
+    async def call_action(self, action, data, **kwargs):
+        explicit = kwargs.get("action_context")
+        if explicit is not None:
+            self.bound_action_context = explicit
+            self.action_contexts.append(explicit)
         instance, workspace = self._scope()
         if action == Action.SEND_MESSAGE:
             self.sent.append(data)
@@ -235,6 +241,10 @@ def test_one_poll_cycle_pushes_only_to_the_owning_installation(monkeypatch):
             for path, token in seen
         )
         assert all(token != "token-b" for path, token in seen if "repo-a" in path)
+        # Every background Host call named its own installation explicitly, and
+        # no loop re-created an invocation for a call that already ended.
+        assert binding_a in host.action_contexts
+        assert set(host.action_contexts) <= {binding_a, binding_b}
 
         await plugin.destroy()
 

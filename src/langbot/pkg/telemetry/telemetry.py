@@ -52,12 +52,10 @@ class TelemetryManager:
     async def send(self, payload: dict):
         """Send telemetry payload to configured telemetry server (non-blocking).
 
-        Expects ap.instance_config.data.telemetry to have:
-          - enabled: bool
-          - server: str (base URL, e.g. https://space.example.com)
-          - timeout_seconds: optional int, overall request timeout (default 10)
-
-        Posts to {server.rstrip('/')}/api/v1/telemetry as JSON. Failures are logged but do not raise.
+        Reads ``space.url`` / ``space.disable_telemetry`` from the instance
+        config and posts to ``{url}/api/v1/telemetry`` as JSON. A payload that
+        names its ``workspace_uuid`` is authenticated as that Workspace's owner
+        when no ingest token is configured. Failures are logged, never raised.
         """
 
         try:
@@ -74,51 +72,13 @@ class TelemetryManager:
             url = server.rstrip('/') + '/api/v1/telemetry'
 
             try:
-                # Sanitize payload so string fields are strings and not nulls.
-                # A record batch is an envelope of whole execution records; it
-                # carries no top-level record fields, so only a single-record
-                # payload gets the legacy defaults.
+                # Two payload shapes exist: a batch envelope of v2 execution
+                # records (``records`` plus the Workspace they all belong to)
+                # and a single instance heartbeat. Core no longer emits the
+                # legacy per-query record.
                 sanitized = dict(payload)
                 if isinstance(sanitized.get('records'), list):
                     sanitized['records'] = [item for item in sanitized['records'] if isinstance(item, dict)]
-                else:
-                    if 'query_id' in sanitized:
-                        try:
-                            sanitized['query_id'] = '' if sanitized['query_id'] is None else str(sanitized['query_id'])
-                        except Exception:
-                            sanitized['query_id'] = str(sanitized.get('query_id', ''))
-
-                    for sfield in (
-                        'adapter',
-                        'runner',
-                        'runner_category',
-                        'model_name',
-                        'version',
-                        'edition',
-                        'error',
-                        'timestamp',
-                        'event_type',
-                    ):
-                        if sfield not in sanitized:
-                            continue
-                        v = sanitized.get(sfield)
-                        sanitized[sfield] = '' if v is None else str(v)
-
-                    # event_type defaults to 'query' for backward compatibility
-                    if not sanitized.get('event_type'):
-                        sanitized['event_type'] = 'query'
-
-                    # features must be a JSON object
-                    if 'features' in sanitized and not isinstance(sanitized['features'], dict):
-                        sanitized['features'] = {}
-
-                    if 'duration_ms' in sanitized:
-                        try:
-                            sanitized['duration_ms'] = (
-                                int(sanitized['duration_ms']) if sanitized['duration_ms'] is not None else 0
-                            )
-                        except Exception:
-                            sanitized['duration_ms'] = 0
 
                 async with self._client_context() as client:
                     try:

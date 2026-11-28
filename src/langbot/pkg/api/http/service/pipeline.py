@@ -4,15 +4,21 @@ import uuid
 import json
 import sqlalchemy
 import typing
+import copy
 
 from ....core import app
 from ....agent.runner.config_resolver import RunnerConfigResolver
+from ....agent.runner.errors import RunnerNotFoundError
 from ....entity.persistence import pipeline as persistence_pipeline
+from ....message_policy import schema as message_policy_schema
 from ....pipeline.extension_preferences import (
     normalize_extension_preferences,
     validate_extension_preferences,
 )
 from ....workspace.errors import WorkspaceNotFoundError
+from ...application.tool_grants import get_workspace_operations_catalog, validate_operation_preferences
+from ...application.plugin_permissions import workspace_operation_grants
+from ....agent.runner.platform_tools import default_pipeline_platform_tools, platform_tool_catalog
 from .secrets import redact_secrets, restore_secret_placeholders
 from .tenant import TenantContext, require_workspace_uuid, scope_statement
 
@@ -20,13 +26,16 @@ from .tenant import TenantContext, require_workspace_uuid, scope_statement
 default_stage_order = [
     'GroupRespondRuleCheckStage',  # 群响应规则检查
     'BanSessionCheckStage',  # 封禁会话检查
+    'SpeechRecognitionStage',  # 语音识别（ASR）阶段
     'PreContentFilterStage',  # 内容过滤前置阶段
     'PreProcessor',  # 预处理器
+    'RequireDailyMessageQuota',
     'RequireRateLimitOccupancy',  # 请求速率限制占用
     'MessageProcessor',  # 处理器
     'ReleaseRateLimitOccupancy',  # 释放速率限制占用
     'PostContentFilterStage',  # 内容过滤后置阶段
     'ResponseWrapper',  # 响应包装器
+    'TextToSpeechStage',  # 文本转语音阶段
     'LongTextProcessStage',  # 长文本处理
     'SendResponseBackStage',  # 发送响应
 ]
@@ -34,6 +43,9 @@ default_stage_order = [
 
 class PipelineService:
     ap: app.Application
+
+    # Columns that exist for schema migrations only.
+    _INTERNAL_COLUMNS = ['message_policy_backup']
 
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
@@ -44,7 +56,11 @@ class PipelineService:
     ) -> dict[str, typing.Any]:
         return {item['name']: item['default'] for item in config_schema if item.get('name') and 'default' in item}
 
-    async def get_default_pipeline_config(self, context: TenantContext) -> dict[str, typing.Any]:
+    async def get_default_pipeline_config(
+        self,
+        context: TenantContext,
+        runner_id: str | None = None,
+    ) -> dict[str, typing.Any]:
         from ....utils import paths as path_utils
 
         template_path = path_utils.get_resource_path('templates/default-pipeline-config.json')
@@ -54,15 +70,20 @@ class PipelineService:
         registry = getattr(self.ap, 'runner_registry', None)
         if registry is None:
             return config
-        try:
-            runners = await registry.list_runners(context, bound_plugins=None)
-        except Exception as exc:
-            self.ap.logger.warning(f'Failed to load Runner defaults for pipeline config: {exc}')
-            return config
-        if not runners:
-            return config
-
-        selected = runners[0]
+        if runner_id:
+            try:
+                selected = await registry.get(context, runner_id)
+            except RunnerNotFoundError as exc:
+                raise ValueError(f'Runner {runner_id} not found') from exc
+        else:
+            try:
+                runners = await registry.list_runners(context, bound_plugins=None)
+            except Exception as exc:
+                self.ap.logger.warning(f'Failed to load Runner defaults for pipeline config: {exc}')
+                return config
+            if not runners:
+                return config
+            selected = runners[0]
         ai_config = config.setdefault('ai', {})
         runner_config = ai_config.setdefault('runner', {})
         runner_config['id'] = selected.id
@@ -102,9 +123,8 @@ class PipelineService:
                 except Exception as exc:
                     self.ap.logger.warning(f'Failed to load Runner pipeline metadata: {exc}')
         return [
-            self.ap.pipeline_config_meta_trigger,
-            self.ap.pipeline_config_meta_safety,
             ai_metadata,
+            self.ap.pipeline_config_meta_speech,
             self.ap.pipeline_config_meta_output,
         ]
 
@@ -136,7 +156,9 @@ class PipelineService:
         result = await self.ap.persistence_mgr.execute_async(query)
         pipelines = result.all()
         serialized = [
-            self.ap.persistence_mgr.serialize_model(persistence_pipeline.LegacyPipeline, pipeline)
+            self.ap.persistence_mgr.serialize_model(
+                persistence_pipeline.LegacyPipeline, pipeline, self._INTERNAL_COLUMNS
+            )
             for pipeline in pipelines
         ]
         return serialized if include_secret else [redact_secrets(pipeline) for pipeline in serialized]
@@ -163,10 +185,19 @@ class PipelineService:
         if pipeline is None:
             return None
 
-        serialized = self.ap.persistence_mgr.serialize_model(persistence_pipeline.LegacyPipeline, pipeline)
+        serialized = self.ap.persistence_mgr.serialize_model(
+            persistence_pipeline.LegacyPipeline, pipeline, self._INTERNAL_COLUMNS
+        )
         return serialized if include_secret else redact_secrets(serialized)
 
-    async def create_pipeline(self, context: TenantContext, pipeline_data: dict, default: bool = False) -> str:
+    async def create_pipeline(
+        self,
+        context: TenantContext,
+        pipeline_data: dict,
+        default: bool = False,
+        *,
+        runner_id: str | None = None,
+    ) -> str:
         workspace_uuid = require_workspace_uuid(context)
         if 'extensions_preferences' in pipeline_data:
             self._validate_extension_preferences(pipeline_data['extensions_preferences'])
@@ -193,7 +224,9 @@ class PipelineService:
         pipeline_data['is_default'] = default
 
         if 'config' not in pipeline_data or pipeline_data['config'] == {}:
-            pipeline_data['config'] = await self.get_default_pipeline_config(context)
+            pipeline_data['config'] = await self.get_default_pipeline_config(context, runner_id)
+        else:
+            pipeline_data['config'] = self._messaging_config(pipeline_data['config'])
         RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
 
         # Ensure extensions_preferences is set with enable_all_plugins and enable_all_mcp_servers=True by default
@@ -205,7 +238,15 @@ class PipelineService:
                 'mcp_servers': [],
                 'mcp_resources': [],
                 'mcp_resource_agent_read_enabled': True,
+                'allowed_platform_tools': default_pipeline_platform_tools(),
             }
+        else:
+            prefs = pipeline_data['extensions_preferences']
+            if isinstance(prefs, dict) and 'workspace_operations' in prefs:
+                new_ops = prefs['workspace_operations']
+                prefs['workspace_operations'] = validate_operation_preferences(self.ap, context, [], new_ops)
+            if isinstance(prefs, dict) and 'allowed_platform_tools' not in prefs:
+                prefs['allowed_platform_tools'] = default_pipeline_platform_tools()
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_pipeline.LegacyPipeline).values(**pipeline_data)
@@ -223,11 +264,18 @@ class PipelineService:
         for protected_field in ('uuid', 'workspace_uuid', 'for_version', 'stages', 'is_default'):
             pipeline_data.pop(protected_field, None)
 
+        current_pipeline = await self.get_pipeline(context, pipeline_uuid, include_secret=True)
+        if current_pipeline is None:
+            raise WorkspaceNotFoundError('Pipeline not found')
         if 'config' in pipeline_data:
-            current_pipeline = await self.get_pipeline(context, pipeline_uuid, include_secret=True)
-            if current_pipeline is None:
-                raise WorkspaceNotFoundError('Pipeline not found')
+            config = pipeline_data['config']
+            if not isinstance(config, dict):
+                raise ValueError('config must be an object')
+            for section, value in config.items():
+                if not isinstance(value, dict):
+                    raise ValueError(f'config.{section} must be an object')
             current_config = current_pipeline.get('config', {})
+            pipeline_data['config'] = self._messaging_config({**(current_config or {}), **config})
             old_ai = current_config.get('ai', {}) if isinstance(current_config, dict) else {}
             old_runner = old_ai.get('runner') if isinstance(old_ai, dict) else None
             legacy_binding = (
@@ -248,7 +296,28 @@ class PipelineService:
             )
             RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
         if 'extensions_preferences' in pipeline_data:
+            current_pipeline = await self.get_pipeline(context, pipeline_uuid, include_secret=True)
+            if current_pipeline is None:
+                raise WorkspaceNotFoundError('Pipeline not found')
+            old_prefs = current_pipeline.get('extensions_preferences', {}) if isinstance(current_pipeline, dict) else {}
+            old_ops = old_prefs.get('workspace_operations', []) if isinstance(old_prefs, dict) else []
+            new_prefs = pipeline_data['extensions_preferences']
+            if isinstance(new_prefs, dict):
+                if 'workspace_operations' in new_prefs:
+                    new_ops = new_prefs['workspace_operations']
+                    new_prefs['workspace_operations'] = validate_operation_preferences(
+                        self.ap, context, old_ops, new_ops
+                    )
+                else:
+                    new_prefs['workspace_operations'] = old_ops
             self._validate_extension_preferences(pipeline_data['extensions_preferences'])
+
+        candidate_data = copy.deepcopy(current_pipeline)
+        candidate_data.update(copy.deepcopy(pipeline_data))
+        try:
+            candidate = await self.ap.pipeline_mgr.prepare_pipeline(context, candidate_data)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError('Invalid pipeline configuration: runtime initialization failed') from exc
 
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
@@ -262,12 +331,7 @@ class PipelineService:
         if getattr(result, 'rowcount', None) == 0:
             raise WorkspaceNotFoundError('Pipeline not found')
 
-        pipeline = await self.get_pipeline(context, pipeline_uuid, include_secret=True)
-        if pipeline is None:
-            raise WorkspaceNotFoundError('Pipeline not found')
-
-        await self.ap.pipeline_mgr.remove_pipeline(context, pipeline_uuid)
-        await self.ap.pipeline_mgr.load_pipeline(context, pipeline)
+        self.ap.pipeline_mgr.publish_pipeline(candidate)
 
         # update all conversation that use this pipeline
         for session in self.ap.sess_mgr.session_list:
@@ -279,6 +343,7 @@ class PipelineService:
                 session.using_conversation = None
 
     async def delete_pipeline(self, context: TenantContext, pipeline_uuid: str) -> None:
+        await self.ap.bot_service.require_processor_unbound(context, pipeline_uuid)
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
                 sqlalchemy.delete(persistence_pipeline.LegacyPipeline).where(
@@ -291,8 +356,14 @@ class PipelineService:
         if getattr(result, 'rowcount', None) == 0:
             raise WorkspaceNotFoundError('Pipeline not found')
         await self.ap.pipeline_mgr.remove_pipeline(context, pipeline_uuid)
+        publication = getattr(self.ap, 'artifact_publication_service', None)
+        if publication is not None:
+            await publication.remove_producer(context, 'pipeline', pipeline_uuid)
 
     async def copy_pipeline(self, context: TenantContext, pipeline_uuid: str) -> str:
+        return (await self.copy_pipeline_result(context, pipeline_uuid))['uuid']
+
+    async def copy_pipeline_result(self, context: TenantContext, pipeline_uuid: str) -> dict:
         """Copy a pipeline with all its configurations"""
         workspace_uuid = require_workspace_uuid(context)
         # Check limitation
@@ -322,6 +393,9 @@ class PipelineService:
 
         # Create new pipeline data
         new_uuid = str(uuid.uuid4())
+        new_prefs = normalize_extension_preferences(original_pipeline.extensions_preferences)
+        original_ops = new_prefs.get('workspace_operations', [])
+        new_prefs['workspace_operations'] = validate_operation_preferences(self.ap, context, [], original_ops)
         new_pipeline_data = {
             'uuid': new_uuid,
             'workspace_uuid': workspace_uuid,
@@ -329,9 +403,9 @@ class PipelineService:
             'description': original_pipeline.description,
             'for_version': self.ap.ver_mgr.get_current_version(),
             'stages': original_pipeline.stages.copy() if original_pipeline.stages else default_stage_order.copy(),
-            'config': original_pipeline.config.copy() if original_pipeline.config else {},
+            'config': self._messaging_config(original_pipeline.config),
             'is_default': False,
-            'extensions_preferences': normalize_extension_preferences(original_pipeline.extensions_preferences),
+            'extensions_preferences': new_prefs,
         }
 
         # Insert the new pipeline
@@ -343,7 +417,7 @@ class PipelineService:
         pipeline = await self.get_pipeline(context, new_uuid, include_secret=True)
         await self.ap.pipeline_mgr.load_pipeline(context, pipeline)
 
-        return new_uuid
+        return {'uuid': new_uuid, 'ignored_keys': message_policy_schema.ignored_config_keys(original_pipeline.config)}
 
     async def get_pipeline_extensions(self, context: TenantContext, pipeline_uuid: str) -> dict:
         pipeline = await self.get_pipeline(context, pipeline_uuid)
@@ -352,7 +426,18 @@ class PipelineService:
         if self.ap.plugin_connector.is_enable_plugin:
             await self.ap.plugin_connector.require_workspace_context(context)
         plugins = await self.ap.plugin_connector.list_plugins(component_kinds=['Command', 'EventListener', 'Tool'])
-        prefs = pipeline.get('extensions_preferences', {})
+        catalog = get_workspace_operations_catalog(self.ap, context)
+        grants = await workspace_operation_grants(self.ap, context)
+        runner = RunnerConfigResolver.resolve_runner_id(pipeline.get('config', {})) or ''
+        plugin_id = runner.removeprefix('plugin:').rsplit('/', 1)[0]
+        for operation in catalog['workspace_operations']:
+            operation['grantable'] = operation['id'] in grants.get(plugin_id, [])
+        prefs = normalize_extension_preferences(pipeline.get('extensions_preferences'))
+        try:
+            skills = await self.ap.skill_service.list_skills(context)
+        except Exception as exc:
+            self.ap.logger.warning('Unable to list skills for pipeline extensions: %s', exc)
+            skills = []
         return {
             'enable_all_plugins': prefs.get('enable_all_plugins', True),
             'enable_all_mcp_servers': prefs.get('enable_all_mcp_servers', True),
@@ -364,7 +449,12 @@ class PipelineService:
             'bound_mcp_resources': prefs.get('mcp_resources', []),
             'mcp_resource_agent_read_enabled': prefs.get('mcp_resource_agent_read_enabled', True),
             'bound_skills': prefs.get('skills', []),
-            'available_skills': await self.ap.skill_service.list_skills(context),
+            'available_skills': skills,
+            'workspace_operations': prefs.get('workspace_operations', []),
+            'available_workspace_operations': catalog['workspace_operations'],
+            'available_platform_tools': platform_tool_catalog(),
+            'allowed_platform_tools': prefs.get('allowed_platform_tools', []),
+            'domains': catalog['domains'],
         }
 
     async def update_pipeline_extensions(
@@ -379,9 +469,18 @@ class PipelineService:
         enable_all_skills: bool = True,
         bound_mcp_resources: list[dict] = None,
         mcp_resource_agent_read_enabled: bool | None = None,
+        workspace_operations: list[str] | None = None,
+        allowed_platform_tools: list[str] | None = None,
     ) -> None:
         """Update the bound plugins and MCP servers for a pipeline"""
         workspace_uuid = require_workspace_uuid(context)
+        if allowed_platform_tools is not None:
+            from ....agent.runner.platform_tools import PLATFORM_TOOLS_BY_NAME
+
+            if not isinstance(allowed_platform_tools, list) or any(
+                not isinstance(name, str) or name not in PLATFORM_TOOLS_BY_NAME for name in allowed_platform_tools
+            ):
+                raise ValueError('Invalid Bot tool selection')
         extension_updates: dict[str, typing.Any] = {
             'enable_all_plugins': enable_all_plugins,
             'enable_all_mcp_servers': enable_all_mcp_servers,
@@ -436,6 +535,16 @@ class PipelineService:
         if bound_mcp_resources is not None:
             extensions_preferences['mcp_resources'] = bound_mcp_resources
 
+        old_ops = extensions_preferences.get('workspace_operations', [])
+        if allowed_platform_tools is not None:
+            extensions_preferences['allowed_platform_tools'] = sorted(set(allowed_platform_tools))
+        if workspace_operations is not None:
+            extensions_preferences['workspace_operations'] = validate_operation_preferences(
+                self.ap, context, old_ops, workspace_operations
+            )
+        else:
+            extensions_preferences['workspace_operations'] = old_ops
+
         await self.ap.persistence_mgr.execute_async(
             scope_statement(
                 sqlalchemy.update(persistence_pipeline.LegacyPipeline)
@@ -450,6 +559,18 @@ class PipelineService:
         await self.ap.pipeline_mgr.remove_pipeline(context, pipeline_uuid)
         pipeline = await self.get_pipeline(context, pipeline_uuid, include_secret=True)
         await self.ap.pipeline_mgr.load_pipeline(context, pipeline)
+
+    @staticmethod
+    def _messaging_config(config: typing.Any) -> typing.Any:
+        """Drop the settings that moved to the bot message policy.
+
+        Clients and exports that predate the message policy still submit
+        ``trigger`` / ``safety`` and the general ``output`` settings. They are
+        accepted and ignored here; a bot's policy is edited on the bot.
+        """
+        if not isinstance(config, dict):
+            return config
+        return message_policy_schema.split_legacy_config(config)[0]
 
     @staticmethod
     def _validate_extension_preferences(

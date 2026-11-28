@@ -9,6 +9,7 @@ from typing import Any, Union
 import base64
 import contextlib
 import contextvars
+import copy
 import traceback
 import uuid
 from dataclasses import dataclass
@@ -44,6 +45,7 @@ import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 from ..api.http.context import ExecutionContext
+from ..telemetry import features as telemetry_features
 from ..entity.persistence import plugin as persistence_plugin
 from ..entity.persistence import bstorage as persistence_bstorage
 from ..provider.modelmgr import requester as model_requester
@@ -66,6 +68,15 @@ from .agent_run_support import (
 )
 
 
+class _RuntimeActionName:
+    def __init__(self, value: str):
+        self.value = value
+
+
+def _plugin_runtime_action(name: str, value: str) -> Any:
+    return getattr(PluginToRuntimeAction, name, _RuntimeActionName(value))
+
+
 _HOST_RESERVED_QUERY_VAR_PREFIXES = (
     '_host_',
     '_pipeline_bound_',
@@ -80,6 +91,7 @@ _HOST_RESERVED_QUERY_VAR_KEYS = frozenset(
         '_activated_skills',
         '_fallback_model_uuids',
         '_routed_by_rule',
+        '_message_route_id',
     }
 )
 
@@ -406,7 +418,10 @@ def _bind_action_query_context(
         object.__setattr__(query, field_name, getattr(execution_context, field_name))
 
 
-def _build_plugin_action_query(action_context: ActionContext) -> pipeline_query.Query:
+def _build_plugin_action_query(
+    action_context: ActionContext,
+    plugin_identity: _PluginInstallationIdentity | None = None,
+) -> pipeline_query.Query:
     """Create a scoped Query for plugin actions that did not originate in a pipeline."""
 
     query_uuid = str(uuid.uuid4())
@@ -424,12 +439,36 @@ def _build_plugin_action_query(action_context: ActionContext) -> pipeline_query.
         query_uuid=query_uuid,
         bot_uuid=None,
         pipeline_uuid=None,
-        variables={},
+        variables=_plugin_monitoring_variables(plugin_identity),
         resp_messages=[],
         resp_message_chain=None,
     )
     object.__setattr__(query, '_execution_context', execution_context)
     return query
+
+
+def _plugin_handler_ref(plugin_identity: _PluginInstallationIdentity | None) -> str:
+    from ..pipeline.monitoring_helper import UNKNOWN_PLUGIN_HANDLER, plugin_handler
+
+    if plugin_identity is None:
+        return UNKNOWN_PLUGIN_HANDLER
+    return plugin_handler(plugin_identity.plugin_author, plugin_identity.plugin_name)
+
+
+def _plugin_monitoring_variables(
+    plugin_identity: _PluginInstallationIdentity | None,
+) -> dict[str, Any]:
+    """Monitoring labels for a Host-built Query owned by one plugin installation."""
+    if plugin_identity is None:
+        return {}
+    from ..pipeline.monitoring_helper import PLUGIN_ATTRIBUTION_VAR
+
+    plugin_ref = f'{plugin_identity.plugin_author}/{plugin_identity.plugin_name}'
+    return {
+        PLUGIN_ATTRIBUTION_VAR: plugin_ref,
+        '_monitoring_bot_name': 'Plugin',
+        '_monitoring_pipeline_name': f'plugin:{plugin_ref}',
+    }
 
 
 def _resolve_remove_think(data: dict[str, Any], query: Any | None) -> bool:
@@ -482,12 +521,18 @@ _UNTRUSTED_SCOPE_FIELDS = frozenset(
         'installation_uuid',
         'runtime_revision',
         'artifact_digest',
+        '_permission_tool_source',
     }
 )
 
+# Protocol actions that carry no plugin capability. Stream acknowledgements and
+# cancellations are bound by the SDK to the caller's own in-flight action, so
+# the installation grants of the original action already apply.
 _RUNTIME_SCOPED_ACTIONS = frozenset(
     {
         CommonAction.FILE_CHUNK.value,
+        CommonAction.STREAM_ACK.value,
+        CommonAction.CANCEL_ACTION.value,
         RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value,
         RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value,
     }
@@ -667,19 +712,132 @@ class RuntimeConnectionHandler(handler.Handler):
 
     def _secure_plugin_actions(self) -> None:
         """Wrap plugin-origin actions with installation validation and payload scrubbing."""
+        from ..api.application.contracts import ApplicationAPIException
+        from ..api.application.execution import EXECUTION_OPERATIONS, ExecutionAPI, ExecutionAPIContext
+
+        if not hasattr(self, '_raw_actions'):
+            self._raw_actions = {}
+        if not hasattr(self, 'execution_api') or self.execution_api is None:
+            self.execution_api = ExecutionAPI(self.ap, handler=self)
+            if hasattr(self.ap, 'execution_api') and self.ap.execution_api is None:
+                self.ap.execution_api = self.execution_api
+
+        for action_name, action_handler in list(self.actions.items()):
+            if getattr(action_handler, '_is_secured', False) is not True:
+                self._raw_actions[action_name] = action_handler
+
+        execution_ops = {op.action: op for op in EXECUTION_OPERATIONS}
 
         for action_name, action_handler in list(self.actions.items()):
             if action_name == CommonAction.PING.value:
                 continue
 
-            runtime_scoped = action_name in _RUNTIME_SCOPED_ACTIONS
-            if inspect.isasyncgenfunction(action_handler):
+            if action_name in execution_ops:
+                operation = execution_ops[action_name]
+                if operation.streaming:
 
-                async def secured_stream_action(
+                    async def secured_stream_action(
+                        data: dict[str, Any],
+                        *,
+                        _action_name=action_name,
+                        _operation=operation,
+                    ):
+                        action_context = self._require_runtime_action_context()
+                        self.validate_inbound_action_context(_action_name, action_context)
+                        if not isinstance(action_context, InstallationBinding):
+                            if self._allow_legacy_oss_context(_action_name, action_context):
+                                identity = await self._resolve_legacy_oss_installation_identity(action_context)
+                                action_context = InstallationBinding(
+                                    instance_uuid=action_context.instance_uuid,
+                                    workspace_uuid=action_context.workspace_uuid,
+                                    placement_generation=action_context.placement_generation,
+                                    installation_uuid=action_context.installation_uuid,
+                                    runtime_revision=identity.runtime_revision,
+                                    artifact_digest=identity.artifact_digest,
+                                )
+                            else:
+                                raise ValueError('Plugin action requires a complete InstallationBinding context')
+
+                        exec_context = ExecutionAPIContext(
+                            binding=action_context,
+                            run_id=data.get('run_id'),
+                            claimed_identity=data.get('caller_plugin_identity'),
+                            from_handler=True,
+                        )
+                        payload = {
+                            key: value
+                            for key, value in data.items()
+                            if key not in _UNTRUSTED_SCOPE_FIELDS and key not in ('run_id', 'caller_plugin_identity')
+                        }
+                        try:
+                            async for chunk in self.execution_api.stream(
+                                _operation.operation_id, exec_context, payload
+                            ):
+                                yield handler.ActionResponse.success(data=chunk)
+                        except ApplicationAPIException as exc:
+                            yield handler.ActionResponse.error(
+                                message=exc.error.message, data={'code': exc.error.code, **(exc.error.details or {})}
+                            )
+
+                    secured_stream_action._is_secured = True
+                    self.actions[action_name] = secured_stream_action
+                    continue
+
+                async def secured_action(
                     data: dict[str, Any],
                     *,
-                    _action_handler=action_handler,
+                    _action_name=action_name,
+                    _operation=operation,
+                ) -> handler.ActionResponse:
+                    action_context = self._require_runtime_action_context()
+                    self.validate_inbound_action_context(_action_name, action_context)
+                    if not isinstance(action_context, InstallationBinding):
+                        if self._allow_legacy_oss_context(_action_name, action_context):
+                            identity = await self._resolve_legacy_oss_installation_identity(action_context)
+                            action_context = InstallationBinding(
+                                instance_uuid=action_context.instance_uuid,
+                                workspace_uuid=action_context.workspace_uuid,
+                                placement_generation=action_context.placement_generation,
+                                installation_uuid=action_context.installation_uuid,
+                                runtime_revision=identity.runtime_revision,
+                                artifact_digest=identity.artifact_digest,
+                            )
+                        else:
+                            raise ValueError('Plugin action requires a complete InstallationBinding context')
+
+                    exec_context = ExecutionAPIContext(
+                        binding=action_context,
+                        run_id=data.get('run_id'),
+                        claimed_identity=data.get('caller_plugin_identity'),
+                        from_handler=True,
+                    )
+                    payload = {
+                        key: value
+                        for key, value in data.items()
+                        if key not in _UNTRUSTED_SCOPE_FIELDS and key not in ('run_id', 'caller_plugin_identity')
+                    }
+                    try:
+                        result = await self.execution_api.invoke(_operation.operation_id, exec_context, payload)
+                        return handler.ActionResponse.success(data=result)
+                    except ApplicationAPIException as exc:
+                        return handler.ActionResponse.error(
+                            message=exc.error.message, data={'code': exc.error.code, **(exc.error.details or {})}
+                        )
+
+                secured_action._is_secured = True
+                self.actions[action_name] = secured_action
+                continue
+
+            runtime_scoped = action_name in _RUNTIME_SCOPED_ACTIONS
+            raw_handler = self._raw_actions.get(action_name, action_handler)
+            if inspect.isasyncgenfunction(raw_handler):
+
+                async def secured_internal_stream_action(
+                    data: dict[str, Any],
+                    *,
+                    _action_handler=raw_handler,
                     _runtime_scoped=runtime_scoped,
+                    _action_name=action_name,
                 ):
                     action_context = self._require_runtime_action_context()
                     async with self._tenant_action_scope(action_context):
@@ -700,18 +858,37 @@ class RuntimeConnectionHandler(handler.Handler):
                             return
                         if trusted_plugin_identity is not None:
                             safe_data['caller_plugin_identity'] = trusted_plugin_identity
+                        if not _runtime_scoped:
+                            from ..api.application.plugin_permissions import authorize_action
+                            from ..api.application.plugin_audit import audit_action
+
+                            try:
+                                async with audit_action(self.ap, action_context, _action_name) as audit:
+                                    await authorize_action(self.ap, action_context, _action_name, safe_data)
+                                    async with contextlib.aclosing(_action_handler(safe_data)) as responses:
+                                        async for response in responses:
+                                            audit.observe(response)
+                                            yield response
+                            except ApplicationAPIException as exc:
+                                yield handler.ActionResponse.error(
+                                    message=exc.error.message,
+                                    data={'code': exc.error.code, **(exc.error.details or {})},
+                                )
+                            return
                         async with contextlib.aclosing(_action_handler(safe_data)) as responses:
                             async for response in responses:
                                 yield response
 
-                self.actions[action_name] = secured_stream_action
+                secured_internal_stream_action._is_secured = True
+                self.actions[action_name] = secured_internal_stream_action
                 continue
 
-            async def secured_action(
+            async def secured_internal_action(
                 data: dict[str, Any],
                 *,
-                _action_handler=action_handler,
+                _action_handler=raw_handler,
                 _runtime_scoped=runtime_scoped,
+                _action_name=action_name,
             ) -> handler.ActionResponse:
                 action_context = self._require_runtime_action_context()
                 async with self._tenant_action_scope(action_context):
@@ -728,12 +905,34 @@ class RuntimeConnectionHandler(handler.Handler):
                         )
                     if trusted_plugin_identity is not None:
                         safe_data['caller_plugin_identity'] = trusted_plugin_identity
+                    if not _runtime_scoped:
+                        from ..api.application.plugin_permissions import authorize_action
+                        from ..api.application.plugin_audit import audit_action
+
+                        try:
+                            async with audit_action(
+                                self.ap,
+                                action_context,
+                                _action_name,
+                                side_effect=_action_name.startswith(('set_', 'delete_')),
+                            ) as audit:
+                                await authorize_action(self.ap, action_context, _action_name, safe_data)
+                                response = _action_handler(safe_data)
+                                if inspect.isawaitable(response):
+                                    response = await response
+                                audit.observe(response)
+                                return response
+                        except ApplicationAPIException as exc:
+                            return handler.ActionResponse.error(
+                                message=exc.error.message, data={'code': exc.error.code, **(exc.error.details or {})}
+                            )
                     response = _action_handler(safe_data)
                     if inspect.isawaitable(response):
                         response = await response
                     return response
 
-            self.actions[action_name] = secured_action
+            secured_internal_action._is_secured = True
+            self.actions[action_name] = secured_internal_action
 
     async def _get_plugin_setting(
         self,
@@ -775,6 +974,72 @@ class RuntimeConnectionHandler(handler.Handler):
             or setting.artifact_digest != action_context.artifact_digest
         ):
             raise ValueError('Plugin installation binding does not match the active setting')
+
+    async def _resolve_origin_query(
+        self,
+        data: dict[str, Any],
+        action_context: ActionContext,
+    ):
+        """Resolve the Query whose event handler issued this plugin action.
+
+        ``origin_query_uuid`` comes from the plugin SDK and is used for
+        monitoring attribution only, never to authorize the action. It must
+        name a live Query in the caller's own Workspace generation.
+        """
+        origin_query_uuid = data.get('origin_query_uuid')
+        if not isinstance(origin_query_uuid, str) or not origin_query_uuid:
+            return None
+        try:
+            return await self._resolve_query({'query_uuid': origin_query_uuid}, action_context)
+        except Exception:
+            return None
+
+    async def _attribute_plugin_query_to_origin(
+        self,
+        query: Any,
+        data: dict[str, Any],
+        action_context: ActionContext,
+    ) -> None:
+        origin = await self._resolve_origin_query(data, action_context)
+        if origin is None:
+            return
+        from ..pipeline.monitoring_helper import attribute_to_origin
+
+        attribute_to_origin(query, origin)
+
+    async def _record_plugin_send(
+        self,
+        execution_context: ExecutionContext,
+        plugin_identity: _PluginInstallationIdentity,
+        bot: Any,
+        target_type: str,
+        target_id: Any,
+        message_chain: platform_message.MessageChain,
+        origin: Any | None,
+        error: BaseException | None = None,
+    ) -> None:
+        """Record a plugin-initiated ``send_message`` in monitoring."""
+        from ..pipeline.monitoring_helper import MonitoringHelper
+
+        origin_variables = (getattr(origin, 'variables', None) or {}) if origin is not None else {}
+        target_type_value = getattr(target_type, 'value', target_type)
+        bot_entity = getattr(bot, 'bot_entity', None)
+        await MonitoringHelper.record_plugin_message(
+            self.ap,
+            execution_context,
+            plugin=_plugin_handler_ref(plugin_identity),
+            message_chain=message_chain,
+            bot_id=str(getattr(bot_entity, 'uuid', None) or ''),
+            bot_name=str(getattr(bot_entity, 'name', None) or ''),
+            pipeline_id=str(getattr(origin, 'pipeline_uuid', None) or ''),
+            pipeline_name=str(origin_variables.get('_monitoring_pipeline_name') or ''),
+            session_id=f'{target_type_value}_{target_id}',
+            platform=str(target_type_value),
+            user_id=str(target_id) if target_type_value == 'person' else None,
+            parent_message_id=origin_variables.get('_monitoring_message_id'),
+            error=error,
+            error_type='PluginSendError',
+        )
 
     async def _resolve_query(
         self,
@@ -818,6 +1083,49 @@ class RuntimeConnectionHandler(handler.Handler):
             .limit(1)
         )
         return result.first() is not None
+
+    async def _bot_available(self, bot_uuid: str, workspace_uuid: str) -> bool:
+        """Whether a plugin may address ``bot_uuid`` in this Workspace.
+
+        Persisted bots are checked against the ``bots`` table. The WebSocket
+        debug proxy is in-memory only and never has a row, so it is available
+        exactly when this Workspace has a live proxy runtime.
+        """
+        if bot_uuid == constants.WEBSOCKET_PROXY_BOT_UUID:
+            return self.ap.platform_mgr.has_websocket_proxy_bot(workspace_uuid)
+        return await self._resource_exists(
+            persistence_bot.Bot,
+            persistence_bot.Bot.uuid,
+            bot_uuid,
+            workspace_uuid,
+        )
+
+    async def _websocket_proxy_bot_info(self, execution_context: ExecutionContext, bot_uuid: str) -> dict | None:
+        """Bot info for the in-memory debug proxy, shaped like ``get_runtime_bot_info``.
+
+        Built from the live runtime object because the proxy has no ``bots``
+        row. It carries no adapter config and no webhook.
+        """
+        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(execution_context, bot_uuid)
+        if runtime_bot is None:
+            return None
+        entity = runtime_bot.bot_entity
+        return {
+            'uuid': entity.uuid,
+            'workspace_uuid': entity.workspace_uuid,
+            'name': entity.name,
+            'description': entity.description or '',
+            'adapter': entity.adapter,
+            'enable': bool(entity.enable),
+            'event_bindings': [],
+            'plugin_processors': [],
+            'adapter_runtime_values': {
+                'bot_account_id': getattr(runtime_bot.adapter, 'bot_account_id', None),
+                'webhook_url': None,
+                'webhook_full_url': None,
+                'extra_webhook_full_url': None,
+            },
+        }
 
     @staticmethod
     def _config_contains_file_key(value: Any, file_key: str) -> bool:
@@ -915,6 +1223,12 @@ class RuntimeConnectionHandler(handler.Handler):
             plugin_name = data['plugin_name']
             install_source = data['install_source']
             install_info = data['install_info']
+            from ..api.application.plugin_permissions import read_declaration
+
+            permission_manifest = data.get('manifest', {})
+            declaration = read_declaration(permission_manifest)
+            if permission_manifest:
+                install_info = {**install_info, '_manifest': permission_manifest}
 
             try:
                 setting = await self._get_plugin_setting_by_name(
@@ -934,7 +1248,9 @@ class RuntimeConnectionHandler(handler.Handler):
                             plugin_name=plugin_name,
                             install_source=install_source,
                             install_info=install_info,
-                            enabled=True,
+                            enabled=False,
+                            permission_declaration=declaration,
+                            permission_grants={},
                             priority=0,
                             config={},
                         )
@@ -945,7 +1261,9 @@ class RuntimeConnectionHandler(handler.Handler):
                         .where(persistence_plugin.PluginSetting.workspace_uuid == action_context.workspace_uuid)
                         .where(persistence_plugin.PluginSetting.plugin_author == plugin_author)
                         .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
-                        .values(install_source=install_source, install_info=install_info)
+                        .values(
+                            install_source=install_source, install_info=install_info, permission_declaration=declaration
+                        )
                     )
 
                 return handler.ActionResponse.success(
@@ -984,7 +1302,8 @@ class RuntimeConnectionHandler(handler.Handler):
                         artifact_digest=artifact_digest,
                         install_source='local',
                         install_info={},
-                        enabled=True,
+                        enabled=False,
+                        permission_grants={},
                         priority=0,
                         config={},
                     )
@@ -1023,7 +1342,7 @@ class RuntimeConnectionHandler(handler.Handler):
         @self.action(PluginToRuntimeAction.REPLY_MESSAGE)
         async def reply_message(data: dict[str, Any]) -> handler.ActionResponse:
             """Reply message"""
-            action_context, _ = await self._require_plugin_action_context()
+            action_context, plugin_identity = await self._require_plugin_action_context()
             query_id = data['query_id']
             message_chain = data['message_chain']
             quote_origin = data['quote_origin']
@@ -1038,11 +1357,19 @@ class RuntimeConnectionHandler(handler.Handler):
 
             self.ap.logger.debug(f'Reply message: {message_chain_obj.model_dump(serialize_as_any=False)}')
 
-            await query.adapter.reply_message(
-                query.message_event,
-                message_chain_obj,
-                quote_origin,
-            )
+            from ..pipeline.monitoring_helper import MonitoringHelper
+
+            plugin = _plugin_handler_ref(plugin_identity)
+            try:
+                policy = getattr(query, '_message_policy', None)
+                if policy is not None and hasattr(query, '_listener_plugins'):
+                    await policy.send_command_reply(query, message_chain_obj, quote_origin)
+                else:
+                    await query.adapter.reply_message(query.message_event, message_chain_obj, quote_origin)
+            except Exception as exc:
+                await MonitoringHelper.record_plugin_reply(self.ap, query, plugin, message_chain_obj, error=exc)
+                raise
+            await MonitoringHelper.record_plugin_reply(self.ap, query, plugin, message_chain_obj)
 
             return handler.ActionResponse.success(
                 data={},
@@ -1141,15 +1468,9 @@ class RuntimeConnectionHandler(handler.Handler):
                     message=f'Query with query_id {query_id} not found',
                 )
 
-            from ..agent.runner.context_reset import reset_runner_context
-            from ..agent.runner.query_entry_adapter import QueryEntryAdapter
+            from ..agent.runner.context_reset import reset_conversation
 
-            conversation_id = QueryEntryAdapter._build_conversation_context(query).conversation_id
-            async with self.ap.persistence_mgr.tenant_uow(action_context.workspace_uuid):
-                await reset_runner_context(
-                    self.ap.persistence_mgr, action_context.workspace_uuid, query.bot_uuid, conversation_id
-                )
-            query.session.using_conversation = None
+            await reset_conversation(self.ap, query)
 
             return handler.ActionResponse.success(
                 data={},
@@ -1194,20 +1515,22 @@ class RuntimeConnectionHandler(handler.Handler):
             action_context, _ = await self._require_plugin_action_context()
             execution_context = self._execution_context(action_context)
             bot_uuid = data['bot_uuid']
-            if not await self._resource_exists(
-                persistence_bot.Bot,
-                persistence_bot.Bot.uuid,
-                bot_uuid,
-                action_context.workspace_uuid,
-            ):
+            if not await self._bot_available(bot_uuid, action_context.workspace_uuid):
                 return handler.ActionResponse.error(
                     message=f'Bot with bot_uuid {bot_uuid} not found',
                 )
-            bot = await self.ap.bot_service.get_runtime_bot_info(
-                execution_context,
-                bot_uuid,
-                include_secret=False,
-            )
+            if bot_uuid == constants.WEBSOCKET_PROXY_BOT_UUID:
+                bot = await self._websocket_proxy_bot_info(execution_context, bot_uuid)
+                if bot is None:
+                    return handler.ActionResponse.error(
+                        message=f'Bot with bot_uuid {bot_uuid} not found',
+                    )
+            else:
+                bot = await self.ap.bot_service.get_runtime_bot_info(
+                    execution_context,
+                    bot_uuid,
+                    include_secret=False,
+                )
             return handler.ActionResponse.success(
                 data={
                     'bot': bot,
@@ -1225,13 +1548,13 @@ class RuntimeConnectionHandler(handler.Handler):
             output_lock_acquired = False
             try:
                 if data.get('file_ids') is not None:
-                    from ..box.runner import exported_message, binding_for
+                    from ..box.runner import exported_message, binding_for, mark_exported_files
 
                     query = _resolve_action_query(data, session, self.ap, action_context)
                     output_lock = binding_for(query).lock
                     await output_lock.acquire()
                     output_lock_acquired = True
-                    files = exported_message(query, data['file_ids'])
+                    files = await exported_message(self.ap, query, data['file_ids'])
                     data = {**data, 'params': {**(data.get('params') or {}), 'message': files.model_dump(mode='json')}}
                 tool_name, parameters, message = resolve_platform_api_call(
                     session, data.get('bot_uuid'), data['action'], data.get('params') or {}, data.get('context_tool')
@@ -1253,7 +1576,7 @@ class RuntimeConnectionHandler(handler.Handler):
                     message_chain=message,
                 )
                 if data.get('file_ids') is not None:
-                    exported_message(query, data['file_ids'], consume=True)
+                    mark_exported_files(query, data['file_ids'])
                 return handler.ActionResponse.success(data={'result': _serialize_plugin_api_result(result)})
             except (ValueError, KeyError, TypeError) as exc:
                 return handler.ActionResponse.error(message=str(exc))
@@ -1264,31 +1587,14 @@ class RuntimeConnectionHandler(handler.Handler):
         @self.action(PluginToRuntimeAction.SEND_MESSAGE)
         async def send_message(data: dict[str, Any]) -> handler.ActionResponse:
             """Send message"""
-            if data.get('run_id') is not None:
-                return await call_run_platform_api(
-                    {
-                        **data,
-                        'action': 'send_message',
-                        'params': {
-                            'target_type': data['target_type'],
-                            'target_id': data['target_id'],
-                            'message': data['message_chain'],
-                        },
-                    }
-                )
-            action_context, _ = await self._require_plugin_action_context()
+            action_context, plugin_identity = await self._require_plugin_action_context()
             execution_context = self._execution_context(action_context)
             bot_uuid = data['bot_uuid']
             target_type = data['target_type']
             target_id = data['target_id']
             message_chain = data['message_chain']
 
-            if not await self._resource_exists(
-                persistence_bot.Bot,
-                persistence_bot.Bot.uuid,
-                bot_uuid,
-                action_context.workspace_uuid,
-            ):
+            if not await self._bot_available(bot_uuid, action_context.workspace_uuid):
                 return handler.ActionResponse.error(
                     message=f'Bot with bot_uuid {bot_uuid} not found',
                 )
@@ -1305,10 +1611,20 @@ class RuntimeConnectionHandler(handler.Handler):
                     message=f'Bot with bot_uuid {bot_uuid} not found',
                 )
 
-            result = await bot.adapter.send_message(
-                target_type,
-                target_id,
-                message_chain_obj,
+            origin = await self._resolve_origin_query(data, action_context)
+            try:
+                result = await bot.adapter.send_message(
+                    target_type,
+                    target_id,
+                    message_chain_obj,
+                )
+            except Exception as exc:
+                await self._record_plugin_send(
+                    execution_context, plugin_identity, bot, target_type, target_id, message_chain_obj, origin, exc
+                )
+                raise
+            await self._record_plugin_send(
+                execution_context, plugin_identity, bot, target_type, target_id, message_chain_obj, origin
             )
 
             return handler.ActionResponse.success(
@@ -1320,10 +1636,27 @@ class RuntimeConnectionHandler(handler.Handler):
         @self.action(PluginToRuntimeAction.CALL_PLATFORM_API)
         async def call_platform_api(data: dict[str, Any]) -> handler.ActionResponse:
             """Call a platform adapter API"""
-            if data.get('run_id') is not None:
+            if data.get('run_id') is not None and (data.get('context_tool') or data.get('file_ids') is not None):
                 return await call_run_platform_api(data)
+            if data.get('action') == 'send_message' and data.get('bot_uuid'):
+                params = data.get('params') or {}
+                return await send_message(
+                    {
+                        **data,
+                        'target_type': params['target_type'],
+                        'target_id': params['target_id'],
+                        'message_chain': params['message'],
+                    }
+                )
             action_context, _ = await self._require_plugin_action_context()
-            bot_uuid = data['bot_uuid']
+            bot_uuid = data.get('bot_uuid')
+            if not bot_uuid and data.get('run_id'):
+                session, error = await _validate_agent_run_session(
+                    data['run_id'], data.get('caller_plugin_identity'), self.ap, 'call_platform_api'
+                )
+                if error:
+                    return error
+                bot_uuid = (session.get('authorization') or {}).get('bot_id')
             action = data['action']
             params = data.get('params') or {}
 
@@ -1363,6 +1696,41 @@ class RuntimeConnectionHandler(handler.Handler):
                     'result': _serialize_plugin_api_result(result),
                 },
             )
+
+        @self.action(PluginToRuntimeAction.REQUEST_INTERACTION)
+        async def request_interaction(data: dict[str, Any]) -> handler.ActionResponse:
+            action_context, _ = await self._require_plugin_action_context()
+            session, error = await _validate_agent_run_session(
+                data.get('run_id'), data.get('caller_plugin_identity'), self.ap, 'request_interaction'
+            )
+            if error:
+                return error
+            authorization = session['authorization']
+            if authorization.get('workspace_id') != action_context.workspace_uuid:
+                return handler.ActionResponse.error('Run belongs to another Workspace')
+            if not authorization.get('interactions_enabled') or not authorization.get('interactions_authorized'):
+                return handler.ActionResponse.error('Runner did not declare interaction capability and permission')
+            bot_id = authorization.get('bot_id')
+            if not bot_id:
+                return handler.ActionResponse.error('Interaction requires a platform bot')
+            bot = await self.ap.platform_mgr.get_bot_by_uuid(self._execution_context(action_context), bot_id)
+            if bot is None:
+                return handler.ActionResponse.error('Interaction bot is not running')
+            manager = self.ap.agent_run_orchestrator.interaction_manager
+            try:
+                result = await manager.request_interaction(
+                    session=session,
+                    adapter=bot.adapter,
+                    request_payload=data['request'],
+                    timeout=float(data['timeout']),
+                    on_unsupported=data.get('on_unsupported', 'error'),
+                    responders=data.get('responders', 'actor'),
+                    target_type=data.get('target_type'),
+                    target_id=data.get('target_id'),
+                )
+                return handler.ActionResponse.success(data=result)
+            except (ValueError, KeyError, TypeError, pydantic.ValidationError) as exc:
+                return handler.ActionResponse.error(str(exc))
 
         @self.action(PluginToRuntimeAction.GET_LLM_MODELS)
         async def get_llm_models(data: dict[str, Any]) -> handler.ActionResponse:
@@ -1408,15 +1776,6 @@ class RuntimeConnectionHandler(handler.Handler):
                 if error:
                     return error
 
-            if not await self._resource_exists(
-                persistence_model.LLMModel,
-                persistence_model.LLMModel.uuid,
-                llm_model_uuid,
-                action_context.workspace_uuid,
-            ):
-                return handler.ActionResponse.error(
-                    message=f'LLM model with llm_model_uuid {llm_model_uuid} not found',
-                )
             try:
                 llm_model = await self.ap.model_mgr.get_model_by_uuid(
                     self._execution_context(action_context),
@@ -1429,7 +1788,11 @@ class RuntimeConnectionHandler(handler.Handler):
 
             if getattr(llm_model.model_entity, 'workspace_uuid', None) not in (None, action_context.workspace_uuid):
                 return handler.ActionResponse.error(message='LLM model belongs to another Workspace')
-            llm_model = model_with_reasoning_level(llm_model, data.get('reasoning_level'))
+            # Token counting preserves the requested input representation without
+            # validating whether a generation reasoning level is supported.
+            if data.get('reasoning_level') is not None:
+                llm_model = copy.copy(llm_model)
+                llm_model.reasoning_config_override = {'level': data['reasoning_level']}
             messages_obj = [provider_message.Message.model_validate(message) for message in messages]
 
             async def _placeholder_func(**kwargs):
@@ -1465,7 +1828,7 @@ class RuntimeConnectionHandler(handler.Handler):
             For Runner calls: requires run_id and validates model_uuid against session.resources.models.
             For regular plugin calls: no run_id, unrestricted access (backward compatibility).
             """
-            action_context, _ = await self._require_plugin_action_context()
+            action_context, plugin_identity = await self._require_plugin_action_context()
             llm_model_uuid = data['llm_model_uuid']
             messages = data['messages']
             funcs = data.get('funcs', [])
@@ -1488,15 +1851,6 @@ class RuntimeConnectionHandler(handler.Handler):
                 if error:
                     return error
 
-            if not await self._resource_exists(
-                persistence_model.LLMModel,
-                persistence_model.LLMModel.uuid,
-                llm_model_uuid,
-                action_context.workspace_uuid,
-            ):
-                return handler.ActionResponse.error(
-                    message=f'LLM model with llm_model_uuid {llm_model_uuid} not found',
-                )
             try:
                 execution_context = self._execution_context(action_context)
                 llm_model = await self.ap.model_mgr.get_model_by_uuid(
@@ -1529,7 +1883,8 @@ class RuntimeConnectionHandler(handler.Handler):
             funcs_obj = [resource_tool.LLMTool.model_validate({**func, 'func': _placeholder_func}) for func in funcs]
             query = _resolve_action_query(data, session, self.ap, action_context)
             if query is None:
-                query = _build_plugin_action_query(action_context)
+                query = _build_plugin_action_query(action_context, plugin_identity)
+                await self._attribute_plugin_query_to_origin(query, data, action_context)
             effective_extra_args = _merge_model_extra_args(llm_model, extra_args, llm_policy=True)
             remove_think = _resolve_remove_think(data, query)
             effective_funcs = funcs_obj if 'func_call' in (llm_model.model_entity.abilities or []) else []
@@ -1567,7 +1922,7 @@ class RuntimeConnectionHandler(handler.Handler):
             For Runner calls: requires run_id and validates model_uuid against session.resources.models.
             For regular plugin calls: no run_id, unrestricted access (backward compatibility).
             """
-            action_context, _ = await self._require_plugin_action_context()
+            action_context, plugin_identity = await self._require_plugin_action_context()
             llm_model_uuid = data['llm_model_uuid']
             messages = data['messages']
             funcs = data.get('funcs', [])
@@ -1591,16 +1946,6 @@ class RuntimeConnectionHandler(handler.Handler):
                     yield error
                     return
 
-            if not await self._resource_exists(
-                persistence_model.LLMModel,
-                persistence_model.LLMModel.uuid,
-                llm_model_uuid,
-                action_context.workspace_uuid,
-            ):
-                yield handler.ActionResponse.error(
-                    message=f'LLM model with llm_model_uuid {llm_model_uuid} not found',
-                )
-                return
             try:
                 execution_context = self._execution_context(action_context)
                 llm_model = await self.ap.model_mgr.get_model_by_uuid(
@@ -1627,7 +1972,8 @@ class RuntimeConnectionHandler(handler.Handler):
             funcs_obj = [resource_tool.LLMTool.model_validate({**func, 'func': _placeholder_func}) for func in funcs]
             query = _resolve_action_query(data, session, self.ap, action_context)
             if query is None:
-                query = _build_plugin_action_query(action_context)
+                query = _build_plugin_action_query(action_context, plugin_identity)
+                await self._attribute_plugin_query_to_origin(query, data, action_context)
             effective_extra_args = _merge_model_extra_args(llm_model, extra_args, llm_policy=True)
             remove_think = _resolve_remove_think(data, query)
             effective_funcs = funcs_obj if 'func_call' in (llm_model.model_entity.abilities or []) else []
@@ -1711,20 +2057,19 @@ class RuntimeConnectionHandler(handler.Handler):
 
         @self.action(PluginToRuntimeAction.CALL_TOOL)
         async def call_tool(data: dict[str, Any]) -> handler.ActionResponse:
-            """Call a tool
-
-            For Runner calls: requires run_id and validates tool_name against session.resources.tools.
-            For regular plugin calls: no run_id, unrestricted access (backward compatibility).
-            """
+            """Call a tool under installation grants and the trusted run context."""
             tool_name = data['tool_name']
             run_id = data.get('run_id')  # Optional: present for Runner calls
             caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
             session = None
-            source_ref = None
+            source_ref = data.get('_permission_tool_source')
             is_runner_call = bool(run_id)
             action_context = self._require_runtime_action_context()
 
             if is_runner_call:
+                session, error = await _validate_agent_run_session(run_id, caller_plugin_identity, self.ap, 'call_tool')
+                if error:
+                    return error
                 if 'parameters' not in data:
                     return handler.ActionResponse.error(
                         message='parameters is required for Runner tool calls',
@@ -1734,7 +2079,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 parameters = data.get('tool_parameters') or {}
 
             # Permission validation for Runner calls
-            if run_id:
+            if run_id and source_ref is None:
                 session, error = await _validate_run_authorization(
                     run_id, 'tool', tool_name, self.ap, caller_plugin_identity, operation='call'
                 )
@@ -1775,6 +2120,9 @@ class RuntimeConnectionHandler(handler.Handler):
                 result = await self.ap.tool_mgr.execute_func_call(
                     **execute_kwargs,
                 )
+                # Loaders may return Pydantic models (e.g. MCP list[ContentElement]);
+                # the action contract requires plain JSON values.
+                result = _serialize_plugin_api_result(result)
                 if is_runner_call:
                     return handler.ActionResponse.success(data={'result': result})
                 return handler.ActionResponse.success(data={'tool_response': result})
@@ -1786,22 +2134,23 @@ class RuntimeConnectionHandler(handler.Handler):
 
         @self.action(PluginToRuntimeAction.GET_TOOL_DETAIL)
         async def get_tool_detail(data: dict[str, Any]) -> handler.ActionResponse:
-            """Get tool detail for LLM function calling.
-
-            For Runner calls: requires run_id and validates tool_name against session.resources.tools.
-            For regular plugin calls: no run_id, unrestricted access (backward compatibility).
-
-            Returns tool manifest including name, description, and parameters schema.
-            """
+            """Get tool detail under installation grants and the trusted run context."""
             tool_name = data['tool_name']
             run_id = data.get('run_id')  # Optional: present for Runner calls
             caller_plugin_identity = data.get('caller_plugin_identity')  # Optional: for cross-plugin validation
             session = None
-            source_ref = None
+            source_ref = data.get('_permission_tool_source')
             action_context = self._require_runtime_action_context()
 
-            # Permission validation for Runner calls
             if run_id:
+                session, error = await _validate_agent_run_session(
+                    run_id, caller_plugin_identity, self.ap, 'get_tool_detail'
+                )
+                if error:
+                    return error
+
+            # Permission validation for Runner calls
+            if run_id and source_ref is None:
                 session, error = await _validate_run_authorization(
                     run_id, 'tool', tool_name, self.ap, caller_plugin_identity, operation='detail'
                 )
@@ -1814,6 +2163,15 @@ class RuntimeConnectionHandler(handler.Handler):
             try:
                 if source_ref is not None and source_ref['source'] == 'platform':
                     tool_detail = get_platform_tool_detail(session, tool_name)
+                    if tool_detail is None:
+                        from ..agent.runner.platform_tools import PLATFORM_TOOLS_BY_NAME
+
+                        definition = PLATFORM_TOOLS_BY_NAME[tool_name]
+                        tool_detail = {
+                            'name': tool_name,
+                            'description': definition.description.get('en_US', ''),
+                            'parameters': definition.parameters,
+                        }
                     if tool_detail is None:
                         return handler.ActionResponse.error(
                             message=f'Tool {tool_name} not found',
@@ -2411,6 +2769,16 @@ class RuntimeConnectionHandler(handler.Handler):
                 content_bytes = await self.ap.rag_runtime_service.get_file_stream(
                     execution_context,
                     storage_path,
+                    plugin_id=f'{identity.plugin_author}/{identity.plugin_name}',
+                )
+                # Storage I/O may outlive installation/grant revocation. Never start
+                # the binary transfer under stale authority after the await.
+                await self._require_plugin_action_context()
+                await self._require_active_action_context(action_context)
+                from ..api.application.plugin_permissions import authorize_action
+
+                await authorize_action(
+                    self.ap, installation_binding, PluginToRuntimeAction.GET_KNOWLEDEGE_FILE_STREAM.value, data
                 )
                 file_key = await self.send_file(
                     content_bytes,
@@ -2520,6 +2888,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
 
             try:
+                telemetry_features.increment(self.ap, 'kb', 'retrievals', execution_id=run_id or '')
                 entries = await kb.retrieve(
                     execution_context,
                     query_text,
@@ -2531,6 +2900,13 @@ class RuntimeConnectionHandler(handler.Handler):
                 results = [entry.model_dump(mode='json') for entry in entries]
                 return handler.ActionResponse.success(data={'results': results})
             except Exception as e:
+                # The error only travels back to the calling plugin; log it so
+                # operators can see why retrievals fail (kb.retrieve telemetry
+                # carries no error text).
+                self.ap.logger.warning(
+                    f'Knowledge base retrieval failed: kb={kb_id} '
+                    f'engine={kb.get_knowledge_engine_plugin_id()} {type(e).__name__}: {e}'
+                )
                 return _make_rag_error_response(e, 'RetrievalError', kb_id=kb_id)
 
         @self.action(PluginToRuntimeAction.LIST_PIPELINE_KNOWLEDGE_BASES)
@@ -2640,6 +3016,7 @@ class RuntimeConnectionHandler(handler.Handler):
                             'sender_id': str(query.sender_id),
                         }
                     )
+                telemetry_features.increment(self.ap, 'kb', 'retrievals', query=query, execution_id=run_id or '')
                 entries = await kb.retrieve(
                     execution_context,
                     query_text,
@@ -2648,6 +3025,13 @@ class RuntimeConnectionHandler(handler.Handler):
                 results = [entry.model_dump(mode='json') for entry in entries]
                 return handler.ActionResponse.success(data={'results': results})
             except Exception as e:
+                # The error only travels back to the calling plugin; log it so
+                # operators can see why retrievals fail (kb.retrieve telemetry
+                # carries no error text).
+                self.ap.logger.warning(
+                    f'Knowledge base retrieval failed: kb={kb_id} '
+                    f'engine={kb.get_knowledge_engine_plugin_id()} {type(e).__name__}: {e}'
+                )
                 return _make_rag_error_response(e, 'RetrievalError', kb_id=kb_id)
 
         # ================= Agent History/Event APIs =================
@@ -2684,20 +3068,25 @@ class RuntimeConnectionHandler(handler.Handler):
 
             prompt = getattr(query, 'prompt', None)
             messages = getattr(prompt, 'messages', []) or []
+            from ..pipeline.preproc.prompt_context import PREPROCESSED_SYSTEM_CONTEXT
+
+            system_context = (getattr(query, 'variables', None) or {}).get(PREPROCESSED_SYSTEM_CONTEXT, [])
             return handler.ActionResponse.success(
                 data={
                     'prompt': [
                         message.model_dump(mode='json') if hasattr(message, 'model_dump') else message
                         for message in messages
-                    ],
+                    ]
+                    + system_context,
                 }
             )
 
         agent_pull_actions.register(self)
         runner_actions.register(self)
-        from . import box_actions
+        from . import box_actions, input_attachment_actions
 
         box_actions.register(self)
+        input_attachment_actions.register(self)
         agent_state_actions.register(self)
 
         @self.action(CommonAction.PING)
@@ -2708,6 +3097,81 @@ class RuntimeConnectionHandler(handler.Handler):
                     'pong': 'pong',
                 },
             )
+
+        @self.action(PluginToRuntimeAction.LIST_PLUGINS_MANIFEST)
+        async def list_plugins_manifest(data: dict[str, Any]) -> handler.ActionResponse:
+            await self.ap.plugin_connector.require_workspace_context(
+                self._execution_context(self.current_action_context)
+            )
+            plugins = await self.ap.plugin_connector.list_plugins()
+            return handler.ActionResponse.success(data={'plugins': [plugin['manifest'] for plugin in plugins]})
+
+        @self.action(PluginToRuntimeAction.LIST_COMMANDS)
+        async def list_commands(data: dict[str, Any]) -> handler.ActionResponse:
+            await self.ap.plugin_connector.require_workspace_context(
+                self._execution_context(self.current_action_context)
+            )
+            commands = await self.ap.plugin_connector.list_commands()
+            return handler.ActionResponse.success(data={'commands': [command.model_dump() for command in commands]})
+
+        @self.action(PluginToRuntimeAction.LIST_TOOLS)
+        async def list_tools(data: dict[str, Any]) -> handler.ActionResponse:
+            from ..api.application.plugin_permissions import effective_grants, load_installation
+
+            binding = self.current_action_context
+            setting = await load_installation(self.ap, binding.workspace_uuid, binding.installation_uuid)
+            grants = effective_grants(self.ap, setting)['capabilities']
+            execution = self._execution_context(binding)
+            await self.ap.plugin_connector.require_workspace_context(execution)
+            tools = []
+            if 'plugin_tools' in grants:
+                tools.extend(tool.to_plain_dict() for tool in await self.ap.plugin_connector.list_tools())
+            catalog = await self.ap.tool_mgr.get_resolved_tool_catalog(execution, include_mcp_resource_tools=True)
+            tools.extend(
+                item
+                for item in catalog
+                if {'mcp': 'mcp', 'builtin': 'sandbox', 'skill': 'sandbox'}.get(item['source']) in grants
+            )
+            return handler.ActionResponse.success(data={'tools': tools})
+
+        @self.action(PluginToRuntimeAction.LIST_APPLICATION_OPERATIONS)
+        async def list_application_operations(data: dict[str, Any]) -> handler.ActionResponse:
+            from ..api.application.plugin_permissions import installation_context
+            from ..api.application.granted_operations import list_granted, domains
+
+            context = await installation_context(self.ap, self.current_action_context, run_id=data.get('run_id'))
+            operations = list_granted(self.ap, context, consumer='processor')
+            return handler.ActionResponse.success(
+                data={
+                    'operations': [operation.as_dict() for operation in operations],
+                    'domains': domains(operations),
+                }
+            )
+
+        @self.action(PluginToRuntimeAction.CALL_APPLICATION_OPERATION)
+        async def call_application_operation(data: dict[str, Any]) -> handler.ActionResponse:
+            from ..api.application.plugin_permissions import installation_context, fail
+            from ..api.application.granted_operations import call
+
+            context = await installation_context(self.ap, self.current_action_context, run_id=data.get('run_id'))
+            operation_id = data['operation_id']
+            if operation_id not in context.allowed_operation_ids:
+                fail('permission_denied', 'Workspace operation has not been granted', denied_operations=[operation_id])
+            if operation_id.startswith('artifact.') and data.get('run_id'):
+                session, error = await _validate_agent_run_session(
+                    data['run_id'], data.get('caller_plugin_identity'), self.ap, 'Artifact'
+                )
+                if error:
+                    return error
+                frozen = {item['id'] for item in session['authorization'].get('workspace_operations', [])}
+                if operation_id not in frozen:
+                    fail(
+                        'permission_denied',
+                        'Workspace operation has not been granted',
+                        denied_operations=[operation_id],
+                    )
+            result = await call(self.ap, context, operation_id, data.get('arguments', {}), consumer='processor')
+            return handler.ActionResponse.success(data=result)
 
         self._secure_plugin_actions()
 
@@ -2756,6 +3220,10 @@ class RuntimeConnectionHandler(handler.Handler):
         existing = self._installation_bindings.get(binding.installation_uuid)
         if existing is not None and existing[0] == binding:
             self._installation_bindings.pop(binding.installation_uuid, None)
+
+    def _outbound_action_data(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Only Core-issued correlations may enter a new outbound invocation."""
+        return data
 
     def resolve_outbound_action_context(
         self,
@@ -2810,6 +3278,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 timeout=10,
             )
         self.supports_event_batch = result.get('event_batch') is True
+        self.supports_log_trace = result.get('log_trace') is True
         return result
 
     async def get_storage_analysis(self) -> dict[str, Any]:
@@ -3032,7 +3501,6 @@ class RuntimeConnectionHandler(handler.Handler):
 
         Yields RunnerResult dicts.
         """
-        timeout = self._get_runner_action_timeout(context)
         gen = self.call_action_generator(
             LangBotToRuntimeAction.RUN_RUNNER,
             {
@@ -3041,27 +3509,12 @@ class RuntimeConnectionHandler(handler.Handler):
                 'runner_name': runner_name,
                 'context': context,
             },
-            timeout=timeout,
+            timeout=None,
         )
 
         async with contextlib.aclosing(gen):
             async for ret in gen:
                 yield ret
-
-    def _get_runner_action_timeout(self, context: dict[str, Any]) -> float:
-        """Use the run deadline as the transport idle timeout when available."""
-        try:
-            import time
-
-            deadline_at = (context.get('runtime') or {}).get('deadline_at')
-            if deadline_at is None:
-                return 300
-            remaining = float(deadline_at) - time.time()
-            if remaining <= 0:
-                return 0.001
-            return max(remaining + 1.0, 0.001)
-        except (TypeError, ValueError):
-            return 300
 
     async def get_plugin_icon(self, plugin_author: str, plugin_name: str) -> dict[str, Any]:
         """Get plugin icon"""
@@ -3098,7 +3551,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 timeout=20,
             )
         except Exception:
-            traceback.print_exc()
+            self.ap.logger.exception('Failed to read plugin README for %s/%s', plugin_author, plugin_name)
             return ''
 
         readme_file_key = result.get('readme_file_key')
@@ -3130,7 +3583,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 timeout=20,
             )
         except Exception:
-            traceback.print_exc()
+            self.ap.logger.exception('Failed to read plugin logs for %s/%s', plugin_author, plugin_name)
             return []
 
         return result.get('logs', [])
@@ -3217,19 +3670,44 @@ class RuntimeConnectionHandler(handler.Handler):
         query_ref: dict[str, Any] = {'query_id': query_id}
         if query_uuid is not None:
             query_ref['query_uuid'] = query_uuid
-        result = await self.call_action(
-            LangBotToRuntimeAction.CALL_TOOL,
-            {
-                'tool_name': tool_name,
-                'tool_parameters': parameters,
-                'session': session,
-                **query_ref,
-                'include_plugins': include_plugins,
-            },
-            timeout=180,
+        from ..api.application.plugin_audit import outbound_tool_call
+        from langbot_plugin.api.proxies.invocation import AUDIT_CORRELATION_FIELD
+
+        binding = self.resolve_outbound_action_context(None)
+        scope = (
+            outbound_tool_call(self.ap, binding)
+            if isinstance(binding, InstallationBinding)
+            else contextlib.nullcontext(None)
         )
+        with scope as correlation:
+            result = await self.call_action(
+                LangBotToRuntimeAction.CALL_TOOL,
+                {
+                    'tool_name': tool_name,
+                    'tool_parameters': parameters,
+                    'session': session,
+                    **query_ref,
+                    'include_plugins': include_plugins,
+                    **({AUDIT_CORRELATION_FIELD: correlation} if correlation is not None else {}),
+                },
+                timeout=180,
+            )
 
         return result['tool_response']
+
+    async def list_plugin_registrations(self, include_plugins):
+        from langbot_plugin.entities.io.errors import ActionCallError
+
+        action = getattr(LangBotToRuntimeAction, 'LIST_PLUGIN_REGISTRATIONS', None)
+        if action is None:
+            return None
+        try:
+            result = await self.call_action(action, {'include_plugins': include_plugins}, timeout=10)
+        except ActionCallError as exc:
+            if f'Action {action.value} not found' in str(exc):
+                return None
+            raise
+        return result['plugins']
 
     async def list_commands(self, include_plugins: list[str] | None = None) -> list[dict[str, Any]]:
         """List commands"""
