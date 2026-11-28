@@ -13,10 +13,12 @@ import jwt
 import sqlalchemy as sa
 
 from ..api.authz import permissions_for_role
+from ..api.http.service.totp import TotpRequiredError
 from ..entity.persistence.harness_oauth import HarnessDevice, HarnessOAuthGrant
 from ..entity.persistence.harness_registration import HarnessBinding, HarnessRegistrationLink
 from ..utils import constants
 from .binding import _KEY, lock_keys
+from .handoff import HandoffRequired, HarnessHandoffs
 from .rotation import SERVING_KEY_STATES, finish_if_ready
 
 ACCESS_TTL = 3600
@@ -162,10 +164,13 @@ class HarnessOAuthService:
         if device is None:
             raise ValueError('invalid_device')
         try:
-            await self.ap.user_service.authenticate(email, password, payload.get('totp_code'))
+            await self.ap.user_service.authenticate(email, password)
+        except TotpRequiredError as exc:
+            if exc.account is None or device['account_uuid'] not in (None, exc.account.uuid):
+                raise ValueError('invalid_grant') from None
+            details = await HarnessHandoffs(self.ap).issue(binding_id, device_id, exc.account, workspace_uuid)
+            raise HandoffRequired(details) from None
         except Exception as exc:
-            if exc.__class__.__name__ == 'TotpRequiredError':
-                raise ValueError('interaction_required') from exc
             raise ValueError('invalid_grant') from exc
         account = await self.ap.user_service.get_user_by_email(email)
         if account is None or (device['account_uuid'] is not None and device['account_uuid'] != account.uuid):
@@ -197,43 +202,47 @@ class HarnessOAuthService:
             ).mappings().one_or_none()
             if link is None:
                 raise ValueError('invalid_binding')
-            if device['account_uuid'] is not None:
-                active = await conn.scalar(sa.select(HarnessBinding.id).where(
-                    HarnessBinding.id == binding_id,
-                    HarnessBinding.instance_uuid == self.instance_uuid,
-                    HarnessBinding.revoked_at.is_(None),
-                ).join(HarnessDevice, HarnessDevice.binding_id == HarnessBinding.id).where(
-                    HarnessDevice.id == device_id, HarnessDevice.account_uuid == account.uuid,
-                    HarnessDevice.revoked_at.is_(None),
-                ))
-                if active is None:
-                    raise ValueError('invalid_device')
-                return await self._issue_grant(conn, binding_id, device_id, account.uuid, workspace_uuid, scopes)
-            if not await conn.scalar(sa.select(_KEY.c.kid).where(
-                _KEY.c.kid == link['kid'], _KEY.c.status.in_(SERVING_KEY_STATES),
-            )):
-                raise ValueError('invalid_binding')
-            claimed = await conn.execute(
-                HarnessDevice.__table__.update()
-                .where(
-                    HarnessDevice.id == device_id,
-                    HarnessDevice.binding_id == binding_id,
-                    HarnessDevice.account_uuid.is_(None),
-                    HarnessDevice.revoked_at.is_(None),
-                )
-                .values(account_uuid=account.uuid)
-            )
-            if claimed.rowcount != 1:
+            return await self.finish_password_grant(conn, link, device, account.uuid, workspace_uuid, scopes, now)
+
+    async def finish_password_grant(self, conn, link, device, account_uuid, workspace_uuid, scopes, now):
+        binding_id, device_id = link['id'], device['id']
+        if device['account_uuid'] is not None:
+            active = await conn.scalar(sa.select(HarnessBinding.id).where(
+                HarnessBinding.id == binding_id,
+                HarnessBinding.instance_uuid == self.instance_uuid,
+                HarnessBinding.revoked_at.is_(None),
+            ).join(HarnessDevice, HarnessDevice.binding_id == HarnessBinding.id).where(
+                HarnessDevice.id == device_id, HarnessDevice.account_uuid == account_uuid,
+                HarnessDevice.revoked_at.is_(None),
+            ))
+            if active is None:
                 raise ValueError('invalid_device')
-            await conn.execute(
-                HarnessBinding.__table__.insert().values(
-                    id=binding_id,
-                    instance_uuid=self.instance_uuid,
-                    issuer_workspace_uuid=link['issuer_workspace_uuid'],
-                    created_at=now,
-                )
+            return await self._issue_grant(conn, binding_id, device_id, account_uuid, workspace_uuid, scopes)
+        if not await conn.scalar(sa.select(_KEY.c.kid).where(
+            _KEY.c.kid == link['kid'], _KEY.c.status.in_(SERVING_KEY_STATES),
+        )):
+            raise ValueError('invalid_binding')
+        claimed = await conn.execute(
+            HarnessDevice.__table__.update()
+            .where(
+                HarnessDevice.id == device_id,
+                HarnessDevice.binding_id == binding_id,
+                HarnessDevice.account_uuid.is_(None),
+                HarnessDevice.revoked_at.is_(None),
             )
-            return await self._issue_grant(conn, binding_id, device_id, account.uuid, workspace_uuid, scopes)
+            .values(account_uuid=account_uuid)
+        )
+        if claimed.rowcount != 1:
+            raise ValueError('invalid_device')
+        await conn.execute(
+            HarnessBinding.__table__.insert().values(
+                id=binding_id,
+                instance_uuid=self.instance_uuid,
+                issuer_workspace_uuid=link['issuer_workspace_uuid'],
+                created_at=now,
+            )
+        )
+        return await self._issue_grant(conn, binding_id, device_id, account_uuid, workspace_uuid, scopes)
 
     async def switch_workspace(self, account_uuid, binding_id, device_id, workspace_uuid):
         access = await self.ap.workspace_collaboration_service.resolve_account_workspace(account_uuid, workspace_uuid)

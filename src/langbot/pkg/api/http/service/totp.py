@@ -83,6 +83,10 @@ class TotpRequiredError(TotpError):
 
     code = 'totp_required'
 
+    def __init__(self, message, *, account=None):
+        super().__init__(message)
+        self.account = account
+
 
 class TotpChallengeError(TotpError):
     code = 'totp_challenge_invalid'
@@ -630,12 +634,15 @@ class TotpService:
         *,
         allow_recovery: bool = False,
         consume_counter: bool = True,
+        expected_credential_uuid: str | None = None,
     ) -> bool:
         """Verify a TOTP code, optionally falling back to a recovery code."""
 
         credential = await self.get_credential(account_uuid)
         if credential is None or credential.confirmed_at is None:
             raise TotpNotEnrolledError('TOTP is not enabled for this Account')
+        if expected_credential_uuid is not None and credential.uuid != expected_credential_uuid:
+            raise TotpNotEnrolledError('TOTP enrollment changed')
 
         try:
             counter = self._verify_counter(credential, code)
@@ -650,10 +657,11 @@ class TotpService:
             now = _utc_now_naive()
             async with self._session_factory()() as session:
                 async with session.begin():
-                    await session.execute(
+                    result = await session.execute(
                         sqlalchemy.update(totp_entity.TotpCredential)
                         .where(
                             totp_entity.TotpCredential.uuid == credential.uuid,
+                            totp_entity.TotpCredential.disabled_at.is_(None),
                             sqlalchemy.or_(
                                 totp_entity.TotpCredential.last_used_counter.is_(None),
                                 totp_entity.TotpCredential.last_used_counter < counter,
@@ -661,6 +669,8 @@ class TotpService:
                         )
                         .values(last_used_counter=counter, last_used_at=now)
                     )
+                    if result.rowcount != 1:
+                        raise TotpInvalidCodeError('TOTP code was already used or enrollment changed')
         return True
 
     async def use_recovery_code(self, account_uuid: str, code: str) -> bool:
