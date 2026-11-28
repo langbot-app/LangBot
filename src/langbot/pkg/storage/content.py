@@ -14,7 +14,6 @@ from ..entity.persistence.content import ContentAlias, ContentObject
 from ..persistence.dialect import lock_rows_for_write, reserve_write_lock, upsert_insert
 from ..persistence.tenant_uow import PersistenceScopeKind, TenantScopeRequiredError
 from .provider import HARD_MAX_STORAGE_OBJECT_BYTES, normalize_read_limit
-from .providers.s3storage import S3StorageProvider
 
 
 class ContentIntegrityError(ValueError):
@@ -95,6 +94,8 @@ class ContentStore:
             raise ValueError('Historical content backend location has changed')
         async with self._provider_lock:
             if name not in self._providers:
+                from .providers.s3storage import S3StorageProvider
+
                 proxy = SimpleNamespace(
                     instance_config=SimpleNamespace(data={'storage': {'s3': config}}), logger=self.ap.logger
                 )

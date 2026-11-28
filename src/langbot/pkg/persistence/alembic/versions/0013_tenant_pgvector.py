@@ -17,7 +17,6 @@ import typing
 
 import sqlalchemy as sa
 from alembic import op
-from pgvector.sqlalchemy import Vector
 
 
 revision = '0013_tenant_pgvector'
@@ -69,6 +68,8 @@ def _ensure_knowledge_base_dimension(conn: sa.Connection) -> None:
 
 
 def _create_vector_table() -> None:
+    from pgvector.sqlalchemy import Vector
+
     enabled = ', '.join(str(item) for item in _ALLOWED_DIMENSIONS)
     op.create_table(
         _VECTOR_TABLE,
