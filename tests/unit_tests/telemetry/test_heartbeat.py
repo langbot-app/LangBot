@@ -262,6 +262,29 @@ class TestBuildHeartbeatPayload:
         ap.workspace_service.list_active_execution_bindings.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_cloud_payload_does_not_scan_instance_bots_per_workspace(self):
+        # LANG-752: every Cloud Workspace payload used to walk all instance bots
+        # (O(workspaces x bots) resolve_policy calls), starving the event loop.
+        heartbeat = get_heartbeat_module()
+        iterations = 0
+
+        class CountingBots(list):
+            def __iter__(self):
+                nonlocal iterations
+                iterations += 1
+                return super().__iter__()
+
+        ap = make_app()
+        ap.platform_mgr.bots = CountingBots([SimpleNamespace(enable=True, adapter=object())])
+        resource = {'workspace_uuid': 'workspace-a', 'bot_count': 3, 'adapters': ['A']}
+
+        payload = await heartbeat.build_heartbeat_payload(ap, workspace_uuid='workspace-a', workspace_resource=resource)
+
+        assert iterations == 0
+        assert payload['features']['bot_count'] == 3
+        assert payload['features']['adapters'] == ['A']
+
+    @pytest.mark.asyncio
     async def test_no_user_content_fields(self):
         """The heartbeat must never carry message content / credentials keys."""
         heartbeat = get_heartbeat_module()
