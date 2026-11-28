@@ -48,12 +48,13 @@ preregistered_groups: list[type[RouterGroup]] = []
 
 
 def group_class(name: str, path: str) -> typing.Callable[[typing.Type[RouterGroup]], typing.Type[RouterGroup]]:
-    """注册一个 RouterGroup"""
+    """Register a RouterGroup idempotently by (name, path)."""
 
     def decorator(cls: typing.Type[RouterGroup]) -> typing.Type[RouterGroup]:
         cls.name = name
         usage.GROUPS.add(name)
         cls.path = path
+        preregistered_groups[:] = [c for c in preregistered_groups if (c.name, c.path) != (name, path)]
         preregistered_groups.append(cls)
         return cls
 
