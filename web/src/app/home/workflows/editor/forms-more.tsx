@@ -5,8 +5,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useEditor } from './EditorContext';
-import { Field, ModelSelect, OptionSelect, useFieldError } from './fields';
-import { Advanced, OnError, rowsOf, str, type FormProps } from './forms';
+import {
+  Field,
+  ListInput,
+  ModelSelect,
+  OptionSelect,
+  useFieldError,
+} from './fields';
+import { Advanced, OnError, str, type FormProps } from './forms';
 import TemplateField from './TemplateField';
 
 const num = (value: unknown, fallback = '') =>
@@ -230,7 +236,11 @@ export function CodeForm({ step, config, set }: FormProps) {
   const inputs = Object.entries(
     (config.inputs as Record<string, string>) ?? {},
   );
-  const outputs = rowsOf(config.outputs);
+  const outputs = Array.isArray(config.outputs)
+    ? (config.outputs as unknown[]).filter(
+        (key): key is string => typeof key === 'string',
+      )
+    : [];
   const setInputs = (entries: [string, string][]) =>
     set({ inputs: Object.fromEntries(entries) });
   return (
@@ -308,19 +318,12 @@ export function CodeForm({ step, config, set }: FormProps) {
         label={t('workflows.code.outputs')}
         hint={t('workflows.code.outputsHint')}
       >
-        <Input
+        <ListInput
           className="font-mono"
-          value={outputs.map((row) => str(row.key)).join(', ')}
-          placeholder="total, message"
-          onChange={(event) =>
-            set({
-              outputs: event.target.value
-                .split(/[,，\s]+/)
-                .map((key) => key.replace(/[^\w]/g, ''))
-                .filter(Boolean)
-                .map((key) => ({ key })),
-            })
-          }
+          value={outputs}
+          placeholder="total message"
+          clean={(key) => key.replace(/[^\w]/g, '')}
+          onChange={(keys) => set({ outputs: keys })}
         />
       </Field>
     </>

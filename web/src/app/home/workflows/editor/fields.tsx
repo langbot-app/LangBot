@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { Input } from '@/components/ui/input';
 import { useTranslation } from 'react-i18next';
 import { Label } from '@/components/ui/label';
 import {
@@ -168,5 +169,39 @@ export function GroupedSelect({
           ))}
       </SelectContent>
     </Select>
+  );
+}
+
+/** Free-text list (commas or spaces); parsed when the field loses focus. */
+export function ListInput({
+  value,
+  onChange,
+  clean = (item) => item,
+  placeholder,
+  className,
+}: {
+  value: string[];
+  onChange: (value: string[]) => void;
+  clean?: (item: string) => string;
+  placeholder?: string;
+  className?: string;
+}) {
+  const [text, setText] = useState(value.join(' '));
+  const commit = () => {
+    const items = text
+      .split(/[\s,，]+/)
+      .map(clean)
+      .filter(Boolean);
+    setText(items.join(' '));
+    onChange(items);
+  };
+  return (
+    <Input
+      className={className}
+      value={text}
+      placeholder={placeholder}
+      onChange={(event) => setText(event.target.value)}
+      onBlur={commit}
+    />
   );
 }

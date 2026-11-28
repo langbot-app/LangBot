@@ -25,7 +25,7 @@ import {
 import type { WorkflowTrigger } from '@/app/infra/entities/api';
 import { eventPatternLabel } from '@/app/home/components/event-patterns/event-pattern-groups';
 import { useEditor } from './EditorContext';
-import { Field, OptionSelect } from './fields';
+import { Field, ListInput, OptionSelect } from './fields';
 
 type Kind = WorkflowTrigger['type'];
 type Row = Record<string, unknown>;
@@ -200,17 +200,11 @@ function CommandFields({
           </div>
         </Field>
         <Field label={t('workflows.triggers.command.aliases')}>
-          <Input
-            value={((trigger.aliases as string[]) ?? []).join(' ')}
+          <ListInput
+            value={(trigger.aliases as string[]) ?? []}
             placeholder={t('workflows.triggers.command.aliasesPlaceholder')}
-            onChange={(event) =>
-              update({
-                aliases: event.target.value
-                  .split(/[\s,，]+/)
-                  .map((item) => item.replace(/\//g, ''))
-                  .filter(Boolean),
-              })
-            }
+            clean={(item) => item.replace(/\//g, '')}
+            onChange={(aliases) => update({ aliases })}
           />
         </Field>
       </div>

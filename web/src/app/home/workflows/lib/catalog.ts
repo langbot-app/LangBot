@@ -286,9 +286,11 @@ export function stepOutputs(step: WorkflowStep): string[] {
     ];
   }
   if (step.type === 'code') {
-    return rows(step.config.outputs)
-      .map((row) => String(row.key ?? ''))
-      .filter(Boolean);
+    return Array.isArray(step.config.outputs)
+      ? step.config.outputs.filter(
+          (key): key is string => typeof key === 'string' && key !== '',
+        )
+      : [];
   }
   return meta.outputs;
 }
