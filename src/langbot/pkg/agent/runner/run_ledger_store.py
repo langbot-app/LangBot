@@ -233,6 +233,7 @@ class RunLedgerStore:
                 metadata_json=_json_dumps(metadata),
             )
             session.add(run)
+            await commit_write(session)
             return self._run_to_dict(run), True
 
         try:
@@ -302,6 +303,7 @@ class RunLedgerStore:
             run.dispatch_attempts = (run.dispatch_attempts or 0) + 1
             run.last_claimed_at = as_naive_utc(now)
             run.updated_at = as_naive_utc(now)
+            await commit_write(session)
             return self._run_to_dict(run, include_claim_token=True)
 
         claimed = await self._run_write_tx(_tx)
@@ -327,6 +329,7 @@ class RunLedgerStore:
 
             run.claim_lease_expires_at = as_naive_utc(now + datetime.timedelta(seconds=max(int(lease_seconds), 1)))
             run.updated_at = as_naive_utc(now)
+            await commit_write(session)
             return self._run_to_dict(run)
 
         renewed = await self._run_write_tx(_tx)
@@ -360,6 +363,7 @@ class RunLedgerStore:
             run.updated_at = as_naive_utc(now)
             if status in TERMINAL_STATUSES:
                 run.finished_at = run.finished_at or as_naive_utc(now)
+                await commit_write(session)
             return self._run_to_dict(run)
 
         released = await self._run_write_tx(_tx)
@@ -401,6 +405,7 @@ class RunLedgerStore:
                 run.updated_at = current_time
                 if status in TERMINAL_STATUSES:
                     run.finished_at = run.finished_at or current_time
+                    await commit_write(session)
             return [self._run_to_dict(run) for run in runs]
 
         return await self._run_write_tx(_tx)
@@ -565,6 +570,7 @@ class RunLedgerStore:
             )
             if result.rowcount != 1:
                 raise ValueError('Concurrent run update; retry Skill activation')
+                await commit_write(session)
             return revision
 
         return await self._run_write_tx(_tx)
@@ -653,6 +659,7 @@ class RunLedgerStore:
                 run.metadata_json = _json_dumps(existing_metadata)
             else:
                 run.metadata_json = _json_dumps(filtered_metadata)
+                await commit_write(session)
         return self._run_to_dict(run)
 
     async def validate_active_claim(
@@ -686,6 +693,7 @@ class RunLedgerStore:
             run.cancel_requested_at = as_naive_utc(now)
             run.updated_at = as_naive_utc(now)
             run.status_reason = status_reason or run.status_reason
+            await commit_write(session)
             return self._run_to_dict(run)
 
         cancelled = await self._run_write_tx(_tx)
@@ -737,6 +745,7 @@ class RunLedgerStore:
             run.claim_lease_expires_at = None
             run.metadata_json = _json_dumps(metadata)
             run.updated_at = as_naive_utc(now)
+            await commit_write(session)
             return self._run_to_dict(run)
 
         retried = await self._run_write_tx(_tx)
@@ -791,6 +800,7 @@ class RunLedgerStore:
                 **host_execution_lease(),
             )
             session.add(child)
+            await commit_write(session)
             return self._run_to_dict(child), True
 
         record, created = await self._run_write_tx(_tx)
@@ -815,6 +825,7 @@ class RunLedgerStore:
             )
             if updated.rowcount != 1:
                 raise ValueError('Recovery run is no longer active')
+                await commit_write(session)
 
         await self._run_write_tx(_tx)
 
@@ -890,6 +901,7 @@ class RunLedgerStore:
                         created_at=now,
                     )
                 )
+                await commit_write(session)
             return self._run_to_dict(run), events[-1][0]
 
         acked, last_event_type = await self._run_write_tx(_tx, retry_duplicates=True)
@@ -948,6 +960,7 @@ class RunLedgerStore:
                 now + datetime.timedelta(seconds=max(int(heartbeat_deadline_seconds), 1))
             )
             runtime.updated_at = as_naive_utc(now)
+            await commit_write(session)
             return self._runtime_to_dict(runtime)
 
         return await self._run_write_tx(_tx)
@@ -987,6 +1000,7 @@ class RunLedgerStore:
                     runtime.metadata_json = _json_dumps(existing_metadata)
                 else:
                     runtime.metadata_json = _json_dumps(metadata)
+                    await commit_write(session)
             return self._runtime_to_dict(runtime)
 
         return await self._run_write_tx(_tx)
@@ -1090,6 +1104,7 @@ class RunLedgerStore:
             for runtime in runtimes:
                 runtime.status = stale_status
                 runtime.updated_at = current_time
+                await commit_write(session)
             return [self._runtime_to_dict(runtime) for runtime in runtimes]
 
         return await self._run_write_tx(_tx)
