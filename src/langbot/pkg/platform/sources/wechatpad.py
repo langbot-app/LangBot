@@ -3,6 +3,12 @@ import websocket
 import json
 
 from langbot.libs.wechatpad_api.client import WeChatPadClient
+from langbot.pkg.platform.sources.wechatpad_friend_request import handle_wechatpad_friend_request
+from langbot.pkg.platform.sources.wechatpad_message_guard import (
+    WeChatPadMessageDeduplicator,
+    is_wechatpad_friend_request,
+    is_wechatpad_text_message,
+)
 
 import typing
 import asyncio
@@ -13,6 +19,7 @@ import copy
 import threading
 
 import quart
+import pydantic
 
 from langbot.pkg.platform.logger import EventLogger
 from langbot.pkg.utils import bounded_executor, httpclient
@@ -416,11 +423,7 @@ class WeChatPadMessageConverter(abstract_platform_adapter.AbstractMessageConvert
             push_content = message.get('push_content', '')
             ats_bot = ats_bot or ('在群聊中@了你' in push_content)
             # 引用别人时@bot
-            msg_source = message.get('msg_source', '') or ''
-            if len(msg_source) > 0:
-                msg_source_data = ET.fromstring(msg_source)
-                at_user_list = msg_source_data.findtext('atuserlist') or ''
-                ats_bot = ats_bot or (to_user_name in at_user_list)
+            ats_bot = ats_bot or (to_user_name in self._extract_at_targets(message))
             # 引用bot
             if message.get('msg_type', 0) == 49:
                 xml_data = ET.fromstring(content_no_prefix)
@@ -440,16 +443,24 @@ class WeChatPadMessageConverter(abstract_platform_adapter.AbstractMessageConvert
         at_targets = []
         try:
             # 从msg_source中解析atuserlist
-            msg_source = message.get('msg_source', '') or ''
+            msg_source = self._message_source_text(message)
             if len(msg_source) > 0:
                 msg_source_data = ET.fromstring(msg_source)
-                at_user_list = msg_source_data.findtext('atuserlist') or ''
+                at_user_list = msg_source_data.findtext('.//atuserlist') or ''
                 if at_user_list:
                     # atuserlist格式通常是逗号分隔的用户ID列表
                     at_targets = [user_id.strip() for user_id in at_user_list.split(',') if user_id.strip()]
         except Exception as e:
             self.logger.error(f'_extract_at_targets got except: {e}')
         return at_targets
+
+    @staticmethod
+    def _message_source_text(message: dict) -> str:
+        """读取 WeChatPad 回调中直接或包装的消息源 XML。"""
+        msg_source = message.get('msg_source', '') or ''
+        if isinstance(msg_source, dict):
+            msg_source = msg_source.get('str') or msg_source.get('string') or ''
+        return msg_source if isinstance(msg_source, str) else ''
 
     # 提取一下content前面的sender_id, 和去掉前缀的内容
     def _extract_content_and_sender(self, raw_content: str) -> Tuple[str, Optional[str]]:
@@ -542,6 +553,10 @@ class WeChatPadEventConverter(abstract_platform_adapter.AbstractEventConverter):
 class WeChatPadAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     name: str = 'WeChatPad'  # 定义适配器名称
 
+    _message_deduplicator: WeChatPadMessageDeduplicator = pydantic.PrivateAttr(
+        default_factory=WeChatPadMessageDeduplicator
+    )
+
     bot: WeChatPadClient
     quart_app: quart.Quart
 
@@ -587,10 +602,24 @@ class WeChatPadAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
     async def ws_message(self, data):
         """处理接收到的消息"""
 
+        if is_wechatpad_friend_request(data):
+            if not self.config.get('auto_accept_friend', False):
+                return 'ok'
+            if self._message_deduplicator.is_duplicate(data):
+                return 'ok'
+            await handle_wechatpad_friend_request(self.bot, self.logger, data)
+            return 'ok'
+
+        if not is_wechatpad_text_message(data):
+            return 'ok'
+        if self._message_deduplicator.is_duplicate(data):
+            return 'ok'
+
         try:
             event = await self.event_converter.target2yiri(data.copy(), self.bot_account_id)
         except Exception:
             await self.logger.error(f'Error in wechatpad callback: {traceback.format_exc()}')
+            return 'ok'
 
         if event is not None and event.__class__ in self.listeners:
             await self.listeners[event.__class__](event, self)
@@ -653,6 +682,15 @@ class WeChatPadAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             else:
                 await self.logger.warning(f'未处理的消息类型: {msg["type"]}')
                 continue
+
+    def _schedule_ws_payload(self, data: dict) -> None:
+        messages = data.get('AddMsgs')
+        if isinstance(messages, list):
+            for message in messages:
+                if isinstance(message, dict):
+                    self._schedule_ws_message(message)
+            return
+        self._schedule_ws_message(data)
 
     def _schedule_ws_message(self, data: dict) -> None:
         loop = self._event_loop
@@ -763,7 +801,7 @@ class WeChatPadAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                         logging.getLogger(__name__).warning('WeChatPad WebSocket message exceeds the size limit')
                         return
                     data = json.loads(message)
-                    self._schedule_ws_message(data)
+                    self._schedule_ws_payload(data)
                 except json.JSONDecodeError:
                     logging.getLogger(__name__).warning('WeChatPad received a non-JSON message')
 

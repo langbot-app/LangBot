@@ -36,6 +36,15 @@ class WeChatPadClient:
         """获取登录状态"""
         return self._login_api.get_login_status()
 
+    def accept_friend_request(self, scene: int, v3: str, v4: str, chatroom_username: str = ''):
+        """同意好友申请"""
+        return self._friend_api.accept_friend_request(
+            scene=scene,
+            v3=v3,
+            v4=v4,
+            chatroom_username=chatroom_username,
+        )
+
     def send_text_message(self, to_wxid, message, ats: list = []):
         """发送文本消息"""
         return self._message_api.post_text(to_wxid, message, ats)
