@@ -46,7 +46,7 @@ async def test_workflow_upgrade_without_workspace_table(workflow_engine):
 @pytest.mark.asyncio
 async def test_workflow_upgrade_and_downgrade(workflow_engine):
     engine = workflow_engine
-    tables = {'workflows', 'workflow_versions', 'workflow_executions', 'workflow_node_executions'}
+    tables = {'workflows', 'workflow_memory', 'workflow_executions', 'workflow_execution_steps'}
     try:
         async with engine.begin() as connection:
             await connection.execute(sa.text('CREATE TABLE workspaces (uuid VARCHAR(36) PRIMARY KEY)'))

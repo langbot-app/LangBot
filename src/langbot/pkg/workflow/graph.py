@@ -1,0 +1,188 @@
+"""Workflow step catalog, template substitution and draft validation."""
+
+import json
+import re
+from collections import defaultdict
+
+
+def _step(category, outputs='', config='', branches='none', terminal=False):
+    return dict(
+        category=category, outputs=outputs.split(), config_keys=config.split(), branches=branches, terminal=terminal
+    )
+
+
+CATALOG = {
+    'start': _step('logic', 'text sender_id sender_name is_group group_id platform image_count'),
+    'llm': _step('ai', 'text error', 'model_uuid prompt use_history temperature max_tokens on_error'),
+    'classify': _step('ai', 'category', 'model_uuid instruction categories', 'categories'),
+    'extract': _step('ai', 'ok', 'model_uuid fields'),
+    'condition': _step('logic', 'matched', 'cases', 'cases'),
+    'remember': _step('logic', config='scope items'),
+    'reply': _step('action', 'sent', 'text'),
+    'send': _step('action', 'sent', 'target_type target_id text'),
+    'http': _step('action', 'status body json', 'method url headers body timeout on_error'),
+    'handoff': _step('action', config='target_type target_uuid text', terminal=True),
+}
+
+REFERENCE = re.compile(r'{{\s*([^{}]+?)\s*}}')
+
+
+def render(value, results, memory):
+    """Render the original config once; never interpret data as another template."""
+
+    def replacement(match):
+        source, _, key = match[1].partition('.')
+        values = memory if source == 'memory' else results.get(source, {})
+        item = values.get(key, '')
+        return item if isinstance(item, str) else json.dumps(item, ensure_ascii=False)
+
+    if isinstance(value, str):
+        return REFERENCE.sub(replacement, value)
+    if isinstance(value, list):
+        return [render(item, results, memory) for item in value]
+    if isinstance(value, dict):
+        return {key: render(item, results, memory) for key, item in value.items()}
+    return value
+
+
+def _strings(value, path='config'):
+    if isinstance(value, str):
+        yield path, value
+    elif isinstance(value, (list, dict)):
+        for key, item in enumerate(value) if isinstance(value, list) else value.items():
+            yield from _strings(item, f'{path}.{key}')
+
+
+def validate(graph, *, models=None, targets=None):
+    """Validate a draft; resource catalogs, when supplied, must be workspace scoped."""
+    issues = []
+
+    def issue(code, node=None, field=None, severity='error'):
+        entry = {'code': code, 'severity': severity}
+        if node:
+            entry['node_id'] = node
+        if field:
+            entry['field'] = field
+        if entry not in issues:
+            issues.append(entry)
+
+    if not isinstance(graph, dict) or not all(isinstance(graph.get(key), list) for key in ('nodes', 'edges')):
+        issue('not_tree')
+        return issues
+    nodes = {}
+    outputs = {}
+    branches = {}
+    starts = []
+    for node in graph['nodes']:
+        if not isinstance(node, dict) or not isinstance(node.get('id'), str) or not node['id']:
+            issue('required_missing', field='id')
+            continue
+        ident = node['id']
+        kind = node.get('type')
+        if ident in nodes or ident == 'memory':
+            issue('not_tree', ident)
+            continue
+        if not isinstance(kind, str) or kind not in CATALOG or not isinstance(node.get('config'), dict):
+            issue('required_missing', ident, 'type' if not isinstance(kind, str) or kind not in CATALOG else 'config')
+            continue
+        nodes[ident] = node
+        config = node['config']
+        outputs[ident] = set(CATALOG[kind]['outputs'])
+        if kind == 'start':
+            starts.append(ident)
+        required = {
+            'llm': ('model_uuid', 'prompt'),
+            'extract': ('model_uuid', 'fields'),
+            'classify': ('model_uuid',),
+            'http': ('url',),
+            'reply': ('text',),
+            'send': ('target_type', 'target_id', 'text'),
+            'handoff': ('target_type', 'target_uuid'),
+            'remember': ('items',),
+            'condition': ('cases',),
+        }
+        for key in required.get(kind, ()):
+            if not config.get(key):
+                issue('required_missing', ident, key)
+        model = config.get('model_uuid')
+        if models is not None and isinstance(model, str) and model and '{{' not in model and model not in models:
+            issue('model_not_found', ident, 'model_uuid')
+        target = config.get('target_uuid')
+        if (
+            targets is not None
+            and isinstance(target, str)
+            and target
+            and '{{' not in target
+            and (config.get('target_type'), target) not in targets
+        ):
+            issue('target_not_found', ident, 'target_uuid')
+        group = CATALOG[kind]['branches']
+        if group != 'none':
+            branches[ident] = {'else'}
+            rows = config.get(group)
+            if not isinstance(rows, list) or not rows:
+                issue('empty_category' if kind == 'classify' else 'required_missing', ident, group)
+            else:
+                for row in rows:
+                    key = row.get('id') if isinstance(row, dict) else None
+                    if (
+                        not isinstance(key, str)
+                        or not key
+                        or key in branches[ident]
+                        or (kind == 'classify' and not row.get('label'))
+                    ):
+                        issue('empty_category' if kind == 'classify' else 'branch_unknown', ident, group)
+                    else:
+                        branches[ident].add(key)
+        if kind in ('extract', 'remember'):
+            key = 'fields' if kind == 'extract' else 'items'
+            rows = config.get(key)
+            if isinstance(rows, list):
+                for row in rows:
+                    if isinstance(row, dict) and isinstance(row.get('key'), str) and row['key']:
+                        outputs[ident].add(row['key'])
+                    else:
+                        issue('required_missing', ident, key)
+    if len(starts) != 1:
+        issue('not_tree' if starts else 'start_missing')
+    parents = {}
+    outgoing = defaultdict(dict)
+    for edge in graph['edges']:
+        if not isinstance(edge, dict) or not all(
+            isinstance(edge.get(key), str) and edge[key] in nodes for key in ('from', 'to')
+        ):
+            issue('not_tree')
+            continue
+        source, dest, branch = edge['from'], edge['to'], edge.get('branch')
+        if nodes[source]['type'] == 'handoff':
+            issue('handoff_has_next', source)
+        if branch is not None and not isinstance(branch, str):
+            issue('branch_unknown', source)
+            continue
+        if branch not in branches.get(source, {None}):
+            issue('branch_unknown', source)
+        if branch in outgoing[source] or dest in parents or dest in starts:
+            issue('not_tree', dest)
+        outgoing[source][branch] = dest
+        parents[dest] = source
+    for ident, node in nodes.items():
+        ancestors = set()
+        current = ident
+        while current in parents:
+            current = parents[current]
+            if current in ancestors:
+                issue('not_tree', ident)
+                break
+            ancestors.add(current)
+        if ident not in starts and not ancestors.intersection(starts):
+            issue('unreachable', ident, severity='warning')
+            if ident not in parents:
+                issue('not_tree', ident)
+        for path, text in _strings(node['config']):
+            for ref in REFERENCE.findall(text):
+                source, _, key = ref.partition('.')
+                if source != 'memory' and source not in ancestors:
+                    issue('ref_not_upstream', ident, path)
+                elif not key or (source != 'memory' and key not in outputs[source]):
+                    issue('ref_unknown_key', ident, path)
+    return issues

@@ -775,12 +775,22 @@ class LangBotMCPServer:
             )
 
         @mcp.tool(description='Test a workflow synchronously; returns execution UUID, status and collected replies.')
-        async def run_workflow(workflow_uuid: str, message: str, session_type: str = 'person') -> str:
+        async def test_workflow(
+            workflow_uuid: str, text: str, session_type: str = 'person', graph: dict | None = None
+        ) -> str:
             from ..http.service.workflow_run import run_workflow as run
+            from ..secrets import redact_secrets
 
             return _dump(
-                await run(
-                    ap, _authorized(Permission.RUNTIME_OPERATE), workflow_uuid, message, session_type=session_type
+                redact_secrets(
+                    await run(
+                        ap,
+                        _authorized(Permission.RUNTIME_OPERATE),
+                        workflow_uuid,
+                        text,
+                        session_type=session_type,
+                        graph=graph,
+                    )
                 )
             )
 

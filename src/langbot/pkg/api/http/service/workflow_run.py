@@ -11,9 +11,19 @@ from .workflow import WorkflowExecutionFailedError
 
 
 async def run_workflow(
-    ap, context: RequestContext, workflow_uuid: str, message: str, *, session_type: str = 'person'
+    ap,
+    context: RequestContext,
+    workflow_uuid: str,
+    message: str,
+    *,
+    session_type: str = 'person',
+    graph: dict | None = None,
 ) -> dict:
     require_permission(context, Permission.RUNTIME_OPERATE)
+    if graph is not None:
+        require_permission(context, Permission.RESOURCE_MANAGE)
+        if not isinstance(graph, dict):
+            raise ValueError('graph must be an object')
     if not isinstance(message, str) or not message.strip() or len(message) > 100_000:
         raise ValueError('message must contain 1..100000 characters')
     if session_type not in ('person', 'group'):
@@ -36,7 +46,8 @@ async def run_workflow(
         execution_uuid, runtime = await ap.workflow_service.execute_workflow(
             execution_context,
             workflow_uuid,
-            trigger_type='message',
+            trigger_type='test',
+            graph=graph,
             trigger_data={'message': message},
             message_context=message_context,
             session_id=session_id,
@@ -46,9 +57,12 @@ async def run_workflow(
         status = 'completed'
     except WorkflowExecutionFailedError as exc:
         execution_uuid, status, error = exc.execution_id, 'failed', exc.message
+    execution = await ap.workflow_service.get_execution(context, workflow_uuid, execution_uuid)
     return {
         'execution_uuid': execution_uuid,
         'status': status,
         'error': error,
+        'steps': execution['steps'],
+        'handoff': execution.get('handoff'),
         'replies': [''.join(part.text for part in chain if isinstance(part, Plain)) for chain in runtime.replies],
     }

@@ -40,7 +40,9 @@ class WorkflowsRouterGroup(group.RouterGroup):
                 workflow_uuid = await self.ap.workflow_service.create_workflow(
                     request_context, await quart.request.json
                 )
-                return self.success(data={'uuid': workflow_uuid})
+                return self.success(
+                    data=await self.ap.workflow_service.workflow_response(request_context, workflow_uuid)
+                )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
 
@@ -55,7 +57,6 @@ class WorkflowsRouterGroup(group.RouterGroup):
                 request_context,
                 data={
                     'node_types': await self.ap.workflow_service.get_node_types(),
-                    'categories': await self.ap.workflow_service.get_node_categories(),
                 },
             )
 
@@ -69,7 +70,13 @@ class WorkflowsRouterGroup(group.RouterGroup):
             workflow = await self.ap.workflow_service.get_workflow(request_context, workflow_uuid)
             if workflow is None:
                 return self.http_status(404, -1, 'Workflow not found')
-            return self._read_response(request_context, data={'workflow': workflow})
+            return self._read_response(
+                request_context,
+                data={
+                    'workflow': workflow,
+                    'issues': await self.ap.workflow_service.validate_graph(request_context, workflow['graph']),
+                },
+            )
 
         @self.route(
             '/<workflow_uuid>',
@@ -80,7 +87,9 @@ class WorkflowsRouterGroup(group.RouterGroup):
         async def _(workflow_uuid: str, request_context: RequestContext) -> str:
             try:
                 await self.ap.workflow_service.update_workflow(request_context, workflow_uuid, await quart.request.json)
-                return self.success()
+                return self.success(
+                    data=await self.ap.workflow_service.workflow_response(request_context, workflow_uuid)
+                )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
 
@@ -106,37 +115,11 @@ class WorkflowsRouterGroup(group.RouterGroup):
         async def _(workflow_uuid: str, request_context: RequestContext) -> str:
             try:
                 return self.success(
-                    data={'uuid': await self.ap.workflow_service.copy_workflow(request_context, workflow_uuid)}
+                    data=await self.ap.workflow_service.workflow_response(
+                        request_context, await self.ap.workflow_service.copy_workflow(request_context, workflow_uuid)
+                    )
                 )
             except ValueError as exc:
-                return self.http_status(400, -1, str(exc))
-
-        @self.route(
-            '/<workflow_uuid>/versions',
-            methods=['GET'],
-            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
-            permission=Permission.RESOURCE_VIEW,
-        )
-        async def _(workflow_uuid: str, request_context: RequestContext) -> str:
-            return self._read_response(
-                request_context,
-                data={'versions': await self.ap.workflow_service.get_versions(request_context, workflow_uuid)},
-            )
-
-        @self.route(
-            '/<workflow_uuid>/rollback',
-            methods=['POST'],
-            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
-            permission=Permission.RESOURCE_MANAGE,
-        )
-        async def _(workflow_uuid: str, request_context: RequestContext) -> str:
-            payload = await quart.request.json
-            try:
-                await self.ap.workflow_service.rollback_to_version(
-                    request_context, workflow_uuid, int(payload['version'])
-                )
-                return self.success()
-            except (ValueError, KeyError, TypeError) as exc:
                 return self.http_status(400, -1, str(exc))
 
         @self.route(
@@ -171,19 +154,7 @@ class WorkflowsRouterGroup(group.RouterGroup):
             return self._read_response(request_context, data={'execution': execution})
 
         @self.route(
-            '/<workflow_uuid>/stats',
-            methods=['GET'],
-            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
-            permission=Permission.RESOURCE_VIEW,
-        )
-        async def _(workflow_uuid: str, request_context: RequestContext) -> str:
-            return self._read_response(
-                request_context,
-                data={'stats': await self.ap.workflow_service.get_workflow_stats(request_context, workflow_uuid)},
-            )
-
-        @self.route(
-            '/<workflow_uuid>/run',
+            '/<workflow_uuid>/test',
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
             permission=Permission.RUNTIME_OPERATE,
@@ -191,14 +162,16 @@ class WorkflowsRouterGroup(group.RouterGroup):
         async def _(workflow_uuid: str, request_context: RequestContext) -> str:
             payload = await quart.request.json
             try:
-                return self.success(
+                return self._read_response(
+                    request_context,
                     data=await run_workflow(
                         self.ap,
                         request_context,
                         workflow_uuid,
-                        payload.get('message'),
+                        payload.get('text'),
+                        graph=payload.get('graph'),
                         session_type=payload.get('session_type', 'person'),
-                    )
+                    ),
                 )
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))

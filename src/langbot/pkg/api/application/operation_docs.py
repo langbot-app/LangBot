@@ -17,6 +17,10 @@ class OperationDoc:
 
 
 DOMAINS: dict[str, dict] = {
+    'workflow': {
+        'label': {'zh_Hans': '工作流', 'en_US': 'Workflow'},
+        'summary': 'Test workspace workflows and inspect their execution steps.',
+    },
     'artifact': {
         'label': {'zh_Hans': '资产', 'en_US': 'Artifact'},
         'summary': 'Create and access caller-owned files in the authenticated Workspace.',
@@ -1138,6 +1142,14 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         label={'zh_Hans': '执行聊天', 'en_US': 'Run Chat'},
         summary='Execute a Chat run with custom input data.',
         description='Trigger an on-demand execution of a pipeline with provided payload. Prerequisites: Call pipeline.list to obtain pipeline_uuid. Side effect: Executes pipeline logic and consumes compute.',
+        risk='write',
+        exposure='all',
+    ),
+    'workflow.test': OperationDoc(
+        domain='workflow',
+        label={'zh_Hans': '试运行工作流', 'en_US': 'Test Workflow'},
+        summary='Run a saved workflow or test an unsaved graph.',
+        description='Returns the execution ID, replies and steps. A draft graph also requires resource.manage. Tests can invoke models and create execution records.',
         risk='write',
         exposure='all',
     ),
