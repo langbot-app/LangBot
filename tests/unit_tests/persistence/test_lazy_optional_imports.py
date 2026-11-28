@@ -28,8 +28,11 @@ import asyncio
 import sys
 from types import SimpleNamespace
 
+from langbot.pkg.core import app as _app
 from langbot.pkg.persistence.alembic_runner import get_alembic_head
 from langbot.pkg.storage.content import ContentStore
+
+assert _app
 
 assert 'pgvector' not in sys.modules
 assert 'numpy' not in sys.modules
@@ -60,7 +63,10 @@ import asyncio
 import sys
 from types import SimpleNamespace
 
+from langbot.pkg.core import app as _app
 from langbot.pkg.storage.content import ContentStore
+
+assert _app
 
 identity = {'endpoint_url': '', 'bucket': 'langbot-storage', 'region': 'us-east-1'}
 store = ContentStore(SimpleNamespace(
