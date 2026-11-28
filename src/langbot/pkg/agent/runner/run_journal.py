@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import datetime
 import math
+import asyncio
+import contextlib
+import time
 import typing
 
 from ...core import app
 from ...storage.media import MediaCache
+from ...persistence.write_admission import persistence_write_deadline
 from .descriptor import RunnerDescriptor
 from .errors import RunnerProtocolError
 from .host_models import AgentBinding, AgentEventEnvelope
@@ -32,6 +36,27 @@ class AgentRunJournal:
         if self._run_ledger_store is None:
             self._run_ledger_store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
         return self._run_ledger_store
+
+    @contextlib.contextmanager
+    def write_deadline(self, context: typing.Mapping[str, typing.Any] | None = None, *, terminal: bool = False):
+        """Apply the execution write budget without exposing storage details."""
+        loop = asyncio.get_running_loop()
+        if terminal:
+            with persistence_write_deadline(
+                loop.time() + 10.0,
+                override=True,
+            ):
+                yield
+            return
+        runtime = context.get('runtime') if isinstance(context, typing.Mapping) else None
+        deadline_at = runtime.get('deadline_at') if isinstance(runtime, typing.Mapping) else None
+        if deadline_at is None:
+            with persistence_write_deadline(None):
+                yield
+            return
+        remaining = max(0.0, float(deadline_at) - time.time())
+        with persistence_write_deadline(loop.time() + remaining):
+            yield
 
     @staticmethod
     def _to_plain_dict(value: typing.Any) -> dict[str, typing.Any]:
@@ -122,47 +147,53 @@ class AgentRunJournal:
 
         trace_state = trace.current()
         runtime = context.get('runtime') if isinstance(context, dict) else {}
-        return await self._get_run_ledger_store().create_run(
-            run_id=context['run_id'],
-            event_id=event.event_id,
-            binding_id=binding.binding_id,
-            agent_id=binding.agent_id,
-            runner_id=descriptor.id,
-            conversation_id=event.ledger_conversation_id,
-            thread_id=event.thread_id,
-            workspace_id=event.workspace_id,
-            bot_id=event.bot_id,
-            deadline_at=runtime.get('deadline_at') if isinstance(runtime, dict) else None,
-            authorization={**authorization, 'recovery_event': self._sanitize_event_data(event.model_dump(mode='json'))},
-            metadata={
-                'event_type': event.event_type,
-                'ingress_event_id': trace_state.event_id if trace_state else event.event_id,
-                'source': event.source,
-                'processor_id': binding.processor_id,
-                'processor_type': binding.processor_type,
-                **(
-                    {
-                        'input_event': self._sanitize_event_data(event.data),
-                        'delivery': event.delivery.model_dump(mode='json'),
-                    }
-                    if binding.processor_type == 'event_processor'
-                    else {}
-                ),
-                **(
-                    {
-                        'input_event': self._sanitize_event_data(event.data),
-                        'input': {
-                            'text': context.get('input', {}).get('text', ''),
-                            'contents': self._sanitize_contents(context.get('input', {}).get('contents', [])),
-                            'attachments': self._sanitize_attachments(context.get('input', {}).get('attachments', [])),
-                        },
-                        'delivery': event.delivery.model_dump(mode='json'),
-                    }
-                    if binding.processor_type == 'agent'
-                    else {}
-                ),
-            },
-        )
+        with self.write_deadline(context):
+            return await self._get_run_ledger_store().create_run(
+                run_id=context['run_id'],
+                event_id=event.event_id,
+                binding_id=binding.binding_id,
+                agent_id=binding.agent_id,
+                runner_id=descriptor.id,
+                conversation_id=event.ledger_conversation_id,
+                thread_id=event.thread_id,
+                workspace_id=event.workspace_id,
+                bot_id=event.bot_id,
+                deadline_at=runtime.get('deadline_at') if isinstance(runtime, typing.Mapping) else None,
+                authorization={
+                    **authorization,
+                    'recovery_event': self._sanitize_event_data(event.model_dump(mode='json')),
+                },
+                metadata={
+                    'event_type': event.event_type,
+                    'ingress_event_id': trace_state.event_id if trace_state else event.event_id,
+                    'source': event.source,
+                    'processor_id': binding.processor_id,
+                    'processor_type': binding.processor_type,
+                    **(
+                        {
+                            'input_event': self._sanitize_event_data(event.data),
+                            'delivery': event.delivery.model_dump(mode='json'),
+                        }
+                        if binding.processor_type == 'event_processor'
+                        else {}
+                    ),
+                    **(
+                        {
+                            'input_event': self._sanitize_event_data(event.data),
+                            'input': {
+                                'text': context.get('input', {}).get('text', ''),
+                                'contents': self._sanitize_contents(context.get('input', {}).get('contents', [])),
+                                'attachments': self._sanitize_attachments(
+                                    context.get('input', {}).get('attachments', [])
+                                ),
+                            },
+                            'delivery': event.delivery.model_dump(mode='json'),
+                        }
+                        if binding.processor_type == 'agent'
+                        else {}
+                    ),
+                },
+            )
 
     async def append_run_result(
         self,
@@ -185,15 +216,17 @@ class AgentRunJournal:
             data = await self.ap.storage_mgr.media_cache.externalize_chain_dump(data)
         if MediaCache.has_inline_images(metadata):
             metadata = MediaCache.redact_inline_images(metadata)
-        return await self._get_run_ledger_store().append_event(
-            run_id=run_id,
-            sequence=sequence,
-            event_type=str(result_dict.get('type') or 'unknown'),
-            data=data,
-            usage=usage if isinstance(usage, dict) else None,
-            source=source,
-            metadata=metadata,
-        )
+        terminal = str(result_dict.get('type') or '') in {'run.completed', 'run.failed', 'run.cancelled'}
+        with self.write_deadline(terminal=terminal):
+            return await self._get_run_ledger_store().append_event(
+                run_id=run_id,
+                sequence=sequence,
+                event_type=str(result_dict.get('type') or 'unknown'),
+                data=data,
+                usage=usage if isinstance(usage, dict) else None,
+                source=source,
+                metadata=metadata,
+            )
 
     async def finalize_run(
         self,
@@ -205,14 +238,60 @@ class AgentRunJournal:
         metadata: dict[str, typing.Any] | None = None,
     ) -> dict[str, typing.Any] | None:
         """Finalize or update the Host-owned run ledger record."""
-        updated = await self._get_run_ledger_store().finalize_run(
-            run_id=run_id,
-            status=status,
-            status_reason=status_reason,
-            usage=usage,
-            metadata=metadata,
-        )
+        with self.write_deadline(terminal=True):
+            updated = await self._get_run_ledger_store().finalize_run(
+                run_id=run_id,
+                status=status,
+                status_reason=status_reason,
+                usage=usage,
+                metadata=metadata,
+            )
         return updated
+
+    async def authorize_recovery_run(
+        self,
+        run_id: str,
+        *,
+        authorization: dict[str, typing.Any],
+        deadline_at: float | None,
+        context: typing.Mapping[str, typing.Any] | None = None,
+    ) -> None:
+        """Persist rebuilt recovery authority under the execution budget."""
+        with self.write_deadline(context):
+            await self._get_run_ledger_store().authorize_recovery_run(
+                run_id,
+                authorization=authorization,
+                deadline_at=deadline_at,
+            )
+
+    async def request_cancel(self, run_id: str, *, status_reason: str) -> dict[str, typing.Any] | None:
+        """Request cancellation through the run ledger boundary."""
+        from .run_ledger_store import RunLedgerStore
+
+        return await RunLedgerStore(self.ap.persistence_mgr.get_db_engine()).request_cancel(
+            run_id=run_id,
+            status_reason=status_reason,
+        )
+
+    async def update_steering_status(self, event_id: str, **kwargs: typing.Any) -> bool:
+        """Update durable steering state through the event-log boundary."""
+        from .event_log_store import EventLogStore
+
+        return await EventLogStore(self.ap.persistence_mgr.get_db_engine()).update_steering_status(event_id, **kwargs)
+
+    async def list_pending_steering(self, **kwargs: typing.Any) -> list[dict[str, typing.Any]]:
+        """Read pending steering records through the event-log boundary."""
+        from .event_log_store import EventLogStore
+
+        return await EventLogStore(self.ap.persistence_mgr.get_db_engine()).list_pending_steering(**kwargs)
+
+    async def reserve_steering_recovery(self, event_id: str, *, run_id: str) -> bool:
+        """Reserve one pending steering record for a recovery run."""
+        from .event_log_store import EventLogStore
+
+        return await EventLogStore(self.ap.persistence_mgr.get_db_engine()).reserve_steering_recovery(
+            event_id, run_id=run_id
+        )
 
     async def get_run(self, run_id: str) -> dict[str, typing.Any] | None:
         """Return the persisted run ledger record."""
@@ -277,6 +356,7 @@ class AgentRunJournal:
         run_id: str,
         runner_id: str,
         metadata: dict[str, typing.Any] | None = None,
+        context: typing.Mapping[str, typing.Any] | None = None,
     ) -> str:
         """Write incoming event to EventLog."""
         from .event_log_store import EventLogStore
@@ -294,31 +374,33 @@ class AgentRunJournal:
                 'attachments': self._sanitize_attachments(event.input.attachments),
             }
 
-        return await store.append_event(
-            event_id=event.event_id,
-            event_type=event.event_type,
-            source=event.source,
-            bot_id=event.bot_id,
-            workspace_id=event.workspace_id,
-            conversation_id=event.ledger_conversation_id,
-            thread_id=event.thread_id,
-            actor_type=event.actor.actor_type if event.actor else None,
-            actor_id=event.actor.actor_id if event.actor else None,
-            actor_name=event.actor.actor_name if event.actor else None,
-            subject_type=event.subject.subject_type if event.subject else None,
-            subject_id=event.subject.subject_id if event.subject else None,
-            input_summary=input_summary,
-            input_json=input_json,
-            run_id=run_id,
-            runner_id=runner_id,
-            event_time=self._event_time_to_utc(event.event_time),
-            metadata={**(metadata or {}), 'input_event': self._sanitize_event_data(event.data)},
-        )
+        with self.write_deadline(context):
+            return await store.append_event(
+                event_id=event.event_id,
+                event_type=event.event_type,
+                source=event.source,
+                bot_id=event.bot_id,
+                workspace_id=event.workspace_id,
+                conversation_id=event.ledger_conversation_id,
+                thread_id=event.thread_id,
+                actor_type=event.actor.actor_type if event.actor else None,
+                actor_id=event.actor.actor_id if event.actor else None,
+                actor_name=event.actor.actor_name if event.actor else None,
+                subject_type=event.subject.subject_type if event.subject else None,
+                subject_id=event.subject.subject_id if event.subject else None,
+                input_summary=input_summary,
+                input_json=input_json,
+                run_id=run_id,
+                runner_id=runner_id,
+                event_time=self._event_time_to_utc(event.event_time),
+                metadata={**(metadata or {}), 'input_event': self._sanitize_event_data(event.data)},
+            )
 
     async def write_user_transcript(
         self,
         event: AgentEventEnvelope,
         event_log_id: str,
+        context: typing.Mapping[str, typing.Any] | None = None,
     ) -> None:
         """Write user message to Transcript."""
         from .transcript_store import TranscriptStore
@@ -338,23 +420,24 @@ class AgentRunJournal:
             for a in event.input.attachments:
                 attachment_refs.append(self._sanitize_attachment_ref(a))
 
-        await store.append_transcript(
-            transcript_id=None,
-            event_id=event_log_id,
-            conversation_id=event.conversation_id,
-            role='user',
-            bot_id=event.bot_id,
-            workspace_id=event.workspace_id,
-            content=content,
-            content_json=content_json,
-            attachment_refs=attachment_refs if attachment_refs else None,
-            thread_id=event.thread_id,
-            item_type='message',
-            metadata={
-                'actor_type': event.actor.actor_type if event.actor else None,
-                'actor_id': event.actor.actor_id if event.actor else None,
-            },
-        )
+        with self.write_deadline(context):
+            await store.append_transcript(
+                transcript_id=None,
+                event_id=event_log_id,
+                conversation_id=event.conversation_id,
+                role='user',
+                bot_id=event.bot_id,
+                workspace_id=event.workspace_id,
+                content=content,
+                content_json=content_json,
+                attachment_refs=attachment_refs if attachment_refs else None,
+                thread_id=event.thread_id,
+                item_type='message',
+                metadata={
+                    'actor_type': event.actor.actor_type if event.actor else None,
+                    'actor_id': event.actor.actor_id if event.actor else None,
+                },
+            )
 
     async def write_steering_dropped_audits(
         self,
@@ -463,21 +546,22 @@ class AgentRunJournal:
 
         assistant_event_id = str(uuid.uuid4())
 
-        await store.append_transcript(
-            transcript_id=str(uuid.uuid4()),
-            event_id=assistant_event_id,
-            conversation_id=event.conversation_id,
-            role='assistant',
-            bot_id=event.bot_id,
-            workspace_id=event.workspace_id,
-            content=content,
-            content_json=content_json,
-            thread_id=event.thread_id,
-            item_type='message',
-            run_id=run_id,
-            runner_id=runner_id,
-            metadata={
-                'run_id': run_id,
-                'runner_id': runner_id,
-            },
-        )
+        with self.write_deadline(terminal=True):
+            await store.append_transcript(
+                transcript_id=str(uuid.uuid4()),
+                event_id=assistant_event_id,
+                conversation_id=event.conversation_id,
+                role='assistant',
+                bot_id=event.bot_id,
+                workspace_id=event.workspace_id,
+                content=content,
+                content_json=content_json,
+                thread_id=event.thread_id,
+                item_type='message',
+                run_id=run_id,
+                runner_id=runner_id,
+                metadata={
+                    'run_id': run_id,
+                    'runner_id': runner_id,
+                },
+            )

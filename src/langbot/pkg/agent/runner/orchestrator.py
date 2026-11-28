@@ -24,7 +24,6 @@ from ...i18n import t
 from ...i18n.workspace import get_workspace_language
 from ...api.http.context import ExecutionContext
 from ...api.context import PrincipalContext, PrincipalType
-from ...persistence.write_admission import sqlite_write_deadline
 from ...pipeline.pool import get_query_execution_context
 from .binding_resolver import AgentBindingResolver
 from .context_builder import RunnerContextBuilder, RunnerContextPayload
@@ -56,9 +55,6 @@ from ...telemetry import trace as trace_mod
 from ...telemetry.execution import bind_trace as bind_execution_trace
 from ...telemetry.execution import close_trace as close_execution_trace
 from ...telemetry.execution import record as record_execution
-
-
-TERMINAL_LEDGER_PERSISTENCE_BUDGET_SECONDS = 10.0
 
 
 def _visible_auto_reply_text(content: str) -> str:
@@ -411,25 +407,24 @@ class AgentRunOrchestrator:
         try:
             trace_binding = bind_execution_trace(self.ap, run_id)
             run_token = trace_mod.set_run(run_id)
-            with self._sqlite_write_budget(context):
-                await self.journal.create_run(
-                    event=event,
-                    binding=binding,
-                    descriptor=descriptor,
-                    context=context,
-                    authorization=run_authorization,
-                )
+            await self.journal.create_run(
+                event=event,
+                binding=binding,
+                descriptor=descriptor,
+                context=context,
+                authorization=run_authorization,
+            )
             if recovery:
-                with self._sqlite_write_budget(context):
-                    await self.journal._get_run_ledger_store().authorize_recovery_run(
-                        run_id,
-                        authorization={
-                            **run_authorization,
-                            'recovery_event': self.journal._sanitize_event_data(event.model_dump(mode='json')),
-                            'recovery_checkpoint': recovery['request']['events'],
-                        },
-                        deadline_at=context.get('runtime', {}).get('deadline_at'),
-                    )
+                await self.journal.authorize_recovery_run(
+                    run_id,
+                    authorization={
+                        **run_authorization,
+                        'recovery_event': self.journal._sanitize_event_data(event.model_dump(mode='json')),
+                        'recovery_checkpoint': recovery['request']['events'],
+                    },
+                    deadline_at=context.get('runtime', {}).get('deadline_at'),
+                    context=context,
+                )
             monitoring_id = (execution_query.variables or {}).get('_monitoring_message_id')
             if monitoring_id and monitoring_id != run_id:
                 await self.ap.monitoring_service.link_execution_message(
@@ -483,18 +478,19 @@ class AgentRunOrchestrator:
                 if restored:
                     self.ap.logger.info(f'Restored {restored} unacknowledged steering input(s) for run {run_id}')
 
-            with self._sqlite_write_budget(context):
-                event_log_id = await self.journal.write_event_log(
+            event_log_id = await self.journal.write_event_log(
+                event=event,
+                binding=binding,
+                run_id=run_id,
+                runner_id=descriptor.id,
+                context=context,
+            )
+            if event.event_type == 'message.received' and event.conversation_id:
+                await self.journal.write_user_transcript(
                     event=event,
-                    binding=binding,
-                    run_id=run_id,
-                    runner_id=descriptor.id,
+                    event_log_id=event_log_id,
+                    context=context,
                 )
-                if event.event_type == 'message.received' and event.conversation_id:
-                    await self.journal.write_user_transcript(
-                        event=event,
-                        event_log_id=event_log_id,
-                    )
 
             async def timed_runner_results():
                 started = time.monotonic()
@@ -604,13 +600,11 @@ class AgentRunOrchestrator:
 
                         self.result_normalizer.annotate_result_size(result_dict, descriptor)
                         journal_started = time.monotonic()
-                        is_terminal_event = result_type in ('run.completed', 'run.failed', 'run.cancelled')
-                        with self._sqlite_write_budget(context, terminal=is_terminal_event):
-                            await self.journal.append_run_result(
-                                result_dict=result_dict,
-                                run_id=run_id,
-                                sequence=sequence_int,
-                            )
+                        await self.journal.append_run_result(
+                            result_dict=result_dict,
+                            run_id=run_id,
+                            sequence=sequence_int,
+                        )
                         journal_ms = (time.monotonic() - journal_started) * 1000
 
                         # Trusted Host observers receive validated events before message-only normalization.
@@ -658,13 +652,12 @@ class AgentRunOrchestrator:
                             and bool(result_dict['data'].get('message'))
                         )
                         if has_completed_message and event.conversation_id and not assistant_transcript_written:
-                            with self._sqlite_write_budget(context, terminal=True):
-                                await self.journal.write_assistant_transcript(
-                                    result_dict=result_dict,
-                                    event=event,
-                                    run_id=run_id,
-                                    runner_id=descriptor.id,
-                                )
+                            await self.journal.write_assistant_transcript(
+                                result_dict=result_dict,
+                                event=event,
+                                run_id=run_id,
+                                runner_id=descriptor.id,
+                            )
                             assistant_transcript_written = True
 
                         normalize_started = time.monotonic()
@@ -799,13 +792,12 @@ class AgentRunOrchestrator:
                                     'retryable': False,
                                 },
                             }
-                            with self._sqlite_write_budget(context, terminal=True):
-                                cancelled_event = await self.journal.append_run_result(
-                                    result_dict=cancelled_result,
-                                    run_id=run_id,
-                                    sequence=None,
-                                    source='host',
-                                )
+                            cancelled_event = await self.journal.append_run_result(
+                                result_dict=cancelled_result,
+                                run_id=run_id,
+                                sequence=None,
+                                source='host',
+                            )
                             cancelled_result['sequence'] = cancelled_event['sequence']
                             if result_observer is not None:
                                 await result_observer(cancelled_result)
@@ -1072,10 +1064,7 @@ class AgentRunOrchestrator:
             return None
         if not await self._session_registry.cancel_task(target_run_id, reason='stop_command'):
             return None
-        from .run_ledger_store import RunLedgerStore
-
-        store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
-        await store.request_cancel(
+        await self.journal.request_cancel(
             run_id=target_run_id,
             status_reason='cancelled by stop command',
         )
@@ -1183,9 +1172,7 @@ class AgentRunOrchestrator:
             await self._session_registry.complete_steering_enqueue(target_run_id, event.event_id, persisted=False)
             raise
         if not published:
-            from .event_log_store import EventLogStore
-
-            released = await EventLogStore(self.ap.persistence_mgr.get_db_engine()).update_steering_status(
+            released = await self.journal.update_steering_status(
                 event.event_id, status='dropped', owner_run_id=target_run_id
             )
             if not released:
@@ -1255,10 +1242,7 @@ class AgentRunOrchestrator:
         """Rebuild unacknowledged steering inputs after a run restart."""
         if not event.conversation_id or not descriptor.supports_steering():
             return []
-        from .event_log_store import EventLogStore
-
-        store = EventLogStore(self.ap.persistence_mgr.get_db_engine())
-        records = await store.list_pending_steering(
+        records = await self.journal.list_pending_steering(
             conversation_id=event.conversation_id,
             runner_id=descriptor.id,
             bot_id=event.bot_id,
@@ -1273,7 +1257,7 @@ class AgentRunOrchestrator:
                 continue
             if source_run_id and await self._session_registry.get(str(source_run_id)) is not None:
                 continue
-            if not await store.reserve_steering_recovery(str(record['event_id']), run_id=run_id):
+            if not await self.journal.reserve_steering_recovery(str(record['event_id']), run_id=run_id):
                 continue
             metadata = record.get('metadata') if isinstance(record.get('metadata'), dict) else {}
             steering = metadata.get('steering') if isinstance(metadata.get('steering'), dict) else {}
@@ -1346,29 +1330,8 @@ class AgentRunOrchestrator:
     ) -> dict[str, typing.Any]:
         return await self.invoker._next_with_deadline(gen, descriptor, context)
 
-    def _remaining_deadline_seconds(
-        self,
-        context: RunnerContextPayload,
-    ) -> float | None:
-        return self.invoker._remaining_deadline_seconds(context)
-
     def _is_deadline_exhausted(self, context: RunnerContextPayload) -> bool:
         return self.invoker._is_deadline_exhausted(context)
-
-    def _sqlite_write_budget(
-        self,
-        context: RunnerContextPayload,
-        *,
-        terminal: bool = False,
-    ) -> contextlib.AbstractContextManager[None]:
-        """Bound SQLite write retries to the run's remaining budget or a terminal window."""
-        loop = asyncio.get_running_loop()
-        if terminal:
-            return sqlite_write_deadline(loop.time() + TERMINAL_LEDGER_PERSISTENCE_BUDGET_SECONDS, override=True)
-        remaining = self._remaining_deadline_seconds(context)
-        if remaining is None:
-            return contextlib.nullcontext()
-        return sqlite_write_deadline(loop.time() + max(0.0, remaining))
 
     async def _finalize_run(self, **kwargs: typing.Any) -> dict[str, typing.Any] | None:
         """Write this execution's terminal status unless the run already has one.
@@ -1380,11 +1343,7 @@ class AgentRunOrchestrator:
         cancellation) with a second, unrelated failure.
         """
         try:
-            with sqlite_write_deadline(
-                asyncio.get_running_loop().time() + TERMINAL_LEDGER_PERSISTENCE_BUDGET_SECONDS,
-                override=True,
-            ):
-                return await self.journal.finalize_run(**kwargs)
+            return await self.journal.finalize_run(**kwargs)
         except TerminalRunTransitionError as exc:
             self.ap.logger.info(f'Run already finalized, keeping its terminal status: {exc}')
             return await self.journal.get_run(kwargs['run_id'])

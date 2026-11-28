@@ -27,7 +27,14 @@ SQLITE_RETRY_MAX_ATTEMPTS = 8
 SQLITE_RETRY_BASE_DELAY_SECONDS = 0.02
 SQLITE_RETRY_MAX_DELAY_SECONDS = 0.5
 
-_sqlite_write_deadline: ContextVar[float | None] = ContextVar('_sqlite_write_deadline', default=None)
+# Public dialect-neutral defaults used by persistence callers. The values are
+# tuned for the SQLite path, while the transaction primitive applies them to
+# any dialect only when an explicit conflict predicate opts into retries.
+WRITE_RETRY_MAX_ATTEMPTS = SQLITE_RETRY_MAX_ATTEMPTS
+WRITE_RETRY_BASE_DELAY_SECONDS = SQLITE_RETRY_BASE_DELAY_SECONDS
+WRITE_RETRY_MAX_DELAY_SECONDS = SQLITE_RETRY_MAX_DELAY_SECONDS
+
+_persistence_write_deadline: ContextVar[float | None] = ContextVar('_persistence_write_deadline', default=None)
 
 _T = typing.TypeVar('_T')
 
@@ -154,8 +161,8 @@ def write_slot(engine: AsyncEngine, operation: str = 'ledger'):
 
 
 @contextmanager
-def sqlite_write_deadline(deadline_monotonic: float | None, *, override: bool = False) -> typing.Iterator[None]:
-    """Bound nested SQLite write retries to ``deadline_monotonic``.
+def persistence_write_deadline(deadline_monotonic: float | None, *, override: bool = False) -> typing.Iterator[None]:
+    """Bound nested persistence writes to ``deadline_monotonic``.
 
     Nested scopes only tighten an existing deadline by default. Pass
     ``override=True`` for bounded terminal persistence after an execution
@@ -164,15 +171,20 @@ def sqlite_write_deadline(deadline_monotonic: float | None, *, override: bool = 
     if deadline_monotonic is None:
         yield
         return
-    existing = _sqlite_write_deadline.get()
+    existing = _persistence_write_deadline.get()
     effective = (
         float(deadline_monotonic) if override or existing is None else min(float(existing), float(deadline_monotonic))
     )
-    token = _sqlite_write_deadline.set(effective)
+    token = _persistence_write_deadline.set(effective)
     try:
         yield
     finally:
-        _sqlite_write_deadline.reset(token)
+        _persistence_write_deadline.reset(token)
+
+
+def sqlite_write_deadline(deadline_monotonic: float | None, *, override: bool = False) -> typing.Iterator[None]:
+    """Backward-compatible alias for callers outside the persistence layer."""
+    return persistence_write_deadline(deadline_monotonic, override=override)
 
 
 def sqlite_error_code(exc: BaseException) -> int | None:
@@ -315,7 +327,7 @@ async def run_sqlite_write_with_retry(
         float(SQLITE_RETRY_ATTEMPT_TIMEOUT_SECONDS if attempt_timeout_seconds is None else attempt_timeout_seconds),
     )
     deadline = now + effective_budget
-    context_deadline = _sqlite_write_deadline.get()
+    context_deadline = _persistence_write_deadline.get()
     if context_deadline is not None:
         deadline = min(deadline, float(context_deadline))
 
@@ -350,6 +362,7 @@ async def run_sqlite_write_with_retry(
                 except BaseException as exc:
                     await slot.__aexit__(type(exc), exc, exc.__traceback__)
                     raise
+
                 await slot.__aexit__(None, None, None)
                 return result
             with slot:
@@ -365,3 +378,99 @@ async def run_sqlite_write_with_retry(
                 await asyncio.sleep(min(delay, remaining_after))
                 if deadline - loop.time() <= 0:
                     raise
+
+
+async def run_write_tx(
+    engine: AsyncEngine,
+    operation: typing.Callable[[AsyncSession], typing.Awaitable[_T]],
+    *,
+    session_factory: typing.Callable[[], typing.Any] | None = None,
+    retry_on: typing.Callable[[BaseException], bool] | None = None,
+    slot_operation: str = 'ledger',
+    budget_seconds: float | None = None,
+    attempt_timeout_seconds: float | None = None,
+    max_attempts: int | None = None,
+    base_delay_seconds: float | None = None,
+    max_delay_seconds: float | None = None,
+) -> _T:
+    """Run a persistence write transaction with dialect-local admission.
+
+    The callback receives a fresh session for each replay attempt. SQLite
+    busy-timeout slicing, connection invalidation, queue admission and retry
+    backoff stay private to this module. Other dialects use the same
+    transaction/session lifecycle and only retry conflicts explicitly selected
+    by ``retry_on``.
+    """
+
+    if session_factory is None:
+        session_factory = sqlalchemy.orm.sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def _attempt(attempt_remaining: float) -> _T:
+        async with session_factory() as session:
+            if engine.dialect.name == 'sqlite':
+                async with sqlite_attempt_timeout(session, engine, attempt_remaining):
+                    result = await operation(session)
+                    if session.in_transaction():
+                        await session.flush()
+            else:
+                result = await operation(session)
+                if session.in_transaction():
+                    await session.flush()
+            if session.in_transaction():
+                await commit_write(session)
+            return result
+
+    if engine.dialect.name != 'sqlite':
+        return await _run_non_sqlite_write_tx(
+            engine,
+            _attempt,
+            retry_on=retry_on,
+            budget_seconds=budget_seconds,
+            max_attempts=max_attempts,
+            base_delay_seconds=base_delay_seconds,
+            max_delay_seconds=max_delay_seconds,
+        )
+    return await run_sqlite_write_with_retry(
+        engine,
+        _attempt,
+        slot_operation=slot_operation,
+        budget_seconds=budget_seconds,
+        attempt_timeout_seconds=attempt_timeout_seconds,
+        max_attempts=max_attempts,
+        base_delay_seconds=base_delay_seconds,
+        max_delay_seconds=max_delay_seconds,
+        is_retryable=retry_on,
+    )
+
+
+async def _run_non_sqlite_write_tx(
+    engine: AsyncEngine,
+    operation: typing.Callable[[float], typing.Awaitable[_T]],
+    *,
+    retry_on: typing.Callable[[BaseException], bool] | None,
+    budget_seconds: float | None,
+    max_attempts: int | None,
+    base_delay_seconds: float | None,
+    max_delay_seconds: float | None,
+) -> _T:
+    """Run the common transaction lifecycle without SQLite admission rules."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + max(0.0, float(30.0 if budget_seconds is None else budget_seconds))
+    context_deadline = _persistence_write_deadline.get()
+    if context_deadline is not None:
+        deadline = min(deadline, float(context_deadline))
+    attempts = max(1, int(8 if max_attempts is None else max_attempts))
+    base_delay = max(0.0, float(0.02 if base_delay_seconds is None else base_delay_seconds))
+    max_delay = max(0.0, float(0.5 if max_delay_seconds is None else max_delay_seconds))
+    attempt = 0
+    while True:
+        try:
+            return await operation(max(0.0, deadline - loop.time()))
+        except Exception as exc:
+            attempt += 1
+            remaining = deadline - loop.time()
+            if retry_on is None or not retry_on(exc) or attempt >= attempts or remaining <= 0:
+                raise
+            delay = min(max_delay, base_delay * (2 ** (attempt - 1)), remaining)
+            if delay:
+                await asyncio.sleep(delay)

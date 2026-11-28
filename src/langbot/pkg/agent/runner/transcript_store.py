@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from ...persistence.datetime_utils import as_naive_utc
-from ...persistence.write_admission import commit_write, run_sqlite_write_with_retry, sqlite_attempt_timeout
+from ...persistence.write_admission import run_write_tx
 
 from ...entity.persistence.transcript import Transcript
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
@@ -97,33 +97,30 @@ class TranscriptStore:
         if content and len(content) > self.MAX_CONTENT_LENGTH:
             content = content[: self.MAX_CONTENT_LENGTH - 3] + '...'
 
-        async def _attempt(attempt_remaining: float) -> None:
-            async with self._session_factory() as session:
-                async with sqlite_attempt_timeout(session, self.engine, attempt_remaining):
-                    item = Transcript(
-                        transcript_id=transcript_id,
-                        event_id=event_id,
-                        bot_id=bot_id,
-                        workspace_id=workspace_id,
-                        conversation_id=conversation_id,
-                        thread_id=thread_id,
-                        role=role,
-                        item_type=item_type,
-                        content=content,
-                        content_json=json.dumps(content_json) if content_json else None,
-                        attachment_refs_json=json.dumps(attachment_refs) if attachment_refs else None,
-                        seq=0,
-                        run_id=run_id,
-                        runner_id=runner_id,
-                        created_at=as_naive_utc(_utc_now()),
-                        metadata_json=json.dumps(metadata) if metadata else None,
-                    )
-                    session.add(item)
-                    await session.flush()
-                    item.seq = item.id or await self._get_next_seq(conversation_id)
-                    await commit_write(session)
+        async def _write(session: AsyncSession) -> None:
+            item = Transcript(
+                transcript_id=transcript_id,
+                event_id=event_id,
+                bot_id=bot_id,
+                workspace_id=workspace_id,
+                conversation_id=conversation_id,
+                thread_id=thread_id,
+                role=role,
+                item_type=item_type,
+                content=content,
+                content_json=json.dumps(content_json) if content_json else None,
+                attachment_refs_json=json.dumps(attachment_refs) if attachment_refs else None,
+                seq=0,
+                run_id=run_id,
+                runner_id=runner_id,
+                created_at=as_naive_utc(_utc_now()),
+                metadata_json=json.dumps(metadata) if metadata else None,
+            )
+            session.add(item)
+            await session.flush()
+            item.seq = item.id or await self._get_next_seq(conversation_id)
 
-        await run_sqlite_write_with_retry(self.engine, _attempt, slot_operation='ledger')
+        await run_write_tx(self.engine, _write, session_factory=self._session_factory, slot_operation='ledger')
 
         return transcript_id
 
@@ -388,12 +385,16 @@ class TranscriptStore:
         before: datetime.datetime,
     ) -> int:
         """Delete Transcript rows created before the supplied timestamp."""
-        async with self._session_factory() as session:
+
+        async def _write(session):
             result = await session.execute(
                 sqlalchemy.delete(Transcript).where(Transcript.created_at < as_naive_utc(before))
             )
-            await session.commit()
             return result.rowcount or 0
+
+        return await run_write_tx(
+            self.engine, _write, session_factory=self._session_factory, slot_operation='maintenance'
+        )
 
     async def _get_next_seq(self, conversation_id: str) -> int:
         """Fallback next sequence number for stores that cannot expose autoincrement IDs."""
