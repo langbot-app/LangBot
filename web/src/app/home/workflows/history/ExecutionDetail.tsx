@@ -16,7 +16,7 @@ import {
   formatDateTime,
   parseUTCTimestamp,
 } from '@/app/home/monitoring/utils/dateUtils';
-import { STEP_META } from '../lib/catalog';
+import { STEP_META, stepBranches } from '../lib/catalog';
 import { describeError } from '../lib/issues';
 import { EditorContext } from '../editor/EditorContext';
 
@@ -98,6 +98,17 @@ function JsonBlock({ title, value }: { title: string; value: unknown }) {
 
 function StepRow({ step, index }: { step: WorkflowStepRun; index: number }) {
   const { t } = useTranslation();
+  const editor = useContext(EditorContext);
+  const definition = editor?.graph.nodes.find(
+    (node) => node.id === step.node_id,
+  );
+  const branch =
+    step.branch &&
+    ((definition &&
+      stepBranches(definition, t('workflows.branches.else'), (i) =>
+        t('workflows.branches.unnamed', { index: i + 1 }),
+      )?.find((item) => item.id === step.branch)?.label) ||
+      (step.branch === 'else' ? t('workflows.branches.else') : step.branch));
   const [open, setOpen] = useState(step.status === 'failed');
   const meta = STEP_META[step.node_type];
   const Icon = meta?.icon;
@@ -126,7 +137,7 @@ function StepRow({ step, index }: { step: WorkflowStepRun; index: number }) {
               {t(`workflows.steps.${step.node_type}`, {
                 defaultValue: step.node_type,
               })}
-              {step.branch ? ` · → ${step.branch}` : ''}
+              {branch ? ` · → ${branch}` : ''}
             </span>
           </span>
           <span className="text-xs tabular-nums text-muted-foreground">
