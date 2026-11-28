@@ -119,10 +119,101 @@ class TestContentFilterChain:
             ),
         )
 
-        assert {filter_impl.name for filter_impl in policy.filter_chain} == {
-            'ban-word-filter',
+        assert [filter_impl.name for filter_impl in policy.filter_chain] == [
             'content-ignore',
+            'ban-word-filter',
+        ]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ('keep_names', 'check_sensitive_words', 'expected_missing'),
+        [
+            ((), False, 'content-ignore'),
+            (('content-ignore',), True, 'ban-word-filter'),
+            ((), True, 'content-ignore, ban-word-filter'),
+        ],
+    )
+    async def test_missing_required_filter_raises(
+        self,
+        monkeypatch,
+        keep_names,
+        check_sensitive_words,
+        expected_missing,
+    ):
+        """Missing a required content filter must fail fast instead of failing open."""
+        get_cntfilter_module()
+        filter_model = get_filter_module()
+        monkeypatch.setattr(
+            filter_model,
+            'preregistered_filters',
+            [cls for cls in filter_model.preregistered_filters if cls.name in keep_names],
+        )
+
+        app = FakeApp()
+        query = text_query('hello')
+        config = make_pipeline_config(
+            safety={
+                'content-filter': {
+                    'check-sensitive-words': check_sensitive_words,
+                }
+            }
+        )
+
+        with pytest.raises(ValueError, match=f'Content filter not found: {expected_missing}'):
+            await bind_policy(app, query, config)
+
+    @pytest.mark.asyncio
+    async def test_ignore_rule_runs_before_ban_word_filter_regardless_of_registration_order(self, monkeypatch):
+        """content-ignore always precedes ban-word-filter so ignored messages drop silently."""
+        cntfilter = get_cntfilter_module()
+        entities = get_entities_module()
+        filter_model = get_filter_module()
+
+        by_name = {cls.name: cls for cls in filter_model.preregistered_filters}
+        monkeypatch.setattr(
+            filter_model,
+            'preregistered_filters',
+            [by_name['ban-word-filter'], by_name['content-ignore']],
+        )
+
+        app = FakeApp()
+        app.sensitive_meta = Mock()
+        app.sensitive_meta.data = {
+            'words': ['badword'],
+            'mask': '*',
+            'mask_word': '',
         }
+        stage = cntfilter.ContentFilterStage(app)
+        pipeline_config = make_pipeline_config(
+            safety={
+                'content-filter': {
+                    'check-sensitive-words': True,
+                    'scope': 'both',
+                }
+            },
+            trigger={
+                'ignore-rules': {
+                    'prefix': ['/ignore'],
+                    'regexp': [],
+                }
+            },
+        )
+        await stage.initialize(pipeline_config)
+
+        query = text_query('/ignore badword')
+        query.pipeline_config = pipeline_config
+        policy = await bind_policy(app, query)
+
+        assert [filter_impl.name for filter_impl in policy.filter_chain] == [
+            'content-ignore',
+            'ban-word-filter',
+        ]
+
+        result = await stage.process(query, 'PreContentFilterStage')
+
+        assert result.result_type == entities.ResultType.INTERRUPT
+        assert result.user_notice == ''
+        assert query.variables['_policy_filter_item'] == 'trigger.ignore-rules'
 
 
 class TestPreContentFilter:

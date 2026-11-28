@@ -325,6 +325,66 @@ class TestLongTextThreshold:
         assert isinstance(components[0], platform_message.Plain)
         assert components[0].text == short_text
 
+    @pytest.mark.asyncio
+    async def test_at_threshold_not_processed(self):
+        """Text with length equal to threshold should not be transformed (strict >)."""
+        longtext = get_longtext_module()
+        entities = get_entities_module()
+
+        app = FakeApp()
+        stage = longtext.LongTextProcessStage(app)
+
+        threshold = 100
+        pipeline_config = make_longtext_config(strategy='forward', threshold=threshold)
+
+        await stage.initialize(pipeline_config)
+
+        query = text_query('hello')
+        query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
+
+        boundary_text = 'x' * threshold
+        query.resp_message_chain = [platform_message.MessageChain([platform_message.Plain(text=boundary_text)])]
+
+        result = await stage.process(query, 'LongTextProcessStage')
+
+        assert result.result_type == entities.ResultType.CONTINUE
+        components = list(result.new_query.resp_message_chain[0])
+        assert len(components) == 1
+        assert isinstance(components[0], platform_message.Plain)
+        assert components[0].text == boundary_text
+
+    @pytest.mark.asyncio
+    async def test_above_threshold_processed(self):
+        """Text with length threshold + 1 should be transformed."""
+        longtext = get_longtext_module()
+        entities = get_entities_module()
+
+        app = FakeApp()
+        stage = longtext.LongTextProcessStage(app)
+
+        threshold = 100
+        pipeline_config = make_longtext_config(strategy='forward', threshold=threshold)
+
+        await stage.initialize(pipeline_config)
+
+        query = text_query('hello')
+        query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
+        mock_adapter = Mock()
+        mock_adapter.bot_account_id = '12345'
+        query.adapter = mock_adapter
+
+        over_text = 'x' * (threshold + 1)
+        query.resp_message_chain = [platform_message.MessageChain([platform_message.Plain(text=over_text)])]
+
+        result = await stage.process(query, 'LongTextProcessStage')
+
+        assert result.result_type == entities.ResultType.CONTINUE
+        components = list(result.new_query.resp_message_chain[0])
+        assert len(components) == 1
+        assert isinstance(components[0], platform_message.Forward)
+
 
 class TestLongTextProcessStageImageStrategy:
     """Tests for image strategy handling (requires PIL/font)."""
