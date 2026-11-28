@@ -6,9 +6,10 @@ import traceback
 
 from ..core import app
 from ..core import entities as core_entities
-from ..workspace.errors import WorkspaceError, WorkspaceInvariantError
+from ..workspace.errors import WorkspaceError
 
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+from .binding_guard import ensure_execution_binding_active, execution_binding_scope
 from .command_text import command_name_from_chain
 from .pool import get_query_execution_context
 from .process.command_settings import get_bot_command_settings
@@ -44,13 +45,13 @@ class Controller:
         """Revalidate a queued query immediately before runtime work starts."""
 
         execution_context = get_query_execution_context(query)
-        binding = await self.ap.workspace_service.get_execution_binding(
-            execution_context.workspace_uuid,
-            expected_generation=execution_context.placement_generation,
+        return await ensure_execution_binding_active(
+            self.ap,
+            execution_context,
+            require_instance_match=True,
+            instance_mismatch_message='Queued query instance does not match the active Workspace binding',
+            force=True,
         )
-        if binding.instance_uuid != execution_context.instance_uuid:
-            raise WorkspaceInvariantError('Queued query instance does not match the active Workspace binding')
-        return execution_context
 
     async def _try_claim_steering_before_session_slot(
         self,
@@ -120,22 +121,23 @@ class Controller:
             queued_context = get_query_execution_context(selected_query)
 
             async def run_scoped_query() -> None:
-                execution_context = await self._assert_query_execution_active(selected_query)
-                pipeline_uuid = selected_query.pipeline_uuid
+                with execution_binding_scope():
+                    execution_context = await self._assert_query_execution_active(selected_query)
+                    pipeline_uuid = selected_query.pipeline_uuid
 
-                if pipeline_uuid:
-                    pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(
-                        execution_context,
-                        pipeline_uuid,
-                    )
-                    if pipeline:
-                        await pipeline.run(selected_query)
-                    else:
-                        self.ap.logger.warning(
-                            f'Pipeline {pipeline_uuid} not found for query {selected_query.query_id}, query dropped'
+                    if pipeline_uuid:
+                        pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(
+                            execution_context,
+                            pipeline_uuid,
                         )
-                else:
-                    self.ap.logger.warning(f'No pipeline_uuid for query {selected_query.query_id}, query dropped')
+                        if pipeline:
+                            await pipeline.run(selected_query)
+                        else:
+                            self.ap.logger.warning(
+                                f'Pipeline {pipeline_uuid} not found for query {selected_query.query_id}, query dropped'
+                            )
+                    else:
+                        self.ap.logger.warning(f'No pipeline_uuid for query {selected_query.query_id}, query dropped')
 
             tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
             cloud_runtime = getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'

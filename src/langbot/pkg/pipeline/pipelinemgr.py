@@ -19,10 +19,19 @@ from ..utils import importutil
 from ..api.http.authz import WorkspaceRequiredError
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType, RequestContext
 from ..workspace.errors import WorkspaceError, WorkspaceInvariantError
+from .binding_guard import (
+    anext_tracking_suspension,
+    await_tracking_suspension,
+    ensure_execution_binding_active,
+    ensure_execution_binding_scope,
+    execution_binding_scope,
+    invalidate_execution_binding_lease,
+)
 from .config_coercion import coerce_pipeline_config
 from .pool import get_query_execution_context
 from ..i18n import language_scope, t
 from ..i18n.workspace import get_workspace_language
+from ..message_policy.manager import MessagePolicyManager
 from ..agent.runner.config_resolver import RunnerConfigResolver
 from .extension_preferences import normalize_extension_preferences
 
@@ -55,6 +64,21 @@ importutil.import_modules_in_pkgs(
         speech,
     ]
 )
+
+_LOCAL_NON_MUTATING_STAGE_CLASSES: frozenset[type[stage.PipelineStage]] = frozenset(
+    {
+        resprule.resprule.GroupRespondRuleCheckStage,
+        bansess.bansess.BanSessionCheckStage,
+        speech.speech.SpeechRecognitionStage,
+        speech.speech.TextToSpeechStage,
+        cntfilter.cntfilter.ContentFilterStage,
+        ratelimit.daily_quota.DailyMessageQuota,
+        ratelimit.ratelimit.RateLimit,
+        longtext.longtext.LongTextProcessStage,
+    }
+)
+_PROCESSOR_STAGE_CLASS: type[stage.PipelineStage] = process.process.Processor
+_RESPONSE_WRAPPER_STAGE_CLASS: type[stage.PipelineStage] = wrapper.wrapper.ResponseWrapper
 
 
 class StageInstContainer:
@@ -166,6 +190,8 @@ class RuntimePipeline:
     async def _assert_execution_active(
         self,
         query: pipeline_query.Query | None = None,
+        *,
+        force: bool = False,
     ) -> ExecutionContext:
         """Fail closed when this runtime or query belongs to a stale placement."""
 
@@ -177,74 +203,92 @@ class RuntimePipeline:
             or execution_context.pipeline_uuid != self.pipeline_entity.uuid
         ):
             raise WorkspaceInvariantError('Query execution scope does not match RuntimePipeline')
-        binding = await self.ap.workspace_service.get_execution_binding(
-            execution_context.workspace_uuid,
-            expected_generation=execution_context.placement_generation,
+        return await ensure_execution_binding_active(
+            self.ap,
+            execution_context,
+            require_instance_match=True,
+            instance_mismatch_message='RuntimePipeline instance does not match the active Workspace binding',
+            force=force,
         )
-        if binding.instance_uuid != execution_context.instance_uuid:
-            raise WorkspaceInvariantError('RuntimePipeline instance does not match the active Workspace binding')
-        return execution_context
+
+    def _is_local_non_mutating_stage(self, stage_inst: stage.PipelineStage) -> bool:
+        stage_cls = type(stage_inst)
+        if stage_cls not in _LOCAL_NON_MUTATING_STAGE_CLASSES:
+            return False
+        if stage_cls is ratelimit.daily_quota.DailyMessageQuota:
+            return getattr(getattr(self.ap, 'deployment', None), 'mode', None) != 'cloud'
+        policy_mgr = getattr(self.ap, 'message_policy_mgr', None)
+        if policy_mgr is not None and not isinstance(policy_mgr, MessagePolicyManager):
+            return False
+        return True
 
     async def run(self, query: pipeline_query.Query):
-        if (
-            query.instance_uuid != self.execution_context.instance_uuid
-            or query.workspace_uuid != self.workspace_uuid
-            or query.placement_generation != self.placement_generation
-            or query.pipeline_uuid != self.pipeline_entity.uuid
-        ):
-            raise WorkspaceRequiredError('Query execution scope does not match RuntimePipeline')
-        await self._assert_execution_active(query)
-        # The message policy of the route this message matched is laid over the
-        # Messaging config, so stages and plugins read it under the legacy keys.
-        policy = await self.ap.message_policy_mgr.bind_query(query, self.pipeline_entity.config)
-        # Store bound plugins and MCP servers in query for filtering
-        query.variables['_pipeline_bound_plugins'] = self.bound_plugins
-        if policy is await self.ap.message_policy_mgr.neutral_runtime():
-            # No bot policy (debug chat, pipeline.run): there is no bot plugin
-            # selection, so the Chat's plugin list keeps choosing the listeners.
-            object.__setattr__(query, '_listener_plugins', self.bound_plugins)
-        query.variables['_pipeline_bound_mcp_servers'] = self.bound_mcp_servers
-        query.variables['_pipeline_mcp_resource_attachments'] = self.mcp_resource_attachments
-        query.variables['_pipeline_mcp_resource_agent_read_enabled'] = self.mcp_resource_agent_read_enabled
-        query.variables['_pipeline_workspace_operations'] = self.workspace_operations
-        query.variables['_pipeline_allowed_platform_tools'] = self.allowed_platform_tools
-        # Telemetry: the bindings this lane runs with. None means "all enabled",
-        # which the *_all flags make explicit in the chain record.
-        try:
-            from ..telemetry import resources as telemetry_resources
+        with ensure_execution_binding_scope():
+            if (
+                query.instance_uuid != self.execution_context.instance_uuid
+                or query.workspace_uuid != self.workspace_uuid
+                or query.placement_generation != self.placement_generation
+                or query.pipeline_uuid != self.pipeline_entity.uuid
+            ):
+                raise WorkspaceRequiredError('Query execution scope does not match RuntimePipeline')
+            await self._assert_execution_active(query)
+            # The message policy of the route this message matched is laid over the
+            # Messaging config, so stages and plugins read it under the legacy keys.
+            invalidate_execution_binding_lease()
+            policy = await self.ap.message_policy_mgr.bind_query(query, self.pipeline_entity.config)
+            # Store bound plugins and MCP servers in query for filtering
+            query.variables['_pipeline_bound_plugins'] = self.bound_plugins
+            invalidate_execution_binding_lease()
+            if policy is await self.ap.message_policy_mgr.neutral_runtime():
+                # No bot policy (debug chat, pipeline.run): there is no bot plugin
+                # selection, so the Chat's plugin list keeps choosing the listeners.
+                object.__setattr__(query, '_listener_plugins', self.bound_plugins)
+            query.variables['_pipeline_bound_mcp_servers'] = self.bound_mcp_servers
+            query.variables['_pipeline_mcp_resource_attachments'] = self.mcp_resource_attachments
+            query.variables['_pipeline_mcp_resource_agent_read_enabled'] = self.mcp_resource_agent_read_enabled
+            query.variables['_pipeline_workspace_operations'] = self.workspace_operations
+            query.variables['_pipeline_allowed_platform_tools'] = self.allowed_platform_tools
+            # Telemetry: the bindings this lane runs with. None means "all enabled",
+            # which the *_all flags make explicit in the chain record.
+            try:
+                from ..telemetry import resources as telemetry_resources
 
-            telemetry_resources.note_pipeline(
-                plugins=self.bound_plugins,
-                plugins_all=self.enable_all_plugins,
-                mcp_servers=self.bound_mcp_servers,
-                mcp_all=self.enable_all_mcp_servers,
-            )
-        except Exception:
-            pass
+                telemetry_resources.note_pipeline(
+                    plugins=self.bound_plugins,
+                    plugins_all=self.enable_all_plugins,
+                    mcp_servers=self.bound_mcp_servers,
+                    mcp_all=self.enable_all_mcp_servers,
+                )
+            except Exception:
+                pass
 
-        # Record query start for monitoring
-        try:
-            # Get bot name from bot_uuid
-            bot_name = 'WebChat'
-            if query.bot_uuid:
-                try:
-                    bot = await self.ap.bot_service.get_bot(
-                        query.workspace_uuid,
-                        query.bot_uuid,
-                        include_secret=False,
-                    )
-                    if bot:
-                        bot_name = bot.get('name', 'Unknown')
-                except Exception:
-                    pass
+            # Record query start for monitoring
+            try:
+                # Get bot name from bot_uuid
+                bot_name = 'WebChat'
+                if query.bot_uuid:
+                    try:
+                        invalidate_execution_binding_lease()
+                        bot = await self.ap.bot_service.get_bot(
+                            query.workspace_uuid,
+                            query.bot_uuid,
+                            include_secret=False,
+                        )
+                        if bot:
+                            bot_name = bot.get('name', 'Unknown')
+                    except Exception:
+                        pass
 
-            # Store for later use in process_query
-            query.variables['_monitoring_bot_name'] = bot_name
-            query.variables['_monitoring_pipeline_name'] = self.pipeline_entity.name
-        except Exception as e:
-            self.ap.logger.error(f'Failed to prepare monitoring data: {e}')
+                # Store for later use in process_query
+                query.variables['_monitoring_bot_name'] = bot_name
+                query.variables['_monitoring_pipeline_name'] = self.pipeline_entity.name
+            except Exception as e:
+                self.ap.logger.error(f'Failed to prepare monitoring data: {e}')
+            finally:
+                invalidate_execution_binding_lease()
 
-        await self.process_query(query)
+            invalidate_execution_binding_lease()
+            await self.process_query(query)
 
     async def deliver_runner_result(self, query: pipeline_query.Query, result: provider_message.Message) -> None:
         """Use the configured post-processing stages for an explicitly recovered Runner."""
@@ -253,9 +297,10 @@ class RuntimePipeline:
         ]
         if len(processors) != 1:
             raise ValueError('Runner recovery requires exactly one MessageProcessor stage')
-        await self._assert_execution_active(query)
-        query.resp_messages.append(result)
-        await self._execute_from_stage(processors[0] + 1, query)
+        with execution_binding_scope():
+            await self._assert_execution_active(query)
+            query.resp_messages.append(result)
+            await self._execute_from_stage(processors[0] + 1, query)
 
     async def _check_output(self, query: pipeline_query.Query, result: pipeline_entities.StageProcessResult):
         """检查输出"""
@@ -264,11 +309,13 @@ class RuntimePipeline:
         if result.user_notice:
             if result.structured_error and '_cli_run_status' in query.variables:
                 query.variables['_cli_run_error'] = result.structured_error
+            invalidate_execution_binding_lease()
             policy = await self.ap.message_policy_mgr.for_query(query)
             result.user_notice = policy.build_notice(query.message_event, result.user_notice)
 
             async def before_send() -> None:
-                await self._assert_execution_active(query)
+                await self._assert_execution_active(query, force=True)
+                invalidate_execution_binding_lease()
 
             reply_options = {}
             if result.structured_error:
@@ -276,12 +323,16 @@ class RuntimePipeline:
 
                 if isinstance(query.adapter, WebSocketAdapter):
                     reply_options['error'] = result.structured_error
-            await policy.send_notice(
-                query,
-                result.user_notice,
-                before_send=before_send,
-                reply_options=reply_options,
-            )
+            try:
+                invalidate_execution_binding_lease()
+                await policy.send_notice(
+                    query,
+                    result.user_notice,
+                    before_send=before_send,
+                    reply_options=reply_options,
+                )
+            finally:
+                invalidate_execution_binding_lease()
         if result.debug_notice:
             self.ap.logger.debug(result.debug_notice)
         if result.console_notice:
@@ -306,28 +357,40 @@ class RuntimePipeline:
 
                 # Update message status to error
                 if message_id:
-                    await self.ap.monitoring_service.update_message_status(
-                        get_query_execution_context(query),
-                        message_id=message_id,
-                        status='error',
-                        level='error',
-                    )
+                    try:
+                        invalidate_execution_binding_lease()
+                        await self.ap.monitoring_service.update_message_status(
+                            get_query_execution_context(query),
+                            message_id=message_id,
+                            status='error',
+                            level='error',
+                        )
+                    finally:
+                        invalidate_execution_binding_lease()
 
                 # Record error log
-                await self.ap.monitoring_service.record_error(
-                    get_query_execution_context(query),
-                    bot_id=query.bot_uuid or 'unknown',
-                    bot_name=bot_name,
-                    pipeline_id=self.pipeline_entity.uuid,
-                    pipeline_name=pipeline_name,
-                    error_type=result.structured_error['error_code'] if result.structured_error else 'PipelineError',
-                    error_message=result.error_notice,
-                    session_id=session_id,
-                    stack_trace=result.debug_notice if result.debug_notice else None,
-                    message_id=message_id,
-                )
+                try:
+                    invalidate_execution_binding_lease()
+                    await self.ap.monitoring_service.record_error(
+                        get_query_execution_context(query),
+                        bot_id=query.bot_uuid or 'unknown',
+                        bot_name=bot_name,
+                        pipeline_id=self.pipeline_entity.uuid,
+                        pipeline_name=pipeline_name,
+                        error_type=result.structured_error['error_code']
+                        if result.structured_error
+                        else 'PipelineError',
+                        error_message=result.error_notice,
+                        session_id=session_id,
+                        stack_trace=result.debug_notice if result.debug_notice else None,
+                        message_id=message_id,
+                    )
+                finally:
+                    invalidate_execution_binding_lease()
             except Exception as e:
                 self.ap.logger.error(f'Failed to record error to monitoring: {e}')
+            finally:
+                invalidate_execution_binding_lease()
 
     async def _mark_stage_interrupt(self, query: pipeline_query.Query, stage_name: str) -> None:
         """Make rule-based drops visible: log them and attribute them in monitoring."""
@@ -361,27 +424,35 @@ class RuntimePipeline:
         query.variables['message_policy_drop'] = reason
         ingress = getattr(query, '_policy_ingress_id', None)
         if ingress:
-            await self.ap.monitoring_service.record_policy_event(
-                get_query_execution_context(query),
-                ingress,
-                {
-                    'type': 'admission',
-                    'reason': reason,
-                    'policy_layer': reason.split(':', 1)[0],
-                    'policy_item': item.split('.', 1)[1],
-                },
+            try:
+                invalidate_execution_binding_lease()
+                await self.ap.monitoring_service.record_policy_event(
+                    get_query_execution_context(query),
+                    ingress,
+                    {
+                        'type': 'admission',
+                        'reason': reason,
+                        'policy_layer': reason.split(':', 1)[0],
+                        'policy_item': item.split('.', 1)[1],
+                    },
+                )
+            finally:
+                invalidate_execution_binding_lease()
+        try:
+            invalidate_execution_binding_lease()
+            await bot._record_event_route_trace(
+                event_type='message.received',
+                binding=route,
+                target_type='pipeline',
+                target_uuid=query.pipeline_uuid,
+                status='discarded',
+                failure_code='message_policy',
+                details={'policy_layer': reason.split(':', 1)[0], 'policy_item': item.split('.', 1)[1]},
+                text=reason,
+                reason=reason,
             )
-        await bot._record_event_route_trace(
-            event_type='message.received',
-            binding=route,
-            target_type='pipeline',
-            target_uuid=query.pipeline_uuid,
-            status='discarded',
-            failure_code='message_policy',
-            details={'policy_layer': reason.split(':', 1)[0], 'policy_item': item.split('.', 1)[1]},
-            text=reason,
-            reason=reason,
-        )
+        finally:
+            invalidate_execution_binding_lease()
 
     async def _execute_from_stage(
         self,
@@ -410,16 +481,49 @@ class RuntimePipeline:
         """
         i = stage_index
 
+        with ensure_execution_binding_scope():
+            await self._execute_from_stage_in_scope(i, query)
+
+    async def _execute_from_stage_in_scope(
+        self,
+        stage_index: int,
+        query: pipeline_query.Query,
+    ):
+        i = stage_index
+
         while i < len(self.stage_containers):
             await self._assert_execution_active(query)
             stage_container = self.stage_containers[i]
+            stage_inst = stage_container.inst
+            is_local_stage = self._is_local_non_mutating_stage(stage_inst)
+            is_processor_stage = type(stage_inst) is _PROCESSOR_STAGE_CLASS
+            is_response_wrapper_stage = type(stage_inst) is _RESPONSE_WRAPPER_STAGE_CLASS
 
             query.current_stage_name = stage_container.inst_name  # 标记到 Query 对象里
 
-            result = stage_container.inst.process(query, stage_container.inst_name)
+            try:
+                result = stage_inst.process(query, stage_container.inst_name)
+            except BaseException:
+                invalidate_execution_binding_lease()
+                raise
 
             if isinstance(result, typing.Coroutine):
-                result = await result
+                if is_local_stage or is_processor_stage:
+                    try:
+                        result, suspended = await await_tracking_suspension(result)
+                    except BaseException:
+                        invalidate_execution_binding_lease()
+                        raise
+                    if suspended:
+                        invalidate_execution_binding_lease()
+                else:
+                    try:
+                        invalidate_execution_binding_lease()
+                        result = await result
+                    finally:
+                        invalidate_execution_binding_lease()
+            elif not is_response_wrapper_stage and not is_local_stage:
+                invalidate_execution_binding_lease()
 
             if isinstance(result, pipeline_entities.StageProcessResult):  # 直接返回结果
                 self.ap.logger.debug(
@@ -439,10 +543,25 @@ class RuntimePipeline:
                 iterator = result.__aiter__()
                 while True:
                     await self._assert_execution_active(query)
-                    try:
-                        sub_result = await anext(iterator)
-                    except StopAsyncIteration:
-                        break
+                    if is_response_wrapper_stage:
+                        try:
+                            has_item, sub_result, suspended = await anext_tracking_suspension(iterator)
+                        except BaseException:
+                            invalidate_execution_binding_lease()
+                            raise
+                        if has_item or suspended:
+                            invalidate_execution_binding_lease()
+                        if not has_item:
+                            break
+                    else:
+                        try:
+                            invalidate_execution_binding_lease()
+                            sub_result = await anext(iterator)
+                        except StopAsyncIteration:
+                            invalidate_execution_binding_lease()
+                            break
+                        finally:
+                            invalidate_execution_binding_lease()
                     self.ap.logger.debug(
                         f'Stage {stage_container.inst_name} processed query {query.query_id} res {sub_result.result_type}'
                     )
@@ -454,7 +573,7 @@ class RuntimePipeline:
                         break
                     elif sub_result.result_type == pipeline_entities.ResultType.CONTINUE:
                         query = sub_result.new_query
-                        await self._execute_from_stage(i + 1, query)
+                        await self._execute_from_stage_in_scope(i + 1, query)
                 break
 
             i += 1
@@ -495,9 +614,11 @@ class RuntimePipeline:
         from langbot_plugin.utils.log import log_scope
 
         workspace_uuid = getattr(query, 'workspace_uuid', None) or getattr(self, 'workspace_uuid', '')
+        invalidate_execution_binding_lease()
+        language = await get_workspace_language(self.ap, workspace_uuid)
         with (
             log_scope(trace=getattr(query, '_message_log_trace', None), workspace=workspace_uuid),
-            language_scope(await get_workspace_language(self.ap, workspace_uuid)),
+            language_scope(language),
         ):
             return await self._process_query_with_language(query)
 
@@ -618,6 +739,7 @@ class RuntimePipeline:
         message = platform_message.MessageChain([platform_message.Plain(text=text)])
         quote_origin = query.pipeline_config.get('output', {}).get('misc', {}).get('quote-origin', False)
         try:
+            invalidate_execution_binding_lease()
             if (
                 await query.adapter.is_stream_output_supported()
                 and last_chunk is not None
@@ -631,6 +753,7 @@ class RuntimePipeline:
                     msg_sequence=int(getattr(last_chunk, 'msg_sequence', 0) or 0) + 1,
                     is_final=True,
                 )
+                invalidate_execution_binding_lease()
                 await query.adapter.reply_message_chunk(
                     message_source=query.message_event,
                     bot_message=chunk,
@@ -639,6 +762,7 @@ class RuntimePipeline:
                     is_final=True,
                 )
             elif user_visible:
+                invalidate_execution_binding_lease()
                 await query.adapter.reply_message(
                     message_source=query.message_event,
                     message=message,
@@ -646,6 +770,8 @@ class RuntimePipeline:
                 )
         except Exception as exc:
             self.ap.logger.warning('Failed to finalize cancelled platform response: %s', exc)
+        finally:
+            invalidate_execution_binding_lease()
 
     async def _process_query(self, query: pipeline_query.Query):
         """Close monitoring on every exit, including cancellation and plugin veto."""
@@ -653,17 +779,23 @@ class RuntimePipeline:
 
         status = 'error'
         try:
+            invalidate_execution_binding_lease()
             await self._process_query_body(query)
             if not query.variables.get('_monitoring_has_error'):
                 status = 'success'
         finally:
+            invalidate_execution_binding_lease()
             try:
-                # Never bypass the placement fence to repair a stale execution.
-                async with asyncio.timeout(2):
-                    await self._assert_execution_active(query)
-                await MonitoringHelper.finish_query(
-                    self.ap, query, query.variables.get('_monitoring_message_id', ''), status
-                )
+                message_id = query.variables.get('_monitoring_message_id', '')
+                if message_id:
+                    # Never bypass the placement fence to repair a stale execution.
+                    async with asyncio.timeout(2):
+                        await self._assert_execution_active(query)
+                    try:
+                        invalidate_execution_binding_lease()
+                        await MonitoringHelper.finish_query(self.ap, query, message_id, status)
+                    finally:
+                        invalidate_execution_binding_lease()
             except Exception as exc:
                 self.ap.logger.error(f'Failed to finalize query {query.query_id}: {exc}')
             finally:
@@ -671,6 +803,7 @@ class RuntimePipeline:
 
     async def _process_query_body(self, query: pipeline_query.Query):
         """处理请求"""
+        invalidate_execution_binding_lease()
         await self._assert_execution_active(query)
         # Get monitoring metadata
         bot_name = query.variables.get('_monitoring_bot_name', 'Unknown')
@@ -686,31 +819,43 @@ class RuntimePipeline:
         try:
             from . import monitoring_helper
 
-            message_id = await monitoring_helper.MonitoringHelper.record_query_start(
-                ap=self.ap,
-                query=query,
-                bot_id=query.bot_uuid or 'unknown',
-                bot_name=bot_name,
-                pipeline_id=self.pipeline_entity.uuid,
-                pipeline_name=pipeline_name,
-                runner_name=runner_name,
-            )
+            try:
+                invalidate_execution_binding_lease()
+                message_id = await monitoring_helper.MonitoringHelper.record_query_start(
+                    ap=self.ap,
+                    query=query,
+                    bot_id=query.bot_uuid or 'unknown',
+                    bot_name=bot_name,
+                    pipeline_id=self.pipeline_entity.uuid,
+                    pipeline_name=pipeline_name,
+                    runner_name=runner_name,
+                )
+            finally:
+                invalidate_execution_binding_lease()
             # Store message_id in query variables for LLM call monitoring
             query.variables['_monitoring_message_id'] = message_id
             # Notify adapter so it can map platform-specific IDs to monitoring message ID
             if hasattr(query.adapter, 'on_monitoring_message_created'):
                 await self._assert_execution_active(query)
-                await query.adapter.on_monitoring_message_created(query, message_id)
+                try:
+                    invalidate_execution_binding_lease()
+                    await query.adapter.on_monitoring_message_created(query, message_id)
+                finally:
+                    invalidate_execution_binding_lease()
         except Exception as e:
             self.ap.logger.error(f'Failed to record query start: {e}')
 
         try:
             if not getattr(query, '_message_received_dispatched', False):
                 await self._assert_execution_active(query)
-                ctx = await self.ap.plugin_connector.emit_event(
-                    message_received_event(query),
-                    getattr(query, '_listener_plugins', query.variables.get('_pipeline_bound_plugins')),
-                )
+                try:
+                    invalidate_execution_binding_lease()
+                    ctx = await self.ap.plugin_connector.emit_event(
+                        message_received_event(query),
+                        getattr(query, '_listener_plugins', query.variables.get('_pipeline_bound_plugins')),
+                    )
+                finally:
+                    invalidate_execution_binding_lease()
                 await self._assert_execution_active(query)
                 if ctx.is_prevented_default():
                     monitoring_helper.mark_plugin_handled(query, ctx)
@@ -728,30 +873,38 @@ class RuntimePipeline:
 
             # Record query success only if no error occurred during processing
             if not query.variables.get('_monitoring_has_error', False):
-                try:
-                    await self._assert_execution_active(query)
-                    await monitoring_helper.MonitoringHelper.record_query_success(
-                        ap=self.ap,
-                        message_id=message_id,
-                        query=query,
-                    )
-                except Exception as e:
-                    self.ap.logger.error(f'Failed to record query success: {e}')
+                if message_id:
+                    try:
+                        await self._assert_execution_active(query)
+                        invalidate_execution_binding_lease()
+                        await monitoring_helper.MonitoringHelper.record_query_success(
+                            ap=self.ap,
+                            message_id=message_id,
+                            query=query,
+                        )
+                    except Exception as e:
+                        self.ap.logger.error(f'Failed to record query success: {e}')
+                    finally:
+                        invalidate_execution_binding_lease()
 
                 # Record bot response message
-                try:
-                    await self._assert_execution_active(query)
-                    await monitoring_helper.MonitoringHelper.record_query_response(
-                        ap=self.ap,
-                        query=query,
-                        bot_id=query.bot_uuid or 'unknown',
-                        bot_name=bot_name,
-                        pipeline_id=self.pipeline_entity.uuid,
-                        pipeline_name=pipeline_name,
-                        runner_name=runner_name,
-                    )
-                except Exception as e:
-                    self.ap.logger.error(f'Failed to record query response: {e}')
+                if getattr(query, 'resp_message_chain', None) or getattr(query, 'resp_messages', None):
+                    try:
+                        await self._assert_execution_active(query)
+                        invalidate_execution_binding_lease()
+                        await monitoring_helper.MonitoringHelper.record_query_response(
+                            ap=self.ap,
+                            query=query,
+                            bot_id=query.bot_uuid or 'unknown',
+                            bot_name=bot_name,
+                            pipeline_id=self.pipeline_entity.uuid,
+                            pipeline_name=pipeline_name,
+                            runner_name=runner_name,
+                        )
+                    except Exception as e:
+                        self.ap.logger.error(f'Failed to record query response: {e}')
+                    finally:
+                        invalidate_execution_binding_lease()
 
         except WorkspaceError as e:
             query.variables['_monitoring_has_error'] = True
@@ -774,7 +927,9 @@ class RuntimePipeline:
             try:
                 from . import monitoring_helper
 
+                invalidate_execution_binding_lease()
                 await self._assert_execution_active(query)
+                invalidate_execution_binding_lease()
                 await monitoring_helper.MonitoringHelper.record_query_error(
                     ap=self.ap,
                     query=query,
@@ -787,6 +942,8 @@ class RuntimePipeline:
                 )
             except Exception as me:
                 self.ap.logger.error(f'Failed to record query error: {me}')
+            finally:
+                invalidate_execution_binding_lease()
 
         finally:
             self.ap.logger.debug(f'Query {query.query_id} processed')
@@ -1085,9 +1242,10 @@ class PipelineManager:
         uuid: str,
     ) -> RuntimePipeline | None:
         execution_context = self._normalize_execution_context(context, uuid)
-        await self.ap.workspace_service.get_execution_binding(
-            execution_context.workspace_uuid,
-            expected_generation=execution_context.placement_generation,
+        await ensure_execution_binding_active(
+            self.ap,
+            execution_context,
+            require_instance_match=False,
         )
         self._observe_execution_context(execution_context)
         key = (
