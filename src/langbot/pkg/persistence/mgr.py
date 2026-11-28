@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+import collections.abc
+import contextlib
+import contextvars
 import datetime
 import enum
+import math
+import re
 import sqlite3
 import typing
-import contextvars
-import asyncio
-import contextlib
-import re
 
 
 import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
@@ -129,6 +131,72 @@ _RUNTIME_TABLE_PRIVILEGES = frozenset({'SELECT', 'INSERT', 'UPDATE', 'DELETE'})
 _RUNTIME_SEQUENCE_PRIVILEGES = frozenset({'USAGE', 'SELECT'})
 _RUNTIME_ALLOWED_EXTENSIONS = frozenset({'plpgsql', 'vector'})
 
+_SQLITE_DEADLINE_MONOTONIC: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    'langbot_sqlite_deadline_monotonic',
+    default=None,
+)
+_SQLITE_SELECT_START_RE = re.compile(r'(?is)\Aselect\b')
+_SQLITE_UNSAFE_TEXT_RE = re.compile(
+    r'\b(insert|update|delete|replace|create|alter|drop|pragma|attach|detach|vacuum|reindex|for\s+update)\b',
+    re.IGNORECASE,
+)
+
+
+def _strip_leading_sql_comments(sql: str) -> str:
+    idx = 0
+    length = len(sql)
+    while idx < length:
+        while idx < length and sql[idx].isspace():
+            idx += 1
+        if sql.startswith('--', idx):
+            newline = sql.find('\n', idx + 2)
+            idx = length if newline < 0 else newline + 1
+            continue
+        if sql.startswith('/*', idx):
+            end_comment = sql.find('*/', idx + 2)
+            idx = length if end_comment < 0 else end_comment + 2
+            continue
+        break
+    trimmed = sql[idx:].strip()
+    if trimmed.endswith(';'):
+        trimmed = trimmed[:-1].strip()
+    return trimmed
+
+
+def _is_excluded_column(element: typing.Any) -> bool:
+    table = getattr(element, 'table', None)
+    return getattr(table, 'name', None) == 'excluded'
+
+
+def _expr_is_column_free_deterministic(
+    expr: typing.Any,
+    *,
+    allow_excluded_columns: bool = False,
+) -> bool:
+    if not isinstance(expr, sqlalchemy.sql.ClauseElement):
+        return True
+    for element in sqlalchemy.sql.visitors.iterate(expr):
+        if isinstance(element, sqlalchemy.sql.functions.FunctionElement):
+            return False
+        if isinstance(element, sqlalchemy.sql.elements.ColumnClause):
+            if allow_excluded_columns and _is_excluded_column(element):
+                continue
+            return False
+    return True
+
+
+def _extract_execution_options(stmt: typing.Any, kwargs: dict[str, typing.Any]) -> dict[str, typing.Any]:
+    merged: dict[str, typing.Any] = {}
+    getter = getattr(stmt, 'get_execution_options', None)
+    if callable(getter):
+        raw_stmt_opts = getter()
+        if isinstance(raw_stmt_opts, collections.abc.Mapping):
+            merged.update(raw_stmt_opts)
+    kw_opts = kwargs.get('execution_options')
+    if isinstance(kw_opts, collections.abc.Mapping):
+        merged.update(kw_opts)
+    return merged
+
 
 class PersistenceMode(enum.StrEnum):
     """Trusted persistence startup mode selected by the process entrypoint."""
@@ -140,6 +208,13 @@ class PersistenceMode(enum.StrEnum):
 
 class PersistenceManager:
     """Persistence module manager"""
+
+    _sqlite_default_busy_timeout_ms = 30_000
+    _sqlite_locked_retry_budget_seconds = 30.0
+    _sqlite_locked_retry_attempt_timeout_seconds = 5.0
+    _sqlite_locked_retry_base_seconds = 0.1
+    _sqlite_locked_retry_max_backoff_seconds = 1.0
+    _sqlite_locked_retry_max_attempts = 6
 
     ap: app.Application
 
@@ -1805,6 +1880,152 @@ class PersistenceManager:
             )
             raise
 
+    @contextlib.contextmanager
+    def sqlite_retry_deadline(self, deadline_monotonic: float) -> typing.Iterator[None]:
+        """Bound nested ``execute_async`` SQLite retries to ``deadline_monotonic``."""
+
+        existing = _SQLITE_DEADLINE_MONOTONIC.get()
+        effective = deadline_monotonic if existing is None else min(existing, deadline_monotonic)
+        token = _SQLITE_DEADLINE_MONOTONIC.set(effective)
+        try:
+            yield
+        finally:
+            _SQLITE_DEADLINE_MONOTONIC.reset(token)
+
+    def _resolve_sqlite_deadline(
+        self,
+        now: float,
+        args: tuple[typing.Any, ...],
+        kwargs: dict[str, typing.Any],
+    ) -> float:
+        deadline = now + max(0.0, float(self._sqlite_locked_retry_budget_seconds))
+        context_deadline = _SQLITE_DEADLINE_MONOTONIC.get()
+        if context_deadline is not None:
+            deadline = min(deadline, float(context_deadline))
+        stmt = args[0] if args else None
+        opts = _extract_execution_options(stmt, kwargs)
+        opt_deadline = opts.get('sqlite_deadline_monotonic')
+        if isinstance(opt_deadline, (int, float)) and not isinstance(opt_deadline, bool):
+            deadline = min(deadline, float(opt_deadline))
+        opt_timeout = opts.get('sqlite_timeout_seconds')
+        if isinstance(opt_timeout, (int, float)) and not isinstance(opt_timeout, bool):
+            deadline = min(deadline, now + max(0.0, float(opt_timeout)))
+        return deadline
+
+    @staticmethod
+    def _is_sqlite_statement_replay_safe(
+        args: tuple[typing.Any, ...],
+        kwargs: dict[str, typing.Any],
+    ) -> tuple[bool, bool]:
+        if len(args) >= 2 and args[1] is not None:
+            if not isinstance(args[1], (collections.abc.Mapping, collections.abc.Sequence)):
+                return False, False
+        raw_params = kwargs.get('parameters')
+        if raw_params is not None and not isinstance(raw_params, (collections.abc.Mapping, collections.abc.Sequence)):
+            return False, False
+        if not args:
+            return False, False
+
+        stmt = args[0]
+        opts = _extract_execution_options(stmt, kwargs)
+
+        is_readonly_select = False
+        if (
+            isinstance(stmt, sqlalchemy.sql.ClauseElement)
+            and getattr(stmt, 'is_select', False) is True
+            and not getattr(stmt, '_for_update_arg', None)
+        ):
+            is_readonly_select = True
+        elif isinstance(stmt, sqlalchemy.sql.elements.TextClause):
+            trimmed = _strip_leading_sql_comments(str(getattr(stmt, 'text', '') or ''))
+            if (
+                trimmed
+                and ';' not in trimmed
+                and _SQLITE_SELECT_START_RE.match(trimmed) is not None
+                and _SQLITE_UNSAFE_TEXT_RE.search(trimmed) is None
+            ):
+                is_readonly_select = True
+
+        explicit_flag = opts.get('sqlite_retry_safe')
+        if isinstance(explicit_flag, bool):
+            return explicit_flag, is_readonly_select
+
+        if is_readonly_select:
+            return True, True
+
+        if not isinstance(stmt, sqlalchemy.sql.dml.UpdateBase):
+            return False, False
+        if getattr(stmt, '_returning', None):
+            return False, False
+
+        if isinstance(stmt, sqlalchemy.sql.dml.Delete):
+            return True, False
+
+        if isinstance(stmt, sqlalchemy.sql.dml.Update):
+            if getattr(stmt, '_multi_values', None):
+                return False, False
+            rhs_values: list[typing.Any] = []
+            raw_values = getattr(stmt, '_values', None)
+            if isinstance(raw_values, collections.abc.Mapping):
+                rhs_values.extend(raw_values.values())
+            ordered_values = getattr(stmt, '_ordered_values', None)
+            if isinstance(ordered_values, collections.abc.Sequence):
+                for item in ordered_values:
+                    if isinstance(item, tuple) and len(item) == 2:
+                        rhs_values.append(item[1])
+            if not rhs_values:
+                return False, False
+            return (
+                all(_expr_is_column_free_deterministic(rhs) for rhs in rhs_values),
+                False,
+            )
+
+        if isinstance(stmt, sqlalchemy.sql.dml.Insert):
+            for prefix in getattr(stmt, '_prefixes', ()) or ():
+                first = prefix[0] if isinstance(prefix, tuple) and prefix else prefix
+                prefix_text = str(getattr(first, 'text', first) or '').upper()
+                if 'OR IGNORE' in prefix_text or 'OR REPLACE' in prefix_text:
+                    return True, False
+
+            post = getattr(stmt, '_post_values_clause', None)
+            if post is None:
+                return False, False
+            post_name = type(post).__name__
+            if post_name == 'OnConflictDoNothing':
+                return True, False
+            if post_name == 'OnConflictDoUpdate':
+                update_items = getattr(post, 'update_values_to_set', None) or ()
+                if isinstance(update_items, collections.abc.Mapping):
+                    rhs_items = list(update_items.values())
+                else:
+                    rhs_items = [
+                        item[1] if isinstance(item, tuple) and len(item) == 2 else item for item in update_items
+                    ]
+                if not rhs_items or not all(
+                    _expr_is_column_free_deterministic(rhs, allow_excluded_columns=True) for rhs in rhs_items
+                ):
+                    return False, False
+                raw_insert_values = getattr(stmt, '_values', None)
+                if isinstance(raw_insert_values, collections.abc.Mapping) and not all(
+                    _expr_is_column_free_deterministic(val) for val in raw_insert_values.values()
+                ):
+                    return False, False
+                return True, False
+            return False, False
+
+        return False, False
+
+    @staticmethod
+    async def _set_sqlite_busy_timeout(conn: typing.Any, timeout_ms: int) -> None:
+        if not hasattr(conn, 'get_raw_connection'):
+            return
+        raw = await conn.get_raw_connection()
+        driver_conn = getattr(raw, 'driver_connection', None)
+        if driver_conn is None or not callable(getattr(driver_conn, 'execute', None)):
+            return
+        async with driver_conn.execute(f'PRAGMA busy_timeout={int(timeout_ms)}') as _cursor:
+            pass
+
     async def execute_async(self, *args, **kwargs) -> sqlalchemy.engine.cursor.CursorResult:
         active = self._get_active_transaction()
         if active is not None:
@@ -1824,10 +2045,124 @@ class PersistenceManager:
             raise TenantScopeRequiredError(
                 'Cloud persistence access requires an explicit Workspace or discovery scope/unit of work'
             )
-        async with self.get_db_engine().connect() as conn:
-            result = await conn.execute(*args, **kwargs)
-            await conn.commit()
-            return result
+
+        engine = self.get_db_engine()
+        dialect_name = getattr(getattr(engine, 'dialect', None), 'name', None)
+        if isinstance(dialect_name, str) and dialect_name != 'sqlite':
+            async with engine.connect() as conn:
+                result = await conn.execute(*args, **kwargs)
+                await conn.commit()
+                return result
+
+        is_sqlite_dialect = dialect_name == 'sqlite'
+        replay_safe, is_readonly_select = self._is_sqlite_statement_replay_safe(args, kwargs)
+        loop = asyncio.get_running_loop()
+        deadline = self._resolve_sqlite_deadline(loop.time(), args, kwargs)
+        max_attempts = self._sqlite_locked_retry_max_attempts if replay_safe else 1
+        last_locked_exc: sqlalchemy.exc.OperationalError | None = None
+
+        for attempt in range(max_attempts):
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                if last_locked_exc is not None:
+                    raise last_locked_exc
+                raise sqlalchemy.exc.OperationalError(
+                    'EXECUTE',
+                    {},
+                    sqlite3.OperationalError('database is locked'),
+                )
+            executed_ok = False
+            try:
+                if is_sqlite_dialect:
+                    conn_ctx = engine.connect()
+                    entered = False
+                    exited = False
+                    conn: typing.Any = None
+                    try:
+                        try:
+                            conn = await asyncio.wait_for(conn_ctx.__aenter__(), timeout=remaining)
+                            entered = True
+                        except TimeoutError as exc:
+                            raise sqlalchemy.exc.OperationalError(
+                                'CONNECT',
+                                {},
+                                sqlite3.OperationalError('database is locked'),
+                            ) from exc
+
+                        remaining_exec = deadline - loop.time()
+                        if remaining_exec <= 0:
+                            raise sqlalchemy.exc.OperationalError(
+                                'EXECUTE',
+                                {},
+                                sqlite3.OperationalError('database is locked'),
+                            )
+                        slice_seconds = (
+                            min(
+                                float(self._sqlite_locked_retry_attempt_timeout_seconds),
+                                remaining_exec,
+                            )
+                            if max_attempts > 1
+                            else remaining_exec
+                        )
+                        busy_ms = max(1, int(math.ceil(slice_seconds * 1000)))
+                        await self._set_sqlite_busy_timeout(conn, busy_ms)
+                        result = await conn.execute(*args, **kwargs)
+                        executed_ok = True
+                        await conn.commit()
+                        return result
+                    except BaseException as exc:
+                        if entered:
+                            if conn is not None and conn.in_transaction():
+                                with contextlib.suppress(Exception):
+                                    await conn.rollback()
+                            with contextlib.suppress(Exception):
+                                await self._set_sqlite_busy_timeout(
+                                    conn,
+                                    self._sqlite_default_busy_timeout_ms,
+                                )
+                            exited = True
+                            suppress = await conn_ctx.__aexit__(type(exc), exc, exc.__traceback__)
+                            if not suppress:
+                                raise
+                        else:
+                            raise
+                    finally:
+                        if entered and not exited:
+                            with contextlib.suppress(Exception):
+                                await self._set_sqlite_busy_timeout(
+                                    conn,
+                                    self._sqlite_default_busy_timeout_ms,
+                                )
+                            await conn_ctx.__aexit__(None, None, None)
+                else:
+                    async with engine.connect() as conn:
+                        result = await conn.execute(*args, **kwargs)
+                        executed_ok = True
+                        await conn.commit()
+                        return result
+            except sqlalchemy.exc.OperationalError as exc:
+                if 'database is locked' not in str(exc).lower():
+                    raise
+                last_locked_exc = exc
+                if not replay_safe or (executed_ok and not is_readonly_select) or attempt >= max_attempts - 1:
+                    raise
+                remaining_after = deadline - loop.time()
+                if remaining_after <= 0.005:
+                    raise
+                raw_delay = min(
+                    float(self._sqlite_locked_retry_base_seconds) * (2**attempt),
+                    float(self._sqlite_locked_retry_max_backoff_seconds),
+                )
+                delay = min(raw_delay, remaining_after - 0.005)
+                if delay <= 0:
+                    raise
+                self.ap.logger.warning(
+                    f'SQLite database is locked, retrying query in {delay:.2f}s '
+                    f'({attempt + 1}/{max_attempts}, {remaining_after:.2f}s remaining)'
+                )
+                await asyncio.sleep(delay)
+
+        raise RuntimeError('unreachable sqlite locked retry state')
 
     @staticmethod
     async def _execute_on_scoped_connection(
