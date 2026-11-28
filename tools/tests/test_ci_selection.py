@@ -40,7 +40,7 @@ class ChangeSelectionTests(unittest.TestCase):
         self.git('add', '-A')
         self.git('commit', '-qm', 'change')
 
-    def run_selector(self, event='pull_request', base=None):
+    def run_selector(self, event='pull_request', base=None, pr_head=''):
         self.output.unlink(missing_ok=True)
         subprocess.run(
             [sys.executable, str(CLASSIFIER)],
@@ -49,6 +49,7 @@ class ChangeSelectionTests(unittest.TestCase):
                 **os.environ,
                 'EVENT_NAME': event,
                 'BASE_SHA': self.base if base is None else base,
+                'PR_HEAD_SHA': pr_head,
                 'GITHUB_OUTPUT': str(self.output),
                 'GITHUB_STEP_SUMMARY': '',
             },
@@ -150,6 +151,64 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertIn('workflows', missing)
         self.assertEqual(self.run_selector('schedule')[0], missing)
         self.assertEqual(self.run_selector('workflow_dispatch')[0], missing)
+
+    def test_tools_changes_select_by_actual_consumer(self):
+        ci_tool_lanes = {'workflows', 'core_full', 'compatibility', 'packaging'}
+        cases = [
+            (
+                'tools/entrypoints/regression_traffic.py',
+                {'core', 'packaging'},
+                {'compatibility', 'core_full', 'box', 'docs'},
+            ),
+            (
+                'tools/regression/observability_contract.py',
+                {'core', 'packaging'},
+                {'compatibility', 'core_full', 'box'},
+            ),
+            ('tools/tests/test_observability_contract.py', {'core', 'packaging'}, {'compatibility', 'core_full'}),
+            ('tools/README.md', {'packaging'}, {'core', 'compatibility', 'core_full'}),
+            ('tools/regression/http_bot.py', {'core', 'box', 'packaging'}, {'compatibility', 'frontend', 'docs'}),
+            ('tools/ci_core_tests.py', ci_tool_lanes, {'production_image'}),
+            ('tools/verify_junit.py', ci_tool_lanes, {'production_image'}),
+            ('tools/check_ci_telemetry.py', ci_tool_lanes, {'production_image'}),
+            ('tools/tests/test_ci_selection.py', ci_tool_lanes, {'production_image'}),
+            ('tools/tests/test_p0_acceptance.py', ci_tool_lanes, {'production_image'}),
+            ('tools/new_ci_helper.py', ci_tool_lanes, {'production_image'}),
+        ]
+        for path, expected, excluded in cases:
+            with self.subTest(path=path):
+                self.git('reset', '--hard', self.base)
+                self.write(path)
+                self.commit()
+                lanes, changed = self.run_selector()
+                self.assertEqual(changed, [path])
+                self.assertTrue(expected <= lanes, expected - lanes)
+                self.assertFalse(excluded & lanes, excluded & lanes)
+
+    def test_synthetic_pr_merge_ignores_stale_base_commits_on_target_branch(self):
+        old_base = self.base
+        self.git('checkout', '-qb', 'pr-branch', old_base)
+        self.write('docs/en/guide.mdx')
+        self.commit()
+        pr_head = self.git('rev-parse', 'HEAD').strip()
+
+        self.git('checkout', '-qb', 'target-branch', old_base)
+        self.write('uv.lock')
+        self.write('sdk/src/langbot_plugin/version.py')
+        self.commit()
+        self.git('merge', '--no-ff', '-m', 'Merge PR into current target', pr_head)
+
+        lanes, changed = self.run_selector(event='pull_request', base=old_base, pr_head=pr_head)
+        self.assertEqual(changed, ['docs/en/guide.mdx'])
+        self.assertEqual(lanes, {'docs'})
+
+        # Without a matching PR_HEAD_SHA (e.g. a non-synthetic branch merge),
+        # fall back to the full BASE_SHA..HEAD diff rather than narrowing.
+        fallback_lanes, fallback_changed = self.run_selector(
+            event='pull_request', base=old_base, pr_head=self.git('rev-parse', 'HEAD').strip()
+        )
+        self.assertIn('uv.lock', fallback_changed)
+        self.assertIn('compatibility', fallback_lanes)
 
 
 class MandatoryEvidenceTests(unittest.TestCase):

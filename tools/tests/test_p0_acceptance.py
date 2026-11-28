@@ -144,3 +144,63 @@ class TestP0Scope(unittest.TestCase):
                     text=True,
                 )
                 self.assertEqual(result.returncode == 0, expected, result.stderr)
+
+    def test_synthetic_pr_merge_ignores_stale_base_commits_on_target_branch(self):
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+
+            def git(*args):
+                return subprocess.check_output(
+                    [
+                        'git',
+                        '-c',
+                        'user.name=P0 Test',
+                        '-c',
+                        'user.email=p0@example.invalid',
+                        *args,
+                    ],
+                    cwd=repo,
+                    text=True,
+                ).strip()
+
+            git('init', '-q')
+            git('commit', '--allow-empty', '-qm', 'old base')
+            old_base = git('rev-parse', 'HEAD')
+
+            git('checkout', '-qb', 'pr-branch', old_base)
+            doc = repo / 'docs/en/guide.mdx'
+            doc.parent.mkdir(parents=True)
+            doc.write_text('# guide\n')
+            git('add', '.')
+            git('commit', '-qm', 'docs only')
+            pr_head = git('rev-parse', 'HEAD')
+
+            git('checkout', '-qb', 'target-branch', old_base)
+            src = repo / 'src/langbot/pkg/core/app.py'
+            src.parent.mkdir(parents=True)
+            src.write_text('APP = 1\n')
+            git('add', '.')
+            git('commit', '-qm', 'unrelated target commit')
+            git('merge', '--no-ff', '-m', 'Merge PR into current target', pr_head)
+            merge_head = git('rev-parse', 'HEAD')
+
+            output = repo / 'changes'
+            subprocess.run(
+                [sys.executable, str(root / 'scripts/p0_acceptance_scope.py')],
+                cwd=repo,
+                env={
+                    **os.environ,
+                    'EVENT_NAME': 'pull_request',
+                    'BASE_SHA': old_base,
+                    'HEAD_SHA': merge_head,
+                    'PR_HEAD_SHA': pr_head,
+                    'GITHUB_OUTPUT': str(output),
+                },
+                capture_output=True,
+                check=True,
+            )
+            self.assertEqual(
+                set(output.read_text().splitlines()),
+                {'persistence=false', 'permissions=false', 'image=false'},
+            )

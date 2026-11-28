@@ -44,6 +44,30 @@ def under(path, *prefixes):
     return any(path.startswith(prefix) for prefix in prefixes)
 
 
+CI_TOOL_PATHS = {
+    'tools/ci_core_tests.py',
+    'tools/verify_junit.py',
+    'tools/check_ci_telemetry.py',
+    'tools/tests/test_p0_acceptance.py',
+}
+REGRESSION_TOOL_PREFIXES = (
+    'tools/entrypoints/',
+    'tools/regression/',
+    'tools/profiles/',
+    'tools/contracts/',
+    'tools/fixtures/',
+    'tools/tests/',
+)
+
+
+def _is_ci_tool(path):
+    return path in CI_TOOL_PATHS or (path.startswith('tools/tests/test_ci_') and path.endswith('.py'))
+
+
+def _is_valid_sha(value):
+    return bool(re.fullmatch('[0-9a-f]{40}', value)) and value != '0' * 40
+
+
 def classify(paths):
     lanes = set()
     for path in paths:
@@ -61,8 +85,20 @@ def classify(paths):
             'web/pnpm-lock.yaml',
         }:
             lanes.add('production_image')
-        if under(path, '.github/workflows/', '.github/actions/', 'tools/'):
+        if under(path, '.github/workflows/', '.github/actions/') or _is_ci_tool(path):
             lanes |= ALL - {'production_image'}
+        elif under(path, 'tools/'):
+            if path == 'tools/regression/http_bot.py':
+                # Imported by tests/e2e/test_*.py; keep full E2E and Box lanes active.
+                lanes |= {'core', 'box', 'packaging'}
+            elif path.endswith('.md'):
+                lanes.add('packaging')
+            elif under(path, *REGRESSION_TOOL_PREFIXES):
+                # Core Smoke already runs tools/tests and regression_ci on every PR;
+                # keep PR API contracts (via core) and packaging exclusion checks.
+                lanes |= {'core', 'packaging'}
+            else:
+                lanes |= ALL - {'production_image'}
         elif path in {'pyproject.toml', 'uv.lock', 'pytest.ini', 'run_tests.sh', 'Makefile'}:
             lanes |= ALL - {'docs', 'workflows'}
         elif under(path, 'sdk/'):
@@ -168,11 +204,31 @@ def classify(paths):
     return lanes
 
 
-def diff(base):
-    if not re.fullmatch('[0-9a-f]{40}', base) or base == '0' * 40:
+def resolve_diff_base(base, event='', pr_head=''):
+    if not _is_valid_sha(base):
         raise ValueError('No valid base commit')
+    if event == 'pull_request' and _is_valid_sha(pr_head):
+        # On pull_request runs, actions/checkout checks out GitHub's synthetic
+        # 2-parent merge commit (p1 = current target base tip, p2 = PR head).
+        # github.event.pull_request.base.sha can lag behind p1 when the target
+        # branch advances; diffing p1..HEAD isolates the PR's actual changes
+        # without dragging in unrelated commits already on the target branch.
+        parents = subprocess.check_output(['git', 'rev-list', '--parents', '-n', '1', 'HEAD'], text=True).split()[1:]
+        if len(parents) == 2 and parents[1] == pr_head:
+            is_ancestor = subprocess.run(
+                ['git', 'merge-base', '--is-ancestor', base, parents[0]],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if is_ancestor.returncode == 0:
+                return parents[0]
+    return base
+
+
+def diff(base, event='', pr_head=''):
+    effective_base = resolve_diff_base(base, event=event, pr_head=pr_head)
     # HEAD is the synthetic PR merge commit. Do not hide the source side of renames.
-    data = subprocess.check_output(['git', 'diff', '--name-only', '--no-renames', '-z', base, 'HEAD', '--'])
+    data = subprocess.check_output(['git', 'diff', '--name-only', '--no-renames', '-z', effective_base, 'HEAD', '--'])
     return [path.decode('utf-8') for path in data.split(b'\0') if path]
 
 
@@ -181,7 +237,7 @@ def main():
     paths = []
     if event in {'pull_request', 'push'}:
         try:
-            paths = diff(os.environ.get('BASE_SHA', ''))
+            paths = diff(os.environ.get('BASE_SHA', ''), event=event, pr_head=os.environ.get('PR_HEAD_SHA', ''))
         except (subprocess.CalledProcessError, ValueError) as exc:
             print(f'Change detection unavailable ({exc}); selecting all CI lanes.')
             lanes = ALL

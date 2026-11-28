@@ -218,6 +218,7 @@ jobs:
     if: fromJSON(needs.plan.outputs.selection)['sqlalchemy-compat']
     name: SQLAlchemy ${{ matrix.sqlalchemy-version }} compatibility
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -232,6 +233,8 @@ jobs:
         with:
           python-version: '3.12'
       - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
       - name: Install dependencies
         run: |
           uv sync --dev --frozen
@@ -249,6 +252,7 @@ jobs:
     if: fromJSON(needs.plan.outputs.selection)['integration']
     name: Fast Integration Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code
@@ -263,6 +267,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
 
       - name: Install dependencies
         run: uv sync --dev --frozen
@@ -342,6 +348,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
 
       - name: Install dependencies
         run: uv sync --dev --frozen
@@ -383,6 +391,7 @@ jobs:
     if: fromJSON(needs.plan.outputs.selection)['e2e']
     name: E2E Startup Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
@@ -397,19 +406,23 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
 
       - name: Install dependencies
         run: uv sync --dev --frozen
-
-      - name: Set up Node.js for real-stack browser tests
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 8.9.2
+
+      - name: Set up Node.js for real-stack browser tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
 
       - name: Install frontend dependencies and Chromium
         working-directory: web
@@ -448,26 +461,12 @@ jobs:
             -o xfail_strict=true -q --tb=short -rs --junitxml=e2e-results.xml
           python tools/verify_junit.py e2e-results.xml
 
-      - name: Check Docker for the required LocalAgent Box contract
-        if: needs.plan.outputs.full_e2e == 'true'
-        run: docker info
-
-      - name: Run required LocalAgent contracts
-        if: needs.plan.outputs.full_e2e == 'true'
-        env:
-          LANGBOT_LEGACY_PLUGIN_ROOT: ${{ github.workspace }}/plugins
-        run: |
-          uv run --no-sync pytest --required-suite local_agent \
-            -q --tb=short -rs --junitxml=local-agent-results.xml
-
-      - name: Upload browser, startup and LocalAgent results
+      - name: Upload browser and startup results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: local-agent-contract-results
-          path: |
-            e2e-results.xml
-            local-agent-results.xml
+          name: e2e-startup-results
+          path: e2e-results.xml
           if-no-files-found: ignore
 
       - name: E2E Test Summary
@@ -477,11 +476,12 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
-  box-integration:
+  local-agent-contracts:
     needs: plan
-    if: fromJSON(needs.plan.outputs.selection)['box-integration']
-    name: Box Integration Tests
+    if: fromJSON(needs.plan.outputs.selection)['local-agent-contracts']
+    name: LocalAgent Contract Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout code
@@ -496,6 +496,59 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --dev --frozen
+
+      - name: Check Docker for the required LocalAgent Box contract
+        run: docker info
+
+      - name: Run required LocalAgent contracts
+        env:
+          LANGBOT_LEGACY_PLUGIN_ROOT: ${{ github.workspace }}/plugins
+        run: |
+          uv run --no-sync pytest --required-suite local_agent \
+            -q --tb=short -rs --junitxml=local-agent-results.xml
+
+      - name: Upload LocalAgent contract results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-agent-contract-results
+          path: local-agent-results.xml
+          if-no-files-found: ignore
+
+      - name: LocalAgent Contract Summary
+        if: always()
+        run: |
+          echo "## LocalAgent Contract Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  box-integration:
+    needs: plan
+    if: fromJSON(needs.plan.outputs.selection)['box-integration']
+    name: Box Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
 
       - name: Install dependencies
         run: uv sync --dev --frozen
@@ -530,7 +583,7 @@ jobs:
     name: Coverage Gate
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [plan, test, integration, api-contracts, postgres-contracts, sqlalchemy-compat, e2e, box-integration]
+    needs: [plan, test, integration, api-contracts, postgres-contracts, sqlalchemy-compat, e2e, local-agent-contracts, box-integration]
     if: always()
 
     steps:

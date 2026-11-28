@@ -9,11 +9,15 @@ import sys
 
 UNIT_AREAS = {
     'agent': ('agent', 'pipeline', 'provider'),
+    'alerts': ('telemetry', 'api', 'workspace'),
     'api': ('api', 'plugin', 'workspace'),
     'box': ('box', 'agent', 'plugin'),
     'cloud': ('cloud', 'core', 'workspace'),
     'command': ('command', 'pipeline'),
     'discover': ('discover', 'plugin'),
+    'i18n': ('agent', 'api', 'command', 'pipeline', 'provider'),
+    'message_policy': ('message_policy', 'agent', 'api', 'persistence', 'pipeline', 'platform', 'telemetry'),
+    'notification': ('core', 'workspace', 'api'),
     'operation_trace': (
         'test_operation_trace_incremental.py',
         'test_operation_trace_integrity.py',
@@ -21,27 +25,39 @@ UNIT_AREAS = {
     ),
     'pipeline': ('pipeline', 'agent', 'plugin', 'provider'),
     'platform': ('platform', 'pipeline'),
+    'plugin': ('plugin', 'agent', 'api', 'box', 'discover', 'pipeline', 'platform', 'rag'),
     'provider': ('provider', 'agent', 'pipeline'),
     'rag': ('rag', 'plugin', 'vector'),
+    'skill': ('agent', 'api', 'box', 'plugin', 'provider', 'storage'),
+    'storage': ('storage', 'agent', 'api', 'box', 'persistence', 'plugin', 'provider', 'rag'),
     'survey': ('survey', 'api'),
     'telemetry': ('telemetry', 'api'),
     'vector': ('vector', 'rag'),
+    'workspace': ('workspace', 'api', 'persistence', 'pipeline', 'platform', 'plugin', 'provider', 'rag', 'telemetry'),
 }
 INTEGRATION_AREAS = {
     'agent': ('api', 'pipeline', 'plugin'),
+    'alerts': ('api',),
     'api': ('api', 'plugin'),
     'box': ('api', 'plugin', 'skill'),
     'cloud': ('api',),
     'command': ('pipeline',),
     'discover': ('plugin',),
+    'i18n': ('api',),
+    'message_policy': ('api', 'pipeline'),
+    'notification': ('api',),
     'operation_trace': ('api',),
     'pipeline': ('pipeline', 'api', 'plugin'),
     'platform': ('pipeline',),
+    'plugin': ('api', 'persistence', 'plugin', 'storage'),
     'provider': ('pipeline', 'plugin'),
     'rag': ('plugin', 'vector', 'persistence'),
+    'skill': ('api', 'skill', 'plugin'),
+    'storage': ('api', 'persistence', 'plugin', 'skill', 'storage'),
     'survey': ('api',),
     'telemetry': ('api',),
     'vector': ('vector', 'persistence'),
+    'workspace': ('api', 'persistence', 'skill', 'storage'),
 }
 TEST_ROOTS = ('tests/unit_tests', 'tests/integration', 'tests/smoke', 'tests/e2e', 'tests/integration_tests')
 FULL = (['tests/unit_tests', 'tests/smoke'], ['tests/integration'])
@@ -125,6 +141,7 @@ def build_plan():
         'api-contracts': unit and os.environ.get('GITHUB_EVENT_NAME') == 'pull_request',
         'postgres-contracts': flags['persistence'] or flags['permissions'] or flags['compatibility'],
         'e2e': full_e2e or flags['frontend'],
+        'local-agent-contracts': full_e2e,
         'box-integration': box,
     }
     versions = ['3.12', '3.11', '3.13', '3.14'] if flags['compatibility'] else ['3.12']
