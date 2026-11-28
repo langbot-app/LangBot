@@ -7,8 +7,10 @@ handoff has runnable coverage where the private web build is unavailable.
 
 import base64
 import json
+import os
 import secrets
 import time
+import uuid
 
 import pytest
 import sqlalchemy as sa
@@ -49,7 +51,17 @@ MODELS = (
 async def _setup(tmp_path, monkeypatch):
     """One enrolled-instance account, two devices, and a TOTP credential."""
     monkeypatch.setattr(constants, 'instance_id', 'handoff-unit-instance')
-    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "handoff.db"}')
+    # HARNESS_TEST_POSTGRES_URL runs these against a real server in a disposable
+    # schema; without it they stay on SQLite.
+    postgres = os.getenv('HARNESS_TEST_POSTGRES_URL')
+    if postgres:
+        assert sa.make_url(postgres).drivername == 'postgresql+asyncpg'
+        schema = f'harness_handoff_{uuid.uuid4().hex}'
+        engine = create_async_engine(postgres, connect_args={'server_settings': {'search_path': schema}})
+        async with engine.begin() as conn:
+            await conn.execute(sa.text(f'CREATE SCHEMA IF NOT EXISTS {schema}'))
+    else:
+        engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "handoff.db"}')
     ap = application(engine, 'https://127.0.0.1:5399', secrets.token_hex(32))
     ap.totp_service = totp.TotpService(ap)
     async with engine.begin() as conn:
