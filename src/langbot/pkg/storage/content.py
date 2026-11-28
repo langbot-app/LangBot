@@ -81,8 +81,6 @@ class ContentStore:
         return StorageMgr._require_execution_scope(context)
 
     async def _s3(self, name, locator=None):
-        from .providers.s3storage import S3StorageProvider
-
         config = (self._config().get('backends') or {}).get(name)
         if not isinstance(config, dict) or config.get('type', 's3') != 's3':
             raise ValueError(f'Content backend {name!r} is not configured')
@@ -95,6 +93,8 @@ class ContentStore:
             raise ValueError('Historical content backend location has changed')
         async with self._provider_lock:
             if name not in self._providers:
+                from .providers.s3storage import S3StorageProvider
+
                 proxy = SimpleNamespace(
                     instance_config=SimpleNamespace(data={'storage': {'s3': config}}), logger=self.ap.logger
                 )
