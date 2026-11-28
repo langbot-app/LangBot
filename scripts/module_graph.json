@@ -1,0 +1,366 @@
+{
+  "schema_version": 1,
+  "description": "Declarative runtime dependency graph and hidden-internal boundaries for all top-level packages under src/langbot/pkg/ (see #3206).",
+  "layers": [
+    "foundation",
+    "infrastructure",
+    "domain",
+    "orchestration",
+    "interface",
+    "bootstrap"
+  ],
+  "modules": {
+    "config": {
+      "layer": "foundation",
+      "depends_on": []
+    },
+    "entity": {
+      "layer": "foundation",
+      "depends_on": [
+        "persistence"
+      ]
+    },
+    "i18n": {
+      "layer": "foundation",
+      "depends_on": [
+        "entity",
+        "persistence"
+      ]
+    },
+    "notification": {
+      "layer": "foundation",
+      "depends_on": [
+        "utils"
+      ]
+    },
+    "utils": {
+      "layer": "foundation",
+      "depends_on": [
+        "core",
+        "entity",
+        "persistence",
+        "workspace"
+      ]
+    },
+    "discover": {
+      "layer": "infrastructure",
+      "depends_on": [
+        "core",
+        "utils"
+      ]
+    },
+    "operation_trace": {
+      "layer": "infrastructure",
+      "depends_on": [
+        "api",
+        "core",
+        "entity",
+        "utils"
+      ]
+    },
+    "persistence": {
+      "layer": "infrastructure",
+      "depends_on": [
+        "api",
+        "cloud",
+        "core",
+        "entity",
+        "platform",
+        "storage",
+        "utils"
+      ],
+      "private_submodules": [
+        "databases",
+        "migrations",
+        "alembic"
+      ],
+      "notes": "Upward runtime deps (api/cloud/core/platform/storage) are legacy debt tracked in #3196 and #3200; private_submodules hide concrete DB drivers and migrations."
+    },
+    "storage": {
+      "layer": "infrastructure",
+      "depends_on": [
+        "api",
+        "core",
+        "entity",
+        "i18n",
+        "persistence",
+        "utils"
+      ]
+    },
+    "telemetry": {
+      "layer": "infrastructure",
+      "depends_on": [
+        "command",
+        "core",
+        "entity",
+        "message_policy",
+        "utils"
+      ]
+    },
+    "vector": {
+      "layer": "infrastructure",
+      "depends_on": [
+        "api",
+        "core",
+        "entity",
+        "utils",
+        "workspace"
+      ]
+    },
+    "alerts": {
+      "layer": "domain",
+      "depends_on": [
+        "entity",
+        "i18n",
+        "notification",
+        "persistence",
+        "telemetry",
+        "utils",
+        "workspace"
+      ]
+    },
+    "box": {
+      "layer": "domain",
+      "depends_on": [
+        "agent",
+        "api",
+        "cloud",
+        "entity",
+        "i18n",
+        "persistence",
+        "provider",
+        "storage",
+        "telemetry",
+        "utils"
+      ]
+    },
+    "cloud": {
+      "layer": "domain",
+      "depends_on": [
+        "alerts",
+        "entity",
+        "i18n",
+        "notification",
+        "persistence",
+        "platform",
+        "workspace"
+      ]
+    },
+    "message_policy": {
+      "layer": "domain",
+      "depends_on": [
+        "i18n",
+        "pipeline",
+        "platform",
+        "telemetry",
+        "utils"
+      ]
+    },
+    "provider": {
+      "layer": "domain",
+      "depends_on": [
+        "agent",
+        "api",
+        "box",
+        "core",
+        "discover",
+        "entity",
+        "i18n",
+        "persistence",
+        "pipeline",
+        "platform",
+        "storage",
+        "telemetry",
+        "utils",
+        "workspace"
+      ]
+    },
+    "rag": {
+      "layer": "domain",
+      "depends_on": [
+        "api",
+        "core",
+        "entity",
+        "i18n",
+        "persistence",
+        "plugin",
+        "telemetry",
+        "workspace"
+      ]
+    },
+    "skill": {
+      "layer": "domain",
+      "depends_on": [
+        "api",
+        "core",
+        "entity",
+        "persistence",
+        "utils"
+      ]
+    },
+    "survey": {
+      "layer": "domain",
+      "depends_on": [
+        "core",
+        "entity",
+        "persistence",
+        "utils"
+      ]
+    },
+    "workspace": {
+      "layer": "domain",
+      "depends_on": [
+        "api",
+        "entity",
+        "notification",
+        "persistence",
+        "utils"
+      ]
+    },
+    "agent": {
+      "layer": "orchestration",
+      "depends_on": [
+        "api",
+        "box",
+        "core",
+        "entity",
+        "i18n",
+        "persistence",
+        "pipeline",
+        "platform",
+        "provider",
+        "storage",
+        "telemetry",
+        "utils"
+      ]
+    },
+    "command": {
+      "layer": "orchestration",
+      "depends_on": [
+        "agent",
+        "api",
+        "core",
+        "entity",
+        "i18n",
+        "persistence",
+        "platform",
+        "utils"
+      ]
+    },
+    "pipeline": {
+      "layer": "orchestration",
+      "depends_on": [
+        "agent",
+        "api",
+        "cloud",
+        "core",
+        "entity",
+        "i18n",
+        "message_policy",
+        "persistence",
+        "platform",
+        "plugin",
+        "provider",
+        "telemetry",
+        "utils",
+        "workspace"
+      ]
+    },
+    "plugin": {
+      "layer": "orchestration",
+      "depends_on": [
+        "agent",
+        "api",
+        "box",
+        "core",
+        "entity",
+        "i18n",
+        "persistence",
+        "pipeline",
+        "platform",
+        "provider",
+        "storage",
+        "telemetry",
+        "utils",
+        "workspace"
+      ]
+    },
+    "api": {
+      "layer": "interface",
+      "depends_on": [
+        "agent",
+        "alerts",
+        "cloud",
+        "command",
+        "core",
+        "discover",
+        "entity",
+        "i18n",
+        "message_policy",
+        "operation_trace",
+        "persistence",
+        "pipeline",
+        "platform",
+        "plugin",
+        "provider",
+        "rag",
+        "skill",
+        "storage",
+        "telemetry",
+        "utils",
+        "workspace"
+      ]
+    },
+    "platform": {
+      "layer": "interface",
+      "depends_on": [
+        "agent",
+        "api",
+        "cloud",
+        "command",
+        "config",
+        "core",
+        "discover",
+        "entity",
+        "i18n",
+        "message_policy",
+        "persistence",
+        "pipeline",
+        "plugin",
+        "telemetry",
+        "utils",
+        "workspace"
+      ]
+    },
+    "core": {
+      "layer": "bootstrap",
+      "depends_on": [
+        "agent",
+        "alerts",
+        "api",
+        "box",
+        "cloud",
+        "command",
+        "config",
+        "discover",
+        "i18n",
+        "message_policy",
+        "notification",
+        "operation_trace",
+        "persistence",
+        "pipeline",
+        "platform",
+        "plugin",
+        "provider",
+        "rag",
+        "skill",
+        "storage",
+        "survey",
+        "telemetry",
+        "utils",
+        "vector",
+        "workspace"
+      ]
+    }
+  }
+}
