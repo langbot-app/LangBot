@@ -4942,17 +4942,7 @@ const viVN = {
     selectFromSidebar: 'Chọn một workflow ở thanh bên',
     editor: 'Các bước',
     workbench: 'Xây dựng',
-    history: {
-      scope: 'Đọc từ',
-      scopes: {
-        conversation: 'Cuộc trò chuyện này',
-        group: 'Nhóm này',
-      },
-      limit: 'Số tin nhắn',
-      sinceHours: 'Trong vòng giờ',
-      noLimit: 'Không giới hạn',
-      hint: 'Dùng để tóm tắt: chuyển cho bước Mô hình trả lời',
-    },
+    runsTab: 'Lần chạy',
     more: 'Thêm',
     import: 'Nhập',
     export: 'Xuất',
@@ -5331,6 +5321,17 @@ const viVN = {
       max: 'Lớn nhất',
       seed: 'Cố định theo',
       seedHint: 'Thường là người gửi',
+    },
+    history: {
+      scope: 'Đọc từ',
+      scopes: {
+        conversation: 'Cuộc trò chuyện này',
+        group: 'Nhóm này',
+      },
+      limit: 'Số tin nhắn',
+      sinceHours: 'Trong vòng giờ',
+      noLimit: 'Không giới hạn',
+      hint: 'Dùng để tóm tắt: chuyển cho bước Mô hình trả lời',
     },
     code: {
       inputs: 'Đầu vào',

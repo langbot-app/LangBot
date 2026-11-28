@@ -4686,17 +4686,7 @@ const zhHant = {
     selectFromSidebar: '從側欄選擇一個工作流',
     editor: '步驟編排',
     workbench: '編排',
-    history: {
-      scope: '讀取範圍',
-      scopes: {
-        conversation: '這個對話',
-        group: '這個群',
-      },
-      limit: '筆數',
-      sinceHours: '最近幾小時',
-      noLimit: '不限',
-      hint: '常用於總結：把結果交給「模型回覆」',
-    },
+    runsTab: '執行紀錄',
     more: '更多',
     import: '匯入',
     export: '匯出',
@@ -5071,6 +5061,17 @@ const zhHant = {
       max: '最大值',
       seed: '依誰固定',
       seedHint: '通常用傳送者，每個人有自己的結果',
+    },
+    history: {
+      scope: '讀取範圍',
+      scopes: {
+        conversation: '這個對話',
+        group: '這個群',
+      },
+      limit: '筆數',
+      sinceHours: '最近幾小時',
+      noLimit: '不限',
+      hint: '常用於總結：把結果交給「模型回覆」',
     },
     code: {
       inputs: '輸入',

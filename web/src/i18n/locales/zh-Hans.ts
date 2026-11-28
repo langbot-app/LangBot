@@ -4686,17 +4686,7 @@ const zhHans = {
     selectFromSidebar: '从侧栏选择一个工作流',
     editor: '步骤编排',
     workbench: '编排',
-    history: {
-      scope: '读取范围',
-      scopes: {
-        conversation: '这个会话',
-        group: '这个群',
-      },
-      limit: '条数',
-      sinceHours: '最近几小时',
-      noLimit: '不限',
-      hint: '常用于总结：把结果交给「模型回复」',
-    },
+    runsTab: '运行记录',
     more: '更多',
     import: '导入',
     export: '导出',
@@ -5071,6 +5061,17 @@ const zhHans = {
       max: '最大值',
       seed: '按谁固定',
       seedHint: '通常用发送者，每个人有自己的结果',
+    },
+    history: {
+      scope: '读取范围',
+      scopes: {
+        conversation: '这个会话',
+        group: '这个群',
+      },
+      limit: '条数',
+      sinceHours: '最近几小时',
+      noLimit: '不限',
+      hint: '常用于总结：把结果交给「模型回复」',
     },
     code: {
       inputs: '输入',

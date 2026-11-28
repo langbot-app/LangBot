@@ -4974,17 +4974,7 @@ const enUS = {
     selectFromSidebar: 'Select a workflow from the sidebar',
     editor: 'Steps',
     workbench: 'Build',
-    history: {
-      scope: 'Read from',
-      scopes: {
-        conversation: 'This conversation',
-        group: 'This group',
-      },
-      limit: 'Messages',
-      sinceHours: 'Within hours',
-      noLimit: 'Any time',
-      hint: 'Use it for summaries: pass the text to a model reply step',
-    },
+    runsTab: 'Runs',
     more: 'More',
     import: 'Import',
     export: 'Export',
@@ -5368,6 +5358,17 @@ const enUS = {
       max: 'Max',
       seed: 'Same result for',
       seedHint: 'Usually the sender, so each person gets their own result',
+    },
+    history: {
+      scope: 'Read from',
+      scopes: {
+        conversation: 'This conversation',
+        group: 'This group',
+      },
+      limit: 'Messages',
+      sinceHours: 'Within hours',
+      noLimit: 'Any time',
+      hint: 'Use it for summaries: pass the text to a model reply step',
     },
     code: {
       inputs: 'Inputs',

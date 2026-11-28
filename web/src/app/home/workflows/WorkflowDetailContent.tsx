@@ -471,7 +471,7 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
         monitoring={
           workspace?.permissions.includes('resource.view')
             ? {
-                label: t('workflows.history'),
+                label: t('workflows.runsTab'),
                 workbenchLabel: t('workflows.workbench'),
                 content: <RunHistory key={id} workflowId={id} />,
               }

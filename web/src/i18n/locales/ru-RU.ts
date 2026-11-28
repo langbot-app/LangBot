@@ -4997,17 +4997,7 @@ const ruRU = {
     selectFromSidebar: 'Выберите сценарий на боковой панели',
     editor: 'Шаги',
     workbench: 'Редактор',
-    history: {
-      scope: 'Откуда читать',
-      scopes: {
-        conversation: 'Этот диалог',
-        group: 'Эта группа',
-      },
-      limit: 'Сообщений',
-      sinceHours: 'За последние часы',
-      noLimit: 'Без ограничения',
-      hint: 'Для сводок: передайте текст в «Ответ модели»',
-    },
+    runsTab: 'Запуски',
     more: 'Ещё',
     import: 'Импорт',
     export: 'Экспорт',
@@ -5386,6 +5376,17 @@ const ruRU = {
       max: 'Макс.',
       seed: 'Одинаково для',
       seedHint: 'Обычно отправитель',
+    },
+    history: {
+      scope: 'Откуда читать',
+      scopes: {
+        conversation: 'Этот диалог',
+        group: 'Эта группа',
+      },
+      limit: 'Сообщений',
+      sinceHours: 'За последние часы',
+      noLimit: 'Без ограничения',
+      hint: 'Для сводок: передайте текст в «Ответ модели»',
     },
     code: {
       inputs: 'Входные данные',

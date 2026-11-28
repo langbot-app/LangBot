@@ -18,6 +18,7 @@ import type {
   WorkflowGraph,
 } from '@/app/infra/entities/api';
 import { describeError } from '../lib/issues';
+import { useEditor } from './EditorContext';
 
 interface Turn {
   text: string;
@@ -35,6 +36,7 @@ export default function TestRunPanel({
   onResult: (result: ApiRespWorkflowTest | null) => void;
 }) {
   const { t } = useTranslation();
+  const { triggers } = useEditor();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [text, setText] = useState('');
   const [sessionType, setSessionType] = useState<'person' | 'group'>('person');
@@ -56,6 +58,7 @@ export default function TestRunPanel({
         text: message,
         session_type: sessionType,
         graph,
+        triggers,
       });
       onResult(result);
       setTurns((current) =>

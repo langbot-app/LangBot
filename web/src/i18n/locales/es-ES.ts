@@ -5046,17 +5046,7 @@ const esES = {
     selectFromSidebar: 'Selecciona un flujo en la barra lateral',
     editor: 'Pasos',
     workbench: 'Editar',
-    history: {
-      scope: 'Leer de',
-      scopes: {
-        conversation: 'Esta conversación',
-        group: 'Este grupo',
-      },
-      limit: 'Mensajes',
-      sinceHours: 'En las últimas horas',
-      noLimit: 'Sin límite',
-      hint: 'Útil para resúmenes: pásalo a Respuesta del modelo',
-    },
+    runsTab: 'Ejecuciones',
     more: 'Más',
     import: 'Importar',
     export: 'Exportar',
@@ -5437,6 +5427,17 @@ const esES = {
       max: 'Máximo',
       seed: 'Igual para',
       seedHint: 'Normalmente el remitente',
+    },
+    history: {
+      scope: 'Leer de',
+      scopes: {
+        conversation: 'Esta conversación',
+        group: 'Este grupo',
+      },
+      limit: 'Mensajes',
+      sinceHours: 'En las últimas horas',
+      noLimit: 'Sin límite',
+      hint: 'Útil para resúmenes: pásalo a Respuesta del modelo',
     },
     code: {
       inputs: 'Entradas',

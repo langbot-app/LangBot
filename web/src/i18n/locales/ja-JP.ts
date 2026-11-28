@@ -4987,17 +4987,7 @@ const jaJP = {
     selectFromSidebar: 'サイドバーからワークフローを選択',
     editor: '手順',
     workbench: '編集',
-    history: {
-      scope: '読み取り範囲',
-      scopes: {
-        conversation: 'この会話',
-        group: 'このグループ',
-      },
-      limit: '件数',
-      sinceHours: '直近の時間',
-      noLimit: '制限なし',
-      hint: '要約に便利：結果を「モデル応答」に渡します',
-    },
+    runsTab: '実行履歴',
     more: 'その他',
     import: 'インポート',
     export: 'エクスポート',
@@ -5377,6 +5367,17 @@ const jaJP = {
       max: '最大',
       seed: '固定する単位',
       seedHint: '通常は送信者（人ごとに結果が変わる）',
+    },
+    history: {
+      scope: '読み取り範囲',
+      scopes: {
+        conversation: 'この会話',
+        group: 'このグループ',
+      },
+      limit: '件数',
+      sinceHours: '直近の時間',
+      noLimit: '制限なし',
+      hint: '要約に便利：結果を「モデル応答」に渡します',
     },
     code: {
       inputs: '入力',

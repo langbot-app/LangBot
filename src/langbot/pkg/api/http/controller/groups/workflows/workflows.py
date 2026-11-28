@@ -216,6 +216,7 @@ class WorkflowsRouterGroup(group.RouterGroup):
                         workflow_uuid,
                         payload.get('text'),
                         graph=payload.get('graph'),
+                        triggers=payload.get('triggers'),
                         session_type=payload.get('session_type', 'person'),
                     ),
                 )

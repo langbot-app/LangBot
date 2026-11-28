@@ -321,7 +321,7 @@ class WorkflowService:
             text=message_context.message_content,
             trigger=trigger_type if trigger_type not in ('test', 'workflow') else 'message',
             bot_uuid=execution_context.bot_uuid or '',
-            args=(trigger_data or {}).get('args', {}) if trigger_type == 'command' else {},
+            args=(trigger_data or {}).get('args', {}) if trigger_type in ('command', 'test') else {},
             payload=(trigger_data or {}).get('payload', {}) if trigger_type == 'webhook' else {},
             target=(trigger_data or {}).get('target', {}) if trigger_type == 'schedule' else {},
             event=trigger_data if trigger_type == 'event' else {},

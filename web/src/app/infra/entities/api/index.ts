@@ -1355,6 +1355,7 @@ export interface WorkflowTestRequest {
   text: string;
   session_type: 'person' | 'group';
   graph?: WorkflowGraph;
+  triggers?: WorkflowTrigger[];
 }
 
 export interface ApiRespWorkflowTest {

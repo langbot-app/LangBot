@@ -18,6 +18,7 @@ async def run_workflow(
     *,
     session_type: str = 'person',
     graph: dict | None = None,
+    triggers: list | None = None,
 ) -> dict:
     require_permission(context, Permission.RUNTIME_OPERATE)
     if graph is not None:
@@ -75,6 +76,7 @@ async def run_workflow(
         return forward
 
     runtime.dispatch = dispatcher(runtime, message)
+    args = await _command_args(ap, execution_context, workflow_uuid, message, triggers)
     error = None
     try:
         execution_uuid, runtime = await ap.workflow_service.execute_workflow(
@@ -82,7 +84,7 @@ async def run_workflow(
             workflow_uuid,
             trigger_type='test',
             graph=graph,
-            trigger_data={'message': message},
+            trigger_data={'message': message, **({'args': args} if args is not None else {})},
             message_context=message_context,
             session_id=session_id,
             user_id='manual',
@@ -100,3 +102,22 @@ async def run_workflow(
         'handoff': execution.get('handoff'),
         'replies': [''.join(part.text for part in chain if isinstance(part, Plain)) for chain in runtime.replies],
     }
+
+
+async def _command_args(ap, execution_context, workflow_uuid, message, triggers):
+    """Parse `/name args` like the bot would when the text calls one of this workflow's commands."""
+    from ....workflow.triggers import parse_command_args
+
+    body = message.strip()
+    if not body.startswith('/'):
+        return None
+    if triggers is None:
+        workflow = await ap.workflow_service.get_workflow(execution_context, workflow_uuid)
+        triggers = (workflow or {}).get('triggers') or []
+    name, _, rest = body[1:].partition(' ')
+    for trigger in triggers if isinstance(triggers, list) else []:
+        if not isinstance(trigger, dict) or trigger.get('type') != 'command':
+            continue
+        if name in (trigger.get('name'), *(trigger.get('aliases') or [])):
+            return parse_command_args(trigger, rest.strip())[0]
+    return None
