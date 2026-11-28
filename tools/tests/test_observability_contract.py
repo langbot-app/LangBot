@@ -58,7 +58,8 @@ def test_trace_index_groups_action_and_arrival_evidence(tmp_path: Path):
     actions = tmp_path / 'actions.jsonl'
     arrivals = tmp_path / 'arrivals.jsonl'
     actions.write_text(
-        json.dumps({'trace_id': 'Y-1', 'action_id': 'a-1', 'status': 'succeeded'}) + '\n'
+        json.dumps({'trace_id': 'Y-1', 'action_id': 'a-1', 'status': 'succeeded'})
+        + '\n'
         + json.dumps({'action_id': 'a-2', 'status': 'expired'})
         + '\n'
     )

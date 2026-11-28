@@ -919,7 +919,12 @@ def main():
             run_id=args.output.name,
             expected_sources=['regression_arrival'],
             observed_sources=action_writer.sources,
-            artifacts=[args.output / 'actions.jsonl', args.output / 'arrivals.jsonl', args.output / 'summary.json', trace_index],
+            artifacts=[
+                args.output / 'actions.jsonl',
+                args.output / 'arrivals.jsonl',
+                args.output / 'summary.json',
+                trace_index,
+            ],
             trace_index=trace_index,
         )
     print(json.dumps(summary, indent=2), flush=True)

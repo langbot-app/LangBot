@@ -229,9 +229,7 @@ def write_trace_index(path: Path, artifacts: list[Path], *, run_id: str | None =
                     if isinstance(value, str) and value and value not in entry[target]:
                         entry[target].append(value)
                 artifact_ref = (
-                    str(artifact.relative_to(path.parent))
-                    if artifact.is_relative_to(path.parent)
-                    else str(artifact)
+                    str(artifact.relative_to(path.parent)) if artifact.is_relative_to(path.parent) else str(artifact)
                 )
                 entry['evidence'].append(
                     {
