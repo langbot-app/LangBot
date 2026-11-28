@@ -78,6 +78,8 @@ async def main(loop: asyncio.AbstractEventLoop):
     runtime_loop = asyncio.get_running_loop()
     shutdown_requested = asyncio.Event()
     run_task: asyncio.Task | None = None
+    shutdown_attempted = False
+    failed = False
     try:
         import signal
 
@@ -95,7 +97,15 @@ async def main(loop: asyncio.AbstractEventLoop):
         shutdown_task = asyncio.create_task(shutdown_requested.wait())
         done, pending = await asyncio.wait((run_task, shutdown_task), return_when=asyncio.FIRST_COMPLETED)
         if shutdown_task in done:
-            await app_inst.shutdown()
+            shutdown_attempted = True
+            try:
+                await app_inst.shutdown()
+            except BaseException:
+                if not run_task.done():
+                    run_task.cancel()
+                with contextlib.suppress(BaseException):
+                    await asyncio.gather(run_task, return_exceptions=True)
+                raise
             if not run_task.done():
                 run_task.cancel()
         for task in pending:
@@ -105,8 +115,15 @@ async def main(loop: asyncio.AbstractEventLoop):
         if isinstance(run_result, BaseException) and not isinstance(run_result, asyncio.CancelledError):
             raise run_result
     except Exception:
+        failed = True
         _log_boot_failure(app_inst)
         raise SystemExit(1) from None
     finally:
-        if app_inst is not None:
-            await app_inst.shutdown()
+        if app_inst is not None and not shutdown_attempted:
+            shutdown_attempted = True
+            try:
+                await app_inst.shutdown()
+            except Exception:
+                _log_boot_failure(app_inst)
+                if not failed:
+                    raise SystemExit(1) from None

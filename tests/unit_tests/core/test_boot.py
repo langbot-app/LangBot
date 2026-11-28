@@ -119,6 +119,114 @@ async def test_main_reports_app_run_failure_and_still_shuts_down(monkeypatch, ca
     assert str(caplog.records[0].exc_info[1]) == 'run failed'
 
 
+@pytest.mark.asyncio
+async def test_main_run_failure_and_shutdown_failure_preserves_exit_code_and_single_shutdown(
+    monkeypatch, caplog, capsys
+):
+    shutdown_calls = 0
+
+    async def shutdown():
+        nonlocal shutdown_calls
+        shutdown_calls += 1
+        raise RuntimeError('shutdown failed')
+
+    async def run():
+        raise RuntimeError('run failed')
+
+    async def fake_make_app(loop):
+        return SimpleNamespace(run=run, shutdown=shutdown)
+
+    monkeypatch.setattr(signal, 'signal', lambda *_args: None)
+    monkeypatch.setattr(boot, 'make_app', fake_make_app)
+
+    with caplog.at_level(logging.ERROR, logger='langbot'):
+        with pytest.raises(SystemExit) as exc_info:
+            await boot.main(SimpleNamespace())
+
+    assert exc_info.value.code == 1
+    assert shutdown_calls == 1
+    assert capsys.readouterr().err == ''
+    assert len(caplog.records) == 2
+    assert [record.levelno for record in caplog.records] == [logging.ERROR, logging.ERROR]
+    assert [str(record.exc_info[1]) for record in caplog.records] == ['run failed', 'shutdown failed']
+
+
+@pytest.mark.asyncio
+async def test_main_signal_shutdown_failure_cancels_run_task_and_avoids_duplicate_shutdown(monkeypatch, caplog, capsys):
+    import asyncio
+
+    captured_handler = {}
+    shutdown_calls = 0
+    run_cancelled = False
+
+    def fake_signal(sig, handler):
+        captured_handler[sig] = handler
+
+    async def shutdown():
+        nonlocal shutdown_calls
+        shutdown_calls += 1
+        raise RuntimeError('signal shutdown failed')
+
+    async def run():
+        nonlocal run_cancelled
+        captured_handler[signal.SIGINT](signal.SIGINT, None)
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            run_cancelled = True
+            raise
+
+    async def fake_make_app(loop):
+        return SimpleNamespace(run=run, shutdown=shutdown)
+
+    monkeypatch.setattr(signal, 'signal', fake_signal)
+    monkeypatch.setattr(boot, 'make_app', fake_make_app)
+
+    with caplog.at_level(logging.ERROR, logger='langbot'):
+        with pytest.raises(SystemExit) as exc_info:
+            await boot.main(SimpleNamespace())
+
+    assert exc_info.value.code == 1
+    assert shutdown_calls == 1
+    assert run_cancelled is True
+    assert capsys.readouterr().err == ''
+    assert len(caplog.records) == 1
+    assert caplog.records[0].levelno == logging.ERROR
+    assert caplog.records[0].exc_info is not None
+    assert str(caplog.records[0].exc_info[1]) == 'signal shutdown failed'
+
+
+@pytest.mark.asyncio
+async def test_main_normal_exit_shutdown_failure_logs_and_exits_nonzero(monkeypatch, caplog, capsys):
+    shutdown_calls = 0
+
+    async def shutdown():
+        nonlocal shutdown_calls
+        shutdown_calls += 1
+        raise RuntimeError('cleanup failed')
+
+    async def run():
+        return None
+
+    async def fake_make_app(loop):
+        return SimpleNamespace(run=run, shutdown=shutdown)
+
+    monkeypatch.setattr(signal, 'signal', lambda *_args: None)
+    monkeypatch.setattr(boot, 'make_app', fake_make_app)
+
+    with caplog.at_level(logging.ERROR, logger='langbot'):
+        with pytest.raises(SystemExit) as exc_info:
+            await boot.main(SimpleNamespace())
+
+    assert exc_info.value.code == 1
+    assert shutdown_calls == 1
+    assert capsys.readouterr().err == ''
+    assert len(caplog.records) == 1
+    assert caplog.records[0].levelno == logging.ERROR
+    assert caplog.records[0].exc_info is not None
+    assert str(caplog.records[0].exc_info[1]) == 'cleanup failed'
+
+
 @pytest.mark.parametrize('after_logger_setup', [False, True], ids=['before-logger-setup', 'after-logger-setup'])
 def test_main_logs_single_leveled_traceback_before_and_after_logger_setup(tmp_path, after_logger_setup):
     script = textwrap.dedent("""\
