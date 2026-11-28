@@ -1,16 +1,30 @@
 {
   "src/langbot/pkg/agent/runner/event_log_store.py": {
     "DIALECT_NAME_BRANCH": 2,
+    "DIALECT_SQL_FUNC": 1,
     "STORAGE_DIALECT_IMPORT": 2
   },
   "src/langbot/pkg/agent/runner/persistent_state_store.py": {
     "DIALECT_NAME_BRANCH": 1,
     "STORAGE_DIALECT_IMPORT": 2
   },
+  "src/langbot/pkg/agent/runner/run_ledger_store.py": {
+    "LAYER_IMPORT_VIOLATION": 2
+  },
+  "src/langbot/pkg/api/http/controller/group.py": {
+    "LAYER_IMPORT_VIOLATION": 1
+  },
   "src/langbot/pkg/api/http/controller/groups/knowledge/migration.py": {
+    "LAYER_IMPORT_VIOLATION": 1,
     "RAW_DIALECT_SQL": 1
   },
   "src/langbot/pkg/api/http/controller/groups/platform/bots.py": {
+    "LAYER_IMPORT_VIOLATION": 1
+  },
+  "src/langbot/pkg/api/http/controller/groups/plugins.py": {
+    "LAYER_IMPORT_VIOLATION": 1
+  },
+  "src/langbot/pkg/api/http/controller/groups/system.py": {
     "LAYER_IMPORT_VIOLATION": 1
   },
   "src/langbot/pkg/api/http/service/model.py": {
@@ -19,13 +33,15 @@
   },
   "src/langbot/pkg/api/http/service/monitoring.py": {
     "DIALECT_NAME_BRANCH": 3,
+    "DIALECT_SQL_FUNC": 2,
     "STORAGE_DIALECT_IMPORT": 2
   },
   "src/langbot/pkg/api/http/service/monitoring_execution_details.py": {
     "DIALECT_NAME_BRANCH": 1
   },
   "src/langbot/pkg/api/http/service/monitoring_traffic.py": {
-    "DIALECT_NAME_BRANCH": 1
+    "DIALECT_NAME_BRANCH": 1,
+    "DIALECT_SQL_FUNC": 2
   },
   "src/langbot/pkg/api/http/service/pipeline_migration.py": {
     "DIALECT_NAME_BRANCH": 2
@@ -55,10 +71,16 @@
   "src/langbot/pkg/persistence/legacy_migration.py": {
     "LAYER_IMPORT_VIOLATION": 1
   },
+  "src/langbot/pkg/persistence/media.py": {
+    "LAYER_IMPORT_VIOLATION": 1
+  },
   "src/langbot/pkg/persistence/mgr.py": {
     "LAYER_IMPORT_VIOLATION": 1
   },
   "src/langbot/pkg/persistence/release_migration.py": {
+    "LAYER_IMPORT_VIOLATION": 4
+  },
+  "src/langbot/pkg/persistence/resource_urls.py": {
     "LAYER_IMPORT_VIOLATION": 1
   },
   "src/langbot/pkg/plugin/handler.py": {

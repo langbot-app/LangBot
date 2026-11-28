@@ -48,18 +48,30 @@ class StorageBoundaryRulesTests(unittest.TestCase):
             name = engine.dialect.name
             sql = 'SELECT * FROM sqlite_master'
             conn = ap.persistence_mgr.get_db_engine().connect()
+            ts = sa.func.date_trunc('hour', col)
         """)
         self.assertEqual(gate.scan_file('src/langbot/pkg/persistence/dialect.py', src), [])
         self.assertEqual(gate.scan_file('src/langbot/pkg/vector/vdbs/pgvector_db.py', src), [])
 
-    def test_rejects_dialect_name_raw_sql_and_engine_bypass(self):
+    def test_rejects_dialect_name_raw_sql_dialect_funcs_and_split_line_engine_bypass(self):
         src = dedent("""\
+            from datetime import datetime
+            import sqlalchemy as sa
+            from sqlalchemy import func
+
             def check(ap, engine):
+                ok_str = datetime.now().strftime('%Y-%m-%d')
                 if engine.dialect.name == 'sqlite':
                     q1 = 'SELECT name FROM sqlite_master WHERE type="table"'
                     q2 = "SELECT set_config('langbot.workspace_uuid', :w, true)"
                     q3 = 'PRAGMA busy_timeout=5000'
-                    return ap.persistence_mgr.get_db_engine().connect()
+                    q4 = sa.func.date_trunc('hour', col)
+                    q5 = func.json_extract(col, '$.a')
+                    q6 = func.strftime('%Y-%m', col)
+                    c1 = ap.persistence_mgr.get_db_engine().connect()
+                    eng = ap.persistence_mgr.get_db_engine()
+                    c2 = eng.begin()
+                    return ok_str, q1, q2, q3, q4, q5, q6, c1, c2
         """)
         violations = gate.scan_file('src/langbot/pkg/command/sample.py', src)
         self.assertEqual(
@@ -69,37 +81,65 @@ class StorageBoundaryRulesTests(unittest.TestCase):
                 'RAW_DIALECT_SQL',
                 'RAW_DIALECT_SQL',
                 'RAW_DIALECT_SQL',
+                'DIALECT_SQL_FUNC',
+                'DIALECT_SQL_FUNC',
+                'DIALECT_SQL_FUNC',
+                'RAW_ENGINE_BYPASS',
                 'RAW_ENGINE_BYPASS',
             ],
         )
 
-    def test_rejects_controller_and_orchestrator_layer_leaks_including_relative_imports(self):
+    def test_rejects_controller_sqlalchemy_persistence_and_any_non_persistence_write_admission(self):
         ctrl_src = dedent("""\
+            import sqlalchemy as sa
             from sqlalchemy.exc import IntegrityError
+            from .....persistence import mgr
             from .....persistence.write_admission import write_slot
         """)
         ctrl_violations = gate.scan_file('src/langbot/pkg/api/http/controller/groups/sample.py', ctrl_src)
-        self.assertEqual([v.rule for v in ctrl_violations], ['LAYER_IMPORT_VIOLATION', 'LAYER_IMPORT_VIOLATION'])
+        self.assertEqual(
+            [(v.line, v.rule) for v in ctrl_violations],
+            [
+                (1, 'LAYER_IMPORT_VIOLATION'),
+                (2, 'LAYER_IMPORT_VIOLATION'),
+                (3, 'LAYER_IMPORT_VIOLATION'),
+                (4, 'LAYER_IMPORT_VIOLATION'),
+                (4, 'LAYER_IMPORT_VIOLATION'),
+            ],
+        )
 
-        orch_src = dedent("""\
-            from ...persistence.write_admission import sqlite_write_deadline
-        """)
-        orch_violations = gate.scan_file('src/langbot/pkg/agent/runner/orchestrator.py', orch_src)
-        self.assertEqual([v.rule for v in orch_violations], ['LAYER_IMPORT_VIOLATION'])
+        # Any non-persistence module (orchestrator, service, plugin, etc.) is blocked from write_admission.
+        orch_src = 'from ...persistence.write_admission import sqlite_write_deadline\n'
+        self.assertEqual(
+            [v.rule for v in gate.scan_file('src/langbot/pkg/agent/runner/orchestrator.py', orch_src)],
+            ['LAYER_IMPORT_VIOLATION'],
+        )
+        svc_src = 'from langbot.pkg.persistence.write_admission import write_slot\n'
+        self.assertEqual(
+            [v.rule for v in gate.scan_file('src/langbot/pkg/plugin/sample.py', svc_src)],
+            ['LAYER_IMPORT_VIOLATION'],
+        )
 
-    def test_persistence_upward_import_blocked_at_runtime_but_allowed_under_type_checking(self):
+    def test_persistence_upward_import_blocked_for_all_upper_packages_except_type_checking_and_migrations(self):
         src = dedent("""\
             import typing
             from ..core import app as runtime_app
+            from ..storage.media import MediaCache
+            from ..cloud.bootstrap import SUPPORTED_PGVECTOR_DIMENSIONS
 
             if typing.TYPE_CHECKING:
                 from ..core import app as typed_app
                 from ..api.http import context as typed_ctx
         """)
         violations = gate.scan_file('src/langbot/pkg/persistence/sample.py', src)
-        self.assertEqual(len(violations), 1)
-        self.assertEqual(violations[0].line, 2)
-        self.assertEqual(violations[0].rule, 'LAYER_IMPORT_VIOLATION')
+        self.assertEqual(
+            [(v.line, v.rule) for v in violations],
+            [
+                (2, 'LAYER_IMPORT_VIOLATION'),
+                (3, 'LAYER_IMPORT_VIOLATION'),
+                (4, 'LAYER_IMPORT_VIOLATION'),
+            ],
+        )
 
         # Frozen historical alembic migrations are exempted.
         mig_src = 'from langbot.pkg.command.processor import COMMAND_PROCESSOR_KIND\n'
@@ -113,7 +153,6 @@ class StorageBoundaryRulesTests(unittest.TestCase):
             target.write_text('x = engine.dialect.name\n', encoding='utf-8')
             baseline = root / 'baseline.json'
 
-            # Generate baseline -> passes both default and strict.
             res = subprocess.run(
                 [sys.executable, str(GATE), '--root', str(root), '--baseline', str(baseline), '--update-baseline'],
                 capture_output=True,
@@ -130,7 +169,6 @@ class StorageBoundaryRulesTests(unittest.TestCase):
                 )
                 self.assertEqual(ok.returncode, 0, (ok.stdout, ok.stderr))
 
-            # Adding a second violation in the same legacy file must fail immediately.
             target.write_text('x = engine.dialect.name\ny = other.dialect.name\n', encoding='utf-8')
             bad = subprocess.run(
                 [sys.executable, str(GATE), '--root', str(root), '--baseline', str(baseline)],
@@ -140,7 +178,6 @@ class StorageBoundaryRulesTests(unittest.TestCase):
             self.assertEqual(bad.returncode, 1)
             self.assertIn('DIALECT_NAME_BRANCH', bad.stdout)
 
-            # Removing the legacy violation passes default mode (with tighten hint) and fails --strict-baseline.
             target.write_text('x = "clean"\n', encoding='utf-8')
             soft = subprocess.run(
                 [sys.executable, str(GATE), '--root', str(root), '--baseline', str(baseline)],
@@ -159,7 +196,6 @@ class StorageBoundaryRulesTests(unittest.TestCase):
             self.assertIn('strict baseline', strict.stdout)
 
     def test_repo_baseline_is_valid_and_synced_with_ruff_per_file_ignores(self):
-        # Default mode enforces zero regressions without blocking cleanup PRs that remove legacy debt.
         res = subprocess.run(
             [sys.executable, str(GATE), '--root', str(REPO_ROOT), '--baseline', str(BASELINE_FILE)],
             capture_output=True,
@@ -167,7 +203,6 @@ class StorageBoundaryRulesTests(unittest.TestCase):
         )
         self.assertEqual(res.returncode, 0, (res.stdout, res.stderr))
 
-        # Verify pyproject.toml legacy TID251 ignores match STORAGE_DIALECT_IMPORT baseline entries.
         pyproject = tomllib.loads((REPO_ROOT / 'pyproject.toml').read_text(encoding='utf-8'))
         per_file = pyproject['tool']['ruff']['lint']['per-file-ignores']
         permanent = {
