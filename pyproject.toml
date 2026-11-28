@@ -194,8 +194,8 @@ indent-width = 4
 target-version = "py312"
 
 [tool.ruff.lint]
-# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
-select = ["E4", "E7", "E9", "F"]
+# Enable Pyflakes (`F`), a subset of pycodestyle (`E`), and banned-API import guardrails (`TID251`).
+select = ["E4", "E7", "E9", "F", "TID251"]
 ignore = [
     "E712", # Comparison to true should be 'if cond is true:' or 'if cond:' (E712)
     "F402", # Import `loader` from line 8 shadowed by loop variable
@@ -236,6 +236,38 @@ unfixable = []
 
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"sqlalchemy.dialects.sqlite".msg = "Do not import SQLite dialect outside src/langbot/pkg/persistence/; use persistence dialect helpers."
+"sqlalchemy.dialects.postgresql".msg = "Do not import PostgreSQL dialect outside src/langbot/pkg/persistence/; use persistence dialect helpers."
+"sqlite3".msg = "Do not import sqlite3 outside src/langbot/pkg/persistence/; use persistence transaction helpers."
+"aiosqlite".msg = "Do not import aiosqlite outside src/langbot/pkg/persistence/; use persistence transaction helpers."
+"asyncpg".msg = "Do not import asyncpg outside src/langbot/pkg/persistence/; use persistence transaction helpers."
+"psycopg".msg = "Do not import psycopg outside src/langbot/pkg/persistence/; use persistence transaction helpers."
+"psycopg2".msg = "Do not import psycopg2 outside src/langbot/pkg/persistence/; use persistence transaction helpers."
+
+[tool.ruff.lint.per-file-ignores]
+# Storage/dialect implementation boundary and non-service test/tooling directories.
+"src/langbot/pkg/persistence/**" = ["TID251"]
+"src/langbot/pkg/vector/vdbs/pgvector_db.py" = ["TID251"]
+"tests/**" = ["TID251"]
+"tools/**" = ["TID251"]
+"scripts/**" = ["TID251"]
+# Legacy dialect-import debt tracked in #3196 (remove entries as files are migrated).
+"src/langbot/pkg/agent/runner/event_log_store.py" = ["TID251"]
+"src/langbot/pkg/agent/runner/persistent_state_store.py" = ["TID251"]
+"src/langbot/pkg/api/http/service/model.py" = ["TID251"]
+"src/langbot/pkg/api/http/service/monitoring.py" = ["TID251"]
+"src/langbot/pkg/box/settings.py" = ["TID251"]
+"src/langbot/pkg/cloud/directory_projection.py" = ["TID251"]
+"src/langbot/pkg/cloud/message_quota.py" = ["TID251"]
+"src/langbot/pkg/i18n/workspace.py" = ["TID251"]
+"src/langbot/pkg/plugin/handler.py" = ["TID251"]
+"src/langbot/pkg/skill/database_repository.py" = ["TID251"]
+"src/langbot/pkg/storage/artifact_publication.py" = ["TID251"]
+"src/langbot/pkg/storage/content.py" = ["TID251"]
+"src/langbot/pkg/storage/migration.py" = ["TID251"]
+"src/langbot/pkg/utils/execution_lease.py" = ["TID251"]
 
 [tool.ruff.format]
 # Like Black, use double quotes for strings.
