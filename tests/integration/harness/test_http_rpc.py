@@ -6,6 +6,8 @@ import logging
 import os
 import secrets
 import subprocess
+import sys
+import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,7 +16,6 @@ import sqlalchemy as sa
 from hypercorn.asyncio.run import worker_serve
 from hypercorn.config import Config
 from hypercorn.utils import wrap_app
-from quart import Quart
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.api.http.controller.groups.harness import HarnessRouterGroup
@@ -32,32 +33,21 @@ from langbot.pkg.workspace.collaboration import WorkspaceCollaborationService
 from langbot.pkg.workspace.service import WorkspaceService
 
 
-@pytest.mark.integration
-@pytest.mark.parametrize('scenario', ['oauth', 'planned', 'emergency'])
-async def test_typescript_http_rpc(tmp_path, monkeypatch, scenario):
-    transport = os.getenv('HARNESS_TS_RPC_TRANSPORT')
-    if not transport:
-        pytest.skip('Set HARNESS_TS_RPC_TRANSPORT to the built Harness core rpc-transport.js')
-    assert Path(transport).is_file()
-    rotation_token = secrets.token_urlsafe(32)
-    monkeypatch.setenv('LANGBOT_HARNESS_ROTATION_TOKEN', rotation_token)
-    monkeypatch.setattr(constants, 'instance_id', 'rpc-test-instance')
+def https_config(cert, key):
     config = Config()
     config.bind = ['127.0.0.1:0']
-    config.certfile = str(tmp_path / 'cert.pem')
-    config.keyfile = str(tmp_path / 'key.pem')
-    subprocess.run(
-        ['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
-         '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1',
-         '-keyout', config.keyfile, '-out', config.certfile],
-        check=True, capture_output=True,
-    )
-    sockets = config.create_sockets()
-    origin = f'https://127.0.0.1:{sockets.secure_sockets[0].getsockname()[1]}'
-    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "rpc.db"}')
+    config.certfile = str(cert)
+    config.keyfile = str(key)
+    # Exercise HTTP/1.1 Upgrade, not Node's experimental RFC 8441 client.
+    config.alpn_protocols = ['http/1.1']
+    config.graceful_timeout = 2
+    return config
+
+
+def application(engine, origin, secret):
     ap = SimpleNamespace(
         instance_config=SimpleNamespace(data={
-            'system': {'jwt': {'secret': secrets.token_hex(32), 'expire': 60}},
+            'system': {'jwt': {'secret': secret, 'expire': 60}},
             'harness': {'enabled': True, 'instance_origin': origin, 'client_origin': 'https://harness.example'},
         }),
         deployment=SimpleNamespace(mode='oss'),
@@ -73,13 +63,66 @@ async def test_typescript_http_rpc(tmp_path, monkeypatch, scenario):
     ap.workspace_service = WorkspaceService(ap)
     ap.workspace_collaboration_service = WorkspaceCollaborationService(ap, ap.workspace_service)
     ap.user_service = UserService(ap)
+    return ap
+
+
+async def serve(ap, config, sockets, stop=None):
+    await wiring.install(ap)
+    controller = HTTPController(ap)
+    controller.register_harness_route()
+    await HarnessRouterGroup(ap, controller.quart_app).initialize()
+    if stop is None:
+        print(json.dumps({'pid': os.getpid(), 'port': sockets.secure_sockets[0].getsockname()[1]}), flush=True)
+    await worker_serve(wrap_app(controller.quart_app, config.wsgi_max_body_size, None), config,
+                       sockets=sockets, shutdown_trigger=stop)
+
+
+async def observer_worker(settings):
+    constants.instance_id = 'rpc-test-instance'
+    engine = create_async_engine(settings['url'], connect_args=settings['connect_args'])
+    config = https_config(settings['cert'], settings['key'])
+    try:
+        await serve(application(engine, settings['origin'], settings['secret']), config, config.create_sockets())
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize('scenario', ['oauth', 'planned', 'planned-race', 'emergency'])
+async def test_typescript_http_rpc(tmp_path, monkeypatch, scenario):
+    transport = os.getenv('HARNESS_TS_RPC_TRANSPORT')
+    if not transport:
+        pytest.skip('Set HARNESS_TS_RPC_TRANSPORT to the built Harness core rpc-transport.js')
+    assert Path(transport).is_file()
+    rotation_token = secrets.token_urlsafe(32)
+    monkeypatch.setenv('LANGBOT_HARNESS_ROTATION_TOKEN', rotation_token)
+    monkeypatch.setattr(constants, 'instance_id', 'rpc-test-instance')
+    config = https_config(tmp_path / 'cert.pem', tmp_path / 'key.pem')
+    subprocess.run(
+        ['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
+         '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1',
+         '-keyout', config.keyfile, '-out', config.certfile],
+        check=True, capture_output=True,
+    )
+    postgres = os.getenv('HARNESS_TEST_POSTGRES_URL')
+    url = postgres or f'sqlite+aiosqlite:///{tmp_path / "rpc.db"}'
+    schema = f'harness_rpc_{uuid.uuid4().hex}'
+    connect_args = {'server_settings': {'search_path': schema}} if postgres else {}
+    if postgres:
+        assert sa.make_url(postgres).drivername == 'postgresql+asyncpg'
+    engine = create_async_engine(url, connect_args=connect_args)
+    sockets = config.create_sockets()
+    origin = f'https://127.0.0.1:{sockets.secure_sockets[0].getsockname()[1]}'
+    secret = secrets.token_hex(32)
     stop = asyncio.Event()
     server = None
-    observer_server = None
-    observer_engine = None
+    observer = None
     process = None
     try:
+        ap = application(engine, origin, secret)
         async with engine.begin() as conn:
+            if postgres:
+                await conn.execute(sa.schema.CreateSchema(schema))
             for model in (User, Workspace, WorkspaceExecutionState, WorkspaceMembership, HarnessRegistrationLink,
                           HarnessBinding, HarnessInstanceKey, HarnessKeyAck, HarnessDevice, HarnessOAuthGrant):
                 await conn.run_sync(model.__table__.create)
@@ -99,29 +142,27 @@ async def test_typescript_http_rpc(tmp_path, monkeypatch, scenario):
             await conn.execute(sa.insert(WorkspaceMembership).values(
                 workspace_uuid='shared', account_uuid=account.uuid, role='viewer',
             ))
-        await wiring.install(ap)
         bindings = HarnessBindings(ap)
         issuer = SimpleNamespace(workspace_uuid=workspace.uuid, account_uuid=account.uuid)
         links = [await bindings.issue(issuer, label='RPC smoke', preferred_auth='local') for _ in range(2)]
-        app = Quart(__name__)
-        await HarnessRouterGroup(ap, app).initialize()
         observer_origin = origin
         if scenario != 'oauth':
-            observer_sockets = config.create_sockets()
-            observer_origin = f'https://127.0.0.1:{observer_sockets.secure_sockets[0].getsockname()[1]}'
-            observer_engine = create_async_engine(engine.url)
-            observer = SimpleNamespace(**vars(ap))
-            observer.persistence_mgr = SimpleNamespace(get_db_engine=lambda: observer_engine, execute_async=execute)
-            await wiring.install(observer)
-            observer_controller = HTTPController(observer)
-            observer_controller.register_harness_route()
-            observer_server = asyncio.create_task(worker_serve(
-                wrap_app(observer_controller.quart_app, config.wsgi_max_body_size, None), config,
-                sockets=observer_sockets, shutdown_trigger=stop.wait,
-            ))
-        server = asyncio.create_task(worker_serve(
-            wrap_app(app, config.wsgi_max_body_size, None), config, sockets=sockets, shutdown_trigger=stop.wait,
-        ))
+            observer = await asyncio.create_subprocess_exec(
+                sys.executable, str(Path(__file__).resolve()), stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+            )
+            observer.stdin.write(json.dumps(dict(url=url, connect_args=connect_args, origin=origin, secret=secret,
+                                                 cert=config.certfile, key=config.keyfile)).encode() + b'\n')
+            await observer.stdin.drain()
+            observer.stdin.close()
+            async with asyncio.timeout(15):
+                ready = await observer.stdout.readline()
+            assert ready, 'HTTPS observer exited before startup; see captured stderr'
+            worker = json.loads(ready)
+            assert worker['pid'] == observer.pid != os.getpid()
+            observer_origin = f'https://127.0.0.1:{worker["port"]}'
+            print(f'{scenario}: HTTPS PIDs {os.getpid()}, {observer.pid} ({engine.dialect.name})')
+        server = asyncio.create_task(serve(ap, config, sockets, stop.wait))
         process = await asyncio.create_subprocess_exec(
             'node', str(Path(__file__).with_name('http-rpc-smoke.mjs')),
             env={**os.environ, 'NODE_EXTRA_CA_CERTS': config.certfile, 'HARNESS_RPC_TEST': json.dumps({
@@ -129,10 +170,11 @@ async def test_typescript_http_rpc(tmp_path, monkeypatch, scenario):
                 'email': email, 'password': password, 'workspace': workspace.uuid,
                 'browserAccountToken': await ap.user_service.generate_jwt_token(account),
                 'scenario': scenario, 'rotationToken': rotation_token, 'observerOrigin': observer_origin,
-            })}, stderr=asyncio.subprocess.PIPE,
+            })}, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
         async with asyncio.timeout(30):
-            _, stderr = await process.communicate()
+            stdout, stderr = await process.communicate()
+        print(stdout.decode(), end='')
         assert process.returncode == 0, stderr.decode()
         async with engine.connect() as conn:
             if scenario != 'oauth':
@@ -140,10 +182,10 @@ async def test_typescript_http_rpc(tmp_path, monkeypatch, scenario):
                 retired = (await conn.execute(sa.select(HarnessInstanceKey).where(
                     HarnessInstanceKey.status == 'retired',
                 ))).mappings().all()
-                assert len(retired) == (1 if scenario == 'planned' else 2)
+                assert len(retired) == (2 if scenario == 'emergency' else 1)
                 assert all(not key['priv_ciphertext'] for key in retired)
                 assert await conn.scalar(sa.select(sa.func.count()).select_from(HarnessKeyAck)) == (
-                    2 if scenario == 'planned' else 0
+                    0 if scenario == 'emergency' else 2
                 )
                 return
             grants = (await conn.execute(sa.select(HarnessOAuthGrant.__table__))).mappings().all()
@@ -158,14 +200,27 @@ async def test_typescript_http_rpc(tmp_path, monkeypatch, scenario):
         if process is not None and process.returncode is None:
             process.kill()
             await process.wait()
-        if server is not None:
-            stop.set()
-            await server
-        else:
+        try:
+            if observer is not None and observer.returncode is None:
+                observer.terminate()
+                try:
+                    await asyncio.wait_for(observer.wait(), 5)
+                except TimeoutError:
+                    observer.kill()
+                    await observer.wait()
+            if server is not None:
+                stop.set()
+                await server
+        finally:
             for sock in sockets.secure_sockets:
                 sock.close()
-        await engine.dispose()
-        if observer_server is not None:
-            await observer_server
-        if observer_engine is not None:
-            await observer_engine.dispose()
+            try:
+                if postgres:
+                    async with engine.begin() as conn:
+                        await conn.execute(sa.schema.DropSchema(schema, cascade=True, if_exists=True))
+            finally:
+                await engine.dispose()
+
+
+if __name__ == '__main__':
+    asyncio.run(observer_worker(json.load(sys.stdin)))

@@ -55,13 +55,18 @@ if (scenario !== 'oauth') {
   assert.equal(aLogin.status, 200);
   assert.equal(bLogin.status, 200);
   const { createWebSocketSecureSocketFactory } = await import(new URL('./transport.js', pathToFileURL(process.env.HARNESS_TS_RPC_TRANSPORT)));
-  async function ws(device, keys, token) {
-    const url = new URL('/api/v1/harness/ws', observerOrigin);
+  async function ws(device, keys, token, workerOrigin = observerOrigin) {
+    const url = new URL('/api/v1/harness/ws', workerOrigin);
     url.protocol = 'wss:';
     url.search = new URLSearchParams({ harness_id: device.harnessId, device_kid: device.deviceKid, pinned_kid: keys.expectedKid });
-    const { socket, channel } = await createWebSocketSecureSocketFactory(url.href, { ...keys, timeoutMs: 3000 },
-      endpoint => new WebSocket(endpoint, { headers: { Origin: origin } }))();
-    const closed = new Promise(resolve => socket.onClose(resolve));
+    let closed;
+    const { socket, channel } = await createWebSocketSecureSocketFactory(url.href, { ...keys, timeoutMs: 3000 }, endpoint => {
+      const raw = new WebSocket(endpoint, { headers: { Origin: origin } });
+      closed = new Promise(resolve => raw.addEventListener('close', event => resolve({
+        code: event.code, reason: event.reason, at: performance.now(),
+      }), { once: true }));
+      return raw;
+    })();
     let frame;
     try {
       frame = await deadline(new Promise(resolve => {
@@ -72,13 +77,22 @@ if (scenario !== 'oauth') {
     } catch (error) { socket.close(); throw error; }
     return { socket, closed };
   }
-  async function deadline(promise) {
+  async function deadline(promise, timeout = 3000) {
     let timer;
     try {
       return await Promise.race([promise, new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error('Timed out waiting for WS event')), 3000);
+        timer = setTimeout(() => reject(new Error(`Timed out after ${timeout} ms`)), timeout);
       })]);
     } finally { clearTimeout(timer); }
+  }
+  async function retiredSockets(start, ...sockets) {
+    const closes = await deadline(Promise.all(sockets.map(socket => socket.closed)), 1500);
+    for (const { code, reason, at } of closes) {
+      assert.equal(code, 1008);
+      assert.equal(reason, 'Harness session failed');
+      assert.ok(at >= start && at - start < 1500, `unexpected retirement delay: ${at - start} ms`);
+    }
+    console.log(`${scenario}: idle WSS closed after ${closes.map(event => (event.at - start).toFixed(0)).join(', ')} ms`);
   }
   const admin = (mode, kid, secret = rotationToken) => fetch(new URL('/api/v1/harness/instance/key-rotation', origin), {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
@@ -104,29 +118,60 @@ if (scenario !== 'oauth') {
     // The fixture obtained this pin independently via the operator request above.
     const nextA = await a.connect(newPin);
     const ackA = () => nextA.rpc.acknowledgeKeyRotation(fields.rotation_id);
-    if (scenario === 'planned') {
+    if (scenario === 'planned' || scenario === 'planned-race') {
       const pending = { status: 200, body: { acknowledged: true, retired: false } };
-      assert.deepEqual(await ackA(), pending);
-      assert.deepEqual(await ackA(), pending);
+      const final = { status: 200, body: { acknowledged: true, retired: true } };
       const nextSocket = await ws(a, nextA.keys, aLogin.body.access_token);
+      let primaryStale;
       try {
-        // B has had no open socket or RPC activity since the pre-rotation login.
-        assert.deepEqual(await a.rpc.getKeyRotation(), { status: 200, body: transition });
-        assert.deepEqual(await b.rpc.getKeyRotation(), { status: 200, body: transition });
-        const nextB = await b.connect(newPin);
-        const final = { status: 200, body: { acknowledged: true, retired: true } };
-        assert.deepEqual(await nextB.rpc.acknowledgeKeyRotation(fields.rotation_id), final);
+        let start;
+        if (scenario === 'planned') {
+          assert.deepEqual(await ackA(), pending);
+          assert.deepEqual(await ackA(), pending);
+          // B has had no open socket or RPC activity since the pre-rotation login.
+          assert.deepEqual(await a.rpc.getKeyRotation(), { status: 200, body: transition });
+          assert.deepEqual(await b.rpc.getKeyRotation(), { status: 200, body: transition });
+          const nextB = await b.connect(newPin);
+          start = performance.now();
+          assert.deepEqual(await nextB.rpc.acknowledgeKeyRotation(fields.rotation_id), final);
+        } else {
+          primaryStale = await ws(a, a.keys, aLogin.body.access_token, origin);
+          // Keep each HS1/HS2 pair on its worker. Release both encrypted ACKs
+          // together only once both independent handshakes have completed.
+          let ready = 0;
+          let release;
+          const bothReady = new Promise(resolve => { release = resolve; });
+          const forward = workerOrigin => (url, init) => fetch(new URL(url.pathname, workerOrigin), init);
+          const route = workerOrigin => async (url, init) => {
+            if (url.pathname === '/api/v1/harness/rpc') {
+              if (++ready === 2) release();
+              await deadline(bothReady);
+            }
+            return forward(workerOrigin)(url, init);
+          };
+          const raceA = await a.connect(newPin, route(origin));
+          const raceB = await b.connect(newPin, route(observerOrigin));
+          start = performance.now();
+          const outcomes = await Promise.all([raceA, raceB].map(
+            ({ rpc }) => rpc.acknowledgeKeyRotation(fields.rotation_id),
+          ));
+          assert.deepEqual(outcomes.sort((x, y) => Number(x.body.retired) - Number(y.body.retired)), [pending, final]);
+          const nextB = await b.connect(newPin, forward(observerOrigin));
+          assert.deepEqual(await nextB.rpc.acknowledgeKeyRotation(fields.rotation_id), final);
+        }
         assert.deepEqual(await ackA(), final);
-        await deadline(stale.closed);
+        await retiredSockets(start, ...[stale, primaryStale].filter(Boolean));
         await assert.rejects(b.rpc.getKeyRotation(), /key_retired/);
         await assert.rejects(ws(b, b.keys, bLogin.body.access_token));
-      } finally { nextSocket.socket.close(); }
+      } finally { primaryStale?.socket.close(); nextSocket.socket.close(); }
     } else {
       let replacement;
+      let start;
       const overlapSocket = await ws(a, nextA.keys, aLogin.body.access_token);
       try {
         const challenge = await a.connect(a.pin, async (url, init) => {
           if (url.pathname.endsWith('/rpc')) {
+            start = performance.now();
             const emergency = await admin('emergency', a.pin.kid);
             assert.equal(emergency.status, 200);
             replacement = await emergency.json();
@@ -134,7 +179,7 @@ if (scenario !== 'oauth') {
           return fetch(url, init);
         });
         await assert.rejects(challenge.rpc.getKeyRotation(), /key_retired/);
-        await deadline(Promise.all([stale.closed, overlapSocket.closed]));
+        await retiredSockets(start, stale, overlapSocket);
         await assert.rejects(b.rpc.getKeyRotation(), /key_retired/);
         await assert.rejects(nextA.rpc.getKeyRotation(), /key_retired/);
         await assert.rejects(ws(b, b.keys, bLogin.body.access_token));
