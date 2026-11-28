@@ -46,6 +46,7 @@ import StepCanvas from './editor/StepCanvas';
 import StepPanel from './editor/StepPanel';
 import TestRunPanel from './editor/TestRunPanel';
 import RunHistory from './history/RunHistory';
+import { parseIssue } from './lib/issues';
 
 const EMPTY_RESOURCES: EditorResources = {
   models: [],
@@ -252,6 +253,17 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
   };
 
   const applyRun = (result: ApiRespWorkflowTest | null) => {
+    const blocked = parseIssue(result?.error);
+    if (blocked && !result?.steps?.length) {
+      // The draft was rejected before running: mark the step on the canvas.
+      setIssues((current) => [
+        ...current.filter(
+          (issue) =>
+            !(issue.node_id === blocked.node_id && issue.code === blocked.code),
+        ),
+        blocked,
+      ]);
+    }
     setLastRun(
       Object.fromEntries(
         (result?.steps ?? []).map((step) => [step.node_id, step]),

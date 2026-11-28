@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronRight, CircleAlert, Forward } from 'lucide-react';
 import type {
@@ -17,6 +17,8 @@ import {
   parseUTCTimestamp,
 } from '@/app/home/monitoring/utils/dateUtils';
 import { STEP_META } from '../lib/catalog';
+import { describeError } from '../lib/issues';
+import { EditorContext } from '../editor/EditorContext';
 
 const STATUS_STYLE: Record<string, string> = {
   completed:
@@ -178,6 +180,7 @@ export function ExecutionDetail({
   execution: WorkflowExecution;
 }) {
   const { t } = useTranslation();
+  const editor = useContext(EditorContext);
   const steps = execution.steps ?? [];
   return (
     <div className="space-y-4" data-testid="workflow-execution-detail">
@@ -202,7 +205,11 @@ export function ExecutionDetail({
       {execution.error && (
         <p className="flex items-start gap-2 rounded-xl border border-red-200/70 bg-red-50/70 p-3 text-sm text-red-700 dark:border-red-800/50 dark:bg-red-950/30 dark:text-red-300">
           <CircleAlert className="mt-0.5 size-4 shrink-0" />
-          <span className="break-all">{execution.error}</span>
+          <span className="break-all">
+            {editor
+              ? describeError(execution.error, editor.graph, t)
+              : execution.error}
+          </span>
         </p>
       )}
       {execution.handoff && (

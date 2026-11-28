@@ -17,6 +17,7 @@ import type {
   ApiRespWorkflowTest,
   WorkflowGraph,
 } from '@/app/infra/entities/api';
+import { describeError } from '../lib/issues';
 
 interface Turn {
   text: string;
@@ -133,7 +134,8 @@ export default function TestRunPanel({
                   )}
                   <span className="break-all">
                     {result.status === 'failed'
-                      ? result.error || t('workflows.test.failed')
+                      ? describeError(result.error, graph, t) ||
+                        t('workflows.test.failed')
                       : t('workflows.test.summary', {
                           count: steps.length,
                           duration,

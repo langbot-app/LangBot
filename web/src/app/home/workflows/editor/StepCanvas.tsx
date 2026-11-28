@@ -274,7 +274,7 @@ function Subtree({ id }: { id: string }) {
 
 export default function StepCanvas() {
   const { t } = useTranslation();
-  const { select } = useEditor();
+  const { select, selected } = useEditor();
   const [zoom, setZoom] = useState(1);
   const scroller = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; left: number; top: number }>(
@@ -347,7 +347,10 @@ export default function StepCanvas() {
         onPointerLeave={() => (drag.current = null)}
       >
         <div
-          className="flex min-w-full justify-center px-16 pt-16 pb-40"
+          className={cn(
+            'flex min-w-full justify-center px-16 pt-16 pb-40 transition-[padding]',
+            selected && 'pr-[416px]',
+          )}
           style={{ zoom }}
         >
           <Subtree id="start" />
