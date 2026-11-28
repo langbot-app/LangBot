@@ -54,6 +54,7 @@ importutil.import_modules_in_pkg(persistence)
 _ALEMBIC_TENANT_TABLES = {
     'workspaces',
     'workspace_memberships',
+    'agent_access_grants',
     'workspace_invitations',
     'workspace_execution_states',
     'support_admin_temporary_sessions',

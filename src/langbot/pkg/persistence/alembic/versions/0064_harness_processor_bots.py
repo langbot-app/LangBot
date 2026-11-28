@@ -13,7 +13,13 @@ depends_on = None
 
 def upgrade():
     conn = op.get_bind()
-    if not sa.inspect(conn).has_table('bots'):
+    inspector = sa.inspect(conn)
+    if not inspector.has_table('bots'):
+        return
+    # A legacy bots table can predate the enable/adapter columns, exactly as 0059
+    # guards for; without this the select below fails instead of being a no-op.
+    present = {column['name'] for column in inspector.get_columns('bots')}
+    if not {'uuid', 'workspace_uuid', 'enable', 'adapter'}.issubset(present):
         return
     bots = sa.table('bots', sa.column('uuid'), sa.column('workspace_uuid'), sa.column('enable'), sa.column('adapter'))
     shared_namespace = uuid.UUID('51b0ec5e-b015-5ad0-bd7e-41405bcd0fa5')
