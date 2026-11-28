@@ -36,16 +36,19 @@ def supervise(command, output, budget, pids, env=None, *, service_logs=None):
                     'processes': {},
                     'system': read_system_snapshot(),
                 }
+                sample_errors = []
                 for name, pid in pids.items():
                     try:
                         sample['processes'][name] = read_process_snapshot(pid)
                     except (RuntimeError, OSError) as exc:
-                        errors.append(f'{name}: {exc}')
+                        sample_errors.append(f'{name}: {exc}')
+                errors.extend(sample_errors)
                 samples.append(sample)
                 observations.write(
                     'regression_gate',
                     sample,
-                    missing_reasons=errors[-1:] if errors else [],
+                    scope='global',
+                    missing_reasons=sample_errors,
                 )
                 remaining = budget - (time.monotonic() - started)
                 try:

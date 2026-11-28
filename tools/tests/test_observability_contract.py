@@ -277,3 +277,68 @@ def test_missing_service_log_marks_manifest_incomplete(tmp_path: Path):
     assert manifest['completeness'] == 'incomplete'
     assert str(missing_log) in manifest['missing_artifacts']
     assert 'service_log:core' in manifest['missing_sources']
+
+
+def test_observation_scope_splits_global_samples_from_missing_trace_defects(tmp_path: Path):
+    observations = tmp_path / 'observations.jsonl'
+    actions = tmp_path / 'actions.jsonl'
+    writer = ObservationWriter(observations)
+    writer.write('regression_gate', {'cpu': 0.5}, scope='global')
+    writer.write('request_probe', {'latency_ms': 12.0}, trace_id='Y-200', scope='request')
+
+    try:
+        writer.write('regression_gate', {'cpu': 0.5}, trace_id='Y-200', scope='global')
+    except ValueError as exc:
+        assert 'global observations' in str(exc)
+    else:
+        raise AssertionError('global observation with trace_id must be rejected')
+
+    try:
+        writer.write('regression_gate', {'cpu': 0.5}, scope='unknown')
+    except ValueError as exc:
+        assert 'unknown observation scope' in str(exc)
+    else:
+        raise AssertionError('unknown observation scope must be rejected')
+
+    actions.write_text(json.dumps({'action_id': 'a-legacy', 'status': 'expired'}) + '\n')
+
+    index_path = tmp_path / 'trace-index.json'
+    index = write_trace_index(index_path, [observations, actions], run_id='run-scope-ok')
+    assert index['traces'] == 1
+    assert index['indexed_records'] == 1
+    assert index['global_observations'] == 1
+    assert index['missing_trace_observations'] == 0
+    assert index['unindexed_legacy_records'] == 1
+    assert index['unindexed_records'] == 1
+
+    manifest = write_manifest(
+        tmp_path / 'run-manifest.json',
+        run_id='run-scope-ok',
+        expected_sources=['regression_gate', 'request_probe'],
+        observed_sources=writer.sources,
+        artifacts=[observations, actions, index_path],
+        trace_index=index_path,
+    )
+    assert manifest['completeness'] == 'complete'
+    assert manifest['trace_index']['global_observations'] == 1
+    assert manifest['trace_index']['missing_trace_observations'] == 0
+    assert manifest['trace_index']['unindexed_legacy_records'] == 1
+    assert manifest['trace_index']['unindexed_records'] == 1
+
+    writer.write('request_probe', {'latency_ms': 30.0}, scope='request')
+    index_with_defect = write_trace_index(index_path, [observations, actions], run_id='run-scope-defect')
+    assert index_with_defect['global_observations'] == 1
+    assert index_with_defect['missing_trace_observations'] == 1
+    assert index_with_defect['unindexed_legacy_records'] == 1
+    assert index_with_defect['unindexed_records'] == 2
+
+    defect_manifest = write_manifest(
+        tmp_path / 'run-manifest-defect.json',
+        run_id='run-scope-defect',
+        expected_sources=['regression_gate', 'request_probe'],
+        observed_sources=writer.sources,
+        artifacts=[observations, actions, index_path],
+        trace_index=index_path,
+    )
+    assert defect_manifest['completeness'] == 'incomplete'
+    assert defect_manifest['trace_index']['missing_trace_observations'] == 1

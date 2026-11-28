@@ -103,6 +103,29 @@ class GateTest(unittest.TestCase):
             result = supervise([sys.executable, '-c', 'pass'], Path(directory) / 'gate', 5, {})
             self.assertFalse(result['passed'])
 
+    def test_gate_periodic_observations_are_classified_as_global_not_unindexed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'gate'
+            code = (
+                'import json, time; from pathlib import Path; '
+                'time.sleep(0.15); '
+                f'p=Path({str(output / "suite")!r}); p.mkdir(); '
+                '(p/"summary.json").write_text(json.dumps({"passed":True,"requests":1}))'
+            )
+            result = supervise([sys.executable, '-c', code], output, 5, {})
+            self.assertTrue(result['passed'])
+            observations = [json.loads(line) for line in (output / 'observations.jsonl').read_text().splitlines()]
+            self.assertTrue(observations)
+            self.assertTrue(all(sample['scope'] == 'global' and sample['trace_id'] is None for sample in observations))
+            index = json.loads((output / 'trace-index.json').read_text())
+            self.assertEqual(index['global_observations'], len(observations))
+            self.assertEqual(index['missing_trace_observations'], 0)
+            self.assertEqual(index['unindexed_records'], 0)
+            manifest = json.loads((output / 'run-manifest.json').read_text())
+            self.assertEqual(manifest['completeness'], 'complete')
+            self.assertEqual(manifest['trace_index']['global_observations'], len(observations))
+            self.assertEqual(manifest['trace_index']['unindexed_records'], 0)
+
 
 if __name__ == '__main__':
     unittest.main()

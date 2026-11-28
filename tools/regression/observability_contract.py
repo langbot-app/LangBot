@@ -17,6 +17,7 @@ from tools.regression.service_logs import records as parse_service_log_records
 
 SCHEMA_VERSION = '1'
 ACTION_STATUSES = frozenset({'running', 'succeeded', 'failed', 'timed_out', 'cancelled', 'blocked', 'expired'})
+OBSERVATION_SCOPES = frozenset({'request', 'global'})
 TIMING_KINDS = frozenset({'agent_runner_timing', 'box_execute_timing', 'box_selection_timing'})
 CORRELATION_LEVELS = frozenset(
     {
@@ -163,6 +164,7 @@ class ObservationSample:
     sequence: int
     values: dict[str, Any]
     trace_id: str | None = None
+    scope: str = 'request'
     missing_reasons: list[str] = field(default_factory=list)
     schema_version: str = SCHEMA_VERSION
 
@@ -182,8 +184,14 @@ class ObservationWriter:
         values: dict[str, Any],
         *,
         trace_id: str | None = None,
+        scope: str | None = None,
         missing_reasons: list[str] | None = None,
     ) -> dict[str, Any]:
+        resolved_scope = 'request' if scope is None else scope
+        if resolved_scope not in OBSERVATION_SCOPES:
+            raise ValueError(f'unknown observation scope: {resolved_scope}')
+        if resolved_scope == 'global' and trace_id:
+            raise ValueError('global observations must not set trace_id')
         self.sequence += 1
         self.sources.add(source)
         record = asdict(
@@ -195,6 +203,7 @@ class ObservationWriter:
                 sequence=self.sequence,
                 values=values,
                 trace_id=trace_id,
+                scope=resolved_scope,
                 missing_reasons=list(missing_reasons or []),
             )
         )
@@ -254,7 +263,10 @@ def write_manifest(
             'path': str(trace_index),
             'traces': index.get('traces', 0),
             'indexed_records': index.get('indexed_records', 0),
+            'global_observations': index.get('global_observations', 0),
             'unindexed_records': index.get('unindexed_records', 0),
+            'missing_trace_observations': index.get('missing_trace_observations', 0),
+            'unindexed_legacy_records': index.get('unindexed_legacy_records', 0),
             'missing_artifacts': index.get('missing_artifacts', []),
             'service_logs': len(index.get('service_logs', [])),
             'timing_counts': index.get('timing_counts', {}),
@@ -266,7 +278,7 @@ def write_manifest(
                 'uncorrelated_timings': len(secondary.get('uncorrelated_timings', [])),
             },
         }
-        if manifest['trace_index']['missing_artifacts']:
+        if manifest['trace_index']['missing_artifacts'] or manifest['trace_index']['missing_trace_observations'] > 0:
             manifest['completeness'] = 'incomplete'
     path.write_text(_dump(manifest) + '\n', encoding='utf-8')
     return manifest
@@ -283,6 +295,9 @@ def write_trace_index(
 
     # shortcut: build the index at run close, upgrade to streaming for very large evidence sets.
     entries: dict[str, dict[str, Any]] = {}
+    global_observations_by_artifact: dict[str, int] = {}
+    missing_trace_observations_by_artifact: dict[str, int] = {}
+    unindexed_legacy_by_artifact: dict[str, int] = {}
     unindexed_by_artifact: dict[str, int] = {}
     missing_artifacts: list[str] = []
     indexed_records = 0
@@ -303,7 +318,16 @@ def write_trace_index(
                 trace_id = record.get('trace_id')
                 if not isinstance(trace_id, str) or not trace_id:
                     key = str(artifact)
-                    unindexed_by_artifact[key] = unindexed_by_artifact.get(key, 0) + 1
+                    if record.get('scope') == 'global':
+                        global_observations_by_artifact[key] = global_observations_by_artifact.get(key, 0) + 1
+                    elif record.get('scope') == 'request' or 'observation_id' in record:
+                        missing_trace_observations_by_artifact[key] = (
+                            missing_trace_observations_by_artifact.get(key, 0) + 1
+                        )
+                        unindexed_by_artifact[key] = unindexed_by_artifact.get(key, 0) + 1
+                    else:
+                        unindexed_legacy_by_artifact[key] = unindexed_legacy_by_artifact.get(key, 0) + 1
+                        unindexed_by_artifact[key] = unindexed_by_artifact.get(key, 0) + 1
                     continue
                 entry = entries.setdefault(
                     trace_id,
@@ -476,8 +500,14 @@ def write_trace_index(
         'created_at': _now(),
         'traces': len(entries),
         'indexed_records': indexed_records,
+        'global_observations': sum(global_observations_by_artifact.values()),
+        'global_observations_by_artifact': global_observations_by_artifact,
         'unindexed_records': sum(unindexed_by_artifact.values()),
         'unindexed_by_artifact': unindexed_by_artifact,
+        'missing_trace_observations': sum(missing_trace_observations_by_artifact.values()),
+        'missing_trace_observations_by_artifact': missing_trace_observations_by_artifact,
+        'unindexed_legacy_records': sum(unindexed_legacy_by_artifact.values()),
+        'unindexed_legacy_by_artifact': unindexed_legacy_by_artifact,
         'missing_artifacts': missing_artifacts,
         'service_logs': service_log_summaries,
         'service_log_sources': sorted(service_log_sources),

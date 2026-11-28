@@ -616,6 +616,10 @@ def main():
                 queue_seconds=max(0, row['elapsed'] - arrival['scheduled_elapsed']),
                 arrival_seconds=max(0, completed - arrival['scheduled_elapsed']),
             )
+            if 'action_id' in arrival:
+                row['action_id'] = arrival['action_id']
+            if 'trace_id' in arrival:
+                row['trace_id'] = arrival['trace_id']
         with group_condition:
             rows.append(row)
             with (args.output / 'requests.jsonl').open('a') as stream:
@@ -929,7 +933,7 @@ def main():
         trace_index = args.output / 'trace-index.json'
         write_trace_index(
             trace_index,
-            [args.output / 'actions.jsonl', args.output / 'arrivals.jsonl'],
+            [args.output / 'actions.jsonl', args.output / 'arrivals.jsonl', args.output / 'requests.jsonl'],
             run_id=args.output.name,
             service_logs=service_logs,
         )
@@ -941,6 +945,7 @@ def main():
             artifacts=[
                 args.output / 'actions.jsonl',
                 args.output / 'arrivals.jsonl',
+                args.output / 'requests.jsonl',
                 args.output / 'summary.json',
                 trace_index,
             ],
