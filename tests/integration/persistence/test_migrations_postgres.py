@@ -233,7 +233,8 @@ async def _drop_owned_and_role(
     grants = await conn.execute(
         text(
             """
-            SELECT DISTINCT c.relname, CASE WHEN c.relkind = 'S' THEN 'SEQUENCE' ELSE 'TABLE' END AS object_type
+            SELECT DISTINCT c.relname, pg_get_userbyid(c.relowner) AS owner,
+                   CASE WHEN c.relkind = 'S' THEN 'SEQUENCE' ELSE 'TABLE' END AS object_type
             FROM pg_class AS c
             JOIN pg_namespace AS n ON n.oid = c.relnamespace
             CROSS JOIN LATERAL aclexplode(c.relacl) AS acl
@@ -244,12 +245,23 @@ async def _drop_owned_and_role(
         ),
         {'role_name': role_name},
     )
-    # Touch only explicitly granted objects; a schema-wide REVOKE also visits
-    # the helper's own objects, which the fixture connection may not access.
-    for object_name, object_type in grants:
+    # Only an object's owner may revoke on it, so act as each owner in turn.
+    # SET LOCAL keeps the borrowed pooled connection unswitched afterwards.
+    session_role = await conn.scalar(text('SELECT current_user'))
+    acting = None
+    for object_name, owner, object_type in grants:
+        target = None if owner == session_role else owner
+        if target != acting:
+            await conn.execute(text(f'SET ROLE {quote(target)}') if target else text('RESET ROLE'))
+            acting = target
         await conn.execute(text(f'REVOKE ALL ON {object_type} public.{quote(object_name)} FROM {role}'))
+    if acting is not None:
+        await conn.execute(text('RESET ROLE'))
     await conn.execute(text(f'REVOKE ALL ON SCHEMA public FROM {role}'))
     await conn.execute(text(f'REVOKE ALL ON DATABASE {quote(url.database)} FROM {role}'))
+    # The role may also own objects outright; release those as the role itself.
+    if acting is None:
+        await conn.execute(text('RESET ROLE'))
 
     # The creator need not be able to SET ROLE to the helper.
     role_engine = create_async_engine(url, poolclass=sa.pool.NullPool)
@@ -302,10 +314,30 @@ async def clean_tables(postgres_engine):
         # metadata, and legacy migration tests intentionally alter constraints.
         # Reflect the dedicated test schema instead of relying on stale ORM DDL.
         async with postgres_engine.begin() as conn:
-            table_names = await conn.run_sync(lambda sync_conn: sa.inspect(sync_conn).get_table_names())
+            rows = (
+                await conn.execute(
+                    text(
+                        'SELECT c.relname, pg_get_userbyid(c.relowner) AS owner '
+                        'FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace '
+                        "WHERE n.nspname = current_schema() AND c.relkind = 'r'"
+                    )
+                )
+            ).all()
             quote = postgres_engine.dialect.identifier_preparer.quote
-            for table_name in table_names:
-                await conn.execute(text(f'DROP TABLE {quote(table_name)} CASCADE'))
+            current = None
+            session_role = await conn.scalar(text('SELECT current_user'))
+            for table_name, owner in rows:
+                # Helper roles own tables the session may not own; only the
+                # owner may drop, and fixtures grant SET ROLE for exactly that.
+                # A role is never a member of itself, so skip the session role.
+                # SET LOCAL keeps the borrowed pooled connection unswitched.
+                target = None if owner == session_role else owner
+                if target != current:
+                    await conn.execute(text(f'SET LOCAL ROLE {quote(target)}') if target else text('RESET ROLE'))
+                    current = target
+                await conn.execute(text(f'DROP TABLE IF EXISTS {quote(table_name)} CASCADE'))
+            if current is not None:
+                await conn.execute(text('RESET ROLE'))
 
     await drop_all_tables()
     yield
@@ -556,6 +588,10 @@ class TestPostgreSQLMigrationUpgrade:
                 await connection.execute(
                     text(f"CREATE ROLE {quote(role_name)} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '{password}'")
                 )
+                # CREATE SCHEMA ... AUTHORIZATION needs SET ROLE on the owner.
+                # INHERIT FALSE keeps the session role from gaining the owner's
+                # privileges, which the runtime-role checks assert on.
+                await connection.execute(text(f'GRANT {quote(role_name)} TO CURRENT_USER WITH INHERIT FALSE, SET TRUE'))
                 await connection.execute(text(f'CREATE SCHEMA {quote(role_name)} AUTHORIZATION {quote(role_name)}'))
             async with owner_engine.begin() as connection:
                 await connection.run_sync(Base.metadata.create_all)
@@ -652,7 +688,11 @@ class TestPostgreSQLMigrationUpgrade:
         finally:
             await owner_engine.dispose()
             async with postgres_engine.begin() as connection:
+                # The schema is owned by the helper role, so drop it as that role.
+                await connection.execute(text(f'SET ROLE {quote(role_name)}'))
                 await connection.execute(text(f'DROP SCHEMA IF EXISTS {quote(role_name)} CASCADE'))
+                await connection.execute(text('RESET ROLE'))
+                await connection.execute(text(f'REVOKE {quote(role_name)} FROM CURRENT_USER'))
                 await connection.execute(text(f'DROP ROLE IF EXISTS {quote(role_name)}'))
 
     @pytest.mark.asyncio
@@ -1422,7 +1462,6 @@ class TestPostgreSQLTenantRuntime:
         created_roles: list[str] = []
         managers: list[PersistenceManager] = []
         runtime_engine: AsyncEngine | None = None
-        owner_changed = False
 
         _restore_postgres_manager_registry(monkeypatch)
         monkeypatch.setattr(constants, 'instance_id', instance_uuid)
@@ -1432,8 +1471,6 @@ class TestPostgreSQLTenantRuntime:
         )
         managers.append(release_manager)
 
-        async with postgres_engine.connect() as conn:
-            admin_user = await conn.scalar(text('SELECT current_user'))
         quote = postgres_engine.dialect.identifier_preparer.quote
 
         def role_url(role_name: str) -> str:
@@ -1452,6 +1489,10 @@ class TestPostgreSQLTenantRuntime:
                 await conn.execute(
                     text(f"CREATE ROLE {quote(role_name)} LOGIN{bypass_clause} PASSWORD '{role_password}'")
                 )
+                # Fixtures let these roles own tables they later drop, which
+                # needs SET ROLE. SET ROLE-only (no INHERIT) is exempt from the
+                # runtime-role membership check; see mgr.py.
+                await conn.execute(text(f'GRANT {quote(role_name)} TO CURRENT_USER WITH INHERIT FALSE, SET TRUE'))
                 created_roles.append(role_name)
                 await conn.execute(
                     text(
@@ -1642,10 +1683,21 @@ class TestPostgreSQLTenantRuntime:
             membership_role = f'lb_member_{role_suffix}'
             await create_role(membership_role)
             async with postgres_engine.connect() as conn:
-                for options in ('INHERIT TRUE, SET FALSE', 'INHERIT FALSE, SET TRUE'):
+                # An inheriting grant hands the runtime role privileges and is
+                # rejected. A SET ROLE-only grant confers nothing and is exempt,
+                # because fixtures need it to drop what the role owns.
+                for options, rejects in (('INHERIT TRUE, SET FALSE', True), ('INHERIT FALSE, SET TRUE', False)):
                     await conn.execute(text(f'GRANT {quote(runtime_role)} TO {quote(membership_role)} WITH {options}'))
                     try:
-                        with pytest.raises(RuntimeError, match='must not participate in role memberships'):
+                        if rejects:
+                            with pytest.raises(
+                                RuntimeError, match='must not participate in role memberships'
+                            ) as raised:
+                                await cloud_manager._validate_configured_runtime_postgres_role(
+                                    require_current_user=True
+                                )
+                            assert "'inherit_option': True" in str(raised.value)
+                        else:
                             await cloud_manager._validate_configured_runtime_postgres_role(require_current_user=True)
                     finally:
                         await conn.execute(text(f'REVOKE {quote(runtime_role)} FROM {quote(membership_role)}'))
@@ -1835,7 +1887,9 @@ class TestPostgreSQLTenantRuntime:
                 mode=PersistenceMode.CLOUD_RUNTIME,
             )
             managers.append(superuser_manager)
-            with pytest.raises(RuntimeError, match='must not be a superuser'):
+            # The session role may be a superuser, or a non-superuser carrying
+            # BYPASSRLS; both are rejected, with different wording per check.
+            with pytest.raises(RuntimeError, match='must not be (a )?superuser|must not have BYPASSRLS'):
                 await superuser_manager.initialize()
 
             await create_role(bypass_role, bypass_rls=True)
@@ -1849,8 +1903,14 @@ class TestPostgreSQLTenantRuntime:
 
             await create_role(owner_role)
             async with postgres_engine.connect() as conn:
+                # CREATE ROLE does not make the session able to SET ROLE to it.
+                # This role only owns a table the fixture reassigns below; it is
+                # not the runtime role, so the membership check is unaffected.
+                await conn.execute(text(f'GRANT {quote(owner_role)} TO CURRENT_USER WITH INHERIT FALSE, SET TRUE'))
+                # ALTER TABLE ... OWNER TO also needs CREATE for the new owner.
+                await conn.execute(text(f'GRANT CREATE ON SCHEMA public TO {quote(owner_role)}'))
+            async with postgres_engine.connect() as conn:
                 await conn.execute(text(f'ALTER TABLE workspace_metadata OWNER TO {quote(owner_role)}'))
-            owner_changed = True
             owner_manager = PersistenceManager(
                 _application_for_postgres_url(role_url(owner_role), 'postgres-owner-runtime-test'),
                 mode=PersistenceMode.CLOUD_RUNTIME,
@@ -1864,10 +1924,16 @@ class TestPostgreSQLTenantRuntime:
             for manager in reversed(managers):
                 await _dispose_manager(manager)
 
+            # The table stays with its new owner: the clean_tables fixture drops
+            # tables as their owner, and reassigning would need ADMIN on the
+            # session role, which a non-superuser session cannot self-grant.
             async with postgres_engine.connect() as conn:
-                if owner_changed:
-                    await conn.execute(text(f'ALTER TABLE workspace_metadata OWNER TO {quote(admin_user)}'))
-                for role_name in reversed(created_roles):
+                # The owner role goes last: it holds the table reassigned above,
+                # so dropping it before the others strands the table.
+                ordered = [name for name in reversed(created_roles) if name != owner_role]
+                if owner_role in created_roles:
+                    ordered.append(owner_role)
+                for role_name in ordered:
                     await _drop_owned_and_role(conn, role_name, role_password, postgres_url, quote)
 
     @pytest.mark.asyncio
