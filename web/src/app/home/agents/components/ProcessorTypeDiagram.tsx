@@ -787,17 +787,13 @@ export default function ProcessorTypeDiagram({ kind }: { kind: AgentKind }) {
         className="flex h-full items-center justify-center gap-3 p-6"
         data-testid="workflow-diagram"
       >
-        <span className="rounded border p-3">
-          {t('workflows.nodes.messageTrigger')}
-        </span>
+        <span className="rounded border p-3">{t('workflows.steps.start')}</span>
         <span aria-hidden="true">→</span>
         <span className="rounded border p-3">
-          {t('workflows.nodes.condition')}
+          {t('workflows.steps.classify')}
         </span>
         <span aria-hidden="true">→</span>
-        <span className="rounded border p-3">
-          {t('workflows.nodes.replyMessage')}
-        </span>
+        <span className="rounded border p-3">{t('workflows.steps.reply')}</span>
       </div>
     );
   if (kind === 'event_processor') return <RunnerDiagram />;

@@ -44,13 +44,18 @@ test('workflow translations expose identical keys in all eight languages', () =>
   }
 });
 
-test('workflow client uses synchronous run and does not expose obsolete endpoints', () => {
+test('workflow client tests drafts and does not expose obsolete endpoints', () => {
   const source = fs.readFileSync(
     new URL('../../src/app/infra/http/BackendClient.ts', import.meta.url),
     'utf8',
   );
-  assert.match(source, /runWorkflow\(/);
+  assert.match(source, /testWorkflow\(/);
+  assert.match(source, /\/api\/v1\/workflows\/\$\{uuid\}\/test/);
   for (const method of [
+    'runWorkflow',
+    'getWorkflowVersions',
+    'rollbackWorkflow',
+    'toggleWorkflow',
     'publishWorkflow',
     'cancelWorkflowExecution',
     'rerunWorkflowExecution',
@@ -88,4 +93,16 @@ test('monitoring names workflow-handled messages instead of "unhandled"', () => 
     /workflowName\?\.\(workflow\) \|\| t\('workflows\.title'\)/,
   );
   assert.match(source, /data-testid="execution-kind-workflow"/);
+});
+
+test('workflow tree helpers keep the graph a tree', async () => {
+  const source = fs.readFileSync(
+    new URL('../../src/app/home/workflows/lib/tree.ts', import.meta.url),
+    'utf8',
+  );
+  // A step inserted into an occupied slot adopts the existing step.
+  assert.match(source, /edges\.push\(\{\s*from: id,\s*to: existing/);
+  // Removing a branching step removes its branches, a linear step is spliced.
+  assert.match(source, /export function removalImpact/);
+  assert.match(source, /export function pruneBranches/);
 });

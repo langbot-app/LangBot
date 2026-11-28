@@ -137,8 +137,8 @@ export function SidebarDataProvider({
         ].map((p) => ({
           id: p.uuid || '',
           name: p.name,
-          description: p.description,
-          emoji: p.emoji,
+          description: p.description ?? undefined,
+          emoji: p.emoji ?? undefined,
           updatedAt: p.updated_at,
           kind: p.kind,
         })),

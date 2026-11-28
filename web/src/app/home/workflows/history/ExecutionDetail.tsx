@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronRight, CircleAlert } from 'lucide-react';
+import { ChevronRight, CircleAlert, Forward } from 'lucide-react';
 import type {
   WorkflowExecution,
-  WorkflowExecutionNodeInfo,
+  WorkflowStepRun,
 } from '@/app/infra/entities/api';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -16,9 +16,7 @@ import {
   formatDateTime,
   parseUTCTimestamp,
 } from '@/app/home/monitoring/utils/dateUtils';
-import { useWorkflowStore } from '../../store/useWorkflowStore';
-
-type Status = WorkflowExecution['status'] | WorkflowExecutionNodeInfo['status'];
+import { STEP_META } from '../lib/catalog';
 
 const STATUS_STYLE: Record<string, string> = {
   completed:
@@ -38,7 +36,7 @@ const DOT_STYLE: Record<string, string> = {
   waiting: 'bg-amber-500',
 };
 
-export function StatusDot({ status }: { status: Status }) {
+export function StatusDot({ status }: { status: string }) {
   return (
     <span
       aria-hidden="true"
@@ -50,7 +48,7 @@ export function StatusDot({ status }: { status: Status }) {
   );
 }
 
-export function ExecutionStatusBadge({ status }: { status: Status }) {
+export function ExecutionStatusBadge({ status }: { status: string }) {
   const { t } = useTranslation();
   return (
     <Badge
@@ -62,41 +60,24 @@ export function ExecutionStatusBadge({ status }: { status: Status }) {
       )}
     >
       <StatusDot status={status} />
-      {t(`workflows.run.status.${status}`)}
+      {t(`workflows.run.status.${status}`, { defaultValue: status })}
     </Badge>
   );
 }
 
-function timestamp(value?: string): Date | null {
-  if (!value) return null;
+export function formatStartedAt(value?: string | null): string {
+  if (!value) return '—';
   const date = parseUTCTimestamp(value);
-  return Number.isNaN(date.getTime()) ? null : date;
+  return Number.isNaN(date.getTime()) ? '—' : formatDateTime(date);
 }
 
-export function formatStartedAt(value?: string): string {
-  const date = timestamp(value);
-  return date ? formatDateTime(date) : '—';
-}
-
-export function executionDuration(start?: string, end?: string): string {
-  const from = timestamp(start);
-  const to = timestamp(end);
-  if (!from || !to) return '—';
-  const ms = Math.max(0, to.getTime() - from.getTime());
+export function formatDuration(ms?: number | null): string {
+  if (ms == null) return '—';
   return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} s`;
 }
 
-// Bot deliveries carry the serialized platform event; manual test runs only
-// carry the typed message; nested runs come from a Call Workflow node.
-export function executionTriggerLabel(
-  execution: WorkflowExecution,
-  t: (key: string) => string,
-): string {
-  if (execution.trigger_type === 'workflow_call')
-    return t('workflows.run.triggerWorkflow');
-  if (execution.trigger_data && 'type' in execution.trigger_data)
-    return t('workflows.run.triggerBot');
-  return t('workflows.run.triggerManual');
+export function triggerLabel(trigger: string, t: (key: string) => string) {
+  return t(`workflows.run.trigger.${trigger}`);
 }
 
 function JsonBlock({ title, value }: { title: string; value: unknown }) {
@@ -113,37 +94,43 @@ function JsonBlock({ title, value }: { title: string; value: unknown }) {
   );
 }
 
-function NodeStep({
-  node,
-  index,
-  label,
-}: {
-  node: WorkflowExecutionNodeInfo;
-  index: number;
-  label: string;
-}) {
+function StepRow({ step, index }: { step: WorkflowStepRun; index: number }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(node.status === 'failed');
+  const [open, setOpen] = useState(step.status === 'failed');
+  const meta = STEP_META[step.node_type];
+  const Icon = meta?.icon;
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <div className="rounded-lg border bg-card">
         <CollapsibleTrigger className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/40">
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
+          <span className="w-5 shrink-0 text-center text-xs text-muted-foreground tabular-nums">
             {index + 1}
           </span>
+          {Icon && (
+            <span
+              className={cn(
+                'grid size-7 shrink-0 place-items-center rounded-lg',
+                meta.tone,
+              )}
+            >
+              <Icon className="size-3.5" />
+            </span>
+          )}
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium">{label}</span>
+            <span className="block truncate text-sm font-medium">
+              {step.node_name || t(`workflows.steps.${step.node_type}`)}
+            </span>
             <span className="block truncate text-xs text-muted-foreground">
-              {node.node_type}
+              {t(`workflows.steps.${step.node_type}`, {
+                defaultValue: step.node_type,
+              })}
+              {step.branch ? ` · → ${step.branch}` : ''}
             </span>
           </span>
           <span className="text-xs tabular-nums text-muted-foreground">
-            {executionDuration(
-              node.started_at ?? node.start_time,
-              node.completed_at ?? node.end_time,
-            )}
+            {formatDuration(step.duration_ms)}
           </span>
-          <ExecutionStatusBadge status={node.status} />
+          <ExecutionStatusBadge status={step.status} />
           <ChevronRight
             className={cn(
               'size-4 shrink-0 text-muted-foreground transition-transform',
@@ -153,20 +140,35 @@ function NodeStep({
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="space-y-3 border-t px-3 py-3">
-            {node.error && (
+            {step.error && (
               <p className="flex items-start gap-2 rounded-lg border border-red-200/70 bg-red-50/70 p-2.5 text-xs text-red-700 dark:border-red-800/50 dark:bg-red-950/30 dark:text-red-300">
                 <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
-                <span className="break-all">{node.error}</span>
+                <span className="break-all">{step.error}</span>
               </p>
             )}
             <div className="grid gap-3 md:grid-cols-2">
-              <JsonBlock title={t('workflows.inputs')} value={node.inputs} />
-              <JsonBlock title={t('workflows.outputs')} value={node.outputs} />
+              <JsonBlock
+                title={t('workflows.form.runInputs')}
+                value={step.inputs}
+              />
+              <JsonBlock
+                title={t('workflows.form.runOutputs')}
+                value={step.outputs}
+              />
             </div>
           </div>
         </CollapsibleContent>
       </div>
     </Collapsible>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="truncate text-sm font-medium tabular-nums">{value}</p>
+    </div>
   );
 }
 
@@ -176,32 +178,26 @@ export function ExecutionDetail({
   execution: WorkflowExecution;
 }) {
   const { t } = useTranslation();
-  const nodes = useWorkflowStore((state) => state.nodes);
-  const labelOf = (nodeId: string) =>
-    nodes.find((node) => node.id === nodeId)?.data.label || nodeId;
-  const started = execution.started_at ?? execution.start_time;
-  const finished = execution.completed_at ?? execution.end_time;
-  const steps = execution.node_executions ?? [];
+  const steps = execution.steps ?? [];
   return (
     <div className="space-y-4" data-testid="workflow-execution-detail">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl border bg-card p-4">
         <ExecutionStatusBadge status={execution.status} />
         <Fact
           label={t('workflows.run.startedAt')}
-          value={formatStartedAt(started)}
+          value={formatStartedAt(execution.started_at)}
         />
         <Fact
           label={t('workflows.run.duration')}
-          value={executionDuration(started, finished)}
+          value={formatDuration(execution.duration_ms)}
         />
         <Fact
-          label={t('workflows.run.trigger')}
-          value={executionTriggerLabel(execution, t)}
+          label={t('workflows.run.triggerLabel')}
+          value={triggerLabel(execution.trigger, t)}
         />
-        <Fact
-          label={t('workflows.version')}
-          value={`v${execution.workflow_version}`}
-        />
+        {execution.input_text && (
+          <Fact label={t('workflows.run.input')} value={execution.input_text} />
+        )}
       </div>
       {execution.error && (
         <p className="flex items-start gap-2 rounded-xl border border-red-200/70 bg-red-50/70 p-3 text-sm text-red-700 dark:border-red-800/50 dark:bg-red-950/30 dark:text-red-300">
@@ -209,28 +205,26 @@ export function ExecutionDetail({
           <span className="break-all">{execution.error}</span>
         </p>
       )}
+      {execution.handoff && (
+        <p className="flex items-center gap-2 rounded-xl border border-amber-200/70 bg-amber-50/70 p-3 text-sm text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300">
+          <Forward className="size-4 shrink-0" />
+          {t('workflows.test.handoff', {
+            name: execution.handoff.name ?? execution.handoff.target_uuid,
+          })}
+        </p>
+      )}
       <div className="space-y-2">
         <p className="text-sm font-medium">
           {t('workflows.run.steps', { count: steps.length })}
         </p>
-        {steps.map((node, index) => (
-          <NodeStep
-            key={`${node.node_id}-${index}`}
-            node={node}
+        {steps.map((step, index) => (
+          <StepRow
+            key={`${step.node_id}-${step.seq}`}
+            step={step}
             index={index}
-            label={labelOf(node.node_id)}
           />
         ))}
       </div>
-    </div>
-  );
-}
-
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="truncate text-sm font-medium tabular-nums">{value}</p>
     </div>
   );
 }

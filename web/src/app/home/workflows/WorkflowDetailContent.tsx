@@ -1,506 +1,445 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+import {
+  Copy,
+  Download,
+  Ellipsis,
+  Trash2,
+  Upload,
+  Workflow as WorkflowIcon,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import WorkflowEditorComponent from './components/workflow-editor/WorkflowEditorComponent';
-import WorkflowFormComponent from './components/workflow-form/WorkflowFormComponent';
-import WorkflowExecutionsTab from './components/workflow-executions/WorkflowExecutionsTab';
-import WorkflowDebugDialog from './components/workflow-debug-dialog/WorkflowDebugDialog';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import ProcessorDetailWorkbench from '@/app/home/components/processor-detail/ProcessorDetailWorkbench';
+import EntityBasicInfoDialog, {
+  type EntityBasicInfoValues,
+} from '@/app/home/components/entity-basic-info/EntityBasicInfoDialog';
+import EntityTitleEditButton from '@/app/home/components/entity-basic-info/EntityTitleEditButton';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
-import { useTranslation } from 'react-i18next';
-import { Settings, Play, BarChart3, Download, Upload } from 'lucide-react';
-import { backendClient } from '@/app/infra/http';
-import { Workflow } from '@/app/infra/entities/api';
-import { useWorkflowStore } from './store/useWorkflowStore';
-import { toast } from 'sonner';
-import EmojiPicker from '@/components/ui/emoji-picker';
-import yaml from 'js-yaml';
+import { backendClient, useCurrentWorkspace } from '@/app/infra/http';
+import type {
+  ApiRespWorkflowTest,
+  Workflow,
+  WorkflowGraph,
+  WorkflowIssue,
+  WorkflowStepRun,
+} from '@/app/infra/entities/api';
+import { EditorContext, type EditorResources } from './editor/EditorContext';
+import StepCanvas from './editor/StepCanvas';
+import StepPanel from './editor/StepPanel';
+import TestRunPanel from './editor/TestRunPanel';
+import RunHistory from './history/RunHistory';
+
+const EMPTY_RESOURCES: EditorResources = {
+  models: [],
+  processors: [],
+  workflows: [],
+  bots: [],
+  availableTypes: null,
+};
+
+function errorText(error: unknown) {
+  return (
+    (error as { msg?: string })?.msg ??
+    (error as Error)?.message ??
+    String(error)
+  );
+}
 
 export default function WorkflowDetailContent({ id }: { id: string }) {
-  const isCreateMode = id === 'new';
-  const navigate = useNavigate();
   const { t } = useTranslation();
-  const {
-    refreshPipelines: refreshWorkflows,
-    pipelines: workflows,
-    setDetailEntityName,
-  } = useSidebarData();
+  const navigate = useNavigate();
+  const workspace = useCurrentWorkspace();
+  const canManage = workspace?.permissions.includes('resource.manage') ?? false;
+  const canRun = workspace?.permissions.includes('runtime.operate') ?? false;
+  const { refreshPipelines, setDetailEntityName } = useSidebarData();
 
-  const {
-    setCurrentWorkflow,
-    fromWorkflowDefinition,
-    toWorkflowDefinition,
-    isDirty,
-    setDirty,
-    isSaving,
-    setSaving,
-    setLoading,
-    reset,
-    setNodeTypes,
-  } = useWorkflowStore();
-
-  const [activeTab, setActiveTab] = useState('editor');
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
-  const [basicInfo, setBasicInfo] = useState<{
-    name: string;
-    description: string;
-    emoji: string;
-  }>({
-    name: '',
-    description: '',
-    emoji: '💼',
-  });
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [graph, setGraphState] = useState<WorkflowGraph | null>(null);
+  const [saved, setSaved] = useState('');
+  const [issues, setIssues] = useState<WorkflowIssue[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [lastRun, setLastRun] = useState<Record<string, WorkflowStepRun>>({});
+  const [resources, setResources] = useState(EMPTY_RESOURCES);
+  const [saving, setSaving] = useState(false);
+  const [basicInfoOpen, setBasicInfoOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const importInput = useRef<HTMLInputElement>(null);
 
-  // Set breadcrumb entity name
-  useEffect(() => {
-    if (isCreateMode) {
-      setDetailEntityName(t('workflows.createWorkflow'));
-    } else {
-      const wf = workflows.find((w) => w.id === id);
-      setDetailEntityName(wf?.name ?? id);
+  const load = useCallback(async () => {
+    try {
+      const response = await backendClient.getWorkflow(id);
+      setWorkflow(response.workflow);
+      setGraphState(response.workflow.graph);
+      setSaved(JSON.stringify(response.workflow.graph));
+      setIssues(response.issues ?? []);
+    } catch (error) {
+      toast.error(`${t('workflows.loadError')} ${errorText(error)}`);
     }
-    return () => setDetailEntityName(null);
-  }, [id, isCreateMode, workflows, setDetailEntityName, t]);
+  }, [id, t]);
 
-  // Load node types - always fetch from backend to ensure fresh metadata
   useEffect(() => {
-    backendClient
-      .getWorkflowNodeTypes()
-      .then((resp) => {
-        setNodeTypes(resp.node_types, resp.categories);
-      })
-      .catch((err) => {
-        console.error('Failed to load node types:', err);
-      });
-  }, [setNodeTypes]);
+    setWorkflow(null);
+    setGraphState(null);
+    setSelected(null);
+    setLastRun({});
+    void load();
+  }, [load]);
 
-  // Load workflow data
   useEffect(() => {
-    if (isCreateMode) {
-      reset();
-      setWorkflow(null);
-      return;
-    }
-
-    setLoading(true);
-    backendClient
-      .getWorkflow(id)
-      .then((resp) => {
-        setWorkflow(resp.workflow);
-        setCurrentWorkflow(resp.workflow);
-        fromWorkflowDefinition(
-          resp.workflow.nodes || [],
-          resp.workflow.edges || [],
-        );
-      })
-      .catch((err) => {
-        console.error('Failed to load workflow:', err);
-        toast.error(t('workflows.loadError'));
-      })
-      .finally(() => {
-        setLoading(false);
+    let alive = true;
+    void Promise.allSettled([
+      backendClient.getProviderLLMModels(),
+      backendClient.getAgents(),
+      backendClient.getWorkflows(),
+      backendClient.getBots(),
+      backendClient.getWorkflowNodeTypes(),
+    ]).then(([models, agents, workflows, bots, types]) => {
+      if (!alive) return;
+      setResources({
+        models: models.status === 'fulfilled' ? models.value.models : [],
+        processors: agents.status === 'fulfilled' ? agents.value.agents : [],
+        workflows:
+          workflows.status === 'fulfilled' ? workflows.value.workflows : [],
+        bots:
+          bots.status === 'fulfilled'
+            ? bots.value.bots
+                .filter((bot) => bot.uuid)
+                .map((bot) => ({ uuid: bot.uuid!, name: bot.name }))
+            : [],
+        availableTypes:
+          types.status === 'fulfilled'
+            ? new Set(
+                types.value.node_types
+                  .filter((item) => item.available !== false)
+                  .map((item) => item.type),
+              )
+            : null,
       });
-
+    });
     return () => {
-      reset();
+      alive = false;
     };
-  }, [id, isCreateMode]);
+  }, [id]);
 
-  // Save handler
-  const handleSave = useCallback(async () => {
-    if (isSaving) return;
+  useEffect(() => {
+    if (workflow) setDetailEntityName(workflow.name);
+    return () => setDetailEntityName(null);
+  }, [workflow, setDetailEntityName]);
 
+  const dirty = graph !== null && JSON.stringify(graph) !== saved;
+
+  const setGraph = useCallback(
+    (update: (current: WorkflowGraph) => WorkflowGraph) =>
+      setGraphState((current) => (current ? update(current) : current)),
+    [],
+  );
+
+  const save = async () => {
+    if (!graph || saving) return;
     setSaving(true);
     try {
-      const { nodes, edges } = toWorkflowDefinition();
-
-      if (isCreateMode) {
-        const resp = await backendClient.createWorkflow({
-          name: basicInfo.name || t('workflows.newWorkflow'),
-          description: basicInfo.description,
-          emoji: basicInfo.emoji,
-          nodes: [],
-          edges: [],
-        });
-        refreshWorkflows();
-        navigate(`/home/workflows?id=${encodeURIComponent(resp.uuid)}`);
-        toast.success(t('workflows.createSuccess'));
+      const response = await backendClient.updateWorkflow(id, { graph });
+      setWorkflow(response.workflow);
+      setSaved(JSON.stringify(response.workflow.graph));
+      setGraphState(response.workflow.graph);
+      setIssues(response.issues ?? []);
+      const errors = (response.issues ?? []).filter(
+        (issue) => issue.severity === 'error',
+      ).length;
+      if (errors) {
+        toast.warning(t('workflows.savedWithIssues', { count: errors }));
       } else {
-        await backendClient.updateWorkflow(id, {
-          name: workflow?.name,
-          emoji: workflow?.emoji,
-          description: workflow?.description,
-          is_enabled: workflow?.is_enabled,
-          nodes,
-          edges,
-          variables: workflow?.variables,
-          settings: workflow?.settings,
-        });
-        setDirty(false);
-        refreshWorkflows();
         toast.success(t('workflows.saveSuccess'));
       }
-    } catch (err) {
-      console.error('Failed to save workflow:', err);
-      toast.error(t('workflows.saveError'));
+      refreshPipelines();
+    } catch (error) {
+      toast.error(`${t('workflows.saveError')}${errorText(error)}`);
     } finally {
       setSaving(false);
     }
-  }, [
-    id,
-    isCreateMode,
-    workflow,
-    isSaving,
-    toWorkflowDefinition,
-    refreshWorkflows,
-    navigate,
-    t,
-    basicInfo,
-  ]);
+  };
 
-  // Export workflow handler - exports as YAML
-  const handleExport = useCallback(() => {
-    const { nodes, edges } = toWorkflowDefinition();
+  const saveBasicInfo = async (values: EntityBasicInfoValues) => {
+    const response = await backendClient.updateWorkflow(id, {
+      name: values.name,
+      description: values.description,
+      emoji: values.emoji,
+    });
+    setWorkflow(response.workflow);
+    refreshPipelines();
+  };
 
-    const exportData = {
-      name: workflow?.name || t('workflows.newWorkflow'),
-      description: workflow?.description || '',
-      emoji: workflow?.emoji || '🔄',
-      nodes,
-      edges,
-      variables: workflow?.variables || {},
-      settings: workflow?.settings || {},
-      // Keep the exported version aligned with the (published) workflow version
-      // instead of a hard-coded placeholder.
-      version: workflow?.version ?? 1,
-      createdAt: workflow?.created_at,
-      updatedAt: workflow?.updated_at,
-      exportedAt: new Date().toISOString(),
-    };
-
-    const yamlStr = yaml.dump(exportData, { indent: 2, lineWidth: -1 });
-    const blob = new Blob([yamlStr], { type: 'text/yaml' });
+  const exportWorkflow = () => {
+    if (!workflow || !graph) return;
+    const blob = new Blob(
+      [
+        JSON.stringify(
+          {
+            name: workflow.name,
+            description: workflow.description ?? '',
+            emoji: workflow.emoji ?? '',
+            graph,
+          },
+          null,
+          2,
+        ),
+      ],
+      { type: 'application/json' },
+    );
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${workflow?.name || 'workflow'}.yaml`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${workflow.name || 'workflow'}.json`;
+    link.click();
     URL.revokeObjectURL(url);
+  };
 
-    toast.success(t('workflows.exportSuccess'));
-  }, [workflow, toWorkflowDefinition, t]);
-
-  // Import workflow handler - supports both JSON and YAML
-  const handleImport = useCallback(
-    (file: File) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const content = e.target?.result as string;
-          let importData: any;
-
-          // Try YAML first, then JSON
-          try {
-            importData = yaml.load(content);
-          } catch {
-            importData = JSON.parse(content);
-          }
-
-          // Validate imported data structure
-          if (!importData.nodes || !Array.isArray(importData.nodes)) {
-            throw new Error('Invalid workflow file: missing nodes');
-          }
-          if (!importData.edges || !Array.isArray(importData.edges)) {
-            throw new Error('Invalid workflow file: missing edges');
-          }
-
-          // Validate each node has required fields
-          const nodeIds = new Set<string>();
-          for (const node of importData.nodes) {
-            if (!node.id || !node.type) {
-              throw new Error(`Invalid node: missing id or type`);
-            }
-            if (
-              !node.position ||
-              typeof node.position.x !== 'number' ||
-              typeof node.position.y !== 'number'
-            ) {
-              throw new Error(
-                `Invalid node "${node.id}": missing or invalid position`,
-              );
-            }
-            nodeIds.add(node.id);
-          }
-
-          // Validate each edge has required fields and references existing nodes
-          for (const edge of importData.edges) {
-            if (!edge.id || !edge.source || !edge.target) {
-              throw new Error(`Invalid edge: missing id, source, or target`);
-            }
-            if (!nodeIds.has(edge.source)) {
-              throw new Error(
-                `Edge "${edge.id}" references unknown source node "${edge.source}"`,
-              );
-            }
-            if (!nodeIds.has(edge.target)) {
-              throw new Error(
-                `Edge "${edge.id}" references unknown target node "${edge.target}"`,
-              );
-            }
-          }
-
-          // Load nodes and edges into the store
-          fromWorkflowDefinition(importData.nodes, importData.edges);
-
-          // Update workflow metadata if available
-          if (
-            workflow &&
-            (importData.name || importData.description || importData.emoji)
-          ) {
-            setWorkflow({
-              ...workflow,
-              name: importData.name || workflow.name,
-              description: importData.description || workflow.description,
-              emoji: importData.emoji || workflow.emoji,
-              variables: importData.variables || workflow.variables,
-              settings: importData.settings || workflow.settings,
-            });
-          }
-
-          setDirty(true);
-          toast.success(t('workflows.importSuccess'));
-        } catch (error) {
-          console.error('Failed to import workflow:', error);
-          toast.error(t('workflows.importError'));
-        }
-      };
-      reader.readAsText(file);
-    },
-    [workflow, fromWorkflowDefinition, setDirty, t],
-  );
-
-  // Handle file input change
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-        handleImport(file);
-        // Reset file input
-        e.target.value = '';
-      }
-    },
-    [handleImport],
-  );
-
-  // Delete handler
-  const handleDelete = useCallback(async () => {
-    if (!workflow?.uuid) return;
-
+  const importWorkflow = async (file: File) => {
     try {
-      await backendClient.deleteWorkflow(workflow.uuid);
-      refreshWorkflows();
-      navigate('/home/workflows');
-      toast.success(t('workflows.deleteSuccess'));
-    } catch (err) {
-      console.error('Failed to delete workflow:', err);
-      toast.error(t('workflows.deleteError'));
+      const data = JSON.parse(await file.text());
+      const next: WorkflowGraph = data.graph ?? data;
+      if (!Array.isArray(next?.nodes) || !Array.isArray(next?.edges)) {
+        throw new Error('invalid');
+      }
+      setGraphState(next);
+      setSelected(null);
+      toast.success(t('workflows.importSuccess'));
+    } catch {
+      toast.error(t('workflows.importError'));
     }
-  }, [workflow, refreshWorkflows, navigate, t]);
+  };
 
-  // ==================== Create Mode ====================
-  if (isCreateMode) {
+  const copyWorkflow = async () => {
+    try {
+      const response = await backendClient.copyWorkflow(id);
+      refreshPipelines();
+      navigate(
+        `/home/workflows?id=${encodeURIComponent(response.workflow.uuid)}`,
+      );
+      toast.success(t('workflows.copySuccess'));
+    } catch (error) {
+      toast.error(errorText(error));
+    }
+  };
+
+  const deleteWorkflow = async () => {
+    try {
+      await backendClient.deleteWorkflow(id);
+      refreshPipelines();
+      navigate('/home/agents');
+      toast.success(t('workflows.deleteSuccess'));
+    } catch (error) {
+      toast.error(`${t('workflows.deleteError')}${errorText(error)}`);
+    }
+  };
+
+  const applyRun = (result: ApiRespWorkflowTest | null) => {
+    setLastRun(
+      Object.fromEntries(
+        (result?.steps ?? []).map((step) => [step.node_id, step]),
+      ),
+    );
+  };
+
+  const errorCount = issues.filter(
+    (issue) => issue.severity === 'error',
+  ).length;
+  const editor = useMemo(
+    () =>
+      graph && {
+        workflowId: id,
+        graph,
+        setGraph,
+        selected,
+        select: setSelected,
+        issues,
+        lastRun,
+        resources,
+        readOnly: !canManage,
+      },
+    [id, graph, setGraph, selected, issues, lastRun, resources, canManage],
+  );
+
+  if (!workflow || !editor) {
     return (
-      <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between pb-4 shrink-0">
-          <h1 className="text-xl font-semibold">
-            {t('workflows.createWorkflow')}
-          </h1>
-          <div className="flex gap-2">
-            <input
-              type="file"
-              accept=".yaml,.yml,.json"
-              onChange={handleFileChange}
-              style={{ display: 'none' }}
-              ref={fileInputRef}
-            />
-            <Button
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload className="size-4 mr-1" />
-              {t('workflows.import')}
-            </Button>
-            <Button
-              onClick={handleSave}
-              disabled={isSaving || !basicInfo.name.trim()}
-            >
-              {isSaving ? t('common.saving') : t('common.create')}
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="mx-auto max-w-2xl space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('workflows.basicInfo')}</CardTitle>
-                <CardDescription>
-                  {t('workflows.basicInfoDesc')}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="workflow-name">{t('workflows.name')}</Label>
-                  <div className="flex gap-2">
-                    <EmojiPicker
-                      value={basicInfo.emoji}
-                      onChange={(emoji: string) =>
-                        setBasicInfo({ ...basicInfo, emoji })
-                      }
-                    />
-                    <Input
-                      id="workflow-name"
-                      value={basicInfo.name}
-                      onChange={(e) =>
-                        setBasicInfo({ ...basicInfo, name: e.target.value })
-                      }
-                      placeholder={t('workflows.namePlaceholder')}
-                      className="flex-1"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="workflow-description">
-                    {t('workflows.description')}
-                  </Label>
-                  <Textarea
-                    id="workflow-description"
-                    value={basicInfo.description}
-                    onChange={(e) =>
-                      setBasicInfo({
-                        ...basicInfo,
-                        description: e.target.value,
-                      })
-                    }
-                    placeholder={t('workflows.descriptionPlaceholder')}
-                    rows={3}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        {t('common.loading')}
       </div>
     );
   }
 
-  // ==================== Edit Mode ====================
   return (
-    <div className="flex h-full flex-col">
-      {/* Hidden file input for import */}
-      <input
-        type="file"
-        accept=".yaml,.yml,.json"
-        onChange={handleFileChange}
-        style={{ display: 'none' }}
-        ref={fileInputRef}
-      />
-
-      {/* Sticky Header: title + save button */}
-      <div className="flex items-center justify-between pb-4 shrink-0">
-        <h1 className="text-xl font-semibold">{t('workflows.editWorkflow')}</h1>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload className="size-4 mr-1" />
-            {t('workflows.import')}
-          </Button>
-          <Button variant="outline" onClick={handleExport}>
-            <Download className="size-4 mr-1" />
-            {t('workflows.export')}
-          </Button>
-
-          <Button onClick={handleSave} disabled={!isDirty || isSaving}>
-            {isSaving ? t('common.saving') : t('common.save')}
-          </Button>
-        </div>
-      </div>
-
-      {/* Horizontal Tabs */}
-      <Tabs
+    <EditorContext.Provider value={editor}>
+      <ProcessorDetailWorkbench
         key={id}
-        value={activeTab}
-        onValueChange={setActiveTab}
-        className="flex flex-1 flex-col min-h-0"
-      >
-        <TabsList className="shrink-0">
-          <TabsTrigger value="editor" className="gap-1.5">
-            <Play className="size-3.5" />
-            {t('workflows.editor')}
-          </TabsTrigger>
-          <TabsTrigger value="debug" className="gap-1.5">
-            <Play className="size-3.5" />
-            {t('workflows.testRun')}
-          </TabsTrigger>
-          <TabsTrigger value="config" className="gap-1.5">
-            <Settings className="size-3.5" />
-            {t('workflows.configuration')}
-          </TabsTrigger>
-          <TabsTrigger value="executions" className="gap-1.5">
-            <BarChart3 className="size-3.5" />
-            {t('workflows.executions')}
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Tab: Editor */}
-        <TabsContent value="editor" className="flex-1 min-h-0 mt-4">
-          <WorkflowEditorComponent />
-        </TabsContent>
-
-        {/* Tab: Debug Chat */}
-        <TabsContent value="debug" className="flex-1 min-h-0 mt-4">
-          <WorkflowDebugDialog workflowId={id} />
-        </TabsContent>
-
-        {/* Tab: Configuration */}
-        <TabsContent
-          value="config"
-          className="flex-1 min-h-0 overflow-y-auto mt-4"
-        >
-          <WorkflowFormComponent
-            workflow={workflow}
-            onWorkflowChange={(updated) => {
-              setWorkflow(updated);
-              setDirty(true);
+        title={`${workflow.emoji || '🧭'} ${workflow.name}`}
+        titleBadge={
+          <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
+            {t('workflows.badge')}
+          </span>
+        }
+        titleAction={
+          canManage ? (
+            <EntityTitleEditButton onClick={() => setBasicInfoOpen(true)} />
+          ) : undefined
+        }
+        status={
+          errorCount
+            ? {
+                label: t('workflows.issueCount', { count: errorCount }),
+                description: t('workflows.issueCountHint'),
+                tone: 'error',
+              }
+            : null
+        }
+        saveLabel={t('common.save')}
+        saveFormId="workflow-form"
+        canSave={canManage}
+        isDirty={dirty}
+        isSaving={saving}
+        unsavedLabel={t('pipelines.unsavedChanges')}
+        headerActions={
+          canManage ? (
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    aria-label={t('workflows.more')}
+                  >
+                    <Ellipsis className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={() => importInput.current?.click()}
+                  >
+                    <Upload className="size-4" />
+                    {t('workflows.import')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={exportWorkflow}>
+                    <Download className="size-4" />
+                    {t('workflows.export')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void copyWorkflow()}>
+                    <Copy className="size-4" />
+                    {t('workflows.copy')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => setDeleteOpen(true)}
+              >
+                <Trash2 className="size-4" />
+                {t('common.delete')}
+              </Button>
+              <input
+                ref={importInput}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void importWorkflow(file);
+                  event.target.value = '';
+                }}
+              />
+            </>
+          ) : undefined
+        }
+        configTitle={t('workflows.editor')}
+        configIcon={<WorkflowIcon className="size-4" />}
+        configContent={
+          <form
+            id="workflow-form"
+            className="relative -m-4 h-[calc(100%+2rem)] overflow-hidden"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void save();
             }}
-            onDelete={handleDelete}
-          />
-        </TabsContent>
-
-        {/* Tab: Executions */}
-        <TabsContent
-          value="executions"
-          className="flex-1 min-h-0 overflow-y-auto mt-4"
-        >
-          <WorkflowExecutionsTab workflowId={id} />
-        </TabsContent>
-      </Tabs>
-    </div>
+            onKeyDown={(event) => {
+              if (
+                event.key === 'Enter' &&
+                (event.target as HTMLElement).tagName === 'INPUT'
+              ) {
+                event.preventDefault();
+              }
+            }}
+          >
+            <StepCanvas />
+            {selected && (
+              <div className="absolute inset-y-0 right-0 z-20">
+                <StepPanel id={selected} />
+              </div>
+            )}
+          </form>
+        }
+        debugTitle={canRun ? t('workflows.test.title') : undefined}
+        debugDescription={t('workflows.test.description')}
+        debugContent={
+          canRun ? (
+            <TestRunPanel workflowId={id} graph={graph!} onResult={applyRun} />
+          ) : undefined
+        }
+        monitoring={
+          workspace?.permissions.includes('resource.view')
+            ? {
+                label: t('workflows.history'),
+                workbenchLabel: t('workflows.workbench'),
+                content: <RunHistory key={id} workflowId={id} />,
+              }
+            : undefined
+        }
+      />
+      <EntityBasicInfoDialog
+        open={basicInfoOpen}
+        onOpenChange={setBasicInfoOpen}
+        values={{
+          name: workflow.name,
+          description: workflow.description ?? '',
+          emoji: workflow.emoji || '🧭',
+        }}
+        defaultEmoji="🧭"
+        onSave={saveBasicInfo}
+      />
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('common.confirmDelete')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('workflows.deleteConfirm', { name: workflow.name })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void deleteWorkflow()}>
+              {t('common.delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </EditorContext.Provider>
   );
 }

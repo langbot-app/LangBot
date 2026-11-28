@@ -8,18 +8,14 @@ import { cn } from '@/lib/utils';
 import {
   ExecutionDetail,
   StatusDot,
-  executionDuration,
-  executionTriggerLabel,
+  formatDuration,
   formatStartedAt,
+  triggerLabel,
 } from './ExecutionDetail';
 
 const PAGE_SIZE = 20;
 
-export default function WorkflowExecutionsTab({
-  workflowId,
-}: {
-  workflowId: string;
-}) {
+export default function RunHistory({ workflowId }: { workflowId: string }) {
   const { t } = useTranslation();
   const [executions, setExecutions] = useState<WorkflowExecution[]>([]);
   const [selected, setSelected] = useState<WorkflowExecution>();
@@ -119,20 +115,16 @@ export default function WorkflowExecutionsTab({
                 <StatusDot status={execution.status} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium tabular-nums">
-                    {formatStartedAt(
-                      execution.started_at ?? execution.start_time,
-                    )}
+                    {formatStartedAt(execution.started_at)}
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">
-                    {executionTriggerLabel(execution, t)} ·{' '}
-                    {t(`workflows.run.status.${execution.status}`)}
+                    {triggerLabel(execution.trigger, t)} ·{' '}
+                    {execution.input_text ||
+                      t(`workflows.run.status.${execution.status}`)}
                   </span>
                 </span>
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {executionDuration(
-                    execution.started_at ?? execution.start_time,
-                    execution.completed_at ?? execution.end_time,
-                  )}
+                  {formatDuration(execution.duration_ms)}
                 </span>
               </button>
             );

@@ -524,8 +524,21 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
   }
 
   async function initBotFormComponent() {
-    const agentsRes = await httpClient.getAgents();
-    setAgentNameList(agentsRes.agents);
+    const [agentsRes, workflowsRes] = await Promise.all([
+      httpClient.getAgents(),
+      httpClient.getWorkflows().catch(() => ({ workflows: [] })),
+    ]);
+    // Workflows are listed with the other processors so route cards can name them.
+    setAgentNameList([
+      ...agentsRes.agents,
+      ...workflowsRes.workflows.map((workflow) => ({
+        uuid: workflow.uuid,
+        name: workflow.name,
+        description: workflow.description ?? '',
+        emoji: workflow.emoji ?? undefined,
+        kind: 'workflow' as const,
+      })),
+    ]);
 
     const adaptersRes = await httpClient.getAdapters();
     setCommandCapabilities(
