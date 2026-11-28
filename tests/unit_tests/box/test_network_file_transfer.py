@@ -467,7 +467,7 @@ async def test_real_rpc_cache_recovery_executes_once_and_never_replays_backend_e
     with pytest.raises(BoxError):
         await box.service.execute_tool({'command': 'printf actual-side-effect'}, box.query)
     assert executed == ['actual-side-effect']
-    assert reads == [True, False]
+    assert reads == [False]
 
 
 @pytest.mark.asyncio
