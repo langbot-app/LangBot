@@ -268,10 +268,13 @@ async def build_heartbeat_payload(
     except Exception:
         pass
 
-    # Bots / adapters (adapter type names only)
+    # Bots / adapters (adapter type names only). The Cloud snapshot already
+    # counts these per Workspace and overrides them below; scanning every bot
+    # of the instance once per Workspace is O(workspaces x bots) and starved
+    # the Cloud event loop (LANG-752).
     try:
         platform_mgr = getattr(ap, 'platform_mgr', None)
-        if platform_mgr is not None and getattr(platform_mgr, 'bots', None) is not None:
+        if workspace_resource is None and platform_mgr is not None and getattr(platform_mgr, 'bots', None) is not None:
             enabled_bots = [bot for bot in platform_mgr.bots if getattr(bot, 'enable', False)]
             features['bot_count'] = len(platform_mgr.bots)
             features.update(_message_policy_counts(platform_mgr.bots))
