@@ -2166,6 +2166,36 @@ async def test_listener_dispatch_preserves_order_mutation_and_prevention(prevent
 
 
 @pytest.mark.asyncio
+async def test_registered_event_dispatch_uses_host_order():
+    manager = _manager()
+    for name, registered in [
+        ("first", ["PersonCommandSent"]),
+        ("idle", []),
+        ("last", ["PersonCommandSent"]),
+    ]:
+        plugin = _plugin(
+            name=name,
+            components=[
+                _component("EventListener", "events"),
+                _component("Command", name),
+            ],
+        )
+        plugin.registered_events = registered
+        plugin._runtime_plugin_handler = FakeHandler(plugin)
+        manager.plugins.append(plugin)
+    manager.plugins[1]._runtime_plugin_handler.emit_event = AsyncMock(
+        side_effect=AssertionError("unregistered event")
+    )
+    order = ["tester/last", "tester/idle", "tester/first"]
+    emitted, _, _ = await manager.emit_event(_command_event(), order)
+    assert [plugin.manifest.metadata.name for plugin in emitted] == ["last", "first"]
+    assert manager.plugin_registrations(order)["tester/idle"] == {
+        "events": [],
+        "commands": ["idle"],
+    }
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("error", [RuntimeError, TimeoutError, ConnectionError])
 async def test_subscriber_failures_preserve_existing_propagation(error):
     manager = _manager()

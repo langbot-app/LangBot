@@ -106,6 +106,16 @@ def get_handled_by(query: typing.Any) -> str | None:
     return (getattr(query, 'variables', None) or {}).get(HANDLED_BY_VAR)
 
 
+def _terminal_attribution(query: typing.Any) -> dict:
+    handled_by = get_handled_by(query)
+    if not handled_by:
+        return {}
+    return {
+        'handled_by': handled_by,
+        'clear_runner_name': is_plugin_handler(handled_by) or is_filtered_handler(handled_by),
+    }
+
+
 def _origin(query: typing.Any) -> dict:
     origin = (getattr(query, 'variables', None) or {}).get(ORIGIN_VAR)
     return origin if isinstance(origin, dict) else {}
@@ -312,15 +322,6 @@ class MonitoringHelper:
         """Bound terminal writes and retry transient failures without blocking cleanup."""
         if not message_id:
             return
-        handled_by = get_handled_by(query)
-        attribution = {}
-        if handled_by:
-            # A plugin that took the message over, or a filter stage that dropped
-            # it, means the runner never ran.
-            attribution = {
-                'handled_by': handled_by,
-                'clear_runner_name': is_plugin_handler(handled_by) or is_filtered_handler(handled_by),
-            }
         for attempt in range(3):
             try:
                 async with asyncio.timeout(2):
@@ -329,7 +330,7 @@ class MonitoringHelper:
                         message_id=message_id,
                         status=status,
                         level='error' if status == 'error' else 'info',
-                        **attribution,
+                        **_terminal_attribution(query),
                     )
                 return
             except Exception as exc:
@@ -408,6 +409,7 @@ class MonitoringHelper:
                     message_id=message_id,
                     status='success',
                     variables=query_variables_str,
+                    **_terminal_attribution(query),
                 )
         except Exception as e:
             ap.logger.error(f'Failed to record query success: {e}')

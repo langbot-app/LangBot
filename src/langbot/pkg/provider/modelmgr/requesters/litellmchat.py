@@ -1660,6 +1660,9 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         """Count input tokens with LiteLLM's model-aware tokenizer."""
         # Counting only needs the input representation, not generation policy,
         # credentials, or transport parameters.
+        count_started = time.perf_counter()
+        conversion_started = count_started
+        logger = getattr(self.ap, 'logger', None)
         reasoning_config = reasoning.resolve_reasoning_config(model, extra_args)
         req_messages = self._convert_messages(
             messages,
@@ -1670,6 +1673,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         )
         chat_provider = 'openrouter' if self._uses_openrouter_protocol() else self._get_custom_llm_provider()
         self._adapt_messages_for_provider(req_messages, chat_provider)
+        conversion_ms = (time.perf_counter() - conversion_started) * 1000
         count_args: dict[str, typing.Any] = {
             'model': self._build_litellm_model_name(model.model_entity.name, chat_provider),
             'messages': req_messages,
@@ -1679,23 +1683,62 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 for key in ('model', 'messages', 'tools', 'tool_choice'):
                     if key in args:
                         count_args[key] = args[key]
+        tools_started = time.perf_counter()
         if funcs:
             tools = await self.ap.tool_mgr.generate_tools_for_openai(funcs)
             if tools:
                 count_args['tools'] = tools
                 count_args.setdefault('tool_choice', 'auto')
+        tools_ms = (time.perf_counter() - tools_started) * 1000
 
         # Concurrent counts are normal (one per conversation). Only a count
         # that outlived its caller blocks new ones: its thread cannot be
         # stopped, and repeated stalled downloads would fill the executor.
         if self._stalled_count_task is not None and not self._stalled_count_task.done():
+            if logger is not None:
+                logger.warning(
+                    'count_tokens_timing outcome=stalled model=%s messages=%d tools=%d '
+                    'conversion_ms=%.3f tools_ms=%.3f total_ms=%.3f',
+                    count_args['model'],
+                    len(req_messages),
+                    len(count_args.get('tools', [])),
+                    conversion_ms,
+                    tools_ms,
+                    (time.perf_counter() - count_started) * 1000,
+                )
             raise errors.RequesterError('Token counter is still busy loading tokenizer resources')
-        task = asyncio.create_task(asyncio.to_thread(litellm.token_counter, **count_args))
+        counter_timing: dict[str, float] = {}
+
+        def run_token_counter() -> tuple[int, float]:
+            tokenizer_started = time.perf_counter()
+            counter_timing['queue_ms'] = (tokenizer_started - counter_started) * 1000
+            tokens = litellm.token_counter(**count_args)
+            return tokens, (time.perf_counter() - tokenizer_started) * 1000
+
+        counter_started = time.perf_counter()
+        task = asyncio.create_task(asyncio.to_thread(run_token_counter))
         task.add_done_callback(lambda completed: None if completed.cancelled() else completed.exception())
         try:
-            tokens = await asyncio.wait_for(asyncio.shield(task), timeout=self.TOKEN_COUNT_TIMEOUT)
+            tokens, tokenizer_ms = await asyncio.wait_for(asyncio.shield(task), timeout=self.TOKEN_COUNT_TIMEOUT)
         except TimeoutError as exc:
             self._stalled_count_task = task
+            counter_ms = (time.perf_counter() - counter_started) * 1000
+            if logger is not None:
+                logger.warning(
+                    'count_tokens_timing outcome=timeout model=%s messages=%d tools=%d '
+                    'conversion_ms=%.3f tools_ms=%.3f counter_ms=%.3f queue_ms=%s tokenizer_ms=%s '
+                    'total_ms=%.3f task_done=%s',
+                    count_args['model'],
+                    len(req_messages),
+                    len(count_args.get('tools', [])),
+                    conversion_ms,
+                    tools_ms,
+                    counter_ms,
+                    counter_timing.get('queue_ms'),
+                    None,
+                    (time.perf_counter() - count_started) * 1000,
+                    task.done(),
+                )
             raise errors.RequesterError('Token counting exceeded its time limit') from exc
         except asyncio.CancelledError:
             if not task.done():
@@ -1706,6 +1749,21 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
         if isinstance(tokens, bool) or not isinstance(tokens, int) or tokens < 0:
             raise errors.RequesterError(f'token counter returned invalid value: {tokens!r}')
+        counter_ms = (time.perf_counter() - counter_started) * 1000
+        if logger is not None:
+            logger.info(
+                'count_tokens_timing outcome=ok model=%s messages=%d tools=%d '
+                'conversion_ms=%.3f tools_ms=%.3f counter_ms=%.3f queue_ms=%.3f tokenizer_ms=%.3f total_ms=%.3f',
+                count_args['model'],
+                len(req_messages),
+                len(count_args.get('tools', [])),
+                conversion_ms,
+                tools_ms,
+                counter_ms,
+                counter_timing.get('queue_ms', 0),
+                tokenizer_ms,
+                (time.perf_counter() - count_started) * 1000,
+            )
         return tokens
 
     async def invoke_llm(

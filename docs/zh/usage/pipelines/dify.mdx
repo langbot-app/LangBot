@@ -16,7 +16,7 @@ LangBot 目前支持`聊天助手`（含Chatflow）、`Agent`、`工作流`三�
 
 ![Dify 应用 API 密钥](/images/zh/deploy/pipelines/dify/dify_sv_api_01.png)
 
-保存 API 服务器和 API 密钥，在 LangBot 的流水线的`AI 能力`配置。
+保存 API 服务器和 API 密钥，在 LangBot 聊天的`AI 能力`中配置。
 
 <Info title="以上为 Dify 云服务版本的示例，若您使用本地自部署的社区版本，请使用 LangBot 访问你自己 Dify 服务的地址作为 `base-url`，后方需要添加 `/v1` 作为路径。">
 
@@ -26,7 +26,7 @@ LangBot 目前支持`聊天助手`（含Chatflow）、`Agent`、`工作流`三�
 
 ## 配置 LangBot
 
-打开 LangBot WebUI 页面，添加一个新的流水线或在已有流水线中切换到 AI 能力配置页面。
+打开 LangBot WebUI 页面，添加一个新的聊天或在已有聊天中切换到 AI 能力配置页面。
 
 ![设置开发项](/images/zh/deploy/pipelines/dify/dify_sv_api_02.png)
 
@@ -38,6 +38,6 @@ LangBot 目前支持`聊天助手`（含Chatflow）、`Agent`、`工作流`三�
 
 ## 输出处理
 
-使用 工作流 应用或 Agent 应用时，如果开启了 LangBot 流水线`输出处理`中的`track-function-calls`，将会在 Dify 执行每个工具调用时，输出一个`调用函数xxx`的消息给用户。  
+使用 工作流 应用或 Agent 应用时，如果开启了 LangBot 聊天`输出处理`中的`track-function-calls`，将会在 Dify 执行每个工具调用时，输出一个`调用函数xxx`的消息给用户。  
 但如果是使用`chat`应用下的`ChatFlow`（聊天助手->工作流编排），无论如何只会输出 Answer（直接回复）节点返回的文本。
 </Info>

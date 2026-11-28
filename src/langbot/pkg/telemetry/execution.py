@@ -50,8 +50,12 @@ from .resources import detach as resources_detach
 from .trace import TraceState
 
 MODES = frozenset({'pipeline', 'agent', 'event_processor', 'none'})
-OUTCOMES = frozenset({'success', 'failed', 'cancelled', 'timeout', 'skipped', 'unknown'})
-FAMILIES = frozenset({'platform_event', 'event_route', 'pipeline', 'runner', 'platform_api', 'tool'})
+OUTCOMES = frozenset(
+    {'success', 'failed', 'cancelled', 'timeout', 'skipped', 'unknown', 'ok', 'denied', 'intercepted', 'discarded'}
+)
+FAMILIES = frozenset(
+    {'platform_event', 'event_route', 'pipeline', 'runner', 'platform_api', 'tool', 'command', 'message_policy'}
+)
 ORIGINS = frozenset({'platform', 'webui', 'api'})
 # Why a chain closed: ``completed`` once the ingress boundary and every task it
 # handed work to finished, ``merged`` when message aggregation folded the event
@@ -329,12 +333,25 @@ class ExecutionCounters:
         error: str = '',
         execution_id: str | None = None,
         node: str = '',
+        layer: str = '',
     ):
         try:
             if not self._enabled() or trace_mod.reporting_suppressed():
                 return
             if family not in FAMILIES or mode not in MODES or outcome not in OUTCOMES:
                 return
+            if family in {'command', 'message_policy'}:
+                from .message_policy import COMMANDS, LAYERS, OUTCOMES as COMMAND_OUTCOMES, RULES
+
+                if family == 'command' and (
+                    operation not in {'plugin', 'processor'} | {'builtin:' + name for name in COMMANDS}
+                    or outcome not in COMMAND_OUTCOMES
+                ):
+                    return
+                if family == 'message_policy' and (
+                    operation not in RULES or layer not in LAYERS or outcome != 'discarded'
+                ):
+                    return
             # Only code-defined identifiers are accepted; never pass user values.
             if any(not isinstance(v, str) or len(v.encode('utf-8')) > 512 for v in (operation, adapter, runner, node)):
                 return
@@ -383,6 +400,7 @@ class ExecutionCounters:
                     'root': root,
                     'seq': seq,
                     'family': family,
+                    **({'layer': layer} if family == 'message_policy' else {}),
                     'operation': operation,
                     'mode': mode,
                     'adapter': adapter,

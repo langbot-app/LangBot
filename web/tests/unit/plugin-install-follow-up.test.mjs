@@ -39,20 +39,21 @@ test('KnowledgeEngine asks for a knowledge base', () => {
   ]);
 });
 
-test('EventListener, Tool and Command all ask for a pipeline', () => {
-  for (const kind of ['EventListener', 'Tool', 'Command']) {
-    assert.deepEqual(followUpKindsForPlugin(pluginWith(kind)), ['pipelines']);
+test('EventListener and Command ask for a bot; Tool asks for a pipeline', () => {
+  for (const kind of ['EventListener', 'Command']) {
+    assert.deepEqual(followUpKindsForPlugin(pluginWith(kind)), ['bots']);
   }
+  assert.deepEqual(followUpKindsForPlugin(pluginWith('Tool')), ['pipelines']);
 });
 
-test('the pipeline step is shown once for any mix of its component kinds', () => {
+test('the bot step is shown once for any mix of its component kinds', () => {
   assert.deepEqual(
     followUpKindsForPlugin(pluginWith('Tool', 'Command', 'EventListener')),
-    ['pipelines'],
+    ['bots', 'pipelines'],
   );
   assert.deepEqual(
     followUpKindsForPlugin(pluginWith('EventListener', 'Command')),
-    ['pipelines'],
+    ['bots'],
   );
 });
 
@@ -61,11 +62,11 @@ test('multi-component plugins keep every distinct follow-up', () => {
     followUpKindsForPlugin(
       pluginWith('Runner', 'Tool', 'Command', 'KnowledgeEngine'),
     ),
-    ['agents', 'pipelines', 'knowledge'],
+    ['agents', 'bots', 'pipelines', 'knowledge'],
   );
   assert.deepEqual(
     followUpKindsForPlugin(pluginWith('KnowledgeEngine', 'Command')),
-    ['pipelines', 'knowledge'],
+    ['bots', 'knowledge'],
   );
 });
 

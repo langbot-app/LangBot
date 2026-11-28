@@ -1,5 +1,8 @@
 import type { Bot } from '@/app/infra/entities/api';
-import { appendMessageRoutingTemplate } from '@/app/home/bots/components/bot-form/message-routing-template';
+import {
+  appendMessageRoutingTemplate,
+  type MessageRoutingTemplateNotes,
+} from '@/app/home/bots/components/bot-form/message-routing-template';
 
 export interface WizardDraft {
   adapter: string;
@@ -23,6 +26,7 @@ export async function prepareWizardBot(
   draft: WizardDraft,
   bot: Bot,
   pipelineName: string,
+  notes?: MessageRoutingTemplateNotes,
 ) {
   if (draft.botUuid) {
     return {
@@ -41,10 +45,11 @@ export async function prepareWizardBot(
   }
   const configuredBot: Bot = {
     ...bot,
-    event_bindings: appendMessageRoutingTemplate([], {
-      target_type: 'pipeline',
-      target_uuid: draft.pipelineUuid,
-    }),
+    event_bindings: appendMessageRoutingTemplate(
+      [],
+      { target_type: 'pipeline', target_uuid: draft.pipelineUuid },
+      notes,
+    ),
   };
   const { uuid } = await client.createBot(configuredBot);
   draft.botUuid = uuid;
@@ -52,13 +57,18 @@ export async function prepareWizardBot(
 }
 
 /** Saving adapter settings must not replace or re-enable a member's routes. */
-export function wizardBindingsIfMissing(bot: Bot, pipelineUuid: string) {
+export function wizardBindingsIfMissing(
+  bot: Bot,
+  pipelineUuid: string,
+  notes?: MessageRoutingTemplateNotes,
+) {
   return bot.event_bindings?.length
     ? {}
     : {
-        event_bindings: appendMessageRoutingTemplate([], {
-          target_type: 'pipeline',
-          target_uuid: pipelineUuid,
-        }),
+        event_bindings: appendMessageRoutingTemplate(
+          [],
+          { target_type: 'pipeline', target_uuid: pipelineUuid },
+          notes,
+        ),
       };
 }

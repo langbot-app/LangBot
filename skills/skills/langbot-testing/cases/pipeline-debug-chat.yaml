@@ -1,5 +1,5 @@
 id: pipeline-debug-chat
-title: "Pipeline Debug Chat returns a bot response"
+title: "Chat Debug Chat returns a bot response"
 mode: agent-browser
 area: pipeline
 type: smoke
@@ -29,11 +29,11 @@ automation_env_any:
 automation_prompt: "请只回复 OK，用于前端调试测试。"
 automation_expected_text: "OK"
 preconditions:
-  - "LANGBOT_PIPELINE_URL or LANGBOT_PIPELINE_NAME points to the pipeline intended for this generic Debug Chat smoke run."
-  - "The target pipeline is safe to save or already configured with a known-good runner/model."
+  - "LANGBOT_PIPELINE_URL or LANGBOT_PIPELINE_NAME points to the Chat intended for this generic Debug Chat smoke run."
+  - "The target Chat is safe to save or already configured with a known-good runner/model."
 steps:
   - "Open LANGBOT_FRONTEND_URL."
-  - "Navigate to Pipelines."
+  - "Navigate to Processors."
   - "Open the target pipeline."
   - "Select Debug Chat."
   - "Send a short deterministic prompt, such as 请只回复 OK，用于前端调试测试。"

@@ -1,5 +1,5 @@
 id: dify-agent-debug-chat
-title: "Dify Runner returns a response through Pipeline Debug Chat"
+title: "Dify Runner returns a response through Chat Debug Chat"
 mode: agent-browser
 area: pipeline
 type: provider
@@ -18,11 +18,11 @@ env:
   - LANGBOT_BACKEND_URL
 preconditions:
   - "A Dify app Service API key is available from the active secret source and must not be printed in reports."
-  - "The target pipeline is safe to modify for Dify runner configuration."
+  - "The target Chat is safe to modify for Dify runner configuration."
 steps:
   - "Ensure a Dify app Service API key is available from the active secret source."
   - "Open LANGBOT_FRONTEND_URL."
-  - "Navigate to Pipelines and open the target pipeline."
+  - "Navigate to Processors and open the target pipeline."
   - "Open Configuration > AI."
   - "Select runner Dify."
   - "Set Base URL, App Type, API Key, Base Prompt, and Timeout according to references/dify-agent-runner.md."

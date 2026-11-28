@@ -749,6 +749,7 @@ class TestBotServiceListEventRouteStatuses:
 
     async def test_returns_saved_routes_when_runtime_bot_is_unavailable(self):
         ap = SimpleNamespace()
+        ap.monitoring_service = SimpleNamespace(route_counts_24h=AsyncMock(return_value={}))
         ap.platform_mgr = SimpleNamespace()
         ap.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=None)
 
@@ -773,6 +774,7 @@ class TestBotServiceListEventRouteStatuses:
         assert result['routes'] == [
             {
                 'binding_id': 'binding-1',
+                'counts_24h': {'ai': 0, 'command': 0, 'plugin': 0, 'policy': 0},
                 'event_pattern': 'message.received',
                 'event_type': None,
                 'target_type': 'agent',

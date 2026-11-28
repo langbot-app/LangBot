@@ -71,7 +71,7 @@ To receive group membership changes, the bot must be in the group and the app mu
 | User joins a group | `im.chat.member.user.added_v1` |
 | User leaves or is removed from a group | `im.chat.member.user.deleted_v1` |
 
-The bot joining a group (`im.chat.member.bot.added_v1`) is a separate event and does not cover other members. Also configure **Event Routing** in LangBot to send these events to an Agent or plugin processor; pipelines only process message events.
+The bot joining a group (`im.chat.member.bot.added_v1`) is a separate event and does not cover other members. Also configure **Event Routing** in LangBot to send these events to an Agent or plugin processor; Chats only process message events.
 
 ---
 

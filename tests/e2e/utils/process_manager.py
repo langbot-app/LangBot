@@ -30,6 +30,7 @@ class LangBotProcess:
         debug: bool = False,
         cli_args: list[str] | None = None,
         env_overrides: dict[str, str] | None = None,
+        telemetry_port: int | None = None,
     ):
         self.project_root = project_root
         self.work_dir = work_dir  # Directory containing data/config.yaml
@@ -39,6 +40,7 @@ class LangBotProcess:
         self.debug = debug
         self.cli_args = cli_args or []
         self.env_overrides = env_overrides or {}
+        self.telemetry_port = telemetry_port
         self.process: Optional[subprocess.Popen] = None
         self._stdout_file = None
         self._stderr_file = None
@@ -79,6 +81,10 @@ class LangBotProcess:
 
         # Disable telemetry
         env['SPACE__DISABLE_TELEMETRY'] = 'true'
+        if self.telemetry_port is not None:
+            env['SPACE__URL'] = f'http://127.0.0.1:{self.telemetry_port}'
+            env['SPACE__DISABLE_TELEMETRY'] = 'false'
+            env['LANGBOT_TELEMETRY_INGEST_TOKEN'] = 'local-test'
         env['SPACE__DISABLE_MODELS_SERVICE'] = 'true'
         if self.debug:
             env['DEBUG'] = 'true'

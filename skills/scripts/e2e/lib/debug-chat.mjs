@@ -283,14 +283,14 @@ export async function openPipelineDebugChat(page, { pipelineUrl, pipelineName, e
         reason: "Browser profile is not authenticated for LANGBOT_FRONTEND_URL.",
       };
     }
-    const clickedPipelines = await clickFirstVisible(page, ["Pipelines", "流水线"], 4_000);
+    const clickedPipelines = await clickFirstVisible(page, ["Processors", "处理器", "Chat", "聊天", "Pipelines", "流水线"], 4_000);
     if (!clickedPipelines) {
-      return { opened: false, status: "fail", reason: "Could not find Pipelines navigation." };
+      return { opened: false, status: "fail", reason: "Could not find Processors navigation." };
     }
     await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
     const clickedPipeline = await clickFirstVisible(page, [pipelineName], 5_000);
     if (!clickedPipeline) {
-      return { opened: false, status: "blocked", reason: `Could not find pipeline named ${pipelineName}.` };
+      return { opened: false, status: "blocked", reason: `Could not find Chat named ${pipelineName}.` };
     }
   }
 

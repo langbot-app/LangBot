@@ -321,6 +321,10 @@ _BINDINGS = (
     ('bot.create', 'bot_service', 'bot', 'BotService', 'create_bot', 'RESOURCE_MANAGE', True),
     ('bot.update', 'bot_service', 'bot', 'BotService', 'update_bot', 'RESOURCE_MANAGE', True),
     ('bot.routes.bind', 'bot_service', 'bot', 'BotService', 'bind_event_route', 'RESOURCE_MANAGE', True),
+    ('bot.upgrade.checks', 'bot_service', 'bot', 'BotService', 'list_upgrade_checks', 'RESOURCE_VIEW', False),
+    ('bot.upgrade.confirm', 'bot_service', 'bot', 'BotService', 'confirm_upgrade_checks', 'RESOURCE_MANAGE', True),
+    ('bot.upgrade.action', 'bot_service', 'bot', 'BotService', 'apply_upgrade_action', 'RESOURCE_MANAGE', True),
+    ('bot.upgrade.promote', 'bot_service', 'bot', 'BotService', 'promote_route_policy', 'RESOURCE_MANAGE', True),
     ('bot.delete', 'bot_service', 'bot', 'BotService', 'delete_bot', 'RESOURCE_MANAGE', True),
     ('bot.logs', 'bot_service', 'bot', 'BotService', 'list_event_logs', 'RESOURCE_VIEW', False),
     ('bot.routes.status', 'bot_service', 'bot', 'BotService', 'list_event_route_statuses', 'RESOURCE_VIEW', False),
@@ -786,7 +790,7 @@ _OUTPUT_TYPES = {
     'get_engine_creation_schema': dict | list[dict],
     'get_engine_retrieval_schema': dict | list[dict],
 }
-_INTERNAL_PARAMETERS = {'preserve_uuid', 'default', 'on_result', 'for_inflight'}
+_INTERNAL_PARAMETERS = {'preserve_uuid', 'default', 'on_result', 'for_inflight', 'handling'}
 
 
 _LIST_OPS_BY_ENTITY = {
@@ -895,6 +899,9 @@ def _contract(operation_id, method):
 
 def _operation(operation_id, service_name, method, permission, side_effect):
     input_type, output_type = _contract(operation_id, method)
+    reports_ignored_keys = operation_id in {'pipeline.create', 'pipeline.update'}
+    if reports_ignored_keys:
+        output_type = output_type | dict
 
     async def invoke(ap, context, payload):
         arguments = payload.model_dump()
@@ -907,6 +914,16 @@ def _operation(operation_id, service_name, method, permission, side_effect):
             require_permission(context, secret_permission)
         service = getattr(ap, service_name)
         result = await getattr(service, method.__name__)(context, **arguments)
+        if reports_ignored_keys:
+            from ...message_policy.schema import ignored_config_keys
+
+            ignored = ignored_config_keys(arguments['pipeline_data'].get('config'))
+            if ignored:
+                return (
+                    {'uuid': result, 'ignored_keys': ignored}
+                    if operation_id == 'pipeline.create'
+                    else {'ignored_keys': ignored}
+                )
         if result is None and operation_id.endswith('.get') and output_type != type(None):
             # Optional defaults (e.g. starred model) are intentionally nullable.
             if operation_id not in {'model.llm.starred.get', 'model.llm.default.get'}:

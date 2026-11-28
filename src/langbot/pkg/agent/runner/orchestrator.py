@@ -208,7 +208,12 @@ class AgentRunOrchestrator:
             raise ValueError(f'The selected Runner does not support {usage} usage')
 
         if execution_query is None:
-            execution_query = build_execution_query(event, [], execution_context)
+            entry_query = (adapter_context or {}).get('_entry_query')
+            if entry_query is not None:
+                execution_context = get_query_execution_context(entry_query)
+                execution_query = build_execution_query(event, [], execution_context, entry_query=entry_query)
+            else:
+                execution_query = build_execution_query(event, [], execution_context)
             # Event runs bypass pipeline prompt preparation, just like debug runs.
             prompt_config = extract_prompt_config(descriptor, binding.runner_config, [])
             execution_query.prompt = provider_prompt.Prompt(
@@ -338,6 +343,8 @@ class AgentRunOrchestrator:
             source=(adapter_context or {}).get('_platform_event')
             or getattr((adapter_context or {}).get('_query'), 'message_event', None),
             delivery_adapter=(adapter_context or {}).get('_recovery_delivery_adapter'),
+            policy_query=getattr((adapter_context or {}).get('_platform_event'), '_entry_query', None),
+            agent_hooks=binding.processor_type == 'agent',
         )
         available_apis = context.get('context', {}).get('available_apis')
         run_authorization = {
@@ -480,8 +487,20 @@ class AgentRunOrchestrator:
                     event_log_id=event_log_id,
                 )
 
+            async def timed_runner_results():
+                started = time.monotonic()
+                try:
+                    async with contextlib.aclosing(self.invoker.invoke(descriptor, context)) as results:
+                        async for result_dict in results:
+                            yield result_dict
+                finally:
+                    self.ap.logger.info(
+                        f'agent_runner_timing run_id={run_id} runner={descriptor.id} '
+                        f'duration_ms={(time.monotonic() - started) * 1000:.3f}'
+                    )
+
             with trace_mod.stage_scope() as node:
-                async with contextlib.aclosing(self.invoker.invoke(descriptor, context)) as results:
+                async with contextlib.aclosing(timed_runner_results()) as results:
                     async for result_dict in results:
                         result_dict = dict(result_dict)
                         sequence = result_dict.get('sequence')
@@ -588,7 +607,7 @@ class AgentRunOrchestrator:
                             await result_observer(result_dict)
                         observer_ms = (time.monotonic() - observer_started) * 1000
                         if journal_ms + observer_ms >= 100:
-                            self.ap.logger.debug(
+                            self.ap.logger.info(
                                 f'Slow runner event consumer run={run_id} type={result_type} '
                                 f'journal_ms={journal_ms:.1f} observer_ms={observer_ms:.1f}'
                             )
@@ -634,6 +653,7 @@ class AgentRunOrchestrator:
                             )
                             assistant_transcript_written = True
 
+                        normalize_started = time.monotonic()
                         try:
                             result = await self.result_normalizer.normalize(result_dict, descriptor)
                         except RunnerExecutionError as exc:
@@ -646,6 +666,12 @@ class AgentRunOrchestrator:
                                     usage=terminal_usage,
                                 )
                             raise
+                        normalize_ms = (time.monotonic() - normalize_started) * 1000
+                        if normalize_ms >= 100:
+                            self.ap.logger.info(
+                                f'Slow runner result normalization run={run_id} type={result_type} '
+                                f'normalize_ms={normalize_ms:.1f}'
+                            )
                         file_ids = result_dict.get('data', {}).get('file_ids', [])
                         if file_ids:
                             if result_type != 'message.completed' or result is None:
@@ -978,13 +1004,16 @@ class AgentRunOrchestrator:
             binding.runner_id,
             plan.bound_plugins,
         )
+        return await self.cancel_active_from_event(event, descriptor.id, allow_other_actors, query)
+
+    async def cancel_active_from_event(self, event, runner_id, allow_other_actors=False, query=None):
         actor = getattr(event, 'actor', None)
         actor_id = getattr(actor, 'actor_id', None)
         if not allow_other_actors and not actor_id:
             return None
         target_run_id = await self._session_registry.find_active_target(
             conversation_id=event.conversation_id,
-            runner_id=descriptor.id,
+            runner_id=runner_id,
             bot_id=event.bot_id,
             workspace_id=event.workspace_id,
             thread_id=event.thread_id,
@@ -993,12 +1022,12 @@ class AgentRunOrchestrator:
         if target_run_id is None and not allow_other_actors:
             other_actor_run_id = await self._session_registry.find_active_target(
                 conversation_id=event.conversation_id,
-                runner_id=descriptor.id,
+                runner_id=runner_id,
                 bot_id=event.bot_id,
                 workspace_id=event.workspace_id,
                 thread_id=event.thread_id,
             )
-            if other_actor_run_id is not None:
+            if other_actor_run_id is not None and query is not None:
                 query.variables['_stop_command_denied'] = True
         if target_run_id is None:
             return None

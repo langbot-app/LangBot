@@ -9,7 +9,7 @@ LangBot currently supports triggering workflows and receiving responses through 
 
 ## Using n8n as the runner
 
-Please open the configuration page of an existing pipeline or create a new pipeline (recommended) and open the configuration page. Select `n8n Workflow API` as the runner in `AI`.
+Please open the configuration page of an existing Chat or create a new Chat (recommended) and open the configuration page. Select `n8n Workflow API` as the runner in `AI`.
 
 ![n8n as the runner](/images/zh/deploy/pipelines/n8n/config_runner.png)
 
@@ -37,7 +37,7 @@ If n8n reports a workflow error in the stream, the n8n Runner marks the run as f
 
 <Info title="">
 
-Authentication corresponds to the authentication methods in LangBot's pipeline configuration, which you can modify as needed.
+Authentication corresponds to the authentication methods in LangBot's Chat configuration, which you can modify as needed.
 
 ![n8n workflow configuration](/images/zh/deploy/pipelines/n8n/config_auth.png)
 </Info>
@@ -51,6 +51,6 @@ For the workflow response content in n8n, please use the `Respond to Webhook` no
 
 ![n8n workflow response configuration](/images/zh/deploy/pipelines/n8n/config_respond.png)
 
-The response content key name in `Response Body` needs to match the `output key name` in LangBot's pipeline configuration.
+The response content key name in `Response Body` needs to match the `output key name` in LangBot's Chat configuration.
 
 After completing the n8n workflow configuration, please click `Active` at the top to enable the workflow.

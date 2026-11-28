@@ -17,17 +17,17 @@ env:
   - LANGBOT_BACKEND_URL
 preconditions:
   - "A DeepSeek-compatible API key and model route are available from the active secret source and must not be printed in reports."
-  - "A test pipeline is available for confirming the saved provider can answer Debug Chat."
+  - "A test Chat is available for confirming the saved provider can answer Debug Chat."
 steps:
   - "Open LANGBOT_FRONTEND_URL."
   - "Navigate to Models."
   - "Add or edit a DeepSeek provider."
   - "Fill the required base URL, API key, and model fields from the active secret source."
   - "Run the provider or model test action in the UI."
-  - "Run a small Pipeline Debug Chat prompt to confirm the provider is usable."
+  - "Run a small Chat Debug Chat prompt to confirm the provider is usable."
 checks:
   - "UI: The provider/model test action succeeds in the page."
-  - "UI: A Pipeline Debug Chat prompt returns a Bot response after provider setup."
+  - "UI: A Chat Debug Chat prompt returns a Bot response after provider setup."
   - "Console: No unexpected frontend errors appear while saving or testing the provider."
   - "Secret safety: No API key, token, or secret is printed in logs or reports."
 evidence_required:

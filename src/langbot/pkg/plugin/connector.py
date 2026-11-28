@@ -105,6 +105,78 @@ _RECONNECT_MAX_DELAY_SEC = 60.0
 _RECONNECT_REQUEST_WAIT_SECONDS = 30.0
 
 
+# Inline media an event payload may carry. The rest of the Runtime frame
+# (MAX_MESSAGE_BYTES) is headroom for the event's other fields.
+_EVENT_INLINE_MEDIA_BUDGET_BYTES = base_connection.MAX_MESSAGE_BYTES - 4 * 1024 * 1024
+_INLINE_MEDIA_KEYS = ('base64', 'file_base64')
+
+
+def _iter_inline_media(payload: Any) -> typing.Iterator[tuple[dict, str]]:
+    stack = [payload]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in _INLINE_MEDIA_KEYS and isinstance(value, str):
+                    yield node, key
+                elif isinstance(value, (dict, list)):
+                    stack.append(value)
+        elif isinstance(node, list):
+            stack.extend(item for item in node if isinstance(item, (dict, list)))
+
+
+def _inline_media_fingerprint(node: dict, key: str) -> str:
+    return json.dumps({k: v for k, v in node.items() if k != key}, sort_keys=True, default=str)
+
+
+def _shed_oversized_inline_media(
+    payload: Any, budget: int = _EVENT_INLINE_MEDIA_BUDGET_BYTES
+) -> dict[tuple[str, str], str]:
+    """Clear inline media from an event payload that would not fit one Runtime frame.
+
+    Message events carry the platform chain twice (``message_chain`` and
+    ``message_event.message_chain``), so a single ~6 MiB file already exceeds
+    the Runtime's 16 MiB frame and used to fail the whole message. Largest
+    payloads are cleared first until the rest fits; components keep their
+    url/name/size so plugins can still tell what was sent.
+
+    Returns the cleared payloads keyed by component fingerprint so
+    ``_restore_inline_media`` can put them back on the returned event.
+    """
+    # Copies of one component (the chain appears twice) are cleared together,
+    # so every view of the event agrees on what was shed.
+    groups: dict[tuple[str, str], list[dict]] = {}
+    total = 0
+    for node, key in _iter_inline_media(payload):
+        if node[key]:
+            groups.setdefault((key, _inline_media_fingerprint(node, key)), []).append(node)
+            total += len(node[key])
+
+    def group_size(item: tuple[tuple[str, str], list[dict]]) -> int:
+        (key, _), nodes = item
+        return sum(len(node[key]) for node in nodes)
+
+    cleared: dict[tuple[str, str], str] = {}
+    for group_key, nodes in sorted(groups.items(), key=group_size, reverse=True):
+        if total <= budget:
+            break
+        key = group_key[0]
+        total -= group_size((group_key, nodes))
+        cleared[group_key] = nodes[0][key]
+        for node in nodes:
+            node[key] = ''
+    return cleared
+
+
+def _restore_inline_media(payload: Any, cleared: dict[tuple[str, str], str]) -> None:
+    """Refill media the Host cleared before dispatch; plugins never saw those bytes."""
+    for node, key in list(_iter_inline_media(payload)):
+        if not node[key]:
+            value = cleared.get((key, _inline_media_fingerprint(node, key)))
+            if value:
+                node[key] = value
+
+
 def _utc_now_iso() -> str:
     """Return the current UTC time as a second-precision RFC 3339 string."""
 
@@ -962,6 +1034,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if not self.is_enable_plugin or not hasattr(self, 'handler'):
             return None
         runtime_handler = self._runtime_handler()
+        changed = False
         async with self._state_lock:
             # Read the durable desired state while holding the same gate used by
             # install/remove bookkeeping. Otherwise a request can load a stale
@@ -972,6 +1045,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             desired_by_uuid = {state.binding.installation_uuid: state for state in desired_states}
             previous_ids = set(self._workspace_installations.get(execution_context.workspace_uuid, set()))
             for installation_uuid in previous_ids - set(desired_by_uuid):
+                changed = True
                 previous = self._known_desired_states.get(installation_uuid)
                 if previous is not None:
                     await runtime_handler.remove_plugin_installation(previous.binding)
@@ -989,6 +1063,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     await warn_compatibility(
                         self.ap, execution_context.workspace_uuid, f'{setting.plugin_author}/{setting.plugin_name}'
                     )
+                changed = True
                 try:
                     await self._apply_desired_state(desired)
                 except PluginInstallationFailedError:
@@ -1003,7 +1078,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     execution_context.workspace_uuid,
                     None,
                 )
-            return settings
+        if changed:
+            await self._refresh_platform_commands(execution_context)
+        return settings
 
     async def _current_execution_context(self) -> ExecutionContext:
         current = self._execution_context.get()
@@ -1280,6 +1357,16 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         pass
 
     async def _refresh_runner_registry(self) -> None:
+        try:
+            await self._refresh_registered_runners()
+        finally:
+            # Platform command menus are best-effort and must not fail plugin lifecycle operations.
+            try:
+                await self._refresh_platform_commands(await self._current_execution_context())
+            except Exception as e:
+                self.ap.logger.warning(f'Failed to refresh platform commands: {e}')
+
+    async def _refresh_registered_runners(self) -> None:
         registry = getattr(self.ap, 'runner_registry', None)
         if registry is None:
             return
@@ -1288,15 +1375,21 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         except Exception as e:
             self.ap.logger.warning(f'Failed to refresh agent runner registry: {e}')
 
+    async def _refresh_platform_commands(self, context):
+        manager = getattr(self.ap, 'platform_mgr', None)
+        sync = getattr(manager, 'sync_workspace_commands', None)
+        if callable(sync):
+            await sync(context)
+
     async def ping_plugin_runtime(self):
         return await self._runtime_handler().ping()
 
     async def _prepare_workspace_context(
-        self, context: TenantContext
+        self, context: TenantContext, *, synchronize: bool = True
     ) -> tuple[ExecutionContext, list[persistence_plugin.PluginSetting] | None]:
         execution_context = await self._validate_execution_context(context)
         self._execution_context.set(execution_context)
-        if not self.is_enable_plugin:
+        if not self.is_enable_plugin or not synchronize:
             return execution_context, None
         if not self._runtime_available():
             reconnect_task = self._reconnect_task
@@ -1364,6 +1457,11 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         bindings: list[InstallationBinding] = (
             [self._legacy_oss_bridge_binding(execution_context)] if self.runtime_profile == 'oss_dev' else []
         )
+        if include_plugins is not None:
+            position = {name: index for index, name in enumerate(include_plugins)}
+            settings = sorted(
+                settings, key=lambda item: position.get(f'{item.plugin_author}/{item.plugin_name}', len(position))
+            )
         for setting in settings:
             plugin_id = f'{setting.plugin_author}/{setting.plugin_name}'
             if not include_disabled and not setting.enabled:
@@ -2802,7 +2900,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if query is not None:
             from ..pipeline.pool import get_query_execution_context
 
-            _execution_context, settings = await self._prepare_workspace_context(get_query_execution_context(query))
+            _execution_context, settings = await self._prepare_workspace_context(
+                get_query_execution_context(query), synchronize=bound_plugins != []
+            )
         event_ctx = context.EventContext.from_event(event)
 
         if (bound_plugins == [] and query is not None) or not self.is_enable_plugin or not self._runtime_available():
@@ -2821,6 +2921,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         batch_args = {'installation_bindings': batch} if batch is not None else {}
         for binding in bindings:
             event_payload = event_ctx.model_dump(serialize_as_any=False)
+            cleared = _shed_oversized_inline_media(event_payload)
+            if cleared:
+                self.ap.logger.warning(
+                    f'Event {event_ctx.event_name} carried more inline media than one Runtime message allows; '
+                    f'cleared {len(cleared)} inline payload(s) before dispatch to plugins'
+                )
             if query is not None:
                 # Opt in to ``origin_query_uuid`` on plugin actions issued while
                 # handling this event (monitoring attribution only). Older
@@ -2832,6 +2938,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     include_plugins=bound_plugins,
                     **batch_args,
                 )
+            if cleared:
+                _restore_inline_media(result['event_context'], cleared)
             event_ctx = context.EventContext.model_validate(result['event_context'])
             emitted_plugins.extend(result.get('emitted_plugins', []))
             response_sources.extend(result.get('response_sources', []))
@@ -2918,6 +3026,19 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 query_uuid=query_uuid,
                 include_plugins=bound_plugins,
             )
+
+    async def list_plugin_registrations(self, include_plugins):
+        if not self.is_enable_plugin or not self._runtime_available():
+            return {}
+        handler = self._runtime_handler()
+        registrations = {}
+        for binding in await self._operation_bindings(include_plugins=include_plugins):
+            with handler.installation_scope(binding):
+                scoped = await handler.list_plugin_registrations(include_plugins)
+            if scoped is None:
+                return None
+            registrations.update(scoped)
+        return registrations
 
     async def list_commands(self, bound_plugins: list[str] | None = None) -> list[ComponentManifest]:
         if not self.is_enable_plugin or not self._runtime_available():

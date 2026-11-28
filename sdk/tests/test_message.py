@@ -479,6 +479,20 @@ def test_source_time_serialization():
     assert int(deserialized_source.time.timestamp()) == int(current_time.timestamp())
 
 
+def test_message_chain_preserves_source_time_from_json_event():
+    from datetime import datetime
+    from langbot_plugin.api.entities.builtin.platform.message import (
+        MessageChain,
+        Source,
+    )
+
+    chain = MessageChain.model_validate(
+        [{"type": "Source", "id": "incoming", "time": "2026-11-27T20:17:02"}]
+    )
+    assert isinstance(chain[0], Source)
+    assert chain[0].time == datetime(2026, 11, 27, 20, 17, 2)
+
+
 def test_person_message_received_with_source():
     """测试 PersonMessageReceived 事件中带有 Source 的 message_chain 的序列化和反序列化"""
     from langbot_plugin.api.entities.events import PersonMessageReceived

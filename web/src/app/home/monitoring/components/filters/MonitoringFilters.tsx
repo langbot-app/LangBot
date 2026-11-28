@@ -27,7 +27,10 @@ import { DateRange } from '../../types/monitoring';
 import { Label } from '@/components/ui/label';
 import { backendClient, useCurrentWorkspace } from '@/app/infra/http';
 import { TimeRangeOption } from '../../types/monitoring';
-import type { ExecutionModeFilter } from '@/app/infra/entities/api/monitoring-executions';
+import type {
+  ExecutionHandlingFilter,
+  ExecutionModeFilter,
+} from '@/app/infra/entities/api/monitoring-executions';
 
 interface MonitoringFiltersProps {
   selectedBots: string[];
@@ -42,7 +45,18 @@ interface MonitoringFiltersProps {
   onModeChange?: (value: ExecutionModeFilter) => void;
   statusGroup?: string;
   onStatusGroupChange?: (value: string) => void;
+  handling?: ExecutionHandlingFilter;
+  onHandlingChange?: (value: ExecutionHandlingFilter) => void;
 }
+
+const HANDLING_OPTIONS = ['ai', 'command', 'plugin', 'policy'] as const;
+
+const HANDLING_COLORS: Record<string, string> = {
+  ai: 'bg-emerald-500',
+  command: 'bg-sky-500',
+  plugin: 'bg-violet-500',
+  policy: 'bg-amber-500',
+};
 
 const STATUS_GROUP_OPTIONS = [
   'completed',
@@ -88,6 +102,8 @@ export default function MonitoringFilters({
   onModeChange,
   statusGroup,
   onStatusGroupChange,
+  handling,
+  onHandlingChange,
 }: MonitoringFiltersProps) {
   const { t } = useTranslation();
   const workspace = useCurrentWorkspace()?.workspace.uuid;
@@ -201,7 +217,7 @@ export default function MonitoringFilters({
     onPipelinesChange([...next]);
   };
   return (
-    <div className="grid min-w-0 flex-1 grid-cols-2 gap-3 lg:grid-cols-5">
+    <div className="grid min-w-0 flex-1 grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6">
       {/* Bot Filter */}
       <div className="min-w-0 space-y-1.5">
         <Label
@@ -407,6 +423,47 @@ export default function MonitoringFilters({
                       className="size-2 shrink-0 rounded-full bg-current"
                     />
                     {t(`monitoring.execution.status.${group}`)}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Handling Filter */}
+      {onHandlingChange && (
+        <div className="min-w-0 space-y-1.5">
+          <Label
+            htmlFor="monitoring-filter-handling"
+            className="text-xs font-medium text-muted-foreground"
+          >
+            {t('monitoring.execution.filters.handling')}
+          </Label>
+          <Select
+            value={handling ?? 'all'}
+            onValueChange={(value) =>
+              onHandlingChange(value as ExecutionHandlingFilter)
+            }
+          >
+            <SelectTrigger
+              id="monitoring-filter-handling"
+              className="h-9 w-full min-w-0"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">
+                {t('monitoring.execution.filters.handlingAll')}
+              </SelectItem>
+              {HANDLING_OPTIONS.map((value) => (
+                <SelectItem key={value} value={value}>
+                  <span className="flex items-center gap-2">
+                    <span
+                      aria-hidden="true"
+                      className={`size-2 shrink-0 rounded-full ${HANDLING_COLORS[value]}`}
+                    />
+                    {t(`monitoring.execution.handling.${value}`)}
                   </span>
                 </SelectItem>
               ))}

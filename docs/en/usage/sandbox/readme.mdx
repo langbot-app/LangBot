@@ -5,7 +5,7 @@ description: "LangBot Box Runtime gives the built-in Agent command and file tool
 
 Box Runtime gives the built-in Agent one execution interface for running commands, reading and writing files, and hosting long-lived processes. Everyday Agent use cases (data processing, file operations, running user code, hosting stdio MCP) all rely on it. Docker, nsjail, and E2B provide sandbox isolation; the explicitly selected Host backend is for trusted local development and provides no isolation.
 
-Once Box is enabled, the built-in Agent automatically gains six tools — no need to wire each one into the pipeline.
+Once Box is enabled, the built-in Agent automatically gains six tools — no need to wire each one into the Chat.
 
 ## Built-in Tools
 
@@ -26,7 +26,7 @@ These tools target the built-in Agent. When using external runners such as Dify,
 
 ## Sandbox Scope
 
-The pipeline's AI configuration lets you choose how the sandbox is shared across messages. The default "per chat" works for most cases.
+The Chat's AI configuration lets you choose how the sandbox is shared across messages. The default "per chat" works for most cases.
 
 | Scope | Template | Shared across |
 |-------|----------|---------------|
@@ -63,7 +63,7 @@ Trusted local development on Linux / macOS can select Host without installing Do
        host_root: './data/box'
    ```
 2. **Start LangBot**: Box Runtime is enabled automatically
-3. **In the pipeline**, select the built-in Agent plus a model that supports function calling
+3. **In the Chat**, select the built-in Agent plus a model that supports function calling
 
 The Agent will then automatically receive the six tools. See [Sandbox Configuration](./config) for details.
 

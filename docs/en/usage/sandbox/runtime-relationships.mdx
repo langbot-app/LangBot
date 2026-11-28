@@ -21,12 +21,14 @@ LangBot ships four extension mechanisms in parallel — **plugins, MCP, Skills, 
 | MCP Server | LangBot MCP Loader (stdio mode is hosted by Box) | Tools land directly in the Agent's tool list | Connect an existing MCP service |
 | Plugin | Plugin Runtime | Capabilities are exposed through the plugin system | Long-lived capability with a config page, event listeners, or knowledge components |
 
-## Pipeline Binding
+## Chat Binding
 
-Skills, MCP Servers, and plugins are all **pipeline extensions**. After installing or creating them in the WebUI, the pipeline extension config still decides where they're enabled:
+Skills, MCP Servers, and plugins are all **Chat extensions**. After installing or creating them in the WebUI, the Chat's extension config still decides where they're enabled:
 
 - Enable all extensions, or
 - Bind only specific extensions
+
+Binding a plugin in a Chat only authorizes the AI to call its tools; plugin commands and event listeners are enabled in the bot's "Event routing → Plugins".
 
 Skill binding decides **which skills the Agent can see** (it controls the `<available_skills>` list). The actual skill content is only injected after the Agent calls `activate`.
 
@@ -38,8 +40,8 @@ The Box API, Agent tools, session scopes, lifecycle, Skills, and stdio MCP hosti
 
 | Symptom | Check first |
 |---------|-------------|
-| Agent has no `exec/read/write` tools | `box.enabled`, backend availability, and whether the pipeline uses the built-in Agent |
-| Skill list is empty | Box Runtime status, `box.local.skills_root`, pipeline binding |
+| Agent has no `exec/read/write` tools | `box.enabled`, backend availability, and whether the Chat uses the built-in Agent |
+| Skill list is empty | Box Runtime status, `box.local.skills_root`, Chat binding |
 | stdio MCP fails to start | Box Runtime status, MCP command and environment variables, startup timeout |
 | Sandbox fails to start in Docker deployment | Whether `langbot_box` mounts `docker.sock`, and whether Box root paths match |
 | File read/write fails | `box.local.host_root`, `box.local.allowed_mount_roots` |

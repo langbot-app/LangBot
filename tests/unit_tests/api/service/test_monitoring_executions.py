@@ -23,6 +23,40 @@ from langbot.pkg.entity.persistence.base import Base
 WORKSPACE = 'workspace-1'
 
 
+async def test_route_counts_only_include_current_bot_day_and_workspace(engine, service):
+    import json
+    from langbot.pkg.entity.persistence.event_log import EventLog
+
+    now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+    async with AsyncSession(engine) as session:
+        for index, (ws, bot, hours, target, failure) in enumerate(
+            [
+                (WORKSPACE, 'bot', 0, 'agent', None),
+                (WORKSPACE, 'bot', 1, 'builtin_command', None),
+                (WORKSPACE, 'bot', 2, 'plugin', None),
+                (WORKSPACE, 'bot', 2, 'agent', 'message_policy'),
+                ('other', 'bot', 0, 'agent', None),
+                (WORKSPACE, 'foreign', 0, 'agent', None),
+                (WORKSPACE, 'bot', 25, 'agent', None),
+            ]
+        ):
+            session.add(
+                EventLog(
+                    event_id=str(index),
+                    event_type='message.received',
+                    workspace_id=ws,
+                    source='platform',
+                    bot_id=bot,
+                    created_at=now - datetime.timedelta(hours=hours),
+                    metadata_json=json.dumps(
+                        {'routes': [{'binding_id': 'r', 'target_type': target, 'failure_code': failure}]}
+                    ),
+                )
+            )
+        await session.commit()
+    assert await service.route_counts_24h(WORKSPACE, 'bot') == {'r': {'ai': 1, 'policy': 1, 'command': 1, 'plugin': 1}}
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize('has_log', [False, True])
 async def test_event_properties_survive_detail_snapshot_fallback(engine, service, has_log):
@@ -1397,3 +1431,173 @@ async def test_detail_exposes_chat_context_and_section_counts(engine, service):
         'sender_name': None,
     }
     assert chat_context({'conversation_id': 'person_U-3', 'user_name': 'Bob'})['type'] == 'person'
+
+
+@pytest.mark.asyncio
+async def test_handling_filter_and_row_facts_cover_every_source(engine, service):
+    import json
+    from langbot.pkg.entity.persistence.event_log import EventLog
+
+    factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as session:
+        session.add_all(
+            [
+                persistence_agent_run.AgentRun(
+                    run_id='run-ai',
+                    agent_id='agent-1',
+                    binding_id='agent_agent-1_default',
+                    runner_id='r',
+                    workspace_id=WORKSPACE,
+                    status='completed',
+                    created_at=_dt(9),
+                ),
+                persistence_agent_run.AgentRun(
+                    run_id='run-cmd',
+                    binding_id='command_processor:p1',
+                    runner_id='r',
+                    workspace_id=WORKSPACE,
+                    status='completed',
+                    created_at=_dt(9, 1),
+                ),
+                persistence_agent_run.AgentRun(
+                    run_id='run-plugin',
+                    binding_id='ep',
+                    runner_id='r',
+                    workspace_id=WORKSPACE,
+                    status='completed',
+                    created_at=_dt(9, 2),
+                    metadata_json=json.dumps({'processor_type': 'event_processor'}),
+                ),
+            ]
+        )
+        for message_id, handled_by, event_id in [
+            ('msg-ai', 'runner:local-agent', None),
+            ('msg-hook', 'plugin:a/b', None),
+            ('msg-filtered', 'filtered:RequireRateLimitOccupancy', 'evt-filtered'),
+        ]:
+            session.add(
+                persistence_monitoring.MonitoringMessage(
+                    id=message_id,
+                    workspace_uuid=WORKSPACE,
+                    timestamp=_dt(9, 3),
+                    bot_id='bot-1',
+                    bot_name='Bot',
+                    pipeline_id='pipeline-1',
+                    pipeline_name='Chat',
+                    message_content='{}',
+                    session_id='s',
+                    status='discarded' if handled_by.startswith('filtered') else 'success',
+                    level='info',
+                    role='user',
+                    handled_by=handled_by,
+                    event_id=event_id,
+                )
+            )
+        for event_id, metadata in [
+            (
+                'evt-filtered',
+                {
+                    'status': 'ignored',
+                    'policy_item': 'rate-limit',
+                    'policy_layer': 'route',
+                    'routes': [{'target_type': 'pipeline', 'status': 'delivered'}],
+                },
+            ),
+            (
+                'evt-builtin',
+                {
+                    'status': 'completed',
+                    'routes': [{'target_type': 'builtin_command', 'target_uuid': 'help', 'status': 'delivered'}],
+                },
+            ),
+            (
+                'evt-denied',
+                {
+                    'status': 'denied',
+                    'routes': [
+                        {
+                            'target_type': 'plugin_command',
+                            'target_uuid': 'weather',
+                            'status': 'denied',
+                            'failure_code': 'command_permission_denied',
+                        }
+                    ],
+                },
+            ),
+            (
+                'evt-policy',
+                {
+                    'status': 'ignored',
+                    'routes': [
+                        {
+                            'target_type': 'agent',
+                            'status': 'discarded',
+                            'failure_code': 'message_policy',
+                            'policy_layer': 'bot',
+                            'policy_item': 'group-respond-rules',
+                        }
+                    ],
+                },
+            ),
+            (
+                'evt-hook',
+                {
+                    'status': 'completed',
+                    'routes': [
+                        {
+                            'target_type': 'plugin',
+                            'target_uuid': 'plugin:a/b',
+                            'status': 'delivered',
+                            'hook': 'CommandSent',
+                        }
+                    ],
+                },
+            ),
+        ]:
+            session.add(
+                EventLog(
+                    event_id=event_id,
+                    event_type='message.received',
+                    workspace_id=WORKSPACE,
+                    source='platform',
+                    bot_id='bot-1',
+                    created_at=_dt(9, 4),
+                    metadata_json=json.dumps(metadata),
+                )
+            )
+        await session.commit()
+
+    async def ids(handling):
+        result = await service.get_executions(WORKSPACE, handling=handling, include_summary=False)
+        return {item['id']: item for item in result['items']}
+
+    assert set(await ids('ai')) == {'run-ai', 'msg-ai'}
+    commands = await ids('command')
+    assert set(commands) == {'run-cmd', 'evt-builtin', 'evt-denied'}
+    assert commands['run-cmd']['command_kind'] == 'processor'
+    builtin = commands['evt-builtin']
+    assert (builtin['command_kind'], builtin['command_name'], builtin['command_denied']) == ('builtin', 'help', False)
+    assert commands['evt-denied']['command_denied'] is True
+    plugins = await ids('plugin')
+    assert set(plugins) == {'run-plugin', 'msg-hook', 'evt-hook'}
+    assert plugins['evt-hook']['hook'] == 'CommandSent'
+    policy = await ids('policy')
+    assert set(policy) == {'msg-filtered', 'evt-policy'}
+    assert (policy['msg-filtered']['policy_layer'], policy['msg-filtered']['policy_item']) == ('route', 'rate-limit')
+    assert (policy['evt-policy']['policy_layer'], policy['evt-policy']['policy_item']) == ('bot', 'group-respond-rules')
+    # Unknown values keep the unfiltered list.
+    assert len(await ids('bogus')) == 10
+
+
+def test_legacy_policy_drop_reason_still_names_layer_and_rule():
+    from langbot.pkg.api.http.service.monitoring_execution_details import event_handling
+
+    facts = event_handling(
+        {
+            'reason': 'bot:b1: trigger.group-respond-rules',
+            'routes': [{'target_type': 'plugin_command', 'failure_code': 'message_policy'}],
+        }
+    )
+    assert facts == {'handling': 'policy', 'policy_item': 'group-respond-rules', 'policy_layer': 'bot'}
+    route = event_handling({'routes': [{'failure_code': 'message_policy', 'reason': 'route:r1: safety.rate-limit'}]})
+    assert (route['policy_layer'], route['policy_item']) == ('route', 'rate-limit')

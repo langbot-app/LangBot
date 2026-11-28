@@ -73,7 +73,7 @@ Agent 调试 API 的请求可带 `artifact_ids`，最多 20 个不同的自有�
 
 `ctx.export_box_files(paths)` 把选定的沙箱文件登记为临时 Artifact。返回的 `BoxFile.id` 仍是原有 UUID 文件句柄，归导出它的 run 所有；元信息新增 `artifact_id`、`mime_type`、`digest`、`lifecycle` 和 `expires_at`。`artifact_id` 不会授予账户 Artifact API 的读取权限。
 
-`ctx.read_run_file(file_id, mode="auto", offset=0, max_chars=8192, page_start=1, page_end=None)` 使用上述模式有界读取结构化内容。要发布选定的输出，认证账户或具名 API 密钥需要先为 Agent 或流水线启用发布策略：
+`ctx.read_run_file(file_id, mode="auto", offset=0, max_chars=8192, page_start=1, page_end=None)` 使用上述模式有界读取结构化内容。要发布选定的输出，认证账户或具名 API 密钥需要先为 Agent 或聊天启用发布策略：
 
 ```http
 PUT /api/v1/artifacts/producers/agent/{agent_id}/publication
@@ -82,7 +82,7 @@ Content-Type: application/json
 {"enabled": true}
 ```
 
-流水线使用 `pipeline`，事件处理器使用 `event_processor`。服务器将真实认证主体设为接收人，请求不能指定其他人；需要同时具有 `resource.view` 和 `resource.manage`。策略属于该主体，同工作区其他成员不能接管。新建或复制的执行器默认没有策略。全局和旧版兼容 API key 不能接收发布产物，需要使用具名工作区 API key。
+聊天使用 `pipeline`，事件处理器使用 `event_processor`。服务器将真实认证主体设为接收人，请求不能指定其他人；需要同时具有 `resource.view` 和 `resource.manage`。策略属于该主体，同工作区其他成员不能接管。新建或复制的执行器默认没有策略。全局和旧版兼容 API key 不能接收发布产物，需要使用具名工作区 API key。
 
 Host 在运行开始时冻结策略。`ctx.commit_run_files(file_ids)` 重新检查策略和接收人的当前权限，通过后添加接收人的持久保留标记，并返回更新后的元信息。策略缺失、被修改、停用或权限被撤销时会拒绝提交。导出、读取和投递都不会自动提交，默认模型工具也不提供 commit。重复提交不会撤销接收人随后执行的 release。
 
@@ -94,7 +94,7 @@ Host 在运行开始时冻结策略。`ctx.commit_run_files(file_ids)` 重新检
 
 运行完成、失败或取消时，Host 在有时间限制的清理中尝试使未发布输出过期，再由维护任务回收。Core 崩溃、清理失败或超时时，仍以原有 24 小时期限兜底。
 
-`ctx.reply_files` 和流水线附件回复通过原有平台投递路径读取 Artifact 字节。本阶段没有新增通用 run 文件 HTTP 下载入口。完整流程见 [Runner API](/zh/plugin/dev/apis/agent-run#box-与附件)。
+`ctx.reply_files` 和聊天附件回复通过原有平台投递路径读取 Artifact 字节。本阶段没有新增通用 run 文件 HTTP 下载入口。完整流程见 [Runner API](/zh/plugin/dev/apis/agent-run#box-与附件)。
 
 ## 知识库导入 Artifact
 

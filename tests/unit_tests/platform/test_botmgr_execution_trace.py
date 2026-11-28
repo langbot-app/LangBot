@@ -49,6 +49,7 @@ def make_bot(event_bindings: list[dict], config=None, agent=None):
     bot.placement_generation = TEST_CONTEXT.placement_generation
     bot.logger = SimpleNamespace(info=AsyncMock(), warning=AsyncMock(), error=AsyncMock(), debug=AsyncMock())
     bot.adapter = FakeAdapter()
+    bot._begin_message = AsyncMock(return_value=(None, False))
     bot.ap = SimpleNamespace(
         workspace_service=SimpleNamespace(get_execution_binding=AsyncMock()),
         telemetry=SimpleNamespace(execution=counters),

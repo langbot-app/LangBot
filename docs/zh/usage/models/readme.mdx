@@ -34,11 +34,11 @@ LangBot Models 是 LangBot 官方提供的模型服务。当您使用 LangBot Sp
 
 ### 对话模型 (LLM Model)
 
-对话模型将被流水线用于处理消息，您配置的第一个模型将被设置为默认流水线的模型。
+对话模型将被聊天用于处理消息，您配置的第一个模型将被设置为默认聊天的模型。
 
 ![arch](/images/zh/deploy/models/arch.png)
 
-可以添加多个模型，然后在流水线中选择具体使用什么模型。
+可以添加多个模型，然后在聊天中选择具体使用什么模型。
 
 <img width="400px" src="/images/zh/deploy/models/model_config.png" alt="model_config" />
 
@@ -50,7 +50,7 @@ LangBot Models 是 LangBot 官方提供的模型服务。当您使用 LangBot Sp
 - **工具使用能力**（function calling / tool use）：启用后 LLM 才能在对话中调用工具
 
 <Note>
-**只要想使用来自 MCP 服务器、沙箱内置工具（`exec`/`read`/`write`/`edit`/`glob`/`grep`）、Skills 的能力，都必须为模型启用工具使用能力。** 否则即使流水线绑定了这些扩展，Agent 也不会调用任何工具。
+**只要想使用来自 MCP 服务器、沙箱内置工具（`exec`/`read`/`write`/`edit`/`glob`/`grep`）、Skills 的能力，都必须为模型启用工具使用能力。** 否则即使聊天绑定了这些扩展，Agent 也不会调用任何工具。
 
 模型本身需要支持 function calling 才能勾选。不确定时请查阅模型供应商的文档。
 </Note>
@@ -79,7 +79,7 @@ LangBot Models 是 LangBot 官方提供的模型服务。当您使用 LangBot Sp
 
 重排序模型用于对 RAG 检索结果进行重新评分排序，显著提升知识库回答的精准度。当知识库返回多个候选文档时，重排序模型会使用 cross-encoder 对每个文档与查询的相关性进行精确打分，筛选出最相关的内容。
 
-填入 `模型名称`、选择 `模型供应商`，然后提交即可。之后请在流水线的”AI 能力”配置中选择此模型。
+填入 `模型名称`、选择 `模型供应商`，然后提交即可。之后请在聊天的”AI 能力”配置中选择此模型。
 
 <Tip>
 重排序模型是可选的。不配置时，知识库检索结果将按向量相似度排序直接使用。配置后，检索结果会经过重排序模型重新打分，只保留最相关的 Top-K 条结果。

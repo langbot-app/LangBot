@@ -162,7 +162,7 @@
   },
   {
     "id": "langbot-team/EssentialCommands",
-    "version": "0.1.12",
+    "version": "0.1.13",
     "category": "misc",
     "path": "misc/EssentialCommands",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/EssentialCommands"

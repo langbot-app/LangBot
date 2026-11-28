@@ -1293,7 +1293,7 @@ async def test_plugin_connection_handler_peer_call_helpers(monkeypatch):
     }
     assert await handler.get_plugin_container() == {
         "action": RuntimeToPluginAction.GET_PLUGIN_CONTAINER.value,
-        "data": {},
+        "data": {"include_registered_events": True},
     }
     assert await handler.get_plugin_icon() == {
         "action": RuntimeToPluginAction.GET_PLUGIN_ICON.value,

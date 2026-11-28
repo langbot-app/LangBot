@@ -45,6 +45,12 @@ class MixloadProfileTests(unittest.TestCase):
         self.assertNotIn('weight', catalog[1])
         plan.phase['workers'] = 5
         self.assertEqual(default_phases[0]['workers'], 4)
+        self.assertEqual(config.box_workload, 'overlap')
+
+    def test_box_workload_is_strict_and_profiled(self):
+        self.assertEqual(parse_mixload({'version': 1, 'box_workload': 'cpu'}).box_workload, 'cpu')
+        with self.assertRaisesRegex(ValueError, 'box_workload must be one of'):
+            parse_mixload({'version': 1, 'box_workload': 'random'})
 
     def test_global_selection_and_local_weights_precedence(self):
         catalog = catalogue('chat', 'box', 'rag', 'other', group=True)
@@ -98,6 +104,7 @@ class MixloadProfileTests(unittest.TestCase):
             ({'version': True}, 'version must be 1'),
             ({'version': 1.0}, 'version must be 1'),
             ({'version': 1, 'endpoint': 'https://invalid.example'}, 'unknown fields: endpoint'),
+            ({'version': 1, 'box_workload': 'random'}, 'box_workload must be one of'),
             ({'version': 1, 'include': ['chat', 'chat']}, 'repeats a scenario'),
             ({'version': 1, 'include': ['chat'], 'exclude': ['chat']}, 'both included and excluded'),
             ({'version': 1, 'include': ['https://invalid.example']}, 'simple scenario name'),

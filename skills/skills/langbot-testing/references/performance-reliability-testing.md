@@ -35,7 +35,7 @@ Measure user experience and internal composition separately:
 
 - WebUI load and interaction latency.
 - Debug Chat send-to-first-visible-token and send-to-completion latency.
-- Pipeline, RAG, plugin runtime, MCP, Runner, and persistence segment
+- Chat, RAG, plugin runtime, MCP, Runner, and persistence segment
   latency.
 - Queue wait time, concurrency, throughput, timeout rate, and p95/p99 latency.
 - Startup, plugin install, knowledge-base ingestion, migration, and recovery
@@ -131,7 +131,7 @@ needs browser/WebSocket/message-path measurements.
 
 Use `langbot-fake-provider-debug-chat-load` before real-provider load checks.
 The setup automation starts a local OpenAI-compatible fake provider, registers
-it as a normal LangBot provider/model, configures a local-agent pipeline, resets
+it as a normal LangBot provider/model, configures a local-agent Chat, resets
 Debug Chat, and then drives concurrent WebSocket messages through the live
 backend.
 
@@ -139,7 +139,7 @@ This is not a mocked backend test. It still exercises:
 
 - provider/model persistence and runtime reload;
 - LiteLLM OpenAI-compatible requester path;
-- local-agent runner selection and pipeline execution;
+- local-agent runner selection and Chat execution;
 - Debug Chat WebSocket adapter and broadcast behavior;
 - backend concurrency, timeout, and error-rate accounting.
 
@@ -161,7 +161,7 @@ When the fake provider is used, reports also include provider-side timing in
 - `fake_provider.duration_ms` and `fake_provider.first_content_chunk_ms`
   measure the controlled provider itself.
 - `provider_timing.send_to_provider_start_ms` estimates WebSocket ingress,
-  pipeline dispatch, runner setup, and requester time before the provider
+  Chat dispatch, runner setup, and requester time before the provider
   receives the request.
 - `provider_timing.provider_finish_to_ws_final_ms` estimates the path from
   provider completion back to the final Debug Chat WebSocket response.
@@ -180,7 +180,7 @@ to one concurrent connection.
 Run `langbot-fake-provider-debug-chat-cross-pipeline-isolation` separately via
 `langbot-debug-chat-isolation-gate`. Current LangBot releases may fail it because
 of product bug [#2286](https://github.com/langbot-app/LangBot/issues/2286), where
-Debug Chat replies can read singleton WebSocket proxy pipeline state after a
+Debug Chat replies can read singleton WebSocket proxy Chat state after a
 later message overwrites it. Treat that failure as regression evidence for the
 product fix rather than as a fake-provider latency finding.
 
@@ -214,8 +214,8 @@ Use the smallest gate that answers the quality question:
   `/api/v1/system/info`, and backend log health. Good after starting a local
   LangBot backend.
 - `langbot-user-path-performance-gate`: browser-visible user path performance,
-  starting with Pipeline Debug Chat send-to-visible-completion latency. Run it
-  only when the browser profile and target pipeline are ready.
+  starting with Chat Debug Chat send-to-visible-completion latency. Run it
+  only when the browser profile and target Chat are ready.
 - `langbot-debug-chat-load-gate`: manual WebSocket Debug Chat load checks,
   starting with controlled fake-provider baseline, slow-provider, and
   fault-recovery profiles, plus an optional low-volume real Space-provider
@@ -255,7 +255,7 @@ LangBot.
    backend.
 2. Run `node scripts/e2e/ensure-local-agent-pipeline.mjs --write-env`. The
    setup refreshes the local QA login, skips the wizard, prepares a Debug Chat
-   pipeline, scans Space models, tests candidates, writes tested fallback
+   Chat, scans Space models, tests candidates, writes tested fallback
    models, and writes the selected pipeline/model env values to
    `skills/.env.local`.
 3. If setup returns `env_issue`, read `model_tests` and provider errors first.

@@ -106,7 +106,7 @@ MCP client
 Inbound platform messages enter through adapter-specific SDK callbacks. The common path is:
 
 1. A platform adapter under `pkg/platform/sources/` converts platform-specific events into SDK message/event entities.
-2. `RuntimeBot` in `pkg/platform/botmgr.py` applies pipeline routing rules and either discards the message, pushes it to webhooks, or sends it to the message aggregator.
+2. `RuntimeBot` in `pkg/platform/botmgr.py` selects the route, creates the entry `Query`, binds the bot message policy and fires `*MessageReceived`. Plugin commands match next and run directly; other messages are discarded, pushed to webhooks, handed to an Agent, or sent to the message aggregator for a Chat (pipeline). See [Bot message policy and message lifecycle](dev-docs/architecture/message-policy.md).
 3. `MessageAggregator` batches/normalizes messages before adding a `Query` to `QueryPool`.
 4. `Controller` in `pkg/pipeline/controller.py` selects queries subject to global pipeline concurrency and per-session concurrency.
 5. `RuntimePipeline` in `pkg/pipeline/pipelinemgr.py` runs configured pipeline stages using a responsibility-chain style executor that supports generator stages.
@@ -120,7 +120,7 @@ Pipeline components are registered by decorators and package import side effects
 Platform code lives under `pkg/platform/`.
 
 - `botmgr.py` owns runtime bots, routing rules, event logging, webhook pushing, and adapter lifecycle.
-- Bots store exclusive Agent/Pipeline routes in `event_bindings` and independent plugin subscriptions in `plugin_processors` (`processor_uuid`, `enabled`). Subscriptions resolve event patterns from the installed Runner and fan out alongside the primary route. Configuration, state, debug and run logs belong to the reusable processor instance.
+- Bots store `message_policy` (trigger, safety, general output and plugin enablement; routes may override it) and exclusive Agent/Pipeline routes in `event_bindings` and independent plugin subscriptions in `plugin_processors` (`processor_uuid`, `enabled`). Subscriptions resolve event patterns from the installed Runner and fan out alongside the primary route. Configuration, state, debug and run logs belong to the reusable processor instance.
 - `sources/` contains adapter implementations. Each adapter subclasses `langbot_plugin.api.definition.abstract.platform.adapter.AbstractMessagePlatformAdapter` from the SDK.
 - Platform entities such as `MessageChain`, `Image`, `At`, `Voice`, and events come from the SDK (`sdk/`, `langbot_plugin`), not from Core.
 - `pkg/platform/image_urls.py` renews image references in authorized monitoring/history responses and before Host model attempts without downloading. The shared resource URL catalog persists renewed URLs behind stable references. OneBot connection-local state in `adapters/aiocqhttp/image_urls.py` identifies the implementation lazily and reuses NapCat credentials until their returned TTL expires. Other implementations use standard `get_msg` when the URL's creation or last successful check is at least 30 minutes old. URLs can be shared across Workspaces; bot ownership checks, credentials and original message identities remain scoped to their connection.
@@ -137,7 +137,8 @@ Important pieces:
 - `controller.py::Controller` schedules query processing and enforces concurrency.
 - `pipelinemgr.py::RuntimePipeline` materializes database pipeline config into a runtime stage chain.
 - `process/handlers/chat.py::ChatMessageHandler` is the main LLM conversation handler.
-- Stage families include response rules, banned sessions, content filters, preprocessors, rate limits, message truncation, long text handling, response-back, command handling, and wrappers.
+- Stage families include response rules, banned sessions, content filters, preprocessors, rate limits, message truncation, long text handling, response-back, and wrappers. Response rules, access control, filters, rate limits, long text and response-back delegate to the shared `pkg/message_policy/` runtime so Agent and command delivery apply the same bot policy.
+- The pipeline is called **Chat** in user-facing text; identifiers keep `pipeline`.
 
 Pipelines are configuration-driven. Prefer adding a stage or extending an existing stage family over hard-coding behavior in platform adapters.
 
@@ -162,7 +163,7 @@ In this repo:
 - `pkg/plugin/connector.py` connects LangBot to the Plugin Runtime over stdio or WebSocket.
 - `pkg/plugin/handler.py` exposes LangBot actions to the runtime and calls runtime actions for plugin operations.
 - `pkg/provider/tools/loaders/plugin.py` exposes plugin Tool components to LLM runners.
-- Pipeline handlers emit SDK events such as normal-message events and prompt-processing events.
+- EventListener hooks are bot message lifecycle hooks: `RuntimeBot` emits `*MessageReceived` / `*CommandSent` and platform notifications, Chat stages and Agent delivery emit normal-message and response events, and only Chat emits prompt-processing events. Plugins are enabled per bot through `message_policy.plugins`.
 - [Certified plugin policy](dev-docs/architecture/certified-plugins.md) defines Core's archive-fact, admission, and tenant-log-visibility boundary; the SDK remains responsible for certificate verification.
 
 In `sdk/`:

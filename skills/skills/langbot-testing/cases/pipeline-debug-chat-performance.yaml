@@ -1,5 +1,5 @@
 id: pipeline-debug-chat-performance
-title: "Pipeline Debug Chat user-path performance probe"
+title: "Chat Debug Chat user-path performance probe"
 mode: agent-browser
 area: pipeline
 type: performance
@@ -38,19 +38,19 @@ automation_reset_debug_chat: "true"
 automation_debug_chat_response_p95_ms: "120000"
 automation_debug_chat_max_error_rate: "0"
 metrics_thresholds_json: '{"response_p95_ms":{"max":120000},"error_rate":{"max":0}}'
-load_profile_json: '{"prompts":1,"browser":true,"path":"Pipeline Debug Chat","metric":"send-to-visible-completion"}'
+load_profile_json: '{"prompts":1,"browser":true,"path":"Chat Debug Chat","metric":"send-to-visible-completion"}'
 setup_automation:
   - "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
 setup_provides_env:
   - LANGBOT_PIPELINE_URL
   - LANGBOT_PIPELINE_NAME
 preconditions:
-  - "LANGBOT_PIPELINE_URL or LANGBOT_PIPELINE_NAME points to the pipeline intended for this Debug Chat performance run."
-  - "The target pipeline is safe to reset Debug Chat history for this run."
-  - "The target pipeline has a known-good runner/model; provider latency should be interpreted separately from LangBot overhead."
+  - "LANGBOT_PIPELINE_URL or LANGBOT_PIPELINE_NAME points to the Chat intended for this Debug Chat performance run."
+  - "The target Chat is safe to reset Debug Chat history for this run."
+  - "The target Chat has a known-good runner/model; provider latency should be interpreted separately from LangBot overhead."
 steps:
   - "Open LANGBOT_FRONTEND_URL with the prepared browser profile."
-  - "Open the target pipeline and select Debug Chat."
+  - "Open the target Chat and select Debug Chat."
   - "Reset Debug Chat history through the backend API when configured."
   - "Send the deterministic prompt and wait for the expected assistant response."
 checks:

@@ -13,7 +13,7 @@ export default {
   installDetails: 'Chi tiết cài đặt',
   stageProgress: 'Tiến độ từng giai đoạn',
   downloaded: 'Đã tải {{size}}',
-  processed: 'Đã xử lý {{completed}} / {{total}} pipeline',
+  processed: 'Đã xử lý {{completed}} / {{total}} Chat',
   installErrors: {
     plugin_permission_confirmation_required:
       'Không thể xác nhận quyền plugin. Hãy nhờ thành viên có quyền cần thiết kiểm tra rồi thử lại.',
@@ -30,20 +30,20 @@ export default {
       'Không thể khởi động plugin. Kiểm tra môi trường chạy.',
   },
   autoDescription:
-    'Các runner cũ đã chuyển thành plugin. Chuyển đổi tất cả pipeline và giữ lại thiết lập. Cấu hình cũ sẽ được sao lưu; hội thoại sẽ bắt đầu lại.',
-  viewPipelines: 'Xem pipeline',
+    'Các runner cũ đã chuyển thành plugin. Chuyển đổi tất cả Chat và giữ lại thiết lập. Cấu hình cũ sẽ được sao lưu; hội thoại sẽ bắt đầu lại.',
+  viewPipelines: 'Xem Chat',
   autoInstall: 'Cài plugin và chuyển đổi',
   dataOnly: 'Chỉ chuyển đổi dữ liệu',
   dataOnlyHint:
     'Dành cho mạng nội bộ hoặc ngoại tuyến. Tự cài các plugin runner tương ứng sau khi chuyển đổi.',
   installing: 'Đang cài plugin cần thiết…',
-  migrating: 'Đang chuyển đổi pipeline…',
+  migrating: 'Đang chuyển đổi Chat…',
   summary: 'Đã chuyển {{migrated}}; {{remaining}} cần xử lý.',
   installFailed:
     'Cài đặt thất bại. Mở chi tiết để xem giai đoạn lỗi rồi thử lại, hoặc chỉ chuyển dữ liệu.',
 
   activationRetryHint:
-    'Sau khi kiểm tra môi trường chạy, làm mới, chọn pipeline này và xác nhận để chỉ thử kích hoạt lại. Cấu hình đã lưu sẽ không được di chuyển lần nữa.',
+    'Sau khi kiểm tra môi trường chạy, làm mới, chọn Chat này và xác nhận để chỉ thử kích hoạt lại. Cấu hình đã lưu sẽ không được di chuyển lần nữa.',
   details: 'Chi tiết chuyển đổi',
   notices: {
     customRunner:
@@ -56,7 +56,7 @@ export default {
     runnerConfigReplaced:
       'Cấu hình runner kiểu mới hiện có được thay bằng kết quả di chuyển; bản gốc được lưu trong bản sao lưu.',
     runnerAdded:
-      'Đã thêm plugin runner cần thiết vào danh sách tiện ích của pipeline này.',
+      'Đã thêm plugin runner cần thiết vào danh sách tiện ích của Chat này.',
     extensionPrefs: 'Các mục không hợp lệ trong cài đặt tiện ích đã bị bỏ qua.',
     runtimeUnavailable:
       'Môi trường chạy plugin bị ngắt kết nối. Khôi phục kết nối rồi thử lại, hoặc chỉ di chuyển dữ liệu.',
@@ -98,24 +98,23 @@ export default {
     schemaChanged:
       'Cấu hình Runner đã cài không khớp với đích di chuyển. Kiểm tra phiên bản plugin rồi làm mới.',
     runnerExcluded:
-      'Pipeline này loại trừ plugin Runner cần thiết. Hãy chỉnh thiết lập tiện ích trước.',
+      'Chat này loại trừ plugin Runner cần thiết. Hãy chỉnh thiết lập tiện ích trước.',
     boxTemplateInvalid:
       'Mẫu tái sử dụng không hợp lệ. Dùng {tên_biến}; không hỗ trợ trường vị trí, chuyển đổi định dạng hoặc truy cập thuộc tính.',
     pendingInteraction:
       'Có hội thoại đang chờ nhập liệu. Hãy hoàn tất hoặc hủy trước khi di chuyển.',
   },
-  title: 'Di chuyển pipeline',
+  title: 'Di chuyển Chat',
   description:
-    'Chọn các pipeline cần chuyển đổi. Cấu hình cũ sẽ được sao lưu; các cuộc trò chuyện sẽ bắt đầu lại.',
-  detected: '{{count}} pipeline cần xem xét di chuyển.',
+    'Chọn các Chat cần chuyển đổi. Cấu hình cũ sẽ được sao lưu; các cuộc trò chuyện sẽ bắt đầu lại.',
+  detected: '{{count}} Chat cần xem xét di chuyển.',
   review: 'Xem xét di chuyển',
-  readOnly:
-    'Chỉ người có quyền quản lý không gian mới được di chuyển pipeline.',
+  readOnly: 'Chỉ người có quyền quản lý không gian mới được di chuyển Chat.',
   previewError: 'Không lấy được bản xem trước. Hãy làm mới.',
-  submitting: 'Đang gửi các pipeline đã chọn…',
+  submitting: 'Đang gửi các Chat đã chọn…',
   running: 'Đang di chuyển. Đóng hộp thoại không hủy tác vụ.',
-  finished: 'Tác vụ đã kết thúc. Hãy kiểm tra kết quả từng pipeline.',
-  failed: 'Tác vụ thất bại. Hãy kiểm tra kết quả từng pipeline.',
+  finished: 'Tác vụ đã kết thúc. Hãy kiểm tra kết quả từng Chat.',
+  failed: 'Tác vụ thất bại. Hãy kiểm tra kết quả từng Chat.',
   lost: 'Mất theo dõi tác vụ; chưa biết kết quả. Hãy làm mới bản xem trước trước khi thao tác tiếp.',
   requestError: 'Yêu cầu chưa hoàn tất. Làm mới bản xem trước rồi chọn lại.',
   warningFallback: 'Kiểm tra cài đặt này trước khi di chuyển.',
@@ -127,11 +126,11 @@ export default {
   pluginHint:
     'Thiếu plugin? Cài đặt hoặc bật runner trong Tiện ích mở rộng, rồi làm mới bản xem trước.',
   extensions: 'Mở Tiện ích',
-  results: 'Kết quả từng pipeline',
+  results: 'Kết quả từng Chat',
   selection: 'Đã chọn {{count}} (tối đa 50)',
-  confirm: 'Tôi xác nhận di chuyển các pipeline đã chọn.',
+  confirm: 'Tôi xác nhận di chuyển các Chat đã chọn.',
   refresh: 'Làm mới bản xem trước',
-  execute: 'Di chuyển đã chọn',
+  execute: 'Di chuyển các Chat đã chọn',
   legacyGate:
     'Cấu hình cũ chỉ đọc cho đến khi di chuyển. Lưu và gỡ lỗi bị tắt để tránh chuyển đổi ngầm.',
   states: {

@@ -292,10 +292,10 @@ const jaJP = {
       '送信を確認できません。接続を確認して会話を開き直してください。',
     draftPlaceholder: '待機中に次のメッセージを入力できます…',
     operations: {
-      create_pipeline: 'Pipeline 作成',
-      configure_pipeline: 'Pipeline 設定',
+      create_pipeline: 'チャット作成',
+      configure_pipeline: 'チャット設定',
       create_knowledge_base: 'ナレッジベース作成',
-      get_pipeline: 'Pipeline 参照',
+      get_pipeline: 'チャット参照',
       get_knowledge_schema: 'エンジン設定の参照',
       list_operation_logs: '操作ログの参照',
       workspace_search: 'ワークスペース機能を検索',
@@ -305,7 +305,7 @@ const jaJP = {
     resources: {
       models: 'チャットモデル検索',
       embedding_models: '埋め込みモデル検索',
-      pipelines: 'Pipeline 検索',
+      pipelines: 'チャット検索',
       knowledge_bases: 'ナレッジベース検索',
       knowledge_engines: 'エンジン検索',
     },
@@ -314,8 +314,8 @@ const jaJP = {
     newChat: '新しい会話',
     close: '閉じる',
     welcome:
-      '作りたいアプリを教えてください。現在のワークスペースを確認し、ボット、Agent、ナレッジベース、Pipeline などの設定を提案し、承認後に適用します。',
-    discover: '利用できるモデル、ナレッジベース、Pipeline は？',
+      '作りたいアプリを教えてください。現在のワークスペースを確認し、ボット、Agent、ナレッジベース、チャットなどの設定を提案し、承認後に適用します。',
+    discover: '利用できるモデル、ナレッジベース、チャットは？',
     build: 'ナレッジベースを使う質問応答アプリを作りたい。',
     toolResult: '操作結果',
     review: '実行する操作とパラメータを確認してください',
@@ -357,7 +357,7 @@ const jaJP = {
       pipelines: {
         title: '処理を設定する',
         description:
-          '再利用できるパイプライン、Agent、プラグイン処理の設定を作成し、ボットに接続します。',
+          '再利用できるチャット、Agent、プラグイン処理の設定を作成し、ボットに接続します。',
       },
       knowledge: {
         title: 'ナレッジベースを管理する',
@@ -393,7 +393,7 @@ const jaJP = {
       trigger: {
         title: 'Choose which messages to answer',
         description:
-          'Pipelines handle message events and reply automatically with AI.',
+          'チャットはメッセージイベントを処理し、AI で自動的に返信します。',
       },
       speech: {
         title: 'Configure speech capabilities',
@@ -418,12 +418,12 @@ const jaJP = {
       extensions: {
         title: '利用する拡張機能を選ぶ',
         description:
-          'このパイプラインで利用するプラグイン、MCP サーバー、スキルを選び、メッセージ処理やツールを拡張します。',
+          'このチャットで利用するプラグイン、MCP サーバー、スキルを選び、メッセージ処理やツールを拡張します。',
       },
       basic: {
-        title: 'パイプラインを管理する',
+        title: 'チャットを管理する',
         description:
-          '現在のパイプラインを複製して別の設定を作成したり、不要なパイプラインを削除したりできます。',
+          '現在のチャットを複製して別の設定を作成したり、不要なチャットを削除したりできます。',
       },
       debug: {
         title: '会話をテストする',
@@ -446,7 +446,7 @@ const jaJP = {
       save: {
         title: '保存してボットに接続する',
         description:
-          '設定を保存し、ボットページのイベントルーティングでメッセージ受信イベントをこのパイプラインに割り当てます。',
+          '設定を保存し、ボットページのイベントルーティングでメッセージ受信イベントをこのチャットに割り当てます。',
       },
     },
     pluginProcessor: {
@@ -521,7 +521,7 @@ const jaJP = {
       type: {
         title: 'プロセッサーの種類を選択',
         description:
-          'Pipeline は固定フロー、Agent はモデルとツールによる判断、プラグインプロセッサーは宣言済みイベントを処理します。',
+          'チャットは固定フロー、Agent はモデルとツールによる判断、プラグインプロセッサーは宣言済みイベントを処理します。',
       },
       basic: {
         title: 'プロセッサー情報を入力',
@@ -850,7 +850,7 @@ const jaJP = {
       confirmDisconnect: '切断を確認',
     },
     title: 'モデル設定',
-    description: 'パイプラインで使用できるモデルを設定・管理',
+    description: 'チャットで使用できるモデルを設定・管理',
     createModel: 'モデルを作成',
     editModel: 'モデルを編集',
     getModelListError: 'モデルリストの取得に失敗しました：',
@@ -1024,13 +1024,466 @@ const jaJP = {
       addFallback: 'フォールバックモデルを追加',
     },
   },
+  upgradeChecks: {
+    banner: 'アップグレードによる変更が {{count}} 件あります',
+    review: '確認',
+    title: 'アップグレードチェック',
+    description:
+      '今回のアップグレードで、トリガー・安全・共通出力の設定がチャットからボットへ移り、システムコマンドが追加されました。以下の変更を確認するか、ワンクリックで調整してください。',
+    empty: '確認待ちの変更はありません。',
+    confirmAll: 'すべて確認',
+    allConfirmed: 'すべて確認しました',
+    acknowledge: '了解',
+    confirmedSection: '確認済み {{count}} 件',
+    unknownBot: 'ボット',
+    scopeDefault: 'ボットのデフォルト',
+    scopeRoutes: '{{count}} 件のルート',
+    failed: '操作に失敗しました：{{error}}',
+    actionDone: '完了：{{action}}',
+    taskStarted: '開始しました：{{action}}。進捗はタスク一覧で確認できます',
+    links: {
+      admins: 'セッション監視で管理者を設定',
+      policy: 'メッセージポリシーを開く',
+      commands: 'プラグインとコマンドを開く',
+    },
+    actions: {
+      restore_prefixes: '! と ！ も有効にする',
+      uninstall_essential: 'EssentialCommands をアンインストール',
+      remove_plugin: 'ボットから外す',
+      promote_route_policy: 'ボットのデフォルトにする',
+    },
+    confirm: {
+      uninstall_essential:
+        'EssentialCommands をアンインストールします（プラグインデータは保持）。同名のコマンドはシステムコマンドが処理します。',
+      remove_plugin:
+        '「{{bot}}」からプラグイン {{plugin}} を外します。そのコマンドとイベントリスナーは無効になります。',
+      promote_route_policy:
+        'この共通設定を「{{bot}}」のデフォルトのメッセージポリシーにし、{{count}} 件のルートの上書きを削除します。各ルートの動作は変わりません。',
+    },
+    items: {
+      command_prefix_changed: {
+        title: 'コマンドプレフィックスが変わりました',
+        body: '「{{bot}}」は {{prefixes}} をコマンドプレフィックスとして使っていましたが、現在のデフォルトは / です。',
+        keep: '/ のままにする',
+      },
+      plugin_command_collision: {
+        title: 'システムコマンドと同名',
+        body: '以下のプラグインコマンドはシステムコマンドと同名のため、システムコマンドが実行されます：{{names}}',
+        bodyEssential:
+          'EssentialCommands がインストールされていますが、その機能はシステムコマンドが提供します。同名コマンドはシステムコマンドが実行されます：{{names}}',
+        keep: 'プラグインを残す',
+      },
+      command_admin_missing: {
+        title: '管理者専用コマンドに管理者がいません',
+        body: '「{{bot}}」には管理者専用コマンドがありますが、管理者が未設定のため誰も使えません。',
+      },
+      command_plugin_enabled: {
+        title: 'ボットで新たに有効化されたプラグイン',
+        body: 'プラグイン {{plugin}} はコマンドを持つため、移行時に「{{bot}}」（{{scope}}）で有効化されました。',
+        keep: '残す',
+      },
+      equivalent_route_policies: {
+        title: 'ルートの上書きを簡略化できます',
+        body: '「{{bot}}」の {{count}} 件のルート上書きは同じ効果のため、ボットのデフォルトポリシーにできます。',
+        unroutedCommands:
+          'どのルートにも一致しないコマンドもこの設定を使うようになります。',
+      },
+      chat_settings_moved: {
+        title: 'チャットの設定は移動しました',
+        body: 'トリガー・安全・共通出力の設定は現在ボットにあります。「{{bot}}」の {{count}} 件のルートは元のチャットの設定を引き継いでいます。',
+      },
+    },
+  },
   bots: {
+    routeCounts: {
+      last24h: '直近 24 時間',
+      none: 'メッセージなし',
+      ai: 'AI',
+      command: 'コマンド',
+      plugin: 'プラグイン',
+      policy: 'ブロック',
+    },
+    routingTabs: {
+      routes: 'ルート',
+      plugins: 'プラグインとコマンド',
+      policy: 'メッセージポリシー',
+    },
+    policy: {
+      scopeLabel: '適用先',
+      botDefault: 'ボットの既定',
+      routes: 'ルート',
+      custom: 'カスタム',
+      inherit: '既定',
+      inheritDefault: '既定を使用',
+      routeMode: 'このルートのポリシー',
+      promote: 'ボットの既定にする',
+      promoted:
+        'ボットの既定に設定しました。{{count}} 件のルートが既定を使用します',
+      loadFailed: 'メッセージポリシーを読み込めませんでした',
+      botDefaultHint:
+        'ボットの既定はメッセージを受け取るすべてのルートに適用され、ルートごとに上書きできます。message.received イベントのみが対象です。',
+      neutralDefaultHint: '現在の既定は何もブロックせず、返信も変更しません。',
+      policyState: 'ポリシー：{{state}}',
+      pluginState: 'プラグイン：{{state}}',
+      inheritHint:
+        'このルートはボットの既定を使用しています。下は現在有効な設定です。「カスタム」に切り替えると個別に変更できます。',
+      streamingNote:
+        'ストリーミング返信には強制遅延・送信者への @・引用のみが適用され、長文処理は適用されません。',
+      streamingPlatformLimit:
+        'このプラットフォームではストリーミングの最初のフレームに @ や引用を含められないため、ストリーミング返信では表示されません。',
+      newRouteNeutral:
+        '新しいルートはボットの既定メッセージポリシーを使用します。現在の既定は何もブロックしません。「メッセージポリシー」タブで個別に設定できます。',
+      newRouteInherits:
+        '新しいルートはボットの既定メッセージポリシーを使用します。「メッセージポリシー」タブで個別に設定できます。',
+      settings: {
+        or: '、または',
+        off: 'オフ',
+        seconds: '秒',
+        who: {
+          title: '誰に返信するか',
+          hint: 'ボットがどの人・どのメッセージに返信するかを決めます。',
+        },
+        group: {
+          title: 'グループの返信条件',
+          all: 'すべてのグループメッセージに返信',
+          some: '{{conditions}}とき返信',
+          none: '条件が未設定のため、グループメッセージには返信しません',
+          allOption: 'すべてに返信',
+          someOption: '条件を満たすときだけ',
+          anyHint:
+            '下のいずれかの条件を満たすと返信します。個別チャットには影響しません。',
+          whenAt: '@ された',
+          whenPrefix: '「{{prefixes}}」で始まる',
+          whenRegexp: '{{count}} 件の正規表現に一致する',
+          whenRandom: 'ランダム {{percent}}%',
+          atLabel: 'ボットが @ されたとき',
+          prefixLabel: '次のプレフィックスで始まるとき',
+          prefixHint: 'プレフィックスは取り除いてから AI に渡します。',
+          prefixPlaceholder: 'プレフィックスを入力して Enter（例：ai）',
+          regexpLabel: '次の正規表現に一致するとき',
+          regexpPlaceholder: '正規表現を入力して Enter',
+          randomLabel: 'その他のメッセージへのランダム返信率',
+          randomHint:
+            '上の条件をどれも満たさないグループメッセージに、この確率で返信します。',
+        },
+        access: {
+          title: '利用できる相手',
+          everyone: '全員',
+          blacklist: '一部の会話をブロック',
+          whitelist: '一部の会話のみ許可',
+          everyoneSummary: '全員',
+          blacklistSummary: '{{count}} 件の会話をブロック',
+          whitelistSummary: '{{count}} 件の会話のみ',
+          whitelistEmpty: 'リストが空のため、どの会話にも返信しません',
+          format:
+            '会話の形式：個別チャットは person_ユーザーID、グループは group_グループID。person_* / group_* はすべての個別チャット / グループ。',
+        },
+        ignore: {
+          title: '無視するメッセージ',
+          summary: '{{count}} 件の無視ルール',
+          none: '無視しない',
+          hint: 'これらのルールに一致するメッセージは、個別チャット・グループともに無視します。グループの返信条件に一致した後に評価されます。',
+          prefixLabel: '次のプレフィックスで始まるものを無視',
+          prefixPlaceholder: 'プレフィックスを入力して Enter（例：#）',
+        },
+        read: {
+          title: 'メッセージの受け取り方',
+        },
+        aggregate: {
+          title: '連続メッセージをまとめる',
+          on: '{{seconds}} 秒待ってまとめる',
+          label: '同じユーザーの連続メッセージをまとめる',
+          hint: '続けて送られたメッセージを少し待ってから 1 件として処理し、1 件ずつ返信しないようにします。',
+          wait: '待機',
+        },
+        quoteIn: {
+          title: '引用内容を含める',
+          on: 'オン',
+          label: '引用されたメッセージも AI に渡す',
+          hint: 'ユーザーが返信したとき、引用元の内容をメッセージに含めます。',
+        },
+        safety: {
+          title: '安全とレート制限',
+        },
+        filter: {
+          title: 'NG ワードフィルター',
+          label: 'NG ワードをチェック',
+          hint: 'NG ワードは data/metadata/sensitive-words.json で設定します。',
+          check: 'チェック対象',
+          scope: {
+            all: '受信と返信の両方',
+            'income-msg': '受信メッセージのみ',
+            'output-msg': '返信のみ',
+          },
+        },
+        rate: {
+          title: '送信頻度の制限',
+          summary:
+            '{{seconds}} 秒ごとに最大 {{count}} 件、超えたら{{strategy}}',
+          label: '会話ごとのメッセージ頻度を制限',
+          hint: '連投や利用枠の急な消費を防ぎます。',
+          every: '',
+          secondsAtMost: '秒ごとに最大',
+          messages: '件',
+          whenExceeded: '超えたら',
+          strategy: {
+            drop: '破棄',
+            wait: '待機して処理',
+          },
+        },
+        reply: {
+          title: '返信のしかた',
+        },
+        style: {
+          title: '@ と引用',
+          atSender: 'グループで送信者を @',
+          quote: '元のメッセージを引用',
+          plain: 'そのまま返信',
+          atSenderLabel: 'グループの返信で送信者を @ する',
+          quoteLabel: '元のメッセージを引用して返信',
+        },
+        delay: {
+          title: '返信の遅延',
+          summary: '{{min}}〜{{max}} 秒ランダムに待つ',
+          none: 'すぐ返信',
+          hint: '返信前にランダムに待ち、人間らしく見せます。',
+          wait: '待機',
+        },
+        long: {
+          title: '長文',
+          none: 'そのまま',
+          summary: '{{threshold}} 文字を超えたら{{strategy}}',
+          when: '',
+          chars: '文字を超えたら',
+          strategy: {
+            none: 'そのまま',
+            forward: 'まとめて転送',
+            image: '画像に変換',
+          },
+          font: '画像のフォントパス',
+          fontPlaceholder: '空欄で既定のフォント',
+        },
+        errors: {
+          title: 'エラー時',
+          rowTitle: 'エラー時の返信',
+          mode: {
+            'show-hint': '簡単に通知',
+            'show-error': 'エラー詳細を表示',
+            hide: '返信しない',
+          },
+          modeHint: {
+            'show-hint': 'エラーの詳細は出さず、短い失敗メッセージを返します。',
+            'show-error': 'エラー内容をそのまま返します。デバッグ向けです。',
+            hide: 'エラー時は何も返信しません。',
+          },
+          customCount: 'カスタム文言 {{count}} 件',
+          hintsIntro:
+            'カスタム文言（空欄ならワークスペースの言語の既定文言。カスタム文言は翻訳されません）：',
+          hints: {
+            'failure-hint': '処理失敗',
+            'rate-limit-hint': '頻度制限超過',
+            'content-filter-hint': '内容がフィルターされた',
+            'content-filter-error-hint': '内容チェック失敗',
+          },
+          defaultPlaceholder: '既定の文言',
+        },
+      },
+    },
+    systemCommands: {
+      title: 'システムコマンド',
+      entry: 'システムコマンド · {{enabled}}/{{total}}',
+      description:
+        'LangBot に組み込まれたコマンドで、プラグインコマンドと同じくプレフィックスで判定します。コマンドごとにオン／オフと利用権限を設定します。',
+      readOnly:
+        'システムコマンドはボット全体に適用されます。「ボットの既定」で変更してください。',
+      admins: '管理者',
+      noAdmins:
+        '管理者がいないため、「管理者のみ」のコマンドは誰も使えません。',
+      denied: '権限がないとき',
+      deniedSilent: '返信しない',
+      deniedNotice: '権限がない旨を返信',
+      deniedSilentHint:
+        'コマンドがないものとして扱い、メッセージは通常どおりルートで処理します。',
+      deniedNoticeHint:
+        '「この操作を実行する権限がありません」とワークスペースの言語で返信します。',
+      everyone: '全員',
+      adminsOnly: '管理者のみ',
+      permissionOf: '{{command}} の利用権限',
+      enableCommand: '{{command}} を有効化',
+      pluginCommands: 'プラグインコマンド',
+      pluginCommandsHint:
+        '有効なプラグインのコマンドを個別に管理者のみにできます。',
+      adminsCount: '管理者は {{count}} 人です。',
+      adminsNone: '管理者はまだ設定されていません。',
+      adminsWhere: '管理者はセッション監視で設定します。',
+      openSessions: 'セッション監視を開く',
+      pluginEntry: '権限を設定',
+      pluginEntryRestricted: '{{count}} 件が管理者のみ',
+      groups: {
+        session: 'セッション',
+        info: '情報',
+        admin: '管理',
+      },
+    },
+    pluginHooks: {
+      openSettings: 'プラグイン設定を開く',
+      devDocsHint: 'コマンドやフックのプラグインを自作するには',
+      devDocs: 'プラグイン開発ドキュメント',
+      devDocsUrl: 'https://langbot.app/docs/ja/plugin/dev/tutor',
+      tabDescription:
+        'コマンドとプラグインをここで設定します。コマンドはユーザーが「プレフィックス + コマンド名」を送ると実行され、プラグインはコマンドとチャットイベントフックを提供します。',
+      routeMode: 'このルートのプラグイン',
+      lifecycleTitle: 'メッセージのライフサイクル',
+      lifecycleHint: 'アイコンは各ステップで動作する有効なプラグインです',
+      policyCaption: 'メッセージポリシー',
+      enableTitle: 'プラグイン',
+      enableHint:
+        'コマンド：ユーザーが「プレフィックス + コマンド名」を送ると、プラグインが実行します。チャットイベントフック：メッセージ受信や返信の前後などで介入し、メッセージ自体はルートで指定した Agent またはチャットが処理します。',
+      inheritHint:
+        'このルートはボットの既定のプラグイン設定を使用しています。「カスタム」に切り替えると個別に選択できます。',
+      loadFailed: 'プラグインを読み込めませんでした',
+      empty: 'まだプラグインが追加されていません。',
+      browseMarket: 'プラグインをインストール',
+      registrationsUnknown:
+        'Plugin Runtime が古いため、各プラグインが登録したフックを取得できません。',
+      globallyDisabled: 'プラグイン無効',
+      hooksUnknown: 'フック不明',
+      enablePlugin: 'このボットで {{plugin}} を有効にする',
+      allEnabledHint:
+        'すべてのプラグインが有効です。今後インストールするプラグインも自動で有効になります。',
+      notInstalled: '未インストール',
+      remove: '{{plugin}} を削除',
+      kinds: {
+        command: 'コマンド',
+        hook: 'チャットイベントフック',
+      },
+      add: {
+        installNew: '新しいプラグインをインストール',
+        button: 'プラグインを追加',
+        title: 'プラグインを追加',
+        description:
+          'コマンドまたはチャットイベントフックを提供するプラグインを選びます。ボットを保存すると反映されます。',
+        installed: 'インストール済み',
+        marketplace: 'マーケットから',
+        noInstalled:
+          'インストール済みのコマンド・フックプラグインはすべて追加済みです。',
+        search: 'プラグインを検索',
+        all: 'すべて',
+        loading: 'マーケットを読み込み中…',
+        unavailable: 'マーケットに接続できません',
+        noMarketplace:
+          '未インストールまたは更新可能な該当プラグインはマーケットにありません。',
+        viewMarketplace: 'マーケットで見る',
+        confirm: '{{count}} 個のプラグインを追加',
+        installAndAdd: '{{plugin}} をインストールして追加',
+        installedAdded:
+          '{{plugin}} をインストールして追加しました。ボットを保存すると反映されます。',
+        installFailed: 'インストールに失敗しました',
+        alreadyAdded: '追加済み',
+        update: '更新',
+        updateAvailable: '更新あり {{from}} → {{to}}',
+        updated: '{{plugin}} を更新しました',
+        updateFailed: '更新に失敗しました',
+      },
+      commands: {
+        botWide:
+          'コマンドのオン/オフ、プレフィックス、コマンド設定はボット全体に適用されます。「ボットの既定」で変更してください。',
+        label: 'プラグインコマンド',
+        hint: '受信メッセージのみが対象で、ルートより先に判定します。名前が重なる場合はシステムコマンドが優先され、次にリストの上にあるプラグインです。',
+        title: 'コマンド',
+        enable: 'コマンドを有効化',
+        prefixHint:
+          'システムコマンドとプラグインコマンドは同じプレフィックスを使います（例：{{example}}）。',
+        systemHint:
+          '/help、/new、/stop など LangBot に組み込まれたコマンドです。',
+        pluginTitle: 'プラグインコマンド',
+        pluginNone: '追加したプラグインにコマンドはありません。',
+        pluginHint:
+          '下に追加したプラグインのコマンドです。「権限を設定」で管理者のみにできます。',
+      },
+      commandConfig: {
+        button: 'コマンド設定',
+        title: '{{plugin}} のコマンド設定',
+        description:
+          'このボットにのみ適用されます。変更しない場合はプラグインの既定値を使います。',
+        custom: 'カスタムコマンド設定',
+        commandsOff: 'コマンド停止中',
+        useDefaults: '既定値に戻す',
+        saved: 'コマンド設定を保存しました。',
+        created: 'コマンド設定を作成しました。ボットを保存すると反映されます。',
+      },
+      processors: {
+        messaging: 'チャット',
+        agent: 'Agent',
+        command: 'コマンド',
+      },
+      reasons: {
+        observeOnly: 'プラットフォームイベント：通知のみでブロック不可',
+        promptOnAgent:
+          'Agent にルーティングされるため、プロンプトフックは無効です',
+        notOnRoute: 'このルートでは使われません（{{processors}} のみで有効）',
+        streamObserveOnly:
+          'ストリーミング返信ではこのフックは観察のみで、送信済みの内容は変更できません',
+      },
+      steps: {
+        received: '受信',
+        command: 'コマンド',
+        admission: '受付',
+        before: '返信前',
+        process: '処理',
+        after: '返信後',
+        send: '送信',
+      },
+      events: {
+        GroupMessageReceived: 'グループメッセージ',
+        PersonMessageReceived: '個人メッセージ',
+        GroupCommandSent: 'グループコマンド',
+        PersonCommandSent: '個人コマンド',
+        GroupNormalMessageReceived: 'グループ通常メッセージ',
+        PersonNormalMessageReceived: '個人通常メッセージ',
+        PromptPreProcessing: 'プロンプト前処理',
+        NormalMessageResponded: '返信後',
+      },
+    },
+    platformCommands: {
+      title: 'プラットフォームに登録',
+      overwrite:
+        '手動設定を含む既存の全コマンドを置き換えます。無効にすると登録済みリストを消去します。',
+      limits:
+        '最大 {{count}} コマンド、説明は {{length}} 文字まで。名前の規則：',
+      prefixWarning:
+        '/ 接頭辞がありません。Telegram のメニューコマンドは一致しませんが、Discord の操作は実行できます。',
+      failed: '同期に失敗しました',
+      synced: '最終同期：{{time}}',
+      notSynced: '未同期',
+      sync: '今すぐ同期',
+      saveFirst: '同期前にボット設定を保存してください。',
+      reasons: {
+        invalid_name: '無効なコマンド名',
+        invalid_description: '説明が空または長すぎます',
+        invalid_localized_description: '翻訳された説明が長すぎます',
+        command_limit: 'コマンド数の上限を超えています',
+        unavailable: 'コマンドは利用できません',
+      },
+    },
+    pluginCommands: {
+      prefixes: 'コマンドプレフィックス',
+      prefixPlaceholder: 'プレフィックスを入力してEnter（例: / または !）',
+      addPrefix: 'プレフィックスを追加',
+      prefixInvalid:
+        'プレフィックスは空にできず、空白文字を含めることはできません',
+      prefixDuplicate: 'プレフィックスは既に存在します',
+      overriddenBy: '{{plugin}} により上書き（優先度高）',
+    },
     pluginSubscriptions: {
+      docs: 'プラグインプロセッサー開発ドキュメント',
+      docsUrl: 'https://langbot.app/docs/ja/plugin/dev/components/runner',
       incompleteEvents:
         'このボットは監視対象の一部のイベント（{{events}}）にのみ対応しています。プロセッサーが完全には動作しない可能性があります。',
       description:
-        'プラグインが宣言したイベントを自動で受信し、上のルートとは独立して実行します。',
-      empty: 'プラグインプロセッサーは未登録です。',
+        '購読したイベントをプラグインがすべて処理します。Agent やチャットは不要で、ルートとは独立して動作します。',
+      empty:
+        'プラグイン処理はまだありません。下のボタンから、インストール済みのプラグインを選ぶか、マーケットプレイスから直接インストールできます。',
       add: 'プラグインプロセッサーを追加',
       existing: '既存の設定を選択',
       new: '設定を新規作成',
@@ -1077,7 +1530,7 @@ const jaJP = {
     saveError: '保存に失敗しました：',
     createSuccess: '作成が完了しました。イベントルーティングを設定してください',
     autoCreatedPipeline:
-      'パイプラインを自動作成し、メッセージイベントに関連付けました',
+      'チャットを自動作成し、メッセージイベントに関連付けました',
     createError: '作成に失敗しました：',
     deleteSuccess: '削除に成功しました',
     deleteError: '削除に失敗しました：',
@@ -1093,8 +1546,8 @@ const jaJP = {
       '旧版は主にメッセージ送受信用で、既存の設定との互換性のために残されています。\n新版は同じプラットフォームにイベント方式で接続し、対応する友達申請やグループの変化も処理器へ振り分けます。\n新規ボットには新版を推奨します。既存ボットは旧版を継続利用できます。切り替え時は接続設定とイベントルートを確認してください。アカウントの更新ではありません。',
     adapterConfig: 'アダプター設定',
     viewAdapterDocs: 'ドキュメントを見る',
-    bindPipeline: 'パイプラインを紐付け',
-    selectPipeline: 'パイプラインを選択',
+    bindPipeline: 'チャットを紐付け',
+    selectPipeline: 'チャットを選択',
     selectBot: 'ボットを選択してください',
     botLogTitle: 'ボットログ',
     enableAutoRefresh: '自動更新を有効にする',
@@ -1114,7 +1567,7 @@ const jaJP = {
     basicInfoDescription: 'ボットの名前と説明を設定',
     routingConnection: 'ルーティングと接続',
     routingConnectionDescription:
-      'このボットのメッセージを処理するパイプラインを紐付け',
+      'このボットのメッセージを処理するチャットを紐付け',
     routingHelp: {
       title: 'イベントルーティングとは？',
       intro:
@@ -1138,6 +1591,15 @@ const jaJP = {
       play: '再生',
     },
     eventRouting: 'イベントルーティング',
+    routingLayers: {
+      rules: 'ルート',
+      commands: 'プラグインコマンド',
+      processors: 'プラグインプロセッサー',
+      rulesDescription:
+        'ルートはイベントを設定済みの LangBot 処理（Agent、チャット）に渡し、AI で処理します。プラグインコマンドで処理されなかったイベントは順に照合され、最初に一致したルートが処理します。プラグインだけを使い AI で処理しない場合は、ルートを削除するか無効にしてください。',
+      commandsDisabled:
+        'プラグインコマンドはオフです。メッセージはそのままルートに進みます。',
+    },
     eventRoutingDescription: 'イベントごとの処理先を設定します。',
     eventBindings: 'イベントルート',
     addEventBinding: 'ルートを追加',
@@ -1167,7 +1629,7 @@ const jaJP = {
     targetType: 'ターゲットタイプ',
     target: 'プロセッサー',
     targetAgent: 'Agent',
-    targetPipeline: 'Pipeline',
+    targetPipeline: 'チャット',
     targetDiscard: '破棄',
     selectTarget: 'プロセッサーを選択',
     searchTarget: 'プロセッサーを検索…',
@@ -1177,7 +1639,7 @@ const jaJP = {
     eventBindingDescriptionPlaceholder: 'ルール説明',
     noEventBindings: 'イベントルートはありません',
     unsupportedPipelineEvent:
-      'Pipeline は message.received イベントにのみ使用できます',
+      'チャットは message.received イベントにのみ使用できます',
     disable: '無効化',
     enable: '有効化',
     disabledBindings: '無効',
@@ -1372,6 +1834,22 @@ const jaJP = {
     conditionsDescription:
       'すべての条件に一致した場合のみこのバインディングが発火します。空の場合は常に発火します。',
     conditionsEmpty: '条件なし。常に発火します。',
+    routeNote: {
+      templatePerson: '個別メッセージ',
+      templateGroup: 'グループでボットへの @ メッセージ',
+      label: 'メモ',
+      placeholder:
+        '任意。例：サポートグループ用。ルート一覧と適用範囲に表示されます。',
+    },
+    routeCard: {
+      noTarget: '処理が未選択',
+      edit: 'ルートを編集',
+      event: 'イベント',
+      target: '送り先',
+    },
+    routeSummary: {
+      always: 'すべてのメッセージ',
+    },
     addFilter: '条件を追加',
     filterIsAtBot: 'このボットへのメンション',
     mentionYes: 'はい',
@@ -1388,7 +1866,7 @@ const jaJP = {
     operator_regex: '正規表現',
     routingRules: '条件付きルーティングルール',
     routingRulesDescription:
-      'ルールは順番に評価され、最初に一致したルールのパイプラインにルーティングされます。一致しない場合はデフォルトパイプラインが使用されます。',
+      'ルールは順番に評価され、最初に一致したルールのチャットにルーティングされます。一致しない場合はデフォルトチャットが使用されます。',
     addRoutingRule: 'ルールを追加',
     ruleTypeLauncherType: 'セッションタイプ',
     ruleTypeLauncherId: 'セッション ID',
@@ -1533,6 +2011,11 @@ const jaJP = {
     },
   },
   agents: {
+    layout: {
+      platformTools: 'プラットフォームツール',
+      hostTools: 'プラグイン・MCP ツール',
+      toolsSheetDescription: 'Agent を保存すると反映されます。',
+    },
     apiToolsSelectAll: 'すべて選択',
     monitoring: {
       rangeDays: '過去 {{days}} 日間',
@@ -1564,12 +2047,116 @@ const jaJP = {
       rawEvents: '生の実行イベント',
       inputUnavailable: 'この実行の入力は記録されていません。',
     },
+    commandProcessor: {
+      loadingCatalog: 'コマンドプラグインを読み込み中...',
+      catalogUnavailable: 'コマンドプラグインを読み込めません',
+      installFailed: 'コマンドプラグインのインストールに失敗しました',
+      installTimeout:
+        'コマンドプラグインのインストールがタイムアウトしました。拡張ページでタスクを確認してください。',
+      registrationTimeout:
+        'プラグインはインストールされましたが、コマンドの登録が間に合いませんでした。再読み込みして再試行してください。',
+      diagnosis: {
+        missing:
+          '選択したコマンドプラグインが見つかりません。プラグインをインストールまたは復元してください。',
+        disabled:
+          '選択したコマンドプラグインは無効です。プラグインページで有効にしてください。',
+        runtime:
+          'プラグインランタイムが利用できないか無効です。接続を回復してから再試行してください。',
+        draft:
+          '修復ページは新しいタブで開きます。現在の選択と未保存の下書きは保持されます。',
+      },
+      debugTitle: 'コマンドのデバッグ',
+      type: 'コマンドプロセッサー',
+      plugin: 'プラグイン',
+      selectPlugin: 'コマンドプラグインを選択',
+      unavailable: 'プラグインは利用できません',
+      noSettings: '設定項目はありません',
+      notice: 'イベントルーティングの前にコマンドを処理します。',
+      bindBot: 'ボットに紐付け',
+      description:
+        '/help や /draw のようにプレフィックスで始まるコマンドを処理します。ルートより先に照合し、一致すると直接返信します。',
+      noPlugins: 'コマンドを提供するインストール済みプラグインがありません。',
+      noMarketplace: 'マーケットにコマンドを提供するプラグインがありません。',
+      docs: 'コマンドコンポーネントのドキュメント',
+      debugCommand: 'コマンド',
+      debugArgs: '引数（任意）',
+      run: 'コマンドを実行',
+      saveAndRun: '保存して実行',
+      debugNotice:
+        '管理者としてコマンドを 1 回実行します。返信はここにだけ表示され、どのプラットフォームにも送信されません。',
+      debugEmpty: 'コマンドを選んで実行すると、ここに返信が表示されます。',
+      debugFailed: 'コマンドのデバッグに失敗しました',
+      noOutput: 'コマンドは返信を返しませんでした。',
+      outputs: '返信',
+      noRuns:
+        'コマンドの実行記録はまだありません。ボットに紐付けるか、デバッグで実行してください。',
+      sourceDebug: 'デバッグ',
+      sourcePlatform: 'ボットのメッセージ',
+    },
+    diagram: {
+      bestFor: '向いている用途：',
+      messageReceived: 'メッセージ受信',
+      anyEvent: 'ボットのあらゆるイベント',
+      anyEventCaption: 'メッセージ、メンバー参加、友達申請…',
+      model: 'モデル',
+      knowledge: 'ナレッジベース',
+      tools: 'ツール',
+      externalAgent: '外部 Agent',
+      reply: '会話に返信',
+      replyOrAction: '返信またはプラットフォーム操作',
+      pipeline: {
+        summary: 'メッセージをトリガールールと AI 生成に通して返信します。',
+        group: 'チャットの内部',
+        trigger: 'トリガールールと前処理',
+        generate: 'AI が返信を生成',
+        generateCaption: 'モデル・ナレッジベース・ツールを使用',
+        bestFor: 'Q&A、カスタマーサポート、ナレッジベース対話。',
+      },
+      agent: {
+        summary: '自然言語の指示に従い、各イベントの処理方法を自ら判断します。',
+        group: 'Agent の内部',
+        instructions: 'あなたの指示',
+        instructionsCaption: 'イベントごとの処理方法を記述',
+        decide: 'AI が判断して実行',
+        decideCaption: '必要に応じてツールやプラットフォーム操作を呼び出し',
+        bestFor:
+          '多様なイベントの知的な処理、外部 Agent プラットフォームとの連携。',
+      },
+      eventProcessor: {
+        summary:
+          'プラグインのコードが購読したイベントを受け取り、決まったロジックで処理します。',
+        input: '購読イベント',
+        inputCaption: 'メンバー参加、友達申請、メッセージ…',
+        group: 'プラグインの内部',
+        handle: 'プラグインのコードがイベントを処理',
+        outputCaption: '歓迎メッセージ、申請の承認、統計…',
+        branch: 'ルートと並行して実行され、互いにブロックしません。',
+        bestFor:
+          '歓迎メッセージ、申請審査、イベント記録などルールが明確な自動化。',
+      },
+      commandProcessor: {
+        hit: '一致',
+        miss: '一致しない',
+        summary:
+          'どのルートよりも先に、コマンドプレフィックスで始まるメッセージを処理します。',
+        group: 'コマンドプロセッサーの内部',
+        match: 'プレフィックスとコマンド名を照合',
+        matchCaption: 'プラグインが登録したコマンド名だけが一致',
+        run: 'プラグインがコマンドを実行',
+        runCaption: 'このインスタンスの設定を使用',
+        branch: '一致しない場合：プラグインプロセッサーとルートに進みます。',
+        bestFor: '/help、/reset、/draw など、ユーザーが明示的に入力する操作。',
+      },
+    },
+    fromPlugin: 'プラグインから',
+    fromPluginDescription:
+      'プラグインのコードで処理し、AI は使いません。プラグインが宣言したメッセージやその他のイベントを処理します。',
     eventProcessor: {
       configurations: 'プラグインプロセッサー設定',
       configTab: '設定',
       logsTab: 'ログ',
       noSettings: 'このプラグインプロセッサーに設定項目はありません。',
-      createPageTitle: 'イベントプロセッサーを作成',
+      createPageTitle: 'プロセッサーを作成',
       processWithPlugin: 'プラグインコードで処理',
       pluginSettings: 'プラグイン設定',
       pluginSettingsDescription: 'このプラグインが定義するパラメーターです。',
@@ -1651,9 +2238,9 @@ const jaJP = {
     agentType: 'Agent',
     agentTypeDescription:
       'さまざまなイベントの処理方法を自然言語で指定して AI に実行させるか、外部の Agent プラットフォームに接続して処理します。',
-    pipelineType: 'パイプライン',
+    pipelineType: 'チャット',
     kindBadgeAgent: 'Agent',
-    kindBadgePipeline: 'パイプライン',
+    kindBadgePipeline: 'チャット',
     groupByKind: 'タイプ別にグループ化',
     groupByKindShort: 'グループ',
     pipelineTypeDescription:
@@ -1670,9 +2257,9 @@ const jaJP = {
     agentDiagramTitle: 'Agent：判断して行動',
     agentDiagramDescription:
       'Agent はさまざまなプラットフォームイベントを受け取り、モデルやツールを使って状況を理解し、次の行動を判断します。',
-    pipelineDiagramTitle: 'Pipeline：決めたフローで処理',
+    pipelineDiagramTitle: 'チャット：決めたフローで処理',
     pipelineDiagramDescription:
-      'Pipeline はメッセージイベントのみを、設定した固定ステップの順番で処理します。',
+      'チャットはメッセージイベントのみを、設定した固定ステップの順番で処理します。',
     pipelineDiagramFlow: 'メッセージを固定フローで順番に処理',
     diagramEvents: 'イベント',
     diagramAgentCanUse: 'Agent が利用可能',
@@ -1874,9 +2461,13 @@ const jaJP = {
     debugRunFailed: 'Agent のデバッグ実行に失敗しました',
   },
   plugins: {
+    enabledOnBots: '{{count}} 個のボットで有効です',
+    notEnabledOnBots:
+      'このプラグインはまだどのボットでも有効ではないため、コマンドとチャットイベントフックは動作しません。',
+    goEnable: '有効にする',
     title: '拡張機能',
     description:
-      'LangBotの機能を拡張するプラグインをインストール・設定。流水線設定で使用します',
+      'LangBotの機能を拡張するプラグインをインストール・設定。チャット設定で使用します',
     createPlugin: 'プラグインを作成',
     editPlugin: 'プラグインを編集',
     installed: 'インストール済み',
@@ -1964,7 +2555,7 @@ const jaJP = {
     modifyFailed: '変更に失敗しました：',
     componentName: {
       Tool: 'ツール',
-      EventListener: 'イベント監視器',
+      EventListener: 'チャットイベントフック',
       Command: 'コマンド',
       KnowledgeEngine: '知識エンジン',
       Parser: 'パーサー',
@@ -2294,6 +2885,12 @@ const jaJP = {
     confirmInstall: 'インストールを確認',
     installFromGithubDesc: 'GitHubリリースからプラグインをインストール',
     goToMarketplace: 'マーケットプレイスへ',
+    notReady: {
+      awaitingTitle: '権限の確認待ち',
+      awaitingDescription:
+        'このプラグインは権限を確認すると起動し、起動後に設定とドキュメントを読み込みます。「プラグイン権限」で確認してください。',
+      starting: 'プラグインを起動中です。まもなく読み込みます…',
+    },
     installProgress: {
       title: '{{name}} をインストール中',
       updateTitle: '{{name}} を更新中',
@@ -2320,7 +2917,8 @@ const jaJP = {
       followUp: {
         nextSteps: '次のステップ',
         agents: 'Agent またはプラグインプロセッサを作成',
-        pipelines: 'パイプラインを作成',
+        bots: 'ボットの「プラグイン」タブで追加して、コマンドとフックを使う',
+        pipelines: 'チャットを作成',
         knowledge: 'ナレッジベースを作成',
       },
       updateComplete: 'プラグインの更新が完了しました',
@@ -2349,7 +2947,7 @@ const jaJP = {
 
     runnerUsage: 'ランナーの用途',
     runnerUsageAll: 'すべて',
-    runnerUsageAgent: 'Agent / パイプライン',
+    runnerUsageAgent: 'Agent / チャット',
     runnerUsageEvent: 'プラグインプロセッサー',
     searchPlaceholder: 'プラグインを検索...',
     searchPlaceholderCount:
@@ -2410,11 +3008,11 @@ const jaJP = {
     markAsReadFailed: '既読に設定に失敗しました',
     filterByComponent: 'プラグインコンポーネント',
     filterByComponentHint:
-      'プラグインが提供する機能の種類です（ツール、コマンド、イベントリスナーなど）。LangBot のさまざまな機能を拡張するために使われます。コンポーネントで絞り込むと、その機能を提供するプラグインのみを表示できます。',
+      'プラグインが提供する機能の種類です（ツール、コマンド、チャットイベントフック（EventListener）など）。LangBot のさまざまな機能を拡張するために使われます。コンポーネントで絞り込むと、その機能を提供するプラグインのみを表示できます。',
     allComponents: '全部コンポーネント',
     componentName: {
       Tool: 'ツール',
-      EventListener: 'イベント監視器',
+      EventListener: 'チャットイベントフック',
       Command: 'コマンド',
       KnowledgeEngine: '知識エンジン',
       Parser: 'パーサー',
@@ -2585,16 +3183,53 @@ const jaJP = {
     deleteMCPHint: '削除すると、このMCPサーバーの設定は復元できません。',
   },
   pipelines: {
-    title: 'パイプライン',
+    chatConfig: {
+      tools: 'ツール',
+      toolsHint:
+        'AI が回答時に呼び出せるプラグインツール、MCP サーバー、スキル、ワークスペース操作です。',
+      manageTools: 'ツールを管理',
+      toolsSheetDescription:
+        'プラグイン・MCP サーバー・スキルの変更はすぐに保存されます。ワークスペース操作は「ツール権限を保存」が必要です。',
+      plugins: 'プラグインツール',
+      mcp: 'MCP サーバー',
+      skills: 'スキル',
+      operations: 'ワークスペース操作',
+      all: 'すべて',
+      countItems: '{{count}} 件',
+      none: 'なし',
+      retrieval: '検索設定',
+      runnerSettings: '{{runner}} の設定',
+      more: 'その他の設定',
+      context: '会話コンテキスト',
+      scopeMember: 'グループのメンバーごとに会話を分ける',
+      scopeGroup: 'グループ全体で 1 つの会話',
+      expireNever: '会話は期限切れにならない',
+      expireAfter: '{{seconds}} 秒操作がなければ新しい会話',
+      runtime: '実行制限とツール呼び出し',
+      sandbox: 'サンドボックス',
+      on: 'オン',
+      off: 'オフ',
+      reply: '返信内容',
+      hints: '通知メッセージ',
+      hintsCustom: '{{count}} 件をカスタマイズ',
+      advanced: 'その他の詳細設定',
+      default: '既定',
+      modified: '{{count}} 件変更',
+      manage: '管理',
+      manageSummary: 'このチャットをコピーまたは削除',
+    },
+    outputMovedToPolicy:
+      '受付条件、安全、一般的な返信設定（長文、強制遅延、送信者への @、引用、エラー表示）はボットの「メッセージポリシー」タブに移動しました。ここには AI 固有の出力オプションのみが残ります。',
+    title: 'チャット',
     description:
-      'メッセージイベントの処理フローを定義し、ボットに紐付けて使用するパイプラインです',
-    createPipeline: 'パイプラインを作成',
-    selectFromSidebar: 'サイドバーからパイプラインを選択してください',
-    editPipeline: 'パイプラインを編集',
+      'メッセージイベントの処理フローを定義し、ボットに紐付けて使用するチャットです',
+    createPipeline: 'チャットを作成',
+    selectFromSidebar: 'サイドバーからチャットを選択してください',
+    editPipeline: 'チャットを編集',
     chat: 'チャット',
     configuration: '設定',
     debugChat: 'チャットデバッグ',
-    getPipelineListError: 'パイプラインリストの取得に失敗しました：',
+    getPipelineListError: 'チャットリストの取得に失敗しました：',
     daysAgo: '日前',
     today: '今日',
     updateTime: '更新日時',
@@ -2605,8 +3240,8 @@ const jaJP = {
     recentlyEdited: '最近編集',
     earliestEdited: '最古編集',
     basicInfo: '基本情報',
-    basicInfoDescription: 'パイプラインの名前、アイコン、説明を設定',
-    managementDescription: 'このパイプラインを複製または削除します。',
+    basicInfoDescription: 'チャットの名前、アイコン、説明を設定',
+    managementDescription: 'このチャットを複製または削除します。',
     aiCapabilities: 'AI機能',
     triggerConditions: 'トリガー条件',
     safetyControls: '安全制御',
@@ -2615,27 +3250,27 @@ const jaJP = {
     nameRequired: '名前は必須です',
     descriptionRequired: '説明は必須です',
     createSuccess:
-      '作成が完了しました。パイプラインの詳細パラメータを設定してください',
+      '作成が完了しました。チャットの詳細パラメータを設定してください',
     createError: '作成に失敗しました：',
     saveSuccess: '保存に成功しました',
     saveError: '保存に失敗しました：',
     copySuffix: ' Copy',
     deleteConfirmation:
-      '本当にこのパイプラインを削除しますか？このパイプラインに紐付けられたボットは動作しなくなります。',
-    defaultPipelineCannotDelete: 'デフォルトパイプラインは削除できません',
+      '本当にこのチャットを削除しますか？このチャットに紐付けられたボットは動作しなくなります。',
+    defaultPipelineCannotDelete: 'デフォルトチャットは削除できません',
     deleteSuccess: '削除に成功しました',
     deleteError: '削除に失敗しました：',
     copyConfirmTitle: 'コピーの確認',
     copyConfirmation:
-      'このパイプラインをコピーしますか？すべての設定を含む新しいパイプラインが作成されます。',
+      'このチャットをコピーしますか？すべての設定を含む新しいチャットが作成されます。',
     unsavedChanges: '未保存の変更があります',
     dangerZone: '危険ゾーン',
     dangerZoneDescription: '元に戻せない操作',
-    deletePipelineAction: 'このパイプラインを削除',
+    deletePipelineAction: 'このチャットを削除',
     deletePipelineHint:
-      '削除すると、このパイプラインに紐付けられたボットは動作しなくなります。',
-    copyPipelineAction: 'このパイプラインをコピー',
-    copyPipelineHint: 'すべての設定を複製した新しいパイプラインを作成します。',
+      '削除すると、このチャットに紐付けられたボットは動作しなくなります。',
+    copyPipelineAction: 'このチャットをコピー',
+    copyPipelineHint: 'すべての設定を複製した新しいチャットを作成します。',
     extensions: {
       title: 'プラグイン統合',
       loadError: 'プラグインリストの読み込みに失敗しました',
@@ -2646,9 +3281,9 @@ const jaJP = {
       noPluginsSelected: 'プラグインが選択されていません',
       addPlugin: 'プラグインを追加',
       selectPlugins: 'プラグインを選択',
-      pluginsTitle: 'プラグイン',
+      pluginsTitle: 'AI が呼び出せるツール',
       pluginScopeHint:
-        'このパイプラインのイベントリスナー、ツール、コマンドのみを制御します。AI 設定で選択した Runner には影響しません。',
+        'このチャットの AI が呼び出せるプラグインツールのみを制御します。プラグインのコマンドとチャットイベントフックはボットの「プラグイン」タブで追加します。',
       runnerScopeHint:
         'Runner は拡張機能のプラグインスイッチと独立して選択します。対応するプラグインはインストール済みで利用可能である必要があります。',
       mcpServersTitle: 'MCPサーバー',
@@ -2666,7 +3301,7 @@ const jaJP = {
       enableAllMCPServers: 'すべてのMCPサーバーを有効にする',
       enableAllSkills: 'すべてのスキルを有効化',
       toolsDescription:
-        'Agent が呼び出せるイベントツール、ボットツール、ワークスペース操作を選択します。パイプラインはモデルのテキスト出力を自動で返信するため、返信ツールは不要です。',
+        'Agent が呼び出せるイベントツール、ボットツール、ワークスペース操作を選択します。チャットはモデルのテキスト出力を自動で返信するため、返信ツールは不要です。',
       saveTools: 'ツール権限を保存',
       allPluginsEnabled: 'すべてのプラグインが有効になっています',
       allMCPServersEnabled: 'すべてのMCPサーバーが有効になっています',
@@ -2677,7 +3312,7 @@ const jaJP = {
       selectSkills: 'スキルを選択',
       noSkillsAvailable: '利用可能なスキルがありません',
       mcpServersScopeTooltip:
-        'ここでは、このパイプラインに紐付ける MCP サーバーだけを管理します。個別の MCP ツールとリソースは AI 機能の Runner で選択します。',
+        'ここでは、このチャットに紐付ける MCP サーバーだけを管理します。個別の MCP ツールとリソースは AI 機能の Runner で選択します。',
       enableAllMCPServersTooltip:
         '有効にすると、設定済みで有効なすべての MCP サーバーが AI 機能の MCP ツールとリソース候補になります。',
     },
@@ -2714,8 +3349,8 @@ const jaJP = {
       selectKnowledgeBases: 'ナレッジベースを選択',
     },
     debugDialog: {
-      title: 'パイプラインのチャット',
-      selectPipeline: 'パイプラインを選択',
+      title: 'デバッグチャット',
+      selectPipeline: 'チャットを選択',
       sessionType: 'セッションタイプ',
       privateChat: 'プライベートチャット',
       groupChat: 'グループチャット',
@@ -2730,7 +3365,7 @@ const jaJP = {
       resetSuccess: '会話がリセットされました',
       resetFailed: 'リセットに失敗しました',
       loadMessagesFailed: 'メッセージの読み込みに失敗しました',
-      loadPipelinesFailed: 'パイプラインの読み込みに失敗しました',
+      loadPipelinesFailed: 'チャットの読み込みに失敗しました',
       atTips: 'ボットをメンション',
       streaming: 'ストリーミング',
       streamOutput: 'ストリーム',
@@ -2762,7 +3397,7 @@ const jaJP = {
       autoRefreshEvery: '{{seconds}} 秒ごとに更新',
       title: '実行ログ',
       workbench: '設定とデバッグ',
-      description: 'このパイプラインの実行ログとエラー情報を表示（過去24時間）',
+      description: 'このチャットの実行ログとエラー情報を表示（過去24時間）',
       detailedLogs: '詳細ログ',
     },
   },
@@ -3290,21 +3925,89 @@ const jaJP = {
       },
     },
     execution: {
+      handling: {
+        ai: 'AI',
+        command: 'コマンド',
+        plugin: 'プラグイン',
+        policy: 'ポリシーでブロック',
+      },
+      badges: {
+        builtinCommand: 'システムコマンド /{{name}}',
+        pluginCommand: 'プラグインコマンド /{{name}}',
+        commandProcessor: 'コマンドプロセッサ',
+        commandDenied: 'コマンド拒否',
+        policyBlocked: 'ポリシーでブロック · {{item}}',
+        policyBlockedUnknown: 'ポリシーでブロック',
+        pluginIntercepted: 'プラグインが横取り · {{plugin}}（{{hook}}）',
+      },
+      policyItems: {
+        'access-control': 'アクセス制御',
+        'group-respond-rules': 'グループ応答ルール',
+        'rate-limit': 'レート制限',
+        'ignore-rules': '無視ルール',
+        'content-filter': 'コンテンツフィルター',
+        'outbound-content-filter': '出力コンテンツフィルター',
+      },
+      policyLayer: {
+        bot: 'ボットのデフォルトポリシー',
+        route: 'ルートの上書きポリシー',
+      },
+      timeline: {
+        title: 'メッセージポリシー',
+        steps: {
+          admission: '受付',
+          hooks: 'ライフサイクルフック',
+          processor: 'プロセッサ',
+          output: '出力処理',
+        },
+        admitted: '受付済み',
+        blocked: 'メッセージポリシーでブロック',
+        blockedBy: '{{layer}}の「{{item}}」でブロックされ、返信していません',
+        unknownLayer: 'メッセージポリシー',
+        notReached: '未実行',
+        hookBy:
+          'プラグイン {{plugin}} が {{hook}} でメッセージを横取りしました',
+        noHook: 'プラグインによる横取りなし',
+        earlyHookOnly:
+          'MessageReceived は実行済みで横取りなし。以降のフックは未実行',
+        denied: '/{{name}} は権限不足で拒否（{{reply}}）',
+        deniedNotice: '権限なしを返信',
+        deniedSilent: '返信しない',
+        builtin: 'システムコマンド /{{name}} を実行',
+        pluginCommand: 'プラグインコマンド /{{name}} を実行',
+        discarded: 'ルーティングルールで破棄',
+        handledBy: '{{target}} が処理',
+        noOutput: '出力処理なし',
+        outputApplied: '返信の送信前に以下を適用',
+        actions: {
+          long_text: '長文を{{strategy}}',
+          strategy: {
+            image: '画像に変換',
+            forward: '転送メッセージに変換',
+          },
+          delay: '{{ms}} ミリ秒遅延',
+          at: '送信者に @',
+          quote: '元メッセージを引用',
+          outbound_block: '出力コンテンツフィルターが返信をブロック',
+        },
+      },
       title: '実行履歴',
       subtitle:
-        'エージェントとパイプラインに届いた各イベントと、それによって開始された実行を確認します。',
+        'エージェントとチャットに届いた各イベントと、それによって開始された実行を確認します。',
       tabs: { executions: '実行履歴' },
       filters: {
         source: '種類',
         sourceAll: 'すべての種類',
         sourceAgent: 'エージェント',
-        sourcePipeline: 'パイプライン',
+        sourcePipeline: 'チャット',
         mode: '実行モード',
         modeAll: '通常＋デバッグ',
         modeLive: '通常のみ',
         modeDebug: 'デバッグのみ',
         status: '状態',
         statusAll: 'すべての状態',
+        handling: '処理方法',
+        handlingAll: 'すべての処理方法',
       },
       status: {
         completed: '完了',
@@ -3313,11 +4016,12 @@ const jaJP = {
         queued: '待機中',
         cancelled: 'キャンセル済み',
         ignored: '無視',
+        denied: '拒否',
       },
       // prettier-ignore
       kind: {
         agent: 'エージェント',
-        pipeline: 'パイプライン',
+        pipeline: 'チャット',
         processor: '処理対象',
       },
       columns: {
@@ -3333,8 +4037,8 @@ const jaJP = {
       triggeredBy: '{{trigger}} により開始',
       handledByPlugin: 'プラグインが処理 · {{plugin}}',
       handledByUnknownPlugin: 'プラグインが処理（特定不可）',
-      filteredByStage: 'パイプラインで停止 · {{stage}}',
-      filteredByUnknownStage: 'パイプラインで停止',
+      filteredByStage: 'チャットで停止 · {{stage}}',
+      filteredByUnknownStage: 'チャットで停止',
       filterStages: {
         BanSessionCheckStage: 'アクセス制御',
         GroupRespondRuleCheckStage: 'グループ応答ルール',
@@ -3348,7 +4052,7 @@ const jaJP = {
         tokensHint:
           '記録済みの使用量のみ集計します。モデルが使用量を返さない場合、合計は不完全になります。',
         totalExecutions: '実行履歴',
-        bySource: 'エージェント {{agent}} 件 · パイプライン {{pipeline}} 件',
+        bySource: 'エージェント {{agent}} 件 · チャット {{pipeline}} 件',
         successRate: '実行成功率',
         successRateHint:
           '成功数 ÷（成功数 + 失敗数）。実行中・無視・キャンセルは除きます。',
@@ -3399,14 +4103,14 @@ const jaJP = {
     filters: {
       title: 'フィルター',
       bot: 'ボット',
-      pipeline: 'パイプライン',
+      pipeline: 'チャット',
       allBots: 'すべてのボット',
       selectBot: 'ボットを選択',
       processor: 'プロセッサー',
       allProcessors: 'すべてのプロセッサー',
       selectProcessor: 'プロセッサーを選択',
-      allPipelines: 'すべてのパイプライン',
-      selectPipeline: 'パイプラインを選択',
+      allPipelines: 'すべてのチャット',
+      selectPipeline: 'チャットを選択',
       loading: '読み込み中...',
       timeRange: '時間範囲',
       customRange: 'カスタム範囲',
@@ -3442,7 +4146,7 @@ const jaJP = {
     messageList: {
       timestamp: 'タイムスタンプ',
       bot: 'ボット',
-      pipeline: 'パイプライン',
+      pipeline: 'チャット',
       message: 'メッセージ',
       sessionId: 'セッションID',
       status: 'ステータス',
@@ -3737,7 +4441,7 @@ const jaJP = {
       adapter: 'アダプター',
       model_provider: 'モデルプロバイダー',
       llm_model: 'モデル',
-      pipeline: 'パイプライン',
+      pipeline: 'チャット',
       user: 'ユーザー',
       workspace: 'ワークスペース',
       monitoring: 'モニタリング',
@@ -3798,7 +4502,7 @@ const jaJP = {
       codex_view: 'Codex 認証を表示',
       codex_authorize: 'Codex を認証',
       embed: '埋め込みセッション',
-      pipeline_extensions_update: 'パイプライン拡張の紐付けを変更',
+      pipeline_extensions_update: 'チャット拡張の紐付けを変更',
       export: 'データをエクスポート',
       execute: 'タスクを実行',
       debug: 'タスクをデバッグ',
@@ -3901,7 +4605,7 @@ const jaJP = {
     maxBotsReached:
       'ボット数が上限（{{max}}個）に達しました。新しいボットを作成するには、既存のボットを削除してください。',
     maxPipelinesReached:
-      'パイプライン数が上限（{{max}}個）に達しました。新しいパイプラインを作成するには、既存のパイプラインを削除してください。',
+      'チャット数が上限（{{max}}個）に達しました。新しいチャットを作成するには、既存のチャットを削除してください。',
     maxExtensionsReached:
       '拡張機能数が上限（{{max}}個）に達しました。新しい MCP サーバーやプラグインを追加するには、既存のものを削除してください。',
     quotaLoadingTooltip:
@@ -4014,7 +4718,7 @@ const jaJP = {
     next: '次へ',
     finish: '作成＆デプロイ',
     confirmCreateBot: '確定、ボットを作成',
-    createSuccess: 'パイプラインが作成され、ボットにリンクされました！',
+    createSuccess: 'チャットが作成され、ボットにリンクされました！',
     botCreateSuccess: 'ボットが正常に作成されました！',
     botSaveSuccess: 'ボット設定が保存され、有効になりました！',
     createError: 'リソースの作成に失敗しました',
@@ -4092,7 +4796,7 @@ const jaJP = {
       selectModelTitle: 'モデルを選択',
       selectScannedModelTitle: 'モデルを選択',
       selectScannedModelDescription:
-        '選択したモデルを現在のパイプラインのメインモデルに設定します。',
+        '選択したモデルを現在のチャットのメインモデルに設定します。',
       scanModelMode: 'モデルをスキャン',
       manualModelMode: '手動で追加',
       scanningModels: '利用可能なモデルをスキャン中…',
@@ -4153,7 +4857,7 @@ const jaJP = {
     done: {
       title: '完了しました！',
       description:
-        'ボットが作成され、パイプラインに接続されました。ワークベンチから管理できます。',
+        'ボットが作成され、チャットに接続されました。ワークベンチから管理できます。',
       backToWorkbench: 'ワークベンチに戻る',
     },
   },
@@ -4326,7 +5030,7 @@ const jaJP = {
     },
     title: 'アラート',
     description:
-      'ボット、パイプライン、モデルが失敗し続けたときにメールと Webhook で通知します',
+      'ボット、チャット、モデルが失敗し続けたときにメールと Webhook で通知します',
     enabled: 'アラートを有効化',
     firingCount: '{{count}} 件発生中',
     allClear: '問題なし',
@@ -4381,8 +5085,8 @@ const jaJP = {
     throttleHint:
       '各アラートは発生時に 1 回送信され、失敗が続く場合は 6 時間後、12 時間後、その後 24 時間ごとにリマインドされます。',
     rule: {
-      pipeline_failures: 'パイプラインの失敗',
-      pipeline_failuresDescription: '同じパイプラインでの処理エラー',
+      pipeline_failures: 'チャットの失敗',
+      pipeline_failuresDescription: '同じチャットでの処理エラー',
       model_failures: 'モデル呼び出しの失敗',
       model_failuresDescription: '同じモデルへのリクエスト失敗',
       bot_offline: 'ボットがエラーで停止',
@@ -4489,7 +5193,7 @@ const jaJP = {
     submit: '審査に送信',
     promptTitle: 'プロンプトを LangBot Space に共有',
     promptDescriptionMessaging:
-      '「会話プロンプト」として公開され、他のユーザーがパイプライン設定で検索できます。',
+      '「会話プロンプト」として公開され、他のユーザーがチャット設定で検索できます。',
     promptDescriptionAgent:
       '「Agent プロンプト」として公開され、他のユーザーが Agent 設定で検索できます。',
     detectedVariables: '検出した変数：',

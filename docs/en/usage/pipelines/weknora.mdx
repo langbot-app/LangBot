@@ -43,7 +43,7 @@ At this point, you have prepared the necessary information to connect to the WeK
 
 ## Configuring LangBot
 
-Open the LangBot WebUI page, add a new pipeline or switch to the `AI Capabilities` configuration page in an existing pipeline.
+Open the LangBot WebUI page, add a new Chat or switch to the `AI Capabilities` configuration page in an existing Chat.
 
 ![weknora](/images/zh/deploy/pipelines/weknora/creat_langbot_pipeline.png)
 
@@ -61,11 +61,11 @@ Open the LangBot WebUI page, add a new pipeline or switch to the `AI Capabilitie
    - `Default Prompt`: The default question used when the user does not send text content.
 3. Click `Save` to complete the configuration.
 
-After completion, you can invoke WeKnora in the pipeline to complete knowledge base-based intelligent conversation.
+After completion, you can invoke WeKnora in the Chat to complete knowledge base-based intelligent conversation.
 
 ## Output Processing
 
-- When using the `agent` application, if `track-function-calls` is enabled in LangBot pipeline `Output Processing`, a message `Calling function xxx` will be output to the user each time WeKnora executes a tool call.
+- When using the `agent` application, if `track-function-calls` is enabled in the LangBot Chat's `Output Processing`, a message `Calling function xxx` will be output to the user each time WeKnora executes a tool call.
 - The `thinking` (chain of thought) content returned by WeKnora will be sent wrapped in `<think>` tags, which can be collapsed and displayed on the frontend.
 - The `references` (knowledge base citation sources) returned by WeKnora will be attached after the answer as reference source messages.
 
@@ -75,4 +75,4 @@ After completion, you can invoke WeKnora in the pipeline to complete knowledge b
 - **No knowledge base content returned**: Please verify that the `Knowledge Base ID` is correct, and that documents have been successfully uploaded and parsed in that knowledge base.
 - **Cannot select `WeKnora API`**: Please verify that your current LangBot version supports this runner; if not supported, please upgrade to a version that includes the WeKnora runner.
 
-For more pipeline general configuration instructions, please refer to [Modifying Conversation Pipeline Configuration](/en/usage/pipelines/readme).
+For more general Chat configuration instructions, please refer to [Modifying Chat Configuration](/en/usage/pipelines/readme).

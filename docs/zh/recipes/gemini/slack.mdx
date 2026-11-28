@@ -3,7 +3,7 @@ title: "用 Gemini 搭建Slack AI 机器人"
 description: "使用 LangBot 搭建由 Gemini 驱动的Slack AI 机器人：模型配置、机器人凭据、网络要求、测试与常见问题。"
 ---
 
-本文把 Gemini 模型接到Slack机器人上。LangBot 接收Slack消息，交给流水线处理后把答案发回去，你不需要写任何平台对接代码。
+本文把 Gemini 模型接到Slack机器人上。LangBot 接收Slack消息，交给聊天处理后把答案发回去，你不需要写任何平台对接代码。
 
 用 LangBot 内置 Agent 调用 Google Gemini 模型；模型支持视觉时还可以识别图片。
 
@@ -24,9 +24,9 @@ Socket Mode 下 LangBot 主动连接 Slack，不需要公网事件地址；Webho
 3. 如果模型支持函数调用，请勾选 **工具调用**；MCP 工具、Skills 和沙箱都依赖它。
 4. 在 Google AI Studio 创建密钥。需要识别图片时在模型上勾选 **视觉**。
 
-## 2. 创建流水线
+## 2. 创建聊天
 
-在 LangBot WebUI 打开 **流水线**，新建流水线（或编辑默认流水线），按下表配置 **AI** 能力。
+在 LangBot WebUI 打开 **聊天**，新建聊天（或编辑默认聊天），按下表配置 **AI** 能力。
 
 | 配置项 | 填写 |
 | --- | --- |
@@ -42,7 +42,7 @@ Socket Mode 下 LangBot 主动连接 Slack，不需要公网事件地址；Webho
 
 ## 4. 绑定并测试
 
-打开机器人，选择刚才创建的流水线，保存并确认机器人已启用。
+打开机器人，选择刚才创建的聊天，保存并确认机器人已启用。
 
 在应用的 **Messages** 标签页私聊它，或在已加入的频道中 @ 它。
 
@@ -51,7 +51,7 @@ Socket Mode 下 LangBot 主动连接 Slack，不需要公网事件地址；Webho
 - 图片被忽略：在模型上勾选 **视觉**，并确认该平台适配器支持接收图片。
 - 不要把 App Configuration 的 Access/Refresh Token 填进 App-Level Token 字段，这里需要同一个应用的 `xapp-` Token。
 - App-Level Token 不要开启 Token rotation。
-- 在 WebUI 的 **监控** 页面可以看到每条消息、每次流水线运行和错误详情。
+- 在 WebUI 的 **监控** 页面可以看到每条消息、每次聊天运行和错误详情。
 
 ## 常见问题
 
@@ -65,7 +65,7 @@ Socket Mode 下 LangBot 主动连接 Slack，不需要公网事件地址；Webho
 
 ### 同一套 Gemini 配置能同时用在其他平台吗？
 
-可以。一条流水线可以绑定多个机器人，同一套配置能同时在多个平台上回复。
+可以。一个聊天可以绑定多个机器人，同一套配置能同时在多个平台上回复。
 
 ## 相关文档
 

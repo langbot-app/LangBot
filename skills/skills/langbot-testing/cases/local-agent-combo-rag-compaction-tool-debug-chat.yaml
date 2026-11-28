@@ -57,14 +57,14 @@ preconditions:
   - "The selected model route supports function/tool calling and deterministic multi-turn answers, or LANGBOT_E2E_FAKE_PROVIDER_BASE_URL points to scripts/e2e/fake-openai-provider.mjs."
   - "The LangRAG sentinel knowledge base contains azalea-cobalt-7421 and qa-plugin-smoke exposes qa_plugin_echo."
 steps:
-  - "Ensure the local-agent pipeline, LangRAG sentinel KB, and qa-plugin-smoke fixture plugin are available."
+  - "Ensure the local-agent Chat, LangRAG sentinel KB, and qa-plugin-smoke fixture plugin are available."
   - "Temporarily bind the LangRAG KB, shrink the runner context budget, and allow serial plugin tool execution."
   - "Temporarily bind only langbot-team/LocalAgent and qa/plugin-smoke; disable MCP servers and skills to isolate the tool surface."
   - "Reset the person Debug Chat session for the target pipeline."
   - "Send the passcode memory prompt and wait for MEMORY_SET."
   - "Send the long pressure prompt and wait for COMBO_CONTEXT_PRESSURE_READY."
   - "Ask the runner to combine compacted passcode, RAG sentinel, and qa_plugin_echo result in one final answer."
-  - "Restore the original runner config and pipeline extension bindings."
+  - "Restore the original runner config and Chat extension bindings."
 checks:
   - "UI: All three user messages appear in Debug Chat."
   - "UI: The final Bot message contains COMBO_FINAL qa_combo_compaction_sentinel_2406 azalea-cobalt-7421 qa-plugin-smoke:combo-tool-ok-local-agent."
@@ -84,7 +84,7 @@ diagnostics:
   - "The ensure-langrag-sentinel-kb setup script verifies LANGBOT_E2E_RAG_EXPECTED_TEXT, defaulting to azalea-cobalt-7421, while this case's Debug Chat expected text is the full COMBO_FINAL string."
   - "The fake provider intentionally returns COMBO_MISSING_* if the final model input lacks compacted memory, RAG context, or plugin tool result."
   - "If the final answer lacks azalea-cobalt-7421, first rerun ensure-langrag-sentinel-kb and local-agent-rag-debug-chat."
-  - "If the final answer lacks qa-plugin-smoke:combo-tool-ok-local-agent, inspect /api/v1/tools and the pipeline extensions diagnostic."
+  - "If the final answer lacks qa-plugin-smoke:combo-tool-ok-local-agent, inspect /api/v1/tools and the Chat extensions diagnostic."
 success_patterns:
   - "Processing request from person_websocket"
   - "Streaming completed"

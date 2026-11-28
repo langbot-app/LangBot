@@ -83,8 +83,8 @@ Webhook services should return JSON:
 ### Parameters
 
 - **status**: Processing status (recommend "ok")
-- **skip_pipeline**: Whether to skip LangBot pipeline processing
-  - `true`: Message won't continue in pipeline
+- **skip_pipeline**: Whether to skip LangBot Chat processing
+  - `true`: Message won't continue to the Chat
   - `false`: Message proceeds normally
 
 <Tip>
@@ -103,4 +103,4 @@ Use the [dify-plugin-langbot-trigger](https://github.com/langbot-app/dify-plugin
 - Request timeout: 15 seconds
 - Failed requests don't affect normal processing
 - Multiple webhooks execute in parallel
-- Any webhook returning `skip_pipeline: true` skips pipeline processing
+- Any webhook returning `skip_pipeline: true` skips Chat processing

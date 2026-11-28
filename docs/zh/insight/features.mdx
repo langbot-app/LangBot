@@ -19,7 +19,7 @@ LangBot 是一个**开源、生产级**的大语言模型（LLM）原生即时�
 - **MCP 协议** —— 作为客户端接入 Model Context Protocol 工具生态，支持 Stdio 与 HTTP 两种传输方式。
 - **Web 管理面板** —— 在浏览器里可视化配置、管理、监控机器人，无需手动编辑配置文件。
 - **生产级插件系统** —— 数百个社区插件，基于跨进程、事件驱动架构，安全且可热插拔。
-- **多流水线架构** —— 一个实例运行多条流水线，不同机器人服务不同场景，具备访问控制、限速、敏感词过滤与全面监控。
+- **多聊天与消息策略** —— 一个实例运行多个聊天和 Agent，不同机器人服务不同场景；机器人上的消息策略提供访问控制、限速、敏感词过滤，并配有全面监控。
 
 ## 即时通信平台支持性
 
@@ -129,7 +129,7 @@ LangBot 为二次开发与企业集成提供了完整的扩展面。
 - **HTTP Service API**：通过基于 API Key 鉴权的 HTTP 接口访问 LangBot 的各类实体，便于与现有系统集成。
 - **Outgoing Webhook**：将 LangBot 内部事件实时推送到外部系统，构建事件驱动的自动化。
 - **生产级插件系统**：基于跨进程通信与异步技术实现，支持多种组件扩展，安全、稳定、可热插拔；数百个社区插件可在[扩展市场](https://space.langbot.app)一键安装。
-- **Web 管理面板**：可视化完成机器人、模型、流水线、知识库、插件的全部配置与监控。
+- **Web 管理面板**：可视化完成机器人、模型、聊天、知识库、插件的全部配置与监控。
 
 ## 部署方式
 
@@ -143,11 +143,11 @@ LangBot 支持从一行命令到 Kubernetes 集群的多种部署方式：
 
 ## 案例截图
 
-![LangBot 机器人配置页：在 Web 管理面板中将网页机器人绑定到流水线](/images/zh/insight/features/bot-page.png)
+![LangBot 机器人配置页：在 Web 管理面板中将网页机器人的消息路由到聊天](/images/zh/insight/features/bot-page.png)
 
 ![LangBot 模型配置：接入 OpenAI、Anthropic 等任意 OpenAI / Anthropic 接口格式的大模型](/images/zh/insight/features/create-model.png)
 
-![LangBot 流水线 AI 配置：选择内置 Agent 运行器与主模型](/images/zh/insight/features/edit-pipeline.png)
+![LangBot 聊天 AI 配置：选择内置 Agent 运行器与主模型](/images/zh/insight/features/edit-pipeline.png)
 
 ![LangBot 扩展市场：一键安装数百个社区插件与 MCP 工具](/images/zh/insight/features/plugin-market.png)
 

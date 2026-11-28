@@ -39,7 +39,7 @@ automation_debug_chat_load_prompt_template: '请只回复 "{expected}"，不要�
 automation_debug_chat_load_stream: "true"
 automation_debug_chat_load_reset: "true"
 metrics_thresholds_json: '{"cross_pipeline_leak_count":{"max":0},"response_p95_ms":{"max":5000},"error_rate":{"max":0}}'
-load_profile_json: '{"requests_per_pipeline":6,"pipelines":2,"concurrency":4,"path":"Pipeline Debug Chat WebSocket","provider":"controlled fake OpenAI-compatible provider","metric":"cross-pipeline response isolation and send-to-final-assistant-response"}'
+load_profile_json: '{"requests_per_pipeline":6,"Chats":2,"concurrency":4,"path":"Chat Debug Chat WebSocket","provider":"controlled fake OpenAI-compatible provider","metric":"cross-pipeline response isolation and send-to-final-assistant-response"}'
 setup_automation:
   - "node:scripts/e2e/ensure-fake-provider-cross-pipelines.mjs --write-env"
 setup_provides_env:
@@ -52,13 +52,13 @@ setup_provides_env:
   - LANGBOT_FAKE_PROVIDER_PIPELINE_B_NAME
 steps:
   - "Start or reuse the local fake OpenAI-compatible provider."
-  - "Create or update two local-agent pipelines that both point at the controlled fake provider."
+  - "Create or update two local-agent Chats that both point at the controlled fake provider."
   - "Reset both Debug Chat sessions and the fake-provider request log."
-  - "Open concurrent WebSocket Debug Chat connections to both pipelines and send unique pipeline-scoped response tokens."
+  - "Open concurrent WebSocket Debug Chat connections to both Chats and send unique pipeline-scoped response tokens."
 checks:
   - "automation-result.json status is pass only when every request receives its own expected token and cross_pipeline_leak_count is zero."
   - "metrics_summary includes by_pipeline status counts, fake-provider request count, and LangBot/provider timing estimates."
-  - "samples.json contains per-request pipeline labels so any leak can be attributed to the receiving pipeline."
+  - "samples.json contains per-request Chat labels so any leak can be attributed to the receiving pipeline."
 evidence_required:
   - metrics
   - network
@@ -66,9 +66,9 @@ evidence_required:
   - filesystem
 diagnostics:
   - "This probe targets Debug Chat isolation under concurrent traffic from two pipelines."
-  - "It is designed to expose regressions where global pipeline state causes one pipeline's assistant response to be delivered to another pipeline's Debug Chat session."
+  - "It is designed to expose regressions where global Chat state causes one Chat's assistant response to be delivered to another Chat's Debug Chat session."
   - "Same-pipeline foreign responses are tolerated because Debug Chat intentionally broadcasts within the same pipeline/session; cross-pipeline tokens are never tolerated."
-  - "Known product bug: current releases may fail this probe because Debug Chat replies can read singleton WebSocket proxy pipeline state after another pipeline overwrites it. See https://github.com/langbot-app/LangBot/issues/2286."
+  - "Known product bug: current releases may fail this probe because Debug Chat replies can read singleton WebSocket proxy Chat state after another Chat overwrites it. See https://github.com/langbot-app/LangBot/issues/2286."
 expected_failures:
   - "https://github.com/langbot-app/LangBot/issues/2286"
 success_patterns:

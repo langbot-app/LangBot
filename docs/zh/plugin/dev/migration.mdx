@@ -13,7 +13,7 @@ title: "迁移指南"
 
 - 插件和组件注册方式：已由以往的单一插件类中的装饰器注册方式，改为了清单文件注册方式，参阅[清单文件](/zh/plugin/dev/basic-info)；并将各个不同类型的组件独立出来，详细请见[添加组件](/zh/plugin/dev/components/add)。
 - 消息链实体：现已重构，每个消息链元素的构造方法现在需要显式传入**具名参数**，参阅[消息平台实体](/zh/plugin/dev/apis/messages)。
-- 事件监听器：提供向后兼容性，但不再于上下文中提供`query: Query`对象，详细请参阅[流水线事件](/zh/plugin/dev/apis/pipeline-events)。
+- 事件监听器：提供向后兼容性，但不再于上下文中提供`query: Query`对象，详细请参阅[消息生命周期事件](/zh/plugin/dev/apis/pipeline-events)。
 - 命令组件：现已重构，请参阅[命令组件](/zh/plugin/dev/components/command)。
 
 ## 从 2.x 和 3.x 支持的同步插件迁移

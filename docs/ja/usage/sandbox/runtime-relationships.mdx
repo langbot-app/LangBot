@@ -21,12 +21,14 @@ LangBot には **プラグイン、MCP、Skills、サンドボックス** とい
 | MCP サーバー | LangBot MCP Loader（stdio モードは Box がホスト） | ツールが利用可能ツール一覧に直接入る | 既存の MCP サービスに接続したいとき |
 | プラグイン | Plugin Runtime | プラグインシステムから能力が公開される | 長期的な機能、設定ページ／イベント監視／ナレッジコンポーネントが必要なとき |
 
-## パイプラインへのバインド
+## チャットへのバインド
 
-Skills、MCP サーバー、プラグインはすべて **パイプライン拡張** に属します。WebUI でインストール／作成した後、パイプライン拡張設定で有効化範囲を決定する必要があります。
+Skills、MCP サーバー、プラグインはすべて **チャット拡張** に属します。WebUI でインストール／作成した後、チャットの拡張設定で有効化範囲を決定する必要があります。
 
 - すべての拡張を有効化する、または
 - 指定した拡張のみをバインドする
+
+チャットでのプラグインのバインドは AI がそのツールを呼び出すことを許可するだけです。プラグインのコマンドとイベントリスナーはボットの「イベントルーティング → プラグイン」で有効にします。
 
 Skills のバインドは Agent が **どの Skill を見えるか** を決定します（`<available_skills>` 一覧に影響）。具体的な Skill 内容は Agent が `activate` を呼び出した後にのみ注入されます。
 
@@ -38,8 +40,8 @@ Box API、Agent ツール、セッションスコープ、ライフサイクル�
 
 | 症状 | まず確認すること |
 |------|---------|
-| Agent に `exec/read/write` ツールがない | `box.enabled`、バックエンドが利用可能か、パイプラインが組み込み Agent を使用しているか |
-| Skill 一覧が空 | Box Runtime の状態、`box.local.skills_root`、パイプラインのバインド |
+| Agent に `exec/read/write` ツールがない | `box.enabled`、バックエンドが利用可能か、チャットが組み込み Agent を使用しているか |
+| Skill 一覧が空 | Box Runtime の状態、`box.local.skills_root`、チャットのバインド |
 | stdio MCP の起動に失敗 | Box Runtime の状態、MCP コマンドと環境変数、起動タイムアウト |
 | Docker デプロイでサンドボックスが起動しない | `langbot_box` が `docker.sock` をマウントしているか、Box ルートディレクトリのパスが一致しているか |
 | ファイル読み書きに失敗 | `box.local.host_root`、`box.local.allowed_mount_roots` |

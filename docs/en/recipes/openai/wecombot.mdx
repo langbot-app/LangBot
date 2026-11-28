@@ -3,7 +3,7 @@ title: "Build a WeCom Intelligent Bot AI Bot with OpenAI (ChatGPT models)"
 description: "Step-by-step guide to running a OpenAI (ChatGPT models)-powered AI bot on WeCom Intelligent Bot with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
 ---
 
-This recipe puts a OpenAI (ChatGPT models) model behind a WeCom Intelligent Bot bot. LangBot receives messages from WeCom Intelligent Bot, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+This recipe puts a OpenAI (ChatGPT models) model behind a WeCom Intelligent Bot bot. LangBot receives messages from WeCom Intelligent Bot, runs them through a Chat, and sends the answer back, so you do not write any platform code.
 
 Use OpenAI's GPT models with LangBot's built-in Agent, with optional knowledge bases, MCP tools, Skills and a code sandbox.
 
@@ -24,9 +24,9 @@ Long connection mode needs no public callback URL. The alternative callback-URL 
 3. Enable **Tool Use** if the model supports function calling; MCP tools, Skills and the sandbox need it.
 4. Use a current model ID from OpenAI's model list. Any OpenAI-compatible endpoint works the same way with its own request URL.
 
-## 2. Create a pipeline
+## 2. Create a Chat
 
-Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+Open **Chats** in the LangBot WebUI, create a Chat (or edit the default one) and set **AI** as follows.
 
 | Field | Value |
 | --- | --- |
@@ -42,7 +42,7 @@ Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default 
 
 ## 4. Bind and test
 
-Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+Open the bot, select the Chat you created, save and make sure the bot is enabled.
 
 Find the bot in the WeCom client, chat with it directly, then add it to a group chat and mention it.
 
@@ -50,7 +50,7 @@ Find the bot in the WeCom client, chat with it directly, then add it to a group 
 
 - Region or network errors: LangBot must be able to reach the request URL. Behind a restricted network, use a compatible gateway you can reach.
 - The long-connection Secret differs from the callback Token/EncodingAESKey. Switching the API mode to callback URL invalidates existing long connections.
-- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+- Check **Monitoring** in the WebUI: every message, Chat run and error is recorded there.
 
 ## FAQ
 
@@ -64,7 +64,7 @@ Yes. Enable streaming on the bot; the AI back end must also stream. See the [pla
 
 ### Can the same OpenAI (ChatGPT models) setup serve other platforms too?
 
-Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+Yes. A Chat can be bound to many bots, so one configuration can answer on several platforms at once.
 
 ## Related guides
 

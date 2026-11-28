@@ -19,7 +19,8 @@ import uuid
 
 from tools.regression.evidence import check_attachment, check_fields, check_response, checked
 from tools.regression.http_bot import group_request, valid_group_settings
-from tools.regression.observations import read_endpoint_snapshot, read_process_snapshot
+from tools.regression.observations import read_endpoint_snapshot, read_process_snapshot, read_system_snapshot
+from tools.regression.observability_contract import ActionWriter, write_manifest
 from tools.regression.run_ledger import (
     UnresolvedRun,
     check_run,
@@ -252,8 +253,17 @@ def main():
     parser.add_argument('--duration', type=float, default=600)
     parser.add_argument('--rps', type=float, default=2)
     parser.add_argument('--workers', type=int, default=4)
+    parser.add_argument('--sender-workers', type=int, help='Open-loop sender workers, up to 256')
     parser.add_argument('--arrival-mode', choices=('paced', 'open-loop'), default='paced')
-    parser.add_argument('--queue-capacity', type=int, default=128, help='Maximum waiting arrivals in open-loop mode')
+    parser.add_argument(
+        '--queue-capacity', type=int, default=128, help='Maximum waiting arrivals, zero is unbounded in drain mode'
+    )
+    parser.add_argument(
+        '--drain-all',
+        action='store_true',
+        help='Dispatch and drain all scheduled open-loop arrivals after the load window',
+    )
+    parser.add_argument('--drain-timeout', type=float, default=300, help='Maximum pending-queue drain time in seconds')
     parser.add_argument(
         '--max-requests',
         type=int,
@@ -287,6 +297,7 @@ def main():
         or args.rps <= 0
         or not 1 <= args.workers <= 32
         or args.cooldown < 0
+        or args.drain_timeout <= 0
     ):
         parser.error('duration/rps must be positive, workers 1..32, cooldown nonnegative')
     if not 0 <= args.groups <= 4096 or not 1 <= args.members_per_group <= 1000:
@@ -297,8 +308,16 @@ def main():
         parser.error('open-loop groups require group mode')
     if args.max_requests is not None and args.max_requests < 1:
         parser.error('max-requests must be positive')
-    if args.queue_capacity < 1:
-        parser.error('queue-capacity must be positive')
+    if args.queue_capacity < 0:
+        parser.error('queue-capacity must be nonnegative')
+    if args.queue_capacity == 0 and not args.drain_all:
+        parser.error('queue-capacity zero requires --drain-all')
+    if args.sender_workers is not None and not 1 <= args.sender_workers <= 256:
+        parser.error('sender-workers must be 1..256')
+    if args.drain_all and args.arrival_mode != 'open-loop':
+        parser.error('--drain-all requires --arrival-mode open-loop')
+    if args.drain_all and args.queue_capacity and args.queue_capacity < 1:
+        parser.error('queue-capacity must be zero or positive')
     if args.arrival_mode == 'open-loop' and args.max_requests is not None:
         parser.error('open-loop uses duration and rps to fix arrival count; max-requests is not supported')
     cases = json.loads(args.cases.read_text())
@@ -334,6 +353,9 @@ def main():
     if not math.isfinite(args.verification_timeout) or args.verification_timeout <= 0:
         parser.error('verification timeout must be positive')
     args.output.mkdir(parents=True, exist_ok=False)
+    action_writer = ActionWriter(args.output / 'actions.jsonl') if args.arrival_mode == 'open-loop' else None
+    sender_workers = args.sender_workers or args.workers
+    queue_capacity = None if args.drain_all and args.queue_capacity == 0 else args.queue_capacity
     pids = {name: int(pid) for name, pid in (value.split('=', 1) for value in args.pid)}
     endpoints = dict(value.split('=', 1) for value in args.health)
     rows = []
@@ -460,6 +482,11 @@ def main():
                     'targets': {},
                     'health': {},
                 }
+                # Keep host/cgroup evidence beside per-process samples so a
+                # load result can distinguish service pressure from client
+                # backpressure. Missing procfs/cgroup files are represented by
+                # empty sections rather than fabricated zeros.
+                row['system'] = read_system_snapshot()
                 for name, pid in pids.items():
                     try:
                         row['targets'][name] = read_process_snapshot(pid)
@@ -727,14 +754,20 @@ def main():
                 started=started,
                 duration=args.duration,
                 rps=args.rps,
-                workers=args.workers,
-                queue_capacity=args.queue_capacity,
+                workers=sender_workers,
+                queue_capacity=queue_capacity,
                 execute=execute_arrival,
                 key_for=lambda index: index % len(groups) if groups else None,
                 blocked=lambda key: groups[key]['failed'] if key is not None else False,
                 settle=settle_arrival,
                 stop=stop,
+                drain_all=args.drain_all,
+                drain_timeout=args.drain_timeout,
+                action_writer=action_writer,
+                action_name='regression_arrival',
             )
+            if action_writer is not None:
+                action_writer.close()
         else:
             with ThreadPoolExecutor(max_workers=args.workers) as pool:
                 list(pool.map(group_worker if args.groups else worker, range(args.workers)))
@@ -753,6 +786,7 @@ def main():
         'load_elapsed_seconds': load_elapsed,
         'target_rps': args.rps,
         'workers': args.workers,
+        'sender_workers': sender_workers,
         'cooldown_seconds': args.cooldown,
         'requests': len(rows),
         'request_limit': args.max_requests,
@@ -784,7 +818,11 @@ def main():
             delivery_ratio=len(rows) / arrivals['scheduled'],
             arrival_mode=args.arrival_mode,
             arrivals=arrivals,
-            load_model='fixed arrivals; bounded client queue; serialized groups; arrival latency includes verification',
+            load_model=(
+                'fixed arrivals; full sender drain; serialized groups; arrival latency includes verification'
+                if args.drain_all
+                else 'fixed arrivals; bounded client queue; serialized groups; arrival latency includes verification'
+            ),
         )
     if args.open_loop_groups:
         admitted = Counter(row['case'] for row in rows)
@@ -812,9 +850,9 @@ def main():
     summary['health_samples'] = len(samples)
     summary['health_failures'] = sum(
         any('error' in target for target in [*sample['targets'].values(), *sample['health'].values()])
-        or bool(sample.get('container_error'))
         for sample in samples
     )
+    summary['observation_failures'] = sum(bool(sample.get('container_error')) for sample in samples)
     summary['sampling_errors'] = sampling_errors
     if args.groups:
         for index, group in enumerate(groups):
@@ -867,6 +905,14 @@ def main():
                 arrival_latency_population='all dispatched outcomes, including verification',
             )
     (args.output / 'summary.json').write_text(json.dumps(summary, indent=2))
+    if action_writer is not None:
+        write_manifest(
+            args.output / 'run-manifest.json',
+            run_id=args.output.name,
+            expected_sources=['regression_arrival'],
+            observed_sources=action_writer.sources,
+            artifacts=[args.output / 'actions.jsonl', args.output / 'summary.json'],
+        )
     print(json.dumps(summary, indent=2), flush=True)
     if (
         not rows

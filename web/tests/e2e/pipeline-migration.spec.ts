@@ -188,7 +188,7 @@ async function open(page: Page, detail = false) {
   await page
     .getByRole('button', { name: 'Review migration', exact: true })
     .click();
-  return page.getByRole('dialog', { name: 'Pipeline migration' });
+  return page.getByRole('dialog', { name: 'Chat migration' });
 }
 test('legacy detail never mounts editable runner defaults or debug autosave, metadata stays available', async ({
   page,
@@ -228,7 +228,7 @@ test('compact assistant hides details, has no checkboxes and does not execute on
   await expect(dialog.getByText('Legacy one', { exact: true })).toHaveCount(0);
   await expect(installButton(page)).toBeEnabled();
   await expect(dataButton(page)).toBeEnabled();
-  await dialog.getByRole('button', { name: 'View pipelines' }).click();
+  await dialog.getByRole('button', { name: 'View Chats' }).click();
   await expect(dialog.getByText('Legacy one', { exact: true })).toBeVisible();
   await expect(dialog).not.toContainText('ai.runner.id');
   await dialog
@@ -316,7 +316,7 @@ test('partial failures are reported without exposing upstream errors, and reopen
   const dialog = await open(page);
   await installButton(page).click();
   await expect(dialog).toContainText('1 migrated; 1 need attention.');
-  await dialog.getByRole('button', { name: 'View pipelines' }).click();
+  await dialog.getByRole('button', { name: 'View Chats' }).click();
   await expect(dialog.getByTestId('migration-result-two')).toContainText(
     'Plugin installation failed',
   );
@@ -348,7 +348,7 @@ test('all pipelines including more than fifty can be migrated, expanded list scr
     code: null,
   }));
   const dialog = await open(page);
-  await dialog.getByRole('button', { name: 'View pipelines' }).click();
+  await dialog.getByRole('button', { name: 'View Chats' }).click();
   const viewport = dialog
     .getByTestId('migration-scroll-area')
     .locator('[data-slot="scroll-area-viewport"]');
@@ -437,7 +437,7 @@ test('workspace changes discard previous task results and stop polling', async (
   });
   release();
   await expect(
-    page.getByRole('dialog', { name: 'Pipeline migration' }),
+    page.getByRole('dialog', { name: 'Chat migration' }),
   ).toHaveCount(0);
   await page.clock.runFor(3000);
   expect(state.polls).toBe(1);
@@ -445,10 +445,10 @@ test('workspace changes discard previous task results and stop polling', async (
 });
 
 for (const [language, title, review, action] of [
-  ['zh-Hans', '流水线迁移', '检查迁移', '自动安装插件并迁移'],
+  ['zh-Hans', '聊天迁移', '检查迁移', '自动安装插件并迁移'],
   [
     'ja-JP',
-    'パイプライン移行',
+    'チャット移行',
     '移行を確認',
     'プラグインを自動インストールして移行',
   ],
@@ -517,10 +517,7 @@ test('SPEC canonical empty current detail allows selecting and saving a runner',
     });
   });
   await page.goto('/home/agents?id=one');
-  await expect(
-    page.getByRole('tab', { name: 'AI', exact: true }),
-  ).toBeVisible();
-  await page.getByRole('tab', { name: 'AI', exact: true }).click();
+  await expect(page.getByTestId('chat-config')).toBeVisible();
   const selector = page.getByRole('combobox', { name: 'Runner', exact: true });
   await selector.click();
   await page.getByRole('option', { name: /Local Agent/ }).click();
@@ -602,7 +599,7 @@ test('Box reuse notice stays concise and template validation has an actionable m
   await expect(
     dialog.getByText('Sandbox reuse settings are preserved.', { exact: false }),
   ).not.toBeVisible();
-  await dialog.getByRole('button', { name: 'View pipelines' }).click();
+  await dialog.getByRole('button', { name: 'View Chats' }).click();
   await expect(
     dialog.getByText('Sandbox reuse settings are preserved.', { exact: false }),
   ).toBeVisible();
@@ -675,7 +672,7 @@ test('installation progress remains inspectable during work and after a missing 
   await expect(dialog.getByRole('img', { name: 'Dify Agent' })).toBeVisible();
   await dialog.getByRole('button', { name: 'Installation details' }).click();
   await expect(dialog.getByText('Downloaded 1.0 KB / 2.0 KB')).toBeVisible();
-  await dialog.getByRole('button', { name: 'View pipelines' }).click();
+  await dialog.getByRole('button', { name: 'View Chats' }).click();
   await expect(dialog.getByText('Legacy one', { exact: true })).toBeVisible();
   state.installations[0] = {
     ...state.installations[0],

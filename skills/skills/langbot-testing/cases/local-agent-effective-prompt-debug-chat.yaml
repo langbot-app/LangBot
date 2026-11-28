@@ -43,10 +43,10 @@ setup_provides_env:
   - LANGBOT_LOCAL_AGENT_PIPELINE_URL
   - LANGBOT_LOCAL_AGENT_PIPELINE_NAME
 preconditions:
-  - "The target pipeline is safe to modify and can bind the fixture plugin through Extensions."
+  - "The target Chat is safe to modify and can bind the fixture plugin through Extensions."
 steps:
   - "Install or enable the bundled qa-plugin-smoke fixture plugin."
-  - "Confirm the fixture plugin is bound to the target pipeline through Extensions."
+  - "Confirm the fixture plugin is bound to the target Chat through Extensions."
   - "Open the target local-agent pipeline."
   - "Open Configuration > AI."
   - "Use runner Default or the pluginized langbot-team/LocalAgent runner."
@@ -64,7 +64,7 @@ evidence_required:
   - console
   - backend_log
 diagnostics:
-  - "If the bot does not return PROMPT_PREPROCESS_OK, verify the fixture plugin is installed, enabled, and bound to the pipeline before diagnosing ctx.adapter.extra.prompt."
+  - "If the bot does not return PROMPT_PREPROCESS_OK, verify the fixture plugin is installed, enabled, and bound to the Chat before diagnosing ctx.adapter.extra.prompt."
   - "If the plugin event runs but the answer ignores the sentinel, inspect whether the runner is using ctx.adapter.extra.prompt instead of static runner config prompt."
 troubleshooting:
   - plugin-runtime-timeout

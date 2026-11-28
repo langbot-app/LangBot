@@ -64,6 +64,10 @@ try {
   const navigationSignals = [
     "Dashboard",
     "Bots",
+    "Processors",
+    "处理器",
+    "Chat",
+    "聊天",
     "Pipelines",
     "Knowledge",
     "Plugins",

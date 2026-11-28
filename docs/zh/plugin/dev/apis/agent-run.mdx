@@ -23,7 +23,7 @@ title: "上下文 API"
 
 ## EventListener
 
-EventListener 处理流水线事件。事件处理函数接收 `EventContext`：
+EventListener 处理消息生命周期事件。事件处理函数接收 `EventContext`：
 
 ```python
 event = event_context.event
@@ -36,13 +36,13 @@ sender_id = event.sender_id
 | --- | --- | --- |
 | `event` | `BaseEventModel` | 当前事件对象，实际类型与注册的事件类型一致 |
 | `event_name` | `str` | 当前事件类名 |
-| `query_id` | `int` | 当前流水线请求 ID |
-| `query_uuid` | `str \| None` | 当前流水线请求的稳定标识 |
+| `query_id` | `int` | 当前请求 ID |
+| `query_uuid` | `str \| None` | 当前请求的稳定标识 |
 | `eid` | `int` | Plugin Runtime 内的临时事件编号，不应持久化 |
 | `is_prevent_default` | `bool` | 是否已阻止默认处理；通过 `prevent_default()` 修改 |
 | `is_prevent_postorder` | `bool` | 是否已阻止后续插件；通过 `prevent_postorder()` 修改 |
 
-事件对象的字段和所有可监听事件见[流水线事件](/zh/plugin/dev/apis/pipeline-events)。
+事件对象的字段和所有可监听事件见[消息生命周期事件](/zh/plugin/dev/apis/pipeline-events)。
 
 ### 上下文方法
 
@@ -53,15 +53,15 @@ sender_id = event.sender_id
 | `await event_context.set_query_var(key, value)` | - | 设置当前请求变量 |
 | `await event_context.get_query_var(key)` | `Any` | 获取一个请求变量 |
 | `await event_context.get_query_vars()` | `dict[str, Any]` | 获取全部请求变量 |
-| `await event_context.create_new_conversation()` | `dict[str, Any]` | 清除流水线当前使用的对话，后续请求会创建新对话 |
-| `await event_context.list_pipeline_knowledge_bases()` | `list[dict[str, Any]]` | 列出当前流水线 Local Agent 绑定的知识库 |
-| `await event_context.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)` | `list[dict[str, Any]]` | 检索当前流水线已绑定的知识库 |
+| `await event_context.create_new_conversation()` | `dict[str, Any]` | 清除聊天当前使用的对话，后续请求会创建新对话 |
+| `await event_context.list_pipeline_knowledge_bases()` | `list[dict[str, Any]]` | 列出当前聊天的 Local Agent 绑定的知识库 |
+| `await event_context.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)` | `list[dict[str, Any]]` | 检索当前聊天已绑定的知识库 |
 | `event_context.prevent_default()` | - | 阻止当前事件的默认处理 |
 | `event_context.prevent_postorder()` | - | 阻止后续插件继续处理当前事件 |
 
-`reply()` 使用 [MessageChain](/zh/plugin/dev/apis/messages)。请求变量、回复和流水线知识库方法依赖当前请求；没有关联请求的事件不能调用这些方法。`retrieve_knowledge()` 的 `kb_id` 必须来自 `list_pipeline_knowledge_bases()`。
+`reply()` 使用 [MessageChain](/zh/plugin/dev/apis/messages)。请求变量、回复和聊天知识库方法依赖当前请求；没有关联请求的事件不能调用这些方法。`retrieve_knowledge()` 的 `kb_id` 必须来自 `list_pipeline_knowledge_bases()`。
 
-`prevent_default()` 只对支持中止默认流程的流水线事件生效，具体事件见[流水线事件](/zh/plugin/dev/apis/pipeline-events#阻止默认行为)。
+`prevent_default()` 只对支持中止默认流程的事件生效，具体事件见[消息生命周期事件](/zh/plugin/dev/apis/pipeline-events#阻止默认行为)。
 
 ## Command
 
@@ -84,8 +84,8 @@ session = context.session
 | `params` | `list[str]` | 根命令后的全部参数 |
 | `crt_params` | `list[str]` | 当前子命令尚未消费的参数 |
 | `privilege` | `int` | 当前用户的命令权限级别 |
-| `query_id` | `int` | 当前流水线请求 ID |
-| `query_uuid` | `str \| None` | 当前流水线请求的稳定标识 |
+| `query_id` | `int` | 当前请求 ID |
+| `query_uuid` | `str \| None` | 当前请求的稳定标识 |
 
 `context.shift()` 由 SDK 在进入当前子命令前调用，组件不需要手动调用。
 
@@ -98,9 +98,9 @@ session = context.session
 | `await context.set_query_var(key, value)` | - | 设置当前请求变量 |
 | `await context.get_query_var(key)` | `Any` | 获取一个请求变量 |
 | `await context.get_query_vars()` | `dict[str, Any]` | 获取全部请求变量 |
-| `await context.create_new_conversation()` | `dict[str, Any]` | 清除流水线当前使用的对话，后续请求会创建新对话 |
-| `await context.list_pipeline_knowledge_bases()` | `list[dict[str, Any]]` | 列出当前流水线 Local Agent 绑定的知识库 |
-| `await context.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)` | `list[dict[str, Any]]` | 检索当前流水线已绑定的知识库 |
+| `await context.create_new_conversation()` | `dict[str, Any]` | 清除聊天当前使用的对话，后续请求会创建新对话 |
+| `await context.list_pipeline_knowledge_bases()` | `list[dict[str, Any]]` | 列出当前聊天的 Local Agent 绑定的知识库 |
+| `await context.retrieve_knowledge(kb_id, query_text, top_k=5, filters=None)` | `list[dict[str, Any]]` | 检索当前聊天已绑定的知识库 |
 
 这些请求方法的行为与 EventListener 相同。命令的注册和返回值见 [Command 组件](/zh/plugin/dev/components/command)。
 
@@ -118,7 +118,7 @@ sender_id = session.sender_id
 | --- | --- |
 | `params` | 模型或调用方根据工具 JSON Schema 生成的参数 |
 | `session` | 当前会话数据 |
-| `query_id` | 当前流水线请求 ID；调用需要请求上下文的 LangBot API 时原样传入 |
+| `query_id` | 当前请求 ID；调用需要请求上下文的 LangBot API 时原样传入 |
 
 `Session` 的常用字段如下：
 
@@ -128,8 +128,8 @@ sender_id = session.sender_id
 | `launcher_id` | 私聊用户或群组 ID |
 | `sender_id` | 当前消息发送者 ID |
 | `bot_uuid` | 当前机器人 UUID |
-| `using_conversation` | 当前流水线会话 |
-| `conversations` | 该 Session 保存的流水线会话列表 |
+| `using_conversation` | 当前聊天会话 |
+| `conversations` | 该 Session 保存的聊天会话列表 |
 | `use_prompt_name` | 当前使用的提示词名称 |
 | `create_time`、`update_time` | Session 的创建时间和更新时间 |
 
@@ -235,7 +235,7 @@ Box 是否启用、何时创建以及如何复用，由运行器决定。获取�
 
 先绑定 Box，再使用原生执行、文件工具和附件方法。复用同一 Box 时，各次运行的附件目录仍独立。`ctx.variables` 提供公开的请求变量，运行器可据此计算复用键。
 
-通过流水线运行时，`ctx.delivery.automatic_reply` 为 `True`，可以在 `RunnerResult.message_completed(ctx.run_id, message, file_ids=[...])` 返回附件；Agent 和插件处理器使用 `ctx.reply_files()` 显式发送。
+通过聊天运行时，`ctx.delivery.automatic_reply` 为 `True`，可以在 `RunnerResult.message_completed(ctx.run_id, message, file_ids=[...])` 返回附件；Agent 和插件处理器使用 `ctx.reply_files()` 显式发送。
 
 自动回复时，每个 `RunnerResult.message_completed` 都作为一条独立消息发送，因此 Runner 可以在答案之前先发进度消息。`RunnerResult.message_delta` 在支持流式的平台上更新同一条流式消息；其他平台只发送完成的消息，只产出 delta 的运行在结束时发送最后一个结果。
 
@@ -288,7 +288,7 @@ Box 是否启用、何时创建以及如何复用，由运行器决定。获取�
 
 `run_id=None` 表示当前运行。普通事件处理函数结束后，SDK 会自动完成本次运行；自定义 `run(ctx)` 通过 `yield RunnerResult` 返回结果时，也不需要再调用 `run_append_result()` 重复登记。
 
-Pipeline 重试和恢复会应用当前的输出过滤、回复包装和发送设置，并使用已记录的回复目标与原消息标识；缺少必要信息或平台不支持恢复投递时，会返回明确错误。
+聊天的重试和恢复会应用当前的输出过滤、回复包装和发送设置，并使用已记录的回复目标与原消息标识；缺少必要信息或平台不支持恢复投递时，会返回明确错误。
 
 ### 可用性与授权
 
@@ -314,7 +314,7 @@ Pipeline 重试和恢复会应用当前的输出过滤、回复包装和发送�
 
 ACP daemon 复用 LangBot 现有的 run-scoped MCP 桥。Box 可用且已授权 `event_reply` 时，先绑定 Box，在其中生成文件，通过 `langbot_export_box_files` 导出选定的绝对路径，再调用 `langbot_reply_files` 发送返回的文件 ID。媒体上传与投递由平台适配器负责，ACP Agent 无需获取平台凭据。
 
-文件 ID 只在导出它的 run 内有效。即使 Pipeline 过滤器改写了处理中的文本，回复目标仍是原始入站消息。
+文件 ID 只在导出它的 run 内有效。即使过滤器改写了处理中的文本，回复目标仍是原始入站消息。
 
 ## run 中的安装私有 Artifact
 

@@ -3,7 +3,7 @@ title: "Build a QQ Official Bot AI Bot with Ollama"
 description: "Step-by-step guide to running a Ollama-powered AI bot on QQ Official Bot with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
 ---
 
-This recipe puts a Ollama model behind a QQ Official Bot bot. LangBot receives messages from QQ Official Bot, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+This recipe puts a Ollama model behind a QQ Official Bot bot. LangBot receives messages from QQ Official Bot, runs them through a Chat, and sends the answer back, so you do not write any platform code.
 
 Run open models locally with Ollama and serve them through LangBot's built-in Agent, so conversations never leave your machines.
 
@@ -23,9 +23,9 @@ The QQ Official Bot API (webhook) requires a public IP and working HTTPS. LangBo
 2. In LangBot, open **Models** and add an LLM model with the provider set to Ollama and the request URL pointing at your Ollama server (by default port `11434`).
 3. If LangBot runs in Docker, `localhost` is the container itself: use the host's address (for example `host.docker.internal`) instead.
 
-## 2. Create a pipeline
+## 2. Create a Chat
 
-Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+Open **Chats** in the LangBot WebUI, create a Chat (or edit the default one) and set **AI** as follows.
 
 | Field | Value |
 | --- | --- |
@@ -41,7 +41,7 @@ Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default 
 
 ## 4. Bind and test
 
-Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+Open the bot, select the Chat you created, save and make sure the bot is enabled.
 
 As a sandbox member, message the bot in a private chat or @mention it in a sandbox group.
 
@@ -49,7 +49,7 @@ As a sandbox member, message the bot in a private chat or @mention it in a sandb
 
 - Small local models may not support tool calling well; leave **Tool Use** off for models that do not support it.
 - Saving the request address fails: the domain is not reachable over HTTPS or the path does not end with `/bots/<bot id>`.
-- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+- Check **Monitoring** in the WebUI: every message, Chat run and error is recorded there.
 
 ## FAQ
 
@@ -63,7 +63,7 @@ Check the [platform feature matrix](/en/insight/platform-features) for what this
 
 ### Can the same Ollama setup serve other platforms too?
 
-Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+Yes. A Chat can be bound to many bots, so one configuration can answer on several platforms at once.
 
 ## Related guides
 

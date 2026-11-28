@@ -17,11 +17,11 @@ You can also add models from other sources.
 
 ### LLM Model
 
-Models will be used by pipelines to process messages. The first model you configure will be set as the model for the default pipeline.
+Models will be used by Chats to process messages. The first model you configure will be set as the model for the default Chat.
 
 ![arch](/images/zh/deploy/models/arch.png)
 
-You can add multiple models, and then select which model to use in the pipeline.
+You can add multiple models, and then select which model to use in the Chat.
 
 <img width="400px" src="/images/zh/deploy/models/model_config.png" alt="model_config" />
 
@@ -33,7 +33,7 @@ For model capabilities, enable the ones the underlying model actually supports:
 - **Tool Use** (function calling / tool use): enable so the LLM can call tools during a conversation
 
 <Note>
-**Tool Use must be enabled on the model whenever you want to use tools from MCP servers, sandbox built-ins (`exec`/`read`/`write`/`edit`/`glob`/`grep`), or Skills.** Without it, even if the pipeline binds those extensions, the Agent won't call any tools.
+**Tool Use must be enabled on the model whenever you want to use tools from MCP servers, sandbox built-ins (`exec`/`read`/`write`/`edit`/`glob`/`grep`), or Skills.** Without it, even if the Chat binds those extensions, the Agent won't call any tools.
 
 The underlying model has to actually support function calling for this checkbox to take effect — check the model provider's docs if unsure.
 </Note>
@@ -62,7 +62,7 @@ The system has integrated Chroma's built-in embedding model (all-MiniLM-L6-v2), 
 
 Rerank models re-score RAG retrieval results to significantly improve the precision of knowledge base answers. When a knowledge base returns multiple candidate documents, the rerank model uses a cross-encoder to precisely score each document's relevance to the query, selecting only the most relevant content.
 
-Enter `Model Name` and select `Model Provider`, then submit. After that, select this model in your pipeline's "AI" configuration.
+Enter `Model Name` and select `Model Provider`, then submit. After that, select this model in your Chat's "AI" configuration.
 
 <Tip>
 Rerank models are optional. Without one, knowledge base results are used in their original retrieval order. With a rerank model configured, results are re-scored and only the top-K most relevant results are kept.

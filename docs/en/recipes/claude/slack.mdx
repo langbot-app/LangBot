@@ -3,7 +3,7 @@ title: "Build a Slack AI Bot with Claude"
 description: "Step-by-step guide to running a Claude-powered AI bot on Slack with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
 ---
 
-This recipe puts a Claude model behind a Slack bot. LangBot receives messages from Slack, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+This recipe puts a Claude model behind a Slack bot. LangBot receives messages from Slack, runs them through a Chat, and sends the answer back, so you do not write any platform code.
 
 Use Anthropic's Claude models with LangBot's built-in Agent, including tool use with MCP servers, Skills and the code sandbox.
 
@@ -24,9 +24,9 @@ With Socket Mode, LangBot connects out to Slack and no public event URL is neede
 3. Enable **Tool Use** if the model supports function calling; MCP tools, Skills and the sandbox need it.
 4. Keep the provider's default request URL unless you use a gateway. Use a current Claude model ID from Anthropic's documentation.
 
-## 2. Create a pipeline
+## 2. Create a Chat
 
-Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+Open **Chats** in the LangBot WebUI, create a Chat (or edit the default one) and set **AI** as follows.
 
 | Field | Value |
 | --- | --- |
@@ -42,7 +42,7 @@ Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default 
 
 ## 4. Bind and test
 
-Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+Open the bot, select the Chat you created, save and make sure the bot is enabled.
 
 Message the app from its **Messages** tab, or mention it in a channel it has been added to.
 
@@ -51,7 +51,7 @@ Message the app from its **Messages** tab, or mention it in a channel it has bee
 - The agent never calls tools: enable **Tool Use** on the model.
 - Do not paste the App Configuration Access/Refresh tokens into the App-Level Token field; it needs the `xapp-` token of the same app.
 - Leave token rotation disabled for the App-Level Token.
-- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+- Check **Monitoring** in the WebUI: every message, Chat run and error is recorded there.
 
 ## FAQ
 
@@ -65,7 +65,7 @@ Check the [platform feature matrix](/en/insight/platform-features) for what this
 
 ### Can the same Claude setup serve other platforms too?
 
-Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+Yes. A Chat can be bound to many bots, so one configuration can answer on several platforms at once.
 
 ## Related guides
 

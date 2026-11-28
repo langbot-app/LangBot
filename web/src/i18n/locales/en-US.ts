@@ -291,10 +291,10 @@ const enUS = {
       'Delivery is unconfirmed. Check your connection and reopen the conversation.',
     draftPlaceholder: 'Draft your next message while waiting…',
     operations: {
-      create_pipeline: 'Create Pipeline',
-      configure_pipeline: 'Configure Pipeline',
+      create_pipeline: 'Create Chat',
+      configure_pipeline: 'Configure Chat',
       create_knowledge_base: 'Create knowledge base',
-      get_pipeline: 'Read Pipeline',
+      get_pipeline: 'Read Chat',
       get_knowledge_schema: 'Read knowledge engine schema',
       list_operation_logs: 'Read operation logs',
       workspace_search: 'Search workspace capabilities',
@@ -304,7 +304,7 @@ const enUS = {
     resources: {
       models: 'Find chat models',
       embedding_models: 'Find embedding models',
-      pipelines: 'Find Pipelines',
+      pipelines: 'Find Chats',
       knowledge_bases: 'Find knowledge bases',
       knowledge_engines: 'Find knowledge engines',
     },
@@ -313,8 +313,8 @@ const enUS = {
     newChat: 'New conversation',
     close: 'Close',
     welcome:
-      'Tell me what you want to build. I can inspect this Workspace and propose configurations for bots, Agents, knowledge bases, Pipelines and more, then apply them after your confirmation.',
-    discover: 'What models, knowledge bases and Pipelines are available?',
+      'Tell me what you want to build. I can inspect this Workspace and propose configurations for bots, Agents, knowledge bases, Chats and more, then apply them after your confirmation.',
+    discover: 'What models, knowledge bases and Chats are available?',
     build: 'Help me create a knowledge-base question-answering application.',
     toolResult: 'Operation result',
     review: 'Review the exact operations before executing',
@@ -356,7 +356,7 @@ const enUS = {
       pipelines: {
         title: 'Configure processors',
         description:
-          'Create reusable pipelines, Agents, and plugin processor configurations, then connect them to bots.',
+          'Create reusable chats, Agents, and plugin processor configurations, then connect them to bots.',
       },
       knowledge: {
         title: 'Manage knowledge bases',
@@ -392,7 +392,7 @@ const enUS = {
       trigger: {
         title: 'Choose which messages to answer',
         description:
-          'Pipelines handle message events and reply automatically with AI. Configure group triggers, private chat rules, and message filters here.',
+          'Chats handle message events and reply automatically with AI. Configure group triggers, private chat rules, and message filters here.',
       },
       speech: {
         title: 'Configure speech capabilities',
@@ -417,12 +417,12 @@ const enUS = {
       extensions: {
         title: 'Choose available extensions',
         description:
-          'Choose the plugins, MCP servers, and skills this pipeline can use to extend message handling and tools.',
+          'Choose the plugins, MCP servers, and skills this chat can use to extend message handling and tools.',
       },
       basic: {
-        title: 'Manage the pipeline',
+        title: 'Manage the chat',
         description:
-          'Copy this pipeline to create another configuration, or delete a pipeline you no longer need.',
+          'Copy this chat to create another configuration, or delete a chat you no longer need.',
       },
       debug: {
         title: 'Test a conversation',
@@ -445,7 +445,7 @@ const enUS = {
       save: {
         title: 'Save and connect a bot',
         description:
-          'Save your configuration, then route Message received events to this pipeline on the bot page.',
+          'Save your configuration, then route Message received events to this chat on the bot page.',
       },
     },
     pluginProcessor: {
@@ -521,7 +521,7 @@ const enUS = {
       type: {
         title: 'Choose a processor type',
         description:
-          'Pipelines follow a defined message flow, Agents decide with models and tools, and plugin processors handle declared platform events.',
+          'Chats follow a defined message flow, Agents decide with models and tools, and plugin processors handle declared platform events.',
       },
       basic: {
         title: 'Name the processor',
@@ -848,7 +848,7 @@ const enUS = {
       confirmDisconnect: 'Confirm disconnect',
     },
     title: 'Models',
-    description: 'Configure and manage models that can be used in pipelines',
+    description: 'Configure and manage models that can be used in chats',
     createModel: 'Create Model',
     editModel: 'Edit Model',
     getModelListError: 'Failed to get model list: ',
@@ -1019,13 +1019,465 @@ const enUS = {
       addFallback: 'Add Fallback Model',
     },
   },
+  upgradeChecks: {
+    banner: '{{count}} upgrade changes need your review',
+    review: 'Review',
+    title: 'Upgrade check',
+    description:
+      'This upgrade moved trigger, safety and common output settings from Chats to bots and added system commands. Review the changes below or adjust them in one click.',
+    empty: 'Nothing left to review.',
+    confirmAll: 'Acknowledge all',
+    allConfirmed: 'All changes acknowledged',
+    acknowledge: 'Got it',
+    confirmedSection: '{{count}} acknowledged',
+    unknownBot: 'bot',
+    scopeDefault: 'bot default',
+    scopeRoutes: '{{count}} routes',
+    failed: 'Action failed: {{error}}',
+    actionDone: 'Done: {{action}}',
+    taskStarted: 'Started: {{action}}. Track progress in the task list.',
+    links: {
+      admins: 'Set admins in Sessions',
+      policy: 'Open message policy',
+      commands: 'Open plugins & commands',
+    },
+    actions: {
+      restore_prefixes: 'Also accept ! and ！',
+      uninstall_essential: 'Uninstall EssentialCommands',
+      remove_plugin: 'Remove from bot',
+      promote_route_policy: 'Make it the bot default',
+    },
+    confirm: {
+      uninstall_essential:
+        'EssentialCommands will be uninstalled (plugin data is kept). Commands with the same name are handled by system commands.',
+      remove_plugin:
+        'Plugin {{plugin}} will be removed from "{{bot}}"; its commands and event listeners stop working there.',
+      promote_route_policy:
+        'These identical settings become the default message policy of "{{bot}}" and the overrides on {{count}} routes are removed. Every route behaves the same.',
+    },
+    items: {
+      command_prefix_changed: {
+        title: 'Command prefix changed',
+        body: '"{{bot}}" used {{prefixes}} as command prefix; the default is now /.',
+        keep: 'Keep /',
+      },
+      plugin_command_collision: {
+        title: 'Names taken by system commands',
+        body: 'These plugin commands share a name with system commands, which now run instead: {{names}}',
+        bodyEssential:
+          'EssentialCommands is installed and system commands now cover it; same-name commands run as system commands: {{names}}',
+        keep: 'Keep plugin',
+      },
+      command_admin_missing: {
+        title: 'Admin-only commands without admins',
+        body: '"{{bot}}" has admin-only commands but no admins yet, so nobody can use them.',
+      },
+      command_plugin_enabled: {
+        title: 'Plugin newly enabled on a bot',
+        body: 'Plugin {{plugin}} provides commands, so the upgrade enabled it on "{{bot}}" ({{scope}}).',
+        keep: 'Keep',
+      },
+      equivalent_route_policies: {
+        title: 'Route overrides can be simplified',
+        body: '{{count}} route overrides of "{{bot}}" have the same effect and can become the bot default policy.',
+        unroutedCommands:
+          'Commands that match no route will also use these settings.',
+      },
+      chat_settings_moved: {
+        title: 'Chat settings moved',
+        body: 'Trigger, safety and common output settings now live on bots; {{count}} routes of "{{bot}}" keep the settings of their former Chat.',
+      },
+    },
+  },
   bots: {
+    routeCounts: {
+      last24h: 'Last 24h',
+      none: 'no messages',
+      ai: 'AI',
+      command: 'Commands',
+      plugin: 'Plugins',
+      policy: 'Blocked',
+    },
+    routingTabs: {
+      routes: 'Routes',
+      plugins: 'Plugins & commands',
+      policy: 'Message policy',
+    },
+    policy: {
+      scopeLabel: 'Applies to',
+      botDefault: 'Bot default',
+      routes: 'Routes',
+      custom: 'Custom',
+      inherit: 'Default',
+      inheritDefault: 'Use default',
+      routeMode: 'Policy for this route',
+      promote: 'Make bot default',
+      promoted: 'Set as bot default; {{count}} route(s) now use the default',
+      loadFailed: 'Failed to load the message policy',
+      botDefaultHint:
+        'The bot default applies to every route that receives messages; a route can override it. Only message.received events are affected.',
+      neutralDefaultHint:
+        'The current default blocks nothing and leaves replies unchanged.',
+      policyState: 'Policy: {{state}}',
+      pluginState: 'Plugins: {{state}}',
+      inheritHint:
+        'This route uses the bot default; the settings below are what is in effect. Switch to Custom to change them for this route.',
+      streamingNote:
+        'Streamed replies only apply forced delay, @sender and quoting; long-text processing does not apply.',
+      streamingPlatformLimit:
+        'On this platform the first streamed frame cannot carry an @ or a quote, so they are not shown on streamed replies.',
+      newRouteNeutral:
+        'New routes use the bot default message policy, which currently blocks nothing. You can set one for this route in the Message policy tab.',
+      newRouteInherits:
+        'New routes use the bot default message policy. You can set one for this route in the Message policy tab.',
+      settings: {
+        or: ', or ',
+        off: 'Off',
+        seconds: 'seconds',
+        who: {
+          title: 'Who gets replies',
+          hint: 'Which people and which messages the bot replies to.',
+        },
+        group: {
+          title: 'Group reply conditions',
+          all: 'Reply to every group message',
+          some: 'Reply when {{conditions}}',
+          none: 'No condition set: group messages get no reply',
+          allOption: 'Reply to every group message',
+          someOption: 'Only when conditions match',
+          anyHint:
+            'Replies when any condition below matches. Private chats are not affected.',
+          whenAt: '@-mentioned',
+          whenPrefix: 'starting with “{{prefixes}}”',
+          whenRegexp: 'matching {{count}} regex(es)',
+          whenRandom: 'randomly {{percent}}%',
+          atLabel: 'When the bot is @-mentioned',
+          prefixLabel: 'When the message starts with',
+          prefixHint:
+            'The prefix is removed before the message goes to the AI.',
+          prefixPlaceholder: 'Type a prefix and press Enter, e.g. ai',
+          regexpLabel: 'When the message matches a regex',
+          regexpPlaceholder: 'Type a regex and press Enter',
+          randomLabel: 'Random reply rate for other messages',
+          randomHint:
+            'Group messages that match none of the above get a reply at this rate.',
+        },
+        access: {
+          title: 'Who may use the bot',
+          everyone: 'Everyone',
+          blacklist: 'Block some chats',
+          whitelist: 'Only some chats',
+          everyoneSummary: 'Everyone',
+          blacklistSummary: '{{count}} chat(s) blocked',
+          whitelistSummary: 'Only {{count}} chat(s)',
+          whitelistEmpty: 'The list is empty: no chat gets replies',
+          format:
+            'Chat format: person_<user id> for private chats, group_<group id> for groups; person_* / group_* match all private chats / all groups.',
+        },
+        ignore: {
+          title: 'Ignored messages',
+          summary: '{{count}} ignore rule(s)',
+          none: 'Nothing ignored',
+          hint: 'Messages matching these rules are ignored in private and group chats, after the group reply conditions.',
+          prefixLabel: 'Ignore messages starting with',
+          prefixPlaceholder: 'Type a prefix and press Enter, e.g. #',
+        },
+        read: {
+          title: 'How messages are read',
+        },
+        aggregate: {
+          title: 'Merge consecutive messages',
+          on: 'Merged after {{seconds}}s',
+          label: 'Merge messages a user sends in a row',
+          hint: 'When a user sends several messages quickly, wait and handle them as one instead of replying to each.',
+          wait: 'Wait',
+        },
+        quoteIn: {
+          title: 'Include quoted message',
+          on: 'On',
+          label: 'Pass the quoted message to the AI too',
+          hint: 'When a user replies to a message, its content is added to theirs.',
+        },
+        safety: {
+          title: 'Safety and rate limits',
+        },
+        filter: {
+          title: 'Sensitive word filter',
+          label: 'Check for sensitive words',
+          hint: 'Configure the words in data/metadata/sensitive-words.json.',
+          check: 'Check',
+          scope: {
+            all: 'Incoming and reply messages',
+            'income-msg': 'Incoming messages only',
+            'output-msg': 'Replies only',
+          },
+        },
+        rate: {
+          title: 'Rate limit',
+          summary: 'At most {{count}} per {{seconds}}s, then {{strategy}}',
+          label: 'Limit messages per chat',
+          hint: 'Stops flooding and protects your usage quota.',
+          every: 'At most',
+          secondsAtMost: 'seconds:',
+          messages: 'messages',
+          whenExceeded: 'When exceeded',
+          strategy: {
+            drop: 'drop',
+            wait: 'queue',
+          },
+        },
+        reply: {
+          title: 'How the bot replies',
+        },
+        style: {
+          title: '@ and quoting',
+          atSender: '@ sender in groups',
+          quote: 'Quote original',
+          plain: 'Plain reply',
+          atSenderLabel: '@-mention the sender in group replies',
+          quoteLabel: 'Quote the original message',
+        },
+        delay: {
+          title: 'Reply delay',
+          summary: 'Random {{min}}–{{max}}s wait',
+          none: 'Reply immediately',
+          hint: 'Wait a random time before replying, to feel more human.',
+          wait: 'Wait',
+        },
+        long: {
+          title: 'Long text',
+          none: 'Unchanged',
+          summary: 'Over {{threshold}} characters: {{strategy}}',
+          when: 'Over',
+          chars: 'characters:',
+          strategy: {
+            none: 'Unchanged',
+            forward: 'Merged forward',
+            image: 'Image',
+          },
+          font: 'Image font path',
+          fontPlaceholder: 'Leave empty for the default font',
+        },
+        errors: {
+          title: 'When something fails',
+          rowTitle: 'Error replies',
+          mode: {
+            'show-hint': 'Short notice',
+            'show-error': 'Show error details',
+            hide: 'No reply',
+          },
+          modeHint: {
+            'show-hint':
+              'Reply with a short failure notice without error details.',
+            'show-error': 'Reply with the raw error, useful for debugging.',
+            hide: 'Send nothing when something fails.',
+          },
+          customCount: '{{count}} custom message(s)',
+          hintsIntro:
+            'Custom messages (leave empty for the default in the workspace language; custom text is not translated):',
+          hints: {
+            'failure-hint': 'Processing failed',
+            'rate-limit-hint': 'Rate limit exceeded',
+            'content-filter-hint': 'Content filtered',
+            'content-filter-error-hint': 'Content check failed',
+          },
+          defaultPlaceholder: 'Default message',
+        },
+      },
+    },
+    systemCommands: {
+      title: 'System commands',
+      entry: 'System commands · {{enabled}}/{{total}}',
+      description:
+        'Commands built into LangBot, matched by the command prefix together with plugin commands. Turn each on or off and choose who may use it.',
+      readOnly:
+        'System commands apply to the whole bot; change them under Bot default.',
+      admins: 'Admins',
+      noAdmins:
+        'No admins yet, so commands set to "Admins only" can\'t be used by anyone.',
+      denied: 'Without permission',
+      deniedSilent: 'No reply',
+      deniedNotice: 'Reply with a notice',
+      deniedSilentHint:
+        'Treated as if the command did not exist; the message goes on to the routes.',
+      deniedNoticeHint:
+        'Replies "You don\'t have permission to do this" in the workspace language.',
+      everyone: 'Everyone',
+      adminsOnly: 'Admins only',
+      permissionOf: 'Who may use {{command}}',
+      enableCommand: 'Enable {{command}}',
+      pluginCommands: 'Plugin commands',
+      pluginCommandsHint:
+        'Commands from enabled plugins can be limited to admins one by one.',
+      adminsCount: '{{count}} admin(s) set.',
+      adminsNone: 'No admins set yet.',
+      adminsWhere: 'Admins are managed in the session monitor.',
+      openSessions: 'Open session monitor',
+      pluginEntry: 'Set access',
+      pluginEntryRestricted: '{{count}} admins-only',
+      groups: {
+        session: 'Session',
+        info: 'Info',
+        admin: 'Admin',
+      },
+    },
+    pluginHooks: {
+      openSettings: 'Open plugin settings',
+      devDocsHint: 'Want to build your own command or hook plugin? See the',
+      devDocs: 'plugin development docs',
+      devDocsUrl: 'https://langbot.app/docs/en/plugin/dev/tutor',
+      tabDescription:
+        'Set up commands and plugins here: a command runs when a user sends the prefix plus its name; plugins provide commands and chat event hooks.',
+      routeMode: 'Plugins for this route',
+      lifecycleTitle: 'Message lifecycle',
+      lifecycleHint: 'Icons show enabled plugins acting at each step',
+      policyCaption: 'Message policy',
+      enableTitle: 'Plugins',
+      enableHint:
+        'Commands: the plugin runs when a user sends the prefix plus a command name. Chat event hooks: step in at points such as message received or before/after a reply, while the Agent or Chat chosen by the routes still handles the message.',
+      inheritHint:
+        'This route uses the bot default plugin selection. Switch to Custom to choose plugins for this route.',
+      loadFailed: 'Failed to load plugins',
+      empty: 'No plugins added yet.',
+      browseMarket: 'Install plugins',
+      registrationsUnknown:
+        'The Plugin Runtime is too old to report which hooks each plugin registers.',
+      globallyDisabled: 'Plugin disabled',
+      hooksUnknown: 'Hooks unknown',
+      enablePlugin: 'Enable {{plugin}} on this bot',
+      allEnabledHint:
+        'All plugins are enabled, including ones installed later.',
+      notInstalled: 'Not installed',
+      remove: 'Remove {{plugin}}',
+      kinds: {
+        command: 'Commands',
+        hook: 'Chat event hooks',
+      },
+      add: {
+        installNew: 'Install new plugin',
+        button: 'Add plugin',
+        title: 'Add plugins',
+        description:
+          'Choose plugins that provide commands or chat event hooks. Takes effect after you save the bot.',
+        installed: 'Installed',
+        marketplace: 'From Marketplace',
+        noInstalled:
+          'All installed command and hook plugins are already added.',
+        search: 'Search plugins',
+        all: 'All',
+        loading: 'Loading Marketplace…',
+        unavailable: 'Cannot reach the Marketplace',
+        noMarketplace:
+          'No uninstalled or updatable plugins match in the Marketplace.',
+        viewMarketplace: 'View in Marketplace',
+        confirm: 'Add {{count}} plugin(s)',
+        installAndAdd: 'Install and add {{plugin}}',
+        installedAdded:
+          'Installed and added {{plugin}}. Save the bot to apply.',
+        installFailed: 'Installation failed',
+        alreadyAdded: 'Added',
+        update: 'Update',
+        updateAvailable: 'Update {{from}} → {{to}}',
+        updated: '{{plugin}} updated',
+        updateFailed: 'Update failed',
+      },
+      commands: {
+        botWide:
+          'The command switch, prefixes and command settings apply to the whole bot. Change them under Bot default.',
+        label: 'Plugin commands',
+        hint: 'Received messages only, matched before routes. On a name clash, system commands win, then plugins higher in the list.',
+        title: 'Commands',
+        enable: 'Enable commands',
+        prefixHint:
+          'System and plugin commands share these prefixes, e.g. {{example}}.',
+        systemHint:
+          'Commands built into LangBot, such as /help, /new and /stop.',
+        pluginTitle: 'Plugin commands',
+        pluginNone: 'The added plugins provide no commands.',
+        pluginHint:
+          'From the plugins added below; use Set access to limit commands to admins.',
+      },
+      commandConfig: {
+        button: 'Command settings',
+        title: 'Command settings for {{plugin}}',
+        description:
+          'Applies to this bot only. Without changes, commands use the plugin defaults.',
+        custom: 'Custom command settings',
+        commandsOff: 'Commands off',
+        useDefaults: 'Restore defaults',
+        saved: 'Command settings saved.',
+        created: 'Command settings created. Save the bot to apply them.',
+      },
+      processors: {
+        messaging: 'Chat',
+        agent: 'Agent',
+        command: 'Command',
+      },
+      reasons: {
+        observeOnly: 'Platform event: notified only, cannot block',
+        promptOnAgent: 'Routed to an Agent; prompt hooks do not apply',
+        notOnRoute: 'Not used on this route; applies to {{processors}} only',
+        streamObserveOnly:
+          'With streamed replies this hook can only observe; it cannot change what was already sent',
+      },
+      steps: {
+        received: 'Received',
+        command: 'Command',
+        admission: 'Admission',
+        before: 'Before reply',
+        process: 'Process',
+        after: 'After reply',
+        send: 'Send',
+      },
+      events: {
+        GroupMessageReceived: 'Group message',
+        PersonMessageReceived: 'Private message',
+        GroupCommandSent: 'Group command',
+        PersonCommandSent: 'Private command',
+        GroupNormalMessageReceived: 'Group normal message',
+        PersonNormalMessageReceived: 'Private normal message',
+        PromptPreProcessing: 'Prompt preprocessing',
+        NormalMessageResponded: 'After reply',
+      },
+    },
+    platformCommands: {
+      title: 'Register on platform',
+      overwrite:
+        'Replaces all commands managed in the platform console, including manually configured commands. Turning this off clears the registered list.',
+      limits:
+        'Up to {{count}} commands; descriptions up to {{length}} characters. Names:',
+      prefixWarning:
+        'No / prefix: Telegram menu commands will not match. Discord interactions still work.',
+      failed: 'Synchronization failed',
+      synced: 'Last synchronized: {{time}}',
+      notSynced: 'Not synchronized',
+      sync: 'Sync now',
+      saveFirst: 'Save bot settings before synchronizing.',
+      reasons: {
+        invalid_name: 'Invalid command name',
+        invalid_description: 'Description is empty or too long',
+        invalid_localized_description: 'Localized description is too long',
+        command_limit: 'Platform command limit exceeded',
+        unavailable: 'Command is unavailable',
+      },
+    },
+    pluginCommands: {
+      prefixes: 'Command Prefixes',
+      prefixPlaceholder: 'Enter prefix and press Enter (e.g. / or !)',
+      addPrefix: 'Add Prefix',
+      prefixInvalid: 'Prefix cannot be empty and cannot contain whitespace',
+      prefixDuplicate: 'Prefix already exists',
+      overriddenBy: 'Overridden by {{plugin}} (higher priority)',
+    },
     pluginSubscriptions: {
+      docs: 'Plugin processor dev docs',
+      docsUrl: 'https://langbot.app/docs/en/plugin/dev/components/runner',
       incompleteEvents:
         'This bot only supports some of the subscribed events ({{events}}). The processor may not behave as intended in all cases.',
       description:
-        'Automatically receive events declared by the plugin, independently of the routes above.',
-      empty: 'No plugin processors are bound.',
+        'The plugin fully handles the events it subscribes to, with no Agent or Chat needed. Runs independently of routes.',
+      empty:
+        'No plugin processors yet. Use the button below to pick an installed plugin or install one from the marketplace.',
       add: 'Add plugin processor',
       existing: 'Choose configuration',
       new: 'New configuration',
@@ -1074,7 +1526,7 @@ const enUS = {
     saveError: 'Save failed: ',
     createSuccess: 'Created successfully. Continue configuring the bot',
     autoCreatedPipeline:
-      'Automatically created a pipeline and bound message events',
+      'Automatically created a chat and bound message events',
     createError: 'Creation failed: ',
     deleteSuccess: 'Deleted successfully',
     deleteError: 'Delete failed: ',
@@ -1090,8 +1542,8 @@ const enUS = {
       'Legacy adapters mainly send and receive messages and remain available for existing bot configurations.\nNew adapters connect to the same platform using events, including messages and supported friend requests or group changes, routed to processors.\nPrefer the new adapter for new bots. Existing bots can keep using legacy adapters. When switching, review connection settings and event routes; this does not upgrade your platform account.',
     adapterConfig: 'Adapter Configuration',
     viewAdapterDocs: 'View Docs',
-    bindPipeline: 'Bind Pipeline',
-    selectPipeline: 'Select Pipeline',
+    bindPipeline: 'Bind Chat',
+    selectPipeline: 'Select Chat',
     selectBot: 'Select Bot',
     botLogTitle: 'Bot Log',
     enableAutoRefresh: 'Enable Auto Refresh',
@@ -1111,7 +1563,7 @@ const enUS = {
     basicInfoDescription: 'Set the bot name and description',
     routingConnection: 'Routing & Connection',
     routingConnectionDescription:
-      'Bind the pipeline that processes messages for this bot',
+      'Bind the chat that processes messages for this bot',
     routingHelp: {
       title: 'What is event routing?',
       intro:
@@ -1135,6 +1587,15 @@ const enUS = {
       play: 'Play',
     },
     eventRouting: 'Event Routing',
+    routingLayers: {
+      rules: 'Routes',
+      commands: 'Plugin commands',
+      processors: 'Plugin processors',
+      rulesDescription:
+        'Routes send events to LangBot processors you configure (Agents, Chats), which handle them with AI. Events not handled by a plugin command are matched in order, and the first matching route handles them. To use plugins only, without AI, delete or disable the routes.',
+      commandsDisabled:
+        'Plugin commands are off; messages go straight to routes.',
+    },
     eventRoutingDescription: 'Choose which processor handles each event.',
     eventBindings: 'Event Routes',
     addEventBinding: 'Add Route',
@@ -1164,7 +1625,7 @@ const enUS = {
     targetType: 'Target Type',
     target: 'Processor',
     targetAgent: 'Agent',
-    targetPipeline: 'Pipeline',
+    targetPipeline: 'Chat',
     targetDiscard: 'Discard',
     selectTarget: 'Select processor',
     searchTarget: 'Search processors…',
@@ -1174,7 +1635,7 @@ const enUS = {
     eventBindingDescriptionPlaceholder: 'Rule description',
     noEventBindings: 'No event routes',
     unsupportedPipelineEvent:
-      'Pipelines can only be used for message.received events',
+      'Chats can only be used for message.received events',
     disable: 'Disable',
     enable: 'Enable',
     disabledBindings: 'Disabled',
@@ -1366,6 +1827,22 @@ const enUS = {
     conditionsDescription:
       'All conditions must match to trigger this binding. Leave empty to always trigger.',
     conditionsEmpty: 'No conditions — always triggers.',
+    routeNote: {
+      templatePerson: 'Private messages',
+      templateGroup: 'Group messages that @ the bot',
+      label: 'Note',
+      placeholder:
+        'Optional, e.g. "Support group". Shown in route lists and the scope picker.',
+    },
+    routeCard: {
+      noTarget: 'No processor selected',
+      edit: 'Edit route',
+      event: 'Event',
+      target: 'Send to',
+    },
+    routeSummary: {
+      always: 'All messages',
+    },
     addFilter: 'Add condition',
     filterIsAtBot: 'Mentions this bot',
     mentionYes: 'Yes',
@@ -1382,7 +1859,7 @@ const enUS = {
     operator_regex: 'regex',
     routingRules: 'Conditional Routing Rules',
     routingRulesDescription:
-      'Rules are evaluated in order; first match routes to its pipeline. Fallback to the default pipeline above if none match.',
+      'Rules are evaluated in order; first match routes to its chat. Fallback to the default chat above if none match.',
     addRoutingRule: 'Add Rule',
     ruleTypeLauncherType: 'Session Type',
     ruleTypeLauncherId: 'Session ID',
@@ -1528,6 +2005,11 @@ const enUS = {
     },
   },
   agents: {
+    layout: {
+      platformTools: 'Platform tools',
+      hostTools: 'Plugin & MCP tools',
+      toolsSheetDescription: 'Takes effect after you save the Agent.',
+    },
     apiToolsSelectAll: 'Select all',
     monitoring: {
       rangeDays: 'Last {{days}} days',
@@ -1558,12 +2040,120 @@ const enUS = {
       rawEvents: 'Raw run events',
       inputUnavailable: 'Input was not recorded for this run.',
     },
+    commandProcessor: {
+      loadingCatalog: 'Loading command plugins...',
+      catalogUnavailable: 'Unable to load command plugins',
+      installFailed: 'Command plugin installation failed',
+      installTimeout:
+        'Command plugin installation timed out. Check the task on the Extensions page.',
+      registrationTimeout:
+        'The plugin was installed, but its commands did not register in time. Refresh and try again.',
+      diagnosis: {
+        missing:
+          'The selected command plugin is missing. Install or restore the plugin.',
+        disabled:
+          'The selected command plugin is disabled. Enable it on the plugins page.',
+        runtime:
+          'The plugin runtime is unavailable or disabled. Restore the connection and try again.',
+        draft:
+          'The repair page opens in a new tab; your current selection and unsaved draft are kept.',
+      },
+      debugTitle: 'Command Debug',
+      type: 'Command processor',
+      plugin: 'Plugin',
+      selectPlugin: 'Select command plugin',
+      unavailable: 'Plugin unavailable',
+      noSettings: 'No command settings',
+      notice: 'Handle plugin commands before event routing.',
+      bindBot: 'Bind to bot',
+      description:
+        'Handles commands that start with a prefix, such as /help or /draw. Matched before event routes; a hit replies directly.',
+      noPlugins: 'No installed plugin provides commands.',
+      noMarketplace: 'No plugins with commands in the marketplace.',
+      docs: 'Command component docs',
+      debugCommand: 'Command',
+      debugArgs: 'Arguments (optional)',
+      run: 'Run command',
+      saveAndRun: 'Save and run',
+      debugNotice:
+        'Runs the command once as an administrator. Replies stay here and are not sent to any platform.',
+      debugEmpty: 'Pick a command and run it to see its replies here.',
+      debugFailed: 'Command debugging failed',
+      noOutput: 'The command returned no reply.',
+      outputs: 'Replies',
+      noRuns:
+        'No command has run yet. Bind this processor to a bot or run one in Debug.',
+      sourceDebug: 'Debug',
+      sourcePlatform: 'Bot message',
+    },
+    diagram: {
+      bestFor: 'Best for: ',
+      messageReceived: 'Message received',
+      anyEvent: 'Any bot event',
+      anyEventCaption: 'Messages, member joins, friend requests…',
+      model: 'Model',
+      knowledge: 'Knowledge base',
+      tools: 'Tools',
+      externalAgent: 'External Agent',
+      reply: 'Reply to the conversation',
+      replyOrAction: 'Reply or platform action',
+      pipeline: {
+        summary:
+          'Takes a message through trigger rules and AI generation, then replies.',
+        group: 'Inside the chat',
+        trigger: 'Trigger rules and preprocessing',
+        generate: 'AI generates the reply',
+        generateCaption: 'Uses the model, knowledge base and tools',
+        bestFor: 'Q&A, customer service and knowledge-base chat.',
+      },
+      agent: {
+        summary:
+          'Reads your natural-language instructions and decides how to handle each event.',
+        group: 'Inside the Agent',
+        instructions: 'Your instructions',
+        instructionsCaption: 'How to handle each kind of event',
+        decide: 'AI decides and acts',
+        decideCaption: 'Calls tools or platform actions as needed',
+        bestFor:
+          'Handling many event types intelligently, or connecting an external Agent platform.',
+      },
+      eventProcessor: {
+        summary:
+          'Plugin code receives the events it subscribes to and handles them with fixed logic.',
+        input: 'Subscribed events',
+        inputCaption: 'Member joins, friend requests, messages…',
+        group: 'Inside the plugin',
+        handle: 'Plugin code handles the event',
+        outputCaption: 'Welcome message, approve request, statistics…',
+        branch: 'Runs alongside routes and does not block them.',
+        bestFor:
+          'Rule-based automation such as welcomes, request review and event logging.',
+      },
+      commandProcessor: {
+        hit: 'Matched',
+        miss: 'Not a command',
+        summary:
+          'Handles messages that start with a command prefix before any route runs.',
+        group: 'Inside the command processor',
+        match: 'Match prefix and command name',
+        matchCaption: 'Only registered command names match',
+        run: 'Plugin runs the command',
+        runCaption: "With this instance's configuration",
+        branch:
+          'No match: the message continues to plugin processors and routes.',
+        bestFor:
+          'Explicit operations users type, such as /help, /reset or /draw.',
+      },
+    },
+    fromPlugin: 'From a plugin',
+    fromPluginDescription:
+      'Run logic written by a plugin, with no AI involved. The plugin handles messages and other events it declares.',
     eventProcessor: {
       configurations: 'Plugin processor configurations',
       configTab: 'Configuration',
       logsTab: 'Logs',
       noSettings: 'This plugin processor requires no configuration.',
-      createPageTitle: 'Create event processor',
+      createPageTitle: 'Create processor',
       processWithPlugin: 'Process with plugin code',
       pluginSettings: 'Plugin settings',
       pluginSettingsDescription: 'Parameters declared by this plugin.',
@@ -1643,9 +2233,9 @@ const enUS = {
     agentType: 'Agent',
     agentTypeDescription:
       'Describe how to handle different events in natural language and let AI act, or connect an external Agent platform to process them.',
-    pipelineType: 'Pipeline',
+    pipelineType: 'Chat',
     kindBadgeAgent: 'Agent',
-    kindBadgePipeline: 'Pipeline',
+    kindBadgePipeline: 'Chat',
     groupByKind: 'Group by type',
     groupByKindShort: 'Group',
     pipelineTypeDescription:
@@ -1662,9 +2252,9 @@ const enUS = {
     agentDiagramTitle: 'Agent: decide and act',
     agentDiagramDescription:
       'An Agent can receive many platform events, use models and tools to understand the situation, and decide what to do next.',
-    pipelineDiagramTitle: 'Pipeline: follow a defined flow',
+    pipelineDiagramTitle: 'Chat: follow a defined flow',
     pipelineDiagramDescription:
-      'A Pipeline handles message events only and runs each step in the order you configure.',
+      'A Chat handles message events only and runs each step in the order you configure.',
     pipelineDiagramFlow: 'Messages move through a fixed sequence',
     diagramEvents: 'Platform events',
     diagramAgentCanUse: 'Available to Agent',
@@ -1862,9 +2452,13 @@ const enUS = {
     debugRunFailed: 'Agent debug run failed',
   },
   plugins: {
+    enabledOnBots: 'Plugin enabled on {{count}} bot(s)',
+    notEnabledOnBots:
+      'The plugin is not enabled on any bot yet, so its commands and chat event hooks are inactive.',
+    goEnable: 'Enable',
     title: 'Extensions',
     description:
-      'Install and configure plugins to extend functionality, please select them in the pipeline configuration',
+      'Install and configure plugins to extend functionality, please select them in the chat configuration',
     createPlugin: 'Create Plugin',
     editPlugin: 'Edit Plugin',
     installed: 'Installed',
@@ -1952,7 +2546,7 @@ const enUS = {
     modifyFailed: 'Modify failed: ',
     componentName: {
       Tool: 'Tool',
-      EventListener: 'Event Listener',
+      EventListener: 'Chat Event Hook',
       Command: 'Command',
       KnowledgeEngine: 'Knowledge Engine',
       Parser: 'Parser',
@@ -2280,6 +2874,12 @@ const enUS = {
     confirmInstall: 'Confirm Install',
     installFromGithubDesc: 'Install plugin from GitHub Release',
     goToMarketplace: 'Go to Extension Market',
+    notReady: {
+      awaitingTitle: 'Waiting for permission confirmation',
+      awaitingDescription:
+        'This plugin starts only after you confirm its permissions; its settings and docs load once it runs. Review and confirm them under Plugin permissions.',
+      starting: 'The plugin is starting and will load shortly…',
+    },
     installProgress: {
       title: 'Installing {{name}}',
       updateTitle: 'Updating {{name}}',
@@ -2306,7 +2906,8 @@ const enUS = {
       followUp: {
         nextSteps: 'Next steps',
         agents: 'Create an Agent or plugin processor',
-        pipelines: 'Create a pipeline',
+        bots: 'Add it to a bot (Plugins tab) to use its commands and hooks',
+        pipelines: 'Create a chat',
         knowledge: 'Create a knowledge base',
       },
       updateComplete: 'Plugin updated successfully',
@@ -2335,7 +2936,7 @@ const enUS = {
 
     runnerUsage: 'Runner usage',
     runnerUsageAll: 'All',
-    runnerUsageAgent: 'Agent / Pipeline',
+    runnerUsageAgent: 'Agent / Chat',
     runnerUsageEvent: 'Plugin processor',
     searchPlaceholder: 'Search plugins...',
     searchPlaceholderCount:
@@ -2395,11 +2996,11 @@ const enUS = {
     markAsReadFailed: 'Mark as read failed',
     filterByComponent: 'Plugin Component',
     filterByComponentHint:
-      'The capability types a plugin provides — Tool, Command, EventListener, etc. — used to extend LangBot in various ways. Filter by component to show only plugins offering that capability.',
+      'The capability types a plugin provides — Tool, Command, Chat Event Hook (EventListener), etc. — used to extend LangBot in various ways. Filter by component to show only plugins offering that capability.',
     allComponents: 'All Components',
     componentName: {
       Tool: 'Tool',
-      EventListener: 'Event Listener',
+      EventListener: 'Chat Event Hook',
       Command: 'Command',
       KnowledgeEngine: 'Knowledge Engine',
       Parser: 'Parser',
@@ -2573,16 +3174,53 @@ const enUS = {
       'Once deleted, this MCP server configuration cannot be recovered.',
   },
   pipelines: {
-    title: 'Pipelines',
+    chatConfig: {
+      tools: 'Tools',
+      toolsHint:
+        'Plugin tools, MCP servers, skills and workspace operations the AI can call while answering.',
+      manageTools: 'Manage tools',
+      toolsSheetDescription:
+        'Plugin, MCP server and skill changes save immediately; workspace operations need "Save tool access".',
+      plugins: 'Plugin tools',
+      mcp: 'MCP servers',
+      skills: 'Skills',
+      operations: 'Workspace operations',
+      all: 'All',
+      countItems: '{{count}}',
+      none: 'None',
+      retrieval: 'Retrieval settings',
+      runnerSettings: '{{runner}} settings',
+      more: 'More settings',
+      context: 'Conversation context',
+      scopeMember: 'Each group member has their own conversation',
+      scopeGroup: 'Whole group shares one conversation',
+      expireNever: 'Conversations never expire',
+      expireAfter: 'New conversation after {{seconds}}s idle',
+      runtime: 'Run limits and tool calls',
+      sandbox: 'Sandbox',
+      on: 'On',
+      off: 'Off',
+      reply: 'Reply content',
+      hints: 'Notice messages',
+      hintsCustom: '{{count}} customised',
+      advanced: 'Other advanced settings',
+      default: 'Default',
+      modified: '{{count}} changed',
+      manage: 'Manage',
+      manageSummary: 'Copy or delete this Chat',
+    },
+    outputMovedToPolicy:
+      "Entry conditions, safety and general reply settings (long text, forced delay, @sender, quoting, error hints) moved to the bot's Message policy tab. Only AI-specific output options remain here.",
+    title: 'Chats',
     description:
-      'Pipelines define the processing flow for message events, used to bind to bots',
-    createPipeline: 'Create Pipeline',
-    selectFromSidebar: 'Select a pipeline from the sidebar',
-    editPipeline: 'Edit Pipeline',
+      'Chats define how AI handles and replies to messages, used to bind to bots',
+    createPipeline: 'Create Chat',
+    selectFromSidebar: 'Select a chat from the sidebar',
+    editPipeline: 'Edit Chat',
     chat: 'Chat',
     configuration: 'Configuration',
     debugChat: 'Debug Chat',
-    getPipelineListError: 'Failed to get pipeline list: ',
+    getPipelineListError: 'Failed to get chat list: ',
     daysAgo: 'days ago',
     today: 'Today',
     updateTime: 'Updated ',
@@ -2593,8 +3231,8 @@ const enUS = {
     recentlyEdited: 'Recently Edited',
     earliestEdited: 'Earliest Edited',
     basicInfo: 'Basic Information',
-    basicInfoDescription: 'Set the pipeline name, icon and description',
-    managementDescription: 'Copy or delete this pipeline.',
+    basicInfoDescription: 'Set the chat name, icon and description',
+    managementDescription: 'Copy or delete this chat.',
     aiCapabilities: 'AI',
     triggerConditions: 'Trigger',
     safetyControls: 'Safety',
@@ -2602,28 +3240,27 @@ const enUS = {
     speechProcessing: 'Speech',
     nameRequired: 'Name cannot be empty',
     descriptionRequired: 'Description cannot be empty',
-    createSuccess: 'Created successfully. Please edit pipeline parameters',
+    createSuccess: 'Created successfully. Please edit chat parameters',
     createError: 'Creation failed: ',
     saveSuccess: 'Saved successfully',
     saveError: 'Save failed: ',
     copySuffix: ' Copy',
     deleteConfirmation:
-      'Are you sure you want to delete this pipeline? Bots bound to this pipeline will not work.',
-    defaultPipelineCannotDelete: 'Default pipeline cannot be deleted',
+      'Are you sure you want to delete this chat? Bots bound to this chat will not work.',
+    defaultPipelineCannotDelete: 'Default chat cannot be deleted',
     deleteSuccess: 'Deleted successfully',
     deleteError: 'Delete failed: ',
     copyConfirmTitle: 'Confirm Copy',
     copyConfirmation:
-      'Are you sure you want to copy this pipeline? This will create a new pipeline with all configurations.',
+      'Are you sure you want to copy this chat? This will create a new chat with all configurations.',
     unsavedChanges: 'You have unsaved changes',
     dangerZone: 'Danger Zone',
     dangerZoneDescription: 'Irreversible and destructive actions',
-    deletePipelineAction: 'Delete this pipeline',
+    deletePipelineAction: 'Delete this chat',
     deletePipelineHint:
-      'Once deleted, bots bound to this pipeline will stop working.',
-    copyPipelineAction: 'Copy this pipeline',
-    copyPipelineHint:
-      'Create a new pipeline with all configurations duplicated.',
+      'Once deleted, bots bound to this chat will stop working.',
+    copyPipelineAction: 'Copy this chat',
+    copyPipelineHint: 'Create a new chat with all configurations duplicated.',
     extensions: {
       title: 'Extensions',
       loadError: 'Failed to load plugins',
@@ -2634,9 +3271,9 @@ const enUS = {
       noPluginsSelected: 'No plugins selected',
       addPlugin: 'Add Plugin',
       selectPlugins: 'Select Plugins',
-      pluginsTitle: 'Plugins',
+      pluginsTitle: 'Tools the AI can call',
       pluginScopeHint:
-        'Only controls event listeners, tools and commands for this pipeline; does not affect the Runner selected in AI settings.',
+        "Controls only which plugin tools the AI in this chat can call. Plugin commands and chat event hooks are added in the bot's Plugins tab.",
       runnerScopeHint:
         'Select the Runner independently here, regardless of extension plugin switches. Its plugin must still be installed and available.',
       mcpServersTitle: 'MCP Servers',
@@ -2654,7 +3291,7 @@ const enUS = {
       enableAllMCPServers: 'Enable All MCP Servers',
       enableAllSkills: 'Enable All Skills',
       toolsDescription:
-        'Choose which event tools, bot tools and workspace operations the agent may call. Pipelines reply with the model text output automatically, so no reply tool is needed.',
+        'Choose which event tools, bot tools and workspace operations the agent may call. Chats reply with the model text output automatically, so no reply tool is needed.',
       saveTools: 'Save tool access',
       allPluginsEnabled: 'All plugins enabled',
       allMCPServersEnabled: 'All MCP servers enabled',
@@ -2665,7 +3302,7 @@ const enUS = {
       selectSkills: 'Select Skills',
       noSkillsAvailable: 'No skills available',
       mcpServersScopeTooltip:
-        'This only controls which MCP servers are bound to the pipeline. Choose exact MCP tools and resources in AI Feature > Runner.',
+        'This only controls which MCP servers are bound to the chat. Choose exact MCP tools and resources in AI Feature > Runner.',
       enableAllMCPServersTooltip:
         'When enabled, all configured and enabled MCP servers become candidates for MCP tools and resources in AI Feature.',
     },
@@ -2702,8 +3339,8 @@ const enUS = {
       selectKnowledgeBases: 'Select knowledge bases',
     },
     debugDialog: {
-      title: 'Pipeline Chat',
-      selectPipeline: 'Select Pipeline',
+      title: 'Debug chat',
+      selectPipeline: 'Select Chat',
       sessionType: 'Session Type',
       privateChat: 'Private Chat',
       groupChat: 'Group Chat',
@@ -2718,7 +3355,7 @@ const enUS = {
       resetSuccess: 'Conversation reset successfully',
       resetFailed: 'Reset failed',
       loadMessagesFailed: 'Failed to load messages',
-      loadPipelinesFailed: 'Failed to load pipelines',
+      loadPipelinesFailed: 'Failed to load chats',
       atTips: 'Mention the bot',
       streaming: 'Streaming',
       streamOutput: 'Stream',
@@ -2750,7 +3387,7 @@ const enUS = {
       title: 'Run logs',
       workbench: 'Configure & debug',
       description:
-        'View execution logs and errors for this pipeline (last 24 hours)',
+        'View execution logs and errors for this chat (last 24 hours)',
       detailedLogs: 'Detailed Logs',
     },
   },
@@ -3274,21 +3911,88 @@ const enUS = {
       },
     },
     execution: {
+      handling: {
+        ai: 'AI',
+        command: 'Command',
+        plugin: 'Plugin',
+        policy: 'Blocked by policy',
+      },
+      badges: {
+        builtinCommand: 'System command /{{name}}',
+        pluginCommand: 'Plugin command /{{name}}',
+        commandProcessor: 'Command processor',
+        commandDenied: 'Command denied',
+        policyBlocked: 'Blocked by policy · {{item}}',
+        policyBlockedUnknown: 'Blocked by policy',
+        pluginIntercepted: 'Plugin intercepted · {{plugin}} ({{hook}})',
+      },
+      policyItems: {
+        'access-control': 'Access control',
+        'group-respond-rules': 'Group response rules',
+        'rate-limit': 'Rate limit',
+        'ignore-rules': 'Ignore rules',
+        'content-filter': 'Content filter',
+        'outbound-content-filter': 'Outbound content filter',
+      },
+      policyLayer: {
+        bot: 'bot default policy',
+        route: 'route override policy',
+      },
+      timeline: {
+        title: 'Message policy',
+        steps: {
+          admission: 'Admission',
+          hooks: 'Lifecycle hooks',
+          processor: 'Processor',
+          output: 'Output',
+        },
+        admitted: 'Admitted',
+        blocked: 'Blocked by the message policy',
+        blockedBy: 'Blocked by "{{item}}" of the {{layer}}; no reply was sent',
+        unknownLayer: 'message policy',
+        notReached: 'Not run',
+        hookBy: 'Plugin {{plugin}} intercepted the message in {{hook}}',
+        noHook: 'No plugin intercepted it',
+        earlyHookOnly:
+          'MessageReceived ran and did not intercept; later hooks did not run',
+        denied: '/{{name}} denied: not permitted ({{reply}})',
+        deniedNotice: 'replied with a notice',
+        deniedSilent: 'no reply',
+        builtin: 'Ran system command /{{name}}',
+        pluginCommand: 'Ran plugin command /{{name}}',
+        discarded: 'The routing rule discards it',
+        handledBy: 'Handled by {{target}}',
+        noOutput: 'No output processing',
+        outputApplied: 'Applied before the reply was sent',
+        actions: {
+          long_text: 'Long text {{strategy}}',
+          strategy: {
+            image: 'as image',
+            forward: 'as forwarded message',
+          },
+          delay: 'Delayed {{ms}} ms',
+          at: '@ sender',
+          quote: 'Quoted the message',
+          outbound_block: 'Outbound content filter blocked the reply',
+        },
+      },
       title: 'Executions',
       subtitle:
-        'Every inbound event and the execution it triggered, across agents and pipelines.',
+        'Every inbound event and the execution it triggered, across agents and chats.',
       tabs: { executions: 'Executions' },
       filters: {
         source: 'Type',
         sourceAll: 'All types',
         sourceAgent: 'Agents',
-        sourcePipeline: 'Pipelines',
+        sourcePipeline: 'Chats',
         mode: 'Traffic',
         modeAll: 'Live + debug',
         modeLive: 'Live only',
         modeDebug: 'Debug only',
         status: 'Status',
         statusAll: 'All statuses',
+        handling: 'Handling',
+        handlingAll: 'All handling',
       },
       status: {
         completed: 'Completed',
@@ -3297,11 +4001,12 @@ const enUS = {
         queued: 'Queued',
         cancelled: 'Cancelled',
         ignored: 'Ignored',
+        denied: 'Denied',
       },
       // prettier-ignore
       kind: {
         agent: 'Agent',
-        pipeline: 'Pipeline',
+        pipeline: 'Chat',
         processor: 'Processor',
       },
       columns: {
@@ -3317,8 +4022,8 @@ const enUS = {
       triggeredBy: 'Triggered by {{trigger}}',
       handledByPlugin: 'Handled by plugin {{plugin}}',
       handledByUnknownPlugin: 'Handled by an unidentified plugin',
-      filteredByStage: 'Stopped by pipeline · {{stage}}',
-      filteredByUnknownStage: 'Stopped by pipeline',
+      filteredByStage: 'Stopped by chat · {{stage}}',
+      filteredByUnknownStage: 'Stopped by chat',
       filterStages: {
         BanSessionCheckStage: 'Access control',
         GroupRespondRuleCheckStage: 'Group respond rules',
@@ -3332,7 +4037,7 @@ const enUS = {
         tokensHint:
           'Only recorded usage is included. Totals may be incomplete when models do not return usage.',
         totalExecutions: 'Executions',
-        bySource: '{{agent}} agent · {{pipeline}} pipeline',
+        bySource: '{{agent}} agent · {{pipeline}} chat',
         successRate: 'Execution Success Rate',
         successRateHint:
           'Successes ÷ (successes + failures). In-progress, ignored and cancelled runs are excluded.',
@@ -3382,14 +4087,14 @@ const enUS = {
     filters: {
       title: 'Filters',
       bot: 'Bot',
-      pipeline: 'Pipeline',
+      pipeline: 'Chat',
       allBots: 'All Bots',
       selectBot: 'Select Bot',
       processor: 'Processor',
       allProcessors: 'All Processors',
       selectProcessor: 'Select Processor',
-      allPipelines: 'All Pipelines',
-      selectPipeline: 'Select Pipeline',
+      allPipelines: 'All Chats',
+      selectPipeline: 'Select Chat',
       loading: 'Loading...',
       timeRange: 'Time Range',
       customRange: 'Custom Range',
@@ -3425,7 +4130,7 @@ const enUS = {
     messageList: {
       timestamp: 'Timestamp',
       bot: 'Bot',
-      pipeline: 'Pipeline',
+      pipeline: 'Chat',
       message: 'Message',
       sessionId: 'Session ID',
       status: 'Status',
@@ -3719,7 +4424,7 @@ const enUS = {
       adapter: 'Adapter',
       model_provider: 'Model provider',
       llm_model: 'Model',
-      pipeline: 'Pipeline',
+      pipeline: 'Chat',
       user: 'User',
       workspace: 'Workspace',
       monitoring: 'Monitoring',
@@ -3780,7 +4485,7 @@ const enUS = {
       codex_view: 'View Codex authorization',
       codex_authorize: 'Authorize Codex',
       embed: 'Embedded session',
-      pipeline_extensions_update: 'Update pipeline extension bindings',
+      pipeline_extensions_update: 'Update chat extension bindings',
       export: 'Export data',
       execute: 'Execute task',
       debug: 'Debug task',
@@ -3883,7 +4588,7 @@ const enUS = {
     maxBotsReached:
       'Maximum number of bots ({{max}}) reached. Please remove an existing bot before creating a new one.',
     maxPipelinesReached:
-      'Maximum number of pipelines ({{max}}) reached. Please remove an existing pipeline before creating a new one.',
+      'Maximum number of chats ({{max}}) reached. Please remove an existing chat before creating a new one.',
     maxExtensionsReached:
       'Maximum number of extensions ({{max}}) reached. Please remove an existing extension before adding a new one.',
     quotaLoadingTooltip:
@@ -3998,7 +4703,7 @@ const enUS = {
     next: 'Next',
     finish: 'Create & Deploy',
     confirmCreateBot: 'Confirm, Create Bot',
-    createSuccess: 'Pipeline created and linked to bot successfully!',
+    createSuccess: 'Chat created and linked to bot successfully!',
     botCreateSuccess: 'Bot created successfully!',
     botSaveSuccess: 'Bot configuration saved and enabled!',
     createError: 'Failed to create resources',
@@ -4073,7 +4778,7 @@ const enUS = {
       selectModelTitle: 'Choose a Model',
       selectScannedModelTitle: 'Choose a Model',
       selectScannedModelDescription:
-        'The selected model will replace the primary model in this bot’s pipeline.',
+        'The selected model will replace the primary model in this bot’s chat.',
       scanModelMode: 'Scan Models',
       manualModelMode: 'Add Manually',
       scanningModels: 'Scanning available models…',
@@ -4135,7 +4840,7 @@ const enUS = {
     done: {
       title: 'All Set!',
       description:
-        'Your bot has been created and connected to its pipeline. You can now manage it from the workbench.',
+        'Your bot has been created and connected to its chat. You can now manage it from the workbench.',
       backToWorkbench: 'Back to Workbench',
     },
   },
@@ -4312,7 +5017,7 @@ const enUS = {
     },
     title: 'Alerts',
     description:
-      'Email and webhook notifications when bots, Pipelines or models keep failing',
+      'Email and webhook notifications when bots, Chats or models keep failing',
     enabled: 'Alerts on',
     firingCount: '{{count}} firing',
     allClear: 'All clear',
@@ -4367,8 +5072,8 @@ const enUS = {
     throttleHint:
       'Each alert is sent once when it opens, then reminded after 6h, 12h and every 24h while it keeps failing.',
     rule: {
-      pipeline_failures: 'Pipeline failures',
-      pipeline_failuresDescription: 'Processing errors in one Pipeline',
+      pipeline_failures: 'Chat failures',
+      pipeline_failuresDescription: 'Processing errors in one Chat',
       model_failures: 'Model call failures',
       model_failuresDescription: 'Failed requests to one model',
       bot_offline: 'Bot stopped with an error',
@@ -4477,7 +5182,7 @@ const enUS = {
     submit: 'Submit for review',
     promptTitle: 'Share prompt to LangBot Space',
     promptDescriptionMessaging:
-      'Published as a Messaging prompt that others can find in pipeline settings.',
+      'Published as a Messaging prompt that others can find in chat settings.',
     promptDescriptionAgent:
       'Published as an Agent prompt that others can find in Agent settings.',
     detectedVariables: 'Detected variables:',

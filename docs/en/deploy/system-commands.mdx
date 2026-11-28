@@ -1,0 +1,24 @@
+---
+title: "System commands"
+---
+
+Use the bot’s command prefix (default `/`). `/reset` is an alias for `/new`. Enabled system commands take precedence over plugins.
+
+`/undo` removes the last completed turn from LocalAgent Chat history. `/retry` regenerates a text turn; it does not delete messages already displayed by the platform. Other processors report unsupported operations. `/model` changes only the current Chat session and `/new` restores the configured model.
+
+Set each command, including plugin commands, to `everyone` or `admins`. Add sender IDs from `/whoami` (such as `person_10001`) as administrators in Session Monitoring. An empty list grants nobody admin access. With `silent`, denied messages stop without a reply; `notice` sends a permission message instead.
+
+| Command | System commands | Enabled | Permission |
+|---|---|---|---|
+| `/help` | List available commands | ✓ | everyone |
+| `/new` | Start a new conversation | ✓ | everyone |
+| `/stop` | Stop the current reply | ✓ | everyone |
+| `/retry` | Regenerate the last reply | ✓ | everyone |
+| `/undo` | Remove the last turn | ✓ | everyone |
+| `/whoami` | Show sender and session IDs | ✓ | everyone |
+| `/status` | Show session status | ✓ | admins |
+| `/usage` | Show session usage | ✓ | admins |
+| `/model` | Show or change the session model | — | admins |
+| `/tools` | List available tools | ✓ | admins |
+| `/plugins` | List enabled plugins | ✓ | admins |
+| `/version` | Show the LangBot version | ✓ | admins |

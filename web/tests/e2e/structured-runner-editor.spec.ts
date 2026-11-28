@@ -122,7 +122,6 @@ async function setup(
     }),
   );
   await page.goto('/home/pipelines?id=preserve');
-  await page.getByRole('tab', { name: 'AI', exact: true }).click();
   return { writes, raw, id };
 }
 
@@ -186,6 +185,12 @@ for (const kind of ['json', 'prompt', 'prompt-omitted'] as const) {
       config,
     );
     const editor = page.getByTestId(`structured-editor-${field}`);
+    // Advanced runner fields live in the folded "other advanced" row.
+    const advancedRow = page
+      .locator('[data-policy-setting="advanced"]')
+      .getByRole('button')
+      .first();
+    if (kind === 'json') await advancedRow.click();
     await expect(editor).toBeVisible();
     expect(JSON.parse(await editor.inputValue())).toEqual(initial);
     expect(writes).toHaveLength(0);
@@ -208,22 +213,25 @@ for (const kind of ['json', 'prompt', 'prompt-omitted'] as const) {
         ),
       ).toBe(false);
     await page.reload();
-    await page.getByRole('tab', { name: 'AI', exact: true }).click();
+    if (kind === 'json') await advancedRow.click();
     expect(JSON.parse(await editor.inputValue())).toEqual(edited);
     await editor.fill('{ invalid');
     await expect(
       page.getByRole('alert').filter({ hasText: `${field} (JSON)` }),
     ).toBeVisible();
-    if (kind === 'json') await switchField(page, 'Advanced Settings').click();
+    if (kind === 'json') await advancedRow.click();
     // Make another valid edit so Save remains available: invalid JSON must
     // block the entire save, not silently persist the previous value.
-    await page.getByRole('tab', { name: 'Output', exact: true }).click();
-    await switchField(page, 'Quote Origin Message').click();
+    await page
+      .locator('[data-policy-setting="reply"]')
+      .getByRole('button')
+      .first()
+      .click();
+    await switchField(page, 'Track Function Calls').click();
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await page.waitForTimeout(400);
     expect(writes).toHaveLength(1);
-    await page.getByRole('tab', { name: 'AI', exact: true }).click();
-    if (kind === 'json') await switchField(page, 'Advanced Settings').click();
+    if (kind === 'json') await advancedRow.click();
     await expect(editor).toHaveValue('{ invalid');
     await editor.fill(JSON.stringify(edited));
     await page.getByRole('button', { name: 'Save', exact: true }).click();

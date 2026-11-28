@@ -5,6 +5,7 @@ from ....i18n import pipeline_notice
 import uuid
 import typing
 import traceback
+import re
 
 
 from .. import handler
@@ -83,7 +84,7 @@ class ChatMessageHandler(handler.MessageHandler):
         )
 
         # Get bound plugins for filtering
-        bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+        bound_plugins = getattr(query, '_listener_plugins', None)
         event_ctx = await self.ap.plugin_connector.emit_event(event, bound_plugins)
 
         is_create_card = False  # Track if streaming card was created
@@ -265,8 +266,23 @@ class ChatMessageHandler(handler.MessageHandler):
                 error_info = f'{traceback.format_exc()}'
                 self.ap.logger.error(f'Conversation({query.query_id}) Request Failed: {error_info}')
 
-                # Handle specific runner errors with appropriate messages
-                if isinstance(e, RunnerNotFoundError):
+                strategy = query.pipeline_config['output']['misc'].get('exception-handling', 'show-hint')
+                if strategy == 'hide':
+                    user_notice = None
+                elif strategy == 'show-error':
+                    from ....telemetry.execution import redact_text
+
+                    first_line = (
+                        str(e)
+                        .partition('\n')[0]
+                        .partition('\r')[0]
+                        .partition('Traceback (most recent call last)')[0]
+                        .strip()
+                    )
+                    user_notice = redact_text(
+                        re.sub(r'(?i)\b(?:https?|wss?)://\S+', '[URL]', first_line)
+                    ) or pipeline_notice(query, 'failure-hint', 'Request failed.')
+                elif isinstance(e, RunnerNotFoundError):
                     user_notice = pipeline_notice(
                         query,
                         'runner-not-found-hint',
@@ -276,7 +292,7 @@ class ChatMessageHandler(handler.MessageHandler):
                     )
                 elif isinstance(e, RunnerNotAuthorizedError):
                     user_notice = pipeline_notice(
-                        query, 'runner-not-authorized-hint', 'Agent runner not authorized for this pipeline.'
+                        query, 'runner-not-authorized-hint', 'Agent runner not authorized for this chat.'
                     )
                 elif isinstance(e, RunnerExecutionError):
                     if e.retryable:
@@ -286,15 +302,7 @@ class ChatMessageHandler(handler.MessageHandler):
                     else:
                         user_notice = pipeline_notice(query, 'failure-hint', 'Agent runner execution failed.')
                 else:
-                    # Use existing exception handling
-                    exception_handling = query.pipeline_config['output']['misc'].get('exception-handling', 'show-hint')
-
-                    if exception_handling == 'show-error':
-                        user_notice = f'{e}'
-                    elif exception_handling == 'show-hint':
-                        user_notice = pipeline_notice(query, 'failure-hint', 'Request failed.')
-                    else:  # hide
-                        user_notice = None
+                    user_notice = pipeline_notice(query, 'failure-hint', 'Request failed.')
 
                 yield entities.StageProcessResult(
                     result_type=entities.ResultType.INTERRUPT,

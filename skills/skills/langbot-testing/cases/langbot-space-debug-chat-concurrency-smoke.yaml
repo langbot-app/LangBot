@@ -39,7 +39,7 @@ automation_debug_chat_load_prompt_template: '请只回复 "{expected}"，不要�
 automation_debug_chat_load_stream: "true"
 automation_debug_chat_load_reset: "true"
 metrics_thresholds_json: '{"response_p95_ms":{"max":120000},"error_rate":{"max":0}}'
-load_profile_json: '{"requests":3,"concurrency":2,"path":"Pipeline Debug Chat WebSocket","provider":"LangBot Space model route","metric":"send-to-final-assistant-response","classification":"smoke-not-benchmark"}'
+load_profile_json: '{"requests":3,"concurrency":2,"path":"Chat Debug Chat WebSocket","provider":"LangBot Space model route","metric":"send-to-final-assistant-response","classification":"smoke-not-benchmark"}'
 setup_automation:
   - "node:scripts/e2e/ensure-local-agent-pipeline.mjs --write-env"
 setup_provides_env:
@@ -53,7 +53,7 @@ preconditions:
   - "The selected local LangBot instance is safe for a low-volume real Space model smoke run."
   - "Treat Space/provider/network failures as environment or dependency findings until fake-provider baseline evidence separates LangBot overhead."
 steps:
-  - "Prepare a local-agent pipeline with a tested Space model and fallback models."
+  - "Prepare a local-agent Chat with a tested Space model and fallback models."
   - "Reset the target Debug Chat session."
   - "Open a small number of concurrent WebSocket Debug Chat connections and send unique deterministic prompts through the live Space provider path."
 checks:

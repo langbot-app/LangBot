@@ -88,7 +88,7 @@ execution:
 `spec.events` 指定支持的事件，`spec.config` 定义用户可在处理器详情页修改的配置。本例支持成员入群和收到消息，并提供欢迎语、回复开关两个配置项。回复消息需要上面的 `tool_calling` 和 `permissions.tools` 配置。
 
 
-`spec.usages` 必填、无默认值，决定组件可在哪类处理器中选择：`agent` 用于 Agent 和流水线，`event` 用于插件处理器。可同时声明 `[agent, event]`；包含 `event` 时必须填写 `spec.events`。本例使用事件处理函数，也可以在 `run(ctx)` 中按需调用 `await super().run(ctx)`。
+`spec.usages` 必填、无默认值，决定组件可在哪类处理器中选择：`agent` 用于 Agent 和聊天，`event` 用于插件处理器。可同时声明 `[agent, event]`；包含 `event` 时必须填写 `spec.events`。本例使用事件处理函数，也可以在 `run(ctx)` 中按需调用 `await super().run(ctx)`。
 
 ## 插件处理
 
@@ -190,11 +190,11 @@ async with ctx.reply_stream() as reply:
 
 安装插件后，在机器人详情页的「插件处理器」中添加该配置并保存。也可以直接在这里选择组件、填写配置，创建并绑定新配置。机器人会自动投递组件声明的事件，无需逐条配置事件路由。
 
-插件处理器与 Agent／流水线路由独立执行，同一事件可以触发多个插件处理器，某个处理器失败不会阻止其他处理。使用同一配置的机器人会共享设置和运行状态；需要分别设置时，创建不同的配置。可选功能应通过组件配置提供，例如是否回复消息，避免与其他处理器重复回复。
+插件处理器与 Agent／聊天路由独立执行，同一事件可以触发多个插件处理器，某个处理器失败不会阻止其他处理。使用同一配置的机器人会共享设置和运行状态；需要分别设置时，创建不同的配置。可选功能应通过组件配置提供，例如是否回复消息，避免与其他处理器重复回复。
 
 ## 一个安装，多份用法
 
-一个工作区内每个插件只安装一次，但这份安装会被**多个处理器**（Agent / 流水线）复用。Runner 需要自己保证处理器之间不串数据：
+一个工作区内每个插件只安装一次，但这份安装会被**多个处理器**（Agent / 聊天）复用。Runner 需要自己保证处理器之间不串数据：
 
 - `ctx.state.*` 已经按处理器隔离：其作用域包含 `binding_identity`（由 Agent UUID 派生），同一安装下的不同处理器不会互相覆盖。
 - 平台的插件存储键是 `(实例, 工作区, 组件类型, 插件名, key)`，**不含处理器维度**；所以你自己写进 Host 存储或缓存的键，必须额外包含处理器或会话身份。
@@ -210,4 +210,4 @@ async with ctx.reply_stream() as reply:
 - 查看模型、工具、知识库和存储相关的 [LangBot API](/zh/plugin/dev/apis/common)。
 - 查看消息发送等[平台 API](/zh/plugin/dev/apis/platform)。
 - 查看 [RunnerDemo](https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/RunnerDemo) 中的更多示例。
-- 如果要扩展流水线的预处理、模型调用完成等步骤，请使用[事件监听器](/zh/plugin/dev/components/event-listener)。
+- 如果要扩展聊天的预处理、模型调用完成等步骤，请使用[事件监听器](/zh/plugin/dev/components/event-listener)。

@@ -65,7 +65,7 @@ try {
   await page.goto(`${frontendUrl.replace(/\/$/, "")}/home/monitoring`, { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
   const text = await bodyText(page);
-  if (!text.includes("Dashboard") && !text.includes("Pipelines") && !text.includes("流水线")) {
+  if (!["Dashboard", "Processors", "处理器", "Chat", "聊天", "Pipelines", "流水线"].some((label) => text.includes(label))) {
     throw new Error("Token was written, but authenticated navigation was not visible.");
   }
 

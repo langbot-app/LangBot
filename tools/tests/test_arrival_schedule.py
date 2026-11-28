@@ -72,6 +72,37 @@ class ArrivalScheduleTests(unittest.TestCase):
         self.assertEqual(summary['expired'], 7)
         self.assertTrue(summary['conserved'])
 
+    def test_drain_all_dispatches_pending_arrivals_after_deadline(self):
+        settled, calls = [], []
+        started = time.monotonic()
+
+        def execute(item):
+            calls.append(item['arrival_id'])
+            time.sleep(0.02)
+            return {'status': 'ok'}
+
+        summary = run_open_loop(
+            started=started,
+            duration=0.05,
+            rps=100,
+            workers=2,
+            queue_capacity=None,
+            execute=execute,
+            key_for=lambda index: None,
+            blocked=lambda key: False,
+            settle=lambda item, outcome, row: settled.append({**item, 'outcome': outcome}),
+            stop=threading.Event(),
+            drain_all=True,
+            drain_timeout=1,
+        )
+        self.assertEqual(summary['scheduled'], 5)
+        self.assertEqual(summary['dispatched'], 5)
+        self.assertEqual(summary['dropped'], 0)
+        self.assertEqual(summary['expired'], 0)
+        self.assertTrue(summary['drain_all'])
+        self.assertEqual(sorted(calls), list(range(5)))
+        self.assertTrue(summary['conserved'])
+
 
 class CliTrafficArrivalTests(unittest.TestCase):
     def test_slow_independent_cli_accounts_for_wire_calls_queue_full_and_deadline(self):

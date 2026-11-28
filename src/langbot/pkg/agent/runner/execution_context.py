@@ -113,6 +113,8 @@ def build_execution_query(
     event: AgentEventEnvelope,
     authorized_skill_names: list[str],
     execution_context: ExecutionContext,
+    *,
+    entry_query: pipeline_query.Query | None = None,
 ) -> pipeline_query.Query:
     """Build the minimum Query view required by Host-owned tool loaders."""
     if event.workspace_id and event.workspace_id != execution_context.workspace_uuid:
@@ -136,6 +138,13 @@ def build_execution_query(
         user_content = contents
     else:
         user_content = event.input.text or ''
+
+    if entry_query is not None:
+        entry_query.session = session
+        entry_query.user_message = provider_message.Message(role='user', content=user_content)
+        entry_query.messages = []
+        entry_query.variables[AUTHORIZED_SKILLS_VARIABLE] = list(dict.fromkeys(authorized_skill_names))
+        return entry_query
 
     query = pipeline_query.Query(
         instance_uuid=execution_context.instance_uuid,

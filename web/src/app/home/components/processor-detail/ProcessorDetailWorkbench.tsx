@@ -32,6 +32,8 @@ interface ProcessorDetailWorkbenchProps {
   headerActions?: ReactNode;
   /** Hint badges shown right after the workbench/monitoring tabs. */
   hints?: ReactNode;
+  /** Full-width notice between the header and the content. */
+  banner?: ReactNode;
   status?: ProcessorDetailStatus | null;
   saveLabel: string;
   saveFormId: string;
@@ -70,6 +72,7 @@ export default function ProcessorDetailWorkbench({
   titleControls,
   headerActions,
   hints,
+  banner,
   status,
   saveLabel,
   saveFormId,
@@ -253,6 +256,9 @@ export default function ProcessorDetailWorkbench({
           {(view ?? activeView) === 'workbench' && headerActions}
         </div>
       </div>
+      {banner && (
+        <div className="shrink-0 empty:hidden [&:has(>*)]:pb-3">{banner}</div>
+      )}
 
       {monitoring && (
         <TabsContent

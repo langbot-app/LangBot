@@ -101,7 +101,7 @@ execution:
 
 | 组件类型 | 复用它的是 | 隔离靠什么 |
 | --- | --- | --- |
-| Agent / 流水线中的 Runner | 每个处理器 | `ctx.state.*` 已按处理器隔离（作用域含 `binding_identity`，由 Agent UUID 派生） |
+| Agent / 聊天中的 Runner | 每个处理器 | `ctx.state.*` 已按处理器隔离（作用域含 `binding_identity`，由 Agent UUID 派生） |
 | 知识库用的 KnowledgeEngine / Parser | 每个知识库 | **需要插件自己按知识库 ID 隔离** |
 | Tool / Command / EventListener / Page | 多个处理器、会话或页面请求 | 依赖调用时读取，不能在实例上累积 |
 

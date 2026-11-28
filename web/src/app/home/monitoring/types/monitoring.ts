@@ -166,6 +166,8 @@ export interface OverviewMetrics {
 export interface FilterState {
   mode?: 'all' | 'real' | 'debug';
   statusGroup?: string;
+  /** How the message was handled: ai / command / plugin / policy. */
+  handling?: 'all' | 'ai' | 'command' | 'plugin' | 'policy';
   selectedBots: string[];
   selectedPipelines: string[];
   timeRange: TimeRangeOption;

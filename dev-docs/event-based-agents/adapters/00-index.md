@@ -28,6 +28,30 @@ Current acceptance report: [EBA Adapter Acceptance Report](./acceptance-report.m
 | WeCom Customer Service | Migrated; customer-side UI text plugin E2E verified, inbound media and platform-API live coverage pending | [WeCom Customer Service](./wecomcs.md) |
 | Kook | Migrated; unit/mocked converter and API coverage only, live acceptance pending | [Kook](./kook.md) |
 
+## Native streaming: first frame in group replies
+
+Core passes the sender mention (`At`) and reply setting (`quote_origin`) to the adapter. It keeps the native stream open even when the adapter cannot render either option. The table describes adapter behavior, not a live client verification.
+
+| Adapter | Mention sender | Reply to original message | Possible adapter improvement |
+| --- | --- | --- | --- |
+| Discord | No. The preview includes plain text only. | No. The first preview is sent without a message reference. | Render the mention and attach a reference when requested. |
+| Lark / Feishu | No. The initial card has a placeholder, and text updates omit `At`. | A card for an incoming message is created as a reply regardless of `quote_origin`. The setting does not control this link. | Render the mention in the card and honor the reply setting when creating it. |
+
+## Platform listener notifications
+
+These notifications observe adapter events without consuming them. Availability depends on the upstream platform delivering the corresponding update to the bot.
+
+| Listener | Adapter converters |
+| --- | --- |
+| MessageDeleted | OneBot v11, Discord, Lark, LINE, Slack, WeCom Customer Service |
+| MessageEdited | Discord, Slack, Telegram |
+| MessageReactionReceived | Discord, Lark, QQ Official, Slack, Telegram |
+| GroupMemberJoined / GroupMemberLeft / BotInvitedToGroup / BotRemovedFromGroup | Discord, Lark, LINE, OneBot v11, QQ Official, Slack, Telegram |
+| GroupMemberBanned | OneBot v11, Telegram |
+| BotMuted / BotUnmuted | Telegram |
+| FeedbackReceived | DingTalk, WeComBot |
+| PlatformSpecificEventReceived | DingTalk, KOOK, Lark, LINE, Official Account, OneBot v11, QQ Official, Slack, Telegram, WeCom, WeComBot, WeCom Customer Service |
+
 ## Documentation Checklist
 
 When migrating a new adapter, add one document here with:

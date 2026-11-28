@@ -16,7 +16,7 @@ After publishing your application, go to the `Access API` page of your applicati
 
 ![Dify Application API Key](/images/zh/deploy/pipelines/dify/dify_sv_api_01.png)
 
-Save the API server and API key for configuring LangBot's pipeline `AI Capability`.
+Save the API server and API key for configuring the `AI Capability` of a LangBot Chat.
 
 <Info title="The above is an example for Dify cloud service version. If you are using the self-hosted community version, please use your own Dify service address as the `base-url` in LangBot, and add `/v1` as the path.">
 
@@ -26,7 +26,7 @@ Save the API server and API key for configuring LangBot's pipeline `AI Capabilit
 
 ## Configuring LangBot
 
-Open the LangBot WebUI page, add a new pipeline or switch to the AI capability configuration page in an existing pipeline.
+Open the LangBot WebUI page, add a new Chat or switch to the AI capability configuration page in an existing Chat.
 
 ![Setting Development Item](/images/zh/deploy/pipelines/dify/dify_sv_api_02.png)
 
@@ -38,6 +38,6 @@ If you are using a Dify workflow application, please use `summary` as the key to
 
 ## Output Processing
 
-When using a workflow application or Agent application, if you enable `track-function-calls` in LangBot's pipeline `Output Processing`, a message of `calling function xxx` will be output to the user when Dify executes each tool call.  
+When using a workflow application or Agent application, if you enable `track-function-calls` in the LangBot Chat's `Output Processing`, a message of `calling function xxx` will be output to the user when Dify executes each tool call.  
 However, if you are using `ChatFlow` under the `chat` application (Chat Assistant -> Workflow Orchestration), it will only output the text returned by the Answer (direct reply) node regardless of the settings.
 </Info>

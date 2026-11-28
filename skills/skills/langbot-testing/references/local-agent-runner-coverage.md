@@ -15,7 +15,7 @@ The QA target is end-to-end behavior. UI cases prove the host, SDK, plugin runti
 
 TODO: Treat `ctx.adapter.extra.prompt` as a temporary Pipeline bridge for old
 local-agent behavior parity. It is not the final answer for how user plugins or
-host hooks should influence agent behavior after Pipeline is replaced.
+host hooks should influence agent behavior after Chat is replaced.
 
 ## Minimum UI Gate
 

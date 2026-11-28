@@ -49,7 +49,7 @@ automation_fake_provider_fail_every_n: "0"
 automation_fake_provider_fault_status: "503"
 metrics_thresholds_json: '{"response_p95_ms":{"max":5000},"error_rate":{"max":0},"ok_count_min":{"min":6},"fake_provider_fault_count_min":{"min":2}}'
 fault_model_json: '{"provider_fault":"HTTP 503 for first 2 fake-provider chat completions after reset","expected_behavior":"LangBot retries or otherwise recovers from bounded provider failures so every Debug Chat request receives its expected response without backend crash."}'
-load_profile_json: '{"requests":6,"concurrency":1,"path":"Pipeline Debug Chat WebSocket","provider":"controlled fake OpenAI-compatible provider","classification":"fault-recovery-not-throughput-benchmark"}'
+load_profile_json: '{"requests":6,"concurrency":1,"path":"Chat Debug Chat WebSocket","provider":"controlled fake OpenAI-compatible provider","classification":"fault-recovery-not-throughput-benchmark"}'
 setup_automation:
   - "node:scripts/e2e/ensure-fake-provider-pipeline.mjs --write-env"
 setup_provides_env:
@@ -62,7 +62,7 @@ setup_provides_env:
   - LANGBOT_FAKE_PROVIDER_PIPELINE_NAME
 steps:
   - "Configure the local fake provider to return HTTP 503 for the first two chat completions after reset."
-  - "Create or update the LangBot provider, model, and local-agent pipeline that points at the fake provider."
+  - "Create or update the LangBot provider, model, and local-agent Chat that points at the fake provider."
   - "Reset the target Debug Chat session and fake-provider request counter."
   - "Send a sequential Debug Chat batch and verify later requests recover after the injected provider faults."
 checks:

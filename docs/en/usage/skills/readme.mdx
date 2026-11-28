@@ -77,9 +77,9 @@ Automatic asset import handles local files with verifiable instance ownership. U
 Retain the old directories and a database restore point from the maintenance window. New-mode writes do not update those directories. Rolling back requires restoring that database point and old configuration together, or exporting and restoring all new versions and assets first. Merely selecting `filesystem` / `local` hides new writes. This change separates Box-related files; configuration, plugin private data and other Core subsystems retain their own persistence requirements.
 
 
-## Enabling in a Pipeline
+## Enabling in a Chat
 
-Once a skill is installed, the pipeline extension config decides which skills the Agent can see:
+Once a skill is installed, the Chat's extension config decides which skills the Agent can see:
 
 - Enable "all skills", or
 - Bind only specific skills

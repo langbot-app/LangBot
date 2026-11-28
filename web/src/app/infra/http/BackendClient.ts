@@ -23,6 +23,7 @@ import type {
 } from '@/app/infra/entities/workspace';
 import { BaseHttpClient, type RequestConfig } from './BaseHttpClient';
 import { notifyAfterModelConfigurationChange } from './modelConfigEvents';
+import type { ComponentManifest } from '@/app/infra/entities/common';
 import type {
   PipelineMigrationPreview,
   PipelineMigrationRequest,
@@ -32,6 +33,7 @@ import type {
   InflightFrame,
   ExecutionDetail,
   ExecutionListResult,
+  ExecutionHandlingFilter,
   ExecutionModeFilter,
   ExecutionSource,
   ExecutionSourceFilter,
@@ -115,6 +117,7 @@ import {
   BotRouteDryRunRequest,
   BotRouteDryRunResult,
   BotEventRouteStatusResponse,
+  UpgradeChecksResponse,
   ApiRespLangBotModelAvailability,
 } from '@/app/infra/entities/api';
 import { Plugin, PluginCompatibility } from '@/app/infra/entities/plugin';
@@ -570,6 +573,13 @@ export class BackendClient extends BaseHttpClient {
     return this.post(`/api/v1/agents/${uuid}/debug`, payload);
   }
 
+  public debugCommandProcessor(
+    uuid: string,
+    text: string,
+  ): Promise<import('../entities/api').CommandDebugResult> {
+    return this.post(`/api/v1/agents/${uuid}/debug`, { text });
+  }
+
   public async streamDebugAgent(
     uuid: string,
     payload: Parameters<BackendClient['debugAgent']>[1],
@@ -880,6 +890,37 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/platform/bots/${uuid}`);
   }
 
+  public getBuiltinCommands(): Promise<{
+    commands: import('../entities/api').BuiltinCommandDescriptor[];
+  }> {
+    return this.get('/api/v1/platform/bots/_/builtin-commands');
+  }
+
+  public getMessagePolicyMetadata(): Promise<
+    import('../entities/api').MessagePolicyMetadata
+  > {
+    return this.get('/api/v1/platform/bots/_/message-policy/metadata');
+  }
+
+  public getBotPluginRegistrations(
+    uuid: string,
+    options: { routeId?: string; includeDisabled?: boolean } = {},
+  ): Promise<import('../entities/api').ApiRespPluginRegistrations> {
+    const params = new URLSearchParams();
+    if (options.routeId) params.set('route_id', options.routeId);
+    if (options.includeDisabled) params.set('include_disabled', '1');
+    const query = params.toString();
+    return this.get(
+      `/api/v1/platform/bots/${uuid}/plugin-registrations${query ? `?${query}` : ''}`,
+    );
+  }
+
+  public syncBotPlatformCommands(
+    uuid: string,
+  ): Promise<import('../entities/api').PlatformCommandSync> {
+    return this.post(`/api/v1/bots/${uuid}/platform-commands/sync`, {});
+  }
+
   public createBot(bot: Bot): Promise<{ uuid: string }> {
     return this.post('/api/v1/platform/bots', bot);
   }
@@ -907,6 +948,28 @@ export class BackendClient extends BaseHttpClient {
       `/api/v1/platform/bots/${botId}/event-routes/dry-run`,
       request,
     );
+  }
+
+  public getUpgradeChecks(): Promise<UpgradeChecksResponse> {
+    return this.get('/api/v1/platform/bots/_/upgrade-checks');
+  }
+
+  public runUpgradeCheckAction(
+    id: string,
+    action: string,
+  ): Promise<{ id?: string; action?: string; task_id?: number }> {
+    return this.post('/api/v1/platform/bots/_/upgrade-checks/action', {
+      id,
+      action,
+    });
+  }
+
+  public confirmUpgradeCheck(id: string): Promise<{ confirmed: string[] }> {
+    return this.post('/api/v1/platform/bots/_/upgrade-checks/confirm', { id });
+  }
+
+  public confirmAllUpgradeChecks(): Promise<{ confirmed: string[] }> {
+    return this.post('/api/v1/platform/bots/_/upgrade-checks/confirm-all');
   }
 
   public getBotEventRouteStatuses(
@@ -1152,6 +1215,10 @@ export class BackendClient extends BaseHttpClient {
   // ============ Plugins API ============
   public getPlugins(): Promise<ApiRespPlugins> {
     return this.get('/api/v1/plugins');
+  }
+
+  public getPluginCommands(): Promise<{ commands: ComponentManifest[] }> {
+    return this.get('/api/v1/plugins/commands');
   }
 
   public getPlugin(author: string, name: string): Promise<ApiRespPlugin> {
@@ -2659,6 +2726,7 @@ export class BackendClient extends BaseHttpClient {
     status?: string[];
     source?: ExecutionSourceFilter;
     mode?: ExecutionModeFilter;
+    handling?: ExecutionHandlingFilter;
     startTime?: string;
     endTime?: string;
     limit?: number;
@@ -2694,6 +2762,9 @@ export class BackendClient extends BaseHttpClient {
     }
     if (params.offset) {
       queryParams.append('offset', params.offset.toString());
+    }
+    if (params.handling && params.handling !== 'all') {
+      queryParams.append('handling', params.handling);
     }
 
     return this.get(`/api/v1/monitoring/executions?${queryParams.toString()}`);

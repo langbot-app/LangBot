@@ -1,14 +1,7 @@
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import {
-  Check,
-  Plus,
-  Settings2,
-  ScrollText,
-  TriangleAlert,
-  X,
-} from 'lucide-react';
+import { Plus, Settings2, ScrollText, TriangleAlert, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import type {
@@ -23,6 +16,7 @@ import {
   processorEventCompatibility,
 } from '@/app/home/components/event-patterns/event-pattern-groups';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
+import RunnerSelect from '@/app/home/agents/components/RunnerSelect';
 import { AuthenticatedPluginIcon } from '@/components/AuthenticatedPluginIcon';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -102,6 +96,32 @@ function ProcessorEvents({
   );
 }
 
+/** `plugin:author/name[/component]` → plugin author and name, for its icon. */
+function pluginOf(componentRef?: string | null) {
+  const [author, name] = (componentRef ?? '')
+    .replace(/^plugin:/, '')
+    .split('/');
+  return author && name ? { author, name } : null;
+}
+
+function ProcessorIcon({ agent }: { agent?: Agent }) {
+  const plugin = pluginOf(agent?.component_ref);
+  return plugin ? (
+    <AuthenticatedPluginIcon
+      author={plugin.author}
+      name={plugin.name}
+      className="size-10 shrink-0 rounded-lg border bg-muted object-cover"
+    />
+  ) : (
+    <span
+      className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-muted text-2xl"
+      aria-hidden="true"
+    >
+      {agent?.emoji || '🧩'}
+    </span>
+  );
+}
+
 export default function PluginProcessorBindings({
   value,
   onChange,
@@ -145,6 +165,23 @@ export default function PluginProcessorBindings({
     } catch {
       toast.error(t('agents.eventProcessor.loadError'));
     }
+  }
+
+  function pickComponent(id: string, descriptor?: RunnerDescriptor) {
+    const next = descriptor ?? components.find((item) => item.id === id);
+    setComponentRef(id);
+    validate.current = null;
+    setParameters(
+      Object.fromEntries(
+        (next?.config_schema ?? [])
+          .filter((field) => field.default !== undefined)
+          .map((field) => [field.name, field.default]),
+      ),
+    );
+    if (next && !name.trim())
+      setName(
+        extractI18nObject({ en_US: next.id, zh_Hans: next.id, ...next.label }),
+      );
   }
 
   async function add() {
@@ -203,22 +240,13 @@ export default function PluginProcessorBindings({
   }
 
   return (
-    <section
-      className="mt-6 space-y-3 border-t pt-5"
-      aria-labelledby="plugin-subscriptions-title"
-    >
-      <h3
-        id="plugin-subscriptions-title"
-        className="text-sm font-semibold text-foreground"
-      >
+    <section className="space-y-3" aria-labelledby="plugin-subscriptions-title">
+      <h3 id="plugin-subscriptions-title" className="sr-only">
         {t('agents.eventProcessor.type')}
       </h3>
-      <p className="text-sm text-muted-foreground">
-        {t('bots.pluginSubscriptions.description')}
-      </p>
       {value.length === 0 && (
-        <div className="flex h-32 items-center justify-center rounded-lg border-2 border-dashed border-border">
-          <p className="text-sm text-muted-foreground">
+        <div className="rounded-lg border border-dashed p-5 text-center">
+          <p className="text-xs text-muted-foreground">
             {t('bots.pluginSubscriptions.empty')}
           </p>
         </div>
@@ -234,12 +262,7 @@ export default function PluginProcessorBindings({
             className="gap-0 rounded-lg py-0 shadow-none"
           >
             <CardContent className="flex items-center gap-3 p-3">
-              <span
-                className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-muted text-2xl"
-                aria-hidden="true"
-              >
-                {agent?.emoji || '🧩'}
-              </span>
+              <ProcessorIcon agent={agent} />
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">{title}</div>
                 <p
@@ -374,12 +397,7 @@ export default function PluginProcessorBindings({
                         )
                       }
                     />
-                    <span
-                      className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-muted text-2xl"
-                      aria-hidden="true"
-                    >
-                      {agent.emoji || '🧩'}
-                    </span>
+                    <ProcessorIcon agent={agent} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">
                         {agent.name}
@@ -406,64 +424,40 @@ export default function PluginProcessorBindings({
             </TabsContent>
             <TabsContent value="new">
               <fieldset disabled={busy} className="space-y-4">
-                <div
-                  className="max-h-60 space-y-2 overflow-y-auto"
-                  role="group"
-                  aria-label={t('agents.eventProcessor.component')}
-                >
-                  {components.map((descriptor) => {
-                    const label = extractI18nObject({
-                      en_US: descriptor.id,
-                      zh_Hans: descriptor.id,
-                      ...descriptor.label,
-                    });
-                    return (
-                      <Button
-                        key={descriptor.id}
-                        type="button"
-                        variant="outline"
-                        aria-pressed={componentRef === descriptor.id}
-                        className="h-auto w-full justify-start gap-3 whitespace-normal p-3 text-left font-normal shadow-none aria-pressed:bg-accent"
-                        onClick={() => {
-                          setComponentRef(descriptor.id);
-                          validate.current = null;
-                          setParameters(
-                            Object.fromEntries(
-                              (descriptor.config_schema ?? [])
-                                .filter((field) => field.default !== undefined)
-                                .map((field) => [field.name, field.default]),
-                            ),
-                          );
-                          if (!name.trim()) setName(label);
-                        }}
-                      >
-                        <AuthenticatedPluginIcon
-                          author={descriptor.plugin_author}
-                          name={descriptor.plugin_name}
-                          className="size-10 shrink-0 rounded-lg border bg-muted object-cover"
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">
-                            {label}
-                          </span>
-                          <span className="block truncate text-sm text-muted-foreground">
-                            {descriptor.plugin_author}/{descriptor.plugin_name}
-                          </span>
-                          <ProcessorEvents
-                            patterns={descriptor.supported_event_patterns}
-                            supportedEvents={supportedEvents}
-                          />
-                        </span>
-                        {componentRef === descriptor.id && (
-                          <Check className="size-4 shrink-0" />
-                        )}
-                      </Button>
-                    );
-                  })}
-                  {components.length === 0 && (
-                    <p className="py-6 text-center text-sm text-muted-foreground">
-                      {t('agents.eventProcessor.noComponents')}
-                    </p>
+                {/* One picker: installed processors plus marketplace plugins
+                    that declare processor support, installable in place. */}
+                <div className="space-y-2">
+                  <Label>{t('agents.eventProcessor.component')}</Label>
+                  <RunnerSelect
+                    usage="event"
+                    options={components.map((descriptor) => ({
+                      name: descriptor.id,
+                      label: {
+                        en_US: descriptor.id,
+                        zh_Hans: descriptor.id,
+                        ...descriptor.label,
+                      },
+                    }))}
+                    label={t('agents.eventProcessor.component')}
+                    value={componentRef}
+                    onValueChange={(id) => pickComponent(id)}
+                    disabled={busy}
+                    installScope="bot-plugin-processor"
+                    onEventProcessorInstalled={(installed) => {
+                      setComponents((current) => [
+                        ...current.filter((item) => item.id !== installed.id),
+                        installed,
+                      ]);
+                      pickComponent(installed.id, installed);
+                    }}
+                  />
+                  {component && (
+                    <div data-testid="selected-processor-events">
+                      <ProcessorEvents
+                        patterns={component.supported_event_patterns}
+                        supportedEvents={supportedEvents}
+                      />
+                    </div>
                   )}
                 </div>
                 {component && (

@@ -101,7 +101,7 @@ A Workspace installs each plugin once, but that single installation is reused by
 
 | Component kind | What reuses it | What isolates it |
 | --- | --- | --- |
-| Runner in an Agent or Pipeline | every processor | `ctx.state.*` is already per-processor (scopes carry `binding_identity`, derived from the Agent UUID) |
+| Runner in an Agent or Chat | every processor | `ctx.state.*` is already per-processor (scopes carry `binding_identity`, derived from the Agent UUID) |
 | KnowledgeEngine / Parser behind a knowledge base | every knowledge base | **your plugin must isolate by knowledge-base ID itself** |
 | Tool / Command / EventListener / Page | several processors, conversations or page requests | read per call; never accumulate on the instance |
 

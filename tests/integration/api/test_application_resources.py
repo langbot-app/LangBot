@@ -131,6 +131,21 @@ async def test_provider_models_sql_ownership_and_secret_round_trip(resources, fa
 
 
 @pytest.mark.asyncio
+async def test_pipeline_operations_report_ignored_legacy_keys(resources):
+    api, _, _ = resources
+    config = {'trigger': {}, 'safety': {}}
+    created = await api.execute('pipeline.create', context(), {'pipeline_data': {'name': 'legacy', 'config': config}})
+    ident = created['uuid']
+    assert created['ignored_keys'] == ['safety', 'trigger']
+    updated = await api.execute(
+        'pipeline.update', context(), {'pipeline_uuid': ident, 'pipeline_data': {'config': config}}
+    )
+    assert updated == {'ignored_keys': ['safety', 'trigger']}
+    stored = await api.execute('pipeline.get', context(), {'pipeline_uuid': ident})
+    assert not config.keys() & stored['config'].keys()
+
+
+@pytest.mark.asyncio
 async def test_pipeline_copy_update_and_isolation_use_real_persistence(resources):
     api, _, engine = resources
     config = {'ai': {'api_key': 'pipeline-secret'}}

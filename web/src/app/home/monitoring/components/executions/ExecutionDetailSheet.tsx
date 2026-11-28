@@ -45,8 +45,11 @@ import {
   ExecutionKindBadge,
   executionProcessorLabel,
   executionStatusLabel,
+  ExecutionHandlingBadge,
+  eventRowTitle,
   PluginHandledBadge,
 } from './ExecutionTable';
+import PolicyTimeline from './PolicyTimeline';
 
 export type ExecutionSelection = Pick<ExecutionRow, 'id'> & {
   source: ExecutionRow['source'] | 'auto';
@@ -699,7 +702,7 @@ export default function ExecutionDetailSheet({
               <h2 className="text-lg font-semibold">
                 {record
                   ? record.source === 'event'
-                    ? t('monitoring.unified.unhandled')
+                    ? eventRowTitle(record, t)
                     : executionProcessorLabel(record)
                   : t('monitoring.execution.detail.title')}
               </h2>
@@ -734,7 +737,7 @@ export default function ExecutionDetailSheet({
                     {executionStatusLabel(record, t)}
                   </Badge>
                   <ExecutionKindBadge row={record} />
-                  <PluginHandledBadge handledBy={record.handled_by} />
+                  <ExecutionHandlingBadge row={record} />
                   {record.debug && (
                     <Badge status="debug">
                       {t('monitoring.execution.debug')}
@@ -755,6 +758,10 @@ export default function ExecutionDetailSheet({
                   )}
                 </div>
                 {renderChat()}
+                <PolicyTimeline
+                  record={record}
+                  inputs={visible?.pages.inputs?.items}
+                />
                 <div className="grid grid-cols-3 divide-x rounded-lg border bg-muted/20">
                   {[
                     [

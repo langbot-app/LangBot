@@ -57,9 +57,7 @@
             "prompt": [{"role": "system", "content": "You are a QA regression assistant."}],
             "knowledge-bases": [], "box-enabled": false, "timeout": 30
           }}
-        },
-        "safety": {"rate-limit": {"limitation": 10000}},
-        "output": {"force-delay": {"min": 0, "max": 0}}
+        }
       }
     }},
     {"id": "box_pipeline", "kind": "pipeline", "body": {
@@ -73,9 +71,7 @@
             "knowledge-bases": [], "box-enabled": true, "box-session-id-template": "{global}",
             "timeout": 30, "max-tool-iterations": 5
           }}
-        },
-        "safety": {"rate-limit": {"limitation": 10000}},
-        "output": {"force-delay": {"min": 0, "max": 0}}
+        }
       }
     }},
     {"id": "rag_pipeline", "kind": "pipeline", "body": {
@@ -89,9 +85,7 @@
             "knowledge-bases": ["${knowledge_base}"], "box-enabled": false,
             "timeout": 30, "retrieval-top-k": 5
           }}
-        },
-        "safety": {"rate-limit": {"limitation": 10000}},
-        "output": {"force-delay": {"min": 0, "max": 0}}
+        }
       }
     }}
   ],

@@ -14,7 +14,7 @@ export default {
   installDetails: 'Installation details',
   stageProgress: 'Stage progress',
   downloaded: 'Downloaded {{size}}',
-  processed: 'Processed {{completed}} / {{total}} pipelines',
+  processed: 'Processed {{completed}} / {{total}} Chats',
   installErrors: {
     plugin_permission_confirmation_required:
       'Plugin permissions could not be confirmed. Ask a member with the required permissions to review the plugin and retry.',
@@ -32,20 +32,20 @@ export default {
       'The plugin could not start. Check the runtime environment and retry.',
   },
   autoDescription:
-    'Legacy runners are now plugins. Migrate all pipelines while keeping your settings. Original configurations are backed up; conversations start fresh.',
-  viewPipelines: 'View pipelines',
+    'Legacy runners are now plugins. Migrate all Chats while keeping your settings. Original configurations are backed up; conversations start fresh.',
+  viewPipelines: 'View Chats',
   autoInstall: 'Install plugins and migrate',
   dataOnly: 'Migrate data only',
   dataOnlyHint:
     'For offline or private networks. Install the corresponding runner plugins yourself after migration.',
   installing: 'Installing required plugins…',
-  migrating: 'Migrating pipelines…',
+  migrating: 'Migrating Chats…',
   summary: '{{migrated}} migrated; {{remaining}} need attention.',
   installFailed:
     'Plugin installation failed. Expand the details to see the failed stage, then retry or migrate data only.',
 
   activationRetryHint:
-    'After checking the runtime, refresh, select this pipeline and confirm to retry activation only. Its saved configuration will not be migrated again.',
+    'After checking the runtime, refresh, select this Chat and confirm to retry activation only. Its saved configuration will not be migrated again.',
   details: 'Migration details',
   notices: {
     customRunner:
@@ -59,7 +59,7 @@ export default {
     runnerConfigReplaced:
       'The existing new-style runner config is replaced by the migration result; the original is kept in the backup.',
     runnerAdded:
-      'The required runner plugin was added to the extension list of this pipeline.',
+      'The required runner plugin was added to the extension list of this Chat.',
     extensionPrefs: 'Invalid entries in the extension settings were ignored.',
     runtimeUnavailable:
       'The plugin runtime is disconnected. Restore the connection and retry, or migrate data only.',
@@ -100,24 +100,24 @@ export default {
     schemaChanged:
       'The installed runner configuration does not match the migration target. Check the plugin version and refresh.',
     runnerExcluded:
-      'This pipeline excludes the required runner plugin. Update its extension settings first.',
+      'This Chat excludes the required runner plugin. Update its extension settings first.',
     boxTemplateInvalid:
       'Invalid sandbox reuse template. Use {variable_name}; positional fields, format conversions and attribute access are not supported.',
     pendingInteraction:
       'A conversation is waiting for input. Complete or cancel it before migration.',
   },
-  title: 'Pipeline migration',
+  title: 'Chat migration',
   description:
-    'Select pipelines to migrate. Original settings are backed up; conversations start fresh after migration.',
-  detected: '{{count}} pipelines need migration review.',
+    'Select Chats to migrate. Original settings are backed up; conversations start fresh after migration.',
+  detected: '{{count}} Chats need migration review.',
   review: 'Review migration',
-  readOnly: 'Only workspace managers can migrate pipelines.',
+  readOnly: 'Only workspace managers can migrate Chats.',
   previewError: 'Preview unavailable. Refresh to check again.',
-  submitting: 'Submitting selected pipelines…',
+  submitting: 'Submitting selected Chats…',
   running:
     'Migration is running. Closing this dialog does not cancel the task.',
-  finished: 'Task finished. Check each pipeline result below.',
-  failed: 'Task failed. Check each pipeline result below.',
+  finished: 'Task finished. Check each Chat result below.',
+  failed: 'Task failed. Check each Chat result below.',
   lost: 'Task observation lost. Its outcome is unknown; refresh the preview before any further action.',
   requestError:
     'Request not completed. Refresh the preview before selecting again.',
@@ -130,11 +130,11 @@ export default {
   pluginHint:
     'Missing a plugin? Install or enable its runner in Extensions, then refresh the preview.',
   extensions: 'Open Extensions',
-  results: 'Per-pipeline results',
+  results: 'Per-Chat results',
   selection: '{{count}} selected (maximum 50)',
-  confirm: 'I confirm migration of the selected pipelines.',
+  confirm: 'I confirm migration of the selected Chats.',
   refresh: 'Refresh preview',
-  execute: 'Migrate selected',
+  execute: 'Migrate selected Chats',
   legacyGate:
     'Legacy configuration is read-only until migration. Save and debug are unavailable to prevent implicit conversion.',
   states: {
