@@ -20,6 +20,7 @@ from tests.unit_tests.agent.test_orchestrator_integration import (
     FakeApplication,
     FakePluginConnector,
     FakeRegistry,
+    TEST_CONTEXT,
     make_descriptor,
     make_query,
 )
@@ -741,3 +742,99 @@ async def test_resume_refuses_tool_with_unknown_effects(clean_agent_state):
     )
     with pytest.raises(ValueError, match='no committed completion'):
         await _resume_events(store, 'unfinished', 1)
+
+
+@pytest.mark.asyncio
+async def test_recovery_outer_fallback_does_not_downgrade_persisted_run_completed(clean_agent_state, monkeypatch):
+    """run_recovery.py must not stamp failed/cancelled when run.completed is already durably persisted."""
+    import sqlite3
+    import sqlalchemy
+    from langbot.pkg.agent.runner.run_recovery import dispatch_recovery
+
+    store = RunLedgerStore(clean_agent_state)
+    connector = FakePluginConnector(
+        results=[
+            {'type': 'message.completed', 'sequence': 1, 'data': {'message': {'role': 'assistant', 'content': 'ok'}}},
+            {'type': 'run.completed', 'sequence': 2, 'data': {'finish_reason': 'stop'}},
+        ]
+    )
+    ap = FakeApplication(connector, clean_agent_state)
+    descriptor = make_descriptor()
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+    ap.agent_run_orchestrator = orchestrator
+
+    plan = orchestrator.query_bridge.build_plan(make_query())
+    event = plan.event.model_copy(update={'workspace_id': TEST_CONTEXT.workspace_uuid})
+    source_id = 'run-src-for-recovery-fallback'
+    await store.create_run(
+        run_id=source_id,
+        event_id=event.event_id,
+        binding_id=plan.binding.binding_id,
+        runner_id=descriptor.id,
+        workspace_id=TEST_CONTEXT.workspace_uuid,
+        bot_id=event.bot_id,
+        conversation_id=event.conversation_id,
+        authorization={
+            'processor_type': 'agent',
+            'processor_id': 'agent-1',
+            'runner_id': descriptor.id,
+            'recovery_event': event.model_dump(mode='json'),
+        },
+    )
+    await store.finalize_run(run_id=source_id, status='failed', status_reason='initial_failure')
+    source = await store.get_run(source_id)
+
+    tasks: list[asyncio.Task] = []
+    ap.task_mgr = SimpleNamespace(create_user_task=lambda coro, **_kw: tasks.append(asyncio.create_task(coro)))
+    placement = SimpleNamespace(
+        instance_uuid=TEST_CONTEXT.instance_uuid,
+        workspace_uuid=TEST_CONTEXT.workspace_uuid,
+        placement_generation=TEST_CONTEXT.placement_generation,
+    )
+    ap.workspace_service = SimpleNamespace(get_execution_binding=AsyncMock(return_value=placement))
+    ap.agent_service = SimpleNamespace(
+        get_agent=AsyncMock(
+            return_value={
+                'uuid': 'agent-1',
+                'kind': 'agent',
+                'runner_id': descriptor.id,
+                'runner_config': {},
+                'name': 'Agent',
+                'description': '',
+            }
+        )
+    )
+    ap.plugin_connector.bound_plugins = {}
+    ap.platform_mgr = SimpleNamespace(get_bot_adapter=lambda *_a, **_kw: None)
+    ap.bot_mgr = SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=None)))
+
+    monkeypatch.setattr(
+        'langbot.pkg.platform.botmgr.RuntimeBot._agent_product_to_binding',
+        staticmethod(lambda *_a, **_kw: plan.binding),
+    )
+    monkeypatch.setattr('langbot.pkg.agent.runner.run_ledger_store.BUSY_RETRY_ATTEMPTS', 2)
+    monkeypatch.setattr('langbot.pkg.agent.runner.run_ledger_store.BUSY_RETRY_BASE_DELAY', 0)
+
+    orig_finalize = RunLedgerStore._finalize_run_once
+    child_finalize_statuses: list[str] = []
+
+    async def fail_child_completed_finalize(self, session, **kwargs):
+        if kwargs['run_id'] != source_id:
+            child_finalize_statuses.append(kwargs['status'])
+            if kwargs['status'] == 'completed':
+                orig = sqlite3.OperationalError('database is locked')
+                orig.sqlite_errorcode = sqlite3.SQLITE_BUSY
+                raise sqlalchemy.exc.OperationalError('UPDATE agent_run', {}, orig)
+        return await orig_finalize(self, session, **kwargs)
+
+    monkeypatch.setattr(RunLedgerStore, '_finalize_run_once', fail_child_completed_finalize)
+
+    child = await dispatch_recovery(ap, source)
+    assert len(tasks) == 1
+    with pytest.raises(sqlalchemy.exc.OperationalError, match='database is locked'):
+        await asyncio.wait_for(tasks[0], timeout=5)
+
+    child_after = await store.get_run(child['run_id'])
+    assert child_finalize_statuses == ['completed', 'completed']
+    assert child_after['status'] == 'running'
+    assert await store.has_event_type(child['run_id'], 'run.completed') is True

@@ -277,12 +277,19 @@ async def dispatch_recovery(ap, source, *, resume=False, from_sequence=None, rea
                         await output_pipeline.deliver_runner_result(query, result)
         except BaseException as exc:
             latest = await store.get_run(run_id)
-            if latest and latest['status'] not in TERMINAL_STATUSES:
-                await store.finalize_run(
-                    run_id=run_id,
-                    status='cancelled' if isinstance(exc, asyncio.CancelledError) else 'failed',
-                    status_reason=str(exc) or type(exc).__name__,
-                )
+            if (
+                latest
+                and latest['status'] not in TERMINAL_STATUSES
+                and not await store.has_event_type(run_id, 'run.completed')
+            ):
+                try:
+                    await store.finalize_run(
+                        run_id=run_id,
+                        status='cancelled' if isinstance(exc, asyncio.CancelledError) else 'failed',
+                        status_reason=str(exc) or type(exc).__name__,
+                    )
+                except Exception:
+                    pass
             raise
 
     try:

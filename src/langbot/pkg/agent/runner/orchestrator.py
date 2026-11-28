@@ -420,15 +420,16 @@ class AgentRunOrchestrator:
                     authorization=run_authorization,
                 )
             if recovery:
-                await self.journal._get_run_ledger_store().authorize_recovery_run(
-                    run_id,
-                    authorization={
-                        **run_authorization,
-                        'recovery_event': self.journal._sanitize_event_data(event.model_dump(mode='json')),
-                        'recovery_checkpoint': recovery['request']['events'],
-                    },
-                    deadline_at=context.get('runtime', {}).get('deadline_at'),
-                )
+                with self._sqlite_write_budget(context):
+                    await self.journal._get_run_ledger_store().authorize_recovery_run(
+                        run_id,
+                        authorization={
+                            **run_authorization,
+                            'recovery_event': self.journal._sanitize_event_data(event.model_dump(mode='json')),
+                            'recovery_checkpoint': recovery['request']['events'],
+                        },
+                        deadline_at=context.get('runtime', {}).get('deadline_at'),
+                    )
             monitoring_id = (execution_query.variables or {}).get('_monitoring_message_id')
             if monitoring_id and monitoring_id != run_id:
                 await self.ap.monitoring_service.link_execution_message(
@@ -839,7 +840,7 @@ class AgentRunOrchestrator:
             }.get(terminal_status or '', 'unknown')
             execution_error = '' if execution_outcome == 'success' else (terminal_reason or execution_outcome)
         except (asyncio.CancelledError, GeneratorExit):
-            if finalized is None:
+            if finalized is None and not finalizing_completed:
                 execution_outcome = 'cancelled'
                 execution_error = 'cancelled'
                 try:
@@ -851,10 +852,13 @@ class AgentRunOrchestrator:
                     )
                 except Exception as finalize_exc:
                     self.ap.logger.warning(f'Failed to finalize cancelled run {run_id}: {finalize_exc}')
-            else:
+            elif finalized is not None:
                 status = finalized.get('status', 'unknown')
                 execution_outcome = 'success' if status == 'completed' else status
                 execution_error = '' if execution_outcome == 'success' else (finalized.get('status_reason') or status)
+            else:
+                execution_outcome = 'cancelled'
+                execution_error = 'cancelled'
             raise
         except Exception as exc:
             if finalized is None:

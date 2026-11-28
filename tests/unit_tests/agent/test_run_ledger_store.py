@@ -18,6 +18,7 @@ from langbot.pkg.agent.runner.run_ledger_store import (
     RunLedgerStore,
     TerminalRunTransitionError,
     _epoch_to_datetime,
+    _is_duplicate_run_id,
     _is_duplicate_sequence,
 )
 from langbot.pkg.entity.persistence.agent_run import AgentRun
@@ -1119,3 +1120,123 @@ def test_duplicate_sequence_detection_covers_both_backends(message):
         'INSERT', {}, sqlite3.IntegrityError('UNIQUE constraint failed: agent_run.run_id')
     )
     assert not _is_duplicate_sequence(unrelated)
+
+
+@pytest.mark.parametrize(
+    'message',
+    [
+        'UNIQUE constraint failed: agent_run.run_id',
+        'duplicate key value violates unique constraint "ix_agent_run_run_id"',
+        'duplicate key value violates unique constraint "agent_run_run_id_key"',
+        'duplicate key value violates unique constraint "uq_agent_run_run_id"',
+    ],
+    ids=['sqlite-column', 'postgres-ix', 'postgres-key', 'postgres-uq'],
+)
+def test_duplicate_run_id_detection_covers_sqlite_and_postgres(message):
+    exc = sqlalchemy.exc.IntegrityError('INSERT', {}, sqlite3.IntegrityError(message))
+    assert _is_duplicate_run_id(exc)
+
+    unrelated = sqlalchemy.exc.IntegrityError(
+        'INSERT',
+        {},
+        sqlite3.IntegrityError('UNIQUE constraint failed: agent_run_event.run_id, agent_run_event.sequence'),
+    )
+    assert not _is_duplicate_run_id(unrelated)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure_mode', ['restore_error', 'body_cancelled', 'restore_cancelled'])
+async def test_sqlite_attempt_timeout_invalidates_connection_on_restore_failure_and_cancel(tmp_path, failure_mode):
+    """Failed busy_timeout restore or cancellation invalidates the connection so no sliced timeout leaks into the pool."""
+    from sqlalchemy.pool import AsyncAdaptedQueuePool
+    from langbot.pkg.persistence.write_admission import sqlite_attempt_timeout
+
+    db_path = tmp_path / f'pool_pollution_{failure_mode}.db'
+    engine = create_async_engine(
+        f'sqlite+aiosqlite:///{db_path}',
+        poolclass=AsyncAdaptedQueuePool,
+        pool_size=2,
+        max_overflow=0,
+    )
+
+    @sqlalchemy.event.listens_for(engine.sync_engine, 'connect')
+    def _set_timeout(dbapi_conn, _record):
+        cursor = dbapi_conn.cursor()
+        try:
+            cursor.execute('PRAGMA busy_timeout=30000')
+        finally:
+            cursor.close()
+
+    session_factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with session_factory() as session:
+            if failure_mode == 'body_cancelled':
+                with pytest.raises(asyncio.CancelledError):
+                    async with sqlite_attempt_timeout(session, engine, 0.15, max_attempt_seconds=0.15):
+                        raise asyncio.CancelledError()
+            else:
+                conn = await session.connection()
+                raw = await conn.get_raw_connection()
+                driver_conn = raw.driver_connection
+                real_execute = driver_conn.execute
+
+                def _flaky_execute(sql, *args, **kwargs):
+                    if sql == 'PRAGMA busy_timeout=30000':
+                        if failure_mode == 'restore_error':
+                            raise RuntimeError('restore failed')
+                        raise asyncio.CancelledError()
+                    return real_execute(sql, *args, **kwargs)
+
+                driver_conn.execute = _flaky_execute
+                if failure_mode == 'restore_cancelled':
+                    with pytest.raises(asyncio.CancelledError):
+                        async with sqlite_attempt_timeout(session, engine, 0.15, max_attempt_seconds=0.15):
+                            pass
+                else:
+                    async with sqlite_attempt_timeout(session, engine, 0.15, max_attempt_seconds=0.15):
+                        pass
+
+        # Check out every slot in the pool simultaneously and verify no connection carries the sliced 150ms timeout.
+        conns = [await engine.connect() for _ in range(2)]
+        try:
+            for checked in conns:
+                raw = await checked.get_raw_connection()
+                async with raw.driver_connection.execute('PRAGMA busy_timeout') as cur:
+                    assert (await cur.fetchone())[0] == 30000
+        finally:
+            for checked in conns:
+                await checked.close()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_sqlite_attempt_timeout_bounds_checkout_when_deadline_already_exhausted(tmp_path):
+    """Exhausted deadline (remaining<=0) bounds pool checkout instead of waiting for pool_timeout=30s."""
+    from sqlalchemy.pool import AsyncAdaptedQueuePool
+
+    db_path = tmp_path / 'exhausted_pool.db'
+    engine = create_async_engine(
+        f'sqlite+aiosqlite:///{db_path}',
+        poolclass=AsyncAdaptedQueuePool,
+        pool_size=1,
+        max_overflow=0,
+        pool_timeout=30,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    store = RunLedgerStore(engine)
+    await store.create_run(run_id='run-pool-full', event_id=None, binding_id=None, runner_id='runner')
+
+    sole_conn = await engine.connect()
+    try:
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        with sqlite_write_deadline(started - 1.0):
+            with pytest.raises(sqlalchemy.exc.OperationalError, match='database is locked'):
+                await store.append_event(run_id='run-pool-full', sequence=1, event_type='message.completed')
+        elapsed = loop.time() - started
+        assert elapsed < 0.5
+    finally:
+        await sole_conn.close()
+        await engine.dispose()

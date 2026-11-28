@@ -16,12 +16,13 @@ import sqlalchemy
 from sqlalchemy import event
 import aiosqlite
 
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
 
 
 SQLITE_BUSY_ERROR_CODES = frozenset({sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED})
 SQLITE_RETRY_DEFAULT_BUDGET_SECONDS = 30.0
 SQLITE_RETRY_ATTEMPT_TIMEOUT_SECONDS = 5.0
+SQLITE_EXHAUSTED_CHECKOUT_TIMEOUT_SECONDS = 0.05
 SQLITE_RETRY_MAX_ATTEMPTS = 8
 SQLITE_RETRY_BASE_DELAY_SECONDS = 0.02
 SQLITE_RETRY_MAX_DELAY_SECONDS = 0.5
@@ -212,30 +213,52 @@ def _deadline_exceeded_busy_error(detail: str) -> sqlalchemy.exc.OperationalErro
     )
 
 
+async def _invalidate_connection(conn: AsyncConnection) -> None:
+    try:
+        await conn.invalidate()
+    except BaseException:
+        pass
+
+
+async def _restore_or_invalidate_busy_timeout(
+    conn: AsyncConnection,
+    driver_conn: aiosqlite.Connection,
+    orig_ms: int,
+) -> None:
+    try:
+        await driver_conn.execute(f'PRAGMA busy_timeout={orig_ms}')
+    except BaseException as restore_exc:
+        await _invalidate_connection(conn)
+        if isinstance(restore_exc, (asyncio.CancelledError, GeneratorExit)):
+            raise
+
+
 @asynccontextmanager
 async def sqlite_attempt_timeout(
     session: AsyncSession,
     engine: AsyncEngine,
     remaining_seconds: float,
     *,
-    max_attempt_seconds: float = SQLITE_RETRY_ATTEMPT_TIMEOUT_SECONDS,
+    max_attempt_seconds: float | None = None,
 ) -> typing.AsyncIterator[None]:
     """Slice SQLite ``PRAGMA busy_timeout`` for one attempt without inflating it.
 
-    Always restores the connection's original ``busy_timeout`` before the
-    pooled connection is returned.
+    Restores the connection's original ``busy_timeout`` before returning it to
+    the pool, or invalidates the connection on cancellation / restore failure
+    so a sliced timeout can never leak into the pool.
     """
     if engine.dialect.name != 'sqlite':
         yield
         return
-    if remaining_seconds > 0:
-        try:
-            async with asyncio.timeout(remaining_seconds):
-                conn = await session.connection()
-        except TimeoutError as exc:
-            raise _deadline_exceeded_busy_error('SQLite connection checkout deadline exceeded') from exc
-    else:
-        conn = await session.connection()
+    effective_max_attempt = (
+        SQLITE_RETRY_ATTEMPT_TIMEOUT_SECONDS if max_attempt_seconds is None else float(max_attempt_seconds)
+    )
+    checkout_timeout = remaining_seconds if remaining_seconds > 0 else SQLITE_EXHAUSTED_CHECKOUT_TIMEOUT_SECONDS
+    try:
+        async with asyncio.timeout(checkout_timeout):
+            conn = await session.connection()
+    except TimeoutError as exc:
+        raise _deadline_exceeded_busy_error('SQLite connection checkout deadline exceeded') from exc
     raw_conn = await conn.get_raw_connection()
     driver_conn = getattr(raw_conn, 'driver_connection', None)
     if not isinstance(driver_conn, aiosqlite.Connection):
@@ -246,18 +269,22 @@ async def sqlite_attempt_timeout(
         row = await cursor.fetchone()
         if row and isinstance(row[0], int):
             orig_ms = row[0]
-    desired_ms = max(0, int(min(max_attempt_seconds, max(0.0, remaining_seconds)) * 1000))
+    desired_ms = max(0, int(min(effective_max_attempt, max(0.0, remaining_seconds)) * 1000))
     sliced = orig_ms is not None and orig_ms > desired_ms
     if sliced:
         await driver_conn.execute(f'PRAGMA busy_timeout={desired_ms}')
     try:
         yield
-    finally:
+    except BaseException as exc:
         if sliced and orig_ms is not None:
-            try:
-                await driver_conn.execute(f'PRAGMA busy_timeout={orig_ms}')
-            except Exception:
-                pass
+            if isinstance(exc, (asyncio.CancelledError, GeneratorExit)):
+                await _invalidate_connection(conn)
+            else:
+                await _restore_or_invalidate_busy_timeout(conn, driver_conn, orig_ms)
+        raise
+    else:
+        if sliced and orig_ms is not None:
+            await _restore_or_invalidate_busy_timeout(conn, driver_conn, orig_ms)
 
 
 async def run_sqlite_write_with_retry(
@@ -265,8 +292,8 @@ async def run_sqlite_write_with_retry(
     operation: typing.Callable[[float], typing.Awaitable[_T]],
     *,
     slot_operation: str = 'ledger',
-    budget_seconds: float = SQLITE_RETRY_DEFAULT_BUDGET_SECONDS,
-    attempt_timeout_seconds: float = SQLITE_RETRY_ATTEMPT_TIMEOUT_SECONDS,
+    budget_seconds: float | None = None,
+    attempt_timeout_seconds: float | None = None,
     max_attempts: int | None = None,
     base_delay_seconds: float | None = None,
     max_delay_seconds: float | None = None,
@@ -280,7 +307,14 @@ async def run_sqlite_write_with_retry(
     """
     loop = asyncio.get_running_loop()
     now = loop.time()
-    deadline = now + max(0.0, float(budget_seconds))
+    effective_budget = max(
+        0.0, float(SQLITE_RETRY_DEFAULT_BUDGET_SECONDS if budget_seconds is None else budget_seconds)
+    )
+    effective_attempt_timeout = max(
+        0.0,
+        float(SQLITE_RETRY_ATTEMPT_TIMEOUT_SECONDS if attempt_timeout_seconds is None else attempt_timeout_seconds),
+    )
+    deadline = now + effective_budget
     context_deadline = _sqlite_write_deadline.get()
     if context_deadline is not None:
         deadline = min(deadline, float(context_deadline))
@@ -312,14 +346,14 @@ async def run_sqlite_write_with_retry(
                     await slot.__aenter__()
                 try:
                     remaining_in_slot = max(0.0, deadline - loop.time())
-                    result = await operation(min(attempt_timeout_seconds, remaining_in_slot))
+                    result = await operation(min(effective_attempt_timeout, remaining_in_slot))
                 except BaseException as exc:
                     await slot.__aexit__(type(exc), exc, exc.__traceback__)
                     raise
                 await slot.__aexit__(None, None, None)
                 return result
             with slot:
-                return await operation(min(attempt_timeout_seconds, remaining))
+                return await operation(min(effective_attempt_timeout, remaining))
         except Exception as exc:
             retryable = is_sqlite_busy(exc) or (is_retryable is not None and is_retryable(exc))
             attempt += 1

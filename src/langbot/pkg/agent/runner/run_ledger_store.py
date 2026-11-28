@@ -45,6 +45,7 @@ _DUPLICATE_SEQUENCE_MARKERS = (
 )
 _DUPLICATE_RUN_ID_MARKERS = (
     'agent_run.run_id',
+    'ix_agent_run_run_id',
     'agent_run_run_id_key',
     'uq_agent_run_run_id',
 )
@@ -920,6 +921,16 @@ class RunLedgerStore:
         async with self._session_factory() as session:
             row = await self._get_run_row(session, run_id)
             return self._run_to_dict(row) if row is not None else None
+
+    async def has_event_type(self, run_id: str, event_type: str) -> bool:
+        """Return whether at least one ledger event of ``event_type`` is persisted for ``run_id``."""
+        async with self._session_factory() as session:
+            found = await session.scalar(
+                sqlalchemy.select(AgentRunEvent.id)
+                .where(AgentRunEvent.run_id == run_id, AgentRunEvent.type == event_type)
+                .limit(1)
+            )
+            return found is not None
 
     async def register_runtime(
         self,

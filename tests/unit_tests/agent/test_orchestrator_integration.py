@@ -2561,3 +2561,45 @@ async def test_orchestrator_does_not_downgrade_to_failed_when_completed_finalize
     assert attempted_statuses == ['completed', 'completed']
     assert run['status'] == 'running'
     assert [item['type'] for item in events] == ['message.completed', 'run.completed']
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_does_not_overwrite_with_cancelled_during_finalize_completed(clean_agent_state, monkeypatch):
+    """Consumer cancellation while finalizing a persisted run.completed must not overwrite status to cancelled."""
+    connector = FakePluginConnector(
+        results=[
+            {'type': 'message.completed', 'sequence': 1, 'data': {'message': {'role': 'assistant', 'content': 'done'}}},
+            {'type': 'run.completed', 'sequence': 2, 'data': {'finish_reason': 'stop'}},
+        ]
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
+    store = orchestrator.journal._get_run_ledger_store()
+    real_finalize = store._finalize_run_once
+    finalize_entered = asyncio.Event()
+    attempted_statuses: list[str] = []
+
+    async def blocking_completed_finalize(session, **kwargs):
+        attempted_statuses.append(kwargs['status'])
+        if kwargs['status'] == 'completed':
+            finalize_entered.set()
+            await asyncio.Event().wait()
+        return await real_finalize(session, **kwargs)
+
+    monkeypatch.setattr(store, '_finalize_run_once', blocking_completed_finalize)
+
+    async def consume():
+        return [result async for result in orchestrator.run_from_query(make_query())]
+
+    task = asyncio.create_task(consume())
+    await asyncio.wait_for(finalize_entered.wait(), timeout=2)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, timeout=2)
+
+    run_id = connector.contexts[0]['run_id']
+    run = await RunLedgerStore(clean_agent_state).get_run(run_id)
+    events, *_ = await RunLedgerStore(clean_agent_state).page_run_events(run_id=run_id, limit=10)
+
+    assert attempted_statuses == ['completed']
+    assert run['status'] == 'running'
+    assert [item['type'] for item in events] == ['message.completed', 'run.completed']

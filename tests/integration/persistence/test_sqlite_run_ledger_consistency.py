@@ -24,6 +24,7 @@ from langbot.pkg.core import app  # noqa: F401 - register persistence database m
 from langbot.pkg.entity.persistence.agent_run import AgentRun
 from langbot.pkg.entity.persistence.base import Base
 from langbot.pkg.persistence.databases.sqlite import BUSY_TIMEOUT_MS, SQLiteDatabaseManager
+from langbot.pkg.persistence import write_admission
 from langbot.pkg.persistence.write_admission import sqlite_write_deadline
 from langbot.pkg.utils.execution_lease import INTERRUPTED_REASON, OWNER_ID as EXECUTION_OWNER_ID
 
@@ -128,17 +129,29 @@ async def test_scenario_1_single_process_concurrency_with_competing_writers(tmp_
         await engine.dispose()
 
 
-async def test_scenario_2_multiprocess_contention_recovery_deadline_and_serialization(tmp_path):
-    """Scenario 2: real child OS process holding SQLite write locks and racing ledger writes."""
+async def test_scenario_2_multiprocess_contention_recovery_deadline_and_serialization(tmp_path, monkeypatch):
+    """Scenario 2: real child OS process holding SQLite write locks across multiple retry attempts."""
     db_path = tmp_path / 'multiprocess.db'
     engine = await _create_sqlite_engine(db_path, write_queue=False)
     store = RunLedgerStore(engine)
+    # Slice each attempt to 150ms so a 0.45s real OS write lock forces >=2 SQLITE_BUSY retry cycles.
+    monkeypatch.setattr(write_admission, 'SQLITE_RETRY_ATTEMPT_TIMEOUT_SECONDS', 0.15)
+    monkeypatch.setattr(ledger_mod, 'BUSY_RETRY_BASE_DELAY', 0.02)
+    attempts = {'append': 0, 'finalize': 0}
+
+    @sa.event.listens_for(engine.sync_engine, 'before_cursor_execute')
+    def _count_attempts(_conn, _cursor, statement, _params, _ctx, _many):
+        if statement.startswith('INSERT INTO agent_run_event'):
+            attempts['append'] += 1
+        elif statement.startswith('UPDATE agent_run SET updated_at=agent_run.updated_at'):
+            attempts['finalize'] += 1
+
     try:
         await store.create_run(run_id='run-mp-recover', event_id='evt-1', binding_id='b', runner_id='r')
         await store.create_run(run_id='run-mp-deadline', event_id='evt-2', binding_id='b', runner_id='r')
         await store.create_run(run_id='run-mp-race', event_id='evt-3', binding_id='b', runner_id='r')
 
-        # 2a: Child process holds BEGIN IMMEDIATE for 0.6s, then commits -> parent retries and succeeds.
+        # 2a: Child process holds BEGIN IMMEDIATE for 0.45s (> 150ms slice) -> parent genuinely retries >=2 times.
         holder_code = (
             'import sqlite3, sys, time; '
             'conn = sqlite3.connect(sys.argv[1], timeout=30); '
@@ -149,8 +162,9 @@ async def test_scenario_2_multiprocess_contention_recovery_deadline_and_serializ
             'conn.commit(); '
             'conn.close()'
         )
+        attempts['append'] = 0
         with subprocess.Popen(
-            [sys.executable, '-c', holder_code, str(db_path), 'run-mp-recover', '0.6'],
+            [sys.executable, '-c', holder_code, str(db_path), 'run-mp-recover', '0.45'],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -158,12 +172,27 @@ async def test_scenario_2_multiprocess_contention_recovery_deadline_and_serializ
             try:
                 assert proc.stdout.readline().strip() == 'LOCKED'
                 event = await store.append_event(run_id='run-mp-recover', sequence=1, event_type='run.completed')
-                final = await store.finalize_run(run_id='run-mp-recover', status='completed')
                 assert event['sequence'] == 1
-                assert final['status'] == 'completed'
             finally:
                 _, stderr = proc.communicate(timeout=10)
                 assert proc.returncode == 0, stderr
+        assert attempts['append'] >= 2
+
+        attempts['finalize'] = 0
+        with subprocess.Popen(
+            [sys.executable, '-c', holder_code, str(db_path), 'run-mp-recover', '0.45'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        ) as proc_fin:
+            try:
+                assert proc_fin.stdout.readline().strip() == 'LOCKED'
+                final = await store.finalize_run(run_id='run-mp-recover', status='completed')
+                assert final['status'] == 'completed'
+            finally:
+                _, stderr_fin = proc_fin.communicate(timeout=10)
+                assert proc_fin.returncode == 0, stderr_fin
+        assert attempts['finalize'] >= 2
 
         # 2b: Child process holds BEGIN IMMEDIATE for 2.0s while caller deadline is 0.45s -> bounded failure.
         with subprocess.Popen(
@@ -197,6 +226,8 @@ async def test_scenario_2_multiprocess_contention_recovery_deadline_and_serializ
             '        data={"database": {"sqlite": {"path": sys.argv[1]}}})))\n'
             '    await mgr.initialize()\n'
             '    store = RunLedgerStore(mgr.get_engine())\n'
+            '    print("READY", flush=True)\n'
+            '    sys.stdin.readline()\n'
             '    seqs = []\n'
             '    for i in range(6):\n'
             '        ev = await store.append_event(run_id=sys.argv[2], sequence=None, event_type="child.ev", data={"i": i})\n'
@@ -212,10 +243,14 @@ async def test_scenario_2_multiprocess_contention_recovery_deadline_and_serializ
         )
         with subprocess.Popen(
             [sys.executable, '-c', worker_code, str(db_path), 'run-mp-race'],
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         ) as child:
+            assert child.stdout.readline().strip() == 'READY'
+            child.stdin.write('GO\n')
+            child.stdin.flush()
             parent_seqs: list[int] = []
             for index in range(6):
                 ev = await store.append_event(
@@ -244,11 +279,22 @@ async def test_scenario_2_multiprocess_contention_recovery_deadline_and_serializ
         await engine.dispose()
 
 
-async def test_scenario_3_mid_run_cancellation_under_sqlite_write_contention(tmp_path):
-    """Scenario 3: cancelling a blocked writer releases resources cleanly, and cancel finalize succeeds under contention."""
+async def test_scenario_3_mid_run_cancellation_under_sqlite_write_contention(tmp_path, monkeypatch):
+    """Scenario 3: cancelling a blocked writer invalidates safely, and cancel finalize retries under contention."""
     db_path = tmp_path / 'cancel.db'
     engine = await _create_sqlite_engine(db_path, write_queue=True)
     store = RunLedgerStore(engine)
+    monkeypatch.setattr(write_admission, 'SQLITE_RETRY_ATTEMPT_TIMEOUT_SECONDS', 0.15)
+    monkeypatch.setattr(ledger_mod, 'BUSY_RETRY_BASE_DELAY', 0.02)
+    cancel_attempts = {'append': 0, 'finalize': 0}
+
+    @sa.event.listens_for(engine.sync_engine, 'before_cursor_execute')
+    def _count_cancel(_conn, _cursor, statement, _params, _ctx, _many):
+        if statement.startswith('INSERT INTO agent_run_event'):
+            cancel_attempts['append'] += 1
+        elif statement.startswith('UPDATE agent_run SET updated_at=agent_run.updated_at'):
+            cancel_attempts['finalize'] += 1
+
     try:
         await store.create_run(run_id='run-cancel-1', event_id='e1', binding_id='b', runner_id='r', workspace_id='ws')
         await store.create_run(run_id='run-cancel-2', event_id='e2', binding_id='b', runner_id='r', workspace_id='ws')
@@ -270,7 +316,18 @@ async def test_scenario_3_mid_run_cancellation_under_sqlite_write_contention(tmp
         await holder.rollback()
         await holder.close()
 
-        # 3b: Mid-run cancel request + host cancelled event + finalize_run('cancelled') under transient contention.
+        # Verify no pooled connection leaked the sliced 150ms timeout after cancellation.
+        checked = [await engine.connect() for _ in range(3)]
+        try:
+            for conn in checked:
+                raw = await conn.get_raw_connection()
+                async with raw.driver_connection.execute('PRAGMA busy_timeout') as cur:
+                    assert int((await cur.fetchone())[0]) == BUSY_TIMEOUT_MS
+        finally:
+            for conn in checked:
+                await conn.close()
+
+        # 3b: Mid-run cancel request + host cancelled event + finalize_run('cancelled') across multi-attempt lock waits.
         holder2 = await engine.connect()
         await holder2.exec_driver_sql('BEGIN IMMEDIATE')
         await holder2.execute(
@@ -278,7 +335,7 @@ async def test_scenario_3_mid_run_cancellation_under_sqlite_write_contention(tmp
         )
 
         async def release_soon():
-            await asyncio.sleep(0.25)
+            await asyncio.sleep(0.45)
             await holder2.commit()
             await holder2.close()
 
@@ -287,9 +344,24 @@ async def test_scenario_3_mid_run_cancellation_under_sqlite_write_contention(tmp
         assert cancel_req is not None and cancel_req['cancel_requested_at'] is not None
         await releaser
 
+        holder3 = await engine.connect()
+        await holder3.exec_driver_sql('BEGIN IMMEDIATE')
+        await holder3.execute(
+            sa.update(AgentRun).where(AgentRun.run_id == 'run-cancel-2').values(updated_at=AgentRun.updated_at)
+        )
+
+        async def release_third():
+            await asyncio.sleep(0.45)
+            await holder3.commit()
+            await holder3.close()
+
+        cancel_attempts['finalize'] = 0
+        releaser3 = asyncio.create_task(release_third())
         cancelled_event = await store.append_event(
             run_id='run-cancel-2', sequence=None, event_type='run.failed', data={'code': 'cancelled'}, source='host'
         )
+        await releaser3
+        assert cancel_attempts['finalize'] >= 2
         final = await store.finalize_run(run_id='run-cancel-2', status='cancelled', status_reason='user_abort')
         assert cancelled_event['sequence'] == 1
         assert final['status'] == 'cancelled'
@@ -299,11 +371,20 @@ async def test_scenario_3_mid_run_cancellation_under_sqlite_write_contention(tmp
         await engine.dispose()
 
 
-async def test_scenario_4_retry_run_and_ledger_busy_retry_under_contention(tmp_path):
-    """Scenario 4: retry_run increments retry_count exactly once under real SQLite lock contention."""
+async def test_scenario_4_retry_run_and_ledger_busy_retry_under_contention(tmp_path, monkeypatch):
+    """Scenario 4: retry_run retries >=2 times on real SQLITE_BUSY and increments retry_count exactly once."""
     db_path = tmp_path / 'retry.db'
     engine = await _create_sqlite_engine(db_path, write_queue=False)
     store = RunLedgerStore(engine)
+    monkeypatch.setattr(write_admission, 'SQLITE_RETRY_ATTEMPT_TIMEOUT_SECONDS', 0.15)
+    monkeypatch.setattr(ledger_mod, 'BUSY_RETRY_BASE_DELAY', 0.02)
+    retry_attempts = {'lock': 0}
+
+    @sa.event.listens_for(engine.sync_engine, 'before_cursor_execute')
+    def _count_retry(_conn, _cursor, statement, _params, _ctx, _many):
+        if statement.startswith('UPDATE agent_run SET updated_at=agent_run.updated_at'):
+            retry_attempts['lock'] += 1
+
     try:
         await store.create_run(
             run_id='run-retry',
@@ -325,14 +406,16 @@ async def test_scenario_4_retry_run_and_ledger_busy_retry_under_contention(tmp_p
         )
 
         async def release():
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.45)
             await holder.commit()
             await holder.close()
 
+        retry_attempts['lock'] = 0
         releaser = asyncio.create_task(release())
         retried = await store.retry_run(run_id='run-retry', status_reason='operator_retry', resume_from_sequence=1)
         await releaser
 
+        assert retry_attempts['lock'] >= 2
         assert retried['status'] == 'queued'
         assert retried['finished_at'] is None
         assert retried['metadata']['retry_count'] == 1
@@ -344,11 +427,20 @@ async def test_scenario_4_retry_run_and_ledger_busy_retry_under_contention(tmp_p
         await engine.dispose()
 
 
-async def test_scenario_5_process_recovery_reclaim_and_restart_durability(tmp_path):
-    """Scenario 5: interrupted lease reclaim, recovery child creation under lock, and post-restart continuity."""
+async def test_scenario_5_process_recovery_reclaim_and_restart_durability(tmp_path, monkeypatch):
+    """Scenario 5: interrupted lease reclaim across real retries, recovery child creation, and restart durability."""
     db_path = tmp_path / 'recovery.db'
     engine = await _create_sqlite_engine(db_path, write_queue=False)
     store = RunLedgerStore(engine)
+    monkeypatch.setattr(write_admission, 'SQLITE_RETRY_ATTEMPT_TIMEOUT_SECONDS', 0.15)
+    monkeypatch.setattr(ledger_mod, 'BUSY_RETRY_BASE_DELAY', 0.02)
+    reclaim_attempts = {'finalize': 0}
+
+    @sa.event.listens_for(engine.sync_engine, 'before_cursor_execute')
+    def _count_reclaim(_conn, _cursor, statement, _params, _ctx, _many):
+        if statement.startswith('UPDATE agent_run SET updated_at=agent_run.updated_at'):
+            reclaim_attempts['finalize'] += 1
+
     try:
         # 5a: Interrupted run owned by this Host is reclaimed to completed under transient contention.
         await store.create_run(
@@ -369,6 +461,7 @@ async def test_scenario_5_process_recovery_reclaim_and_restart_durability(tmp_pa
                     execution_owner_id=EXECUTION_OWNER_ID,
                 )
             )
+        await store.append_event(run_id='run-reclaim', sequence=2, event_type='run.completed')
         holder = await engine.connect()
         await holder.exec_driver_sql('BEGIN IMMEDIATE')
         await holder.execute(
@@ -376,14 +469,15 @@ async def test_scenario_5_process_recovery_reclaim_and_restart_durability(tmp_pa
         )
 
         async def release_holder():
-            await asyncio.sleep(0.25)
+            await asyncio.sleep(0.45)
             await holder.commit()
             await holder.close()
 
+        reclaim_attempts['finalize'] = 0
         releaser = asyncio.create_task(release_holder())
-        await store.append_event(run_id='run-reclaim', sequence=2, event_type='run.completed')
         reclaimed = await store.finalize_run(run_id='run-reclaim', status='completed')
         await releaser
+        assert reclaim_attempts['finalize'] >= 2
         assert reclaimed['status'] == 'completed'
         assert reclaimed['status_reason'] is None
 
