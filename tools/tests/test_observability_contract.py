@@ -146,3 +146,134 @@ def test_open_loop_records_failed_action_without_breaking_accounting(tmp_path: P
     assert settled == [(0, 'failed')]
     records = [json.loads(line) for line in (tmp_path / 'actions.jsonl').read_text().splitlines()]
     assert records and all(record['status'] == 'failed' for record in records)
+
+
+def test_trace_index_and_manifest_include_service_logs_and_timings(tmp_path: Path):
+    actions = tmp_path / 'actions.jsonl'
+    arrivals = tmp_path / 'arrivals.jsonl'
+    core_log = tmp_path / 'core.log'
+    runtime_log = tmp_path / 'runtime.log'
+
+    actions.write_text(json.dumps({'trace_id': 'Y-100', 'action_id': 'a-100', 'status': 'succeeded'}) + '\n')
+    arrivals.write_text(
+        json.dumps({'trace_id': 'Y-100', 'action_id': 'a-100', 'run_id': 'run-100', 'arrival_id': 0}) + '\n'
+    )
+    core_log.write_text(
+        '\n'.join(
+            [
+                '[2026-11-28 12:00:00.100] INFO [CORE.agent] run (orchestrator.py:498) [10][Main][ws=w1][c-trace] '
+                'agent_runner_timing run_id=run-100 runner=local-agent duration_ms=123.456',
+                '[2026-11-28 12:00:00.200] INFO [CORE.agent] run (orchestrator.py:498) [10][Main][ws=w1][c-trace] '
+                'agent_runner_timing run_id=run-unmatched runner=local-agent duration_ms=5.000',
+                '[2026-11-28 12:00:00.300] INFO [CORE.box] execute (service.py:877) [10][Main][ws=w1][c-trace] '
+                'box_execute_timing query_id=q-1 session_id=s-1 placement_ms=1.000 prepare_ms=2.000 '
+                'rpc_ms=3.000 post_ms=4.000 total_ms=10.000',
+                '[2026-11-28 12:00:00.400] INFO [CORE.box] select (service.py:1987) [10][Main][ws=w1][c-trace] '
+                'box_selection_timing workspace_uuid=w1 settings_ms=0.500 backend_info_ms=1.500 '
+                'backend_cache_hit=True total_ms=2.000',
+            ]
+        )
+        + '\n'
+    )
+    runtime_log.write_text(
+        '[2026-11-28 12:00:00.350] INFO [BOX.runtime] exec (runtime.py:1777) [20][Main][ws=w1][b-trace] '
+        'box_execute_timing session_id=s-1 lock_wait_ms=0.100 session_acquire_ms=0.200 '
+        'backend_exec_ms=2.000 runtime_ms=2.300\n'
+    )
+
+    index_path = tmp_path / 'trace-index.json'
+    index = write_trace_index(
+        index_path,
+        [actions, arrivals],
+        run_id='run-svc-1',
+        service_logs={'core': core_log, 'runtime': runtime_log},
+    )
+
+    assert index['traces'] == 1
+    assert index['timing_counts'] == {
+        'agent_runner_timing': 2,
+        'box_execute_timing': 2,
+        'box_selection_timing': 1,
+    }
+    assert set(index['service_log_sources']) == {
+        'service_log:core',
+        'service_log:runtime',
+        'agent_runner_timing',
+        'box_execute_timing',
+        'box_selection_timing',
+    }
+
+    entry = index['entries'][0]
+    assert entry['trace_id'] == 'Y-100'
+    assert entry['run_ids'] == ['run-100']
+    assert len(entry['timings']) == 1
+    runner_timing = entry['timings'][0]
+    assert runner_timing['kind'] == 'agent_runner_timing'
+    assert runner_timing['line'] == 1
+    assert runner_timing['correlation_level'] == 'run_id'
+    assert runner_timing['deterministic_trace_binding'] is True
+    assert runner_timing['fields']['duration_ms'] == 123.456
+    assert any(ref.get('kind') == 'agent_runner_timing' and ref['line'] == 1 for ref in entry['evidence'])
+
+    secondary = index['secondary_indexes']
+    assert 'run-unmatched' in secondary['by_run_id']
+    assert secondary['by_run_id']['run-unmatched'][0]['deterministic_trace_binding'] is False
+    assert secondary['by_run_id']['run-unmatched'][0]['correlation_level'] == 'uncorrelated'
+
+    assert len(secondary['by_query_id']['q-1']) == 1
+    assert secondary['by_query_id']['q-1'][0]['correlation_level'] == 'secondary_query_id'
+    assert secondary['by_query_id']['q-1'][0]['deterministic_trace_binding'] is False
+
+    assert len(secondary['by_session_id']['s-1']) == 2
+    assert {item['artifact'] for item in secondary['by_session_id']['s-1']} == {'core.log', 'runtime.log'}
+    assert all(
+        item['correlation_level'] == 'secondary_session_id' and item['deterministic_trace_binding'] is False
+        for item in secondary['by_session_id']['s-1']
+    )
+
+    assert len(secondary['by_workspace_uuid']['w1']) == 1
+    selection = secondary['by_workspace_uuid']['w1'][0]
+    assert selection['kind'] == 'box_selection_timing'
+    assert selection['correlation_level'] == 'secondary_workspace_uuid'
+    assert selection['deterministic_trace_binding'] is False
+    assert selection['fields']['backend_cache_hit'] is True
+
+    manifest = write_manifest(
+        tmp_path / 'run-manifest.json',
+        run_id='run-svc-1',
+        expected_sources=[
+            'service_log:core',
+            'service_log:runtime',
+            'agent_runner_timing',
+            'box_execute_timing',
+            'box_selection_timing',
+        ],
+        artifacts=[actions, arrivals, index_path],
+        trace_index=index_path,
+        service_logs={'core': core_log, 'runtime': runtime_log},
+    )
+    assert manifest['completeness'] == 'complete'
+    hashed_paths = {row['path'] for row in manifest['artifacts']}
+    assert {str(core_log), str(runtime_log), str(index_path)} <= hashed_paths
+    assert all(row['sha256'] for row in manifest['artifacts'])
+    assert manifest['trace_index']['service_logs'] == 2
+    assert manifest['trace_index']['timing_counts']['agent_runner_timing'] == 2
+    assert manifest['trace_index']['secondary_index_counts']['by_session_id'] == 1
+
+
+def test_missing_service_log_marks_manifest_incomplete(tmp_path: Path):
+    missing_log = tmp_path / 'missing-core.log'
+    index_path = tmp_path / 'trace-index.json'
+    index = write_trace_index(index_path, [], service_logs={'core': missing_log})
+    assert index['missing_artifacts'] == [str(missing_log)]
+    manifest = write_manifest(
+        tmp_path / 'run-manifest.json',
+        run_id='run-missing-log',
+        expected_sources=['service_log:core'],
+        artifacts=[index_path],
+        trace_index=index_path,
+        service_logs={'core': missing_log},
+    )
+    assert manifest['completeness'] == 'incomplete'
+    assert str(missing_log) in manifest['missing_artifacts']
+    assert 'service_log:core' in manifest['missing_sources']

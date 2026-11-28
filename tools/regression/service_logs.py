@@ -34,6 +34,7 @@ class Record:
     continuation: list[str] = field(default_factory=list)
     access: tuple = ()
     sample: str = ''
+    log_line: int | None = None
 
 
 def parse(text, service):
@@ -67,7 +68,7 @@ def records(lines, service):
     previous = None
     last_timestamp = None
     in_trace = False
-    for raw in lines:
+    for line_no, raw in enumerate(lines, 1):
         text = raw.rstrip('\r\n')
         if '\x1b' in text:
             text = ANSI.sub('', text)
@@ -88,6 +89,7 @@ def records(lines, service):
         if previous is not None:
             yield previous
         previous = parse(text, service)
+        previous.log_line = line_no
         in_trace = text == TRACE
         if in_trace:
             previous.ts = last_timestamp

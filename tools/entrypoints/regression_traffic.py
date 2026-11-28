@@ -288,6 +288,13 @@ def main():
     parser.add_argument('--container', action='append', default=[])
     parser.add_argument('--box-data-root', type=Path, help='Dynamically sample Box containers mounted under this root')
     parser.add_argument(
+        '--service-log',
+        action='append',
+        default=[],
+        metavar='[NAME=]PATH',
+        help='Service log file to hash in run-manifest.json and index timings in trace-index.json',
+    )
+    parser.add_argument(
         '--shared-case-sequence', action='store_true', help='Share the weighted case sequence across workers'
     )
     args = parser.parse_args()
@@ -360,6 +367,14 @@ def main():
     queue_capacity = None if args.drain_all and args.queue_capacity == 0 else args.queue_capacity
     pids = {name: int(pid) for name, pid in (value.split('=', 1) for value in args.pid)}
     endpoints = dict(value.split('=', 1) for value in args.health)
+    service_logs = []
+    for item in args.service_log:
+        name, sep, raw_path = item.partition('=')
+        if sep and name and raw_path:
+            service_logs.append((Path(raw_path), name))
+        else:
+            log_path = Path(item)
+            service_logs.append((log_path, log_path.stem))
     rows = []
     verified_ids = set()
     conversations = set()
@@ -916,6 +931,7 @@ def main():
             trace_index,
             [args.output / 'actions.jsonl', args.output / 'arrivals.jsonl'],
             run_id=args.output.name,
+            service_logs=service_logs,
         )
         write_manifest(
             args.output / 'run-manifest.json',
@@ -929,6 +945,7 @@ def main():
                 trace_index,
             ],
             trace_index=trace_index,
+            service_logs=service_logs,
         )
     print(json.dumps(summary, indent=2), flush=True)
     if (

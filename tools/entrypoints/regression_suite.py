@@ -521,12 +521,19 @@ def validate(profile, *, load_overrides=None):
         'pid_files',
         'containers',
         'box_data_root',
+        'service_logs',
     }:
-        raise ValueError('observe accepts health, pids, pid_files, containers, box_data_root')
+        raise ValueError('observe accepts health, pids, pid_files, containers, box_data_root, service_logs')
     if 'box_data_root' in observed and (
         not isinstance(observed['box_data_root'], str) or not observed['box_data_root']
     ):
         raise ValueError('observe.box_data_root must name the deployment Box data directory')
+    if 'service_logs' in observed:
+        if not isinstance(observed['service_logs'], dict) or any(
+            not isinstance(name, str) or not name or not isinstance(path, str) or not path
+            for name, path in observed['service_logs'].items()
+        ):
+            raise ValueError('observe.service_logs must map non-empty service names to paths')
     if not isinstance(observed.get('health'), dict) or not observed['health']:
         raise ValueError('observe.health must contain at least one health endpoint')
     for name, url in observed['health'].items():
@@ -900,6 +907,8 @@ class Suite:
             observe_args += ['--container', container]
         if observed.get('box_data_root'):
             observe_args += ['--box-data-root', self.path(observed['box_data_root'])]
+        for name, path in observed.get('service_logs', {}).items():
+            observe_args += ['--service-log', f'{name}={self.path(path)}']
         if verification := self.profile.get('verification'):
             observe_args += [
                 '--ledger-db',

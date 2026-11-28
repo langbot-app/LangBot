@@ -15,7 +15,7 @@ from tools.regression.observations import read_process_snapshot, read_system_sna
 from tools.regression.observability_contract import ObservationWriter, write_manifest, write_trace_index
 
 
-def supervise(command, output, budget, pids, env=None):
+def supervise(command, output, budget, pids, env=None, *, service_logs=None):
     output.mkdir(parents=True, exist_ok=False, mode=0o700)
     started = time.monotonic()
     samples, errors = [], []
@@ -84,7 +84,7 @@ def supervise(command, output, budget, pids, env=None):
     }
     (output / 'gate.json').write_text(json.dumps(result, indent=2) + '\n')
     trace_index = output / 'trace-index.json'
-    write_trace_index(trace_index, [output / 'observations.jsonl'], run_id=output.name)
+    write_trace_index(trace_index, [output / 'observations.jsonl'], run_id=output.name, service_logs=service_logs)
     write_manifest(
         output / 'run-manifest.json',
         run_id=output.name,
@@ -92,6 +92,7 @@ def supervise(command, output, budget, pids, env=None):
         observed_sources=observations.sources,
         artifacts=[output / 'resources.jsonl', output / 'observations.jsonl', output / 'gate.json', trace_index],
         trace_index=trace_index,
+        service_logs=service_logs,
     )
     return result
 
@@ -109,6 +110,9 @@ def main():
     pids = dict(profile.get('observe', {}).get('pids', {}))
     for name, path in profile.get('observe', {}).get('pid_files', {}).items():
         pids[name] = int(Path(suite.path(path)).read_text().strip())
+    service_logs = {
+        name: Path(suite.path(path)) for name, path in profile.get('observe', {}).get('service_logs', {}).items()
+    }
     result = supervise(
         [
             sys.executable,
@@ -123,6 +127,7 @@ def main():
         args.output,
         60,
         pids,
+        service_logs=service_logs or None,
     )
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result['passed'] else 1)
