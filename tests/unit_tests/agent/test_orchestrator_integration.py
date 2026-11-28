@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import contextlib
 import asyncio
+import base64
+import contextlib
 import datetime
 import types
 from unittest.mock import AsyncMock, Mock, patch
@@ -26,6 +27,7 @@ from langbot_plugin.api.entities.builtin.platform import message as platform_mes
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 from langbot_plugin.api.entities.builtin.provider import session as provider_session
 from langbot_plugin.api.entities.builtin.resource import tool as resource_tool
+from tests.utils.artifact_media import make_artifact_media
 
 
 RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
@@ -279,27 +281,33 @@ def make_query():
     return query
 
 
+def _media_data_url(media) -> str:
+    return f'data:{media.mime_type};base64,{base64.b64encode(media.data).decode("ascii")}'
+
+
 def test_context_builder_attachments_follow_platform_media_only():
     query = make_query()
+    png, jpeg, text_pdf_media, _ = make_artifact_media('orchestrator-platform-only')
+    png_url = _media_data_url(png)
+    pdf_url = _media_data_url(text_pdf_media)
+    jpeg_url = _media_data_url(jpeg)
     # Contents altered by a plugin keep their media for the model, but only the
     # platform message's own media become attachments.
     query.user_message = provider_message.Message(
         role='user',
         content=[
             provider_message.ContentElement.from_text('see attached'),
-            provider_message.ContentElement.from_image_base64('data:image/png;base64,aGVsbG8='),
-            provider_message.ContentElement.from_file_base64('data:text/plain;base64,aGVsbG8=', 'hello.txt'),
+            provider_message.ContentElement.from_image_base64(png_url),
+            provider_message.ContentElement.from_file_base64(pdf_url, text_pdf_media.filename),
         ],
     )
-    query.message_chain = platform_message.MessageChain(
-        [platform_message.Image(base64='data:image/jpeg;base64,aGVsbG8=')]
-    )
+    query.message_chain = platform_message.MessageChain([platform_message.Image(base64=jpeg_url)])
 
     input_data = QueryEntryAdapter._build_input(query)
 
     assert input_data.contents[0].text == 'see attached'
-    assert input_data.contents[1].image_base64 == 'data:image/png;base64,aGVsbG8='
-    assert input_data.contents[2].file_base64 == 'data:text/plain;base64,aGVsbG8='
+    assert input_data.contents[1].image_base64 == png_url
+    assert input_data.contents[2].file_base64 == pdf_url
     assert [(item.ref, item.type, item.mime_type, item.content) for item in input_data.attachments] == [
         ('att-1', 'image', 'image/jpeg', None)
     ]
@@ -307,36 +315,91 @@ def test_context_builder_attachments_follow_platform_media_only():
 
 def test_context_builder_renders_message_chain_without_preprocessing():
     query = make_query()
+    _, jpeg, _, _ = make_artifact_media('orchestrator-raw-chain')
+    jpeg_url = _media_data_url(jpeg)
     query.user_message = None
-    query.message_chain = platform_message.MessageChain(
-        [platform_message.Image(base64='data:image/jpeg;base64,aGVsbG8=')]
-    )
+    query.message_chain = platform_message.MessageChain([platform_message.Image(base64=jpeg_url)])
 
     input_data = QueryEntryAdapter._build_input(query)
 
     assert [content.type for content in input_data.contents] == ['text']
     assert input_data.text == '[attachment att-1: image]'
+    assert jpeg.marker not in input_data.text
+    assert jpeg_url not in input_data.text
     assert len(input_data.attachments) == 1
     assert input_data.attachments[0].type == 'image'
+    assert input_data.attachments[0].mime_type == 'image/jpeg'
     assert input_data.attachments[0].content is None
 
 
 def test_context_builder_keeps_repeated_platform_media():
     query = make_query()
+    png, _, _, _ = make_artifact_media('orchestrator-repeated')
+    png_url = _media_data_url(png)
     query.user_message = None
     query.message_chain = platform_message.MessageChain(
         [
-            platform_message.Image(base64='data:image/png;base64,aGVsbG8='),
-            platform_message.Image(base64='data:image/png;base64,aGVsbG8='),
+            platform_message.Image(base64=png_url),
+            platform_message.Image(base64=png_url),
         ]
     )
 
     input_data = QueryEntryAdapter._build_input(query)
 
-    assert [(attachment.ref, attachment.type) for attachment in input_data.attachments] == [
-        ('att-1', 'image'),
-        ('att-2', 'image'),
+    assert [(attachment.ref, attachment.type, attachment.mime_type) for attachment in input_data.attachments] == [
+        ('att-1', 'image', 'image/png'),
+        ('att-2', 'image', 'image/png'),
     ]
+
+
+def test_context_builder_mixed_media_attachments_keep_bytes_out_of_prompt_and_isolate_sessions():
+    media_a = make_artifact_media('orchestrator-session-alpha')
+    media_b = make_artifact_media('orchestrator-session-beta')
+    assert [m.filename for m in media_a] == [m.filename for m in media_b]
+    assert all(a.sha256 != b.sha256 for a, b in zip(media_a, media_b, strict=True))
+
+    def _build_mixed_query(session_id: str, fixtures):
+        png, jpeg, text_pdf_media, scanned_pdf_media = fixtures
+        query = make_query()
+        query.launcher_id = session_id
+        query.user_message = None
+        query.message_chain = platform_message.MessageChain(
+            [
+                platform_message.Plain(text='Inspect all four attachments'),
+                platform_message.Image(base64=_media_data_url(png)),
+                platform_message.Image(base64=_media_data_url(jpeg)),
+                platform_message.File(
+                    name=text_pdf_media.filename,
+                    size=text_pdf_media.size,
+                    base64=_media_data_url(text_pdf_media),
+                ),
+                platform_message.File(
+                    name=scanned_pdf_media.filename,
+                    size=scanned_pdf_media.size,
+                    base64=_media_data_url(scanned_pdf_media),
+                ),
+            ]
+        )
+        return QueryEntryAdapter._build_input(query)
+
+    input_a = _build_mixed_query('session-alpha', media_a)
+    input_b = _build_mixed_query('session-beta', media_b)
+
+    for input_data, fixtures in ((input_a, media_a), (input_b, media_b)):
+        assert [(att.ref, att.type, att.name, att.mime_type, att.content) for att in input_data.attachments] == [
+            ('att-1', 'image', None, 'image/png', None),
+            ('att-2', 'image', None, 'image/jpeg', None),
+            ('att-3', 'file', 'reference.pdf', 'application/pdf', None),
+            ('att-4', 'file', 'scan.pdf', 'application/pdf', None),
+        ]
+        assert [content.type for content in input_data.contents] == ['text'] * 5
+        for fixture in fixtures:
+            encoded = base64.b64encode(fixture.data).decode('ascii')
+            assert fixture.marker not in input_data.text
+            assert encoded[:64] not in input_data.text
+            assert all(encoded[:64] not in (content.text or '') for content in input_data.contents)
+    assert input_a.attachments[2].size == media_a[2].size
+    assert input_b.attachments[2].size == media_b[2].size
 
 
 @pytest.fixture(autouse=True)
