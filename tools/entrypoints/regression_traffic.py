@@ -22,7 +22,12 @@ import uuid
 from tools.regression.evidence import check_attachment, check_fields, check_response, checked
 from tools.regression.http_bot import group_request, valid_group_settings
 from tools.regression.observations import read_endpoint_snapshot, read_process_snapshot, read_system_snapshot
-from tools.regression.observability_contract import ActionWriter, write_manifest, write_trace_index
+from tools.regression.observability_contract import (
+    ActionWriter,
+    _interrupt_reason_for_exception,
+    write_manifest,
+    write_trace_index,
+)
 from tools.regression.run_ledger import (
     UnresolvedRun,
     check_run,
@@ -821,13 +826,7 @@ def main():
         stop.wait(args.cooldown)
     except BaseException as exc:
         interrupt_error = exc
-        interrupt_reason = (
-            'timeout'
-            if isinstance(exc, TimeoutError)
-            else 'cancelled'
-            if isinstance(exc, (KeyboardInterrupt, SystemExit))
-            else 'crashed'
-        )
+        interrupt_reason = _interrupt_reason_for_exception(exc)
         if action_writer is not None:
             action_writer.interrupt_active(reason=interrupt_reason, error=exc)
         raise
@@ -866,7 +865,8 @@ def main():
             if received_sigterm:
                 sys.stdout.flush()
                 sys.stderr.flush()
-                os._exit(128 + signal.SIGTERM)
+                signal.signal(signal.SIGTERM, signal.SIG_DFL)
+                os.kill(os.getpid(), signal.SIGTERM)
     summary = {
         'duration_requested_seconds': args.duration,
         'load_elapsed_seconds': load_elapsed,

@@ -24,6 +24,11 @@ ACTION_STATUSES = frozenset(
 )
 OBSERVATION_SCOPES = frozenset({'request', 'global'})
 TIMING_KINDS = frozenset({'agent_runner_timing', 'box_execute_timing', 'box_selection_timing'})
+REQUIRED_TIMING_MS_KEYS: dict[str, tuple[str, ...]] = {
+    'agent_runner_timing': ('duration_ms',),
+    'box_execute_timing': ('total_ms', 'runtime_ms'),
+    'box_selection_timing': ('total_ms',),
+}
 CORRELATION_LEVELS = frozenset(
     {
         'trace_id',
@@ -78,15 +83,17 @@ def _normalize_service_logs(
     return normalized
 
 
-def _parse_timing_message(msg: str) -> tuple[str, dict[str, Any]] | None:
+def _parse_timing_message(msg: str) -> tuple[str, dict[str, Any], bool] | None:
     tokens = msg.strip().split()
     if not tokens or tokens[0] not in TIMING_KINDS:
         return None
     kind = tokens[0]
     fields: dict[str, Any] = {}
+    malformed = False
     for token in tokens[1:]:
         key, sep, raw = token.partition('=')
-        if not sep or not key:
+        if not sep or not key or not raw:
+            malformed = True
             continue
         if raw in ('True', 'False'):
             fields[key] = raw == 'True'
@@ -95,11 +102,19 @@ def _parse_timing_message(msg: str) -> tuple[str, dict[str, Any]] | None:
                 value = float(raw)
             except ValueError:
                 fields[key] = raw
+                malformed = True
             else:
-                fields[key] = value if math.isfinite(value) else raw
+                if math.isfinite(value):
+                    fields[key] = value
+                else:
+                    fields[key] = raw
+                    malformed = True
         else:
             fields[key] = raw
-    return kind, fields
+    required_ms = REQUIRED_TIMING_MS_KEYS[kind]
+    if not any(isinstance(fields.get(key), float) for key in required_ms):
+        malformed = True
+    return kind, fields, malformed
 
 
 @dataclass
@@ -239,7 +254,7 @@ def reconcile_inflight_actions(
     reason: str = 'sigkill',
     error_message: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Synthesize interrupted terminal ActionResult records for unclosed inflight entries."""
+    """Synthesize interrupted terminal ActionResult records for unclosed or truncated inflight entries."""
 
     actions_path = Path(actions_path)
     journal = Path(inflight_path) if inflight_path is not None else inflight_journal_path(actions_path)
@@ -247,30 +262,33 @@ def reconcile_inflight_actions(
         return []
     finished_ids: set[str] = set()
     if actions_path.exists():
-        with actions_path.open(encoding='utf-8') as stream:
-            for line_number, line in enumerate(stream, 1):
+        with actions_path.open(encoding='utf-8', errors='replace') as stream:
+            for line in stream:
                 if not line.strip():
                     continue
                 try:
                     record = json.loads(line)
-                except json.JSONDecodeError as exc:
-                    raise ValueError(f'invalid JSONL in {actions_path}:{line_number}: {exc.msg}') from exc
+                except json.JSONDecodeError:
+                    continue
                 if isinstance(record, dict):
                     action_id = record.get('action_id')
                     if isinstance(action_id, str) and action_id and record.get('status') != 'running':
                         finished_ids.add(action_id)
     unclosed: list[dict[str, Any]] = []
+    corrupt_journal_entries: list[tuple[int, str]] = []
     seen_started: set[str] = set()
-    with journal.open(encoding='utf-8') as stream:
+    with journal.open(encoding='utf-8', errors='replace') as stream:
         for line_number, line in enumerate(stream, 1):
             if not line.strip():
                 continue
             try:
                 record = json.loads(line)
             except json.JSONDecodeError as exc:
-                raise ValueError(f'invalid JSONL in {journal}:{line_number}: {exc.msg}') from exc
+                corrupt_journal_entries.append((line_number, exc.msg))
+                continue
             if not isinstance(record, dict):
-                raise ValueError(f'JSONL record in {journal}:{line_number} must be an object')
+                corrupt_journal_entries.append((line_number, 'record is not a JSON object'))
+                continue
             action_id = record.get('action_id')
             if (
                 not isinstance(action_id, str)
@@ -282,9 +300,21 @@ def reconcile_inflight_actions(
             seen_started.add(action_id)
             unclosed.append(record)
     recovered: list[dict[str, Any]] = []
-    if unclosed:
+    corrupt_to_emit = [
+        (line_number, detail)
+        for line_number, detail in corrupt_journal_entries
+        if f'a-corrupt-{journal.name}-{line_number}' not in finished_ids
+    ]
+    if unclosed or corrupt_to_emit:
         actions_path.parent.mkdir(parents=True, exist_ok=True)
+        needs_leading_newline = False
+        if actions_path.exists() and actions_path.stat().st_size > 0:
+            with actions_path.open('rb') as check_stream:
+                check_stream.seek(-1, os.SEEK_END)
+                needs_leading_newline = check_stream.read(1) != b'\n'
         with actions_path.open('a', encoding='utf-8') as stream:
+            if needs_leading_newline:
+                stream.write('\n')
             for started in unclosed:
                 metadata = dict(started.get('metadata') or {})
                 metadata['interrupt_reason'] = reason
@@ -308,13 +338,37 @@ def reconcile_inflight_actions(
                 )
                 stream.write(_dump(record) + '\n')
                 recovered.append(record)
+            for line_number, detail in corrupt_to_emit:
+                record = asdict(
+                    ActionResult(
+                        action_id=f'a-corrupt-{journal.name}-{line_number}',
+                        action_name='corrupt_inflight',
+                        status='interrupted',
+                        started_at=_now(),
+                        started_monotonic_ns=time.monotonic_ns(),
+                        trace_id=None,
+                        finished_at=_now(),
+                        finished_monotonic_ns=time.monotonic_ns(),
+                        error_type='CorruptInflightRecord',
+                        error_message=f'corrupt or truncated JSONL in {journal.name}:{line_number}: {detail}',
+                        metadata={
+                            'interrupt_reason': reason,
+                            'recovered_from_inflight': True,
+                            'corrupt_journal': journal.name,
+                            'corrupt_line': line_number,
+                        },
+                    )
+                )
+                stream.write(_dump(record) + '\n')
+                recovered.append(record)
             stream.flush()
-    journal.unlink(missing_ok=True)
+    if not corrupt_journal_entries:
+        journal.unlink(missing_ok=True)
     return recovered
 
 
 def inspect_action_artifacts(artifacts: Iterable[Path]) -> dict[str, Any]:
-    """Inspect action JSONL files and companion inflight journals for interrupted/unclosed actions."""
+    """Inspect action JSONL files and companion inflight journals for interrupted, unclosed, or corrupt records."""
 
     total = 0
     interrupted = 0
@@ -323,23 +377,33 @@ def inspect_action_artifacts(artifacts: Iterable[Path]) -> dict[str, Any]:
     unclosed_action_ids: list[str] = []
     seen_unclosed: set[str] = set()
     seen_journals: set[Path] = set()
+    corrupt_locations: list[str] = []
 
+    journals_to_inspect: list[Path] = []
     for artifact in artifacts:
         path = Path(artifact)
         if path.suffix != '.jsonl':
             continue
+        if path.name.endswith('.inflight.jsonl'):
+            if path not in seen_journals and path.exists():
+                seen_journals.add(path)
+                journals_to_inspect.append(path)
+            continue
         if path.exists():
-            with path.open(encoding='utf-8') as stream:
-                for line in stream:
+            with path.open(encoding='utf-8', errors='replace') as stream:
+                for line_number, line in enumerate(stream, 1):
                     if not line.strip():
                         continue
                     try:
                         record = json.loads(line)
                     except json.JSONDecodeError:
+                        corrupt_locations.append(f'{path.name}:{line_number}')
+                        continue
+                    if not isinstance(record, dict):
+                        corrupt_locations.append(f'{path.name}:{line_number}')
                         continue
                     if (
-                        not isinstance(record, dict)
-                        or 'arrival_id' in record
+                        'arrival_id' in record
                         or not isinstance(record.get('action_id'), str)
                         or record.get('status') not in ACTION_STATUSES
                     ):
@@ -359,31 +423,38 @@ def inspect_action_artifacts(artifacts: Iterable[Path]) -> dict[str, Any]:
         journal = inflight_journal_path(path)
         if journal not in seen_journals and journal.exists():
             seen_journals.add(journal)
-            with journal.open(encoding='utf-8') as stream:
-                for line in stream:
-                    if not line.strip():
-                        continue
-                    try:
-                        record = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if not isinstance(record, dict):
-                        continue
-                    action_id = record.get('action_id')
-                    if (
-                        isinstance(action_id, str)
-                        and action_id
-                        and action_id not in finished_ids
-                        and action_id not in seen_unclosed
-                    ):
-                        seen_unclosed.add(action_id)
-                        unclosed_action_ids.append(action_id)
+            journals_to_inspect.append(journal)
+
+    for journal in journals_to_inspect:
+        with journal.open(encoding='utf-8', errors='replace') as stream:
+            for line_number, line in enumerate(stream, 1):
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    corrupt_locations.append(f'{journal.name}:{line_number}')
+                    continue
+                if not isinstance(record, dict):
+                    corrupt_locations.append(f'{journal.name}:{line_number}')
+                    continue
+                action_id = record.get('action_id')
+                if (
+                    isinstance(action_id, str)
+                    and action_id
+                    and action_id not in finished_ids
+                    and action_id not in seen_unclosed
+                ):
+                    seen_unclosed.add(action_id)
+                    unclosed_action_ids.append(action_id)
     return {
         'total': total,
         'interrupted': interrupted,
         'unclosed_inflight': len(unclosed_action_ids),
         'interrupt_reasons': interrupt_reasons,
         'unclosed_action_ids': unclosed_action_ids,
+        'corrupt_lines': len(corrupt_locations),
+        'corrupt_locations': corrupt_locations,
     }
 
 
@@ -422,8 +493,10 @@ class ObservationWriter:
         resolved_scope = 'request' if scope is None else scope
         if resolved_scope not in OBSERVATION_SCOPES:
             raise ValueError(f'unknown observation scope: {resolved_scope}')
-        if resolved_scope == 'global' and trace_id:
+        if resolved_scope == 'global' and trace_id is not None:
             raise ValueError('global observations must not set trace_id')
+        if trace_id is not None and (not isinstance(trace_id, str) or not trace_id.strip()):
+            raise ValueError('trace_id must be a non-empty string when provided')
         self.sequence += 1
         self.sources.add(source)
         record = asdict(
@@ -468,10 +541,12 @@ def write_manifest(
             missing.append(str(artifact))
             continue
         digest = hashlib.sha256()
+        size_bytes = 0
         with artifact.open('rb') as stream:
             for chunk in iter(lambda: stream.read(1024 * 1024), b''):
                 digest.update(chunk)
-        rows.append({'path': str(artifact), 'bytes': artifact.stat().st_size, 'sha256': digest.hexdigest()})
+                size_bytes += len(chunk)
+        rows.append({'path': str(artifact), 'bytes': size_bytes, 'sha256': digest.hexdigest()})
     index = (
         json.loads(trace_index.read_text(encoding='utf-8')) if trace_index is not None and trace_index.exists() else {}
     )
@@ -497,12 +572,14 @@ def write_manifest(
         'incomplete_reasons': incomplete_reasons,
         'completeness': 'complete',
     }
-    if action_summary['total'] > 0 or action_summary['unclosed_inflight'] > 0:
+    if action_summary['total'] > 0 or action_summary['unclosed_inflight'] > 0 or action_summary['corrupt_lines'] > 0:
         manifest['actions'] = action_summary
     if action_summary['interrupted'] > 0:
         incomplete_reasons.append(f'interrupted_actions:{action_summary["interrupted"]}')
     if action_summary['unclosed_inflight'] > 0:
         incomplete_reasons.append(f'unclosed_inflight_actions:{action_summary["unclosed_inflight"]}')
+    if action_summary['corrupt_lines'] > 0:
+        incomplete_reasons.append(f'corrupt_action_lines:{action_summary["corrupt_lines"]}')
     if interrupted_reason:
         manifest['interrupted_reason'] = interrupted_reason
         incomplete_reasons.append(f'interrupted:{interrupted_reason}')
@@ -516,9 +593,11 @@ def write_manifest(
             'unindexed_records': index.get('unindexed_records', 0),
             'missing_trace_observations': index.get('missing_trace_observations', 0),
             'unindexed_legacy_records': index.get('unindexed_legacy_records', 0),
+            'corrupt_lines': index.get('corrupt_lines', 0),
             'missing_artifacts': index.get('missing_artifacts', []),
             'service_logs': len(index.get('service_logs', [])),
             'timing_counts': index.get('timing_counts', {}),
+            'malformed_timings': len(secondary.get('malformed_timings', [])),
             'secondary_index_counts': {
                 'by_query_id': len(secondary.get('by_query_id', {})),
                 'by_session_id': len(secondary.get('by_session_id', {})),
@@ -535,7 +614,14 @@ def write_manifest(
             incomplete_reasons.append(
                 f'missing_trace_observations:{manifest["trace_index"]["missing_trace_observations"]}'
             )
-    if action_summary['interrupted'] > 0 or action_summary['unclosed_inflight'] > 0 or interrupted_reason:
+        if manifest['trace_index']['corrupt_lines'] > 0:
+            incomplete_reasons.append(f'trace_index_corrupt_lines:{manifest["trace_index"]["corrupt_lines"]}')
+    if (
+        action_summary['interrupted'] > 0
+        or action_summary['unclosed_inflight'] > 0
+        or action_summary['corrupt_lines'] > 0
+        or interrupted_reason
+    ):
         manifest['completeness'] = 'interrupted'
     elif incomplete_reasons:
         manifest['completeness'] = 'incomplete'
@@ -549,6 +635,7 @@ def write_trace_index(
     *,
     run_id: str | None = None,
     service_logs: Mapping[str, Path] | Iterable[Path | tuple[Path, str]] | None = None,
+    allow_corrupt: bool = False,
 ) -> dict[str, Any]:
     """Index trace-bearing JSONL and service-log timing evidence without fabricating links."""
 
@@ -558,28 +645,45 @@ def write_trace_index(
     missing_trace_observations_by_artifact: dict[str, int] = {}
     unindexed_legacy_by_artifact: dict[str, int] = {}
     unindexed_by_artifact: dict[str, int] = {}
+    corrupt_by_artifact: dict[str, list[int]] = {}
     missing_artifacts: list[str] = []
     indexed_records = 0
     for artifact in artifacts:
         if not artifact.exists():
             missing_artifacts.append(str(artifact))
             continue
-        with artifact.open(encoding='utf-8') as stream:
+        with artifact.open(encoding='utf-8', errors='replace') as stream:
             for line_number, line in enumerate(stream, 1):
                 if not line.strip():
                     continue
                 try:
                     record = json.loads(line)
                 except json.JSONDecodeError as exc:
-                    raise ValueError(f'invalid JSONL in {artifact}:{line_number}: {exc.msg}') from exc
+                    if not allow_corrupt:
+                        raise ValueError(f'invalid JSONL in {artifact}:{line_number}: {exc.msg}') from exc
+                    corrupt_by_artifact.setdefault(str(artifact), []).append(line_number)
+                    continue
                 if not isinstance(record, dict):
-                    raise ValueError(f'JSONL record in {artifact}:{line_number} must be an object')
+                    if not allow_corrupt:
+                        raise ValueError(f'JSONL record in {artifact}:{line_number} must be an object')
+                    corrupt_by_artifact.setdefault(str(artifact), []).append(line_number)
+                    continue
                 trace_id = record.get('trace_id')
-                if not isinstance(trace_id, str) or not trace_id:
+                if not isinstance(trace_id, str) or not trace_id.strip():
                     key = str(artifact)
-                    if record.get('scope') == 'global':
+                    has_request_identity = any(
+                        record.get(field) not in (None, '') for field in ('action_id', 'arrival_id', 'run_id')
+                    )
+                    is_valid_global_observation = (
+                        record.get('scope') == 'global'
+                        and isinstance(record.get('observation_id'), str)
+                        and bool(record['observation_id'].strip())
+                        and trace_id is None
+                        and not has_request_identity
+                    )
+                    if is_valid_global_observation:
                         global_observations_by_artifact[key] = global_observations_by_artifact.get(key, 0) + 1
-                    elif record.get('scope') == 'request' or 'observation_id' in record:
+                    elif record.get('scope') in OBSERVATION_SCOPES or 'observation_id' in record:
                         missing_trace_observations_by_artifact[key] = (
                             missing_trace_observations_by_artifact.get(key, 0) + 1
                         )
@@ -588,6 +692,7 @@ def write_trace_index(
                         unindexed_legacy_by_artifact[key] = unindexed_legacy_by_artifact.get(key, 0) + 1
                         unindexed_by_artifact[key] = unindexed_by_artifact.get(key, 0) + 1
                     continue
+                trace_id = trace_id.strip()
                 entry = entries.setdefault(
                     trace_id,
                     {
@@ -630,6 +735,7 @@ def write_trace_index(
         'by_workspace_uuid': {},
         'by_run_id': {},
         'uncorrelated_timings': [],
+        'malformed_timings': [],
     }
     for log_path, service_name in _normalize_service_logs(service_logs):
         if not log_path.exists():
@@ -641,7 +747,7 @@ def write_trace_index(
         error_count = 0
         warn_count = 0
         service_log_sources.add(f'service_log:{service_name}')
-        with log_path.open(encoding='utf-8', errors='replace') as stream:
+        with log_path.open(encoding='utf-8', errors='replace', newline='\n') as stream:
             for log_record in parse_service_log_records(stream, service_name):
                 record_count += 1
                 if log_record.level in ('ERROR', 'FATAL'):
@@ -650,7 +756,22 @@ def write_trace_index(
                     warn_count += 1
                 parsed_timing = _parse_timing_message(log_record.msg)
                 if parsed_timing is not None:
-                    kind, fields = parsed_timing
+                    kind, fields, malformed = parsed_timing
+                    if malformed:
+                        secondary_indexes['malformed_timings'].append(
+                            {
+                                'kind': kind,
+                                'service': log_record.service,
+                                'artifact': artifact_ref,
+                                'line': log_record.log_line,
+                                'ts': log_record.ts,
+                                'fields': fields,
+                                'correlation_level': 'uncorrelated',
+                                'deterministic_trace_binding': False,
+                                'malformed': True,
+                            }
+                        )
+                        continue
                     timing_counts[kind] += 1
                     file_timing_counts[kind] += 1
                     service_log_sources.add(kind)
@@ -767,6 +888,8 @@ def write_trace_index(
         'missing_trace_observations_by_artifact': missing_trace_observations_by_artifact,
         'unindexed_legacy_records': sum(unindexed_legacy_by_artifact.values()),
         'unindexed_legacy_by_artifact': unindexed_legacy_by_artifact,
+        'corrupt_lines': sum(len(lines) for lines in corrupt_by_artifact.values()),
+        'corrupt_by_artifact': corrupt_by_artifact,
         'missing_artifacts': missing_artifacts,
         'service_logs': service_log_summaries,
         'service_log_sources': sorted(service_log_sources),

@@ -5,6 +5,7 @@ from collections import Counter, deque
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
 from tools.regression.mixload_pacing import planned_group_slots
+from tools.regression.observability_contract import _interrupt_reason_for_exception
 
 
 def run_open_loop(
@@ -206,14 +207,7 @@ def run_open_loop(
     except BaseException as exc:
         aborted = True
         if action_writer is not None:
-            reason = (
-                'timeout'
-                if isinstance(exc, TimeoutError)
-                else 'cancelled'
-                if isinstance(exc, (KeyboardInterrupt, SystemExit))
-                else 'crashed'
-            )
-            action_writer.interrupt_active(reason=reason, error=exc)
+            action_writer.interrupt_active(reason=_interrupt_reason_for_exception(exc), error=exc)
         raise
     finally:
         pool.shutdown(wait=not (timed_out_drain or aborted), cancel_futures=timed_out_drain or aborted)

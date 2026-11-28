@@ -101,7 +101,8 @@ def supervise(command, output, budget, pids, env=None, *, service_logs=None):
     elif process.returncode is not None and process.returncode < 0:
         interrupted_reason = f'signal_{-process.returncode}'
 
-    reconciled_action_paths = []
+    action_paths = []
+    seen_action_paths = set()
     for inflight in sorted(output.rglob('*.inflight.jsonl')):
         actions_path = inflight.with_name(inflight.name.removesuffix('.inflight.jsonl') + '.jsonl')
         recovered = reconcile_inflight_actions(
@@ -109,15 +110,21 @@ def supervise(command, output, budget, pids, env=None, *, service_logs=None):
             inflight_path=inflight,
             reason=interrupted_reason or 'process_exited',
         )
-        if recovered or actions_path.exists():
-            reconciled_action_paths.append(actions_path)
+        if (recovered or actions_path.exists()) and actions_path not in seen_action_paths:
+            seen_action_paths.add(actions_path)
+            action_paths.append(actions_path)
+    for actions_path in sorted(output.rglob('actions.jsonl')):
+        if actions_path not in seen_action_paths:
+            seen_action_paths.add(actions_path)
+            action_paths.append(actions_path)
 
     trace_index = output / 'trace-index.json'
     write_trace_index(
         trace_index,
-        [output / 'observations.jsonl', *reconciled_action_paths],
+        [output / 'observations.jsonl', *action_paths],
         run_id=output.name,
         service_logs=service_logs,
+        allow_corrupt=True,
     )
     write_manifest(
         output / 'run-manifest.json',
@@ -128,7 +135,7 @@ def supervise(command, output, budget, pids, env=None, *, service_logs=None):
             output / 'resources.jsonl',
             output / 'observations.jsonl',
             output / 'gate.json',
-            *reconciled_action_paths,
+            *action_paths,
             trace_index,
         ],
         trace_index=trace_index,
