@@ -222,6 +222,45 @@ async def _dispose_manager(manager: PersistenceManager | None) -> None:
         await manager.get_db_engine().dispose()
 
 
+async def _drop_owned_and_role(
+    conn: AsyncConnection, role_name: str, role_password: str, postgres_url: str, quote: typing.Callable[[str], str]
+) -> None:
+    """Remove fixture grants and owned objects before dropping a helper role."""
+    url = sa.engine.make_url(postgres_url).set(username=role_name, password=role_password)
+    role = quote(role_name)
+    # On an ACL dependency such as a USAGE-only sequence grant, PostgreSQL
+    # can reject DROP OWNED under the grantee. Revoke fixture grants first.
+    grants = await conn.execute(
+        text(
+            """
+            SELECT DISTINCT c.relname, CASE WHEN c.relkind = 'S' THEN 'SEQUENCE' ELSE 'TABLE' END AS object_type
+            FROM pg_class AS c
+            JOIN pg_namespace AS n ON n.oid = c.relnamespace
+            CROSS JOIN LATERAL aclexplode(c.relacl) AS acl
+            JOIN pg_roles AS grantee ON grantee.oid = acl.grantee
+            WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
+              AND grantee.rolname = :role_name AND c.relowner <> grantee.oid
+            """
+        ),
+        {'role_name': role_name},
+    )
+    # Touch only explicitly granted objects; a schema-wide REVOKE also visits
+    # the helper's own objects, which the fixture connection may not access.
+    for object_name, object_type in grants:
+        await conn.execute(text(f'REVOKE ALL ON {object_type} public.{quote(object_name)} FROM {role}'))
+    await conn.execute(text(f'REVOKE ALL ON SCHEMA public FROM {role}'))
+    await conn.execute(text(f'REVOKE ALL ON DATABASE {quote(url.database)} FROM {role}'))
+
+    # The creator need not be able to SET ROLE to the helper.
+    role_engine = create_async_engine(url, poolclass=sa.pool.NullPool)
+    try:
+        async with role_engine.begin() as role_conn:
+            await role_conn.execute(text('DROP OWNED BY CURRENT_USER'))
+    finally:
+        await role_engine.dispose()
+    await conn.execute(text(f'DROP ROLE {role}'))
+
+
 def _restore_postgres_manager_registry(monkeypatch) -> None:
     """Undo the registry isolation used by test_database_decorator.py."""
     from langbot.pkg.persistence import mgr as persistence_mgr_module
@@ -290,6 +329,66 @@ async def clean_alembic_version(postgres_engine):
             await conn.execute(text('DROP TABLE IF EXISTS alembic_version'))
         except Exception:
             pass
+
+
+@pytest.mark.asyncio
+async def test_helper_role_cleanup_with_usage_only_sequence_grant(postgres_url, postgres_engine):
+    suffix = uuid.uuid4().hex[:12]
+    role_name = f'lb_cleanup_{suffix}'
+    role_password = uuid.uuid4().hex
+    owned_table = f'public.lb_owned_{suffix}'
+    owned_sequence = f'{owned_table}_id_seq'
+    granted_sequence = f'public.lb_granted_{suffix}'
+    quote = postgres_engine.dialect.identifier_preparer.quote
+    url = sa.make_url(postgres_url)
+
+    async with postgres_engine.connect() as conn:
+        if not await conn.scalar(text('SELECT rolsuper OR rolcreaterole FROM pg_roles WHERE rolname = current_user')):
+            pytest.skip('Helper role fixture requires CREATEROLE')
+
+        await conn.execute(text(f'CREATE SEQUENCE {granted_sequence}'))
+        try:
+            await conn.execute(text(f"CREATE ROLE {quote(role_name)} LOGIN PASSWORD '{role_password}'"))
+            try:
+                role_oid = await conn.scalar(
+                    text('SELECT oid FROM pg_roles WHERE rolname = :name'), {'name': role_name}
+                )
+                dependencies = text(
+                    "SELECT deptype::text FROM pg_shdepend WHERE refclassid = 'pg_authid'::regclass AND refobjid = :oid"
+                )
+                await conn.execute(text(f'GRANT CONNECT ON DATABASE {quote(url.database)} TO {quote(role_name)}'))
+                await conn.execute(text(f'GRANT USAGE, CREATE ON SCHEMA public TO {quote(role_name)}'))
+                await conn.execute(text(f'GRANT USAGE ON SEQUENCE {granted_sequence} TO {quote(role_name)}'))
+                role_engine = create_async_engine(url.set(username=role_name, password=role_password))
+                try:
+                    async with role_engine.begin() as role_conn:
+                        await role_conn.execute(text(f'CREATE TABLE {owned_table} (id serial)'))
+                        access = await role_conn.execute(
+                            text(
+                                "SELECT has_sequence_privilege(:name, 'USAGE'), has_sequence_privilege(:name, 'SELECT')"
+                            ),
+                            {'name': granted_sequence},
+                        )
+                        assert access.one() == (True, False)
+                finally:
+                    await role_engine.dispose()
+                assert {'a', 'o'} <= set((await conn.scalars(dependencies, {'oid': role_oid})).all())
+            finally:
+                await _drop_owned_and_role(conn, role_name, role_password, postgres_url, quote)
+
+            assert not (await conn.scalars(dependencies, {'oid': role_oid})).all()
+            assert not await conn.scalar(
+                text('SELECT EXISTS (SELECT 1 FROM pg_roles WHERE oid = :oid)'), {'oid': role_oid}
+            )
+            assert not await conn.scalar(
+                text('SELECT EXISTS (SELECT 1 FROM pg_auth_members WHERE roleid = :oid OR member = :oid)'),
+                {'oid': role_oid},
+            )
+            for relation in (owned_table, owned_sequence):
+                assert await conn.scalar(text('SELECT to_regclass(:name)'), {'name': relation}) is None
+            assert await conn.scalar(text('SELECT to_regclass(:name)'), {'name': granted_sequence}) is not None
+        finally:
+            await conn.execute(text(f'DROP SEQUENCE {granted_sequence}'))
 
 
 class TestPostgreSQLMigrationBaseline:
@@ -1293,8 +1392,7 @@ class TestPostgreSQLTenantRuntime:
             if role_created:
                 try:
                     async with postgres_engine.connect() as conn:
-                        await conn.execute(text(f'DROP OWNED BY {quote(role_name)}'))
-                        await conn.execute(text(f'DROP ROLE {quote(role_name)}'))
+                        await _drop_owned_and_role(conn, role_name, role_password, postgres_url, quote)
                 except BaseException as exc:
                     cleanup_errors.append(exc)
             if cleanup_errors:
@@ -1354,6 +1452,7 @@ class TestPostgreSQLTenantRuntime:
                 await conn.execute(
                     text(f"CREATE ROLE {quote(role_name)} LOGIN{bypass_clause} PASSWORD '{role_password}'")
                 )
+                created_roles.append(role_name)
                 await conn.execute(
                     text(
                         f'GRANT CONNECT ON DATABASE {quote(sa.engine.make_url(postgres_url).database)} '
@@ -1362,7 +1461,6 @@ class TestPostgreSQLTenantRuntime:
                 )
                 await conn.execute(text(f'GRANT USAGE ON SCHEMA public TO {quote(role_name)}'))
                 await _grant_runtime_role_business_objects(conn, role_name, quote)
-            created_roles.append(role_name)
 
         try:
             await release_manager.initialize()
@@ -1759,8 +1857,7 @@ class TestPostgreSQLTenantRuntime:
                 if owner_changed:
                     await conn.execute(text(f'ALTER TABLE workspace_metadata OWNER TO {quote(admin_user)}'))
                 for role_name in reversed(created_roles):
-                    await conn.execute(text(f'DROP OWNED BY {quote(role_name)}'))
-                    await conn.execute(text(f'DROP ROLE {quote(role_name)}'))
+                    await _drop_owned_and_role(conn, role_name, role_password, postgres_url, quote)
 
     @pytest.mark.asyncio
     async def test_cloud_discovery_http_and_transaction_contract(
@@ -2403,5 +2500,4 @@ class TestPostgreSQLTenantRuntime:
                 await _dispose_manager(manager)
             if role_created:
                 async with postgres_engine.connect() as conn:
-                    await conn.execute(text(f'DROP OWNED BY {quote(role_name)}'))
-                    await conn.execute(text(f'DROP ROLE IF EXISTS {quote(role_name)}'))
+                    await _drop_owned_and_role(conn, role_name, role_password, postgres_url, quote)
