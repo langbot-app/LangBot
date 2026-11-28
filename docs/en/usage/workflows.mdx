@@ -3,7 +3,7 @@ title: "Workflows"
 description: "Build a message-event processor from connected workflow nodes."
 ---
 
-Workflows are processors, alongside Pipelines, Agents and plugin processors.
+Workflows are processors, alongside Chats, Agents, plugin processors and command processors.
 A bot's event routes decide which processor receives each event. Workflows
 currently handle message events only.
 
@@ -41,7 +41,7 @@ bot references before deleting it.
 Nodes cover message input, LLM calls, classification, parameter extraction,
 conditions, switching, loops, iteration, merging, parallel branches, variables,
 transformation, execution-local memory, bounded waits, HTTP requests, replies,
-targeted sends and nested Workflow/Pipeline calls. HTTP requests cannot reach
+targeted sends and nested Workflow/Chat calls. HTTP requests cannot reach
 private network addresses or follow redirects. Nested workflow calls are limited
 to eight levels. Automatic retries are off by default to avoid duplicate sends.
 

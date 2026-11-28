@@ -1,14 +1,14 @@
-# Call Pipeline Node Configuration
+# Call Chat (pipeline) node configuration
 name: call_pipeline
 label:
-  en_US: Call Pipeline
-  zh_Hans: 调用 Pipeline
+  en_US: Call Chat
+  zh_Hans: 调用聊天
 category: action
 icon: Workflow
 color: '#ef4444'
 description:
-  en_US: Invoke an existing Pipeline for processing
-  zh_Hans: 调用现有的 Pipeline 进行处理
+  en_US: Invoke an existing Chat for processing
+  zh_Hans: 调用现有的聊天进行处理
 
 inputs:
   - name: query
@@ -36,24 +36,24 @@ outputs:
       en_US: Response
       zh_Hans: 响应
     description:
-      en_US: Pipeline response
-      zh_Hans: 流水线响应
+      en_US: Chat response
+      zh_Hans: 聊天响应
   - name: result
     type: object
     label:
       en_US: Result
       zh_Hans: 结果
     description:
-      en_US: Pipeline result
-      zh_Hans: 流水线结果
+      en_US: Chat result
+      zh_Hans: 聊天结果
 
 config:
   - name: pipeline_uuid
     type: pipeline-selector
     required: true
     label:
-      en_US: Pipeline
-      zh_Hans: 流水线
+      en_US: Chat
+      zh_Hans: 聊天
     description:
-      en_US: Pipeline to call
-      zh_Hans: 要调用的流水线
+      en_US: Chat to call
+      zh_Hans: 要调用的聊天
