@@ -20,6 +20,7 @@ import uuid
 from tools.regression.evidence import check_attachment, check_fields, check_response, checked
 from tools.regression.http_bot import group_request, valid_group_settings
 from tools.regression.observations import read_endpoint_snapshot, read_process_snapshot, read_system_snapshot
+from tools.regression.observability_contract import ActionWriter
 from tools.regression.run_ledger import (
     UnresolvedRun,
     check_run,
@@ -352,6 +353,7 @@ def main():
     if not math.isfinite(args.verification_timeout) or args.verification_timeout <= 0:
         parser.error('verification timeout must be positive')
     args.output.mkdir(parents=True, exist_ok=False)
+    action_writer = ActionWriter(args.output / 'actions.jsonl') if args.arrival_mode == 'open-loop' else None
     sender_workers = args.sender_workers or args.workers
     queue_capacity = None if args.drain_all and args.queue_capacity == 0 else args.queue_capacity
     pids = {name: int(pid) for name, pid in (value.split('=', 1) for value in args.pid)}
@@ -761,7 +763,11 @@ def main():
                 stop=stop,
                 drain_all=args.drain_all,
                 drain_timeout=args.drain_timeout,
+                action_writer=action_writer,
+                action_name='regression_arrival',
             )
+            if action_writer is not None:
+                action_writer.close()
         else:
             with ThreadPoolExecutor(max_workers=args.workers) as pool:
                 list(pool.map(group_worker if args.groups else worker, range(args.workers)))

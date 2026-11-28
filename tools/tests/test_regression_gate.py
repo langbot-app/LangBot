@@ -28,6 +28,11 @@ class GateTest(unittest.TestCase):
             self.assertTrue(samples)
             self.assertIn('system', samples[0])
             self.assertIn('memory', samples[0]['system'])
+            observations = [json.loads(line) for line in (output / 'observations.jsonl').read_text().splitlines()]
+            self.assertTrue(observations)
+            self.assertEqual(observations[0]['source'], 'regression_gate')
+            manifest = json.loads((output / 'run-manifest.json').read_text())
+            self.assertEqual(manifest['completeness'], 'complete')
 
     def test_timeout_is_failed_without_retry(self):
         with tempfile.TemporaryDirectory() as directory:
