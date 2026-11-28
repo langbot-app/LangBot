@@ -243,3 +243,172 @@ async def test_only_preexecution_cache_misses_can_retry_and_commands_are_never_r
     else:
         assert marker.read_text() == 'command executed\n'
     assert box.ap.skill_repository.get_skill_package.await_count == (1 if scenario in {'cold', 'still-missing'} else 0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    not hasattr(sdk_errors, 'BoxArtifactNotPreparedError'), reason='requires the in-tree artifact preflight protocol'
+)
+async def test_single_skill_cold_miss_skips_redundant_metadata_probe_and_logs_timing(tmp_path):
+    from langbot_plugin.box.errors import BoxArtifactNotPreparedError
+    from langbot.pkg.provider.tools.loaders.skill import register_activated_skill
+
+    box, client = service(tmp_path, 'network')
+    package, receipt = package_and_receipt()
+    metadata = {key: value for key, value in package.items() if key != 'content'}
+    reads = []
+
+    async def get_package(context, name, revision, *, metadata_only=False):
+        reads.append((name, metadata_only))
+        return metadata if metadata_only else package
+
+    box.ap.skill_repository = SimpleNamespace(get_skill_package=AsyncMock(side_effect=get_package))
+    client.prepare_artifact.return_value = receipt
+    query = make_query()
+    register_activated_skill(query, {'name': 'pinned', 'revision': package['revision']})
+
+    attempts = 0
+
+    async def execute(spec, *, action_context):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise BoxArtifactNotPreparedError('package not prepared before execution')
+        return models.BoxExecutionResult(
+            session_id=spec.session_id,
+            backend_name='fake',
+            status=models.BoxExecutionStatus.COMPLETED,
+            exit_code=0,
+            stdout='ok',
+            stderr='',
+            duration_ms=1,
+        )
+
+    client.execute = AsyncMock(side_effect=execute)
+    result = await box.execute_tool({'command': 'echo ok'}, query)
+    assert result['ok'] is True
+    assert reads == [('pinned', False)]
+    assert client.prepare_artifact.await_count == 1
+    assert client.prepare_artifact.await_args.args[1] == package['content']
+    logged = [call.args[0] for call in box.ap.logger.info.call_args_list]
+    assert any('box_artifact_prepare_timing ' in line and 'skip_probe=True' in line for line in logged)
+    assert any('box_execute_timing ' in line and 'artifact_cache_miss=True' in line for line in logged)
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    not hasattr(sdk_errors, 'BoxArtifactNotPreparedError'), reason='requires the in-tree artifact preflight protocol'
+)
+async def test_multi_skill_cold_miss_keeps_probe_so_warm_skill_never_reads_archive(tmp_path):
+    from langbot_plugin.box.errors import BoxArtifactNotPreparedError
+    from langbot.pkg.provider.tools.loaders.skill import register_activated_skill
+
+    box, client = service(tmp_path, 'network')
+    warm_package, warm_receipt = package_and_receipt()
+    cold_body = b'x'
+    cold_manifest = {
+        'algorithm': 'sha256-tree-v1',
+        'files': [
+            {
+                'path': 'README.md',
+                'size': len(cold_body),
+                'sha256': hashlib.sha256(cold_body).hexdigest(),
+                'executable': False,
+            }
+        ],
+        'total_bytes': len(cold_body),
+    }
+    cold_revision = (
+        'sha256:'
+        + hashlib.sha256(
+            json.dumps(cold_manifest, ensure_ascii=False, separators=(',', ':'), sort_keys=True).encode()
+        ).hexdigest()
+    )
+    cold_content = b'cold archive bytes'
+    cold_package = {
+        'revision': cold_revision,
+        'manifest': cold_manifest,
+        'content': cold_content,
+        'size': len(cold_content),
+        'sha256': hashlib.sha256(cold_content).hexdigest(),
+    }
+    cold_receipt = {
+        'ready': True,
+        'content_digest': cold_revision,
+        'mount_path': '/opt/langbot-artifacts/' + cold_revision[7:],
+    }
+    packages = {'warm': warm_package, 'cold': cold_package}
+    reads = []
+
+    async def get_package(context, name, revision, *, metadata_only=False):
+        reads.append((name, metadata_only))
+        pkg = packages[name]
+        return {k: v for k, v in pkg.items() if k != 'content'} if metadata_only else pkg
+
+    async def prepare(descriptor, content, *, action_context):
+        if descriptor.content_digest == warm_package['revision']:
+            assert content is None
+            return warm_receipt
+        if content is None:
+            return {**cold_receipt, 'ready': False}
+        assert content == cold_content
+        return cold_receipt
+
+    box.ap.skill_repository = SimpleNamespace(get_skill_package=AsyncMock(side_effect=get_package))
+    client.prepare_artifact = AsyncMock(side_effect=prepare)
+    query = make_query()
+    register_activated_skill(query, {'name': 'warm', 'revision': warm_package['revision']})
+    register_activated_skill(query, {'name': 'cold', 'revision': cold_revision})
+
+    attempts = 0
+
+    async def execute(spec, *, action_context):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise BoxArtifactNotPreparedError('cold artifact not prepared')
+        return models.BoxExecutionResult(
+            session_id=spec.session_id,
+            backend_name='fake',
+            status=models.BoxExecutionStatus.COMPLETED,
+            exit_code=0,
+            stdout='ok',
+            stderr='',
+            duration_ms=1,
+        )
+
+    client.execute = AsyncMock(side_effect=execute)
+    result = await box.execute_tool({'command': 'echo ok'}, query)
+    assert result['ok'] is True
+    assert reads == [('warm', True), ('cold', True), ('cold', False)]
+
+
+@pytest.mark.asyncio
+async def test_duplicate_skill_revisions_are_deduplicated_during_artifact_preparation(tmp_path):
+    from langbot.pkg.provider.tools.loaders.skill import register_activated_skill
+
+    box, client = service(tmp_path, 'network')
+    package, receipt = package_and_receipt()
+    box.ap.skill_repository = SimpleNamespace(get_skill_package=AsyncMock(return_value=package))
+    client.prepare_artifact.return_value = receipt
+    query = make_query()
+    register_activated_skill(query, {'name': 'first', 'revision': package['revision']})
+    register_activated_skill(query, {'name': 'second', 'revision': package['revision']})
+
+    mounts = await box.prepare_execution_artifacts(query, _CONTEXT, on_cache_miss=True)
+    assert mounts == [{'content_digest': package['revision']}]
+    assert box.ap.skill_repository.get_skill_package.await_count == 1
+    assert client.prepare_artifact.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_skip_probe_still_enforces_post_rpc_placement_fence(tmp_path):
+    box, client = service(tmp_path, 'network')
+    package, receipt = package_and_receipt()
+    box.ap.skill_repository = SimpleNamespace(get_skill_package=AsyncMock(return_value=package))
+    box._validated_execution_context = AsyncMock(side_effect=[_CONTEXT, BoxValidationError('stale placement')])
+    client.prepare_artifact.return_value = receipt
+
+    with pytest.raises(BoxValidationError, match='stale placement'):
+        await box.prepare_skill_artifact(_CONTEXT, 'pinned', package['revision'], skip_probe=True)
+    client.prepare_artifact.assert_awaited_once()

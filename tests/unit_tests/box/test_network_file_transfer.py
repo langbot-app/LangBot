@@ -446,10 +446,10 @@ async def test_real_rpc_cache_recovery_executes_once_and_never_replays_backend_e
     counter = '/workspace/preflight-counter'
     command = "printf 'run\\n' >> " + counter + '; cat /opt/langbot-artifacts/' + revision[7:] + '/README.md'
     assert await _command(box, command) == body.decode().rstrip('\n')
-    assert reads == [True, False]
+    assert reads == [False]
     assert await box.client.download_file(box.query._box_binding.session_id, counter, box.action_context) == b'run\n'
     assert await _command(box, command) == body.decode().rstrip('\n')
-    assert reads == [True, False], 'Warm execution must not read publication metadata or bytes'
+    assert reads == [False], 'Warm execution must not read publication metadata or bytes'
     assert (
         await box.client.download_file(box.query._box_binding.session_id, counter, box.action_context) == b'run\nrun\n'
     )

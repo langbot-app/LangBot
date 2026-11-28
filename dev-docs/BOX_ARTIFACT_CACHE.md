@@ -8,8 +8,10 @@ descriptor-relative file IO (Linux is the validated deployment). Explicit
 `box.file_transfer_mode: network` connects native Skill execution and draft
 publication to this protocol; legacy mode retains its shared-path behavior.
 
-Only network mode reuses a fresh matching Docker status without probing unrelated
-backends. Legacy mode retains the full backend readiness enumeration.
+Both legacy and network modes reuse a fresh matching Docker status from
+`client.get_status()` without probing unrelated backends, while retaining
+post-RPC placement checks. E2B, self-hosted `nsjail`, backend mismatches and
+explicit backend overrides retain full readiness enumeration.
 
 ## Host boundary and transfer
 
