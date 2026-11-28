@@ -268,21 +268,50 @@ class CoverageWorkflowTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0 if expected else 1, result.stderr)
 
     def test_mapped_core_areas_avoid_full_fallback_while_foundations_stay_full(self):
-        for source, expected_unit in (
-            ('src/langbot/pkg/plugin/handler.py', 'tests/unit_tests/plugin'),
-            ('src/langbot/pkg/i18n/messages.py', 'tests/unit_tests/test_backend_i18n.py'),
-            ('src/langbot/pkg/message_policy/manager.py', 'tests/unit_tests/message_policy'),
-            ('src/langbot/pkg/skill/repository.py', 'tests/unit_tests/test_skill_repository.py'),
-            ('src/langbot/pkg/storage/content.py', 'tests/unit_tests/storage'),
-            ('src/langbot/pkg/workspace/mgr.py', 'tests/unit_tests/workspace'),
-            ('src/langbot/pkg/alerts/render.py', 'tests/unit_tests/test_workspace_alerts.py'),
-            ('src/langbot/pkg/notification/mgr.py', 'tests/unit_tests/workspace'),
+        for source, expected_units, expected_integrations in (
+            (
+                'src/langbot/pkg/plugin/handler.py',
+                {'tests/unit_tests/plugin', 'tests/unit_tests/core'},
+                {'tests/integration/plugin', 'tests/integration/pipeline'},
+            ),
+            (
+                'src/langbot/pkg/message_policy/manager.py',
+                {'tests/unit_tests/message_policy', 'tests/unit_tests/core'},
+                {'tests/integration/persistence', 'tests/integration/pipeline'},
+            ),
+            (
+                'src/langbot/pkg/skill/repository.py',
+                {'tests/unit_tests/test_skill_repository.py', 'tests/unit_tests/core'},
+                {'tests/integration/skill', 'tests/integration/plugin'},
+            ),
+            (
+                'src/langbot/pkg/storage/content.py',
+                {'tests/unit_tests/storage', 'tests/unit_tests/core'},
+                {'tests/integration/storage', 'tests/integration/persistence'},
+            ),
+            (
+                'src/langbot/pkg/workspace/mgr.py',
+                {'tests/unit_tests/workspace', 'tests/unit_tests/cloud', 'tests/unit_tests/vector'},
+                {'tests/integration/pipeline', 'tests/integration/plugin', 'tests/integration/vector'},
+            ),
+            (
+                'src/langbot/pkg/alerts/render.py',
+                {'tests/unit_tests/test_workspace_alerts.py', 'tests/unit_tests/cloud'},
+                {'tests/integration/api'},
+            ),
+            (
+                'src/langbot/pkg/notification/mgr.py',
+                {'tests/unit_tests/workspace', 'tests/unit_tests/cloud', 'tests/unit_tests/core'},
+                {'tests/integration/api'},
+            ),
         ):
             with self.subTest(source=source):
-                targets, _ = select_core_tests([source], False, ROOT)
-                self.assertIn(expected_unit, targets)
+                targets, integrations = select_core_tests([source], False, ROOT)
+                self.assertTrue(expected_units <= set(targets), expected_units - set(targets))
+                self.assertTrue(expected_integrations <= set(integrations), expected_integrations - set(integrations))
                 self.assertNotEqual(targets, FULL[0])
         for foundation in (
+            'src/langbot/pkg/i18n/messages.py',
             'src/langbot/pkg/persistence/mgr.py',
             'src/langbot/pkg/utils/httpclient.py',
             'src/langbot/pkg/core/app.py',

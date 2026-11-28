@@ -1,8 +1,10 @@
 """Exercise the change selector against real Git commits and CI evidence policies."""
 
+import ast
 import json
 import os
 from pathlib import Path
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -168,6 +170,13 @@ class ChangeSelectionTests(unittest.TestCase):
             ('tools/tests/test_observability_contract.py', {'core', 'packaging'}, {'compatibility', 'core_full'}),
             ('tools/README.md', {'packaging'}, {'core', 'compatibility', 'core_full'}),
             ('tools/regression/http_bot.py', {'core', 'box', 'packaging'}, {'compatibility', 'frontend', 'docs'}),
+            ('tools/regression/service_logs.py', {'core', 'box', 'packaging'}, {'compatibility', 'frontend', 'docs'}),
+            (
+                'tools/regression/regression_lifecycle_cases.py',
+                {'core', 'box', 'packaging'},
+                {'compatibility', 'frontend', 'docs'},
+            ),
+            ('tools/entrypoints/mock_llm.py', {'core', 'box', 'packaging'}, {'compatibility', 'frontend', 'docs'}),
             ('tools/ci_core_tests.py', ci_tool_lanes, {'production_image'}),
             ('tools/verify_junit.py', ci_tool_lanes, {'production_image'}),
             ('tools/check_ci_telemetry.py', ci_tool_lanes, {'production_image'}),
@@ -209,6 +218,69 @@ class ChangeSelectionTests(unittest.TestCase):
         )
         self.assertIn('uv.lock', fallback_changed)
         self.assertIn('compatibility', fallback_lanes)
+
+        # When the target branch was force-pushed so BASE_SHA is not an ancestor
+        # of p1, fall back to BASE_SHA..HEAD rather than narrowing.
+        self.git('checkout', '--orphan', 'rewritten-target')
+        self.git('rm', '-rfq', '.')
+        self.write('pyproject.toml')
+        self.commit()
+        rewritten_base = self.git('rev-parse', 'HEAD').strip()
+        self.git('checkout', '-q', 'target-branch')
+        rewritten_lanes, rewritten_changed = self.run_selector(
+            event='pull_request', base=rewritten_base, pr_head=pr_head
+        )
+        self.assertIn('pyproject.toml', rewritten_changed)
+        self.assertIn('compatibility', rewritten_lanes)
+
+    def test_shallow_clone_without_merge_parents_fails_open(self):
+        self.write('docs/en/guide.mdx')
+        self.commit()
+        with tempfile.TemporaryDirectory() as shallow_dir:
+            shallow = Path(shallow_dir) / 'shallow'
+            subprocess.check_output(['git', 'clone', '--depth', '1', f'file://{self.root}', str(shallow)], text=True)
+            output = Path(shallow_dir) / 'outputs'
+            shallow_head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=shallow, text=True).strip()
+            subprocess.run(
+                [sys.executable, str(CLASSIFIER)],
+                cwd=shallow,
+                env={
+                    **os.environ,
+                    'EVENT_NAME': 'pull_request',
+                    'BASE_SHA': self.base,
+                    'PR_HEAD_SHA': shallow_head,
+                    'GITHUB_OUTPUT': str(output),
+                    'GITHUB_STEP_SUMMARY': '',
+                },
+                check=True,
+            )
+            outputs = dict(line.split('=', 1) for line in output.read_text().splitlines())
+            self.assertEqual(outputs['compatibility'], 'true')
+            self.assertEqual(outputs['workflows'], 'true')
+
+    def test_all_e2e_imported_tools_trigger_e2e_lane(self):
+        classify = runpy.run_path(str(CLASSIFIER))['classify']
+        imported = set()
+        for path in sorted((ROOT / 'tests/e2e').rglob('*.py')):
+            tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    names = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    names = [node.module]
+                else:
+                    continue
+                for name in names:
+                    if name == 'tools' or name.startswith('tools.'):
+                        candidate = Path(*name.split('.')).with_suffix('.py')
+                        if (ROOT / candidate).is_file():
+                            imported.add(candidate.as_posix())
+        self.assertTrue(imported)
+        for tool_path in sorted(imported):
+            with self.subTest(tool_path=tool_path):
+                lanes = classify([tool_path])
+                self.assertIn('box', lanes)
+                self.assertIn('core', lanes)
 
 
 class MandatoryEvidenceTests(unittest.TestCase):

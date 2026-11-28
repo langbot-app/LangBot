@@ -109,11 +109,17 @@ if __name__ == '__main__':
     if not base or set(base) == {'0'}:
         result = dict.fromkeys(('persistence', 'permissions', 'image'), True)
     else:
-        effective_base = resolve_diff_base(base, head, event=event, pr_head=pr_head)
-        # A rename also removes the old path, which can have a stricter lane than its destination.
-        data = subprocess.check_output(['git', 'diff', '--name-only', '--no-renames', '-z', effective_base, head, '--'])
-        paths = [os.fsdecode(path) for path in data.split(b'\0') if path]
-        result = select(paths)
+        try:
+            effective_base = resolve_diff_base(base, head, event=event, pr_head=pr_head)
+            # A rename also removes the old path, which can have a stricter lane than its destination.
+            data = subprocess.check_output(
+                ['git', 'diff', '--name-only', '--no-renames', '-z', effective_base, head, '--']
+            )
+            paths = [os.fsdecode(path) for path in data.split(b'\0') if path]
+            result = select(paths)
+        except (subprocess.CalledProcessError, ValueError) as exc:
+            print(f'P0 change detection unavailable ({exc}); selecting all P0 suites.')
+            result = dict.fromkeys(('persistence', 'permissions', 'image'), True)
     print(json.dumps(result, sort_keys=True))
     with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
         for key, value in result.items():

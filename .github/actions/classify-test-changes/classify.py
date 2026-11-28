@@ -50,6 +50,13 @@ CI_TOOL_PATHS = {
     'tools/check_ci_telemetry.py',
     'tools/tests/test_p0_acceptance.py',
 }
+# Tools modules imported directly by tests/e2e/*.py (keep full E2E and LocalAgent active).
+E2E_TOOL_PATHS = {
+    'tools/entrypoints/mock_llm.py',
+    'tools/regression/http_bot.py',
+    'tools/regression/regression_lifecycle_cases.py',
+    'tools/regression/service_logs.py',
+}
 REGRESSION_TOOL_PREFIXES = (
     'tools/entrypoints/',
     'tools/regression/',
@@ -88,8 +95,8 @@ def classify(paths):
         if under(path, '.github/workflows/', '.github/actions/') or _is_ci_tool(path):
             lanes |= ALL - {'production_image'}
         elif under(path, 'tools/'):
-            if path == 'tools/regression/http_bot.py':
-                # Imported by tests/e2e/test_*.py; keep full E2E and Box lanes active.
+            if path in E2E_TOOL_PATHS:
+                # Imported by tests/e2e/test_*.py; keep full E2E and LocalAgent lanes active.
                 lanes |= {'core', 'box', 'packaging'}
             elif path.endswith('.md'):
                 lanes.add('packaging')

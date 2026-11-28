@@ -65,7 +65,9 @@ class TestP0Scope(unittest.TestCase):
     def test_rename_to_docs_keeps_the_backend_source(self):
         root = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as directory:
-            repo = Path(directory)
+            base_dir = Path(directory)
+            repo = base_dir / 'repo'
+            repo.mkdir()
 
             def git(*args):
                 return subprocess.check_output(
@@ -148,7 +150,9 @@ class TestP0Scope(unittest.TestCase):
     def test_synthetic_pr_merge_ignores_stale_base_commits_on_target_branch(self):
         root = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as directory:
-            repo = Path(directory)
+            base_dir = Path(directory)
+            repo = base_dir / 'repo'
+            repo.mkdir()
 
             def git(*args):
                 return subprocess.check_output(
@@ -185,7 +189,7 @@ class TestP0Scope(unittest.TestCase):
             git('merge', '--no-ff', '-m', 'Merge PR into current target', pr_head)
             merge_head = git('rev-parse', 'HEAD')
 
-            output = repo / 'changes'
+            output = base_dir / 'changes'
             subprocess.run(
                 [sys.executable, str(root / 'scripts/p0_acceptance_scope.py')],
                 cwd=repo,
@@ -203,4 +207,58 @@ class TestP0Scope(unittest.TestCase):
             self.assertEqual(
                 set(output.read_text().splitlines()),
                 {'persistence=false', 'permissions=false', 'image=false'},
+            )
+
+            # Target branch force-push: BASE_SHA is not an ancestor of p1, so
+            # P0 falls back to BASE_SHA..HEAD instead of narrowing.
+            git('checkout', '--orphan', 'rewritten-target')
+            git('rm', '-rfq', '.')
+            dockerfile = repo / 'Dockerfile'
+            dockerfile.write_text('FROM scratch\n')
+            git('add', '.')
+            git('commit', '-qm', 'rewritten base')
+            rewritten_base = git('rev-parse', 'HEAD')
+            git('checkout', '-q', 'target-branch')
+
+            output.unlink()
+            subprocess.run(
+                [sys.executable, str(root / 'scripts/p0_acceptance_scope.py')],
+                cwd=repo,
+                env={
+                    **os.environ,
+                    'EVENT_NAME': 'pull_request',
+                    'BASE_SHA': rewritten_base,
+                    'HEAD_SHA': merge_head,
+                    'PR_HEAD_SHA': pr_head,
+                    'GITHUB_OUTPUT': str(output),
+                },
+                capture_output=True,
+                check=True,
+            )
+            self.assertEqual(
+                set(output.read_text().splitlines()),
+                {'persistence=true', 'permissions=true', 'image=true'},
+            )
+
+            # Shallow clone / unavailable base commit fails open to all P0 suites.
+            shallow = base_dir / 'shallow'
+            subprocess.check_output(['git', 'clone', '--depth', '1', f'file://{repo}', str(shallow)], text=True)
+            shallow_output = base_dir / 'shallow-changes'
+            subprocess.run(
+                [sys.executable, str(root / 'scripts/p0_acceptance_scope.py')],
+                cwd=shallow,
+                env={
+                    **os.environ,
+                    'EVENT_NAME': 'pull_request',
+                    'BASE_SHA': old_base,
+                    'HEAD_SHA': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=shallow, text=True).strip(),
+                    'PR_HEAD_SHA': pr_head,
+                    'GITHUB_OUTPUT': str(shallow_output),
+                },
+                capture_output=True,
+                check=True,
+            )
+            self.assertEqual(
+                set(shallow_output.read_text().splitlines()),
+                {'persistence=true', 'permissions=true', 'image=true'},
             )
