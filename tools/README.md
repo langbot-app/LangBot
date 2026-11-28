@@ -96,6 +96,36 @@ synthetic, and this endpoint does not evaluate answer quality or embedding model
 dimensions (default 384). It tests the embedding protocol and RAG plumbing;
 token hashes do not establish semantic retrieval quality.
 
+## GC baseline
+
+`entrypoints/gc_baseline.py` measures GC pressure so a performance claim can be
+re-run instead of trusted. It reports the GC-tracked object count, full-generation
+scan cost, top tracked types and function modules, and the share of scan cost
+attributable to the pre-existing heap via `gc.freeze()`. Only scalars are kept
+between phases; holding references would shift the counters being measured.
+
+```sh
+uv run --no-sync python -m tools.entrypoints.gc_baseline measure --profile load-complete --samples 5 --json > before.json
+uv run --no-sync python -m tools.entrypoints.gc_baseline compare before.json after.json
+```
+
+`--profile` loads a named module set from `profiles/gc-baseline.json`, and
+`--load` appends individual modules (repeatable). Without either, the run only sees interpreter
+boilerplate. Profiles differ by an order of magnitude — `bare` ~10k, `core` ~240k,
+`load-complete` ~730k on Linux/3.12 — so quote the profile next to any number and
+do not compare a `core` run against the ~1.04M figure in #2852.
+`--saveall` additionally names unreachable-object types, but it
+changes collector behavior, so its timing is reported apart; a freshly imported,
+cycle-free heap legitimately reports zero there.
+
+Compare two outputs on the same host rather than gating a single run: RSS, CPU and
+machine differ per host, and `compare` warns when profile, preloaded modules, or
+platform differ. This tool measures controlled offline heap scans rather than live
+request-window natural GC frequency (`gc.callbacks` under real traffic), and
+`gc.freeze()` is diagnostic only (not a production setting). GC pauses are also
+not the only latency source — overlap with a request does not prove that request's
+time came from GC.
+
 ## Normal traffic and resource collection
 
 `entrypoints/regression_traffic.py` executes a JSON list of normal `lbctl` cases at a selected
