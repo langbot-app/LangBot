@@ -369,9 +369,7 @@ class MainTests(unittest.TestCase):
 
             with contextlib.redirect_stderr(io.StringIO()) as error:
                 with self.assertRaises(SystemExit):
-                    gc_baseline.main(
-                        ['measure', '--profile', 'bad', '--profiles-file', str(path), '--samples', '1']
-                    )
+                    gc_baseline.main(['measure', '--profile', 'bad', '--profiles-file', str(path), '--samples', '1'])
 
             self.assertIn('modules must be a list of module names', error.getvalue())
 

@@ -313,9 +313,7 @@ def _histogram_deltas(before_map, after_map, limit=10):
             deltas.append({'name': name, 'before': before_count, 'after': after_count, 'delta': None})
     deltas.sort(
         key=lambda item: (
-            -abs(item['delta'])
-            if item['delta'] is not None
-            else -max(item['before'] or 0, item['after'] or 0),
+            -abs(item['delta']) if item['delta'] is not None else -max(item['before'] or 0, item['after'] or 0),
             item['name'],
         )
     )
