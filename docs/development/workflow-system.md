@@ -1,71 +1,13 @@
 # Workflow processors
 
-A Workflow is a sibling of Chat, Agent, plugin event processors and command
-processors. `Bot.event_bindings` selects it with `target_type: workflow`
-and a Workspace-owned `target_uuid`. Workflows do not override event routing.
-Only `message.received` events are supported.
+A bot route with `target_type: workflow` sends a message to a workspace-owned tree. The graph has one `start`, one parent per subsequent step, and at most one child per branch. A terminal step needs no outgoing edge. Stable node IDs are template names; display names can change without breaking references.
 
-## Runtime
+## Execution
 
-`LoadConfigStage` loads YAML node metadata. `BuildAppStage` discovers Python
-implementations through `NodeTypeRegistry.discover_nodes` and constructs
-`WorkflowService`. Each execution owns a fresh `WorkflowExecutor` and a
-`WorkflowRuntime` bound through a context variable. The runtime carries the
-Workspace execution context, reply sender, explicit-target sender and collected
-replies. Resource lookups and provider calls use that execution context.
+The catalog at `GET /api/v1/workflows/_/node-types` describes each step’s configuration, outputs and branches. The executor follows one path and records rendered inputs, outputs, branch, timings and errors per step. Jinja expressions can reference ancestor outputs, scoped memory and time. The workflow timezone defaults to UTC. Memory scopes are `run`, `user`, `group` and `workflow`.
 
-EBA dispatch admits the entry query under the effective bot or route policy,
-then emits the normal-message hook before building `MessageContext`. Reply nodes
-emit `NormalMessageResponded` (plugins may rewrite or suppress the reply), then
-apply outbound policy before delivery; proactive sends to an
-explicit target do not use that policy. Route traces distinguish
-incompatible events, unavailable processors and failed executions. The route
-scope and processing indicator surround execution. Non-message routes are
-rejected at configuration and execution time.
+Message routing admits the entry query once. A handoff to Chat, Agent or another workflow reuses that admission; replacement text must pass inbound content filtering. Target replies use their normal outbound hooks and policy. Nested handoffs are bounded at eight levels. Explicit sends target the selected conversation rather than replying to the originating message.
 
-Nested workflows share the caller's senders and increment depth, with a maximum
-depth of eight. Pipeline calls enter `query_pool.add_query` and wait for its
-completion event. Nodes are not retried by default because sends have side effects.
+## Editing and testing
 
-## Persistence and authorization
-
-Migration `0061_workflow_tables` adds `workflows`, `workflow_versions`,
-`workflow_executions` and `workflow_node_executions`. Every table has a Workspace
-foreign key. SQLite uses scoped statements; PostgreSQL also enforces Workspace
-RLS. Definitions are versioned on change. Execution details include persisted
-node inputs, outputs, status and errors. Deletion is rejected while a bot event
-binding references the workflow.
-
-HTTP resources live under `/api/v1/workflows`. Reads require `resource.view`,
-mutations require `resource.manage`, and `POST /<uuid>/run` requires
-`runtime.operate`. Manual runs accept `{message, session_type}` and return
-`{execution_uuid, status, replies, error}`. They collect replies without a bot;
-explicit-target sends therefore require an event-driven run. MCP exposes
-`list_workflows`, `get_workflow` and `run_workflow` with identical authorization.
-Existing Pipeline and Agent routes retain their contracts.
-
-## Nodes
-
-The supported set is discovered from `templates/metadata/nodes`: message trigger,
-LLM call, question classifier, parameter extractor, condition, switch, loop,
-iterator, merge, parallel, variable aggregator, set variable, data transform,
-wait, end, HTTP request, reply message, send message, call workflow, call pipeline,
-store data and memory store. Memory is execution-local. Wait is capped at 300
-seconds. HTTP requests reject non-public destinations, including private DNS
-results, and do not follow redirects.
-
-## Validation
-
-Run `uv run pytest tests/unit_tests/workflow tests/unit_tests/platform/test_workflow_routing.py -q`.
-Migration round trips are covered by
-`tests/integration/persistence/test_workflow_migration.py`; set
-`TEST_POSTGRES_URL` to a dedicated test database for PostgreSQL. The manual
-`python -m tests.manual.workflow_smoke` starts an isolated instance, creates a
-message-trigger → condition → reply workflow, receives an event over a real
-OneBot WebSocket, and checks the reply and persisted node records. It requires
-an available local port 15344 and Linux `/dev/shm`.
-Pass a startup-log path and screenshot path to also verify the real WebUI's
-execution history, for example `uv run python -m tests.manual.workflow_smoke
-workflow-startup.log workflow-executions.png`. This requires installed Web
-dependencies, port 15345 and Chromium (`CHROMIUM_PATH`, default
-`/usr/bin/chromium`). The browser and isolated instance stop after verification.
+Create or update a graph through `/api/v1/workflows`. The detail and update responses include `workflow` and `issues`; invalid definitions may be edited but cannot execute. `POST /<uuid>/test` takes `text`, `session_type` and optionally an unsaved `graph`. A saved test requires `runtime.operate`; a draft additionally requires `resource.manage`. Tests capture replies rather than replying to a platform user. The response includes the execution UUID, status, error, handoff, replies and ordered steps. Inspect recorded runs with `GET /<uuid>/executions` and `GET /<uuid>/executions/<execution_uuid>`.

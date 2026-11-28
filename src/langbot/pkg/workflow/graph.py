@@ -1,8 +1,10 @@
 """Workflow step catalog, template substitution and draft validation."""
 
-import json
-import re
 from collections import defaultdict
+
+from jinja2 import TemplateError
+
+from .templates import references, render as render
 
 
 def _step(category, outputs='', config='', branches='none', terminal=False):
@@ -12,37 +14,20 @@ def _step(category, outputs='', config='', branches='none', terminal=False):
 
 
 CATALOG = {
-    'start': _step('logic', 'text sender_id sender_name is_group group_id platform image_count'),
-    'llm': _step('ai', 'text error', 'model_uuid prompt use_history temperature max_tokens on_error'),
+    'start': _step(
+        'logic',
+        'trigger text sender_id sender_name is_group group_id platform bot_uuid images voice args event payload target',
+    ),
+    'llm': _step('ai', 'text error', 'model_uuid prompt use_history use_images temperature max_tokens on_error'),
     'classify': _step('ai', 'category', 'model_uuid instruction categories', 'categories'),
     'extract': _step('ai', 'ok', 'model_uuid fields'),
     'condition': _step('logic', 'matched', 'cases', 'cases'),
-    'remember': _step('logic', config='scope items'),
-    'reply': _step('action', 'sent', 'text'),
-    'send': _step('action', 'sent', 'target_type target_id text'),
+    'remember': _step('logic', 'value', 'scope items'),
+    'reply': _step('action', 'sent', 'content'),
+    'send': _step('action', 'sent', 'bot_uuid target_type target_id content'),
     'http': _step('action', 'status body json', 'method url headers body timeout on_error'),
     'handoff': _step('action', config='target_type target_uuid text', terminal=True),
 }
-
-REFERENCE = re.compile(r'{{\s*([^{}]+?)\s*}}')
-
-
-def render(value, results, memory):
-    """Render the original config once; never interpret data as another template."""
-
-    def replacement(match):
-        source, _, key = match[1].partition('.')
-        values = memory if source == 'memory' else results.get(source, {})
-        item = values.get(key, '')
-        return item if isinstance(item, str) else json.dumps(item, ensure_ascii=False)
-
-    if isinstance(value, str):
-        return REFERENCE.sub(replacement, value)
-    if isinstance(value, list):
-        return [render(item, results, memory) for item in value]
-    if isinstance(value, dict):
-        return {key: render(item, results, memory) for key, item in value.items()}
-    return value
 
 
 def _strings(value, path='config'):
@@ -79,7 +64,7 @@ def validate(graph, *, models=None, targets=None):
             continue
         ident = node['id']
         kind = node.get('type')
-        if ident in nodes or ident == 'memory':
+        if ident in nodes or ident in ('memory', 'now', '_render_budget'):
             issue('not_tree', ident)
             continue
         if not isinstance(kind, str) or kind not in CATALOG or not isinstance(node.get('config'), dict):
@@ -95,8 +80,8 @@ def validate(graph, *, models=None, targets=None):
             'extract': ('model_uuid', 'fields'),
             'classify': ('model_uuid',),
             'http': ('url',),
-            'reply': ('text',),
-            'send': ('target_type', 'target_id', 'text'),
+            'reply': () if config.get('text') else ('content',),
+            'send': ('target_type', 'target_id') if config.get('text') else ('target_type', 'target_id', 'content'),
             'handoff': ('target_type', 'target_uuid'),
             'remember': ('items',),
             'condition': ('cases',),
@@ -179,10 +164,17 @@ def validate(graph, *, models=None, targets=None):
             if ident not in parents:
                 issue('not_tree', ident)
         for path, text in _strings(node['config']):
-            for ref in REFERENCE.findall(text):
-                source, _, key = ref.partition('.')
-                if source != 'memory' and source not in ancestors:
+            if not any(mark in text for mark in ('{{', '{%', '{#')):
+                continue
+            try:
+                names, refs = references(text)
+            except TemplateError:
+                issue('template_invalid', ident, path)
+                continue
+            for source in names:
+                if source not in ancestors:
                     issue('ref_not_upstream', ident, path)
-                elif not key or (source != 'memory' and key not in outputs[source]):
-                    issue('ref_unknown_key', ident, path)
+            for source, key in refs:
+                if source in ancestors and key not in outputs[source]:
+                    issue('ref_unknown_key', ident, path, severity='warning' if key is None else 'error')
     return issues

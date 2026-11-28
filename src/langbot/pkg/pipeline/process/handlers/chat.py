@@ -85,11 +85,15 @@ class ChatMessageHandler(handler.MessageHandler):
 
         # Get bound plugins for filtering
         bound_plugins = getattr(query, '_listener_plugins', None)
-        event_ctx = await self.ap.plugin_connector.emit_event(event, bound_plugins)
+        event_ctx = (
+            None
+            if getattr(query, '_workflow_admitted', False)
+            else await self.ap.plugin_connector.emit_event(event, bound_plugins)
+        )
 
         is_create_card = False  # Track if streaming card was created
 
-        if event_ctx.is_prevented_default():
+        if event_ctx is not None and event_ctx.is_prevented_default():
             monitoring_helper.mark_plugin_handled(query, event_ctx)
             if event_ctx.event.reply_message_chain is not None:
                 mc = event_ctx.event.reply_message_chain
@@ -109,7 +113,7 @@ class ChatMessageHandler(handler.MessageHandler):
                 )
                 yield entities.StageProcessResult(result_type=entities.ResultType.INTERRUPT, new_query=query)
         else:
-            if event_ctx.event.user_message_alter is not None:
+            if event_ctx is not None and event_ctx.event.user_message_alter is not None:
                 if isinstance(event_ctx.event.user_message_alter, list):
                     query.user_message.content = event_ctx.event.user_message_alter
                 elif isinstance(event_ctx.event.user_message_alter, str):

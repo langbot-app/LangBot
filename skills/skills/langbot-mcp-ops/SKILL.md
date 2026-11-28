@@ -102,7 +102,9 @@ is validated before persistence; secret placeholders retain existing values.
 
 Workflows are message-event processors alongside Agents, Chats (Pipelines),
 plugin processors and command processors. Use `list_workflows` and `get_workflow` to inspect the current
-Workspace. `test_workflow(workflow_uuid, text, session_type, graph?)` requires
+Workspace. `create_workflow(workflow_data)` and `update_workflow(workflow_uuid, workflow_data)`
+require `resource.manage`; both return the saved definition and validation `issues`.
+A supplied `graph` replaces the entire tree. `test_workflow(workflow_uuid, text, session_type, graph?)` requires
 `runtime.operate` and returns the execution ID, status, replies and steps. An
 unsaved `graph` also requires `resource.manage` and does not change the saved workflow.
 Manual runs do not send messages to a bot; nodes requiring an explicit bot fail.

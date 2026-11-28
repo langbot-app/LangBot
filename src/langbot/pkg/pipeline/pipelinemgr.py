@@ -414,6 +414,16 @@ class RuntimePipeline:
             await self._assert_execution_active(query)
             stage_container = self.stage_containers[i]
 
+            if getattr(query, '_workflow_admitted', False) and stage_container.inst_name in {
+                'BanSessionCheckStage',
+                'GroupRespondRuleCheckStage',
+                'RequireRateLimitOccupancy',
+                'ReleaseRateLimitOccupancy',
+                'PreContentFilterStage',
+            }:
+                i += 1
+                continue
+
             query.current_stage_name = stage_container.inst_name  # 标记到 Query 对象里
 
             result = stage_container.inst.process(query, stage_container.inst_name)

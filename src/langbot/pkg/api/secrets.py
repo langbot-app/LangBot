@@ -252,6 +252,7 @@ def redact_secrets(value):
             key: (
                 mask_secret_value(item)
                 if is_sensitive_key(key)
+                or (key == 'value' and isinstance(value.get('key'), str) and is_sensitive_key(value['key']))
                 else redact_url_secrets(item)
                 if is_url_key(key)
                 else redact_secrets(item)

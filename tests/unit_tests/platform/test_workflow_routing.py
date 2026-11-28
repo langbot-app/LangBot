@@ -11,6 +11,64 @@ from tests.unit_tests.platform.test_botmgr_execution_trace import make_bot, mess
 from tests.factories import text_query
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('blocked', [False, True])
+async def test_nested_handoff_reuses_one_admission_and_filters_replacement(blocked):
+    from langbot.pkg.api.http.service.workflow import WorkflowExecutionFailedError
+
+    bot, binding = workflow_bot({'is_enabled': True})
+    event = message_received_event()
+    query = text_query('hello')
+    admissions = []
+    calls = []
+
+    @asynccontextmanager
+    async def admit(entry):
+        admissions.append(entry)
+        yield None if len(admissions) == 1 else 'safety.rate-limit'
+
+    policy = SimpleNamespace(
+        admit=admit,
+        filter_inbound=AsyncMock(
+            return_value=SimpleNamespace(allowed=not blocked, user_notice='Blocked by word filter', rewritten=False)
+        ),
+        quote_origin=True,
+        prepare_reply_chain=AsyncMock(side_effect=lambda query, chain: chain),
+        ap=bot.ap,
+    )
+    object.__setattr__(query, '_message_policy', policy)
+    object.__setattr__(query, '_listener_plugins', [])
+    object.__setattr__(event, '_entry_query', query)
+    bot.ap.plugin_connector = SimpleNamespace(
+        emit_event=AsyncMock(
+            side_effect=lambda payload, plugins: SimpleNamespace(event=payload, is_prevented_default=lambda: False)
+        )
+    )
+
+    async def execute(context, target, *, runtime, message_context, **kwargs):
+        calls.append((target, message_context.message_content))
+        if len(calls) == 1:
+            try:
+                await runtime.dispatch(dict(target_type='workflow', target_uuid='child', text='filtered text'))
+            except ValueError as exc:
+                raise WorkflowExecutionFailedError('execution', str(exc)) from exc
+        else:
+            await runtime.reply(message.MessageChain([message.Plain(text='done')]))
+
+    bot.ap.workflow_service.execute_workflow.side_effect = execute
+    await bot._dispatch_eba_event_to_processor(event, bot.adapter, binding)
+    assert admissions == [query]
+    policy.filter_inbound.assert_awaited_once_with(query, 'filtered text')
+    if blocked:
+        assert calls == [('workflow-1', 'hello')]
+        assert bot._record_event_route_trace.call_args.kwargs['reason'] == 'Blocked by word filter'
+        bot.adapter.reply_message.assert_not_awaited()
+    else:
+        assert calls == [('workflow-1', 'hello'), ('child', 'filtered text')]
+        policy.prepare_reply_chain.assert_awaited_once()
+        bot.adapter.reply_message.assert_awaited_once()
+
+
 def workflow_bot(workflow):
     binding = {'id': 'route', 'event_pattern': '*', 'target_type': 'workflow', 'target_uuid': 'workflow-1'}
     bot, _, _ = make_bot([binding])

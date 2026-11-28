@@ -23,7 +23,6 @@ from ...api.http.service import model as model_service
 from ...api.http.service import provider as provider_service
 from ...api.http.service import pipeline as pipeline_service
 from ...api.http.service import workflow as workflow_service
-from ...workflow.registry import NodeTypeRegistry
 from ...api.http.service import agent as agent_service
 from ...api.http.service import bot as bot_service
 from ...api.http.service import knowledge as knowledge_service
@@ -103,7 +102,6 @@ class BuildAppStage(stage.BootingStage):
         discover = discover_engine.ComponentDiscoveryEngine(ap)
         discover.discover_blueprint('templates/components.yaml')
         ap.discover = discover
-        NodeTypeRegistry.instance().discover_nodes(discover)
 
         space_service_inst = space_service.SpaceService(ap)
         ap.space_service = space_service_inst

@@ -32,7 +32,8 @@ def upgrade() -> None:
             sa.Column('description', sa.Text),
             sa.Column('emoji', sa.String(255)),
             sa.Column('graph', sa.JSON, nullable=False),
-            sa.Column('trigger', sa.JSON, nullable=False, server_default='{"type":"message"}'),
+            sa.Column('triggers', sa.JSON, nullable=False, server_default='[{"type":"message"}]'),
+            sa.Column('timezone', sa.String(100), nullable=False, server_default='UTC'),
             sa.Column('is_enabled', sa.Boolean, nullable=False, server_default=sa.true()),
             sa.Column('created_at', sa.DateTime, nullable=False, server_default=sa.func.now()),
             sa.Column('updated_at', sa.DateTime, nullable=False, server_default=sa.func.now()),
@@ -62,6 +63,8 @@ def upgrade() -> None:
     if 'workflow_execution_steps' not in existing:
         op.create_table(
             'workflow_execution_steps',
+            sa.Column('id', sa.Integer, primary_key=True),
+            sa.UniqueConstraint('execution_uuid', 'seq'),
             sa.Column(
                 'workspace_uuid',
                 sa.String(36),
@@ -69,8 +72,8 @@ def upgrade() -> None:
                 index=True,
                 nullable=False,
             ),
-            sa.Column('execution_uuid', sa.String(255), primary_key=True),
-            sa.Column('seq', sa.Integer, primary_key=True),
+            sa.Column('execution_uuid', sa.String(255), nullable=False),
+            sa.Column('seq', sa.Integer, nullable=False),
             sa.Column('node_id', sa.String(255), nullable=False),
             sa.Column('node_type', sa.String(255), nullable=False),
             sa.Column('node_name', sa.String(255), nullable=False),
@@ -85,16 +88,19 @@ def upgrade() -> None:
     if 'workflow_memory' not in existing:
         op.create_table(
             'workflow_memory',
+            sa.Column('id', sa.Integer, primary_key=True),
+            sa.UniqueConstraint('workspace_uuid', 'workflow_uuid', 'scope', 'scope_id', 'key'),
             sa.Column(
                 'workspace_uuid',
                 sa.String(36),
                 sa.ForeignKey('workspaces.uuid', ondelete='CASCADE'),
                 index=True,
-                primary_key=True,
+                nullable=False,
             ),
-            sa.Column('workflow_uuid', sa.String(255), primary_key=True),
-            sa.Column('session_id', sa.String(255), primary_key=True),
-            sa.Column('key', sa.String(255), primary_key=True),
+            sa.Column('workflow_uuid', sa.String(255), nullable=False),
+            sa.Column('scope', sa.String(16), nullable=False),
+            sa.Column('scope_id', sa.String(255), nullable=False),
+            sa.Column('key', sa.String(255), nullable=False),
             sa.Column('value', sa.Text, nullable=False),
             sa.Column('updated_at', sa.DateTime, nullable=False, server_default=sa.func.now()),
         )

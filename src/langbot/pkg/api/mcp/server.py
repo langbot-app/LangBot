@@ -770,9 +770,21 @@ class LangBotMCPServer:
 
             return _dump(
                 redact_secrets(
-                    await ap.workflow_service.get_workflow(_authorized(Permission.RESOURCE_VIEW), workflow_uuid)
+                    await ap.workflow_service.workflow_response(_authorized(Permission.RESOURCE_VIEW), workflow_uuid)
                 )
             )
+
+        @mcp.tool(description='Create a workflow definition and return its validation issues.')
+        async def create_workflow(workflow_data: dict) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            workflow_uuid = await ap.workflow_service.create_workflow(context, workflow_data)
+            return _dump(await ap.workflow_service.workflow_response(context, workflow_uuid))
+
+        @mcp.tool(description='Update workspace workflow fields; a supplied graph replaces the entire tree.')
+        async def update_workflow(workflow_uuid: str, workflow_data: dict) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            await ap.workflow_service.update_workflow(context, workflow_uuid, workflow_data)
+            return _dump(await ap.workflow_service.workflow_response(context, workflow_uuid))
 
         @mcp.tool(description='Test a workflow synchronously; returns execution UUID, status and collected replies.')
         async def test_workflow(

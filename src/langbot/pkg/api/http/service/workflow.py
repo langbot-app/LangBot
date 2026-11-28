@@ -5,19 +5,23 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import sqlalchemy
 
 from ....entity.persistence import workflow as persistence_workflow
 from ....entity.persistence.bot import Bot
+from ....entity.persistence.agent import Agent
+from ....entity.persistence.pipeline import LegacyPipeline
 from ....workflow.graph import CATALOG, validate
 from ....workflow.tree import execute_tree
+from ....workflow.memory import RunMemory
 from ....workflow.runtime import WorkflowRuntime
 from ....entity.persistence.model import LLMModel
 from ....storage.media import MediaCache
 from .tenant import TenantContext, require_workspace_uuid, scope_statement
 
-BASIC_STEPS = ('start', 'reply', 'llm')
+BASIC_STEPS = tuple(CATALOG)
 
 
 def initial_graph():
@@ -104,12 +108,19 @@ class WorkflowService:
     @staticmethod
     def definition_values(data):
         values = {
-            key: data[key] for key in ('name', 'description', 'emoji', 'graph', 'trigger', 'is_enabled') if key in data
+            key: data[key]
+            for key in ('name', 'description', 'emoji', 'graph', 'triggers', 'timezone', 'is_enabled')
+            if key in data
         }
         if 'graph' in values and not isinstance(values['graph'], dict):
             raise ValueError('graph must be an object')
-        if 'trigger' in values and values['trigger'] != {'type': 'message'}:
+        if 'triggers' in values and values['triggers'] != [{'type': 'message'}]:
             raise ValueError('Only message triggers are supported')
+        if 'timezone' in values:
+            try:
+                ZoneInfo(values['timezone'])
+            except (TypeError, ValueError, ZoneInfoNotFoundError) as exc:
+                raise ValueError('Unknown workflow timezone') from exc
         return values
 
     async def update_workflow(self, context, workflow_uuid, workflow_data):
@@ -166,7 +177,8 @@ class WorkflowService:
                 'emoji': original.get('emoji'),
                 'is_enabled': False,
                 'graph': original['graph'],
-                'trigger': original['trigger'],
+                'triggers': original['triggers'],
+                'timezone': original['timezone'],
             },
         )
 
@@ -174,7 +186,7 @@ class WorkflowService:
         nodes = graph.get('nodes', []) if isinstance(graph, dict) else []
         nodes = [node for node in nodes if isinstance(node, dict)] if isinstance(nodes, list) else []
         model_ids = set()
-        if any(node.get('type') == 'llm' for node in nodes):
+        if any(node.get('type') in ('llm', 'classify', 'extract') for node in nodes):
             model_ids.update(
                 (
                     await self.ap.persistence_mgr.execute_async(
@@ -182,7 +194,18 @@ class WorkflowService:
                     )
                 ).scalars()
             )
-        issues = validate(graph, models=model_ids)
+        targets = set()
+        if any(node.get('type') == 'handoff' for node in nodes):
+            for kind, model in (
+                ('agent', Agent),
+                ('chat', LegacyPipeline),
+                ('workflow', persistence_workflow.Workflow),
+            ):
+                ids = await self.ap.persistence_mgr.execute_async(
+                    scope_statement(sqlalchemy.select(model.uuid), model, context)
+                )
+                targets.update((kind, ident) for ident in ids.scalars())
+        issues = validate(graph, models=model_ids, targets=targets)
         for node in nodes:
             if node.get('type') not in BASIC_STEPS:
                 issues.append(
@@ -195,6 +218,52 @@ class WorkflowService:
         if workflow is None:
             raise ValueError('Workflow not found')
         return {'workflow': workflow, 'issues': await self.validate_graph(context, workflow['graph'])}
+
+    async def _recent_history(self, context, workflow_uuid, session_id):
+        executions = persistence_workflow.WorkflowExecution
+        steps = persistence_workflow.WorkflowExecutionStep
+        db = self.ap.persistence_mgr.execute_async
+        recent = (
+            await db(
+                scope_statement(
+                    sqlalchemy.select(executions.uuid, executions.input_text).where(
+                        executions.workflow_uuid == workflow_uuid,
+                        executions.session_id == session_id,
+                        executions.bot_uuid == context.bot_uuid,
+                        executions.status == 'completed',
+                        executions.trigger != 'test',
+                    ),
+                    executions,
+                    context,
+                )
+                .order_by(executions.started_at.desc(), executions.uuid.desc())
+                .limit(10)
+            )
+        ).all()
+        replies = {}
+        if recent:
+            rows = await db(
+                scope_statement(
+                    sqlalchemy.select(steps.execution_uuid, steps.inputs).where(
+                        steps.execution_uuid.in_([row.uuid for row in recent]),
+                        steps.node_type == 'reply',
+                        steps.status == 'completed',
+                    ),
+                    steps,
+                    context,
+                ).order_by(steps.seq)
+            )
+            for row in rows:
+                config = json.loads(row.inputs)
+                replies[row.execution_uuid] = ''.join(
+                    part.get('text', '') for part in config.get('content', []) if part.get('type') == 'text'
+                ) or config.get('text', '')
+        history = []
+        for row in reversed(recent):
+            history.append({'role': 'user', 'content': row.input_text})
+            if replies.get(row.uuid):
+                history.append({'role': 'assistant', 'content': replies[row.uuid]})
+        return history
 
     async def execute_workflow(
         self,
@@ -222,12 +291,22 @@ class WorkflowService:
         }
         message.update(
             text=message_context.message_content,
-            image_count=sum(
-                1
-                for part in (trigger_data or {}).get('message_chain', [])
-                if isinstance(part, dict) and part.get('type') == 'Image'
-            ),
+            trigger='message',
+            bot_uuid=execution_context.bot_uuid or '',
+            args={},
+            payload={},
+            target={},
+            event={},
+            images=[],
+            voice=None,
         )
+        chain = (trigger_data or {}).get('message_chain', [])
+        if chain:
+            chain = await self.ap.storage_mgr.media_cache.externalize_chain_dump(chain)
+            message['images'] = [part['url'] for part in chain if part.get('type') == 'Image' and part.get('url')]
+            message['voice'] = next(
+                (part['url'] for part in chain if part.get('type') == 'Voice' and part.get('url')), None
+            )
         model = persistence_workflow.WorkflowExecution
         db = self.ap.persistence_mgr.execute_async
         await db(
@@ -235,7 +314,7 @@ class WorkflowService:
                 uuid=execution_uuid,
                 workflow_uuid=workflow_uuid,
                 workspace_uuid=workspace,
-                trigger='bot' if trigger_type == 'message' else trigger_type,
+                trigger=trigger_type,
                 bot_uuid=execution_context.bot_uuid,
                 session_id=session_id,
                 input_text=message['text'],
@@ -250,17 +329,32 @@ class WorkflowService:
             if rejected:
                 error = ': '.join(str(rejected[key]) for key in ('node_id', 'field', 'code') if rejected.get(key))
             else:
+                memory = RunMemory(
+                    self.ap.persistence_mgr,
+                    workspace,
+                    workflow_uuid,
+                    message['sender_id'],
+                    message['group_id'],
+                    test=runtime.test,
+                )
+                await memory.load()
                 steps, error = await execute_tree(
                     graph,
                     message,
                     ap=self.ap,
                     runtime=runtime,
-                    memory={},
-                    save_memory=None,
-                    history=[],
+                    memory=memory.values,
+                    save_memory=memory.write,
+                    history=await self._recent_history(execution_context, workflow_uuid, session_id)
+                    if not runtime.test
+                    and any(
+                        node['type'] == 'llm' and node['config'].get('use_history', True) for node in graph['nodes']
+                    )
+                    else [],
                     models=None,
                     targets=None,
                     issues=issues,
+                    now=datetime.now(ZoneInfo(workflow['timezone'])),
                 )
                 for step in steps:
                     await db(
@@ -270,12 +364,42 @@ class WorkflowService:
                             workspace_uuid=workspace,
                         )
                     )
+                if runtime.handoff and runtime.depth >= 8:
+                    raise ValueError('Workflow handoff depth exceeds 8')
+                if runtime.handoff:
+                    handoff = runtime.handoff
+                    model_type = {
+                        'chat': LegacyPipeline,
+                        'workflow': persistence_workflow.Workflow,
+                        'agent': Agent,
+                    }.get(handoff['target_type'])
+                    if model_type is None:
+                        raise ValueError('Unsupported handoff target')
+                    name = (
+                        await db(
+                            scope_statement(
+                                sqlalchemy.select(model_type.name).where(model_type.uuid == handoff['target_uuid']),
+                                model_type,
+                                execution_context,
+                            )
+                        )
+                    ).scalar_one_or_none()
+                    if name is None:
+                        raise ValueError('Handoff target not found')
+                    handoff['name'] = name
+                    if runtime.dispatch is not None:
+                        await runtime.dispatch(handoff)
         except Exception as exc:
             error = str(exc) or type(exc).__name__
         await db(
             scope_statement(
                 sqlalchemy.update(model).where(model.uuid == execution_uuid), model, execution_context
-            ).values(status='failed' if error else 'completed', error=error, finished_at=datetime.now())
+            ).values(
+                status='failed' if error else 'completed',
+                error=error,
+                handoff=runtime.handoff,
+                finished_at=datetime.now(),
+            )
         )
         if error:
             raise WorkflowExecutionFailedError(execution_uuid, error)

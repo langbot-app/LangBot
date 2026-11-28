@@ -1,11 +1,12 @@
 """Execute one rendered step of a workflow."""
 
 import asyncio
+import base64
 import json
 import re
 
 import aiohttp
-from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+from langbot_plugin.api.entities.builtin.platform.message import At, Image, MessageChain, Plain, Voice
 from langbot_plugin.api.entities.builtin.provider.message import Message
 
 from ..utils.outbound_url import assert_safe_outbound_url
@@ -69,7 +70,20 @@ async def run_step(kind, config, message, *, ap, runtime, memory, save_memory, h
         return message, None
     if kind == 'llm':
         conversation = list(history[-20:]) if config.get('use_history', True) else []
-        conversation.append({'role': 'user', 'content': config['prompt']})
+        content = config['prompt']
+        if config.get('use_images') and message.get('images'):
+            content = [{'type': 'text', 'text': config['prompt']}]
+            for url in message['images']:
+                if url.startswith('/api/v1/files/media/'):
+                    media = await ap.storage_mgr.media_cache.get_media(url.rsplit('/', 1)[1])
+                    if media is None:
+                        raise ValueError('Workflow image reference is no longer available')
+                    data, mime = media
+                    url = f'data:{mime};base64,{base64.b64encode(data).decode("ascii")}'
+                else:
+                    await asyncio.to_thread(assert_safe_outbound_url, url)
+                content.append({'type': 'image_url', 'image_url': {'url': url}})
+        conversation.append({'role': 'user', 'content': content})
         return {'text': await model_text(ap, runtime, config, conversation)}, None
     if kind in ('classify', 'extract'):
         if kind == 'classify':
@@ -106,23 +120,44 @@ async def run_step(kind, config, message, *, ap, runtime, memory, save_memory, h
                 return {'matched': case.get('label') or case['id']}, case['id']
         return {'matched': 'else'}, 'else'
     if kind == 'remember':
-        values = {item['key']: item['value'] for item in config['items']}
-        if config.get('scope', 'run') == 'session':
-            await save_memory(values)
-        memory.update(values)
-        return values, None
+        values = await save_memory(config.get('scope', 'run'), config['items'])
+        return {'value': values}, None
     if kind in ('reply', 'send'):
-        chain = MessageChain([Plain(text=config['text'])])
+        parts = []
+        for part in config.get('content', [{'type': 'text', 'text': config.get('text', '')}]):
+            match part['type']:
+                case 'text':
+                    parts.append(Plain(text=part['text']))
+                case 'at':
+                    parts.append(At(target=part['user_id']))
+                case 'image' | 'voice':
+                    ref = part.get('ref') or part.get('url')
+                    if ref in message.get('images', []) or (ref and ref == message.get('voice')):
+                        pass
+                    else:
+                        await asyncio.to_thread(assert_safe_outbound_url, ref)
+                    parts.append(Image(url=ref) if part['type'] == 'image' else Voice(url=ref))
+                case _:
+                    raise ValueError('Unknown workflow message part')
+        chain = MessageChain(parts)
         if kind == 'reply':
             reason = await runtime.reply(chain)
             if reason:
                 raise ValueError(reason)
         else:
-            await runtime.send(config['target_type'], config['target_id'], chain)
+            if runtime.target_sender is None:
+                raise ValueError('This workflow test has no sending bot')
+            if config.get('bot_uuid') and config['bot_uuid'] != runtime.execution_context.bot_uuid:
+                bot = await ap.platform_mgr.get_bot_by_uuid(runtime.execution_context, config['bot_uuid'])
+                if bot is None:
+                    raise ValueError('Target bot is not running')
+                await bot.adapter.send_message(config['target_type'], config['target_id'], chain)
+            else:
+                await runtime.send(config['target_type'], config['target_id'], chain)
         return {'sent': True}, None
     if kind == 'http':
         return await request(config), None
     if kind == 'handoff':
-        runtime.handoff = dict(config, text=config.get('text') or message['text'])
+        runtime.handoff = dict(config)
         return {}, None
     raise ValueError(f'Unknown workflow step: {kind}')

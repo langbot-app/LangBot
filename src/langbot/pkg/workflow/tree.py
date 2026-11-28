@@ -7,7 +7,9 @@ from .graph import render, validate
 from .steps import run_step
 
 
-async def execute_tree(graph, message, *, ap, runtime, memory, save_memory, history, models, targets, issues=None):
+async def execute_tree(
+    graph, message, *, ap, runtime, memory, save_memory, history, models, targets, issues=None, now=None
+):
     if issues is None:
         issues = validate(graph, models=models, targets=targets)
     steps = []
@@ -24,13 +26,12 @@ async def execute_tree(graph, message, *, ap, runtime, memory, save_memory, hist
             while current is not None:
                 node = nodes[current]
                 kind = node['type']
-                inputs = render(node['config'], results, memory)
                 step = dict(
                     seq=len(steps) + 1,
                     node_id=current,
                     node_type=kind,
                     node_name=node.get('name') or current,
-                    inputs=inputs,
+                    inputs={},
                     outputs={},
                     branch=None,
                     started_at=datetime.now(),
@@ -38,7 +39,9 @@ async def execute_tree(graph, message, *, ap, runtime, memory, save_memory, hist
                     error=None,
                 )
                 steps.append(step)
+                inputs = {}
                 try:
+                    step['inputs'] = inputs = render(node['config'], results, memory, now)
                     outputs, branch = await run_step(
                         kind,
                         inputs,

@@ -966,8 +966,21 @@ class PipelineRunInput(Input):
     timeout: float = Field(default=60.0, gt=0, le=300, description='Maximum execution time in seconds')
 
 
-class WorkflowTestInput(Input):
+class WorkflowGetInput(Input):
     workflow_uuid: str = Field(min_length=1)
+
+
+async def _workflow_get(ap, context, payload):
+    from ..secrets import redact_secrets
+
+    return redact_secrets(await ap.workflow_service.workflow_response(context, payload.workflow_uuid))
+
+
+async def _workflow_list(ap, context, payload):
+    return {'workflows': await ap.workflow_service.get_workflows(context)}
+
+
+class WorkflowTestInput(WorkflowGetInput):
     text: str = Field(min_length=1, max_length=100_000)
     session_type: typing.Literal['person', 'group'] = 'person'
     graph: dict | None = None
@@ -1088,6 +1101,8 @@ def _special_operations():
     result = [
         Operation('pipeline.run', Permission.RUNTIME_OPERATE, _pipeline_run, PipelineRunInput, dict, True),
         Operation('workflow.test', Permission.RUNTIME_OPERATE, _workflow_test, WorkflowTestInput, dict, True),
+        Operation('workflow.get', Permission.RESOURCE_VIEW, _workflow_get, WorkflowGetInput, dict),
+        Operation('workflow.list', Permission.RESOURCE_VIEW, _workflow_list, Input, dict),
         Operation('bot.routes.preview', Permission.RESOURCE_MANAGE, _route_preview, RoutePreviewInput, dict),
         Operation(
             'pipeline.migration.preview', Permission.RESOURCE_VIEW, _migration_preview, Input, dict, principals=account

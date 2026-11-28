@@ -1145,6 +1145,22 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         risk='write',
         exposure='all',
     ),
+    'workflow.list': OperationDoc(
+        domain='workflow',
+        label={'zh_Hans': '列出工作流', 'en_US': 'List Workflows'},
+        summary='List workflows in this workspace.',
+        description='Returns workflow summaries and IDs for workflow.get.',
+        risk='read',
+        exposure='all',
+    ),
+    'workflow.get': OperationDoc(
+        domain='workflow',
+        label={'zh_Hans': '查看工作流', 'en_US': 'Get Workflow'},
+        summary='Read a saved workflow and its validation issues.',
+        description='Use an ID from workflow.list to inspect the graph before running it.',
+        risk='read',
+        exposure='all',
+    ),
     'workflow.test': OperationDoc(
         domain='workflow',
         label={'zh_Hans': '试运行工作流', 'en_US': 'Test Workflow'},

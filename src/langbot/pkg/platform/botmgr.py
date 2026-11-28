@@ -1787,10 +1787,12 @@ class RuntimeBot:
         event_binding: dict | None = None,
         agent: dict | None = None,
         execution_id: str | None = None,
+        *,
+        admitted_query=None,
     ) -> dict[str, typing.Any]:
         event_type = getattr(event, 'type', None) or event.__class__.__name__
 
-        if isinstance(event, platform_events.MessageReceivedEvent):
+        if admitted_query is None and isinstance(event, platform_events.MessageReceivedEvent):
             interaction_manager = getattr(getattr(self.ap, 'agent_run_orchestrator', None), 'interaction_manager', None)
         else:
             interaction_manager = None
@@ -1925,7 +1927,7 @@ class RuntimeBot:
             async with contextlib.AsyncExitStack() as stack:
                 query = getattr(event, '_entry_query', None)
                 altered = None
-                if query is not None:
+                if query is not None and query is not admitted_query:
                     event, altered, outcome = await self._admit_normal_message(stack, event, event_binding, query)
                     if outcome is not None:
                         return outcome
@@ -2004,7 +2006,7 @@ class RuntimeBot:
         query = getattr(event, '_entry_query', None)
         async with contextlib.AsyncExitStack() as stack:
             altered = None
-            if query is not None and target_type == 'agent':
+            if query is not None and query is not admitted_query and target_type == 'agent':
                 event, altered, outcome = await self._admit_normal_message(stack, event, event_binding, query)
                 if outcome is not None:
                     return outcome
@@ -2265,6 +2267,32 @@ class RuntimeBot:
                 )
 
             runtime = WorkflowRuntime(self.execution_context, reply_sender, adapter.send_message)
+            runtime.depth = getattr(event, '_workflow_depth', 0)
+
+            async def dispatch(handoff):
+                forwarded = event.model_copy()
+                if 'text' in handoff and handoff['text'] is not None:
+                    if query is None:
+                        raise ValueError('Cannot filter replacement text without the original message policy')
+                    verdict = await query._message_policy.filter_inbound(query, handoff['text'])
+                    if not verdict.allowed:
+                        raise ValueError(verdict.user_notice or 'The bot content filter blocked the handoff message')
+                    text = verdict.text if verdict.rewritten else handoff['text']
+                    forwarded.message_chain = platform_message.MessageChain([platform_message.Plain(text=text)])
+                object.__setattr__(forwarded, '_workflow_depth', runtime.depth + 1)
+                target = 'pipeline' if handoff['target_type'] == 'chat' else handoff['target_type']
+                if query is not None and target == 'pipeline':
+                    object.__setattr__(query, '_workflow_admitted', True)
+                outcome = await self._dispatch_eba_event_to_processor(
+                    forwarded,
+                    adapter,
+                    event_binding={**binding, 'target_type': target, 'target_uuid': handoff['target_uuid']},
+                    admitted_query=query,
+                )
+                if outcome.get('status') == 'failed':
+                    raise ValueError(outcome.get('reason') or 'Workflow handoff failed')
+
+            runtime.dispatch = dispatch
             if altered is not None and not isinstance(altered, str):
                 parts = altered if isinstance(altered, list) else [altered]
                 altered = ''.join(part.text or '' for part in parts)
@@ -2304,7 +2332,10 @@ class RuntimeBot:
             binding=binding,
             target_type='workflow',
             node=node,
-            details={'route_ref': self._route_ref(binding)},
+            details={
+                'route_ref': self._route_ref(binding),
+                **({'handoff': runtime.handoff} if failure_code is None and runtime.handoff else {}),
+            },
             target_uuid=target_uuid,
             failure_code=failure_code,
             reason=reason,

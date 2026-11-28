@@ -41,49 +41,35 @@ async def smoke(base_url, api_key, screenshot=None):
         client.headers['Authorization'] = f'Bearer {authentication["token"]}'
         await request('POST', '/api/v1/system/wizard/completed', {'status': 'skipped'})
 
-        workflow = await request(
-            'POST',
-            '/api/v1/workflows',
-            {
-                'name': 'Workflow EBA smoke',
-                'nodes': [
-                    {'id': 'trigger', 'type': 'trigger.message_trigger', 'position': {'x': 0, 'y': 0}},
-                    {
-                        'id': 'condition',
-                        'type': 'control.condition',
-                        'position': {'x': 250, 'y': 0},
-                        'config': {'condition_type': 'expression', 'expression': 'True'},
+        graph = {
+            'nodes': [
+                {'id': 'start', 'type': 'start', 'name': 'Message', 'config': {}},
+                {
+                    'id': 'remember',
+                    'type': 'remember',
+                    'name': 'Count',
+                    'config': {'scope': 'user', 'items': [{'key': 'messages', 'op': 'increment', 'value': '1'}]},
+                },
+                {
+                    'id': 'reply',
+                    'type': 'reply',
+                    'name': 'Echo',
+                    'config': {
+                        'content': [{'type': 'text', 'text': 'Echo {{ start.text }} ({{ memory.user.messages }})'}]
                     },
-                    {
-                        'id': 'reply',
-                        'type': 'action.reply_message',
-                        'position': {'x': 500, 'y': 0},
-                        'config': {'message_template': 'Echo {{message}}'},
-                    },
-                ],
-                'edges': [
-                    {
-                        'id': 'first',
-                        'source': 'trigger',
-                        'source_port': 'message',
-                        'target': 'condition',
-                        'target_port': 'input',
-                    },
-                    {
-                        'id': 'second',
-                        'source': 'condition',
-                        'source_port': 'true',
-                        'target': 'reply',
-                        'target_port': 'message',
-                    },
-                ],
-            },
-        )
-        workflow_uuid = workflow['uuid']
+                },
+            ],
+            'edges': [{'from': 'start', 'to': 'remember'}, {'from': 'remember', 'to': 'reply'}],
+        }
+        workflow = await request('POST', '/api/v1/workflows', {'name': 'Workflow EBA smoke', 'graph': graph})
+        workflow_uuid = workflow['workflow']['uuid']
+        assert workflow['issues'] == [], workflow
         run = await request(
-            'POST', f'/api/v1/workflows/{workflow_uuid}/run', {'message': 'manual', 'session_type': 'person'}
+            'POST',
+            f'/api/v1/workflows/{workflow_uuid}/test',
+            {'text': 'manual', 'graph': graph, 'session_type': 'person'},
         )
-        assert run['status'] == 'completed' and run['replies'] == ['Echo manual'], run
+        assert run['status'] == 'completed' and run['replies'] == ['Echo manual (1)'], run
         bot = await request(
             'POST',
             '/api/v1/platform/bots',
@@ -140,7 +126,7 @@ async def smoke(base_url, api_key, screenshot=None):
                     await asyncio.sleep(0.1)
                 assert len(completed) == 2, result
                 detail = await request('GET', f'/api/v1/workflows/{workflow_uuid}/executions/{completed[0]["uuid"]}')
-                assert len(detail['execution']['node_executions']) == 3, detail
+                assert len(detail['execution']['steps']) == 3, detail
                 await peer.emit(peer.message('private', 'friend') | {'message_id': 10})
                 group = peer.message(
                     'group', 'normal', [{'type': 'text', 'data': {'text': 'a longer message for the group'}}]
@@ -203,7 +189,11 @@ async def smoke(base_url, api_key, screenshot=None):
 def main():
     root = Path(__file__).resolve().parents[2]
     api_key = secrets.token_urlsafe(32)
-    port = 15344
+    import socket
+
+    with socket.socket() as listener:
+        listener.bind(('127.0.0.1', 0))
+        port = listener.getsockname()[1]
     log_path = Path(sys.argv[1] if len(sys.argv) > 1 else 'workflow-smoke-startup.log').resolve()
     with (
         tempfile.TemporaryDirectory(prefix='langbot-workflow-', dir='/dev/shm') as directory,

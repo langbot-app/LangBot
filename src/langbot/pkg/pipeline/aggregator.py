@@ -176,7 +176,8 @@ class MessageAggregator:
             bot_uuid=bot_uuid,
             route_id=route_id,
         )
-        if variables:
+        existing_query = getattr(message_event, '_entry_query', None)
+        if variables or getattr(existing_query, '_workflow_admitted', False):
             enabled = False
 
         # Hand the in-flight execution chain to the queued query: the Pipeline
@@ -390,6 +391,9 @@ class MessageAggregator:
                 existing.variables['_routed_by_rule'] = query['routed_by_rule']
                 existing.message_chain = query['message_chain']
                 existing.message_event.message_chain = existing.message_chain
+                if getattr(existing, '_workflow_admitted', False):
+                    existing.pipeline_uuid = query['pipeline_uuid']
+                    object.__setattr__(existing, '_execution_context', query['execution_context'])
                 await self.ap.query_pool.enqueue_registered(existing)
         except BaseException as exc:
             from ..telemetry import execution as telemetry_execution

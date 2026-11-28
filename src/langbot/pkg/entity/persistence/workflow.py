@@ -15,7 +15,8 @@ class Workflow(Base):
     description = sa.Column(sa.Text)
     emoji = sa.Column(sa.String(255))
     graph = sa.Column(sa.JSON, nullable=False)
-    trigger = sa.Column(sa.JSON, nullable=False, server_default='{"type":"message"}')
+    triggers = sa.Column(sa.JSON, nullable=False, server_default='[{"type":"message"}]')
+    timezone = sa.Column(sa.String(100), nullable=False, server_default='UTC')
     is_enabled = sa.Column(sa.Boolean, nullable=False, server_default=sa.true())
     created_at = sa.Column(sa.DateTime, nullable=False, server_default=sa.func.now())
     updated_at = sa.Column(sa.DateTime, nullable=False, server_default=sa.func.now(), onupdate=sa.func.now())
@@ -42,12 +43,14 @@ class WorkflowExecution(Base):
 
 class WorkflowExecutionStep(Base):
     __tablename__ = 'workflow_execution_steps'
+    __table_args__ = (sa.UniqueConstraint('execution_uuid', 'seq'),)
+    id = sa.Column(sa.Integer, primary_key=True)
 
     workspace_uuid = sa.Column(
         sa.String(36), sa.ForeignKey('workspaces.uuid', ondelete='CASCADE'), index=True, nullable=False
     )
-    execution_uuid = sa.Column(sa.String(255), primary_key=True)
-    seq = sa.Column(sa.Integer, primary_key=True)
+    execution_uuid = sa.Column(sa.String(255), nullable=False)
+    seq = sa.Column(sa.Integer, nullable=False)
     node_id = sa.Column(sa.String(255), nullable=False)
     node_type = sa.Column(sa.String(255), nullable=False)
     node_name = sa.Column(sa.String(255), nullable=False)
@@ -62,12 +65,15 @@ class WorkflowExecutionStep(Base):
 
 class WorkflowMemory(Base):
     __tablename__ = 'workflow_memory'
+    __table_args__ = (sa.UniqueConstraint('workspace_uuid', 'workflow_uuid', 'scope', 'scope_id', 'key'),)
+    id = sa.Column(sa.Integer, primary_key=True)
 
     workspace_uuid = sa.Column(
-        sa.String(36), sa.ForeignKey('workspaces.uuid', ondelete='CASCADE'), index=True, primary_key=True
+        sa.String(36), sa.ForeignKey('workspaces.uuid', ondelete='CASCADE'), index=True, nullable=False
     )
-    workflow_uuid = sa.Column(sa.String(255), primary_key=True)
-    session_id = sa.Column(sa.String(255), primary_key=True)
-    key = sa.Column(sa.String(255), primary_key=True)
+    workflow_uuid = sa.Column(sa.String(255), nullable=False)
+    scope = sa.Column(sa.String(16), nullable=False)
+    scope_id = sa.Column(sa.String(255), nullable=False)
+    key = sa.Column(sa.String(255), nullable=False)
     value = sa.Column(MediaReferenceText(), nullable=False)
     updated_at = sa.Column(sa.DateTime, nullable=False, server_default=sa.func.now(), onupdate=sa.func.now())

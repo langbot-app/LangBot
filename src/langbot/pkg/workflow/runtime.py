@@ -2,14 +2,12 @@
 
 Workflow protocol models are plain data. Live objects such as the Workspace
 execution context and the platform adapter that received the event are
-carried here through a context variable so nodes can reach them without
+passed to the tree executor so nodes can reach them without
 serializing them into the execution record.
 """
 
 from __future__ import annotations
 
-import contextlib
-import contextvars
 import dataclasses
 import typing
 
@@ -39,6 +37,9 @@ class WorkflowRuntime:
     """Every message chain replied during the execution, for manual runs and tests."""
 
     depth: int = 0
+    handoff: dict | None = None
+    test: bool = False
+    dispatch: typing.Callable[[dict], typing.Awaitable[None]] | None = None
     """Nesting depth of call_workflow invocations."""
 
     async def reply(self, chain: platform_message.MessageChain, quote_origin: bool = False) -> str | None:
@@ -53,24 +54,3 @@ class WorkflowRuntime:
         if self.target_sender is None:
             raise RuntimeError('This workflow execution has no bot to send messages through')
         await self.target_sender(target_type, target_id, chain)
-
-
-_current_runtime: contextvars.ContextVar[WorkflowRuntime | None] = contextvars.ContextVar(
-    'langbot_workflow_runtime', default=None
-)
-
-
-def current_runtime() -> WorkflowRuntime:
-    runtime = _current_runtime.get()
-    if runtime is None:
-        raise RuntimeError('Workflow node executed outside a workflow runtime')
-    return runtime
-
-
-@contextlib.contextmanager
-def use_runtime(runtime: WorkflowRuntime) -> typing.Iterator[WorkflowRuntime]:
-    token = _current_runtime.set(runtime)
-    try:
-        yield runtime
-    finally:
-        _current_runtime.reset(token)
