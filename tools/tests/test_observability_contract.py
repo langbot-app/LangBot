@@ -3,8 +3,6 @@ from pathlib import Path
 import threading
 import time
 
-import pytest
-
 from tools.regression.arrival_schedule import run_open_loop
 from tools.regression.observability_contract import ActionWriter, ObservationWriter, write_manifest, write_trace_index
 
@@ -92,8 +90,12 @@ def test_trace_index_rejects_corrupt_jsonl(tmp_path: Path):
     evidence = tmp_path / 'actions.jsonl'
     evidence.write_text('{broken\n')
 
-    with pytest.raises(ValueError, match='invalid JSONL'):
+    try:
         write_trace_index(tmp_path / 'trace-index.json', [evidence])
+    except ValueError as exc:
+        assert 'invalid JSONL' in str(exc)
+    else:
+        raise AssertionError('corrupt JSONL must be rejected')
 
 
 def test_trace_index_keeps_missing_artifact_visible(tmp_path: Path):
