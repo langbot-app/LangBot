@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 
 const { Hts1HttpRpcTransport } = await import(pathToFileURL(process.env.HARNESS_TS_RPC_TRANSPORT));
-const { origin, links, email, password, workspace, scenario, rotationToken, observerOrigin, browserAccountToken } = JSON.parse(process.env.HARNESS_RPC_TEST);
+const { origin, links, email, password, workspace, scenario, rotationToken, observerOrigin, browserAccountToken, membershipToken } = JSON.parse(process.env.HARNESS_RPC_TEST);
 
 async function post(path, body) {
   return fetch(new URL(path, origin), {
@@ -40,7 +40,7 @@ async function enroll(link, deviceKid) {
     };
     return { keys, rpc: new Hts1HttpRpcTransport({ baseUrl: origin, kid: identity.kid, harnessId, deviceKid }, keys) };
   };
-  return { ...await connect(pin), connect, pin, harnessId, deviceKid };
+  return { ...await connect(pin), connect, pin, harnessId, deviceKid, deviceId: (await device.json()).data.device_id };
 }
 
 const exchange = (rpc, body) => rpc.request({ path: '/oauth/token', method: 'POST', body });
@@ -50,10 +50,6 @@ if (scenario !== 'oauth') {
   const a = await enroll(links[0], 'device-one');
   const b = await enroll(links[1], 'device-two');
   assert.notEqual(a.harnessId, b.harnessId);
-  const aLogin = await login(a.rpc, workspace);
-  const bLogin = await login(b.rpc, workspace);
-  assert.equal(aLogin.status, 200);
-  assert.equal(bLogin.status, 200);
   const { createWebSocketSecureSocketFactory } = await import(new URL('./transport.js', pathToFileURL(process.env.HARNESS_TS_RPC_TRANSPORT)));
   async function ws(device, keys, token, workerOrigin = observerOrigin) {
     const url = new URL('/api/v1/harness/ws', workerOrigin);
@@ -94,6 +90,61 @@ if (scenario !== 'oauth') {
     }
     console.log(`${scenario}: idle WSS closed after ${closes.map(event => (event.at - start).toFixed(0)).join(', ')} ms`);
   }
+  if (scenario === 'space') {
+    const callback = process.env.SPACE_TEST_CALLBACK;
+    const spaceOrigin = process.env.SPACE_TEST_ORIGIN;
+    const spacePost = (path, body) => fetch(new URL(path, spaceOrigin), {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.SPACE_TEST_SESSION}` },
+      body: JSON.stringify(body),
+    });
+    async function consent() {
+      const verifier = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
+      const challenge = Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))).toString('base64url');
+      const state = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
+      const result = await spacePost('/api/v1/accounts/harness/oauth/authorize', {
+        client_id: 'harness', redirect_uri: callback, instance_id: a.pin.instance_uuid,
+        workspace_uuid: workspace, binding_id: a.harnessId, device_id: a.deviceId,
+        response_type: 'code', code_challenge_method: 'S256', code_challenge: challenge, state,
+      });
+      assert.equal(result.status, 200, await result.clone().text());
+      const { data } = await result.json();
+      assert.equal(data.state, state);
+      assert.equal(data.account_uuid, process.env.SPACE_TEST_ACCOUNT);
+      return { code: data.code, code_verifier: verifier, redirect_uri: callback,
+        workspace_uuid: workspace, account_uuid: data.account_uuid };
+    }
+    const redeem = (device, params) => device.rpc.exchangeSpaceCode(params);
+    const error = async (device, params, code) => assert.equal((await redeem(device, params)).body.code, code);
+    const expired = await consent();
+    assert.equal((await spacePost('/_test/expire-code', expired)).status, 204);
+    await error(a, expired, 'invalid_grant');
+    const params = await consent();
+    await error(a, { ...params, redirect_uri: callback + '/' }, 'invalid_grant');
+    await error(a, { ...params, code_verifier: 'x'.repeat(43) }, 'invalid_grant');
+    await error(a, { ...params, workspace_uuid: crypto.randomUUID() }, 'workspace_forbidden');
+    await error(a, { ...params, account_uuid: crypto.randomUUID() }, 'workspace_forbidden');
+    const setMembership = status => fetch(new URL(`/_test/membership/${status}`, origin), {
+      method: 'POST', headers: { Authorization: `Bearer ${membershipToken}` },
+    });
+    assert.equal((await setMembership('removed')).status, 204);
+    await error(a, params, 'workspace_forbidden');
+    assert.equal((await setMembership('active')).status, 204);
+    // The same code still works after restoring Core membership.
+    assert.equal((await login(a.rpc, workspace)).body.code, 'invalid_grant');
+    await error(b, params, 'invalid_grant');
+    const pair = await Promise.all([redeem(a, params), redeem(a, params)]);
+    const successes = pair.filter(result => result.status === 200);
+    assert.equal(successes.length, 1, JSON.stringify(pair.map(result => result.status)));
+    assert.equal(pair.find(result => result.status !== 200).body.code, 'invalid_device');
+    await error(a, params, 'invalid_device');
+    const active = await ws(a, a.keys, successes[0].body.access_token);
+    active.socket.close();
+    process.exit(0);
+  }
+  const aLogin = await login(a.rpc, workspace);
+  const bLogin = await login(b.rpc, workspace);
+  assert.equal(aLogin.status, 200);
+  assert.equal(bLogin.status, 200);
   const admin = (mode, kid, secret = rotationToken) => fetch(new URL('/api/v1/harness/instance/key-rotation', origin), {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
     body: JSON.stringify({ mode, kid }),

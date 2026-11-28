@@ -15,9 +15,12 @@ import sqlalchemy as sa
 from ..api.authz import permissions_for_role
 from ..entity.persistence.harness_oauth import HarnessDevice, HarnessOAuthGrant
 from ..entity.persistence.harness_registration import HarnessBinding, HarnessRegistrationLink
+from ..entity.persistence.user import User
+from ..entity.persistence.workspace import Workspace, WorkspaceMembership
 from ..utils import constants
 from .binding import _KEY, lock_keys
 from .rotation import SERVING_KEY_STATES, finish_if_ready
+from .space_oauth import SpaceOAuthClient
 
 ACCESS_TTL = 3600
 REFRESH_TTL = 180 * 24 * 3600
@@ -130,6 +133,8 @@ class HarnessOAuthService:
     async def password_grant(self, binding_id: str, payload: dict) -> dict:
         if not isinstance(payload, dict) or payload.get('grant_type') != 'password':
             raise ValueError('unsupported_grant_type')
+        if await self.space_bound(binding_id):
+            raise ValueError('invalid_grant')
         email, password, device_id, workspace_uuid = (
             payload.get('username'),
             payload.get('password'),
@@ -235,7 +240,71 @@ class HarnessOAuthService:
             )
             return await self._issue_grant(conn, binding_id, device_id, account.uuid, workspace_uuid, scopes)
 
+    async def space_bound(self, binding_id):
+        async with self.engine.connect() as conn:
+            return await conn.scalar(sa.select(HarnessRegistrationLink.preferred_auth).where(
+                HarnessRegistrationLink.id == binding_id,
+                HarnessRegistrationLink.instance_uuid == self.instance_uuid,
+            )) == 'space'
+
+    async def space_code_grant(self, binding_id, device_id, params, *, kid):
+        client = SpaceOAuthClient.configured(self.ap)
+        client.validate(params)
+        # The selector is not a credential. Use it to fail local membership
+        # checks before spending the code; Space must verify the same subject.
+        subject = params['account_uuid']
+        account = await self.ap.user_service.get_user_by_space_account_uuid(subject)
+        if account is None or account.status != 'active':
+            raise ValueError('workspace_forbidden')
+        workspace = client.workspace_uuid
+        await self.ap.workspace_collaboration_service.resolve_account_workspace(account.uuid, workspace)
+        async with self.engine.begin() as conn:
+            await lock_keys(conn)
+            link = (await conn.execute(sa.select(HarnessRegistrationLink.__table__).where(
+                HarnessRegistrationLink.id == binding_id,
+                HarnessRegistrationLink.instance_uuid == self.instance_uuid,
+                HarnessRegistrationLink.issuer_workspace_uuid == workspace,
+                HarnessRegistrationLink.preferred_auth == 'space',
+                HarnessRegistrationLink.consumed_at.is_not(None),
+                HarnessRegistrationLink.revoked_at.is_(None),
+                HarnessRegistrationLink.expires_at > int(time.time()),
+            ).with_for_update())).mappings().one_or_none()
+            if link is None:
+                raise ValueError('invalid_binding')
+            for required_kid in {kid, link['kid']}:
+                if not await conn.scalar(sa.select(_KEY.c.kid).where(
+                    _KEY.c.kid == required_kid, _KEY.c.status.in_(SERVING_KEY_STATES),
+                )):
+                    raise ValueError('invalid_binding')
+            role = await conn.scalar(sa.select(WorkspaceMembership.role).join(
+                Workspace, Workspace.uuid == WorkspaceMembership.workspace_uuid,
+            ).join(User, User.uuid == WorkspaceMembership.account_uuid).where(
+                Workspace.uuid == workspace, Workspace.instance_uuid == self.instance_uuid,
+                Workspace.status == 'active', WorkspaceMembership.status == 'active',
+                User.uuid == account.uuid, User.status == 'active', User.space_account_uuid == subject,
+            ).with_for_update())
+            permissions = permissions_for_role(role) if role else ()
+            scopes = [scope for scope in ('workspace.view', 'agent.run', 'resource.view')
+                      if SCOPE_PERMISSIONS[scope] in permissions]
+            if 'workspace.view' not in scopes:
+                raise ValueError('workspace_forbidden')
+            claimed = await conn.execute(sa.update(HarnessDevice).where(
+                HarnessDevice.id == device_id, HarnessDevice.binding_id == binding_id,
+                HarnessDevice.account_uuid.is_(None), HarnessDevice.revoked_at.is_(None),
+            ).values(account_uuid=account.uuid))
+            if claimed.rowcount != 1:
+                raise ValueError('invalid_device')
+            await client.consume(params, instance_id=self.instance_uuid, binding_id=binding_id, device_id=device_id)
+            await conn.execute(sa.insert(HarnessBinding).values(
+                id=binding_id, instance_uuid=self.instance_uuid, issuer_workspace_uuid=workspace,
+                created_at=int(time.time()),
+            ))
+            tokens = await self._issue_grant(conn, binding_id, device_id, account.uuid, workspace, scopes)
+        return {**tokens, 'workspace_uuid': workspace}
+
     async def switch_workspace(self, account_uuid, binding_id, device_id, workspace_uuid):
+        if await self.space_bound(binding_id):
+            raise ValueError('workspace_forbidden')
         access = await self.ap.workspace_collaboration_service.resolve_account_workspace(account_uuid, workspace_uuid)
         permissions = permissions_for_role(access.membership.role)
         if 'workspace.view' not in permissions:

@@ -50,6 +50,10 @@ _GRANT_ERRORS = {
     'workspace_forbidden',
     'insufficient_scope',
     'execution_not_found',
+    'harness_oauth_disabled',
+    'invalid_client',
+    'invalid_request',
+    'space_exchange_unavailable',
 }
 
 
@@ -201,6 +205,8 @@ class HarnessRpc:
                 raise RpcError('invalid_request')
             return await HarnessKeyRotation(self.ap).ack(harness_id, device_id, kid, **params)
         service = HarnessOAuthService(self.ap)
+        if method == 'oauth.space_code':
+            return await service.space_code_grant(harness_id, device_id, params, kid=kid)
         if method == 'oauth.password':
             if set(params) != {'email', 'password', 'workspace_uuid'}:
                 raise RpcError('invalid_request')
@@ -240,6 +246,10 @@ class HarnessRpc:
             if 'workspace.view' not in context.workspace.permissions:
                 raise RpcError('insufficient_scope')
             if method == 'workspace.list':
+                if await service.space_bound(harness_id):
+                    return {'workspace_uuid': context.workspace_uuid, 'workspaces': [
+                        {'id': context.workspace_uuid, 'label': context.workspace_uuid},
+                    ]}
                 accesses = await self.ap.workspace_collaboration_service.list_account_workspaces(context.account_uuid)
                 return {
                     'workspace_uuid': context.workspace_uuid,

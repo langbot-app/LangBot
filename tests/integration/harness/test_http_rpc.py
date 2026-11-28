@@ -16,6 +16,7 @@ import sqlalchemy as sa
 from hypercorn.asyncio.run import worker_serve
 from hypercorn.config import Config
 from hypercorn.utils import wrap_app
+from quart import request, send_file
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.api.http.controller.groups.harness import HarnessRouterGroup
@@ -44,7 +45,7 @@ def https_config(cert, key):
     return config
 
 
-def application(engine, origin, secret):
+def application(engine, origin, secret, *, space=False, browser=False):
     ap = SimpleNamespace(
         instance_config=SimpleNamespace(data={
             'system': {'jwt': {'secret': secret, 'expire': 60}},
@@ -54,6 +55,14 @@ def application(engine, origin, secret):
         persistence_mgr=SimpleNamespace(get_db_engine=lambda: engine),
         logger=logging.getLogger(__name__),
     )
+    space_workspace = os.getenv('SPACE_TEST_WORKSPACE')
+    if space:
+        ap.instance_config.data['harness']['space_oauth'] = {
+            'enabled': True, 'space_origin': os.environ['SPACE_TEST_ORIGIN'],
+            'workspace_uuid': space_workspace, 'redirect_uri': os.environ['SPACE_TEST_CALLBACK'],
+        }
+    if browser:
+        ap.instance_config.data['harness']['client_origin'] = origin
 
     async def execute(statement):
         async with engine.connect() as conn:
@@ -88,8 +97,17 @@ async def observer_worker(settings):
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize('scenario', ['oauth', 'planned', 'planned-race', 'emergency'])
+@pytest.mark.parametrize('scenario', ['oauth', 'planned', 'planned-race', 'emergency', 'space', 'space-browser'])
 async def test_typescript_http_rpc(tmp_path, monkeypatch, scenario):
+    space = scenario.startswith('space')
+    browser = scenario == 'space-browser'
+    if space and not os.getenv('SPACE_TEST_ORIGIN'):
+        pytest.skip('Start the Space cross-repository fixture')
+    space_workspace = os.getenv('SPACE_TEST_WORKSPACE')
+    if browser and not os.getenv('HARNESS_PLAYWRIGHT'):
+        pytest.skip('Set HARNESS_PLAYWRIGHT to playwright-core/index.mjs')
+    if browser:
+        assert Path(os.environ['HARNESS_BROWSER_BUNDLE']).is_file()
     transport = os.getenv('HARNESS_TS_RPC_TRANSPORT')
     if not transport:
         pytest.skip('Set HARNESS_TS_RPC_TRANSPORT to the built Harness core rpc-transport.js')
@@ -119,7 +137,7 @@ async def test_typescript_http_rpc(tmp_path, monkeypatch, scenario):
     observer = None
     process = None
     try:
-        ap = application(engine, origin, secret)
+        ap = application(engine, origin, secret, space=space, browser=browser)
         async with engine.begin() as conn:
             if postgres:
                 await conn.execute(sa.schema.CreateSchema(schema))
@@ -142,17 +160,64 @@ async def test_typescript_http_rpc(tmp_path, monkeypatch, scenario):
             await conn.execute(sa.insert(WorkspaceMembership).values(
                 workspace_uuid='shared', account_uuid=account.uuid, role='viewer',
             ))
+            if space:
+                await conn.execute(sa.update(User).where(User.uuid == account.uuid).values(
+                    space_account_uuid=os.environ['SPACE_TEST_ACCOUNT'],
+                ))
+                await conn.execute(sa.insert(Workspace).values(
+                    uuid=space_workspace, instance_uuid=constants.instance_id, name='Harness pilot',
+                    slug='harness-pilot', source='cloud_projection',
+                ))
+                await conn.execute(sa.insert(WorkspaceExecutionState).values(
+                    workspace_uuid=space_workspace, instance_uuid=constants.instance_id, source='cloud', active_generation=2,
+                ))
+                await conn.execute(sa.insert(WorkspaceMembership).values(
+                    workspace_uuid=space_workspace, account_uuid=account.uuid, role='owner',
+                ))
+        await wiring.install(ap)
         bindings = HarnessBindings(ap)
-        issuer = SimpleNamespace(workspace_uuid=workspace.uuid, account_uuid=account.uuid)
-        links = [await bindings.issue(issuer, label='RPC smoke', preferred_auth='local') for _ in range(2)]
+        target_workspace = space_workspace if space else workspace.uuid
+        issuer = SimpleNamespace(workspace_uuid=target_workspace, account_uuid=account.uuid)
+        links = [await bindings.issue(issuer, label='RPC smoke', preferred_auth='space' if space else 'local')
+                 for _ in range(2)]
+        controller = HTTPController(ap)
+        controller.register_harness_route()
+        app = controller.quart_app
+        await HarnessRouterGroup(ap, app).initialize()
+        if space:
+            membership_token = secrets.token_urlsafe(32)
+
+            @app.post('/_test/membership/<status>')
+            async def membership(status):
+                assert request.headers.get('Authorization') == f'Bearer {membership_token}'
+                assert status in ('active', 'removed')
+                async with engine.begin() as conn:
+                    await conn.execute(sa.update(WorkspaceMembership).where(
+                        WorkspaceMembership.workspace_uuid == space_workspace,
+                        WorkspaceMembership.account_uuid == account.uuid,
+                    ).values(status=status))
+                return '', 204
+        if browser:
+            @app.get('/_test/harness')
+            async def browser_entry():
+                return '<!doctype html><title>Harness OAuth fixture</title>'
+
+            @app.get('/_test/core.js')
+            async def core_module():
+                return await send_file(Path(os.environ['HARNESS_BROWSER_BUNDLE']).resolve(), mimetype='text/javascript')
+
+            @app.get('/_test/binding-count')
+            async def binding_count():
+                async with engine.connect() as conn:
+                    return str(await conn.scalar(sa.select(sa.func.count()).select_from(HarnessBinding)))
         observer_origin = origin
-        if scenario != 'oauth':
+        if not space and scenario != 'oauth':
             observer = await asyncio.create_subprocess_exec(
                 sys.executable, str(Path(__file__).resolve()), stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
             )
             observer.stdin.write(json.dumps(dict(url=url, connect_args=connect_args, origin=origin, secret=secret,
-                                                 cert=config.certfile, key=config.keyfile)).encode() + b'\n')
+                                                  cert=config.certfile, key=config.keyfile)).encode() + b'\n')
             await observer.stdin.drain()
             observer.stdin.close()
             async with asyncio.timeout(15):
@@ -162,14 +227,21 @@ async def test_typescript_http_rpc(tmp_path, monkeypatch, scenario):
             assert worker['pid'] == observer.pid != os.getpid()
             observer_origin = f'https://127.0.0.1:{worker["port"]}'
             print(f'{scenario}: HTTPS PIDs {os.getpid()}, {observer.pid} ({engine.dialect.name})')
-        server = asyncio.create_task(serve(ap, config, sockets, stop.wait))
+        server = asyncio.create_task(worker_serve(
+            wrap_app(app, config.wsgi_max_body_size, None), config, sockets=sockets, shutdown_trigger=stop.wait,
+        ))
+        node_certs = tmp_path / 'node-certs.pem'
+        node_certs.write_bytes(Path(config.certfile).read_bytes() + (
+            Path(os.environ['SPACE_TEST_CERT']).read_bytes() if space else b''
+        ))
         process = await asyncio.create_subprocess_exec(
-            'node', str(Path(__file__).with_name('http-rpc-smoke.mjs')),
-            env={**os.environ, 'NODE_EXTRA_CA_CERTS': config.certfile, 'HARNESS_RPC_TEST': json.dumps({
+            'node', str(Path(__file__).with_name('space-browser.mjs' if browser else 'http-rpc-smoke.mjs')),
+            env={**os.environ, 'NODE_EXTRA_CA_CERTS': str(node_certs), 'HARNESS_RPC_TEST': json.dumps({
                 'origin': origin, 'links': [link['url'] for link in links],
-                'email': email, 'password': password, 'workspace': workspace.uuid,
+                'email': email, 'password': password, 'workspace': target_workspace,
                 'browserAccountToken': await ap.user_service.generate_jwt_token(account),
                 'scenario': scenario, 'rotationToken': rotation_token, 'observerOrigin': observer_origin,
+                'membershipToken': membership_token if space else '',
             })}, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
         async with asyncio.timeout(30):
@@ -177,6 +249,15 @@ async def test_typescript_http_rpc(tmp_path, monkeypatch, scenario):
         print(stdout.decode(), end='')
         assert process.returncode == 0, stderr.decode()
         async with engine.connect() as conn:
+            if space:
+                grants = (await conn.execute(sa.select(HarnessOAuthGrant.__table__))).mappings().all()
+                assert len(grants) == 1 and grants[0]['account_uuid'] == account.uuid
+                assert grants[0]['workspace_uuid'] == space_workspace
+                assert await conn.scalar(sa.select(sa.func.count()).select_from(HarnessBinding)) == 1
+                assert await conn.scalar(sa.select(sa.func.count()).select_from(HarnessDevice).where(
+                    HarnessDevice.account_uuid.is_not(None),
+                )) == 1
+                return
             if scenario != 'oauth':
                 assert await conn.scalar(sa.select(sa.func.count()).select_from(HarnessBinding)) == 2
                 retired = (await conn.execute(sa.select(HarnessInstanceKey).where(

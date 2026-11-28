@@ -21,6 +21,11 @@ harness:
     enabled: false
     instance_origin: ''
     client_origin: ''
+    space_oauth:
+        enabled: false
+        space_origin: ''
+        redirect_uri: ''
+        workspace_uuid: ''
 workspace:
     invitations:
         # Public WebUI origin used to build invitation links. Leave empty to
