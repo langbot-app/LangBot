@@ -9,6 +9,8 @@ on:
       - 'tools/**'
       - 'sdk/src/langbot_plugin/**'
       - 'scripts/*check_traceback_logging.py'
+      - 'scripts/*check_module_graph.py'
+      - 'scripts/module_graph.json'
       - 'pyproject.toml'
       - '.github/workflows/lint.yml'
   workflow_dispatch:
@@ -48,3 +50,8 @@ jobs:
         run: |
           python scripts/test_check_traceback_logging.py uvx ruff@0.14.14
           python scripts/check_traceback_logging.py HEAD^1 uvx ruff@0.14.14
+      - name: Check module dependency graph
+        if: ${{ !cancelled() }}
+        run: |
+          python scripts/test_check_module_graph.py
+          python scripts/check_module_graph.py
