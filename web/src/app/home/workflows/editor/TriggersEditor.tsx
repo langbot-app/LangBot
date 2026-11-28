@@ -23,7 +23,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import type { WorkflowTrigger } from '@/app/infra/entities/api';
-import { eventPatternLabel } from '@/app/home/components/event-patterns/event-pattern-groups';
+import {
+  eventGroupLabel,
+  eventPatternDescription,
+  eventPatternLabel,
+} from '@/app/home/components/event-patterns/event-pattern-groups';
+import { EVENT_GROUPS, adapterEvents } from '../lib/platform';
 import { useEditor } from './EditorContext';
 import { Field, ListInput, OptionSelect } from './fields';
 
@@ -37,18 +42,6 @@ const ICONS: Record<Kind, typeof MessageCircle> = {
   event: Radio,
   webhook: Webhook,
 };
-
-export const EVENT_TYPES = [
-  'group.member_joined',
-  'group.member_left',
-  'group.member_banned',
-  'group.info_updated',
-  'message.deleted',
-  'message.reaction',
-  'friend.request_received',
-  'friend.added',
-  'bot.invited_to_group',
-];
 
 const SINGLE: Kind[] = ['message', 'event'];
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 0];
@@ -506,26 +499,104 @@ function EventFields({
   update: (patch: Row) => void;
 }) {
   const { t } = useTranslation();
+  const { resources } = useEditor();
   const events = (trigger.events as string[]) ?? [];
+  // Which of the workspace's bots can emit an event; empty when there are none.
+  const botAdapters = [...new Set(resources.bots.map((bot) => bot.adapter))];
+  const supportNote = (event: string) => {
+    if (!botAdapters.length) return '';
+    const names = botAdapters
+      .filter((name) => resources.adapters[name]?.events.includes(event))
+      .map((name) => resources.adapters[name]?.label ?? name);
+    return names.length
+      ? names.join(' · ')
+      : t('workflows.triggers.event.unsupported');
+  };
+  const toggle = (pattern: string, checked: boolean) =>
+    update({
+      events: checked
+        ? [
+            ...events.filter(
+              (item) =>
+                !pattern.endsWith('.*') ||
+                !item.startsWith(pattern.slice(0, -1)),
+            ),
+            pattern,
+          ]
+        : events.filter((item) => item !== pattern),
+    });
+  const specific = adapterEvents(resources.adapters);
+  const groups = [
+    ...EVENT_GROUPS,
+    ...(specific.length
+      ? [{ namespace: '_adapter', events: specific.map((item) => item.event) }]
+      : []),
+  ];
   return (
     <>
-      <div className="grid grid-cols-1 gap-1.5">
-        {EVENT_TYPES.map((event) => (
-          <label key={event} className="flex items-center gap-2 text-sm">
-            <Checkbox
-              checked={events.includes(event)}
-              onCheckedChange={(checked) =>
-                update({
-                  events:
-                    checked === true
-                      ? [...events, event]
-                      : events.filter((item) => item !== event),
-                })
-              }
-            />
-            {eventPatternLabel(event, t)}
-          </label>
-        ))}
+      <div className="space-y-3">
+        {groups.map((group) => {
+          const wildcard = `${group.namespace}.*`;
+          const whole =
+            group.namespace !== '_adapter' && events.includes(wildcard);
+          return (
+            <div key={group.namespace} className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {group.namespace === '_adapter'
+                    ? t('workflows.triggers.event.adapterGroup')
+                    : eventGroupLabel(group.namespace, t)}
+                </span>
+                {group.namespace !== '_adapter' && group.events.length > 1 && (
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Checkbox
+                      checked={whole}
+                      onCheckedChange={(checked) =>
+                        toggle(wildcard, checked === true)
+                      }
+                    />
+                    {t('workflows.triggers.event.all')}
+                  </label>
+                )}
+              </div>
+              {group.events.map((event) => {
+                const note =
+                  group.namespace === '_adapter'
+                    ? specific
+                        .find((item) => item.event === event)
+                        ?.adapters.map(
+                          (name) => resources.adapters[name]?.label ?? name,
+                        )
+                        .join(' · ')
+                    : supportNote(event);
+                return (
+                  <label
+                    key={event}
+                    className="flex items-start gap-2 text-sm"
+                    title={eventPatternDescription(event, t)}
+                  >
+                    <Checkbox
+                      className="mt-0.5"
+                      checked={whole || events.includes(event)}
+                      disabled={whole}
+                      onCheckedChange={(checked) =>
+                        toggle(event, checked === true)
+                      }
+                    />
+                    <span className="min-w-0">
+                      {eventPatternLabel(event, t)}
+                      {note && (
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {note}
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
       <p className="text-xs text-muted-foreground">
         {t('workflows.triggers.event.hint')}

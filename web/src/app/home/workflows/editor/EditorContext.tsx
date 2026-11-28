@@ -1,6 +1,8 @@
 import { createContext, useContext } from 'react';
+import type { AdapterCapabilities } from '../lib/platform';
 import type {
   Agent,
+  AgentPlatformTool,
   ASRModel,
   KnowledgeBase,
   LLMModel,
@@ -19,7 +21,11 @@ export interface EditorResources {
   knowledgeBases: KnowledgeBase[];
   processors: Agent[];
   workflows: WorkflowSummary[];
-  bots: { uuid: string; name: string }[];
+  bots: { uuid: string; name: string; adapter: string }[];
+  /** Capabilities of each platform adapter, by adapter name. */
+  adapters: Record<string, AdapterCapabilities>;
+  /** Event and platform actions shared with Agents. */
+  platformTools: AgentPlatformTool[];
   /** Step types the server can run; others are hidden from the picker. */
   availableTypes: Set<string> | null;
 }

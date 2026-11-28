@@ -15,7 +15,7 @@ from ....entity.persistence.agent import Agent
 from ....entity.persistence.pipeline import LegacyPipeline
 from ....workflow.graph import CATALOG, validate
 from ....workflow.tree import execute_tree
-from ....workflow.triggers import validate_triggers
+from ....workflow.triggers import event_patterns, validate_triggers
 from ....workflow.memory import RunMemory
 from ....workflow.runtime import WorkflowRuntime
 from ....entity.persistence.model import ASRModel, LLMModel, TTSModel
@@ -66,6 +66,7 @@ class WorkflowService:
             {
                 **{key: getattr(row, key) for key in ('uuid', 'name', 'description', 'emoji', 'is_enabled')},
                 'updated_at': row.updated_at.isoformat(),
+                'event_patterns': event_patterns({'triggers': row.triggers}),
                 'step_count': len(row.graph.get('nodes', []))
                 if isinstance(row.graph, dict) and isinstance(row.graph.get('nodes'), list)
                 else 0,
@@ -317,14 +318,25 @@ class WorkflowService:
             key: getattr(message_context, key)
             for key in ('sender_id', 'sender_name', 'group_id', 'platform', 'is_group')
         }
+        event_data = (
+            trigger_data
+            if trigger_type == 'event'
+            else (trigger_data or {}).get('event') or {}
+            if trigger_type == 'test'
+            else {}
+        )
         message.update(
             text=message_context.message_content,
-            trigger=trigger_type if trigger_type not in ('test', 'workflow') else 'message',
+            chat_type='group' if message_context.is_group else 'private',
+            chat_id=message_context.conversation_id or message_context.sender_id or '',
+            message_id=message_context.message_id or '',
+            trigger='event' if event_data else trigger_type if trigger_type not in ('test', 'workflow') else 'message',
             bot_uuid=execution_context.bot_uuid or '',
             args=(trigger_data or {}).get('args', {}) if trigger_type in ('command', 'test') else {},
             payload=(trigger_data or {}).get('payload', {}) if trigger_type == 'webhook' else {},
             target=(trigger_data or {}).get('target', {}) if trigger_type == 'schedule' else {},
-            event=trigger_data if trigger_type == 'event' else {},
+            event=event_data,
+            event_type=event_data.get('type', ''),
             images=[],
             voice=None,
         )

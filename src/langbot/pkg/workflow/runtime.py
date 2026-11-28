@@ -42,6 +42,8 @@ class WorkflowRuntime:
     test: bool = False
     dispatch: typing.Callable[[dict], typing.Awaitable[None]] | None = None
     """Nesting depth of call_workflow invocations."""
+    platform_session: dict | None = None
+    """Host-frozen event context for platform and event actions, shaped like an Agent run session."""
 
     async def reply(self, chain: platform_message.MessageChain, quote_origin: bool = False) -> str | None:
         if self.reply_sender is not None:

@@ -99,10 +99,13 @@ class WorkflowsRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(request_context: RequestContext) -> str:
+            from ......agent.runner.platform_tools import platform_tool_catalog
+
             return self._read_response(
                 request_context,
                 data={
                     'node_types': await self.ap.workflow_service.get_node_types(),
+                    'platform_tools': platform_tool_catalog(),
                 },
             )
 
@@ -218,6 +221,7 @@ class WorkflowsRouterGroup(group.RouterGroup):
                         graph=payload.get('graph'),
                         triggers=payload.get('triggers'),
                         session_type=payload.get('session_type', 'person'),
+                        event=payload.get('event'),
                     ),
                 )
             except ValueError as exc:

@@ -17,7 +17,7 @@ def _step(category, outputs='', config='', branches='none', terminal=False):
 CATALOG = {
     'start': _step(
         'logic',
-        'trigger text sender_id sender_name is_group group_id platform bot_uuid images voice args event payload target',
+        'trigger text sender_id sender_name is_group group_id chat_type chat_id message_id platform bot_uuid images voice args event event_type payload target',
     ),
     'llm': _step('ai', 'text error', 'model_uuid prompt use_history use_images temperature max_tokens on_error'),
     'classify': _step('ai', 'category', 'model_uuid instruction categories', 'categories'),

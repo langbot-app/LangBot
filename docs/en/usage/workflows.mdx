@@ -28,7 +28,7 @@ Click the **Start** step to set triggers. A workflow can have several:
 | Message | In a bot's **event routes**, point `message.received` at the workflow. The bot's access rules, rate limits and output settings still apply. |
 | Command | For example `/weather Beijing`. Set aliases, arguments (split by spaces, the last one takes the rest), admins only, and which bots offer it. Commands are listed in `/help` with system and plugin commands; system commands win name clashes, then plugin commands. A missing argument gets a usage reply. |
 | Schedule | Every day, every week, every N minutes or a cron expression, in the workflow time zone. Choose the bot that sends and the chats to send to; each chat gets its own run and **Reply** goes to that chat. |
-| Platform event | New members, members leaving, recalled messages, friend requests and more. Also point these events at the workflow in the bot's event routes. |
+| Platform event | Every standard event: messages edited, recalled or reacted to; members joining, leaving or muted and group info changes; friend requests, new and removed friends; the bot invited to, removed from or muted in a group; feedback; plus platform-specific events (such as WeCom customer service sessions). Tick a whole group (for example "Groups · All"); each event shows which of your bots send it. Event fields such as "Start · Event · Member name" or the request ID can be inserted directly. Also point these events at the workflow in the bot's event routes; a route lists only workflows that handle its event. |
 | Webhook | Another system `POST`s a JSON object to the generated URL; read it as "Start · Request body". The URL contains a secret, so keep it private. |
 
 ## Steps
@@ -48,7 +48,7 @@ Click the **Start** step to set triggers. A workflow can have several:
 | Actions | Reply | Reply to the sender, optionally with an image or voice. Quoting and @mentions follow the bot's message policy |
 | Actions | Send to a chat | Send to a group or person through this or another bot |
 | Actions | HTTP request | Call an HTTP service and get the status, body and JSON. Internal addresses are blocked |
-| Actions | Platform action | Mute, unmute, remove members, recall messages, rename the group, look up members…; fails where the platform lacks it |
+| Actions | Platform action | The same platform actions Agents use. "This message or event" needs no IDs: recall this message, mute or remove this member, accept or reject this friend request or group invite, look up the sender or this group. Every other standard platform API (messages, groups, moderation, users and friends, files) runs on the IDs you fill in, and adapter-specific actions are available too. The picker shows which of your bots support an action; the step fails where the platform lacks it |
 | Actions | Hand off | Let a Chat, Agent or another workflow take the message and reply; nothing can follow it |
 
 **Model reply**, **HTTP request** and **Platform action** can continue with an empty result on failure (under "More settings").
@@ -57,6 +57,7 @@ Click the **Start** step to set triggers. A workflow can have several:
 
 - **Test run** uses the steps currently on the canvas, including unsaved changes. Replies only show there and are not sent to any bot. Steps that ran turn green with their duration, skipped branches turn gray, and clicking a step shows its input and output.
 - Type `/command arguments` to test a command trigger.
+- When the workflow listens to platform events, switch to **Event**, pick an event, edit the sample data and click **Simulate event**. As in Agent debugging, platform actions are simulated and never reach a platform.
 - The **Runs** tab lists every run with each step's input, output and errors. Message runs also appear in the Dashboard's execution records.
 
 ## Advanced: templates

@@ -685,12 +685,12 @@ class BotService:
                 if result.first() is None:
                     raise ValueError('Pipeline not found')
             elif target_type == 'workflow':
-                from ....workflow.triggers import accepts_event
+                from ....workflow.triggers import accepts_route
 
                 workflow = await self.ap.workflow_service.get_workflow(context, target_uuid)
                 if workflow is None:
                     raise ValueError('Workflow not found')
-                if not accepts_event(workflow, event_pattern):
+                if not accepts_route(workflow, event_pattern):
                     raise ValueError('Workflow has no trigger for this event')
             elif target_type == 'agent':
                 result = await self.ap.persistence_mgr.execute_async(

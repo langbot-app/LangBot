@@ -2310,6 +2310,7 @@ class RuntimeBot:
     async def run_triggered_workflow(self, workflow, trigger_type, data, target=None):
         """Run a schedule or webhook trigger through this bot; replies go to ``target``."""
         from ..workflow.entities import MessageContext
+        from ..workflow.operations import platform_session
         from ..workflow.runtime import WorkflowRuntime
 
         await self.assert_execution_active()
@@ -2320,6 +2321,21 @@ class RuntimeBot:
             await self.adapter.send_message(target['type'], target['id'], chain)
 
         runtime = WorkflowRuntime(self.execution_context, reply_sender, self.adapter.send_message)
+        runtime.platform_session = platform_session(
+            bot_uuid=self.bot_entity.uuid,
+            context={
+                'delivery': {
+                    'surface': 'platform',
+                    'reply_target': {
+                        'target_type': target['type'],
+                        'target_id': target['id'],
+                        **({'group_id': target['id']} if target['type'] == 'group' else {}),
+                    }
+                    if target
+                    else {},
+                }
+            },
+        )
         payload = data.get('payload') if isinstance(data.get('payload'), dict) else {}
         message_context = MessageContext(
             message_id='',
@@ -2340,10 +2356,37 @@ class RuntimeBot:
             runtime=runtime,
         )
 
+    def _workflow_platform_context(self, event, adapter) -> dict[str, typing.Any]:
+        """Event targets frozen like an Agent envelope, without rendering the message input."""
+        target_type, target_id, metadata = self._infer_reply_target(event)
+        actor = self._infer_actor_context(event)
+        subject = self._infer_subject_context(event)
+        return {
+            'event_type': event.type,
+            'data': self._compact_event_data(event),
+            'actor': actor.model_dump(mode='json') if actor else None,
+            'subject': subject.model_dump(mode='json') if subject else None,
+            'delivery': {
+                'surface': 'platform',
+                'reply_target': {
+                    'target_type': target_type,
+                    'target_id': target_id,
+                    'message_id': getattr(event, 'message_id', None),
+                    **metadata,
+                },
+                'platform_capabilities': {
+                    'adapter': adapter.__class__.__name__,
+                    'event_type': event.type,
+                    'supported_apis': self._get_adapter_supported_apis(adapter),
+                },
+            },
+        }
+
     async def _dispatch_eba_workflow(self, event, adapter, binding, query=None, altered=None, node=None, command=None):
         from ..api.http.service.workflow import WorkflowExecutionFailedError
         from ..telemetry import trace as trace_mod
         from ..workflow.entities import MessageContext
+        from ..workflow.operations import platform_session
         from ..workflow.runtime import WorkflowRuntime
         from ..workflow.triggers import accepts_event
         from .processing_indicator import processing_indicator
@@ -2359,6 +2402,10 @@ class RuntimeBot:
             failure_code, reason = 'processor_incompatible', 'Workflow has no trigger for this event'
         if failure_code is None:
             reply_type, reply_id, _ = self._infer_reply_target(event)
+            person = getattr(event, 'user', None) or getattr(event, 'user_id', None)
+            if not reply_id and person:
+                # Friend and feedback events have no chat; answer the person.
+                reply_type, reply_id = 'person', str(getattr(person, 'id', person))
 
             async def reply_sender(chain, quote):
                 if not is_message:
@@ -2386,6 +2433,10 @@ class RuntimeBot:
 
             runtime = WorkflowRuntime(self.execution_context, reply_sender, adapter.send_message)
             runtime.depth = getattr(event, '_workflow_depth', 0)
+            runtime.platform_session = platform_session(
+                bot_uuid=self.bot_entity.uuid,
+                context=self._workflow_platform_context(event, adapter),
+            )
 
             async def dispatch(handoff):
                 if not is_message:
@@ -2416,14 +2467,23 @@ class RuntimeBot:
             if altered is not None and not isinstance(altered, str):
                 parts = altered if isinstance(altered, list) else [altered]
                 altered = ''.join(part.text or '' for part in parts)
-            sender = getattr(event, 'sender', None) or getattr(event, 'member', None) or getattr(event, 'user', None)
+            sender = next(
+                (
+                    getattr(event, name)
+                    for name in ('sender', 'member', 'user', 'editor', 'operator', 'inviter')
+                    if getattr(event, name, None)
+                ),
+                None,
+            )
+            if sender is None and getattr(event, 'user_id', None):
+                sender = platform_entities.User(id=event.user_id)
             message_context = MessageContext(
                 message_id=str(getattr(event, 'message_id', '')),
                 message_content=altered
                 if altered is not None
                 else ''.join(
                     part.text
-                    for part in getattr(event, 'message_chain', [])
+                    for part in getattr(event, 'message_chain', None) or getattr(event, 'new_content', None) or []
                     if isinstance(part, platform_message.Plain)
                 ),
                 sender_id=str(getattr(sender, 'id', '')),

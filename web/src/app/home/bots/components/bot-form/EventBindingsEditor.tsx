@@ -523,8 +523,8 @@ function TargetCombobox({
   const [creating, setCreating] = useState(false);
   const { refreshPipelines } = useSidebarData();
   const pipelineAllowed = isMessageEventPattern(binding.event_pattern);
-  const [workflows, setWorkflows] = useState<
-    Array<{ uuid: string; name: string }>
+  const [allWorkflows, setWorkflows] = useState<
+    Array<{ uuid: string; name: string; patterns: string[] }>
   >([]);
   useEffect(() => {
     backendClient
@@ -533,11 +533,30 @@ function TargetCombobox({
         setWorkflows(
           result.workflows
             .filter((workflow) => workflow.uuid)
-            .map((workflow) => ({ uuid: workflow.uuid!, name: workflow.name })),
+            .map((workflow) => ({
+              uuid: workflow.uuid!,
+              name: workflow.name,
+              patterns: workflow.event_patterns ?? ['message.received'],
+            })),
         ),
       )
       .catch(() => setWorkflows([]));
   }, []);
+  // Same rule as the server (workflow.triggers.accepts_route).
+  const route = binding.event_pattern;
+  const workflows = allWorkflows.filter(
+    (workflow) =>
+      workflow.uuid === binding.target_uuid ||
+      workflow.patterns.some((pattern) =>
+        route === 'message.received'
+          ? pattern === route
+          : pattern === route ||
+            route === '*' ||
+            pattern === '*' ||
+            (route.endsWith('.*') && pattern.startsWith(route.slice(0, -1))) ||
+            (pattern.endsWith('.*') && route.startsWith(pattern.slice(0, -1))),
+      ),
+  );
   const targetType = binding.target_type || 'agent';
   const selectedTarget =
     targetType !== 'discard'
@@ -660,7 +679,7 @@ function TargetCombobox({
                   ))}
                 </CommandGroup>
               )}
-              {pipelineAllowed && workflows.length > 0 && (
+              {workflows.length > 0 && (
                 <CommandGroup heading={t('workflows.title')}>
                   {workflows.map((workflow) => (
                     <CommandItem

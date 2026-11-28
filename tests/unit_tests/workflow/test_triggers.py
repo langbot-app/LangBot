@@ -201,3 +201,128 @@ async def test_tts_saves_audio_as_media_and_asr_reads_it_back():
     assert await operations.asr({'model_uuid': 'm', 'voice': voice}, ap, runtime) == {'text': '你好'}
     with pytest.raises(ValueError):
         await operations.asr({'model_uuid': 'm', 'voice': 'https://example.com/a.mp3'}, ap, runtime)
+
+
+async def test_platform_step_coerces_event_api_parameters():
+    adapter = SimpleNamespace(
+        get_supported_apis=lambda: ['approve_friend_request', 'edit_message', 'get_group_list', 'send_message'],
+        approve_friend_request=AsyncMock(return_value=None),
+        edit_message=AsyncMock(return_value=None),
+        get_group_list=AsyncMock(return_value=[SimpleNamespace(model_dump=lambda mode: {'id': 1})]),
+    )
+    ap = SimpleNamespace(
+        platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=adapter)))
+    )
+    runtime = SimpleNamespace(execution_context=SimpleNamespace(bot_uuid='b'))
+    await operations.platform(
+        {'action': 'approve_friend_request', 'params': {'request_id': 'r1', 'approve': 'false', 'remark': ''}},
+        ap,
+        runtime,
+    )
+    adapter.approve_friend_request.assert_awaited_once_with(request_id='r1', approve=False)
+    await operations.platform(
+        {
+            'action': 'edit_message',
+            'params': {'chat_type': 'group', 'chat_id': 5, 'message_id': 9, 'new_content': 'fixed', 'extra': 1},
+        },
+        ap,
+        runtime,
+    )
+    kwargs = adapter.edit_message.await_args.kwargs
+    assert kwargs['chat_id'] == '5' and kwargs['new_content'][0].text == 'fixed' and 'extra' not in kwargs
+    assert await operations.platform({'action': 'get_group_list'}, ap, runtime) == {'result': [{'id': 1}]}
+    with pytest.raises(ValueError, match='request_id is required'):
+        await operations.platform({'action': 'approve_friend_request', 'params': {}}, ap, runtime)
+    with pytest.raises(ValueError, match='cannot be called'):
+        await operations.platform({'action': 'send_message', 'params': {}}, ap, runtime)
+
+
+def test_event_patterns_and_route_compatibility():
+    from langbot.pkg.workflow.triggers import accepts_event, accepts_route, event_patterns
+
+    workflow = {'triggers': [{'type': 'message'}, {'type': 'event', 'events': ['group.*', 'friend.request_received']}]}
+    assert event_patterns(workflow) == ['message.received', 'group.*', 'friend.request_received']
+    assert accepts_event(workflow, 'group.member_left')
+    assert not accepts_event(workflow, 'friend.added')
+    assert accepts_route(workflow, 'group.member_joined')
+    assert accepts_route(workflow, 'friend.*')
+    assert not accepts_route(workflow, 'bot.muted')
+    everything = {'triggers': [{'type': 'event', 'events': ['*']}]}
+    assert accepts_event(everything, 'platform.specific')
+    assert not accepts_event(everything, 'message.received')
+    assert not accepts_route({'triggers': []}, 'message.received')
+    assert event_patterns({}) == ['message.received']
+
+
+async def test_event_actions_bind_the_triggering_event_like_agent_tools():
+    adapter = SimpleNamespace(
+        get_supported_apis=lambda: ['approve_friend_request', 'mute_member'],
+        approve_friend_request=AsyncMock(return_value=None),
+        mute_member=AsyncMock(return_value=None),
+    )
+    ap = SimpleNamespace(
+        platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=adapter))),
+        telemetry=None,
+    )
+    context = {
+        'event_type': 'friend.request_received',
+        'data': {'request_id': 'req-7', 'user': {'id': 'u1'}},
+        'actor': {'actor_type': 'user', 'actor_id': 'u1'},
+        'delivery': {'surface': 'platform', 'reply_target': {'target_type': 'person', 'target_id': 'u1'}},
+    }
+    runtime = SimpleNamespace(
+        execution_context=SimpleNamespace(bot_uuid='b', workspace_uuid='w'),
+        platform_session=operations.platform_session(bot_uuid='b', context=context),
+    )
+    await operations.platform(
+        {'action': 'event_respond_friend_request', 'params': {'approve': 'true', 'remark': ''}}, ap, runtime
+    )
+    adapter.approve_friend_request.assert_awaited_once_with(request_id='req-7', approve=True)
+    with pytest.raises(ValueError, match='reply or send step'):
+        await operations.platform({'action': 'event_reply', 'params': {'text': 'x'}}, ap, runtime)
+
+    scheduled = SimpleNamespace(
+        execution_context=runtime.execution_context, platform_session=operations.platform_session(bot_uuid='b')
+    )
+    with pytest.raises(ValueError, match='needs the event'):
+        await operations.platform({'action': 'event_mute_member', 'params': {}}, ap, scheduled)
+    await operations.platform(
+        {'action': 'platform_mute_member', 'params': {'group_id': 'g', 'user_id': 'u', 'duration': '60'}},
+        ap,
+        scheduled,
+    )
+    adapter.mute_member.assert_awaited_once_with(group_id='g', user_id='u', duration=60)
+
+
+async def test_test_run_events_are_simulated_and_platform_actions_mocked():
+    from langbot.pkg.api.http.service.workflow_run import _mock_session, _test_event
+
+    data, message, context = _test_event(
+        {
+            'type': 'group.member_joined',
+            'data': {'group': {'id': 'g1', 'name': 'Fans'}, 'member': {'id': 'u9', 'nickname': 'Neo'}},
+        },
+        '',
+        'session',
+    )
+    assert data['member']['nickname'] == 'Neo' and data['type'] == 'group.member_joined'
+    assert (message.sender_id, message.sender_name, message.group_id, message.is_group) == ('u9', 'Neo', 'g1', True)
+    runtime = SimpleNamespace(
+        execution_context=SimpleNamespace(bot_uuid=None, workspace_uuid='w'), platform_session=_mock_session(context)
+    )
+    ap = SimpleNamespace(platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(side_effect=AssertionError)))
+    result = (await operations.platform({'action': 'event_kick_member', 'params': {}}, ap, runtime))['result']
+    assert result['mock'] is True and result['parameters'] == {'group_id': 'g1', 'user_id': 'u9'}
+    result = (await operations.platform({'action': 'edit_message', 'params': {'chat_id': '1'}}, ap, runtime))['result']
+    assert result['mock'] is True and result['api'] == 'edit_message'
+    with pytest.raises(ValueError, match='Test received messages'):
+        _test_event({'type': 'message.received'}, '', 's')
+
+
+def test_event_only_workflows_never_take_received_messages():
+    from langbot.pkg.workflow.triggers import accepts_route
+
+    everything = {'triggers': [{'type': 'event', 'events': ['*']}]}
+    assert not accepts_route(everything, 'message.received')
+    assert accepts_route(everything, 'message.deleted')
+    assert accepts_route({'triggers': [{'type': 'message'}]}, 'message.received')

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,7 +11,7 @@ import {
   OptionSelect,
   useFieldError,
 } from './fields';
-import { Advanced, OnError, str, type FormProps } from './forms';
+import { Advanced, str, type FormProps } from './forms';
 import TemplateField from './TemplateField';
 
 const num = (value: unknown, fallback = '') =>
@@ -394,144 +393,6 @@ export function AsrForm({ step, config, set }: FormProps) {
           onChange={(value) => set({ voice: value })}
         />
       </Field>
-    </>
-  );
-}
-
-const PLATFORM_PARAMS: Record<string, string[]> = {
-  mute_member: ['group_id', 'user_id', 'duration'],
-  unmute_member: ['group_id', 'user_id'],
-  kick_member: ['group_id', 'user_id'],
-  delete_message: ['chat_type', 'chat_id', 'message_id'],
-  set_group_name: ['group_id', 'name'],
-  get_group_info: ['group_id'],
-  get_group_member_info: ['group_id', 'user_id'],
-  get_group_member_list: ['group_id'],
-  get_user_info: ['user_id'],
-  call_platform_api: [],
-};
-
-const PARAM_DEFAULTS: Record<string, string> = {
-  group_id: '{{ start.group_id }}',
-  user_id: '{{ start.sender_id }}',
-  chat_id: '{{ start.group_id }}',
-  chat_type: 'group',
-  duration: '600',
-};
-
-export function PlatformForm({ step, config, set }: FormProps) {
-  const { t } = useTranslation();
-  const { resources } = useEditor();
-  const error = useFieldError(step.id);
-  const action = str(config.action);
-  const params = (config.params as Record<string, unknown>) ?? {};
-  const [json, setJson] = useState(() =>
-    JSON.stringify(params.params ?? {}, null, 2),
-  );
-  const [jsonError, setJsonError] = useState(false);
-  const setParam = (key: string, value: unknown) =>
-    set({ params: { ...params, [key]: value } });
-  return (
-    <>
-      <Field label={t('workflows.send.bot')} hint={t('workflows.send.botHint')}>
-        <OptionSelect
-          value={str(config.bot_uuid) || '_current'}
-          onChange={(value) =>
-            set({ bot_uuid: value === '_current' ? undefined : value })
-          }
-          options={[
-            { value: '_current', label: t('workflows.send.currentBot') },
-            ...resources.bots.map((bot) => ({
-              value: bot.uuid,
-              label: bot.name,
-            })),
-          ]}
-        />
-      </Field>
-      <Field
-        label={t('workflows.platform.action')}
-        hint={t('workflows.platform.actionHint')}
-        error={error('action')}
-      >
-        <OptionSelect
-          value={action}
-          onChange={(value) =>
-            set({
-              action: value,
-              params: Object.fromEntries(
-                (PLATFORM_PARAMS[value] ?? []).map((key) => [
-                  key,
-                  PARAM_DEFAULTS[key] ?? '',
-                ]),
-              ),
-            })
-          }
-          options={Object.keys(PLATFORM_PARAMS).map((value) => ({
-            value,
-            label: t(`workflows.platform.actions.${value}`),
-          }))}
-        />
-      </Field>
-      {(PLATFORM_PARAMS[action] ?? []).map((key) =>
-        key === 'chat_type' ? (
-          <Field key={key} label={t(`workflows.platform.params.${key}`)}>
-            <OptionSelect
-              value={str(params[key]) || 'group'}
-              onChange={(value) => setParam(key, value)}
-              options={[
-                { value: 'group', label: t('workflows.send.group') },
-                { value: 'person', label: t('workflows.send.person') },
-              ]}
-            />
-          </Field>
-        ) : (
-          <Field key={key} label={t(`workflows.platform.params.${key}`)}>
-            <TemplateField
-              stepId={step.id}
-              value={str(params[key])}
-              onChange={(value) => setParam(key, value)}
-            />
-          </Field>
-        ),
-      )}
-      {action === 'call_platform_api' && (
-        <>
-          <Field
-            label={t('workflows.platform.rawAction')}
-            hint={t('workflows.platform.rawActionHint')}
-          >
-            <Input
-              className="font-mono"
-              value={str(params.action)}
-              placeholder="set_group_card"
-              onChange={(event) => setParam('action', event.target.value)}
-            />
-          </Field>
-          <Field
-            label={t('workflows.platform.rawParams')}
-            error={jsonError ? t('workflows.platform.invalidJson') : undefined}
-          >
-            <Textarea
-              rows={6}
-              spellCheck={false}
-              className="font-mono text-xs"
-              value={json}
-              onChange={(event) => {
-                setJson(event.target.value);
-                try {
-                  setParam('params', JSON.parse(event.target.value || '{}'));
-                  setJsonError(false);
-                } catch {
-                  setJsonError(true);
-                }
-              }}
-            />
-          </Field>
-        </>
-      )}
-      <Advanced>
-        <OnError config={config} set={set} />
-      </Advanced>
     </>
   );
 }

@@ -7,11 +7,47 @@ COMMAND_NAME = re.compile(r'^[^\s/]{1,32}$')
 TARGET_TYPES = ('person', 'group')
 
 
+def _covers(pattern, event_type):
+    # Same rules as event routes: "*" or "group.*" cover a family of events.
+    if event_type == 'message.received':
+        return False
+    if pattern == '*' or pattern == event_type:
+        return True
+    return pattern.endswith('.*') and event_type.startswith(pattern[:-1])
+
+
 def accepts_event(workflow, event_type):
     for trigger in workflow.get('triggers', [{'type': 'message'}]):
         if trigger['type'] == 'message' and event_type == 'message.received':
             return True
-        if trigger['type'] == 'event' and event_type in trigger['events']:
+        if trigger['type'] == 'event' and any(_covers(pattern, event_type) for pattern in trigger['events']):
+            return True
+    return False
+
+
+def event_patterns(workflow):
+    """Event patterns a bot can route to this workflow."""
+    patterns = []
+    for trigger in workflow.get('triggers', [{'type': 'message'}]) or []:
+        if trigger.get('type') == 'message':
+            patterns.append('message.received')
+        elif trigger.get('type') == 'event':
+            patterns.extend(trigger.get('events') or [])
+    return list(dict.fromkeys(patterns))
+
+
+def accepts_route(workflow, route_pattern):
+    """Whether a bot event route (possibly a wildcard) can reach this workflow."""
+    for pattern in event_patterns(workflow):
+        if route_pattern == 'message.received':
+            if pattern == route_pattern:
+                return True
+            continue
+        if pattern == route_pattern or route_pattern == '*' or pattern == '*':
+            return True
+        if route_pattern.endswith('.*') and pattern.startswith(route_pattern[:-1]):
+            return True
+        if pattern.endswith('.*') and route_pattern.startswith(pattern[:-1]):
             return True
     return False
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   CircleAlert,
@@ -18,6 +18,14 @@ import type {
   WorkflowGraph,
 } from '@/app/infra/entities/api';
 import { describeError } from '../lib/issues';
+import { STANDARD_EVENTS } from '../lib/platform';
+import { eventPatternLabel } from '@/app/home/components/event-patterns/event-pattern-groups';
+import AgentEventDataEditor from '@/app/home/agents/components/AgentEventDataEditor';
+import {
+  createDebugEventData,
+  parseDebugEventData,
+} from '@/app/home/agents/components/debug-event-data';
+import { OptionSelect } from './fields';
 import { useEditor } from './EditorContext';
 
 interface Turn {
@@ -42,23 +50,79 @@ export default function TestRunPanel({
   const [sessionType, setSessionType] = useState<'person' | 'group'>('person');
   const [running, setRunning] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
+  // Events the start step listens to, so a test can simulate one like a bot would.
+  const testEvents = useMemo(() => {
+    const patterns = triggers.flatMap((trigger) =>
+      trigger.type === 'event' ? ((trigger.events as string[]) ?? []) : [],
+    );
+    return [
+      ...new Set(
+        patterns.flatMap((pattern) =>
+          pattern === '*'
+            ? STANDARD_EVENTS
+            : pattern.endsWith('.*')
+              ? STANDARD_EVENTS.filter((event) =>
+                  event.startsWith(pattern.slice(0, -1)),
+                )
+              : [pattern],
+        ),
+      ),
+    ];
+  }, [triggers]);
+  const [mode, setMode] = useState<'message' | 'event'>('message');
+  const [eventType, setEventType] = useState('');
+  const [eventText, setEventText] = useState('{}');
+  const sample = (type: string) =>
+    JSON.stringify(
+      createDebugEventData(
+        type,
+        {
+          user: t('agents.debugData.sampleUser'),
+          message: t('agents.debugData.sampleMessage'),
+          feedback: t('agents.debugData.sampleFeedback'),
+        },
+        true,
+      ),
+      null,
+      2,
+    );
+  const pickEvent = (type: string) => {
+    setEventType(type);
+    setEventText(sample(type));
+  };
+  const eventMode = mode === 'event' && testEvents.length > 0;
+  const currentEvent = testEvents.includes(eventType)
+    ? eventType
+    : (testEvents[0] ?? '');
+  useEffect(() => {
+    if (testEvents.length && !testEvents.includes(eventType))
+      pickEvent(testEvents[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testEvents]);
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: 'end' });
   }, [turns, running]);
 
   const send = async () => {
-    const message = text.trim();
-    if (!message || running) return;
-    setText('');
+    const eventData = eventMode ? parseDebugEventData(eventText) : null;
+    const message = eventMode ? '' : text.trim();
+    if ((!message && !eventData) || running) return;
+    if (!eventMode) setText('');
     setRunning(true);
-    setTurns((current) => [...current, { text: message }]);
+    setTurns((current) => [
+      ...current,
+      { text: eventMode ? eventPatternLabel(currentEvent, t) : message },
+    ]);
     try {
       const result = await backendClient.testWorkflow(workflowId, {
         text: message,
         session_type: sessionType,
         graph,
         triggers,
+        ...(eventData
+          ? { event: { type: currentEvent, data: eventData } }
+          : {}),
       });
       onResult(result);
       setTurns((current) =>
@@ -168,23 +232,45 @@ export default function TestRunPanel({
         <div ref={bottom} />
       </div>
       <div className="space-y-2 border-t p-3">
-        <div className="flex items-center justify-between">
-          <ToggleGroup
-            type="single"
-            size="sm"
-            variant="outline"
-            value={sessionType}
-            onValueChange={(value) =>
-              value && setSessionType(value as 'person' | 'group')
-            }
-          >
-            <ToggleGroupItem value="person" className="px-3 text-xs">
-              {t('workflows.test.person')}
-            </ToggleGroupItem>
-            <ToggleGroupItem value="group" className="px-3 text-xs">
-              {t('workflows.test.group')}
-            </ToggleGroupItem>
-          </ToggleGroup>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            {testEvents.length > 0 && (
+              <ToggleGroup
+                type="single"
+                size="sm"
+                variant="outline"
+                value={mode}
+                onValueChange={(value) =>
+                  value && setMode(value as 'message' | 'event')
+                }
+              >
+                <ToggleGroupItem value="message" className="px-3 text-xs">
+                  {t('workflows.test.message')}
+                </ToggleGroupItem>
+                <ToggleGroupItem value="event" className="px-3 text-xs">
+                  {t('workflows.test.event')}
+                </ToggleGroupItem>
+              </ToggleGroup>
+            )}
+            {!eventMode && (
+              <ToggleGroup
+                type="single"
+                size="sm"
+                variant="outline"
+                value={sessionType}
+                onValueChange={(value) =>
+                  value && setSessionType(value as 'person' | 'group')
+                }
+              >
+                <ToggleGroupItem value="person" className="px-3 text-xs">
+                  {t('workflows.test.person')}
+                </ToggleGroupItem>
+                <ToggleGroupItem value="group" className="px-3 text-xs">
+                  {t('workflows.test.group')}
+                </ToggleGroupItem>
+              </ToggleGroup>
+            )}
+          </div>
           {turns.length > 0 && (
             <Button
               type="button"
@@ -201,8 +287,39 @@ export default function TestRunPanel({
             </Button>
           )}
         </div>
+        {eventMode && (
+          <div className="max-h-72 space-y-2 overflow-y-auto">
+            <OptionSelect
+              value={currentEvent}
+              onChange={pickEvent}
+              ariaLabel={t('workflows.test.eventType')}
+              options={testEvents.map((event) => ({
+                value: event,
+                label: eventPatternLabel(event, t),
+              }))}
+            />
+            <AgentEventDataEditor
+              eventType={currentEvent}
+              value={eventText}
+              onChange={setEventText}
+              processor
+            />
+            <Button
+              type="button"
+              className="w-full"
+              disabled={running || !parseDebugEventData(eventText)}
+              onClick={() => void send()}
+            >
+              <Send className="size-4" />
+              {t('workflows.test.sendEvent')}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              {t('workflows.test.mockHint')}
+            </p>
+          </div>
+        )}
         <form
-          className="flex gap-2"
+          className={cn('flex gap-2', eventMode && 'hidden')}
           onSubmit={(event) => {
             event.preventDefault();
             void send();

@@ -71,6 +71,7 @@ async def smoke(base_url, api_key, screenshot=None):
         )
         assert run['status'] == 'completed' and run['replies'] == ['Echo manual (1)'], run
         joined_uuid = await create_event_workflow(request)
+        friend_uuid = await create_friend_workflow(request)
         bot = await request(
             'POST',
             '/api/v1/platform/bots',
@@ -85,6 +86,12 @@ async def smoke(base_url, api_key, screenshot=None):
                         'event_pattern': 'group.member_joined',
                         'target_type': 'workflow',
                         'target_uuid': joined_uuid,
+                    },
+                    {
+                        'id': 'friends',
+                        'event_pattern': 'friend.*',
+                        'target_type': 'workflow',
+                        'target_uuid': friend_uuid,
                     },
                     {
                         'id': 'workflow-route',
@@ -160,6 +167,7 @@ async def smoke(base_url, api_key, screenshot=None):
                     if item['action'] in ('send_msg', 'send_group_msg')
                 )
                 await event_smoke(request, peer, joined_uuid)
+                await friend_smoke(request, peer, friend_uuid)
                 await trigger_smoke(request, client, base_url, api_key)
                 print(json.dumps({'execution_details': traces}, ensure_ascii=False))
                 response = await client.delete(f'/api/v1/workflows/{workflow_uuid}')
@@ -209,6 +217,70 @@ async def create_event_workflow(request):
     )
     assert not created['issues']
     return created['workflow']['uuid']
+
+
+async def create_friend_workflow(request):
+    """friend.* (a wildcard route) → accept through the event action, then greet the requester."""
+    from tests.unit_tests.workflow.test_tree import node, path
+
+    graph = path(
+        node('start'),
+        node('platform', action='event_respond_friend_request', params={'approve': True, 'remark': 'from workflow'}),
+        node('reply', text='hi {{start.event.user.id}} ({{start.event_type}}: {{start.event.message}})'),
+    )
+    created = await request(
+        'POST',
+        '/api/v1/workflows',
+        {'name': 'Friend gate', 'triggers': [{'type': 'event', 'events': ['friend.*']}], 'graph': graph},
+    )
+    assert not created['issues'], created['issues']
+    listed = await request('GET', '/api/v1/workflows')
+    assert next(item for item in listed['workflows'] if item['uuid'] == created['workflow']['uuid'])[
+        'event_patterns'
+    ] == ['friend.*']
+    return created['workflow']['uuid']
+
+
+async def friend_smoke(request, peer, workflow_uuid):
+    """A real OneBot friend request is accepted by the workflow's event action and answered."""
+    await peer.emit(
+        {
+            'post_type': 'request',
+            'request_type': 'friend',
+            'user_id': 10003,
+            'comment': 'let me in',
+            'flag': 'flag-10003',
+        }
+    )
+    async with asyncio.timeout(20):
+        while not any(row['action'] == 'set_friend_add_request' for row in peer.requests):
+            await asyncio.sleep(0.1)
+    approve = next(row for row in peer.requests if row['action'] == 'set_friend_add_request')
+    assert approve['params'] == {'flag': 'flag-10003', 'approve': True, 'remark': 'from workflow'}, approve
+    await wait_for(peer, 'hi 10003 (friend.request_received: let me in)')
+    resource = '/api/v1/workflows/' + workflow_uuid
+    rows = (await request('GET', resource + '/executions'))['executions']
+    detail = await request('GET', resource + '/executions/' + rows[0]['uuid'])
+    platform_step = next(step for step in detail['execution']['steps'] if step['node_type'] == 'platform')
+    assert platform_step['status'] == 'completed', platform_step
+
+    # The same workflow as a test run: the event is simulated and the action is mocked.
+    run = await request(
+        'POST',
+        resource + '/test',
+        {
+            'text': '',
+            'event': {
+                'type': 'friend.request_received',
+                'data': {'request_id': 'sim-1', 'user': {'id': 'u-sim'}, 'message': 'simulated'},
+            },
+        },
+    )
+    assert run['status'] == 'completed', run
+    assert run['replies'] == ['hi u-sim (friend.request_received: simulated)'], run
+    mocked = next(step for step in run['steps'] if step['node_type'] == 'platform')['outputs']['result']
+    assert mocked['mock'] is True and mocked['parameters']['request_id'] == 'sim-1', mocked
+    assert sum(row['action'] == 'set_friend_add_request' for row in peer.requests) == 1
 
 
 async def event_smoke(request, peer, workflow_uuid):

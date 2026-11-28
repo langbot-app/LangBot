@@ -430,7 +430,7 @@ export interface Adapter {
     supported_events?: string[];
     supported_apis?: string[];
     command_registration?: PlatformCommandCapability;
-    platform_specific_apis?: { action: string }[];
+    platform_specific_apis?: { action: string; description?: I18nObject }[];
     config: IDynamicFormItemSchema[];
   };
 }
@@ -1285,6 +1285,8 @@ export interface WorkflowSummary {
   description?: string | null;
   emoji?: string | null;
   is_enabled?: boolean;
+  /** Event patterns a bot route can send to this workflow. */
+  event_patterns?: string[];
   step_count?: number;
   updated_at?: string;
 }
@@ -1356,6 +1358,8 @@ export interface WorkflowTestRequest {
   session_type: 'person' | 'group';
   graph?: WorkflowGraph;
   triggers?: WorkflowTrigger[];
+  /** Simulate a platform event instead of a message. */
+  event?: { type: string; data: Record<string, unknown> };
 }
 
 export interface ApiRespWorkflowTest {

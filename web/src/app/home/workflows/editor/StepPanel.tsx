@@ -42,10 +42,10 @@ import {
   CodeForm,
   HistoryForm,
   KnowledgeForm,
-  PlatformForm,
   RandomForm,
   TtsForm,
 } from './forms-more';
+import { PlatformForm } from './PlatformForm';
 import TriggersEditor from './TriggersEditor';
 
 const FORMS: Partial<Record<string, (props: FormProps) => React.ReactNode>> = {

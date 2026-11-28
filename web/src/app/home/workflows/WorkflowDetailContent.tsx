@@ -34,6 +34,7 @@ import EntityBasicInfoDialog, {
 import EntityTitleEditButton from '@/app/home/components/entity-basic-info/EntityTitleEditButton';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { backendClient, useCurrentWorkspace } from '@/app/infra/http';
+import { extractI18nObject } from '@/i18n/I18nProvider';
 import type {
   ApiRespWorkflowTest,
   Workflow,
@@ -57,6 +58,8 @@ const EMPTY_RESOURCES: EditorResources = {
   processors: [],
   workflows: [],
   bots: [],
+  adapters: {},
+  platformTools: [],
   availableTypes: null,
 };
 
@@ -135,32 +138,64 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
       backendClient.getProviderTTSModels(),
       backendClient.getProviderASRModels(),
       backendClient.getKnowledgeBases(),
-    ]).then(([models, agents, workflows, bots, types, tts, asr, bases]) => {
-      if (!alive) return;
-      setResources({
-        models: models.status === 'fulfilled' ? models.value.models : [],
-        ttsModels: tts.status === 'fulfilled' ? tts.value.models : [],
-        asrModels: asr.status === 'fulfilled' ? asr.value.models : [],
-        knowledgeBases: bases.status === 'fulfilled' ? bases.value.bases : [],
-        processors: agents.status === 'fulfilled' ? agents.value.agents : [],
-        workflows:
-          workflows.status === 'fulfilled' ? workflows.value.workflows : [],
-        bots:
-          bots.status === 'fulfilled'
-            ? bots.value.bots
-                .filter((bot) => bot.uuid)
-                .map((bot) => ({ uuid: bot.uuid!, name: bot.name }))
-            : [],
-        availableTypes:
-          types.status === 'fulfilled'
-            ? new Set(
-                types.value.node_types
-                  .filter((item) => item.available !== false)
-                  .map((item) => item.type),
-              )
-            : null,
-      });
-    });
+      backendClient.getAdapters(),
+    ]).then(
+      ([models, agents, workflows, bots, types, tts, asr, bases, adapters]) => {
+        if (!alive) return;
+        setResources({
+          models: models.status === 'fulfilled' ? models.value.models : [],
+          ttsModels: tts.status === 'fulfilled' ? tts.value.models : [],
+          asrModels: asr.status === 'fulfilled' ? asr.value.models : [],
+          knowledgeBases: bases.status === 'fulfilled' ? bases.value.bases : [],
+          processors: agents.status === 'fulfilled' ? agents.value.agents : [],
+          workflows:
+            workflows.status === 'fulfilled' ? workflows.value.workflows : [],
+          bots:
+            bots.status === 'fulfilled'
+              ? bots.value.bots
+                  .filter((bot) => bot.uuid)
+                  .map((bot) => ({
+                    uuid: bot.uuid!,
+                    name: bot.name,
+                    adapter: bot.adapter,
+                  }))
+              : [],
+          adapters:
+            adapters.status === 'fulfilled'
+              ? Object.fromEntries(
+                  adapters.value.adapters.map((adapter) => [
+                    adapter.name,
+                    {
+                      label: extractI18nObject(adapter.label),
+                      events: adapter.spec.supported_events ?? [],
+                      apis: adapter.spec.supported_apis ?? [],
+                      specific: (adapter.spec.platform_specific_apis ?? []).map(
+                        (item) => ({
+                          action: item.action,
+                          description: item.description
+                            ? extractI18nObject(item.description)
+                            : undefined,
+                        }),
+                      ),
+                    },
+                  ]),
+                )
+              : {},
+          platformTools:
+            types.status === 'fulfilled'
+              ? (types.value.platform_tools ?? [])
+              : [],
+          availableTypes:
+            types.status === 'fulfilled'
+              ? new Set(
+                  types.value.node_types
+                    .filter((item) => item.available !== false)
+                    .map((item) => item.type),
+                )
+              : null,
+        });
+      },
+    );
     return () => {
       alive = false;
     };

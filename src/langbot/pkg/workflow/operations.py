@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from textwrap import indent
 
 import sqlalchemy as sa
+from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
 
 from ..entity.persistence.monitoring import MonitoringMessage
 
@@ -158,27 +159,131 @@ def _plain(value):
     return value
 
 
+# Standard APIs outside the Agent platform tool catalog, with each parameter's
+# type. Catalog tools (event_* and platform_*) run through execute_platform_tool.
+CHAT = ('chat_type', 'chat_id', 'message_id')
+PLATFORM_APIS = {
+    'edit_message': (*CHAT, 'new_content:chain'),
+    'delete_message': CHAT,
+    'forward_message': ('from_chat_type', 'from_chat_id', 'message_id', 'to_chat_type', 'to_chat_id'),
+    'get_message': CHAT,
+    'get_group_info': ('group_id',),
+    'get_group_list': (),
+    'get_group_member_list': ('group_id',),
+    'get_group_member_info': ('group_id', 'user_id'),
+    'set_group_name': ('group_id', 'name'),
+    'mute_member': ('group_id', 'user_id', 'duration:int'),
+    'unmute_member': ('group_id', 'user_id'),
+    'kick_member': ('group_id', 'user_id'),
+    'leave_group': ('group_id',),
+    'get_user_info': ('user_id',),
+    'get_friend_list': (),
+    'approve_friend_request': ('request_id', 'approve:bool', 'remark:optional'),
+    'approve_group_invite': ('request_id', 'approve:bool'),
+    'upload_file': ('file_data:media', 'filename'),
+    'get_file_url': ('file_id',),
+    'call_platform_api': ('action', 'params:dict'),
+}
+# Messages go out through the reply/send steps so the bot's output policy applies.
+STEP_ONLY_TOOLS = {'event_reply', 'platform_send_message', 'request_interaction'}
+
+
+def _flag(value):
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() not in ('', '0', 'false', 'no', 'off', 'reject')
+
+
+async def _platform_params(ap, action, raw):
+    params = {}
+    for spec in PLATFORM_APIS[action]:
+        name, _, kind = spec.partition(':')
+        value = raw.get(name)
+        if kind == 'int':
+            params[name] = int(value or 0)
+        elif kind == 'bool':
+            params[name] = True if value is None else _flag(value)
+        elif kind == 'optional':
+            if value not in (None, ''):
+                params[name] = str(value)
+        elif kind == 'chain':
+            params[name] = MessageChain([Plain(text=str(value or ''))])
+        elif kind == 'media':
+            params[name] = (await media_bytes(ap, value))[0]
+        elif kind == 'dict':
+            params[name] = value if isinstance(value, dict) else {}
+        else:
+            if value in (None, ''):
+                raise ValueError(f'{name} is required')
+            params[name] = str(value)
+    return params
+
+
+def _tool_params(definition, raw):
+    """Coerce rendered template strings to the tool schema; drop empty optional values."""
+    properties = definition.parameters.get('properties') or {}
+    required = set(definition.parameters.get('required') or [])
+    params = {}
+    for name, field in properties.items():
+        value = raw.get(name)
+        if value in (None, '') and name not in required and field.get('type') != 'boolean':
+            continue
+        kind = field.get('type')
+        if kind == 'integer':
+            params[name] = int(value or 0)
+        elif kind == 'boolean':
+            params[name] = True if value is None else _flag(value)
+        elif value is not None:
+            params[name] = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+    return params
+
+
+def platform_session(*, bot_uuid=None, context=None, run_id=''):
+    """A run session shaped like the Agent one, so platform tools bind the same event targets."""
+    return {
+        'run_id': run_id,
+        'authorization': {
+            'bot_id': bot_uuid,
+            'processor_type': 'workflow',
+            'platform_context': context or {},
+        },
+    }
+
+
 async def platform(config, ap, runtime):
-    bot_uuid = config.get('bot_uuid') or runtime.execution_context.bot_uuid
+    from ..agent.runner.platform_tools import PLATFORM_TOOLS_BY_NAME, execute_platform_tool
+
+    action = config['action']
+    raw = dict(config.get('params') or {})
+    session = getattr(runtime, 'platform_session', None) or platform_session(
+        bot_uuid=runtime.execution_context.bot_uuid
+    )
+    context = session['authorization']['platform_context']
+    mock = ((context.get('delivery') or {}).get('platform_capabilities') or {}).get('debug_mock') is True
+    definition = PLATFORM_TOOLS_BY_NAME.get(action)
+    if definition is not None:
+        if action in STEP_ONLY_TOOLS:
+            raise ValueError('Use the reply or send step to send messages')
+        if definition.scope == 'platform' and config.get('bot_uuid') and not mock:
+            session = {**session, 'authorization': {**session['authorization'], 'bot_id': config['bot_uuid']}}
+        if definition.scope == 'event' and not context.get('event_type'):
+            raise ValueError('This action needs the event that started the workflow')
+        result = await execute_platform_tool(
+            ap, runtime.execution_context, session, action, _tool_params(definition, raw)
+        )
+        return {'result': _plain(result)}
+    if action not in PLATFORM_APIS:
+        raise ValueError(f'{action} cannot be called from a workflow')
+    if mock:
+        return {'result': {'ok': True, 'mock': True, 'api': action, 'parameters': _plain(raw), 'result': None}}
+    bot_uuid = config.get('bot_uuid') or session['authorization'].get('bot_id')
     if not bot_uuid:
         raise ValueError('Choose the bot that performs this action')
     bot = await ap.platform_mgr.get_bot_by_uuid(runtime.execution_context, bot_uuid)
     if bot is None:
         raise ValueError('The bot is not running')
-    action = config['action']
-    params = dict(config.get('params') or {})
-    supported = bot.adapter.get_supported_apis()
-    if action not in supported:
+    if action not in bot.adapter.get_supported_apis():
         raise ValueError(f'{action} is not supported by this platform')
-    if action in ('send_message', 'reply_message'):
-        raise ValueError('Use the send or reply step to send messages')
-    if action == 'mute_member' and 'duration' in params:
-        params['duration'] = int(params['duration'] or 0)
-    if action == 'call_platform_api':
-        result = await bot.adapter.call_platform_api(params.get('action', ''), params.get('params') or {})
-    else:
-        method = getattr(bot.adapter, action, None)
-        if method is None:
-            raise ValueError(f'{action} is not implemented by this platform')
-        result = await method(**params)
+    params = await _platform_params(ap, action, raw)
+    result = await getattr(bot.adapter, action)(**params)
     return {'result': _plain(result)}

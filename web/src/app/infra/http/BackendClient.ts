@@ -2973,6 +2973,7 @@ export class BackendClient extends BaseHttpClient {
   }
   public getWorkflowNodeTypes(): Promise<{
     node_types: { type: string; available?: boolean; reason?: string }[];
+    platform_tools?: AgentPlatformTool[];
   }> {
     return this.get('/api/v1/workflows/_/node-types');
   }
