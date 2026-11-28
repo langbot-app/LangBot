@@ -5030,7 +5030,7 @@ const enUS = {
       reply: 'Reply to the person who sent the message',
       send: 'Notify a group or a person',
       http: 'Call your HTTP service',
-      platform: 'Mute, recall, rename members…',
+      platform: 'Recall, mute, accept requests, look up members…',
       handoff: 'Let a Chat, Agent or workflow take over',
     },
     picker: {

@@ -4997,7 +4997,7 @@ const viVN = {
       reply: 'Trả lời người gửi tin nhắn',
       send: 'Thông báo đến nhóm hoặc một người',
       http: 'Gọi dịch vụ HTTP của bạn',
-      platform: 'Cấm chat, thu hồi, đổi tên…',
+      platform: 'Thu hồi, cấm chat, duyệt lời mời, xem thành viên…',
       handoff: 'Để Chat, Agent hoặc workflow khác tiếp quản',
     },
     picker: {

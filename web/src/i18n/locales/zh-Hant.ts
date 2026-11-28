@@ -4740,7 +4740,7 @@ const zhHant = {
       reply: '回覆給傳訊息的人',
       send: '通知某個群或某個人',
       http: '請求你的 HTTP 服務',
-      platform: '禁言、撤回、改群名片…',
+      platform: '撤回、禁言、通過好友申請、查成員…',
       handoff: '讓聊天、Agent 或其他工作流接手',
     },
     picker: {

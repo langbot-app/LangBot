@@ -5102,7 +5102,7 @@ const esES = {
       reply: 'Responde a quien envió el mensaje',
       send: 'Avisa a un grupo o a una persona',
       http: 'Llama a tu servicio HTTP',
-      platform: 'Silenciar, retirar, renombrar…',
+      platform: 'Retirar, silenciar, aceptar solicitudes, ver miembros…',
       handoff: 'Deja que un Chat, Agent u otro flujo continúe',
     },
     picker: {

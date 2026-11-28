@@ -5043,7 +5043,7 @@ const jaJP = {
       reply: '送信者に返信',
       send: 'グループや個人に通知',
       http: 'HTTP サービスを呼び出す',
-      platform: 'ミュート・取り消し・名前変更など',
+      platform: '取り消し・ミュート・申請の承認・メンバー照会など',
       handoff: 'チャット・Agent・別のワークフローに任せる',
     },
     picker: {
