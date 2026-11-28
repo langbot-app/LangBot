@@ -114,7 +114,21 @@ async def test_workflow_rejects_non_message_event():
     event = events.PlatformSpecificEvent(platform='test', action='test', data={})
     await bot._dispatch_eba_workflow(event, bot.adapter, binding)
     assert bot._record_event_route_trace.call_args.kwargs['failure_code'] == 'processor_incompatible'
-    bot.ap.workflow_service.get_workflow.assert_not_awaited()
+    bot.ap.workflow_service.execute_workflow.assert_not_awaited()
+
+
+async def test_workflow_member_joined_sends_to_event_group():
+    bot, binding = workflow_bot({'triggers': [{'type': 'event', 'events': ['group.member_joined']}]})
+    event = events.MemberJoinedEvent(group={'id': 'group-1'}, member={'id': 'u'})
+
+    async def execute(context, target, *, trigger_type, trigger_data, message_context, runtime, **kwargs):
+        assert trigger_type == 'event' and trigger_data['member']['id'] == 'u'
+        assert message_context.group_id == 'group-1'
+        await runtime.reply(message.MessageChain([message.Plain(text='welcome')]))
+
+    bot.ap.workflow_service.execute_workflow.side_effect = execute
+    await bot._dispatch_eba_event_to_processor(event, bot.adapter, binding)
+    assert bot.adapter.send_message.await_args.args[:2] == ('group', 'group-1')
 
 
 @pytest.mark.asyncio

@@ -2233,21 +2233,27 @@ class RuntimeBot:
         from ..telemetry import trace as trace_mod
         from ..workflow.entities import MessageContext
         from ..workflow.runtime import WorkflowRuntime
+        from ..workflow.triggers import accepts_event
         from .processing_indicator import processing_indicator
 
         target_uuid = binding.get('target_uuid')
         failure_code = None
         reason = None
-        if not isinstance(event, platform_events.MessageReceivedEvent):
-            failure_code, reason = 'processor_incompatible', 'Workflow targets only support message events'
-        else:
-            workflow = await self.ap.workflow_service.get_workflow(self.execution_context, target_uuid)
-            if not workflow or not workflow.get('is_enabled', True):
-                failure_code, reason = 'processor_not_found', 'Workflow not found or disabled'
+        is_message = isinstance(event, platform_events.MessageReceivedEvent)
+        workflow = await self.ap.workflow_service.get_workflow(self.execution_context, target_uuid)
+        if not workflow or not workflow.get('is_enabled', True):
+            failure_code, reason = 'processor_not_found', 'Workflow not found or disabled'
+        elif not accepts_event(workflow, event.type):
+            failure_code, reason = 'processor_incompatible', 'Workflow has no trigger for this event'
         if failure_code is None:
             reply_type, reply_id, _ = self._infer_reply_target(event)
 
             async def reply_sender(chain, quote):
+                if not is_message:
+                    if not reply_type or not reply_id:
+                        raise ValueError('This event has no reply destination')
+                    await adapter.send_message(reply_type, reply_id, chain)
+                    return
                 if query is None:
                     await adapter.reply_message(event.to_legacy_event(), chain, quote_origin=quote)
                     return
@@ -2270,6 +2276,8 @@ class RuntimeBot:
             runtime.depth = getattr(event, '_workflow_depth', 0)
 
             async def dispatch(handoff):
+                if not is_message:
+                    raise ValueError('Handoff requires a message')
                 forwarded = event.model_copy()
                 if 'text' in handoff and handoff['text'] is not None:
                     if query is None:
@@ -2296,13 +2304,18 @@ class RuntimeBot:
             if altered is not None and not isinstance(altered, str):
                 parts = altered if isinstance(altered, list) else [altered]
                 altered = ''.join(part.text or '' for part in parts)
+            sender = getattr(event, 'sender', None) or getattr(event, 'member', None) or getattr(event, 'user', None)
             message_context = MessageContext(
-                message_id=str(event.message_id),
+                message_id=str(getattr(event, 'message_id', '')),
                 message_content=altered
                 if altered is not None
-                else ''.join(part.text for part in event.message_chain if isinstance(part, platform_message.Plain)),
-                sender_id=str(event.sender.id),
-                sender_name=event.sender.nickname or '',
+                else ''.join(
+                    part.text
+                    for part in getattr(event, 'message_chain', [])
+                    if isinstance(part, platform_message.Plain)
+                ),
+                sender_id=str(getattr(sender, 'id', '')),
+                sender_name=getattr(sender, 'nickname', '') or '',
                 platform=type(adapter).__name__,
                 conversation_id=reply_id or '',
                 is_group=reply_type == 'group',
@@ -2314,13 +2327,13 @@ class RuntimeBot:
                         await self.ap.workflow_service.execute_workflow(
                             self.execution_context,
                             target_uuid,
-                            trigger_type='message',
+                            trigger_type='message' if is_message else 'event',
                             trigger_data=event.model_dump(
                                 mode='json', exclude={'source_platform_object', 'legacy_event'}
                             ),
                             message_context=message_context,
                             session_id=f'{reply_type}_{reply_id}',
-                            user_id=str(event.sender.id),
+                            user_id=message_context.sender_id,
                             runtime=runtime,
                         )
             except WorkflowExecutionFailedError as exc:

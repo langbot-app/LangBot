@@ -21,6 +21,10 @@ CATALOG = {
     'llm': _step('ai', 'text error', 'model_uuid prompt use_history use_images temperature max_tokens on_error'),
     'classify': _step('ai', 'category', 'model_uuid instruction categories', 'categories'),
     'extract': _step('ai', 'ok', 'model_uuid fields'),
+    'knowledge': _step('ai', 'text chunks', 'kb_uuid query top_k'),
+    'random': _step('logic', 'value', 'mode items weights min max seed'),
+    'code': _step('logic', '', 'language code inputs outputs'),
+    'history': _step('logic', 'messages text', 'scope limit since_hours'),
     'condition': _step('logic', 'matched', 'cases', 'cases'),
     'remember': _step('logic', 'value', 'scope items'),
     'reply': _step('action', 'sent', 'content'),
@@ -73,6 +77,14 @@ def validate(graph, *, models=None, targets=None):
         nodes[ident] = node
         config = node['config']
         outputs[ident] = set(CATALOG[kind]['outputs'])
+        if kind == 'code':
+            declared = config.get('outputs', [])
+            if not isinstance(declared, list) or not all(isinstance(key, str) and key for key in declared):
+                issue('required_missing', ident, 'outputs')
+            else:
+                outputs[ident].update(declared)
+            if config.get('language', 'python') != 'python':
+                issue('unsupported_type', ident, 'language')
         if kind == 'start':
             starts.append(ident)
         required = {
@@ -80,6 +92,9 @@ def validate(graph, *, models=None, targets=None):
             'extract': ('model_uuid', 'fields'),
             'classify': ('model_uuid',),
             'http': ('url',),
+            'knowledge': ('kb_uuid', 'query'),
+            'code': ('code',),
+            'random': ('mode',) if config.get('mode') == 'number' else ('mode', 'items'),
             'reply': () if config.get('text') else ('content',),
             'send': ('target_type', 'target_id') if config.get('text') else ('target_type', 'target_id', 'content'),
             'handoff': ('target_type', 'target_uuid'),
@@ -164,6 +179,8 @@ def validate(graph, *, models=None, targets=None):
             if ident not in parents:
                 issue('not_tree', ident)
         for path, text in _strings(node['config']):
+            if node['type'] == 'code' and path == 'config.code':
+                continue
             if not any(mark in text for mark in ('{{', '{%', '{#')):
                 continue
             try:

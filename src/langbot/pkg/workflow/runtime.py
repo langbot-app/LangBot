@@ -37,6 +37,7 @@ class WorkflowRuntime:
     """Every message chain replied during the execution, for manual runs and tests."""
 
     depth: int = 0
+    session_id: str = ''
     handoff: dict | None = None
     test: bool = False
     dispatch: typing.Callable[[dict], typing.Awaitable[None]] | None = None

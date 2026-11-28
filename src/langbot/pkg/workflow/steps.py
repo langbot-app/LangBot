@@ -65,7 +65,13 @@ async def model_text(ap, runtime, config, conversation):
     return ''.join(part if isinstance(part, str) else getattr(part, 'text', '') for part in answer.content or [])
 
 
-async def run_step(kind, config, message, *, ap, runtime, memory, save_memory, history):
+async def run_step(kind, config, message, *, ap, runtime, memory, save_memory, history, now=None):
+    from . import operations
+
+    if kind == 'random':
+        return {'value': operations.draw(config, now)}, None
+    if kind in ('code', 'knowledge', 'history'):
+        return await getattr(operations, kind)(config, ap, runtime), None
     if kind == 'start':
         return message, None
     if kind == 'llm':
