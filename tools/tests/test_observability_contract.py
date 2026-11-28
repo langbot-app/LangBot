@@ -22,9 +22,11 @@ def test_action_writer_records_terminal_failure_and_manifest(tmp_path: Path):
         tmp_path / 'run-manifest.json',
         run_id='run-1',
         expected_sources=['demo'],
+        observed_sources=writer.sources,
         artifacts=[tmp_path / 'actions.jsonl'],
     )
     assert manifest['completeness'] == 'complete'
+    assert manifest['missing_sources'] == []
     assert manifest['artifacts'][0]['sha256']
 
 
@@ -35,6 +37,18 @@ def test_observation_writer_preserves_missing_reason(tmp_path: Path):
     assert record['schema_version'] == '1'
     assert record['sequence'] == 1
     assert record['missing_reasons'] == ['cgroup_unavailable']
+
+
+def test_manifest_marks_missing_observation_source_incomplete(tmp_path: Path):
+    manifest = write_manifest(
+        tmp_path / 'run-manifest.json',
+        run_id='run-2',
+        expected_sources=['regression_gate'],
+        observed_sources=[],
+        artifacts=[],
+    )
+    assert manifest['completeness'] == 'incomplete'
+    assert manifest['missing_sources'] == ['regression_gate']
 
 
 def test_open_loop_records_failed_action_without_breaking_accounting(tmp_path: Path):

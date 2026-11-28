@@ -61,6 +61,7 @@ class ActionWriter:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._active: dict[str, ActionResult] = {}
+        self.sources: set[str] = set()
 
     def begin(
         self, action_name: str, *, trace_id: str | None = None, metadata: dict[str, Any] | None = None
@@ -81,6 +82,7 @@ class ActionWriter:
         if self._active.pop(result.action_id, None) is None:
             raise ValueError(f'unknown action: {result.action_id}')
         record = result.finish(status, error=error)
+        self.sources.add(result.action_name)
         with self.path.open('a', encoding='utf-8') as stream:
             stream.write(_dump(record) + '\n')
         return record
@@ -110,6 +112,7 @@ class ObservationWriter:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.sequence = 0
+        self.sources: set[str] = set()
 
     def write(
         self,
@@ -120,6 +123,7 @@ class ObservationWriter:
         missing_reasons: list[str] | None = None,
     ) -> dict[str, Any]:
         self.sequence += 1
+        self.sources.add(source)
         record = asdict(
             ObservationSample(
                 observation_id=f'o-{uuid.uuid4().hex}',
@@ -137,7 +141,14 @@ class ObservationWriter:
         return record
 
 
-def write_manifest(path: Path, *, run_id: str, expected_sources: list[str], artifacts: list[Path]) -> dict[str, Any]:
+def write_manifest(
+    path: Path,
+    *,
+    run_id: str,
+    expected_sources: list[str],
+    observed_sources: set[str] | list[str] | None = None,
+    artifacts: list[Path],
+) -> dict[str, Any]:
     rows, missing = [], []
     for artifact in artifacts:
         if not artifact.exists():
@@ -148,14 +159,18 @@ def write_manifest(path: Path, *, run_id: str, expected_sources: list[str], arti
             for chunk in iter(lambda: stream.read(1024 * 1024), b''):
                 digest.update(chunk)
         rows.append({'path': str(artifact), 'bytes': artifact.stat().st_size, 'sha256': digest.hexdigest()})
+    observed = sorted(set(observed_sources or ()))
+    missing_sources = sorted(set(expected_sources) - set(observed))
     manifest = {
         'schema_version': SCHEMA_VERSION,
         'run_id': run_id,
         'created_at': _now(),
-        'expected_observation_sources': sorted(expected_sources),
+        'expected_sources': sorted(expected_sources),
+        'observed_sources': observed,
+        'missing_sources': missing_sources,
         'artifacts': rows,
         'missing_artifacts': missing,
-        'completeness': 'complete' if not missing else 'incomplete',
+        'completeness': 'complete' if not missing and not missing_sources else 'incomplete',
     }
     path.write_text(_dump(manifest) + '\n', encoding='utf-8')
     return manifest

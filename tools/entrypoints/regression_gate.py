@@ -87,6 +87,7 @@ def supervise(command, output, budget, pids, env=None):
         output / 'run-manifest.json',
         run_id=output.name,
         expected_sources=['regression_gate'],
+        observed_sources=observations.sources,
         artifacts=[output / 'resources.jsonl', output / 'observations.jsonl', output / 'gate.json'],
     )
     return result

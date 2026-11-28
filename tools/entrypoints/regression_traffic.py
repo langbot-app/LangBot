@@ -20,7 +20,7 @@ import uuid
 from tools.regression.evidence import check_attachment, check_fields, check_response, checked
 from tools.regression.http_bot import group_request, valid_group_settings
 from tools.regression.observations import read_endpoint_snapshot, read_process_snapshot, read_system_snapshot
-from tools.regression.observability_contract import ActionWriter
+from tools.regression.observability_contract import ActionWriter, write_manifest
 from tools.regression.run_ledger import (
     UnresolvedRun,
     check_run,
@@ -905,6 +905,14 @@ def main():
                 arrival_latency_population='all dispatched outcomes, including verification',
             )
     (args.output / 'summary.json').write_text(json.dumps(summary, indent=2))
+    if action_writer is not None:
+        write_manifest(
+            args.output / 'run-manifest.json',
+            run_id=args.output.name,
+            expected_sources=['regression_arrival'],
+            observed_sources=action_writer.sources,
+            artifacts=[args.output / 'actions.jsonl', args.output / 'summary.json'],
+        )
     print(json.dumps(summary, indent=2), flush=True)
     if (
         not rows
