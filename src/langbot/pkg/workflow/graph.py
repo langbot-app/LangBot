@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 
+import regex
 from jinja2 import TemplateError
 
 from .templates import references, render as render
@@ -21,11 +22,15 @@ CATALOG = {
     'llm': _step('ai', 'text error', 'model_uuid prompt use_history use_images temperature max_tokens on_error'),
     'classify': _step('ai', 'category', 'model_uuid instruction categories', 'categories'),
     'extract': _step('ai', 'ok', 'model_uuid fields'),
-    'condition': _step('logic', 'matched', 'cases', 'cases'),
+    'knowledge': _step('ai', 'text chunks', 'kb_uuid query top_k'),
+    'random': _step('logic', 'value', 'mode items weights min max seed'),
+    'code': _step('logic', '', 'language code inputs outputs'),
+    'history': _step('logic', 'messages text', 'scope limit since_hours'),
+    'condition': _step('logic', 'matched error', 'cases', 'cases'),
     'remember': _step('logic', 'value', 'scope items'),
     'reply': _step('action', 'sent', 'content'),
     'send': _step('action', 'sent', 'bot_uuid target_type target_id content'),
-    'http': _step('action', 'status body json', 'method url headers body timeout on_error'),
+    'http': _step('action', 'status body json error', 'method url headers body timeout on_error'),
     'handoff': _step('action', config='target_type target_uuid text', terminal=True),
 }
 
@@ -73,6 +78,14 @@ def validate(graph, *, models=None, targets=None):
         nodes[ident] = node
         config = node['config']
         outputs[ident] = set(CATALOG[kind]['outputs'])
+        if kind == 'code':
+            declared = config.get('outputs', [])
+            if not isinstance(declared, list) or not all(isinstance(key, str) and key for key in declared):
+                issue('required_missing', ident, 'outputs')
+            else:
+                outputs[ident].update(declared)
+            if config.get('language', 'python') != 'python':
+                issue('unsupported_type', ident, 'language')
         if kind == 'start':
             starts.append(ident)
         required = {
@@ -80,6 +93,9 @@ def validate(graph, *, models=None, targets=None):
             'extract': ('model_uuid', 'fields'),
             'classify': ('model_uuid',),
             'http': ('url',),
+            'knowledge': ('kb_uuid', 'query'),
+            'code': ('code',),
+            'random': ('mode',) if config.get('mode') == 'number' else ('mode', 'items'),
             'reply': () if config.get('text') else ('content',),
             'send': ('target_type', 'target_id') if config.get('text') else ('target_type', 'target_id', 'content'),
             'handoff': ('target_type', 'target_uuid'),
@@ -108,8 +124,19 @@ def validate(graph, *, models=None, targets=None):
             if not isinstance(rows, list) or not rows:
                 issue('empty_category' if kind == 'classify' else 'required_missing', ident, group)
             else:
-                for row in rows:
+                for row_index, row in enumerate(rows):
                     key = row.get('id') if isinstance(row, dict) else None
+                    if kind == 'condition' and isinstance(row, dict) and isinstance(row.get('rules'), list):
+                        for index, rule in enumerate(row['rules']):
+                            if not isinstance(rule, dict) or rule.get('op') != 'regex':
+                                continue
+                            pattern = rule.get('right', '')
+                            if isinstance(pattern, str) and any(mark in pattern for mark in ('{{', '{%', '{#')):
+                                continue
+                            try:
+                                regex.compile(pattern)
+                            except (TypeError, regex.error):
+                                issue('invalid_regex', ident, f'cases.{row_index}.rules.{index}.right')
                     if (
                         not isinstance(key, str)
                         or not key
@@ -164,6 +191,8 @@ def validate(graph, *, models=None, targets=None):
             if ident not in parents:
                 issue('not_tree', ident)
         for path, text in _strings(node['config']):
+            if node['type'] == 'code' and path == 'config.code':
+                continue
             if not any(mark in text for mark in ('{{', '{%', '{#')):
                 continue
             try:

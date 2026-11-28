@@ -490,7 +490,9 @@ class BotService:
 
         if target_type == 'workflow':
             workflow = await self.ap.workflow_service.get_workflow(tenant_context, target_uuid)
-            compatible = RuntimeBot._is_message_event_type(event_type)
+            from ....workflow.triggers import accepts_event
+
+            compatible = workflow is not None and accepts_event(workflow, event_type)
             found = bool(workflow and workflow.get('is_enabled', True))
             return self._diagnostic_result(
                 matched=found and compatible,
@@ -683,10 +685,13 @@ class BotService:
                 if result.first() is None:
                     raise ValueError('Pipeline not found')
             elif target_type == 'workflow':
-                if not self._is_message_event_pattern(event_pattern):
-                    raise ValueError('Workflow can only be bound to message.received')
-                if await self.ap.workflow_service.get_workflow(context, target_uuid) is None:
+                from ....workflow.triggers import accepts_event
+
+                workflow = await self.ap.workflow_service.get_workflow(context, target_uuid)
+                if workflow is None:
                     raise ValueError('Workflow not found')
+                if not accepts_event(workflow, event_pattern):
+                    raise ValueError('Workflow has no trigger for this event')
             elif target_type == 'agent':
                 result = await self.ap.persistence_mgr.execute_async(
                     scope_statement(

@@ -3,16 +3,16 @@
 import asyncio
 import base64
 import json
-import re
 
 import aiohttp
+import regex
 from langbot_plugin.api.entities.builtin.platform.message import At, Image, MessageChain, Plain, Voice
 from langbot_plugin.api.entities.builtin.provider.message import Message
 
 from ..utils.outbound_url import assert_safe_outbound_url
 
 
-def matches(rule):
+def matches(rule, diagnostics, location):
     left, right, op = rule['left'], rule.get('right', ''), rule['op']
     if op in ('gt', 'lt'):
         try:
@@ -20,7 +20,16 @@ def matches(rule):
         except ValueError:
             return False
     if op == 'regex':
-        return re.search(right, left) is not None
+        if len(left) > 10_000:
+            diagnostics.append(f'{location}: regex input exceeds 10000 characters')
+            return False
+        try:
+            return regex.search(right, left, timeout=0.1) is not None
+        except TimeoutError:
+            diagnostics.append(f'{location}: regex match timed out')
+        except regex.error as exc:
+            diagnostics.append(f'{location}: invalid regex: {exc}')
+        return False
     return {
         'equals': left == right,
         'not_equals': left != right,
@@ -46,8 +55,10 @@ async def request(config):
                 parsed = json.loads(body)
             except ValueError:
                 parsed = None
-            response.raise_for_status()
-            return {'status': response.status, 'body': body, 'json': parsed}
+            result = {'status': response.status, 'body': body, 'json': parsed}
+            if not 200 <= response.status < 300:
+                result['error'] = f'HTTP {response.status} {response.reason or ""}'.strip()
+            return result
 
 
 async def model_text(ap, runtime, config, conversation):
@@ -65,7 +76,13 @@ async def model_text(ap, runtime, config, conversation):
     return ''.join(part if isinstance(part, str) else getattr(part, 'text', '') for part in answer.content or [])
 
 
-async def run_step(kind, config, message, *, ap, runtime, memory, save_memory, history):
+async def run_step(kind, config, message, *, ap, runtime, memory, save_memory, history, now=None):
+    from . import operations
+
+    if kind == 'random':
+        return {'value': operations.draw(config, now)}, None
+    if kind in ('code', 'knowledge', 'history'):
+        return await getattr(operations, kind)(config, ap, runtime), None
     if kind == 'start':
         return message, None
     if kind == 'llm':
@@ -114,11 +131,15 @@ async def run_step(kind, config, message, *, ap, runtime, memory, save_memory, h
             result[field['key']] = value if type(value) in expected else None
         return {**result, 'ok': all(value is not None for value in result.values())}, None
     if kind == 'condition':
+        diagnostics = []
+        branch = label = 'else'
         for case in config['cases']:
             check = all if case.get('match', 'all') == 'all' else any
-            if check(matches(rule) for rule in case['rules']):
-                return {'matched': case.get('label') or case['id']}, case['id']
-        return {'matched': 'else'}, 'else'
+            if check(matches(rule, diagnostics, f'{case["id"]}.rules.{i}') for i, rule in enumerate(case['rules'])):
+                branch = case['id']
+                label = case.get('label') or branch
+                break
+        return {'matched': label, **({'error': '; '.join(diagnostics)} if diagnostics else {})}, branch
     if kind == 'remember':
         values = await save_memory(config.get('scope', 'run'), config['items'])
         return {'value': values}, None

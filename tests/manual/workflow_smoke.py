@@ -70,6 +70,7 @@ async def smoke(base_url, api_key, screenshot=None):
             {'text': 'manual', 'graph': graph, 'session_type': 'person'},
         )
         assert run['status'] == 'completed' and run['replies'] == ['Echo manual (1)'], run
+        joined_uuid = await create_event_workflow(request)
         bot = await request(
             'POST',
             '/api/v1/platform/bots',
@@ -79,6 +80,12 @@ async def smoke(base_url, api_key, screenshot=None):
                 'enable': True,
                 'adapter_config': {'connection_mode': 'reverse_ws', 'access-token': api_key, 'self_id': '42'},
                 'event_bindings': [
+                    {
+                        'id': 'joined',
+                        'event_pattern': 'group.member_joined',
+                        'target_type': 'workflow',
+                        'target_uuid': joined_uuid,
+                    },
                     {
                         'id': 'workflow-route',
                         'event_pattern': 'message.received',
@@ -98,7 +105,7 @@ async def smoke(base_url, api_key, screenshot=None):
                             },
                             'output': {'long-text-processing': {'threshold': 16, 'strategy': 'forward'}},
                         },
-                    }
+                    },
                 ],
             },
         )
@@ -152,6 +159,7 @@ async def smoke(base_url, api_key, screenshot=None):
                     for item in peer.requests
                     if item['action'] in ('send_msg', 'send_group_msg')
                 )
+                await event_smoke(request, peer, joined_uuid)
                 print(json.dumps({'execution_details': traces}, ensure_ascii=False))
                 response = await client.delete(f'/api/v1/workflows/{workflow_uuid}')
                 assert response.status_code == 400
@@ -186,6 +194,89 @@ async def smoke(base_url, api_key, screenshot=None):
                 await asyncio.gather(peer_task, return_exceptions=True)
 
 
+async def create_event_workflow(request):
+    from tests.unit_tests.workflow.test_tree import node, path
+
+    trigger = {'type': 'event', 'events': ['group.member_joined']}
+    graph = path(
+        node('start'),
+        node('random', mode='seeded_pick', items=['welcome'], seed='{{start.event.member.id}}'),
+        node('reply', text='{{random.value}} {{start.event.member.id}}'),
+    )
+    created = await request(
+        'POST', '/api/v1/workflows', {'name': 'Welcome members', 'triggers': [trigger], 'graph': graph}
+    )
+    assert not created['issues']
+    return created['workflow']['uuid']
+
+
+async def event_smoke(request, peer, workflow_uuid):
+    resource = '/api/v1/workflows/' + workflow_uuid
+    nodes = await request('GET', '/api/v1/workflows/_/node-types')
+    assert all(isinstance(item['available'], bool) for item in nodes['node_types'])
+    code = next(item for item in nodes['node_types'] if item['type'] == 'code')
+    box_enabled = os.getenv('LANGBOT_TEST_WORKFLOW_BOX') == '1'
+    assert code['available'] == box_enabled, code
+    code_run = None
+    if box_enabled:
+        from tests.unit_tests.workflow.test_tree import node, path
+
+        code_graph = path(
+            node('start'),
+            node(
+                'code',
+                language='python',
+                code="return {'length': len(inputs['text'])}",
+                inputs={'text': '{{start.text}}'},
+                outputs=['length'],
+            ),
+            node('reply', text='{{code.length}}'),
+        )
+        code_run = await request('POST', resource + '/test', {'graph': code_graph, 'text': 'hello'})
+        assert code_run['replies'] == ['5'], code_run
+    else:
+        assert code['reason'] == 'box_unavailable'
+    await peer.emit(
+        {
+            'post_type': 'notice',
+            'notice_type': 'group_increase',
+            'sub_type': 'approve',
+            'group_id': 20001,
+            'user_id': 10001,
+            'operator_id': 10002,
+        }
+    )
+    async with asyncio.timeout(20):
+        while not any(
+            'welcome 10001' in json.dumps(row['params'])
+            for row in peer.requests
+            if row['action'] in ('send_group_msg', 'send_msg')
+        ):
+            await asyncio.sleep(0.1)
+        while not (
+            rows := [
+                row
+                for row in (await request('GET', resource + '/executions'))['executions']
+                if row['status'] == 'completed' and row['trigger'] == 'event'
+            ]
+        ):
+            await asyncio.sleep(0.1)
+    detail = await request('GET', resource + '/executions/' + rows[0]['uuid'])
+    assert detail['execution']['steps'][0]['outputs']['trigger'] == 'event'
+    if target := os.getenv('LANGBOT_EVENT_EVIDENCE'):
+        Path(target).write_text(
+            json.dumps(
+                {
+                    'GET node-types': nodes,
+                    'GET workflow': await request('GET', resource),
+                    'GET execution': detail,
+                    **({'POST draft test': code_run} if code_run else {}),
+                },
+                indent=2,
+            )
+        )
+
+
 def main():
     root = Path(__file__).resolve().parents[2]
     api_key = secrets.token_urlsafe(32)
@@ -196,7 +287,9 @@ def main():
         port = listener.getsockname()[1]
     log_path = Path(sys.argv[1] if len(sys.argv) > 1 else 'workflow-smoke-startup.log').resolve()
     with (
-        tempfile.TemporaryDirectory(prefix='langbot-workflow-', dir='/dev/shm') as directory,
+        tempfile.TemporaryDirectory(
+            prefix='langbot-workflow-', dir=None if os.getenv('LANGBOT_TEST_WORKFLOW_BOX') == '1' else '/dev/shm'
+        ) as directory,
         log_path.open('w') as log,
     ):
         environment = os.environ | {
@@ -204,7 +297,8 @@ def main():
             'API__PORT': str(port),
             'API__GLOBAL_API_KEY': api_key,
             'API__WEBHOOK_PREFIX': f'http://127.0.0.1:{port}',
-            'BOX__ENABLED': 'false',
+            'BOX__ENABLED': 'true' if os.getenv('LANGBOT_TEST_WORKFLOW_BOX') == '1' else 'false',
+            'BOX__BACKEND': 'docker',
             'PLUGIN__ENABLE': 'false',
             'LANGBOT_DATA_ROOT': str(Path(directory) / 'data'),
             'PLUGIN__DISPLAY_PLUGIN_DEBUG_URL': 'ws://127.0.0.1:15445/plugin/debug/ws',

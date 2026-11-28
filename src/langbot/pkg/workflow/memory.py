@@ -41,12 +41,16 @@ def apply_items(values, items):
 
 
 class RunMemory:
-    def __init__(self, manager, workspace, workflow, user_id, group_id, *, test=False):
+    def __init__(self, manager, workspace, workflow, platform, user_id, group_id, *, test=False):
         self.manager = manager
         self.workspace = workspace
         self.workflow = workflow
         self.test = test
-        self.ids = {'user': user_id, 'group': group_id, 'workflow': workflow}
+        self.ids = {
+            'user': f'{platform}:{user_id}' if platform and user_id else None,
+            'group': f'{platform}:{group_id}' if platform and group_id else None,
+            'workflow': workflow,
+        }
         self.values = {scope: {} for scope in ('run', *self.ids)}
 
     def query(self, scope):

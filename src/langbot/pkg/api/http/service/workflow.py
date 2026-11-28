@@ -15,6 +15,7 @@ from ....entity.persistence.agent import Agent
 from ....entity.persistence.pipeline import LegacyPipeline
 from ....workflow.graph import CATALOG, validate
 from ....workflow.tree import execute_tree
+from ....workflow.triggers import validate_triggers
 from ....workflow.memory import RunMemory
 from ....workflow.runtime import WorkflowRuntime
 from ....entity.persistence.model import LLMModel
@@ -114,8 +115,8 @@ class WorkflowService:
         }
         if 'graph' in values and not isinstance(values['graph'], dict):
             raise ValueError('graph must be an object')
-        if 'triggers' in values and values['triggers'] != [{'type': 'message'}]:
-            raise ValueError('Only message triggers are supported')
+        if 'triggers' in values:
+            validate_triggers(values['triggers'])
         if 'timezone' in values:
             try:
                 ZoneInfo(values['timezone'])
@@ -207,6 +208,10 @@ class WorkflowService:
                 targets.update((kind, ident) for ident in ids.scalars())
         issues = validate(graph, models=model_ids, targets=targets)
         for node in nodes:
+            if node.get('type') == 'code' and not self._box_available():
+                issues.append(
+                    {'node_id': node.get('id'), 'field': 'type', 'code': 'box_unavailable', 'severity': 'error'}
+                )
             if node.get('type') not in BASIC_STEPS:
                 issues.append(
                     {'node_id': node.get('id'), 'field': 'type', 'code': 'unsupported_type', 'severity': 'error'}
@@ -285,18 +290,19 @@ class WorkflowService:
         graph = workflow['graph'] if graph is None else graph
         execution_uuid = str(uuid.uuid4())
         runtime = runtime or WorkflowRuntime(execution_context)
+        runtime.session_id = session_id
         message = {
             key: getattr(message_context, key)
             for key in ('sender_id', 'sender_name', 'group_id', 'platform', 'is_group')
         }
         message.update(
             text=message_context.message_content,
-            trigger='message',
+            trigger=trigger_type if trigger_type not in ('test', 'workflow') else 'message',
             bot_uuid=execution_context.bot_uuid or '',
             args={},
             payload={},
             target={},
-            event={},
+            event=trigger_data if trigger_type == 'event' else {},
             images=[],
             voice=None,
         )
@@ -333,6 +339,7 @@ class WorkflowService:
                     self.ap.persistence_mgr,
                     workspace,
                     workflow_uuid,
+                    message['platform'],
                     message['sender_id'],
                     message['group_id'],
                     test=runtime.test,
@@ -406,7 +413,21 @@ class WorkflowService:
         return execution_uuid, runtime
 
     async def get_node_types(self):
-        return [{'type': kind, **CATALOG[kind]} for kind in BASIC_STEPS]
+        return [
+            {
+                'type': kind,
+                **CATALOG[kind],
+                **(
+                    {'available': False, 'reason': 'box_unavailable'}
+                    if kind == 'code' and not self._box_available()
+                    else {'available': True}
+                ),
+            }
+            for kind in BASIC_STEPS
+        ]
+
+    def _box_available(self):
+        return bool(getattr(getattr(self.ap, 'box_service', None), 'available', False))
 
     def _serialize_execution(self, row, model=persistence_workflow.WorkflowExecution):
         data = self.ap.persistence_mgr.serialize_model(model, row, masked_columns=['workspace_uuid'])

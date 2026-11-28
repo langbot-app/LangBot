@@ -41,7 +41,17 @@ async def execute_tree(
                 steps.append(step)
                 inputs = {}
                 try:
-                    step['inputs'] = inputs = render(node['config'], results, memory, now)
+                    config = node['config']
+                    if kind == 'code':
+                        inputs = {
+                            **render(
+                                {key: value for key, value in config.items() if key != 'code'}, results, memory, now
+                            ),
+                            'code': config['code'],
+                        }
+                    else:
+                        inputs = render(config, results, memory, now)
+                    step['inputs'] = inputs
                     outputs, branch = await run_step(
                         kind,
                         inputs,
@@ -51,6 +61,7 @@ async def execute_tree(
                         memory=memory,
                         save_memory=save_memory,
                         history=history,
+                        now=now,
                     )
                 except Exception as exc:
                     step['error'] = str(exc) or type(exc).__name__
@@ -61,7 +72,12 @@ async def execute_tree(
                     branch = None
                 finally:
                     step['finished_at'] = datetime.now()
-                step.update(outputs=outputs, branch=branch, status='failed' if step['error'] else 'completed')
+                step.update(outputs=outputs, branch=branch)
+                if kind in ('condition', 'http'):
+                    step['error'] = outputs.get('error')
+                if kind == 'http' and step['error'] and inputs.get('on_error') != 'continue':
+                    return steps, f'{step["node_name"]}: {step["error"]}'
+                step['status'] = 'failed' if kind != 'condition' and step['error'] else 'completed'
                 results[current] = outputs
                 current = edges.get((current, branch))
     except TimeoutError:
