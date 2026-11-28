@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "Module sets for tools.entrypoints.gc_baseline --load. Populations differ by an order of magnitude between profiles, so always name the profile when quoting a number.",
+  "description": "Module sets for tools.entrypoints.gc_baseline --profile / --load. Populations differ by an order of magnitude between profiles, so always name the profile when quoting a number.",
   "profiles": {
     "bare": {
       "description": "No preload; only interpreter startup objects (~10k). Compare runs on one host only.",

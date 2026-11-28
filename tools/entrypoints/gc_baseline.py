@@ -14,10 +14,13 @@ it changes what the collector does.
 Run from the repository root:
 
     uv run --no-sync python -m tools.entrypoints.gc_baseline --help
-    uv run --no-sync python -m tools.entrypoints.gc_baseline measure --samples 5
+    uv run --no-sync python -m tools.entrypoints.gc_baseline measure --profile core --samples 5
+    uv run --no-sync python -m tools.entrypoints.gc_baseline compare before.json after.json
 
 ``--json`` writes the same data for comparison between runs. A baseline is a
 measurement, not a regression gate: compare two outputs rather than gates on one.
+This tool measures controlled offline heap scans rather than live request-window
+natural GC frequency; ``gc.freeze()`` is a diagnostic, not a production setting.
 """
 
 import argparse
@@ -28,6 +31,7 @@ import platform
 import statistics
 import sys
 import time
+import types
 from collections import Counter
 from pathlib import Path
 
@@ -35,6 +39,8 @@ from pathlib import Path
 # Objects survive in surprising volume right after interpreter startup; a
 # measurement taken before this floor is mostly boilerplate.
 _MIN_SAMPLES = 1
+_DEFAULT_PROFILES_PATH = Path(__file__).resolve().parents[1] / 'profiles' / 'gc-baseline.json'
+_REPO_SRC_PATH = str(Path(__file__).resolve().parents[2] / 'src')
 
 
 def collect(scopes):
@@ -55,6 +61,15 @@ def object_type_histogram(limit=15):
     for obj in gc.get_objects():
         kind = type(obj)
         counter[f'{kind.__module__}.{kind.__qualname__}'] += 1
+    return dict(counter.most_common(limit))
+
+
+def function_module_histogram(limit=15):
+    """Return the most common defining modules for tracked Python functions."""
+    counter = Counter()
+    for obj in gc.get_objects():
+        if type(obj) is types.FunctionType:
+            counter[getattr(obj, '__module__', None) or '<unknown>'] += 1
     return dict(counter.most_common(limit))
 
 
@@ -95,7 +110,9 @@ def freeze_attribution(samples):
     gc.collect(2)
     gc.freeze()
     try:
-        return scan_cost(samples)
+        result = scan_cost(samples)
+        result['frozen_objects'] = gc.get_freeze_count()
+        return result
     finally:
         gc.unfreeze()
 
@@ -105,7 +122,8 @@ def saveall_type_sample():
 
     ``DEBUG_SAVEALL`` keeps everything in ``gc.garbage`` instead of freeing it,
     so its timings are not comparable to a normal scan and are reported apart.
-    The garbage list is cleared before returning to avoid changing later phases.
+    The garbage list is cleared and collected before returning so sampled cycles
+    are actually reclaimed rather than left behind for later phases.
     """
     previous = gc.get_debug()
     # DEBUG_SAVEALL must be on *before* collecting: an earlier normal collection
@@ -120,13 +138,40 @@ def saveall_type_sample():
     try:
         histogram = Counter(f'{type(obj).__module__}.{type(obj).__qualname__}' for obj in gc.garbage)
         return {
-            'durations_ms': round(elapsed, 3),
+            'duration_ms': round(elapsed, 3),
             'collected': len(gc.garbage),
             'top_types': dict(histogram.most_common(15)),
             'note': 'DEBUG_SAVEALL timings are not comparable to normal scans',
         }
     finally:
         gc.garbage.clear()
+        if not (previous & gc.DEBUG_SAVEALL):
+            gc.collect(2)
+
+
+def load_profiles(profiles_path=_DEFAULT_PROFILES_PATH):
+    """Load named module profiles from ``gc-baseline.json``."""
+    data = json.loads(Path(profiles_path).read_text(encoding='utf-8'))
+    profiles = data.get('profiles')
+    if not isinstance(profiles, dict):
+        raise ValueError(f'invalid profiles file: {profiles_path}')
+    return profiles
+
+
+def resolve_preload_modules(profile_name=None, extra_modules=(), profiles_path=_DEFAULT_PROFILES_PATH):
+    """Resolve a profile name plus extra ``--load`` modules in deduplicated order."""
+    modules = []
+    if profile_name is not None:
+        profiles = load_profiles(profiles_path)
+        if profile_name not in profiles:
+            available = ', '.join(sorted(profiles))
+            raise ValueError(f'unknown profile {profile_name!r}; available: {available}')
+        profile_modules = profiles[profile_name].get('modules', [])
+        if not isinstance(profile_modules, list):
+            raise ValueError(f'profile {profile_name!r} modules must be a list')
+        modules.extend(profile_modules)
+    modules.extend(extra_modules)
+    return list(dict.fromkeys(modules))
 
 
 def preload(modules):
@@ -149,9 +194,15 @@ def preload(modules):
 
 def build_report(args):
     """Run every requested phase and return scalars only."""
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
+    if _REPO_SRC_PATH not in sys.path:
+        sys.path.insert(0, _REPO_SRC_PATH)
+    profile_name = getattr(args, 'profile', None)
+    profiles_path = getattr(args, 'profiles_file', _DEFAULT_PROFILES_PATH)
+    modules = resolve_preload_modules(profile_name, args.load, profiles_path)
+    preload_result = preload(modules)
+    preload_result['profile'] = profile_name
     report = {
-        'preload': preload(args.load),
+        'preload': preload_result,
         'platform': {
             'python': platform.python_version(),
             'implementation': platform.python_implementation(),
@@ -173,17 +224,18 @@ def build_report(args):
         'tracked': tracked_object_count(),
         'by_generation': generation_counts(),
         'top_types': object_type_histogram(),
+        'top_function_modules': function_module_histogram(),
     }
 
     report['scan'] = scan_cost(args.samples)
     report['frozen_scan'] = freeze_attribution(args.samples)
 
-    thawed = report['frozen_scan']['median_ms']
+    frozen_median = report['frozen_scan']['median_ms']
     baseline = report['scan']['median_ms']
     report['attribution'] = {
         'scan_median_ms': baseline,
-        'frozen_median_ms': thawed,
-        'scan_share_pct': (round((baseline - thawed) / baseline * 100.0, 1) if baseline > 0 else None),
+        'frozen_median_ms': frozen_median,
+        'scan_share_pct': (round((baseline - frozen_median) / baseline * 100.0, 1) if baseline > 0 else None),
         'interpretation': 'share of scan cost attributable to the pre-existing object population',
     }
 
@@ -192,10 +244,12 @@ def build_report(args):
 
 def summarize(report):
     """Render the report for a human, with the caveats inline."""
+    profile_name = report['preload'].get('profile')
     lines = [
         f'python {report["platform"]["python"]} on {report["platform"]["system"]}/{report["platform"]["machine"]}',
         f'gc enabled: {report["enabled"]}  thresholds: {report["thresholds"]}',
         '',
+        f'profile: {profile_name or "(custom/none)"}',
         f'preloaded: {", ".join(report["preload"]["loaded"]) or "(nothing)"}',
         *[f'  FAILED {item["module"]}: {item["error"]}' for item in report['preload']['failed']],
         '',
@@ -214,13 +268,138 @@ def summarize(report):
         'Top tracked types:',
         *[f'  {name}: {count}' for name, count in report['objects']['top_types'].items()],
     ]
-    if 'saveall' in report:
+    top_fn_modules = report['objects'].get('top_function_modules') or {}
+    if top_fn_modules:
         lines += [
             '',
-            f'DEBUG_SAVEALL: {report["saveall"]["collected"]} unreachable objects, '
-            f'{report["saveall"]["durations_ms"]} ms (timing not comparable)',
+            'Top function modules:',
+            *[f'  {name}: {count}' for name, count in top_fn_modules.items()],
+        ]
+    if 'saveall' in report:
+        saveall = report['saveall']
+        duration = saveall.get('duration_ms', saveall.get('durations_ms'))
+        lines += [
+            '',
+            f'DEBUG_SAVEALL: {saveall["collected"]} unreachable objects, {duration} ms (timing not comparable)',
+            *[f'  {name}: {count}' for name, count in saveall.get('top_types', {}).items()],
         ]
     return '\n'.join(lines)
+
+
+def _metric_delta(before_value, after_value, digits=3):
+    if before_value is None or after_value is None:
+        return {'before': before_value, 'after': after_value, 'delta': None, 'delta_pct': None}
+    delta = round(after_value - before_value, digits)
+    delta_pct = round((after_value - before_value) / before_value * 100.0, 1) if before_value else None
+    return {'before': before_value, 'after': after_value, 'delta': delta, 'delta_pct': delta_pct}
+
+
+def _histogram_deltas(before_map, after_map, limit=10):
+    deltas = []
+    for name in set(before_map) | set(after_map):
+        before_count = before_map.get(name)
+        after_count = after_map.get(name)
+        if before_count is not None and after_count is not None:
+            diff = after_count - before_count
+            if diff != 0:
+                deltas.append({'name': name, 'before': before_count, 'after': after_count, 'delta': diff})
+        else:
+            deltas.append({'name': name, 'before': before_count, 'after': after_count, 'delta': None})
+    deltas.sort(
+        key=lambda item: (
+            0 if item['delta'] is not None else 1,
+            -abs(item['delta']) if item['delta'] is not None else -max(item['before'] or 0, item['after'] or 0),
+            item['name'],
+        )
+    )
+    return deltas[:limit]
+
+
+def compare_reports(before, after):
+    """Compare two ``gc_baseline measure --json`` reports and flag context mismatches."""
+    warnings = []
+    if before.get('platform') != after.get('platform'):
+        warnings.append('platform differs between before and after; timings are not directly comparable')
+    before_preload = before.get('preload', {})
+    after_preload = after.get('preload', {})
+    if before_preload.get('profile') != after_preload.get('profile'):
+        warnings.append(
+            f'profile differs: before={before_preload.get("profile")!r} after={after_preload.get("profile")!r}'
+        )
+    if before_preload.get('loaded') != after_preload.get('loaded'):
+        warnings.append('preloaded module lists differ between before and after')
+    if before_preload.get('failed') or after_preload.get('failed'):
+        warnings.append('one or both runs reported preload failures')
+
+    return {
+        'before_profile': before_preload.get('profile'),
+        'after_profile': after_preload.get('profile'),
+        'warnings': warnings,
+        'metrics': {
+            'tracked_objects': _metric_delta(
+                before['objects']['tracked'],
+                after['objects']['tracked'],
+                digits=0,
+            ),
+            'scan_median_ms': _metric_delta(before['scan']['median_ms'], after['scan']['median_ms']),
+            'frozen_median_ms': _metric_delta(before['frozen_scan']['median_ms'], after['frozen_scan']['median_ms']),
+            'scan_share_pct': _metric_delta(
+                before['attribution'].get('scan_share_pct'),
+                after['attribution'].get('scan_share_pct'),
+                digits=1,
+            ),
+        },
+        'top_type_deltas': _histogram_deltas(
+            before['objects'].get('top_types', {}),
+            after['objects'].get('top_types', {}),
+        ),
+        'top_function_module_deltas': _histogram_deltas(
+            before['objects'].get('top_function_modules', {}),
+            after['objects'].get('top_function_modules', {}),
+        ),
+    }
+
+
+def summarize_comparison(comparison):
+    """Render a comparison of two GC baseline reports."""
+    lines = [
+        f'profile: before={comparison["before_profile"] or "(custom/none)"}  '
+        f'after={comparison["after_profile"] or "(custom/none)"}',
+    ]
+    for warning in comparison['warnings']:
+        lines.append(f'WARNING: {warning}')
+    lines.append('')
+    for key, label in (
+        ('tracked_objects', 'tracked objects'),
+        ('scan_median_ms', 'full scan median (ms)'),
+        ('frozen_median_ms', 'frozen scan median (ms)'),
+        ('scan_share_pct', 'existing-heap share (%)'),
+    ):
+        item = comparison['metrics'][key]
+        pct = f' ({item["delta_pct"]:+.1f}%)' if item['delta_pct'] is not None else ''
+        delta = f'{item["delta"]:+}' if item['delta'] is not None else 'n/a'
+        lines.append(f'{label}: {item["before"]} -> {item["after"]} (delta {delta}{pct})')
+    if comparison['top_type_deltas']:
+        lines += [
+            '',
+            'Top tracked type deltas:',
+            *[_format_histogram_delta(entry) for entry in comparison['top_type_deltas']],
+        ]
+    if comparison['top_function_module_deltas']:
+        lines += [
+            '',
+            'Top function module deltas:',
+            *[_format_histogram_delta(entry) for entry in comparison['top_function_module_deltas']],
+        ]
+    return '\n'.join(lines)
+
+
+def _format_histogram_delta(entry):
+    before = entry['before'] if entry['before'] is not None else 'outside top-N'
+    after = entry['after'] if entry['after'] is not None else 'outside top-N'
+    if entry['delta'] is None:
+        return f'  {entry["name"]}: {before} -> {after}'
+    return f'  {entry["name"]}: {before} -> {after} ({entry["delta"]:+d})'
 
 
 def positive_int(text):
@@ -241,6 +420,19 @@ def main(argv=None):
         help='also sample unreachable-object types (reports 0 on a freshly imported, cycle-free heap)',
     )
     measure.add_argument(
+        '--profile',
+        default=None,
+        metavar='NAME',
+        help='preload a named module set from tools/profiles/gc-baseline.json',
+    )
+    measure.add_argument(
+        '--profiles-file',
+        type=Path,
+        default=_DEFAULT_PROFILES_PATH,
+        metavar='PATH',
+        help='override the profiles JSON path (default: tools/profiles/gc-baseline.json)',
+    )
+    measure.add_argument(
         '--load',
         action='append',
         default=[],
@@ -248,10 +440,29 @@ def main(argv=None):
         help='import MODULE before measuring (repeatable); see tools/profiles/gc-baseline.json',
     )
     measure.add_argument('--json', action='store_true', help='emit JSON instead of a text summary')
+
+    compare = subparsers.add_parser('compare', help='compare two measure --json reports')
+    compare.add_argument('before', type=Path, help='baseline JSON report path')
+    compare.add_argument('after', type=Path, help='candidate JSON report path')
+    compare.add_argument('--json', action='store_true', help='emit JSON instead of a text summary')
+
     args = parser.parse_args(argv)
 
-    report = build_report(args)
-    print(json.dumps(report, indent=2) if args.json else summarize(report))
+    if args.command == 'measure':
+        try:
+            report = build_report(args)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            parser.error(str(exc))
+        print(json.dumps(report, indent=2) if args.json else summarize(report))
+        return 0
+
+    try:
+        before = json.loads(args.before.read_text(encoding='utf-8'))
+        after = json.loads(args.after.read_text(encoding='utf-8'))
+        comparison = compare_reports(before, after)
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        parser.error(str(exc))
+    print(json.dumps(comparison, indent=2) if args.json else summarize_comparison(comparison))
     return 0
 
 

@@ -7,7 +7,13 @@ preload is reported instead of aborting the run.
 """
 
 import gc
+import contextlib
+import io
+import json
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from tools.entrypoints import gc_baseline
@@ -58,19 +64,31 @@ class FreezeAttributionTests(unittest.TestCase):
 
         self.assertEqual(calls, ['freeze', 'unfreeze'])
         self.assertEqual(result['samples'], 2)
+        self.assertGreaterEqual(result['frozen_objects'], 1)
 
     def test_unfreezes_even_when_the_scan_raises(self):
+        calls = []
+        before_freeze_count = gc.get_freeze_count()
         real_freeze, real_unfreeze = gc.freeze, gc.unfreeze
+
+        def freeze():
+            calls.append('freeze')
+            real_freeze()
+
+        def unfreeze():
+            calls.append('unfreeze')
+            real_unfreeze()
+
         with (
-            mock.patch.object(gc_baseline.gc, 'freeze', real_freeze),
-            mock.patch.object(gc_baseline.gc, 'unfreeze', real_unfreeze),
+            mock.patch.object(gc_baseline.gc, 'freeze', freeze),
+            mock.patch.object(gc_baseline.gc, 'unfreeze', unfreeze),
         ):
             with mock.patch.object(gc_baseline, 'scan_cost', side_effect=RuntimeError('boom')):
                 with self.assertRaises(RuntimeError):
                     gc_baseline.freeze_attribution(1)
 
-        # Freezing an empty permanent generation is idempotent; a second scan works.
-        self.assertGreaterEqual(gc_baseline.scan_cost(1)['samples'], 1)
+        self.assertEqual(calls, ['freeze', 'unfreeze'])
+        self.assertEqual(gc.get_freeze_count(), before_freeze_count)
 
 
 class SaveallTests(unittest.TestCase):
@@ -90,6 +108,7 @@ class SaveallTests(unittest.TestCase):
 
         self.assertGreaterEqual(result['collected'], 1)
         self.assertTrue(any('Leaky' in name for name in result['top_types']))
+        self.assertIsInstance(result['duration_ms'], float)
         self.assertEqual(gc.get_debug(), before)
 
     def test_empty_heap_still_returns_a_well_formed_result(self):
@@ -102,10 +121,28 @@ class SaveallTests(unittest.TestCase):
         self.assertIsInstance(result['top_types'], dict)
 
     def test_does_not_leave_garbage_behind(self):
+        class Leaky:
+            def __init__(self):
+                self.self_ref = self
+
+        leaked = [Leaky() for _ in range(10)]
+        del leaked, Leaky
+
         result = gc_baseline.saveall_type_sample()
 
         self.assertEqual(gc.garbage, [])
+        self.assertEqual(gc.collect(2), 0)
         self.assertIn('not comparable', result['note'])
+
+    def test_restores_debug_flags_when_collect_raises(self):
+        before = gc.get_debug()
+        self.addCleanup(gc.set_debug, before)
+
+        with mock.patch.object(gc_baseline.gc, 'collect', side_effect=RuntimeError('boom')):
+            with self.assertRaises(RuntimeError):
+                gc_baseline.saveall_type_sample()
+
+        self.assertEqual(gc.get_debug(), before)
 
 
 class PreloadTests(unittest.TestCase):
@@ -122,19 +159,78 @@ class PreloadTests(unittest.TestCase):
         self.assertEqual(len(result['failed']), 1)
         self.assertIn('ModuleNotFoundError', result['failed'][0]['error'])
 
+    def test_resolves_profile_and_deduplicates_extra_loads(self):
+        modules = gc_baseline.resolve_preload_modules('core', ['langbot.pkg.core.app', 'json'])
+
+        self.assertEqual(modules, ['langbot.pkg.core.app', 'json'])
+
+    def test_unknown_profile_raises_value_error(self):
+        with self.assertRaisesRegex(ValueError, 'unknown profile'):
+            gc_baseline.resolve_preload_modules('does-not-exist')
+
 
 class ReportTests(unittest.TestCase):
     def setUp(self):
-        self.args = mock.Mock(samples=1, load=[], saveall=False)
+        self.args = mock.Mock(samples=1, load=[], saveall=False, profile=None)
+        self.args.profiles_file = gc_baseline._DEFAULT_PROFILES_PATH
 
     def test_report_is_json_serializable(self):
-        import json
-
         report = gc_baseline.build_report(self.args)
 
         json.dumps(report)  # must not raise
         self.assertIn('tracked', report['objects'])
+        self.assertIn('top_function_modules', report['objects'])
         self.assertIn('scan_share_pct', report['attribution'])
+        self.assertIsNone(report['preload']['profile'])
+
+    def test_function_module_histogram_contains_scalars(self):
+        histogram = gc_baseline.function_module_histogram(limit=5)
+
+        self.assertGreaterEqual(len(histogram), 1)
+        for name, count in histogram.items():
+            self.assertIsInstance(name, str)
+            self.assertIsInstance(count, int)
+
+    def test_build_report_does_not_duplicate_src_in_sys_path(self):
+        gc_baseline.build_report(self.args)
+        first_count = sys.path.count(gc_baseline._REPO_SRC_PATH)
+        gc_baseline.build_report(self.args)
+        second_count = sys.path.count(gc_baseline._REPO_SRC_PATH)
+
+        self.assertEqual(first_count, 1)
+        self.assertEqual(second_count, 1)
+
+    def test_attribution_handles_positive_and_zero_baseline(self):
+        with (
+            mock.patch.object(
+                gc_baseline,
+                'scan_cost',
+                return_value={'samples': 1, 'median_ms': 100.0, 'collected_total': 0},
+            ),
+            mock.patch.object(
+                gc_baseline,
+                'freeze_attribution',
+                return_value={'samples': 1, 'median_ms': 2.5, 'frozen_objects': 100},
+            ),
+        ):
+            report = gc_baseline.build_report(self.args)
+        self.assertEqual(report['attribution']['scan_share_pct'], 97.5)
+
+        with (
+            mock.patch.object(
+                gc_baseline,
+                'scan_cost',
+                return_value={'samples': 1, 'median_ms': 0.0, 'collected_total': 0},
+            ),
+            mock.patch.object(
+                gc_baseline,
+                'freeze_attribution',
+                return_value={'samples': 1, 'median_ms': 0.0, 'frozen_objects': 100},
+            ),
+        ):
+            zero_report = gc_baseline.build_report(self.args)
+        self.assertIsNone(zero_report['attribution']['scan_share_pct'])
+        self.assertNotIn('scan cost attributable', gc_baseline.summarize(zero_report))
 
     def test_saveall_is_only_sampled_when_requested(self):
         without = gc_baseline.build_report(self.args)
@@ -150,6 +246,7 @@ class ReportTests(unittest.TestCase):
 
         self.assertIn('full scan (n=1)', text)
         self.assertIn('tracked objects:', text)
+        self.assertIn('Top function modules:', text)
 
     def test_summary_lists_preload_failures(self):
         report = gc_baseline.build_report(self.args)
@@ -158,12 +255,67 @@ class ReportTests(unittest.TestCase):
 
         self.assertIn('FAILED nope', text)
 
+    def test_summary_lists_saveall_top_types(self):
+        report = gc_baseline.build_report(self.args)
+        report['saveall'] = {
+            'duration_ms': 12.3,
+            'collected': 4,
+            'top_types': {'example.Leaky': 4},
+            'note': 'DEBUG_SAVEALL timings are not comparable to normal scans',
+        }
+        text = gc_baseline.summarize(report)
+
+        self.assertIn('DEBUG_SAVEALL: 4 unreachable objects, 12.3 ms', text)
+        self.assertIn('example.Leaky: 4', text)
+
+
+class CompareTests(unittest.TestCase):
+    def _sample_report(self, *, profile='core', tracked=240000, scan_ms=100.0, frozen_ms=1.0, share=99.0):
+        return {
+            'platform': {'python': '3.12.14', 'implementation': 'CPython', 'system': 'Linux', 'machine': 'x86_64'},
+            'preload': {'profile': profile, 'loaded': ['langbot.pkg.core.app'], 'failed': []},
+            'objects': {
+                'tracked': tracked,
+                'top_types': {'builtins.function': 40000, 'builtins.dict': 30000},
+                'top_function_modules': {'lark_oapi': 60000},
+            },
+            'scan': {'median_ms': scan_ms},
+            'frozen_scan': {'median_ms': frozen_ms},
+            'attribution': {'scan_share_pct': share},
+        }
+
+    def test_computes_deltas_without_warnings_when_context_matches(self):
+        before = self._sample_report(tracked=240000, scan_ms=100.0, frozen_ms=1.0, share=99.0)
+        after = self._sample_report(tracked=180000, scan_ms=70.0, frozen_ms=1.0, share=98.6)
+        after['objects']['top_function_modules'] = {'lark_oapi': 10000}
+
+        comparison = gc_baseline.compare_reports(before, after)
+
+        self.assertEqual(comparison['warnings'], [])
+        self.assertEqual(comparison['metrics']['tracked_objects']['delta'], -60000)
+        self.assertEqual(comparison['metrics']['scan_median_ms']['delta'], -30.0)
+        self.assertEqual(comparison['top_function_module_deltas'][0]['delta'], -50000)
+
+    def test_warns_when_profile_or_platform_differs(self):
+        before = self._sample_report(profile='core')
+        after = self._sample_report(profile='load-complete')
+        after['platform']['system'] = 'Darwin'
+        after['objects']['top_function_modules'] = {'litellm.utils': 460}
+
+        comparison = gc_baseline.compare_reports(before, after)
+        text = gc_baseline.summarize_comparison(comparison)
+
+        self.assertTrue(any('profile differs' in item for item in comparison['warnings']))
+        self.assertTrue(any('platform differs' in item for item in comparison['warnings']))
+        self.assertIn('WARNING:', text)
+        self.assertIn('outside top-N', text)
+        by_name = {item['name']: item for item in comparison['top_function_module_deltas']}
+        self.assertIsNone(by_name['lark_oapi']['after'])
+        self.assertIsNone(by_name['lark_oapi']['delta'])
+
 
 class ProfileTests(unittest.TestCase):
     def test_shipped_profiles_are_valid_and_documented(self):
-        import json
-        from pathlib import Path
-
         path = Path(__file__).resolve().parents[1] / 'profiles' / 'gc-baseline.json'
         data = json.loads(path.read_text())
 
@@ -182,16 +334,36 @@ class MainTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             gc_baseline.main(['measure', '--samples', '0'])
 
-    def test_json_flag_emits_json(self):
-        import contextlib
-        import io
-        import json
+    def test_unknown_profile_exits(self):
+        with self.assertRaises(SystemExit):
+            gc_baseline.main(['measure', '--profile', 'nonexistent', '--samples', '1'])
 
+    def test_json_flag_emits_json(self):
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
-            gc_baseline.main(['measure', '--samples', '1', '--json'])
+            gc_baseline.main(['measure', '--profile', 'bare', '--samples', '1', '--json'])
 
-        json.loads(buffer.getvalue())  # must not raise
+        report = json.loads(buffer.getvalue())
+        self.assertEqual(report['preload']['profile'], 'bare')
+
+    def test_compare_cli_emits_json(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            before_path = Path(tmpdir) / 'before.json'
+            after_path = Path(tmpdir) / 'after.json'
+            for target in (before_path, after_path):
+                buffer = io.StringIO()
+                with contextlib.redirect_stdout(buffer):
+                    gc_baseline.main(['measure', '--profile', 'bare', '--samples', '1', '--json'])
+                target.write_text(buffer.getvalue(), encoding='utf-8')
+
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                exit_code = gc_baseline.main(['compare', str(before_path), str(after_path), '--json'])
+
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(out.getvalue())
+            self.assertEqual(payload['warnings'], [])
+            self.assertIn('tracked_objects', payload['metrics'])
 
 
 if __name__ == '__main__':
