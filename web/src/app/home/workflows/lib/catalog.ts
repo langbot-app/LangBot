@@ -225,6 +225,19 @@ export const STEP_META: Record<WorkflowStepType, StepMeta> = {
   },
 };
 
+/** Steps the editor has a form for; others stay out of the picker. */
+export const EDITABLE_TYPES = new Set<WorkflowStepType>([
+  'llm',
+  'classify',
+  'extract',
+  'condition',
+  'remember',
+  'reply',
+  'send',
+  'http',
+  'handoff',
+]);
+
 /** Order of steps in the picker; types the server does not offer are hidden. */
 export const PICKER_ORDER: WorkflowStepType[] = [
   'llm',

@@ -4,7 +4,12 @@ import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { WorkflowStepType } from '@/app/infra/entities/api';
-import { PICKER_ORDER, STEP_META, type StepCategory } from '../lib/catalog';
+import {
+  EDITABLE_TYPES,
+  PICKER_ORDER,
+  STEP_META,
+  type StepCategory,
+} from '../lib/catalog';
 
 const CATEGORIES: StepCategory[] = ['ai', 'logic', 'action'];
 
@@ -22,6 +27,7 @@ export default function StepPicker({
   const needle = query.trim().toLowerCase();
   const types = PICKER_ORDER.filter(
     (type) =>
+      EDITABLE_TYPES.has(type) &&
       (!available || available.has(type)) &&
       (allowTerminal || !STEP_META[type].terminal) &&
       (!needle ||
