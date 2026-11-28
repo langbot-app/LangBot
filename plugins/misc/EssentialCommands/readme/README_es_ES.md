@@ -1,5 +1,7 @@
 #Comandosesenciales
 
+> **Obsoleto.** Sustituido por los comandos del sistema de LangBot (requiere un LangBot Core más reciente). En un Core más reciente, desinstala este plugin.
+
 Los comandos esenciales, incluidos anteriormente en LangBot, proporcionan los siguientes comandos:
 
 -`!cmd`- Mostrar todos los comandos registrados
