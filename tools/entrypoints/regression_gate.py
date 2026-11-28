@@ -12,7 +12,12 @@ import time
 
 from tools.entrypoints.regression_suite import Suite, validate
 from tools.regression.observations import read_process_snapshot, read_system_snapshot
-from tools.regression.observability_contract import ObservationWriter, write_manifest, write_trace_index
+from tools.regression.observability_contract import (
+    ObservationWriter,
+    reconcile_inflight_actions,
+    write_manifest,
+    write_trace_index,
+)
 
 
 def supervise(command, output, budget, pids, env=None, *, service_logs=None):
@@ -86,16 +91,49 @@ def supervise(command, output, budget, pids, env=None, *, service_logs=None):
         },
     }
     (output / 'gate.json').write_text(json.dumps(result, indent=2) + '\n')
+    interrupted_reason = None
+    if timed_out:
+        interrupted_reason = 'timeout'
+    elif process.returncode == -signal.SIGKILL:
+        interrupted_reason = 'sigkill'
+    elif process.returncode in (-signal.SIGTERM, -signal.SIGINT):
+        interrupted_reason = 'cancelled'
+    elif process.returncode is not None and process.returncode < 0:
+        interrupted_reason = f'signal_{-process.returncode}'
+
+    reconciled_action_paths = []
+    for inflight in sorted(output.rglob('*.inflight.jsonl')):
+        actions_path = inflight.with_name(inflight.name.removesuffix('.inflight.jsonl') + '.jsonl')
+        recovered = reconcile_inflight_actions(
+            actions_path,
+            inflight_path=inflight,
+            reason=interrupted_reason or 'process_exited',
+        )
+        if recovered or actions_path.exists():
+            reconciled_action_paths.append(actions_path)
+
     trace_index = output / 'trace-index.json'
-    write_trace_index(trace_index, [output / 'observations.jsonl'], run_id=output.name, service_logs=service_logs)
+    write_trace_index(
+        trace_index,
+        [output / 'observations.jsonl', *reconciled_action_paths],
+        run_id=output.name,
+        service_logs=service_logs,
+    )
     write_manifest(
         output / 'run-manifest.json',
         run_id=output.name,
         expected_sources=['regression_gate'],
         observed_sources=observations.sources,
-        artifacts=[output / 'resources.jsonl', output / 'observations.jsonl', output / 'gate.json', trace_index],
+        artifacts=[
+            output / 'resources.jsonl',
+            output / 'observations.jsonl',
+            output / 'gate.json',
+            *reconciled_action_paths,
+            trace_index,
+        ],
         trace_index=trace_index,
         service_logs=service_logs,
+        interrupted_reason=interrupted_reason,
     )
     return result
 

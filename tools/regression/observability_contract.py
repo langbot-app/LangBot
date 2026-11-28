@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import math
+import os
+import threading
 import time
 import uuid
 from collections.abc import Iterable, Mapping
@@ -16,7 +19,9 @@ from typing import Any
 from tools.regression.service_logs import records as parse_service_log_records
 
 SCHEMA_VERSION = '1'
-ACTION_STATUSES = frozenset({'running', 'succeeded', 'failed', 'timed_out', 'cancelled', 'blocked', 'expired'})
+ACTION_STATUSES = frozenset(
+    {'running', 'succeeded', 'failed', 'timed_out', 'cancelled', 'blocked', 'expired', 'interrupted'}
+)
 OBSERVATION_SCOPES = frozenset({'request', 'global'})
 TIMING_KINDS = frozenset({'agent_runner_timing', 'box_execute_timing', 'box_selection_timing'})
 CORRELATION_LEVELS = frozenset(
@@ -41,6 +46,18 @@ def _dump(value: Any) -> str:
 
 def _artifact_ref(artifact: Path, base_dir: Path) -> str:
     return str(artifact.relative_to(base_dir)) if artifact.is_relative_to(base_dir) else str(artifact)
+
+
+def inflight_journal_path(actions_path: Path) -> Path:
+    return Path(actions_path).with_name(f'{Path(actions_path).stem}.inflight.jsonl')
+
+
+def _interrupt_reason_for_exception(exc: BaseException | None) -> str:
+    if isinstance(exc, TimeoutError):
+        return 'timeout'
+    if isinstance(exc, (KeyboardInterrupt, SystemExit, asyncio.CancelledError)):
+        return 'cancelled'
+    return 'crashed'
 
 
 def _normalize_service_logs(
@@ -119,11 +136,27 @@ class ActionResult:
 class ActionWriter:
     """Append action lifecycle records without changing the action itself."""
 
-    def __init__(self, path: Path):
-        self.path = path
+    def __init__(self, path: Path, *, inflight_path: Path | None = None):
+        self.path = Path(path)
+        self.inflight_path = Path(inflight_path) if inflight_path is not None else inflight_journal_path(self.path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.inflight_path.parent.mkdir(parents=True, exist_ok=True)
         self._active: dict[str, ActionResult] = {}
+        self._lock = threading.Lock()
         self.sources: set[str] = set()
+
+    def __enter__(self) -> ActionWriter:
+        return self
+
+    def __exit__(self, exc_type, exc_val, _exc_tb) -> bool:
+        if exc_type is None:
+            self.close()
+            return False
+        if self._active:
+            self.interrupt_active(reason=_interrupt_reason_for_exception(exc_val), error=exc_val)
+        else:
+            self.inflight_path.unlink(missing_ok=True)
+        return False
 
     def begin(
         self, action_name: str, *, trace_id: str | None = None, metadata: dict[str, Any] | None = None
@@ -138,21 +171,220 @@ class ActionWriter:
             trace_id=trace_id,
             metadata=dict(metadata or {}),
         )
-        self._active[result.action_id] = result
+        started_record = {
+            'schema_version': SCHEMA_VERSION,
+            'event': 'action_started',
+            'action_id': result.action_id,
+            'action_name': result.action_name,
+            'status': 'running',
+            'started_at': result.started_at,
+            'started_monotonic_ns': result.started_monotonic_ns,
+            'trace_id': result.trace_id,
+            'pid': os.getpid(),
+            'metadata': dict(result.metadata),
+        }
+        with self._lock:
+            self._active[result.action_id] = result
+            with self.inflight_path.open('a', encoding='utf-8') as stream:
+                stream.write(_dump(started_record) + '\n')
+                stream.flush()
         return result
 
     def finish(self, result: ActionResult, status: str, *, error: BaseException | None = None) -> dict[str, Any]:
-        if self._active.pop(result.action_id, None) is None:
-            raise ValueError(f'unknown action: {result.action_id}')
-        record = result.finish(status, error=error)
-        self.sources.add(result.action_name)
-        with self.path.open('a', encoding='utf-8') as stream:
-            stream.write(_dump(record) + '\n')
+        with self._lock:
+            if self._active.pop(result.action_id, None) is None:
+                raise ValueError(f'unknown action: {result.action_id}')
+            record = result.finish(status, error=error)
+            self.sources.add(result.action_name)
+            with self.path.open('a', encoding='utf-8') as stream:
+                stream.write(_dump(record) + '\n')
+                stream.flush()
         return record
 
-    def close(self) -> None:
+    def interrupt_active(
+        self, *, reason: str = 'interrupted', error: BaseException | None = None
+    ) -> list[dict[str, Any]]:
+        written: list[dict[str, Any]] = []
+        with self._lock:
+            active = list(self._active.values())
+            self._active.clear()
+            if active:
+                with self.path.open('a', encoding='utf-8') as stream:
+                    for result in active:
+                        result.metadata['interrupt_reason'] = reason
+                        record = result.finish('interrupted', error=error)
+                        if error is None:
+                            record['error_type'] = 'ActionInterrupted'
+                            record['error_message'] = f'action interrupted: {reason}'
+                        self.sources.add(result.action_name)
+                        stream.write(_dump(record) + '\n')
+                        written.append(record)
+                    stream.flush()
+            self.inflight_path.unlink(missing_ok=True)
+        return written
+
+    def close(self, *, interrupt_reason: str | None = None, error: BaseException | None = None) -> list[dict[str, Any]]:
         if self._active:
+            if interrupt_reason is not None:
+                return self.interrupt_active(reason=interrupt_reason, error=error)
             raise RuntimeError(f'unfinished actions: {len(self._active)}')
+        self.inflight_path.unlink(missing_ok=True)
+        return []
+
+
+def reconcile_inflight_actions(
+    actions_path: Path,
+    *,
+    inflight_path: Path | None = None,
+    reason: str = 'sigkill',
+    error_message: str | None = None,
+) -> list[dict[str, Any]]:
+    """Synthesize interrupted terminal ActionResult records for unclosed inflight entries."""
+
+    actions_path = Path(actions_path)
+    journal = Path(inflight_path) if inflight_path is not None else inflight_journal_path(actions_path)
+    if not journal.exists():
+        return []
+    finished_ids: set[str] = set()
+    if actions_path.exists():
+        with actions_path.open(encoding='utf-8') as stream:
+            for line_number, line in enumerate(stream, 1):
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f'invalid JSONL in {actions_path}:{line_number}: {exc.msg}') from exc
+                if isinstance(record, dict):
+                    action_id = record.get('action_id')
+                    if isinstance(action_id, str) and action_id and record.get('status') != 'running':
+                        finished_ids.add(action_id)
+    unclosed: list[dict[str, Any]] = []
+    seen_started: set[str] = set()
+    with journal.open(encoding='utf-8') as stream:
+        for line_number, line in enumerate(stream, 1):
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f'invalid JSONL in {journal}:{line_number}: {exc.msg}') from exc
+            if not isinstance(record, dict):
+                raise ValueError(f'JSONL record in {journal}:{line_number} must be an object')
+            action_id = record.get('action_id')
+            if (
+                not isinstance(action_id, str)
+                or not action_id
+                or action_id in finished_ids
+                or action_id in seen_started
+            ):
+                continue
+            seen_started.add(action_id)
+            unclosed.append(record)
+    recovered: list[dict[str, Any]] = []
+    if unclosed:
+        actions_path.parent.mkdir(parents=True, exist_ok=True)
+        with actions_path.open('a', encoding='utf-8') as stream:
+            for started in unclosed:
+                metadata = dict(started.get('metadata') or {})
+                metadata['interrupt_reason'] = reason
+                metadata['recovered_from_inflight'] = True
+                if 'pid' in started:
+                    metadata['original_pid'] = started['pid']
+                record = asdict(
+                    ActionResult(
+                        action_id=started['action_id'],
+                        action_name=str(started.get('action_name') or 'unknown'),
+                        status='interrupted',
+                        started_at=str(started.get('started_at') or _now()),
+                        started_monotonic_ns=int(started.get('started_monotonic_ns') or 0),
+                        trace_id=started.get('trace_id'),
+                        finished_at=_now(),
+                        finished_monotonic_ns=time.monotonic_ns(),
+                        error_type='ProcessInterrupted',
+                        error_message=error_message or f'action interrupted before completion ({reason})',
+                        metadata=metadata,
+                    )
+                )
+                stream.write(_dump(record) + '\n')
+                recovered.append(record)
+            stream.flush()
+    journal.unlink(missing_ok=True)
+    return recovered
+
+
+def inspect_action_artifacts(artifacts: Iterable[Path]) -> dict[str, Any]:
+    """Inspect action JSONL files and companion inflight journals for interrupted/unclosed actions."""
+
+    total = 0
+    interrupted = 0
+    interrupt_reasons: dict[str, int] = {}
+    finished_ids: set[str] = set()
+    unclosed_action_ids: list[str] = []
+    seen_unclosed: set[str] = set()
+    seen_journals: set[Path] = set()
+
+    for artifact in artifacts:
+        path = Path(artifact)
+        if path.suffix != '.jsonl':
+            continue
+        if path.exists():
+            with path.open(encoding='utf-8') as stream:
+                for line in stream:
+                    if not line.strip():
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if (
+                        not isinstance(record, dict)
+                        or 'arrival_id' in record
+                        or not isinstance(record.get('action_id'), str)
+                        or record.get('status') not in ACTION_STATUSES
+                    ):
+                        continue
+                    total += 1
+                    if record['status'] != 'running':
+                        finished_ids.add(record['action_id'])
+                    if record['status'] == 'interrupted':
+                        interrupted += 1
+                        metadata = record.get('metadata')
+                        reason = (
+                            metadata.get('interrupt_reason')
+                            if isinstance(metadata, dict) and isinstance(metadata.get('interrupt_reason'), str)
+                            else 'unknown'
+                        )
+                        interrupt_reasons[reason] = interrupt_reasons.get(reason, 0) + 1
+        journal = inflight_journal_path(path)
+        if journal not in seen_journals and journal.exists():
+            seen_journals.add(journal)
+            with journal.open(encoding='utf-8') as stream:
+                for line in stream:
+                    if not line.strip():
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(record, dict):
+                        continue
+                    action_id = record.get('action_id')
+                    if (
+                        isinstance(action_id, str)
+                        and action_id
+                        and action_id not in finished_ids
+                        and action_id not in seen_unclosed
+                    ):
+                        seen_unclosed.add(action_id)
+                        unclosed_action_ids.append(action_id)
+    return {
+        'total': total,
+        'interrupted': interrupted,
+        'unclosed_inflight': len(unclosed_action_ids),
+        'interrupt_reasons': interrupt_reasons,
+        'unclosed_action_ids': unclosed_action_ids,
+    }
 
 
 @dataclass
@@ -221,6 +453,7 @@ def write_manifest(
     artifacts: list[Path],
     trace_index: Path | None = None,
     service_logs: Mapping[str, Path] | Iterable[Path | tuple[Path, str]] | None = None,
+    interrupted_reason: str | None = None,
 ) -> dict[str, Any]:
     rows, missing = [], []
     all_artifacts: list[Path] = []
@@ -246,6 +479,12 @@ def write_manifest(
     observed_set.update(index.get('service_log_sources', ()))
     observed = sorted(observed_set)
     missing_sources = sorted(set(expected_sources) - set(observed))
+    action_summary = inspect_action_artifacts(all_artifacts)
+    incomplete_reasons: list[str] = []
+    if missing:
+        incomplete_reasons.append(f'missing_artifacts:{len(missing)}')
+    if missing_sources:
+        incomplete_reasons.append(f'missing_sources:{len(missing_sources)}')
     manifest = {
         'schema_version': SCHEMA_VERSION,
         'run_id': run_id,
@@ -255,8 +494,18 @@ def write_manifest(
         'missing_sources': missing_sources,
         'artifacts': rows,
         'missing_artifacts': missing,
-        'completeness': 'complete' if not missing and not missing_sources else 'incomplete',
+        'incomplete_reasons': incomplete_reasons,
+        'completeness': 'complete',
     }
+    if action_summary['total'] > 0 or action_summary['unclosed_inflight'] > 0:
+        manifest['actions'] = action_summary
+    if action_summary['interrupted'] > 0:
+        incomplete_reasons.append(f'interrupted_actions:{action_summary["interrupted"]}')
+    if action_summary['unclosed_inflight'] > 0:
+        incomplete_reasons.append(f'unclosed_inflight_actions:{action_summary["unclosed_inflight"]}')
+    if interrupted_reason:
+        manifest['interrupted_reason'] = interrupted_reason
+        incomplete_reasons.append(f'interrupted:{interrupted_reason}')
     if trace_index is not None:
         secondary = index.get('secondary_indexes', {})
         manifest['trace_index'] = {
@@ -278,8 +527,18 @@ def write_manifest(
                 'uncorrelated_timings': len(secondary.get('uncorrelated_timings', [])),
             },
         }
-        if manifest['trace_index']['missing_artifacts'] or manifest['trace_index']['missing_trace_observations'] > 0:
-            manifest['completeness'] = 'incomplete'
+        if manifest['trace_index']['missing_artifacts']:
+            incomplete_reasons.append(
+                f'trace_index_missing_artifacts:{len(manifest["trace_index"]["missing_artifacts"])}'
+            )
+        if manifest['trace_index']['missing_trace_observations'] > 0:
+            incomplete_reasons.append(
+                f'missing_trace_observations:{manifest["trace_index"]["missing_trace_observations"]}'
+            )
+    if action_summary['interrupted'] > 0 or action_summary['unclosed_inflight'] > 0 or interrupted_reason:
+        manifest['completeness'] = 'interrupted'
+    elif incomplete_reasons:
+        manifest['completeness'] = 'incomplete'
     path.write_text(_dump(manifest) + '\n', encoding='utf-8')
     return manifest
 

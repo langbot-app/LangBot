@@ -1,10 +1,22 @@
+import asyncio
 import json
+import os
 from pathlib import Path
+import signal
+import subprocess
+import sys
 import threading
 import time
 
 from tools.regression.arrival_schedule import run_open_loop
-from tools.regression.observability_contract import ActionWriter, ObservationWriter, write_manifest, write_trace_index
+from tools.regression.observability_contract import (
+    ActionWriter,
+    ObservationWriter,
+    inflight_journal_path,
+    reconcile_inflight_actions,
+    write_manifest,
+    write_trace_index,
+)
 
 
 def test_action_writer_records_terminal_failure_and_manifest(tmp_path: Path):
@@ -342,3 +354,235 @@ def test_observation_scope_splits_global_samples_from_missing_trace_defects(tmp_
     )
     assert defect_manifest['completeness'] == 'incomplete'
     assert defect_manifest['trace_index']['missing_trace_observations'] == 1
+
+
+def test_action_writer_sigkill_recovery_and_manifest_interrupted(tmp_path: Path):
+    actions_path = tmp_path / 'actions.jsonl'
+    ready_path = tmp_path / 'ready.json'
+    child_code = (
+        'import json, time; from pathlib import Path; '
+        'from tools.regression.observability_contract import ActionWriter; '
+        f'w = ActionWriter(Path({str(actions_path)!r})); '
+        'a = w.begin("sigkill_op", trace_id="Y-deadbeef00000001", metadata={"step": 1}); '
+        f'Path({str(ready_path)!r}).write_text(json.dumps({{"action_id": a.action_id}})); '
+        'time.sleep(30)'
+    )
+    proc = subprocess.Popen([sys.executable, '-c', child_code], cwd=Path.cwd())
+    try:
+        deadline = time.monotonic() + 5
+        while not ready_path.exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert ready_path.exists(), 'child did not register inflight action in time'
+        action_id = json.loads(ready_path.read_text())['action_id']
+        os.kill(proc.pid, signal.SIGKILL)
+        proc.wait(timeout=5)
+    finally:
+        if proc.poll() is None:
+            os.kill(proc.pid, signal.SIGKILL)
+            proc.wait(timeout=5)
+
+    journal = inflight_journal_path(actions_path)
+    assert journal.is_file()
+    assert not actions_path.exists()
+
+    pre_manifest = write_manifest(
+        tmp_path / 'pre-manifest.json',
+        run_id='run-sigkill-pre',
+        expected_sources=[],
+        artifacts=[actions_path],
+    )
+    assert pre_manifest['completeness'] == 'interrupted'
+    assert pre_manifest['actions']['unclosed_inflight'] == 1
+    assert pre_manifest['actions']['unclosed_action_ids'] == [action_id]
+
+    recovered = reconcile_inflight_actions(actions_path, reason='sigkill')
+    assert len(recovered) == 1
+    assert recovered[0]['action_id'] == action_id
+    assert recovered[0]['trace_id'] == 'Y-deadbeef00000001'
+    assert recovered[0]['status'] == 'interrupted'
+    assert recovered[0]['metadata']['interrupt_reason'] == 'sigkill'
+    assert recovered[0]['metadata']['recovered_from_inflight'] is True
+    assert not journal.exists()
+    assert reconcile_inflight_actions(actions_path, reason='sigkill') == []
+
+    index_path = tmp_path / 'trace-index.json'
+    index = write_trace_index(index_path, [actions_path], run_id='run-sigkill')
+    assert index['traces'] == 1
+    assert index['entries'][0]['trace_id'] == 'Y-deadbeef00000001'
+    assert index['entries'][0]['action_ids'] == [action_id]
+
+    manifest = write_manifest(
+        tmp_path / 'run-manifest.json',
+        run_id='run-sigkill',
+        expected_sources=['sigkill_op'],
+        observed_sources=['sigkill_op'],
+        artifacts=[actions_path, index_path],
+        trace_index=index_path,
+    )
+    assert manifest['completeness'] == 'interrupted'
+    assert manifest['actions']['interrupted'] == 1
+    assert manifest['actions']['unclosed_inflight'] == 0
+    assert manifest['actions']['interrupt_reasons'] == {'sigkill': 1}
+    assert 'interrupted_actions:1' in manifest['incomplete_reasons']
+
+
+def test_action_writer_context_cancellation_and_timeout_emit_interrupted(tmp_path: Path):
+    for label, exc, expected_reason in (
+        ('keyboard', KeyboardInterrupt('stop now'), 'cancelled'),
+        ('cancelled', asyncio.CancelledError(), 'cancelled'),
+        ('timeout', TimeoutError('budget exceeded'), 'timeout'),
+    ):
+        actions_path = tmp_path / f'{label}-actions.jsonl'
+        try:
+            with ActionWriter(actions_path) as writer:
+                writer.begin(f'op_{label}', trace_id=f'Y-{label}')
+                raise exc
+        except BaseException as raised:
+            assert raised is exc
+        else:
+            raise AssertionError(f'expected {label} exception to propagate')
+
+        assert not inflight_journal_path(actions_path).exists()
+        records = [json.loads(line) for line in actions_path.read_text().splitlines()]
+        assert len(records) == 1
+        assert records[0]['status'] == 'interrupted'
+        assert records[0]['metadata']['interrupt_reason'] == expected_reason
+
+        manifest = write_manifest(
+            tmp_path / f'{label}-manifest.json',
+            run_id=f'run-{label}',
+            expected_sources=[f'op_{label}'],
+            observed_sources=[f'op_{label}'],
+            artifacts=[actions_path],
+        )
+        assert manifest['completeness'] == 'interrupted'
+        assert manifest['actions']['interrupted'] == 1
+        assert manifest['actions']['interrupt_reasons'] == {expected_reason: 1}
+
+
+def test_open_loop_drain_timeout_marks_stuck_action_interrupted(tmp_path: Path):
+    release = threading.Event()
+    started_worker = threading.Event()
+    actions_path = tmp_path / 'actions.jsonl'
+    writer = ActionWriter(actions_path)
+    settled = []
+
+    def stuck_execute(_item):
+        started_worker.set()
+        release.wait(timeout=5)
+        return {'status': 'ok'}
+
+    try:
+        summary = run_open_loop(
+            started=time.monotonic(),
+            duration=0.02,
+            rps=50,
+            workers=1,
+            queue_capacity=None,
+            execute=stuck_execute,
+            key_for=lambda _index: None,
+            blocked=lambda _key: False,
+            settle=lambda item, outcome, _row: settled.append((item['arrival_id'], outcome)),
+            stop=threading.Event(),
+            drain_all=True,
+            drain_timeout=0.08,
+            action_writer=writer,
+            action_name='stuck_arrival',
+        )
+        writer.close()
+    finally:
+        release.set()
+
+    assert started_worker.is_set()
+    assert summary['interrupted'] == 1
+    assert summary['conserved']
+    assert any(outcome == 'interrupted' for _, outcome in settled)
+    records = [json.loads(line) for line in actions_path.read_text().splitlines()]
+    interrupted = [record for record in records if record['status'] == 'interrupted']
+    assert len(interrupted) == 1
+    assert interrupted[0]['metadata']['interrupt_reason'] == 'timeout'
+    assert not inflight_journal_path(actions_path).exists()
+
+    manifest = write_manifest(
+        tmp_path / 'run-manifest.json',
+        run_id='run-drain-timeout',
+        expected_sources=['stuck_arrival'],
+        observed_sources=writer.sources,
+        artifacts=[actions_path],
+    )
+    assert manifest['completeness'] == 'interrupted'
+    assert manifest['actions']['interrupt_reasons'] == {'timeout': 1}
+
+
+def test_regression_traffic_sigterm_cancels_inflight_action_and_writes_interrupted_manifest(tmp_path: Path):
+    ready_path = tmp_path / 'cli-started.txt'
+    cli = tmp_path / 'lbctl-slow'
+    cli.write_text(
+        f'#!{sys.executable}\n'
+        'import time; from pathlib import Path; '
+        f'Path({str(ready_path)!r}).write_text("started"); '
+        'time.sleep(30)\n'
+    )
+    cli.chmod(0o700)
+    cases = tmp_path / 'cases.json'
+    cases.write_text(
+        json.dumps([{'name': 'chat', 'args': ['pipeline', 'run', 'demo', '--message', 'hi'], 'expect': 'OK'}])
+    )
+    output = tmp_path / 'traffic'
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            '-m',
+            'tools.entrypoints.regression_traffic',
+            '--lbctl',
+            str(cli),
+            '--config',
+            'unused',
+            '--cases',
+            str(cases),
+            '--output',
+            str(output),
+            '--duration',
+            '5',
+            '--rps',
+            '1',
+            '--workers',
+            '1',
+            '--cooldown',
+            '0',
+            '--arrival-mode',
+            'open-loop',
+        ],
+        cwd=Path.cwd(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        deadline = time.monotonic() + 5
+        while not ready_path.exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert ready_path.exists(), 'fake CLI never started'
+        proc.send_signal(signal.SIGTERM)
+        proc.wait(timeout=5)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        if proc.stdout:
+            proc.stdout.close()
+        if proc.stderr:
+            proc.stderr.close()
+
+    records = [json.loads(line) for line in (output / 'actions.jsonl').read_text().splitlines()]
+    interrupted = [record for record in records if record['status'] == 'interrupted']
+    assert len(interrupted) >= 1
+    assert interrupted[0]['metadata']['interrupt_reason'] == 'cancelled'
+    manifest = json.loads((output / 'run-manifest.json').read_text())
+    assert manifest['completeness'] == 'interrupted'
+    assert manifest['interrupted_reason'] == 'cancelled'
+    assert manifest['actions']['interrupted'] >= 1

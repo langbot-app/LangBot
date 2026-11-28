@@ -3,6 +3,7 @@
 import os
 import json
 from pathlib import Path
+import signal
 import sys
 import tempfile
 import unittest
@@ -125,6 +126,55 @@ class GateTest(unittest.TestCase):
             self.assertEqual(manifest['completeness'], 'complete')
             self.assertEqual(manifest['trace_index']['global_observations'], len(observations))
             self.assertEqual(manifest['trace_index']['unindexed_records'], 0)
+
+    def test_timeout_reconciles_child_inflight_actions_into_interrupted_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'gate'
+            actions_path = output / 'suite' / 'actions.jsonl'
+            code = (
+                'import time; from pathlib import Path; '
+                'from tools.regression.observability_contract import ActionWriter; '
+                f'w = ActionWriter(Path({str(actions_path)!r})); '
+                'w.begin("suite_action", trace_id="Y-1111222233334444"); '
+                'time.sleep(30)'
+            )
+            result = supervise([sys.executable, '-c', code], output, 0.35, {})
+            self.assertFalse(result['passed'])
+            self.assertTrue(result['timed_out'])
+            records = [json.loads(line) for line in actions_path.read_text().splitlines()]
+            self.assertEqual(len(records), 1)
+            self.assertEqual(records[0]['status'], 'interrupted')
+            self.assertEqual(records[0]['trace_id'], 'Y-1111222233334444')
+            self.assertEqual(records[0]['metadata']['interrupt_reason'], 'timeout')
+            manifest = json.loads((output / 'run-manifest.json').read_text())
+            self.assertEqual(manifest['completeness'], 'interrupted')
+            self.assertEqual(manifest['interrupted_reason'], 'timeout')
+            self.assertEqual(manifest['actions']['interrupted'], 1)
+            self.assertEqual(manifest['trace_index']['traces'], 1)
+
+    def test_child_sigkill_reconciles_inflight_actions_into_interrupted_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'gate'
+            actions_path = output / 'suite' / 'actions.jsonl'
+            code = (
+                'import os, signal; from pathlib import Path; '
+                'from tools.regression.observability_contract import ActionWriter; '
+                f'w = ActionWriter(Path({str(actions_path)!r})); '
+                'w.begin("killed_action", trace_id="Y-9999888877776666"); '
+                'os.kill(os.getpid(), signal.SIGKILL)'
+            )
+            result = supervise([sys.executable, '-c', code], output, 5, {})
+            self.assertFalse(result['passed'])
+            self.assertEqual(result['exit_code'], -signal.SIGKILL)
+            records = [json.loads(line) for line in actions_path.read_text().splitlines()]
+            self.assertEqual(len(records), 1)
+            self.assertEqual(records[0]['status'], 'interrupted')
+            self.assertEqual(records[0]['trace_id'], 'Y-9999888877776666')
+            self.assertEqual(records[0]['metadata']['interrupt_reason'], 'sigkill')
+            manifest = json.loads((output / 'run-manifest.json').read_text())
+            self.assertEqual(manifest['completeness'], 'interrupted')
+            self.assertEqual(manifest['interrupted_reason'], 'sigkill')
+            self.assertEqual(manifest['actions']['interrupted'], 1)
 
 
 if __name__ == '__main__':
