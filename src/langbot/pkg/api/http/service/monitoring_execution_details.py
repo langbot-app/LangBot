@@ -208,7 +208,7 @@ def event_handling(metadata: dict) -> dict:
         }
     elif target in {'plugin', 'event_processor'}:
         facts = {'handling': 'plugin', 'hook': route.get('hook')}
-    elif target in {'pipeline', 'agent'}:
+    elif target in {'pipeline', 'agent', 'workflow'}:
         facts = {'handling': 'ai'}
     return facts
 
@@ -419,7 +419,7 @@ class ExecutionDetailsMixin:
             ),
             (target.in_(['builtin_command', 'plugin_command']), 'command'),
             (target.in_(['plugin', 'event_processor']), 'plugin'),
-            (target.in_(['pipeline', 'agent']), 'ai'),
+            (target.in_(['pipeline', 'agent', 'workflow']), 'ai'),
         )
 
     async def route_counts_24h(self, context, bot_uuid):
@@ -517,6 +517,12 @@ class ExecutionDetailsMixin:
                     metadata['status'] = 'ignored'
             if safe_routes and safe_routes[0].get('target_type') == 'plugin':
                 metadata['handled_by'] = safe_routes[0]['target_uuid']
+            elif (
+                safe_routes
+                and safe_routes[0].get('target_type') == 'workflow'
+                and safe_routes[0]['status'] == 'delivered'
+            ):
+                metadata['handled_by'] = safe_routes[0]['route_ref']
             elif safe_routes and safe_routes[0].get('target_type') == 'builtin_command':
                 metadata['handled_by'] = 'builtin_command:' + safe_routes[0]['target_uuid']
                 if safe_routes[0]['status'] == 'failed':

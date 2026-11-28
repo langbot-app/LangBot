@@ -54,6 +54,13 @@ async def test_bind_event_route_compares_and_swaps_the_database_snapshot(tmp_pat
     service = BotService(SimpleNamespace(persistence_mgr=SimpleNamespace(execute_async=execute)))
     service._apply_bot_configuration = AsyncMock()
     args = (WORKSPACE_UUID, 'bot', selected, 'pipeline', 'target')
+    service.ap.workflow_service = SimpleNamespace(get_workflow=AsyncMock(return_value=None))
+    with pytest.raises(ValueError, match='Workflow not found'):
+        await service.bind_event_route(*args[:3], 'workflow', 'hidden')
+    service.ap.workflow_service.get_workflow.assert_awaited_once_with(WORKSPACE_UUID, 'hidden')
+    service.ap.workflow_service.get_workflow.return_value = {'uuid': 'visible'}
+    workflow = await service.bind_event_route(*args[:3], 'workflow', 'visible', dry_run=True)
+    assert workflow['binding'] == dict(selected, target_type='workflow', target_uuid='visible')
     plan = await service.bind_event_route(*args, dry_run=True)
     assert plan['changed'] and plan['dry_run']
     with pytest.raises(WorkspaceNotFoundError):

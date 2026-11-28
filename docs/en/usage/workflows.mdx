@@ -38,6 +38,10 @@ bot references before deleting it.
 
 ## Available operations
 
+Bot messages follow the bot's message policy, including overrides on the selected route.
+**Reply Message** applies the outbound filter, long-text handling, delay, mention and quote settings.
+A blocked reply appears in node history and is not sent. **Send Message** sends to an explicit target without applying this policy.
+
 Nodes cover message input, LLM calls, classification, parameter extraction,
 conditions, switching, loops, iteration, merging, parallel branches, variables,
 transformation, execution-local memory, bounded waits, HTTP requests, replies,

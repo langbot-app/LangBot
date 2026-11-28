@@ -39,6 +39,27 @@ class _Reply:
     result: dict | None = None
 
 
+async def emit_normal_message_responded(query, chain):
+    session = query.session or provider_session.Session(
+        launcher_type=query.launcher_type,
+        launcher_id=query.launcher_id,
+        sender_id=query.sender_id,
+        bot_uuid=query.bot_uuid,
+    )
+    event = plugin_events.NormalMessageResponded(
+        query=query,
+        launcher_type=query.launcher_type.value,
+        launcher_id=query.launcher_id,
+        sender_id=query.sender_id,
+        session=session,
+        prefix='',
+        response_text=str(chain),
+        finish_reason='stop',
+        funcs_called=[],
+    )
+    return event, await query._message_policy.ap.plugin_connector.emit_event(event, query._listener_plugins)
+
+
 class ReplyStreamSession:
     """Ephemeral delivery state owned by one authorized run, never by plugin input."""
 
@@ -82,24 +103,7 @@ class ReplyStreamSession:
         query = self.policy_query
         if not self.agent_hooks or query is None:
             return chain
-        session = query.session or provider_session.Session(
-            launcher_type=query.launcher_type,
-            launcher_id=query.launcher_id,
-            sender_id=query.sender_id,
-            bot_uuid=query.bot_uuid,
-        )
-        event = plugin_events.NormalMessageResponded(
-            query=query,
-            launcher_type=query.launcher_type.value,
-            launcher_id=query.launcher_id,
-            sender_id=query.sender_id,
-            session=session,
-            prefix='',
-            response_text=str(chain),
-            finish_reason='stop',
-            funcs_called=[],
-        )
-        ctx = await query._message_policy.ap.plugin_connector.emit_event(event, query._listener_plugins)
+        event, ctx = await emit_normal_message_responded(query, chain)
         if streamed:
             return chain
         if ctx.event.reply_message_chain is not None:

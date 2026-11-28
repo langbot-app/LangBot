@@ -53,7 +53,9 @@ class ReplyMessageNode(WorkflowNode):
         if reply_mode == 'at' and msg_ctx and msg_ctx.is_group and msg_ctx.sender_id:
             components.insert(0, At(target=msg_ctx.sender_id))
         try:
-            await current_runtime().reply(MessageChain(components), quote_origin=reply_mode == 'quote')
+            reason = await current_runtime().reply(MessageChain(components), quote_origin=reply_mode == 'quote')
+            if reason:
+                return {'status': 'blocked', 'message_content': '', 'error': reason}
         except Exception as exc:
             logger.error('ReplyMessageNode %s failed to reply: %s', self.node_id, exc, exc_info=True)
             raise

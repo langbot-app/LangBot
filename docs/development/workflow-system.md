@@ -1,7 +1,7 @@
 # Workflow processors
 
-A Workflow is the fourth processor kind alongside Pipeline, Agent and plugin
-event processors. `Bot.event_bindings` selects it with `target_type: workflow`
+A Workflow is a sibling of Chat, Agent, plugin event processors and command
+processors. `Bot.event_bindings` selects it with `target_type: workflow`
 and a Workspace-owned `target_uuid`. Workflows do not override event routing.
 Only `message.received` events are supported.
 
@@ -14,8 +14,10 @@ implementations through `NodeTypeRegistry.discover_nodes` and constructs
 Workspace execution context, reply sender, explicit-target sender and collected
 replies. Resource lookups and provider calls use that execution context.
 
-EBA dispatch converts the event to `MessageContext` and sends replies through
-the receiving adapter's legacy-message conversion. Route traces distinguish
+EBA dispatch admits the entry query under the effective bot or route policy,
+then emits the normal-message hook before building `MessageContext`. Reply nodes
+apply outbound policy and notify listeners after delivery; proactive sends to an
+explicit target do not use that policy. Route traces distinguish
 incompatible events, unavailable processors and failed executions. The route
 scope and processing indicator surround execution. Non-message routes are
 rejected at configuration and execution time.

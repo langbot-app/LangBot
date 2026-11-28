@@ -1920,7 +1920,17 @@ class RuntimeBot:
                     node=route_node,
                 )
         if target_type == 'workflow':
-            return await self._dispatch_eba_workflow(event, adapter, event_binding)
+            from ..telemetry import trace as trace_mod
+
+            async with contextlib.AsyncExitStack() as stack:
+                query = getattr(event, '_entry_query', None)
+                altered = None
+                if query is not None:
+                    event, altered, outcome = await self._admit_normal_message(stack, event, event_binding, query)
+                    if outcome is not None:
+                        return outcome
+                with trace_mod.stage_scope() as node:
+                    return await self._dispatch_eba_workflow(event, adapter, event_binding, query, altered, node)
         if target_type not in {'agent', 'event_processor'}:
             return await self._record_event_route_trace(
                 event_type=event_type,
@@ -1995,44 +2005,53 @@ class RuntimeBot:
         async with contextlib.AsyncExitStack() as stack:
             altered = None
             if query is not None and target_type == 'agent':
-                runtime = query._message_policy
-                group = query.launcher_type == provider_session.LauncherTypes.GROUP
-                query.message_chain = query.message_chain.model_copy(deep=True)
-                item = await stack.enter_async_context(runtime.admit(query))
-                if item:
-                    return await self._record_policy_drop(event, event_binding, item)
-                event = event.model_copy(update={'message_chain': query.message_chain})
-                query.message_event.message_chain = query.message_chain
-                hook = plugin_events.GroupNormalMessageReceived if group else plugin_events.PersonNormalMessageReceived
-                ctx = await self.ap.plugin_connector.emit_event(
-                    hook(
-                        launcher_type=query.launcher_type.value,
-                        launcher_id=query.launcher_id,
-                        sender_id=query.sender_id,
-                        query=query,
-                        message_event=query.message_event,
-                        message_chain=query.message_chain,
-                        text_message=str(query.message_chain),
-                    ),
-                    query._listener_plugins,
-                )
-                if ctx.is_prevented_default():
-                    from ..pipeline import monitoring_helper
-
-                    monitoring_helper.mark_plugin_handled(query, ctx)
-                    if ctx.event.reply_message_chain is not None:
-                        await runtime.send_command_reply(query, ctx.event.reply_message_chain)
-                    return await self._record_event_route_trace(
-                        event_type=event_type,
-                        binding=event_binding,
-                        target_type='plugin',
-                        status='delivered',
-                        target_uuid=monitoring_helper.get_handled_by(query),
-                        text=f'{hook.__name__} handled by plugin',
-                        details={'hook': 'NormalMessageReceived'},
-                    )
-                altered = ctx.event.user_message_alter
+                event, altered, outcome = await self._admit_normal_message(stack, event, event_binding, query)
+                if outcome is not None:
+                    return outcome
             return await self._deliver_runner_event(event, adapter, execution_id, event_binding, binding, altered)
+
+    async def _admit_normal_message(self, stack, event, event_binding, query):
+        runtime = query._message_policy
+        group = query.launcher_type == provider_session.LauncherTypes.GROUP
+        query.message_chain = query.message_chain.model_copy(deep=True)
+        item = await stack.enter_async_context(runtime.admit(query))
+        if item:
+            return event, None, await self._record_policy_drop(event, event_binding, item)
+        event = event.model_copy(update={'message_chain': query.message_chain})
+        query.message_event.message_chain = query.message_chain
+        hook = plugin_events.GroupNormalMessageReceived if group else plugin_events.PersonNormalMessageReceived
+        ctx = await self.ap.plugin_connector.emit_event(
+            hook(
+                launcher_type=query.launcher_type.value,
+                launcher_id=query.launcher_id,
+                sender_id=query.sender_id,
+                query=query,
+                message_event=query.message_event,
+                message_chain=query.message_chain,
+                text_message=str(query.message_chain),
+            ),
+            query._listener_plugins,
+        )
+        if ctx.is_prevented_default():
+            from ..pipeline import monitoring_helper
+
+            monitoring_helper.mark_plugin_handled(query, ctx)
+            if ctx.event.reply_message_chain is not None:
+                await runtime.send_command_reply(query, ctx.event.reply_message_chain)
+            return (
+                event,
+                None,
+                await self._record_event_route_trace(
+                    event_type=event.type,
+                    binding=event_binding,
+                    target_type='plugin',
+                    status='delivered',
+                    target_uuid=monitoring_helper.get_handled_by(query),
+                    text=f'{hook.__name__} handled by plugin',
+                    details={'hook': 'NormalMessageReceived'},
+                ),
+            )
+        return event, ctx.event.user_message_alter, None
 
     async def _record_policy_drop(self, event, binding, item):
         query = getattr(event, '_entry_query', None)
@@ -2207,7 +2226,7 @@ class RuntimeBot:
         except Exception as e:
             await self.logger.error(f'Failed to record discarded message: {e}')
 
-    async def _dispatch_eba_workflow(self, event, adapter, binding):
+    async def _dispatch_eba_workflow(self, event, adapter, binding, query=None, altered=None, node=None):
         from ..api.http.service.workflow import WorkflowExecutionFailedError
         from ..telemetry import trace as trace_mod
         from ..workflow.entities import MessageContext
@@ -2227,14 +2246,29 @@ class RuntimeBot:
             reply_type, reply_id, _ = self._infer_reply_target(event)
 
             async def reply_sender(chain, quote):
-                await adapter.reply_message(event.to_legacy_event(), chain, quote_origin=quote)
+                if query is None:
+                    await adapter.reply_message(event.to_legacy_event(), chain, quote_origin=quote)
+                    return
+                policy = query._message_policy
+                chain = await policy.prepare_reply_chain(query, chain)
+                if chain is None:
+                    return 'outbound_block'
+                await adapter.reply_message(
+                    message_source=query.message_event, message=chain, quote_origin=quote or policy.quote_origin
+                )
+                from ..agent.runner.reply_stream import emit_normal_message_responded
+
+                await emit_normal_message_responded(query, chain)
 
             runtime = WorkflowRuntime(self.execution_context, reply_sender, adapter.send_message)
+            if altered is not None and not isinstance(altered, str):
+                parts = altered if isinstance(altered, list) else [altered]
+                altered = ''.join(part.text or '' for part in parts)
             message_context = MessageContext(
                 message_id=str(event.message_id),
-                message_content=''.join(
-                    part.text for part in event.message_chain if isinstance(part, platform_message.Plain)
-                ),
+                message_content=altered
+                if altered is not None
+                else ''.join(part.text for part in event.message_chain if isinstance(part, platform_message.Plain)),
                 sender_id=str(event.sender.id),
                 sender_name=event.sender.nickname or '',
                 platform=type(adapter).__name__,
@@ -2265,6 +2299,8 @@ class RuntimeBot:
             level='warning' if failure_code else 'info',
             binding=binding,
             target_type='workflow',
+            node=node,
+            details={'route_ref': self._route_ref(binding)},
             target_uuid=target_uuid,
             failure_code=failure_code,
             reason=reason,

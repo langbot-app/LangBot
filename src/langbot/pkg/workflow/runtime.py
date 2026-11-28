@@ -18,7 +18,7 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 if typing.TYPE_CHECKING:
     from ..api.http.context import ExecutionContext as WorkspaceExecutionContext
 
-ReplySender = typing.Callable[[platform_message.MessageChain, bool], typing.Awaitable[None]]
+ReplySender = typing.Callable[[platform_message.MessageChain, bool], typing.Awaitable[str | None]]
 TargetSender = typing.Callable[[str, str, platform_message.MessageChain], typing.Awaitable[None]]
 
 
@@ -41,10 +41,13 @@ class WorkflowRuntime:
     depth: int = 0
     """Nesting depth of call_workflow invocations."""
 
-    async def reply(self, chain: platform_message.MessageChain, quote_origin: bool = False) -> None:
-        self.replies.append(chain)
+    async def reply(self, chain: platform_message.MessageChain, quote_origin: bool = False) -> str | None:
         if self.reply_sender is not None:
-            await self.reply_sender(chain, quote_origin)
+            reason = await self.reply_sender(chain, quote_origin)
+            if reason:
+                return reason
+        self.replies.append(chain)
+        return None
 
     async def send(self, target_type: str, target_id: str, chain: platform_message.MessageChain) -> None:
         if self.target_sender is None:

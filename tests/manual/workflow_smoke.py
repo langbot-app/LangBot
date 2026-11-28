@@ -35,12 +35,11 @@ async def smoke(base_url, api_key, screenshot=None):
             assert body['code'] == 0, body
             return body['data']
 
-        if screenshot:
-            account = {'user': 'workflow-smoke@example.com', 'password': secrets.token_urlsafe(32)}
-            await request('POST', '/api/v1/user/init', account)
-            authentication = await request('POST', '/api/v1/user/auth', account)
-            client.headers['Authorization'] = f'Bearer {authentication["token"]}'
-            await request('POST', '/api/v1/system/wizard/completed', {'status': 'skipped'})
+        account = {'user': 'workflow-smoke@example.com', 'password': secrets.token_urlsafe(32)}
+        await request('POST', '/api/v1/user/init', account)
+        authentication = await request('POST', '/api/v1/user/auth', account)
+        client.headers['Authorization'] = f'Bearer {authentication["token"]}'
+        await request('POST', '/api/v1/system/wizard/completed', {'status': 'skipped'})
 
         workflow = await request(
             'POST',
@@ -101,6 +100,18 @@ async def smoke(base_url, api_key, screenshot=None):
                         'target_uuid': workflow_uuid,
                         'enabled': True,
                         'priority': 0,
+                        'policy': {
+                            'trigger': {'group-respond-rules': {'enabled': False}},
+                            'safety': {
+                                'rate-limit': {
+                                    'enabled': True,
+                                    'limitation': 1,
+                                    'window-length': 60,
+                                    'strategy': 'drop',
+                                }
+                            },
+                            'output': {'long-text-processing': {'threshold': 16, 'strategy': 'forward'}},
+                        },
                     }
                 ],
             },
@@ -130,6 +141,32 @@ async def smoke(base_url, api_key, screenshot=None):
                 assert len(completed) == 2, result
                 detail = await request('GET', f'/api/v1/workflows/{workflow_uuid}/executions/{completed[0]["uuid"]}')
                 assert len(detail['execution']['node_executions']) == 3, detail
+                await peer.emit(peer.message('private', 'friend') | {'message_id': 10})
+                group = peer.message(
+                    'group', 'normal', [{'type': 'text', 'data': {'text': 'a longer message for the group'}}]
+                )
+                await peer.emit(group | {'message_id': 11})
+                for attempt in range(100):
+                    page = await request(
+                        'GET', f'/api/v1/monitoring/executions?source=event&botId={bot["uuid"]}&summary=false'
+                    )
+                    delivered = [row for row in page['items'] if row.get('handled_by') == f'workflow:{workflow_uuid}']
+                    dropped = [row for row in page['items'] if row.get('handling') == 'policy']
+                    if len(delivered) >= 2 and dropped:
+                        break
+                    await asyncio.sleep(0.1)
+                assert delivered and dropped, page
+                traces = [
+                    await request('GET', f'/api/v1/monitoring/executions/event/{row["id"]}')
+                    for row in [*delivered, dropped[0]]
+                ]
+                assert 'long_text' in json.dumps(traces) and 'message_policy' in json.dumps(traces), traces
+                assert any(
+                    'a longer message for the group' in json.dumps(item.get('params', {}).get('message'))
+                    for item in peer.requests
+                    if item['action'] in ('send_msg', 'send_group_msg')
+                )
+                print(json.dumps({'execution_details': traces}, ensure_ascii=False))
                 response = await client.delete(f'/api/v1/workflows/{workflow_uuid}')
                 assert response.status_code == 400
                 if screenshot:

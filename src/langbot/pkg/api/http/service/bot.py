@@ -887,7 +887,7 @@ class BotService:
                 match = await live_bot._match_plugin_command(sample)
                 if match:
                     command, text = f'{match[0]}/{match[1]}', match[2]
-        if not command and binding.get('target_type') not in {'agent', 'pipeline'}:
+        if not command and binding.get('target_type') not in {'agent', 'pipeline', 'workflow'}:
             return None, None
         async with runtime.admit(query, text, preview=True) as blocked:
             return blocked, command
@@ -1347,7 +1347,7 @@ class BotService:
         context: TenantContext,
         bot_uuid: str,
         expected_binding: dict,
-        target_type: typing.Literal['agent', 'pipeline'],
+        target_type: typing.Literal['agent', 'pipeline', 'workflow'],
         target_uuid: str,
         dry_run: bool = False,
     ) -> dict:
@@ -1355,7 +1355,7 @@ class BotService:
         binding_id = expected_binding.get('id')
         if not isinstance(binding_id, str) or not binding_id or not target_uuid.strip():
             raise ValueError('A binding ID and target UUID are required')
-        if target_type not in {'agent', 'pipeline'}:
+        if target_type not in {'agent', 'pipeline', 'workflow'}:
             raise ValueError('Unsupported event binding target type')
         model = persistence_bot.Bot
         # Compare the database representation in SQL. PostgreSQL JSON has no

@@ -167,6 +167,9 @@ async def execute_builtin(bot, event, adapter, name, text, query, session, is_ad
         model_name = model.model_entity.name if model else '—'
         if name == 'status':
             processor = pipeline.pipeline_entity.name if pipeline else (agent or {}).get('name', '—')
+            if kind == 'workflow':
+                workflow = await ap.workflow_service.get_workflow(context, target)
+                processor = (workflow or {}).get('name', '—')
             return t(
                 'Bot: {bot}\nRoute: {route}\nProcessor: {processor}\nModel: {model}\nSession: {session}\nMessages: {count}',
                 bot=bot.bot_entity.name,

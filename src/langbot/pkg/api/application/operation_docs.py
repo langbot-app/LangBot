@@ -416,7 +416,7 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
     'bot.routes.bind': OperationDoc(
         domain='bot',
         label={'zh_Hans': '切换路由目标', 'en_US': 'Change Route Target'},
-        summary='Preview or change the Agent or Chat target of one existing Bot route.',
+        summary='Preview or change the Agent, Chat or Workflow target of one existing Bot route.',
         description='Supply the binding returned by bot.get. Concurrent changes return a conflict.',
         risk='write',
         exposure='none',
