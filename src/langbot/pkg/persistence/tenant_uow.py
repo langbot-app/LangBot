@@ -13,7 +13,6 @@ import typing
 import sqlalchemy
 import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
 import sqlalchemy.orm as sqlalchemy_orm
-from pgvector.sqlalchemy import HALFVEC, Vector
 from sqlalchemy.dialects.postgresql.dml import OnConflictDoNothing as PostgreSQLOnConflictDoNothing
 from sqlalchemy.dialects.postgresql.dml import OnConflictDoUpdate as PostgreSQLOnConflictDoUpdate
 from sqlalchemy.dialects.sqlite.dml import OnConflictDoNothing as SQLiteOnConflictDoNothing
@@ -338,9 +337,13 @@ def _validate_scoped_sql_type(
         return
     seen.add(identity)
 
-    if type(sql_type) in {Vector, HALFVEC}:
-        return
-    if type(sql_type) not in {MediaReferenceText, MediaReferenceJSON} and not type(sql_type).__module__.startswith(
+    sql_type_class = type(sql_type)
+    if sql_type_class.__module__.startswith('pgvector.'):
+        from pgvector.sqlalchemy import HALFVEC, Vector
+
+        if sql_type_class in {Vector, HALFVEC}:
+            return
+    if sql_type_class not in {MediaReferenceText, MediaReferenceJSON} and not sql_type_class.__module__.startswith(
         'sqlalchemy.'
     ):
         raise ScopedSessionTransactionError('TenantUnitOfWork does not allow custom SQL types in public statements')
@@ -531,7 +534,13 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
         if isinstance(element, sqlalchemy.sql.elements.BindParameter) and element.literal_execute:
             raise ScopedSessionTransactionError('TenantUnitOfWork does not allow literal-execute SQL parameters')
 
-        if isinstance(element, sqlalchemy.sql.elements.Cast) and type(element.type) not in {Vector, HALFVEC}:
+        cast_type = type(element.type) if isinstance(element, sqlalchemy.sql.elements.Cast) else None
+        is_pgvector_cast = False
+        if cast_type is not None and cast_type.__module__.startswith('pgvector.'):
+            from pgvector.sqlalchemy import HALFVEC, Vector
+
+            is_pgvector_cast = cast_type in {Vector, HALFVEC}
+        if isinstance(element, sqlalchemy.sql.elements.Cast) and not is_pgvector_cast:
             # Conditional configuration updates compare DB-native JSON text, because
             # PostgreSQL JSON has no equality operator. Permit only these fixed
             # mapped columns and a built-in Text target, never arbitrary casts.

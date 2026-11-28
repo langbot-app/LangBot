@@ -13,7 +13,6 @@ import sqlalchemy as sa
 from ..entity.persistence.content import ContentAlias, ContentObject
 from ..persistence.tenant_uow import PersistenceScopeKind, TenantScopeRequiredError
 from .provider import HARD_MAX_STORAGE_OBJECT_BYTES, normalize_read_limit
-from .providers.s3storage import S3StorageProvider
 
 
 class ContentIntegrityError(ValueError):
@@ -82,6 +81,8 @@ class ContentStore:
         return StorageMgr._require_execution_scope(context)
 
     async def _s3(self, name, locator=None):
+        from .providers.s3storage import S3StorageProvider
+
         config = (self._config().get('backends') or {}).get(name)
         if not isinstance(config, dict) or config.get('type', 's3') != 's3':
             raise ValueError(f'Content backend {name!r} is not configured')
