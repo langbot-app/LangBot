@@ -152,9 +152,17 @@ def saveall_type_sample():
 def load_profiles(profiles_path=_DEFAULT_PROFILES_PATH):
     """Load named module profiles from ``gc-baseline.json``."""
     data = json.loads(Path(profiles_path).read_text(encoding='utf-8'))
+    if not isinstance(data, dict):
+        raise ValueError(f'invalid profiles file: {profiles_path} must contain a JSON object')
     profiles = data.get('profiles')
     if not isinstance(profiles, dict):
         raise ValueError(f'invalid profiles file: {profiles_path}')
+    for name, profile in profiles.items():
+        if not isinstance(profile, dict):
+            raise ValueError(f'profile {name!r} must be a JSON object')
+        modules = profile.get('modules')
+        if not isinstance(modules, list) or not all(isinstance(module, str) for module in modules):
+            raise ValueError(f'profile {name!r} modules must be a list of module names')
     return profiles
 
 
@@ -166,9 +174,7 @@ def resolve_preload_modules(profile_name=None, extra_modules=(), profiles_path=_
         if profile_name not in profiles:
             available = ', '.join(sorted(profiles))
             raise ValueError(f'unknown profile {profile_name!r}; available: {available}')
-        profile_modules = profiles[profile_name].get('modules', [])
-        if not isinstance(profile_modules, list):
-            raise ValueError(f'profile {profile_name!r} modules must be a list')
+        profile_modules = profiles[profile_name]['modules']
         modules.extend(profile_modules)
     modules.extend(extra_modules)
     return list(dict.fromkeys(modules))
@@ -290,7 +296,7 @@ def _metric_delta(before_value, after_value, digits=3):
     if before_value is None or after_value is None:
         return {'before': before_value, 'after': after_value, 'delta': None, 'delta_pct': None}
     delta = round(after_value - before_value, digits)
-    delta_pct = round((after_value - before_value) / before_value * 100.0, 1) if before_value else None
+    delta_pct = round((after_value - before_value) / abs(before_value) * 100.0, 1) if before_value else None
     return {'before': before_value, 'after': after_value, 'delta': delta, 'delta_pct': delta_pct}
 
 
@@ -307,16 +313,41 @@ def _histogram_deltas(before_map, after_map, limit=10):
             deltas.append({'name': name, 'before': before_count, 'after': after_count, 'delta': None})
     deltas.sort(
         key=lambda item: (
-            0 if item['delta'] is not None else 1,
-            -abs(item['delta']) if item['delta'] is not None else -max(item['before'] or 0, item['after'] or 0),
+            -abs(item['delta'])
+            if item['delta'] is not None
+            else -max(item['before'] or 0, item['after'] or 0),
             item['name'],
         )
     )
     return deltas[:limit]
 
 
+def _require_mapping(value, label):
+    if not isinstance(value, dict):
+        raise ValueError(f'{label} must be a JSON object')
+    return value
+
+
+def _validate_report(report, label):
+    """Validate the JSON shape needed by ``compare_reports``."""
+    report = _require_mapping(report, label)
+    for key in ('platform', 'preload', 'objects', 'scan', 'frozen_scan', 'attribution'):
+        _require_mapping(report.get(key), f'{label}.{key}')
+    preload = report['preload']
+    objects = report['objects']
+    for key in ('loaded', 'failed'):
+        if key in preload and not isinstance(preload[key], list):
+            raise ValueError(f'{label}.preload.{key} must be a list')
+    for key in ('top_types', 'top_function_modules'):
+        if key in objects and not isinstance(objects[key], dict):
+            raise ValueError(f'{label}.objects.{key} must be a JSON object')
+    return report
+
+
 def compare_reports(before, after):
     """Compare two ``gc_baseline measure --json`` reports and flag context mismatches."""
+    before = _validate_report(before, 'before report')
+    after = _validate_report(after, 'after report')
     warnings = []
     if before.get('platform') != after.get('platform'):
         warnings.append('platform differs between before and after; timings are not directly comparable')
@@ -460,7 +491,7 @@ def main(argv=None):
         before = json.loads(args.before.read_text(encoding='utf-8'))
         after = json.loads(args.after.read_text(encoding='utf-8'))
         comparison = compare_reports(before, after)
-    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, AttributeError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         parser.error(str(exc))
     print(json.dumps(comparison, indent=2) if args.json else summarize_comparison(comparison))
     return 0

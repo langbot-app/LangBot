@@ -313,6 +313,30 @@ class CompareTests(unittest.TestCase):
         self.assertIsNone(by_name['lark_oapi']['after'])
         self.assertIsNone(by_name['lark_oapi']['delta'])
 
+    def test_keeps_large_outside_top_n_histogram_entries(self):
+        before = {f'shared_{index}': index for index in range(11)}
+        after = {name: count + 1 for name, count in before.items()}
+        before['large_only'] = 60000
+
+        deltas = gc_baseline._histogram_deltas(before, after, limit=10)
+
+        self.assertIn('large_only', {item['name'] for item in deltas})
+
+    def test_negative_baseline_uses_magnitude_for_percent_delta(self):
+        delta = gc_baseline._metric_delta(-10.0, 10.0)
+
+        self.assertEqual(delta['delta'], 20.0)
+        self.assertEqual(delta['delta_pct'], 200.0)
+
+    def test_rejects_malformed_report_shapes(self):
+        with self.assertRaisesRegex(ValueError, 'before report must be a JSON object'):
+            gc_baseline.compare_reports([], self._sample_report())
+
+        malformed = self._sample_report()
+        malformed['preload'] = None
+        with self.assertRaisesRegex(ValueError, 'before report.preload must be a JSON object'):
+            gc_baseline.compare_reports(malformed, self._sample_report())
+
 
 class ProfileTests(unittest.TestCase):
     def test_shipped_profiles_are_valid_and_documented(self):
@@ -337,6 +361,19 @@ class MainTests(unittest.TestCase):
     def test_unknown_profile_exits(self):
         with self.assertRaises(SystemExit):
             gc_baseline.main(['measure', '--profile', 'nonexistent', '--samples', '1'])
+
+    def test_malformed_profiles_file_exits_without_traceback(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 'profiles.json'
+            path.write_text(json.dumps({'profiles': {'bad': {'modules': [{}]}}}), encoding='utf-8')
+
+            with contextlib.redirect_stderr(io.StringIO()) as error:
+                with self.assertRaises(SystemExit):
+                    gc_baseline.main(
+                        ['measure', '--profile', 'bad', '--profiles-file', str(path), '--samples', '1']
+                    )
+
+            self.assertIn('modules must be a list of module names', error.getvalue())
 
     def test_json_flag_emits_json(self):
         buffer = io.StringIO()
@@ -364,6 +401,19 @@ class MainTests(unittest.TestCase):
             payload = json.loads(out.getvalue())
             self.assertEqual(payload['warnings'], [])
             self.assertIn('tracked_objects', payload['metrics'])
+
+    def test_compare_cli_rejects_malformed_json_without_traceback(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            before_path = Path(tmpdir) / 'before.json'
+            after_path = Path(tmpdir) / 'after.json'
+            before_path.write_text('[]', encoding='utf-8')
+            after_path.write_text('{}', encoding='utf-8')
+
+            with contextlib.redirect_stderr(io.StringIO()) as error:
+                with self.assertRaises(SystemExit):
+                    gc_baseline.main(['compare', str(before_path), str(after_path)])
+
+            self.assertIn('before report must be a JSON object', error.getvalue())
 
 
 if __name__ == '__main__':
