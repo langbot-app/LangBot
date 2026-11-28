@@ -739,6 +739,10 @@ def test_artifact_lifecycle_soak(
                         'filters': [],
                         'priority': 0,
                         'enabled': True,
+                        'policy': {
+                            'trigger': {'group-respond-rules': {'enabled': False}},
+                            'safety': {'rate-limit': {'enabled': False}},
+                        },
                     }
                 ],
             },
@@ -1113,6 +1117,7 @@ def test_artifact_lifecycle_soak(
 
 
 _MIXED_KINDS = ('png', 'text', 'jpeg', 'text_pdf', 'scanned_pdf', 'mixed')
+_MIXED_TIMING_STAGES = ('http_seconds', 'verify_seconds', 'release_seconds', 'ttl_update_seconds')
 _HOUR = 3600
 
 
@@ -1123,6 +1128,50 @@ def _percentiles(sizes):
         if ordered
         else {}
     )
+
+
+def _distribution(values):
+    ordered = sorted(values)
+    if not ordered:
+        return {}
+    return {
+        **_percentiles(ordered),
+        'max': round(ordered[-1], 4),
+        'count': len(ordered),
+    }
+
+
+def _summarize_wave_timing(wave_index, phase, *, wave_seconds, wave_exec_seconds, sample_seconds, turn_timings):
+    slowest_turn = max(turn_timings, key=lambda item: item['total_seconds']) if turn_timings else None
+    stage_candidates = {'sample': sample_seconds}
+    if slowest_turn is not None:
+        for stage in _MIXED_TIMING_STAGES:
+            stage_candidates[stage.removesuffix('_seconds')] = slowest_turn[stage]
+    dominant_stage = max(stage_candidates, key=stage_candidates.__getitem__)
+    return {
+        'wave': wave_index,
+        'phase': phase,
+        'seconds': round(wave_seconds, 4),
+        'wave_exec_seconds': round(wave_exec_seconds, 4),
+        'sample_seconds': round(sample_seconds, 4),
+        'dominant_stage': dominant_stage,
+        'slowest_turn': slowest_turn,
+    }
+
+
+def _aggregate_timing_summary(wave_records, turn_timings):
+    return {
+        'wave_latency_seconds': {
+            'total': _distribution([row['seconds'] for row in wave_records]),
+            'wave_exec': _distribution([row['wave_exec_seconds'] for row in wave_records]),
+            'sample': _distribution([row['sample_seconds'] for row in wave_records]),
+        },
+        'stage_latency_seconds': {
+            stage.removesuffix('_seconds'): _distribution([row[stage] for row in turn_timings])
+            for stage in _MIXED_TIMING_STAGES
+        },
+        'slowest_wave': max(wave_records, key=lambda row: row['seconds']) if wave_records else None,
+    }
 
 
 def _mixed_process_tree(process):
@@ -1278,6 +1327,43 @@ def test_artifact_mixed_soak(
     owner = _headers(token)
     core.token = token
     runtime._ensure_qa_plugin(client, token, runner_e2e_tmpdir / 'agent-runner-qa.zip')
+    workspace = observer.query("SELECT uuid FROM workspaces WHERE source='local'")[0]['uuid']
+    invite = _data(
+        client.post(
+            f'/api/v1/workspaces/{workspace}/invitations',
+            headers=owner,
+            json={'email': 'mixed-soak-second@langbot.test', 'role': 'developer'},
+        )
+    )
+    _data(
+        client.post(
+            '/api/v1/invitations/accept',
+            json={
+                'token': invite['token'],
+                'registration': {
+                    'email': 'mixed-soak-second@langbot.test',
+                    'password': 'mixed-soak-password',
+                },
+            },
+        )
+    )
+    second_token = _data(
+        client.post(
+            '/api/v1/user/auth',
+            json={'user': 'mixed-soak-second@langbot.test', 'password': 'mixed-soak-password'},
+        )
+    )['token']
+    second = _headers(second_token, workspace)
+    account_b = observer.query("SELECT uuid FROM users WHERE normalized_email='mixed-soak-second@langbot.test'")[0][
+        'uuid'
+    ]
+    other_workspace = observer.seed_foreign_workspace(account_b)
+    foreign_workspace = _headers(second_token, other_workspace)
+    assert _data(client.get('/api/v1/workspaces/current', headers=second))['workspace']['uuid'] == workspace
+    assert (
+        _data(client.get('/api/v1/workspaces/current', headers=foreign_workspace))['workspace']['uuid']
+        == other_workspace
+    )
     agent = _agent(client, owner)
     _policy(client, owner, agent)
     bot = _data(
@@ -1303,6 +1389,10 @@ def test_artifact_mixed_soak(
                         'filters': [],
                         'priority': 0,
                         'enabled': True,
+                        'policy': {
+                            'trigger': {'group-respond-rules': {'enabled': False}},
+                            'safety': {'rate-limit': {'enabled': False}},
+                        },
                     }
                 ],
             },
@@ -1315,6 +1405,10 @@ def test_artifact_mixed_soak(
     previous_media = {}
     steady_windows = []
     staircase_windows = []
+    wave_records = []
+    all_turn_timings = []
+    reclaimed_sample_artifacts = []
+    last_wave_record = None
     load_seconds = None
     gc_ticks = []
     startup_log = runner_e2e_tmpdir / 'langbot.stdout.log'
@@ -1337,9 +1431,22 @@ def test_artifact_mixed_soak(
     def asset_path(artifact_id):
         return '/api/v1/artifacts/' + artifact_id
 
-    def read_exact(artifact_id, fixture):
-        response = client.get(asset_path(artifact_id) + '/content', headers=owner)
+    def read_exact(artifact_id, fixture, *, principal=owner):
+        response = client.get(asset_path(artifact_id) + '/content', headers=principal)
         assert response.status_code == 200 and response.content == fixture.data, (artifact_id, response.status_code)
+
+    def assert_denied(artifact_id, principals):
+        for principal in principals:
+            for method, suffix in (
+                ('GET', ''),
+                ('GET', '/content'),
+                ('GET', '/read'),
+                ('POST', '/retain'),
+                ('POST', '/release'),
+                ('DELETE', ''),
+            ):
+                response = client.request(method, asset_path(artifact_id) + suffix, headers=principal)
+                assert response.status_code == 404, (artifact_id, method, suffix, response.status_code, response.text)
 
     def assert_full_ttl(expires_at):
         observed = dt.datetime.fromisoformat(expires_at)
@@ -1348,28 +1455,28 @@ def test_artifact_mixed_soak(
         remaining = (observed - dt.datetime.now(dt.timezone.utc)).total_seconds()
         assert abs(remaining - DEFAULT_TTL_SECONDS) <= 5, (expires_at, remaining)
 
-    def release_asset(artifact_id):
-        expires_at = _data(client.post(asset_path(artifact_id) + '/release', headers=owner))['expires_at']
+    def release_asset(artifact_id, *, principal=owner):
+        expires_at = _data(client.post(asset_path(artifact_id) + '/release', headers=principal))['expires_at']
         assert_full_ttl(expires_at)
         return expires_at
 
-    def discard(artifact_id):
-        release_asset(artifact_id)
-        assert _data(client.delete(asset_path(artifact_id), headers=owner))['deleted'] is True
-        assert client.get(asset_path(artifact_id) + '/content', headers=owner).status_code == 404
+    def discard(artifact_id, *, principal=owner):
+        release_asset(artifact_id, principal=principal)
+        assert _data(client.delete(asset_path(artifact_id), headers=principal))['deleted'] is True
+        assert client.get(asset_path(artifact_id) + '/content', headers=principal).status_code == 404
 
-    def upload_probe(label):
-        fixture = make_artifact_media(label, seed=profile['seed'])[0]
+    def upload_probe(label, *, principal=owner, fixture=None):
+        media = fixture if fixture is not None else make_artifact_media(label, seed=profile['seed'])[0]
         row = _data(
             client.post(
-                '/api/v1/artifacts', headers=owner, files={'file': (fixture.filename, fixture.data, fixture.mime_type)}
+                '/api/v1/artifacts', headers=principal, files={'file': (media.filename, media.data, media.mime_type)}
             )
         )
-        assert row['digest'] == fixture.sha256 and row['size'] == fixture.size
-        assert _data(client.post(asset_path(row['id']) + '/retain', headers=owner))['expires_at'] is None
+        assert row['digest'] == media.sha256 and row['size'] == media.size
+        assert _data(client.post(asset_path(row['id']) + '/retain', headers=principal))['expires_at'] is None
         record('retained_probe', label=label, artifact=row['id'])
-        totals['probe_bytes'] += fixture.size
-        return row['id'], fixture
+        totals['probe_bytes'] += media.size
+        return row['id'], media
 
     def plan(wave, slot, phase):
         number = totals['planned']
@@ -1426,6 +1533,7 @@ def test_artifact_mixed_soak(
         number, session, group, member, kind, files, phase, slot = spec
         begin = time.monotonic()
         report, output = _mixed_turn(client, bot, session, group, member, [(file, url) for file, url, _ in files], slot)
+        after_http = time.monotonic()
         assert 'error' not in report, report
         entries = report['inputs']
         refs = [item['ref'] for item in entries]
@@ -1457,6 +1565,8 @@ def test_artifact_mixed_soak(
                 assert item['mode'] == ('native' if fixture.kind == 'scanned_pdf' else 'image'), item
         lifecycle = None
         inputs = report['inputs']
+        artifact = None
+        first = None
         if files:
             assert len(output) == 1, output
             exported = base64.b64decode(output[0]['base64'].split(';base64,')[-1], validate=True)
@@ -1473,14 +1583,17 @@ def test_artifact_mixed_soak(
                 time.sleep(0.05)
             else:
                 raise AssertionError((report['run_id'], 'completion not persisted'))
+        else:
+            assert not output and 'artifact_id' not in report, report
+        after_verify = time.monotonic()
+        if files:
             if accelerated:
                 lifecycle = {'artifact': artifact, 'expires_at': release_asset(artifact)}
                 read_exact(artifact, first)
             else:
                 discard(artifact)
                 lifecycle = {'artifact': artifact, 'tombstoned': True}
-        else:
-            assert not output and 'artifact_id' not in report, report
+        after_release = time.monotonic()
         if entries:
             # Change expiry only on IDs verified to belong to this owned run.
             # Accelerated mode leaves collection to the Core scheduler.
@@ -1501,7 +1614,15 @@ def test_artifact_mixed_soak(
                     0
                 ]['expires_at']
                 assert abs((dt.datetime.fromisoformat(str(found)) - due).total_seconds()) < 0.01, found
-        return time.monotonic() - begin, lifecycle, inputs
+        after_ttl = time.monotonic()
+        timings = {
+            'total_seconds': round(after_ttl - begin, 4),
+            'http_seconds': round(after_http - begin, 4),
+            'verify_seconds': round(after_verify - after_http, 4),
+            'release_seconds': round(after_release - after_verify, 4),
+            'ttl_update_seconds': round(after_ttl - after_release, 4),
+        }
+        return after_ttl - begin, lifecycle, inputs, timings
 
     def wave(number, count, phase):
         cases = [plan(number, slot, phase) for slot in range(count)]
@@ -1509,11 +1630,12 @@ def test_artifact_mixed_soak(
         totals['offered_bytes'] += offered
         totals['files'] += sum(len(case[5]) for case in cases)
         assert totals['offered_bytes'] + totals['probe_bytes'] <= profile['budgets']['offered_bytes']
+        wave_turn_timings = []
         with ThreadPoolExecutor(max_workers=count) as pool:
             for spec, future in zip(cases, [pool.submit(execute, spec) for spec in cases], strict=True):
                 turn_id, session, _group, member, kind, files, phase, _slot = spec
                 try:
-                    latency, lifecycle, inputs = future.result()
+                    latency, lifecycle, inputs, timings = future.result()
                 except Exception as error:
                     from httpx import TimeoutException
 
@@ -1526,8 +1648,13 @@ def test_artifact_mixed_soak(
                         file_source.mixed.pop(path, None)
                 counts[kind] += 1
                 durations[kind].append(latency)
+                turn_timing = {'turn': turn_id, 'kind': kind, 'session': session, **timings}
+                wave_turn_timings.append(turn_timing)
+                all_turn_timings.append(turn_timing)
                 if lifecycle:
                     totals['scheduled_ttl_outputs' if lifecycle.get('expires_at') else 'tombstoned_outputs'] += 1
+                    if len(reclaimed_sample_artifacts) < 4:
+                        reclaimed_sample_artifacts.append(lifecycle['artifact'])
                 totals['materialized_inputs_created'] += len(inputs)
                 for item in inputs:
                     totals[f'structured_{item["mode"]}_reads'] += 1
@@ -1539,6 +1666,7 @@ def test_artifact_mixed_soak(
                     member=member,
                     phase=phase,
                     latency_seconds=round(latency, 4),
+                    timings=timings,
                     bytes=sum(file.size for file, _, _ in files),
                     digests=[file.sha256 for file, _, _ in files],
                     lifecycle=lifecycle,
@@ -1549,6 +1677,7 @@ def test_artifact_mixed_soak(
         if not accelerated:
             totals['manual_gc_calls'] += 1
             totals['observer_collected'] += observer.gc()
+        return wave_turn_timings
 
     def sample(phase):
         topology = {
@@ -1612,8 +1741,15 @@ def test_artifact_mixed_soak(
         box_backend=config['box']['backend'],
     )
     try:
+        retained_artifact, retained_fixture = upload_probe('accelerated-retained' if accelerated else 'mixed-retained')
+        duplicate_artifact, _ = upload_probe('mixed-second-duplicate', principal=second, fixture=retained_fixture)
+        assert duplicate_artifact != retained_artifact
+        read_exact(retained_artifact, retained_fixture)
+        read_exact(duplicate_artifact, retained_fixture, principal=second)
+        assert_denied(retained_artifact, (second, foreign_workspace))
+        assert_denied(duplicate_artifact, (owner, foreign_workspace))
+
         if accelerated:
-            retained_artifact, retained_fixture = upload_probe('accelerated-retained')
             # Diagnostic comparisons need equal input prefixes even if one arm misses pace.
             timing_waves = int(os.environ.get('LANGBOT_SOAK_TIMING_WAVES', '0'))
             assert 0 <= timing_waves <= fast_load // fast_period
@@ -1622,22 +1758,41 @@ def test_artifact_mixed_soak(
             index = 0
             while index < timing_waves if timing_waves else elapsed() < fast_load:
                 begin = elapsed()
-                wave(index, parallel, 'accelerated-steady')
+                wave_turn_timings = wave(index, parallel, 'accelerated-steady')
+                after_wave = elapsed()
                 sample('accelerated-steady')
-                wave_seconds = elapsed() - begin
-                record('wave_timing', wave=index, seconds=round(wave_seconds, 4))
+                after_sample = elapsed()
+                wave_seconds = after_sample - begin
+                wave_record = _summarize_wave_timing(
+                    index,
+                    'accelerated-steady',
+                    wave_seconds=wave_seconds,
+                    wave_exec_seconds=after_wave - begin,
+                    sample_seconds=after_sample - after_wave,
+                    turn_timings=wave_turn_timings,
+                )
+                wave_records.append(wave_record)
+                last_wave_record = wave_record
+                record('wave_timing', **wave_record)
                 if not timing_waves:
-                    assert wave_seconds < fast_period, 'Accelerated offered pace exceeded'
+                    assert wave_seconds < fast_period, ('Accelerated offered pace exceeded', wave_record)
                 index += 1
                 if timing_waves == index:
-                    record('diagnostic_complete', waves=index, turns=sum(counts.values()))
+                    timing_summary = _aggregate_timing_summary(wave_records, all_turn_timings)
+                    record('diagnostic_complete', waves=index, turns=sum(counts.values()), **timing_summary)
                     discard(retained_artifact)
+                    discard(duplicate_artifact, principal=second)
                     return
                 wait_until(min(index * fast_period, fast_load), 'accelerated-steady')
             load_seconds = elapsed()
             record('offered_load_complete', seconds=load_seconds, turns=sum(counts.values()))
             read_exact(retained_artifact, retained_fixture)
+            assert_denied(retained_artifact, (second, foreign_workspace))
+            read_exact(duplicate_artifact, retained_fixture, principal=second)
+            assert_denied(duplicate_artifact, (owner, foreign_workspace))
             discard(retained_artifact)
+            read_exact(duplicate_artifact, retained_fixture, principal=second)
+            discard(duplicate_artifact, principal=second)
             drain_until = elapsed() + fast_drain
             while True:
                 store = sample('accelerated-drain')
@@ -1663,9 +1818,23 @@ def test_artifact_mixed_soak(
                 wave_times = []
                 for count in range(step['waves']):
                     begin = elapsed()
-                    wave(index, step['parallel'], phase)
+                    wave_turn_timings = wave(index, step['parallel'], phase)
+                    after_wave = elapsed()
                     sample(phase)
-                    wave_times.append(elapsed() - begin)
+                    after_sample = elapsed()
+                    wave_seconds = after_sample - begin
+                    wave_times.append(wave_seconds)
+                    wave_record = _summarize_wave_timing(
+                        index,
+                        phase,
+                        wave_seconds=wave_seconds,
+                        wave_exec_seconds=after_wave - begin,
+                        sample_seconds=after_sample - after_wave,
+                        turn_timings=wave_turn_timings,
+                    )
+                    wave_records.append(wave_record)
+                    last_wave_record = wave_record
+                    record('wave_timing', **wave_record)
                     index += 1
                     wait_until(phase_start + (count + 1) * step['period_seconds'], phase)
                 wall = elapsed() - phase_start
@@ -1680,9 +1849,28 @@ def test_artifact_mixed_soak(
                 }
                 staircase_windows.append(measurement)
                 record('phase', **measurement)
+            read_exact(retained_artifact, retained_fixture)
+            assert_denied(retained_artifact, (second, foreign_workspace))
+            read_exact(duplicate_artifact, retained_fixture, principal=second)
+            assert_denied(duplicate_artifact, (owner, foreign_workspace))
+            discard(retained_artifact)
+            read_exact(duplicate_artifact, retained_fixture, principal=second)
+            discard(duplicate_artifact, principal=second)
+            totals['manual_gc_calls'] += 1
+            totals['observer_collected'] += observer.gc()
         store = sample('final')
         assert store['artifacts'] == store['artifact_references'] == store['content_objects'] == 0, store
         assert store.get('object_count', 0) == 0, store
+        reclaimed_checked = [retained_artifact, duplicate_artifact, *reclaimed_sample_artifacts]
+        for ref in reclaimed_checked:
+            assert_denied(ref, (owner, second, foreign_workspace))
+        isolation_checks = {
+            'same_workspace_different_principal_denied': True,
+            'cross_workspace_denied': True,
+            'same_bytes_distinct_owner_survived_release': True,
+            'reclaimed_artifacts_denied_count': len(reclaimed_checked),
+        }
+        record('isolation_verified', **isolation_checks)
         totals['materialized_inputs_reclaimed'] = totals['materialized_inputs_created']
         assert totals['materialized_inputs_created'] == totals['files'] > 0, totals
         assert totals['materialized_inputs_reclaimed'] > 0
@@ -1690,6 +1878,7 @@ def test_artifact_mixed_soak(
         assert all(counts[kind] for kind in _MIXED_KINDS)
         assert totals['old_body_reuploads'] >= 1 and totals['group_turns'] and totals['person_turns'], totals
         latency = {kind: _percentiles(durations[kind]) for kind in _MIXED_KINDS}
+        timing_summary = _aggregate_timing_summary(wave_records, all_turn_timings)
         accelerated_growth = {}
         if accelerated:
             width = max(3, len(steady_windows) // 10)
@@ -1709,6 +1898,8 @@ def test_artifact_mixed_soak(
             'counts': counts,
             'errors': errors,
             'latency_seconds': latency,
+            **timing_summary,
+            'isolation_checks': isolation_checks,
             'totals': totals,
             'sessions': len(sessions),
             'source_file_gets': file_source.mixed_requests,
@@ -1728,5 +1919,14 @@ def test_artifact_mixed_soak(
         (evidence / (prefix + '.summary.json')).write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
         record('completed', **summary)
     except BaseException as error:
-        record('failed', error=repr(error), counts=counts, errors=errors, totals=totals)
+        record(
+            'failed',
+            error=repr(error),
+            counts=counts,
+            errors=errors,
+            totals=totals,
+            last_wave_timing=last_wave_record,
+        )
         raise
+    finally:
+        observer.remove_foreign_workspace(other_workspace)

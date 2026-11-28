@@ -12,6 +12,7 @@ from queue import Queue
 import shutil
 import textwrap
 import threading
+import time
 
 import pytest
 import yaml
@@ -216,6 +217,40 @@ def _run_turn(client, agent, headers, conversation, files=(), *, stage=None, **c
     return report
 
 
+def _assert_artifact_denied(client, ref, principal_headers):
+    for method, suffix in (
+        ('GET', ''),
+        ('GET', '/content'),
+        ('GET', '/read'),
+        ('POST', '/retain'),
+        ('POST', '/release'),
+        ('DELETE', ''),
+    ):
+        response = client.request(method, _url(ref, suffix), headers=principal_headers)
+        assert response.status_code == 404, (ref, method, suffix, response.status_code, response.text)
+
+
+def _run_cancelled_turn(client, agent, headers, conversation, files=(), *, stage, **command):
+    with client.stream(
+        'POST',
+        f'/api/v1/agents/{agent}/debug/stream',
+        headers=headers,
+        json={'text': json.dumps(command), 'conversation_id': conversation, 'artifact_ids': list(files)},
+        timeout=65,
+    ) as response:
+        assert response.status_code == 200, response.read()
+        for line in response.iter_lines():
+            if not line:
+                continue
+            frame = json.loads(line)
+            assert frame.get('kind') != 'error', frame
+            seen = soak._report(frame, 'MIXED_STAGE ')
+            if seen is not None:
+                stage.put(seen)
+                return seen
+    raise AssertionError('Cancelled turn exited before MIXED_STAGE')
+
+
 def _assert_media(report, fixtures):
     records = {value['id']: value for value in report['attachments']}
     assert len(records) == len(report['attachments']) == len(fixtures), report
@@ -355,6 +390,69 @@ def test_real_mixed_media_sessions_and_published_output(
     assert client.get(_url(shared), headers=headers).status_code == 404
     assert client.get(_url(duplicate, '/content'), headers=second).content == shared_media.data
 
+    # Cancelling session A mid-run drops A's pin without affecting session B's
+    # active reference to the same shared artifact, even under expiry + GC.
+    cancel_shared = upload(shared_media)
+    _data(client.post(_url(cancel_shared, '/retain'), headers=headers))
+    cancel_stages = Queue()
+    cancel_barrier = threading.Barrier(2)
+
+    def start_cancel():
+        cancel_barrier.wait(timeout=10)
+        return _run_cancelled_turn(
+            client,
+            agent,
+            headers,
+            'alpha-cancel',
+            [cancel_shared],
+            stage=cancel_stages,
+            hold=10,
+            shared=cancel_shared,
+        )
+
+    def start_survivor():
+        cancel_barrier.wait(timeout=10)
+        return _run_turn(
+            client,
+            agent,
+            headers,
+            'beta-survivor',
+            [cancel_shared],
+            stage=cancel_stages,
+            hold=8,
+            shared=cancel_shared,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        cancelled_future = pool.submit(start_cancel)
+        survivor_future = pool.submit(start_survivor)
+        staged_pair = [cancel_stages.get(timeout=25) for _ in range(2)]
+        cancelled_stage = cancelled_future.result(timeout=25)
+        cancelled_run_id = cancelled_stage['run_id']
+        survivor_run_id = next(row['run_id'] for row in staged_pair if row['run_id'] != cancelled_run_id)
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            row = observer.query('SELECT status FROM agent_run WHERE run_id=:run', {'run': cancelled_run_id})[0]
+            if row['status'] in {'cancelled', 'failed', 'timeout'}:
+                break
+            time.sleep(0.05)
+        assert row['status'] in {'cancelled', 'failed', 'timeout'}, row
+        assert _data(client.post(_url(cancel_shared, '/release'), headers=headers))['lifecycle'] == 'temporary'
+        observer.accelerate_expiry([cancel_shared])
+        observer.gc()
+        survivor_pins = observer.query(
+            "SELECT holder_id FROM artifact_references WHERE artifact_id=:ref AND holder_type='run_input'",
+            {'ref': cancel_shared},
+        )
+        assert {row['holder_id'] for row in survivor_pins} == {survivor_run_id}, survivor_pins
+        assert client.get(_url(cancel_shared, '/content'), headers=headers).status_code == 410
+        survivor_report = survivor_future.result(timeout=25)
+    _assert_media(survivor_report, {cancel_shared: shared_media})
+    assert survivor_report['shared_after_gc'] == {'sha256': shared_media.sha256, 'size': len(shared_media.data)}
+    observer.gc()
+    assert client.get(_url(cancel_shared), headers=headers).status_code == 404
+    assert client.get(_url(duplicate, '/content'), headers=second).content == shared_media.data
+
     old_ref = next(iter(groups[0]))
     valid_pdf = next(media for media in groups[0].values() if media.kind == 'text_pdf')
     damaged = [
@@ -390,7 +488,7 @@ def test_real_mixed_media_sessions_and_published_output(
     assert meta['lifecycle'] == 'persistent' and meta['digest'] == sha256(expected).hexdigest()
     assert client.get(_url(output, '/content'), headers=headers).content == expected
     assert client.delete(_url(output), headers=headers).status_code == 409
-    assert client.get(_url(output, '/content'), headers=second).status_code == 404
+    _assert_artifact_denied(client, output, second)
     cross_run = _post_refs(client, agent, headers, 'alpha', [duplicate])
     assert cross_run.status_code == 404 and cross_run.json()['code'] == 'resource_not_found', cross_run.text
     with client.stream(
@@ -410,8 +508,8 @@ def test_real_mixed_media_sessions_and_published_output(
     try:
         foreign = soak._headers(second_token, other)
         assert _data(client.get('/api/v1/workspaces/current', headers=foreign))['workspace']['uuid'] == other
-        assert client.get(_url(duplicate, '/content'), headers=foreign).status_code == 404
-        assert client.get(_url(output, '/content'), headers=foreign).status_code == 404
+        _assert_artifact_denied(client, duplicate, foreign)
+        _assert_artifact_denied(client, output, foreign)
     finally:
         observer.remove_foreign_workspace(other)
 

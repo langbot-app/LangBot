@@ -66,7 +66,13 @@ test-owned rows to two minutes on the disposable database. Core's real cleanup
 scheduler runs every 20 seconds with four turns offered every five seconds
 for four hours of active load, plus a drain of up to six minutes. Live
 references must stay correct during multiple expiry rotations, not just
-after requests stop. Keep the journal
+after requests stop. Each `turn` and `wave_timing` journal record separates
+monotonic business HTTP, byte/ledger verification, release/discard, TTL update
+and post-wave sampling durations (`wave_latency_seconds`,
+`stage_latency_seconds` and `slowest_wave` in the summary) while keeping the
+original five-second wave threshold intact; the harness also verifies
+same-workspace multi-principal and cross-workspace denial (`isolation_checks`)
+before and after drain without disturbing timed waves. Keep the journal
 and the summary alongside the mandatory passing JUnit case. Neither a
 shortened smoke profile nor an accelerated pass establishes the 24-hour
 native TTL. Failed/missing/short evidence must not be called a pass.

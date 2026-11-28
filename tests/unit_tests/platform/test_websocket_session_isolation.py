@@ -1,10 +1,15 @@
 """Regression tests for isolated embed-widget conversations."""
 
 import asyncio
+import base64
 import contextvars
+import hashlib
+import io
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
+from PIL import Image as PILImage
+from pypdf import PdfReader
 import pytest
 
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
@@ -18,6 +23,7 @@ from langbot.pkg.platform.sources.websocket_manager import (
     WebSocketScope,
     is_valid_session_id,
 )
+from tests.utils.artifact_media import make_artifact_media
 
 
 SCOPE_A = WebSocketScope('instance-a', 'workspace-a', 1)
@@ -468,41 +474,164 @@ async def test_attachment_key_must_belong_to_connection_upload_scope():
         pipeline_uuid='pipeline-1',
         session_type='person',
     )
+    png, jpeg, text_pdf_media, scanned_pdf_media = make_artifact_media('ws-scope-a')
+    prefix = f'v1/{SCOPE_A.instance_uuid}/{SCOPE_A.workspace_uuid}/{SCOPE_A.placement_generation}/upload_image/'
+    stored_objects = {
+        prefix + png.filename: png.data,
+        prefix + jpeg.filename: jpeg.data,
+        prefix + text_pdf_media.filename: text_pdf_media.data,
+        prefix + scanned_pdf_media.filename: scanned_pdf_media.data,
+    }
+
+    async def _load_scoped(_ctx, key, *, expected_owner_type):
+        assert expected_owner_type == 'upload_image'
+        return stored_objects[key]
+
     storage_mgr = Mock()
-    storage_mgr.scoped_prefix.return_value = 'v1/current/upload_image/'
-    storage_mgr.is_scoped_object_key.return_value = True
-    storage_mgr.load_scoped_object_key = AsyncMock(return_value=b'image')
+    storage_mgr.scoped_prefix.return_value = prefix
+    storage_mgr.is_scoped_object_key.side_effect = (
+        lambda key, *, expected_owner_type: expected_owner_type == 'upload_image' and key.startswith(prefix)
+    )
+    storage_mgr.load_scoped_object_key = AsyncMock(side_effect=_load_scoped)
     storage_mgr.delete_scoped_object_key = AsyncMock()
     adapter = WebSocketAdapter.model_construct(
         ap=Mock(storage_mgr=storage_mgr),
         logger=_adapter_logger(),
     )
-    message_chain = [{'type': 'Image', 'path': 'v1/current/upload_image/key.png'}]
+    message_chain = [
+        {'type': 'Image', 'path': prefix + png.filename},
+        {'type': 'Image', 'path': prefix + jpeg.filename},
+        {'type': 'File', 'path': prefix + text_pdf_media.filename, 'name': text_pdf_media.filename},
+        {'type': 'File', 'path': prefix + scanned_pdf_media.filename, 'name': scanned_pdf_media.filename},
+    ]
 
     await adapter._process_image_components(connection, message_chain)
 
-    assert message_chain[0]['base64'].startswith('data:image/png;base64,')
-    assert message_chain[0]['path'] == 'v1/current/upload_image/key.png'
+    expected_items = (png, jpeg, text_pdf_media, scanned_pdf_media)
+    for component, media in zip(message_chain, expected_items, strict=True):
+        header, encoded = component['base64'].split(',', 1)
+        assert header == f'data:{media.mime_type};base64'
+        decoded = base64.b64decode(encoded, validate=True)
+        assert decoded == media.data
+        assert hashlib.sha256(decoded).hexdigest() == media.sha256
+        if media.kind in {'png', 'jpeg'}:
+            with PILImage.open(io.BytesIO(decoded)) as image:
+                assert image.format == media.kind.upper()
+            assert component['path'] == prefix + media.filename
+        else:
+            reader = PdfReader(io.BytesIO(decoded), strict=True)
+            assert len(reader.pages) == 1
+            if media.kind == 'text_pdf':
+                assert reader.pages[0].extract_text().strip() == media.marker
+            else:
+                assert not reader.pages[0].extract_text().strip()
+                assert len(reader.pages[0].images) == 1
+            assert component['path'] == ''
+
+    history = WebSocketAdapter._history_message_chain(message_chain)
+    assert history[0] == {'type': 'Image', 'path': prefix + png.filename, 'base64': ''}
+    assert history[1] == {'type': 'Image', 'path': prefix + jpeg.filename, 'base64': ''}
+    assert all(media.marker not in str(history) for media in expected_items)
+
     storage_mgr.scoped_prefix.assert_called_once_with(
         connection.execution_context,
         owner_type='upload_image',
     )
-    storage_mgr.is_scoped_object_key.assert_called_once_with(
-        'v1/current/upload_image/key.png',
-        expected_owner_type='upload_image',
-    )
-    storage_mgr.load_scoped_object_key.assert_awaited_once_with(
-        connection.execution_context,
-        'v1/current/upload_image/key.png',
-        expected_owner_type='upload_image',
-    )
-    storage_mgr.delete_scoped_object_key.assert_not_awaited()
+    assert storage_mgr.load_scoped_object_key.await_count == 4
+    assert storage_mgr.delete_scoped_object_key.await_count == 2
+    deleted_keys = [call.args[1] for call in storage_mgr.delete_scoped_object_key.await_args_list]
+    assert deleted_keys == [prefix + text_pdf_media.filename, prefix + scanned_pdf_media.filename]
 
     with pytest.raises(ValueError, match='does not belong'):
         await adapter._process_image_components(
             connection,
             [{'type': 'File', 'path': 'v1/other/upload/key.txt'}],
         )
+
+
+@pytest.mark.asyncio
+async def test_attachment_scope_isolates_cross_workspace_and_same_filename_media():
+    manager = WebSocketConnectionManager()
+    conn_a = await manager.add_connection(
+        websocket=Mock(),
+        scope=SCOPE_A,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+        session_id='session-a',
+    )
+    conn_b = await manager.add_connection(
+        websocket=Mock(),
+        scope=SCOPE_B,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+        session_id='session-b',
+    )
+    media_a = {item.kind: item for item in make_artifact_media('ws-alpha')}
+    media_b = {item.kind: item for item in make_artifact_media('ws-beta')}
+    assert media_a['png'].filename == media_b['png'].filename
+    assert media_a['png'].sha256 != media_b['png'].sha256
+    assert media_a['text_pdf'].filename == media_b['text_pdf'].filename
+    assert media_a['text_pdf'].sha256 != media_b['text_pdf'].sha256
+
+    prefix_a = f'v1/{SCOPE_A.instance_uuid}/{SCOPE_A.workspace_uuid}/{SCOPE_A.placement_generation}/upload_image/'
+    prefix_b = f'v1/{SCOPE_B.instance_uuid}/{SCOPE_B.workspace_uuid}/{SCOPE_B.placement_generation}/upload_image/'
+    # Include both same-filename/different-bytes and identical-bytes/different-workspace keys.
+    objects = {
+        prefix_a + 'image.png': media_a['png'].data,
+        prefix_a + 'reference.pdf': media_a['text_pdf'].data,
+        prefix_b + 'image.png': media_b['png'].data,
+        prefix_b + 'reference.pdf': media_b['text_pdf'].data,
+        prefix_b + 'shared-copy.png': media_a['png'].data,
+    }
+
+    def _prefix(ctx, *, owner_type):
+        return f'v1/{ctx.instance_uuid}/{ctx.workspace_uuid}/{ctx.placement_generation}/{owner_type}/'
+
+    async def _load(ctx, key, *, expected_owner_type):
+        expected = _prefix(ctx, owner_type=expected_owner_type)
+        if not key.startswith(expected):
+            raise PermissionError('cross-workspace read denied')
+        return objects[key]
+
+    storage_mgr = Mock()
+    storage_mgr.scoped_prefix.side_effect = _prefix
+    storage_mgr.is_scoped_object_key.side_effect = lambda key, *, expected_owner_type: f'/{expected_owner_type}/' in key
+    storage_mgr.load_scoped_object_key = AsyncMock(side_effect=_load)
+    storage_mgr.delete_scoped_object_key = AsyncMock()
+    adapter = WebSocketAdapter.model_construct(
+        ap=Mock(storage_mgr=storage_mgr),
+        logger=_adapter_logger(),
+    )
+
+    # Connection A cannot read Connection B's keys, whether same filename or identical bytes.
+    for foreign_component in (
+        {'type': 'Image', 'path': prefix_b + 'image.png'},
+        {'type': 'File', 'path': prefix_b + 'reference.pdf'},
+        {'type': 'Image', 'path': prefix_b + 'shared-copy.png'},
+    ):
+        with pytest.raises(ValueError, match='does not belong'):
+            await adapter._process_image_components(conn_a, [foreign_component])
+    storage_mgr.load_scoped_object_key.assert_not_awaited()
+    storage_mgr.delete_scoped_object_key.assert_not_awaited()
+
+    chain_a = [
+        {'type': 'Image', 'path': prefix_a + 'image.png'},
+        {'type': 'File', 'path': prefix_a + 'reference.pdf'},
+    ]
+    chain_b = [
+        {'type': 'Image', 'path': prefix_b + 'image.png'},
+        {'type': 'File', 'path': prefix_b + 'reference.pdf'},
+    ]
+    await adapter._process_image_components(conn_a, chain_a)
+    await adapter._process_image_components(conn_b, chain_b)
+
+    assert base64.b64decode(chain_a[0]['base64'].split(',', 1)[1], validate=True) == media_a['png'].data
+    assert base64.b64decode(chain_b[0]['base64'].split(',', 1)[1], validate=True) == media_b['png'].data
+    pdf_a = PdfReader(io.BytesIO(base64.b64decode(chain_a[1]['base64'].split(',', 1)[1], validate=True)), strict=True)
+    pdf_b = PdfReader(io.BytesIO(base64.b64decode(chain_b[1]['base64'].split(',', 1)[1], validate=True)), strict=True)
+    assert pdf_a.pages[0].extract_text().strip() == media_a['text_pdf'].marker
+    assert pdf_b.pages[0].extract_text().strip() == media_b['text_pdf'].marker
+    assert media_a['text_pdf'].marker != media_b['text_pdf'].marker
 
 
 def test_history_and_reset_are_scoped_to_browser_session():
