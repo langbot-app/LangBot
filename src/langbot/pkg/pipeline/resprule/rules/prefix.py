@@ -17,10 +17,17 @@ class PrefixRule(rule_model.GroupRespondRule):
 
         for prefix in prefixes:
             if message_text.startswith(prefix):
-                # 查找第一个plain元素
+                # Remove the prefix from the leading text only, and leave later text untouched.
+                remaining = len(prefix)
                 for me in message_chain:
+                    if remaining <= 0:
+                        break
                     if isinstance(me, platform_message.Plain):
-                        me.text = me.text[len(prefix) :]
+                        cut = min(remaining, len(me.text))
+                        me.text = me.text[cut:]
+                        remaining -= cut
+                    elif not isinstance(me, platform_message.Source):
+                        break
 
                 return entities.RuleJudgeResult(
                     matching=True,
