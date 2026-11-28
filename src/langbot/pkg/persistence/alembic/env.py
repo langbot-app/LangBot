@@ -34,7 +34,6 @@ from langbot.pkg.entity.persistence import (
     rag,  # noqa: F401
     transcript,  # noqa: F401
     user,  # noqa: F401
-    vector,  # noqa: F401
     webhook,  # noqa: F401
 )
 
