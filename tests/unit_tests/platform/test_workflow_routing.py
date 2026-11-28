@@ -79,7 +79,7 @@ async def test_binding_cannot_select_invisible_workflow():
     bot.ap.workflow_service.get_workflow.assert_awaited_once_with(TEST_CONTEXT, 'workflow-1')
 
 
-@pytest.mark.parametrize('result', ['drop', 'intercept', 'block', 'send'])
+@pytest.mark.parametrize('result', ['drop', 'intercept', 'mute', 'rewrite', 'block', 'send'])
 async def test_workflow_policy_and_hooks(result):
     bot, binding = workflow_bot({'is_enabled': True})
     event = message_received_event()
@@ -97,8 +97,17 @@ async def test_workflow_policy_and_hooks(result):
     async def hook(payload, plugins):
         assert active and plugins == ['test/listener']
         if type(payload).__name__ == 'NormalMessageResponded':
-            bot.adapter.reply_message.assert_awaited_once()
-            assert payload.response_text == 'prepared'
+            # Plugins see the raw reply before the outbound policy, as on the Agent path.
+            bot.adapter.reply_message.assert_not_awaited()
+            policy.prepare_reply_chain.assert_not_awaited()
+            assert payload.response_text == str(event.message_chain)
+            return SimpleNamespace(
+                event=SimpleNamespace(
+                    reply_message_chain=None,
+                    response_text='rewritten' if result == 'rewrite' else payload.response_text,
+                ),
+                is_prevented_default=lambda: result == 'mute',
+            )
         return SimpleNamespace(
             event=SimpleNamespace(user_message_alter='changed', reply_message_chain=None),
             is_prevented_default=lambda: result == 'intercept',
@@ -119,7 +128,7 @@ async def test_workflow_policy_and_hooks(result):
     async def execute(context, target, *, message_context, runtime, **kwargs):
         assert active and message_context.message_content == 'changed'
         reason = await runtime.reply(event.message_chain)
-        assert reason == ('outbound_block' if result == 'block' else None)
+        assert reason == {'block': 'outbound_block', 'mute': 'plugin_prevented'}.get(result)
 
     bot.ap.workflow_service.execute_workflow.side_effect = execute
     await bot._dispatch_eba_event_to_processor(event, bot.adapter, binding)
@@ -130,9 +139,13 @@ async def test_workflow_policy_and_hooks(result):
         bot.ap.plugin_connector.emit_event.assert_not_awaited()
     elif result == 'intercept':
         assert (trace['target_type'], trace['details']['hook']) == ('plugin', 'NormalMessageReceived')
+    elif result == 'mute':
+        policy.prepare_reply_chain.assert_not_awaited()
+    elif result == 'rewrite':
+        assert str(policy.prepare_reply_chain.call_args.args[1]) == 'rewritten'
     if result in ('drop', 'intercept'):
         bot.ap.workflow_service.execute_workflow.assert_not_awaited()
-    if result != 'send':
+    if result not in ('send', 'rewrite'):
         bot.adapter.reply_message.assert_not_awaited()
     else:
         bot.adapter.reply_message.assert_awaited_once_with(

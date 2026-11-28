@@ -2249,6 +2249,13 @@ class RuntimeBot:
                 if query is None:
                     await adapter.reply_message(event.to_legacy_event(), chain, quote_origin=quote)
                     return
+                from ..agent.runner.reply_stream import apply_normal_message_responded
+
+                # Same order as the Agent reply path: plugins see the raw reply
+                # first, then the outbound policy shapes what is delivered.
+                chain = await apply_normal_message_responded(query, chain)
+                if chain is None:
+                    return 'plugin_prevented'
                 policy = query._message_policy
                 chain = await policy.prepare_reply_chain(query, chain)
                 if chain is None:
@@ -2256,9 +2263,6 @@ class RuntimeBot:
                 await adapter.reply_message(
                     message_source=query.message_event, message=chain, quote_origin=quote or policy.quote_origin
                 )
-                from ..agent.runner.reply_stream import emit_normal_message_responded
-
-                await emit_normal_message_responded(query, chain)
 
             runtime = WorkflowRuntime(self.execution_context, reply_sender, adapter.send_message)
             if altered is not None and not isinstance(altered, str):

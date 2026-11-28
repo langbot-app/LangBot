@@ -16,7 +16,8 @@ replies. Resource lookups and provider calls use that execution context.
 
 EBA dispatch admits the entry query under the effective bot or route policy,
 then emits the normal-message hook before building `MessageContext`. Reply nodes
-apply outbound policy and notify listeners after delivery; proactive sends to an
+emit `NormalMessageResponded` (plugins may rewrite or suppress the reply), then
+apply outbound policy before delivery; proactive sends to an
 explicit target do not use that policy. Route traces distinguish
 incompatible events, unavailable processors and failed executions. The route
 scope and processing indicator surround execution. Non-message routes are
