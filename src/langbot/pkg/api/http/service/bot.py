@@ -173,7 +173,7 @@ class BotService:
             return target_kind
         if target_type == 'discard':
             return 'discard'
-        if target_type in {'agent', 'pipeline', 'event_processor'}:
+        if target_type in {'agent', 'pipeline', 'event_processor', 'workflow'}:
             return str(target_type)
         return None
 
@@ -488,6 +488,27 @@ class BotService:
                 diagnostic_steps=diagnostic_steps,
             )
 
+        if target_type == 'workflow':
+            workflow = await self.ap.workflow_service.get_workflow(tenant_context, target_uuid)
+            from ....workflow.triggers import accepts_event
+
+            compatible = workflow is not None and accepts_event(workflow, event_type)
+            found = bool(workflow and workflow.get('is_enabled', True))
+            return self._diagnostic_result(
+                matched=found and compatible,
+                binding=selected_binding,
+                target_name=workflow.get('name') if workflow else None,
+                failure_code=(
+                    self.FAILURE_PROCESSOR_NOT_FOUND
+                    if not found
+                    else self.FAILURE_PROCESSOR_INCOMPATIBLE
+                    if not compatible
+                    else None
+                ),
+                reason='Workflow route matched' if found and compatible else 'Workflow unavailable or incompatible',
+                diagnostic_steps=diagnostic_steps,
+            )
+
         if target_type in {'agent', 'event_processor'}:
             agent = await self._get_agent_entity(tenant_context, target_uuid)
             if agent is None or getattr(agent, 'kind', 'agent') != target_type:
@@ -663,6 +684,14 @@ class BotService:
                 )
                 if result.first() is None:
                     raise ValueError('Pipeline not found')
+            elif target_type == 'workflow':
+                from ....workflow.triggers import accepts_route
+
+                workflow = await self.ap.workflow_service.get_workflow(context, target_uuid)
+                if workflow is None:
+                    raise ValueError('Workflow not found')
+                if not accepts_route(workflow, event_pattern):
+                    raise ValueError('Workflow has no trigger for this event')
             elif target_type == 'agent':
                 result = await self.ap.persistence_mgr.execute_async(
                     scope_statement(
@@ -863,7 +892,7 @@ class BotService:
                 match = await live_bot._match_plugin_command(sample)
                 if match:
                     command, text = f'{match[0]}/{match[1]}', match[2]
-        if not command and binding.get('target_type') not in {'agent', 'pipeline'}:
+        if not command and binding.get('target_type') not in {'agent', 'pipeline', 'workflow'}:
             return None, None
         async with runtime.admit(query, text, preview=True) as blocked:
             return blocked, command
@@ -1323,7 +1352,7 @@ class BotService:
         context: TenantContext,
         bot_uuid: str,
         expected_binding: dict,
-        target_type: typing.Literal['agent', 'pipeline'],
+        target_type: typing.Literal['agent', 'pipeline', 'workflow'],
         target_uuid: str,
         dry_run: bool = False,
     ) -> dict:
@@ -1331,7 +1360,7 @@ class BotService:
         binding_id = expected_binding.get('id')
         if not isinstance(binding_id, str) or not binding_id or not target_uuid.strip():
             raise ValueError('A binding ID and target UUID are required')
-        if target_type not in {'agent', 'pipeline'}:
+        if target_type not in {'agent', 'pipeline', 'workflow'}:
             raise ValueError('Unsupported event binding target type')
         model = persistence_bot.Bot
         # Compare the database representation in SQL. PostgreSQL JSON has no

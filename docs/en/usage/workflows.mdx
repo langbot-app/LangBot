@@ -1,0 +1,71 @@
+---
+title: "Workflows"
+description: "Handle messages, commands, schedules and platform events with fixed steps, without writing a plugin."
+---
+
+A workflow is a processor next to Chats, Agents and plugin processors. When a message (or a command, schedule, platform event or webhook) arrives, it runs the steps you arranged: classify, call a model or an API, remember something, then reply. Many things that used to need a plugin, such as weather lookups, daily fortunes, keyword alerts, scheduled pushes, welcome messages and sign-in leaderboards, can be built as workflows.
+
+## Create a workflow
+
+1. Open **Processors**, click **Create** and choose **Workflow**.
+2. Start from a template: **Blank**, **Route by intent**, **Keyword reply** or **Answer from an API**.
+3. The editor shows **Test run** on the left and **Steps** on the right.
+
+## Arrange steps
+
+- Steps are laid out top to bottom automatically. Every workflow starts at the **Start** step.
+- Click **+** below any step to add the next one. Inserting between two steps moves the later step under the new one.
+- **Classify** and **Condition** grow a branch per category or case, plus an **Other** branch.
+- Click a step to edit it on the right. To use an earlier result, click **{ }** in a field and pick it, e.g. "Start · Text" or "Look up order · Response JSON". Gray values come from the last test run.
+- Steps with problems (no model selected, a reference to a result that does not exist) are marked red. After saving, the number of problems appears next to the title.
+
+## Triggers
+
+Click the **Start** step to set triggers. A workflow can have several:
+
+| Trigger | Notes |
+| --- | --- |
+| Message | In a bot's **event routes**, point `message.received` at the workflow. The bot's access rules, rate limits and output settings still apply. |
+| Command | For example `/weather Beijing`. Set aliases, arguments (split by spaces, the last one takes the rest), admins only, and which bots offer it. Commands are listed in `/help` with system and plugin commands; system commands win name clashes, then plugin commands. A missing argument gets a usage reply. |
+| Schedule | Every day, every week, every N minutes or a cron expression, in the workflow time zone. Choose the bot that sends and the chats to send to; each chat gets its own run and **Reply** goes to that chat. |
+| Platform event | Every standard event: messages edited, recalled or reacted to; members joining, leaving or muted and group info changes; friend requests, new and removed friends; the bot invited to, removed from or muted in a group; feedback; plus platform-specific events (such as WeCom customer service sessions). Tick a whole group (for example "Groups · All"); each event shows which of your bots send it. Event fields such as "Start · Event · Member name" or the request ID can be inserted directly. Also point these events at the workflow in the bot's event routes; a route lists only workflows that handle its event. |
+| Webhook | Another system `POST`s a JSON object to the generated URL; read it as "Start · Request body". The URL contains a secret, so keep it private. |
+
+## Steps
+
+| Group | Step | Use |
+| --- | --- | --- |
+| AI | Model reply | Generate text from a prompt, optionally with the last 10 turns and the message's images |
+| AI | Classify | Branch by what the user wants |
+| AI | Extract | Pull fields such as an order number or a city |
+| AI | Knowledge search | Find related passages in a knowledge base |
+| AI | Text to speech / Speech to text | Produce a voice message, or transcribe one |
+| Logic & data | Condition | Branch on rules (contains, equals, greater than, regex…) without expressions |
+| Logic & data | Random | Pick one, a random number, or the same pick per person per day (daily fortune) |
+| Logic & data | Remember | Set, add, append or remove values for this run, each user, each group or the whole workflow: sign-ins, daily limits, leaderboards |
+| Logic & data | Chat history | Recent messages of this conversation or group, e.g. for summaries |
+| Logic & data | Code | Python in the sandbox (up to 10 seconds); needs Box |
+| Actions | Reply | Reply to the sender, optionally with an image or voice. Quoting and @mentions follow the bot's message policy |
+| Actions | Send to a chat | Send to a group or person through this or another bot |
+| Actions | HTTP request | Call an HTTP service and get the status, body and JSON. Internal addresses are blocked |
+| Actions | Platform action | The same platform actions Agents use. "This message or event" needs no IDs: recall this message, mute or remove this member, accept or reject this friend request or group invite, look up the sender or this group. Every other standard platform API (messages, groups, moderation, users and friends, files) runs on the IDs you fill in, and adapter-specific actions are available too. The picker shows which of your bots support an action; the step fails where the platform lacks it |
+| Actions | Hand off | Let a Chat, Agent or another workflow take the message and reply; nothing can follow it |
+
+**Model reply**, **HTTP request** and **Platform action** can continue with an empty result on failure (under "More settings").
+
+## Test runs and run history
+
+- **Test run** uses the steps currently on the canvas, including unsaved changes. Replies only show there and are not sent to any bot. Steps that ran turn green with their duration, skipped branches turn gray, and clicking a step shows its input and output.
+- Type `/command arguments` to test a command trigger.
+- When the workflow listens to platform events, switch to **Event**, pick an event, edit the sample data and click **Simulate event**. As in Agent debugging, platform actions are simulated and never reach a platform.
+- The **Runs** tab lists every run with each step's input, output and errors. Message runs also appear in the Dashboard's execution records.
+
+## Advanced: templates
+
+Inserted variables look like `{{ step_id.result }}`. Remembered values are `{{ memory.user.name }}`, where the scope is `run`, `user`, `group` or `workflow`. Templates use sandboxed Jinja: `{% for item in http_1.json.items %}…{% endfor %}` formats lists, and the filters `length`, `join`, `default`, `truncate`, `date`, `random` and `json` are available.
+
+## Limits
+
+- Steps form a tree: each step has one previous step, branches never merge, and there are no loops.
+- A run lasts at most 300 seconds.
+- The **Code** step needs the Box sandbox enabled on the instance.

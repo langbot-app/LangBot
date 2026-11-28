@@ -6,7 +6,11 @@ import type {
   ExecutionRow,
 } from '@/app/infra/entities/api/monitoring-executions';
 import { cn } from '@/lib/utils';
-import { pluginHandlerName, policyItemLabel } from './ExecutionTable';
+import {
+  pluginHandlerName,
+  policyItemLabel,
+  useWorkflowName,
+} from './ExecutionTable';
 
 type StepState = 'ok' | 'blocked' | 'denied' | 'failed' | 'skipped';
 
@@ -99,6 +103,7 @@ function buildSteps(
   record: ExecutionRow,
   ingress: ExecutionDetailItem,
   t: TFunction,
+  workflowName?: (uuid: string) => string | undefined,
 ): Step[] {
   const metadata = ingress.metadata ?? {};
   const routes = (
@@ -197,6 +202,7 @@ function buildSteps(
             ? T('discarded')
             : T('handledBy', {
                 target:
+                  (target === 'workflow' ? workflowName?.(name) : undefined) ||
                   record.target_name ||
                   record.pipeline_name ||
                   record.runner_id ||
@@ -259,9 +265,10 @@ export default function PolicyTimeline({
   inputs: ExecutionDetailItem[] | undefined;
 }) {
   const { t } = useTranslation();
+  const workflowName = useWorkflowName();
   const ingress = policyIngress(inputs);
   if (!ingress) return null;
-  const steps = buildSteps(record, ingress, t);
+  const steps = buildSteps(record, ingress, t, workflowName);
   return (
     <section
       className="space-y-2 rounded-lg border p-3"

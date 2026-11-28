@@ -39,6 +39,42 @@ class _Reply:
     result: dict | None = None
 
 
+async def emit_normal_message_responded(query, chain):
+    session = query.session or provider_session.Session(
+        launcher_type=query.launcher_type,
+        launcher_id=query.launcher_id,
+        sender_id=query.sender_id,
+        bot_uuid=query.bot_uuid,
+    )
+    event = plugin_events.NormalMessageResponded(
+        query=query,
+        launcher_type=query.launcher_type.value,
+        launcher_id=query.launcher_id,
+        sender_id=query.sender_id,
+        session=session,
+        prefix='',
+        response_text=str(chain),
+        finish_reason='stop',
+        funcs_called=[],
+    )
+    return event, await query._message_policy.ap.plugin_connector.emit_event(event, query._listener_plugins)
+
+
+async def apply_normal_message_responded(query, chain):
+    """Fire NormalMessageResponded before delivery and return the chain plugins settled on.
+
+    None means a plugin prevented the default reply.
+    """
+    event, ctx = await emit_normal_message_responded(query, chain)
+    if ctx.event.reply_message_chain is not None:
+        return ctx.event.reply_message_chain
+    if ctx.is_prevented_default():
+        return None
+    if ctx.event.response_text != event.response_text:
+        return message.MessageChain([message.Plain(text=ctx.event.response_text)])
+    return chain
+
+
 class ReplyStreamSession:
     """Ephemeral delivery state owned by one authorized run, never by plugin input."""
 
@@ -82,33 +118,10 @@ class ReplyStreamSession:
         query = self.policy_query
         if not self.agent_hooks or query is None:
             return chain
-        session = query.session or provider_session.Session(
-            launcher_type=query.launcher_type,
-            launcher_id=query.launcher_id,
-            sender_id=query.sender_id,
-            bot_uuid=query.bot_uuid,
-        )
-        event = plugin_events.NormalMessageResponded(
-            query=query,
-            launcher_type=query.launcher_type.value,
-            launcher_id=query.launcher_id,
-            sender_id=query.sender_id,
-            session=session,
-            prefix='',
-            response_text=str(chain),
-            finish_reason='stop',
-            funcs_called=[],
-        )
-        ctx = await query._message_policy.ap.plugin_connector.emit_event(event, query._listener_plugins)
         if streamed:
+            await emit_normal_message_responded(query, chain)
             return chain
-        if ctx.event.reply_message_chain is not None:
-            return ctx.event.reply_message_chain
-        if ctx.is_prevented_default():
-            return None
-        if ctx.event.response_text != event.response_text:
-            return self._message(ctx.event.response_text)
-        return chain
+        return await apply_normal_message_responded(query, chain)
 
     async def prepare_reply(self, chain):
         chain = await self._responded(chain)

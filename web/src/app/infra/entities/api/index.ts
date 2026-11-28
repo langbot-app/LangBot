@@ -239,7 +239,7 @@ export interface ApiRespPipelines {
 }
 
 export type AgentKind =
-  'agent' | 'pipeline' | 'event_processor' | 'command_processor';
+  'agent' | 'pipeline' | 'event_processor' | 'command_processor' | 'workflow';
 
 export interface RunnerDescriptor {
   id: string;
@@ -430,7 +430,7 @@ export interface Adapter {
     supported_events?: string[];
     supported_apis?: string[];
     command_registration?: PlatformCommandCapability;
-    platform_specific_apis?: { action: string }[];
+    platform_specific_apis?: { action: string; description?: I18nObject }[];
     config: IDynamicFormItemSchema[];
   };
 }
@@ -807,6 +807,7 @@ export interface PluginReorderElement {
 export interface SystemLimitation {
   max_bots: number;
   max_pipelines: number;
+  max_workflows?: number;
   max_extensions: number;
   max_knowledge_bases?: number;
   /** When non-empty, every pipeline is forced to this Box sandbox-scope
@@ -1222,7 +1223,171 @@ export interface ApiRespToolDetail {
   };
 }
 
-// Skills
+// ============ Workflow Types ============
+export type WorkflowStepType =
+  | 'start'
+  | 'llm'
+  | 'classify'
+  | 'extract'
+  | 'condition'
+  | 'remember'
+  | 'reply'
+  | 'send'
+  | 'http'
+  | 'handoff'
+  | 'knowledge'
+  | 'tts'
+  | 'asr'
+  | 'random'
+  | 'code'
+  | 'history'
+  | 'platform';
+
+export interface WorkflowStep {
+  id: string;
+  type: WorkflowStepType;
+  name: string;
+  config: Record<string, unknown>;
+}
+
+export interface WorkflowEdge {
+  from: string;
+  to: string;
+  branch?: string;
+}
+
+export interface WorkflowGraph {
+  nodes: WorkflowStep[];
+  edges: WorkflowEdge[];
+}
+
+export interface WorkflowTrigger {
+  type: 'message' | 'command' | 'schedule' | 'event' | 'webhook';
+  [key: string]: unknown;
+}
+
+export interface Workflow {
+  uuid: string;
+  name: string;
+  description?: string | null;
+  emoji?: string | null;
+  is_enabled?: boolean;
+  timezone?: string;
+  triggers?: WorkflowTrigger[];
+  graph: WorkflowGraph;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface WorkflowSummary {
+  uuid: string;
+  name: string;
+  description?: string | null;
+  emoji?: string | null;
+  is_enabled?: boolean;
+  /** Event patterns a bot route can send to this workflow. */
+  event_patterns?: string[];
+  step_count?: number;
+  updated_at?: string;
+}
+
+export interface WorkflowIssue {
+  code: string;
+  severity: 'error' | 'warning';
+  node_id?: string;
+  field?: string;
+}
+
+export interface ApiRespWorkflows {
+  workflows: WorkflowSummary[];
+}
+
+export interface ApiRespWorkflow {
+  workflow: Workflow;
+  issues: WorkflowIssue[];
+}
+
+export interface WorkflowStepRun {
+  seq: number;
+  node_id: string;
+  node_type: WorkflowStepType;
+  node_name: string;
+  status: 'completed' | 'failed' | 'skipped' | 'running';
+  branch?: string | null;
+  inputs?: Record<string, unknown>;
+  outputs?: Record<string, unknown>;
+  error?: string | null;
+  started_at?: string;
+  finished_at?: string;
+  duration_ms?: number;
+}
+
+export interface WorkflowHandoff {
+  target_type: 'chat' | 'agent' | 'workflow';
+  target_uuid: string;
+  name?: string;
+}
+
+export interface WorkflowExecution {
+  uuid: string;
+  workflow_uuid: string;
+  status: 'running' | 'completed' | 'failed' | 'waiting';
+  trigger: string;
+  input_text?: string | null;
+  bot_uuid?: string | null;
+  session_id?: string | null;
+  handoff?: WorkflowHandoff | null;
+  error?: string | null;
+  started_at?: string;
+  finished_at?: string | null;
+  duration_ms?: number | null;
+  steps?: WorkflowStepRun[];
+}
+
+export interface ApiRespWorkflowExecutions {
+  executions: WorkflowExecution[];
+  total: number;
+}
+
+export interface ApiRespWorkflowExecution {
+  execution: WorkflowExecution;
+}
+
+export interface WorkflowTestRequest {
+  text: string;
+  session_type: 'person' | 'group';
+  graph?: WorkflowGraph;
+  triggers?: WorkflowTrigger[];
+  /** Simulate a platform event instead of a message. */
+  event?: { type: string; data: Record<string, unknown> };
+}
+
+export interface ApiRespWorkflowTest {
+  execution_uuid: string;
+  status: WorkflowExecution['status'];
+  error?: string | null;
+  replies: string[];
+  handoff?: WorkflowHandoff | null;
+  steps: WorkflowStepRun[];
+}
+
+export interface CreateWorkflowRequest {
+  name: string;
+  description?: string;
+  emoji?: string;
+  graph?: WorkflowGraph;
+}
+
+export interface UpdateWorkflowRequest {
+  name?: string;
+  description?: string;
+  emoji?: string;
+  is_enabled?: boolean;
+  graph?: WorkflowGraph;
+  triggers?: WorkflowTrigger[];
+  timezone?: string;
+}
+
 export interface Skill {
   name: string;
   display_name?: string;

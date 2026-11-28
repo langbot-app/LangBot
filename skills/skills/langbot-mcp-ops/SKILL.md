@@ -100,6 +100,23 @@ preserves omitted top-level sections and replaces each supplied section in full,
 without deep merging. Supplied sections must be objects. The merged configuration
 is validated before persistence; secret placeholders retain existing values.
 
+Workflows are message-event processors alongside Agents, Chats (Pipelines),
+plugin processors and command processors. Use `list_workflows` and `get_workflow` to inspect the current
+Workspace. `create_workflow(workflow_data)` and `update_workflow(workflow_uuid, workflow_data)`
+require `resource.manage`; both return the saved definition and validation `issues`.
+A supplied `graph` replaces the entire tree. `test_workflow(workflow_uuid, text, session_type, graph?)` requires
+`runtime.operate` and returns the execution ID, status, replies and steps. An
+unsaved `graph` also requires `resource.manage` and does not change the saved workflow.
+Manual runs do not send messages to a bot; nodes requiring an explicit bot fail.
+`session_type` is `person` or `group`. Execution details are available through
+`GET /api/v1/workflows/<uuid>/executions/<execution_uuid>`.
+`workflow_data.triggers` lists how a workflow starts: `{type: message}` (needs a bot route),
+`{type: command, name, aliases, args: [{name, required}], admin_only, bots: "all" | [bot_uuid]}`,
+`{type: schedule, cron | every (minutes), bot_uuid, targets: [{type: person|group, id}]}` evaluated in
+`workflow_data.timezone`, `{type: event, events: [...]}` (needs a bot route per event) and
+`{type: webhook, bot_uuid}` (the secret is generated on save; POST JSON to
+`/api/v1/workflows/hooks/<bot_uuid>/<workflow_uuid>/<secret>`). Test a command by sending `/name args`.
+
 Slack quick setup: create a disabled `slack-omni` bot draft first, then use
 `start_slack_setup` with the user's App Configuration access/refresh tokens.
 Choose `socket_mode=true` with a browser-reachable OAuth `redirect_url`, or

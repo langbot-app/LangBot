@@ -17,6 +17,10 @@ class OperationDoc:
 
 
 DOMAINS: dict[str, dict] = {
+    'workflow': {
+        'label': {'zh_Hans': '工作流', 'en_US': 'Workflow'},
+        'summary': 'Test workspace workflows and inspect their execution steps.',
+    },
     'artifact': {
         'label': {'zh_Hans': '资产', 'en_US': 'Artifact'},
         'summary': 'Create and access caller-owned files in the authenticated Workspace.',
@@ -416,7 +420,7 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
     'bot.routes.bind': OperationDoc(
         domain='bot',
         label={'zh_Hans': '切换路由目标', 'en_US': 'Change Route Target'},
-        summary='Preview or change the Agent or Chat target of one existing Bot route.',
+        summary='Preview or change the Agent, Chat or Workflow target of one existing Bot route.',
         description='Supply the binding returned by bot.get. Concurrent changes return a conflict.',
         risk='write',
         exposure='none',
@@ -1138,6 +1142,30 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         label={'zh_Hans': '执行聊天', 'en_US': 'Run Chat'},
         summary='Execute a Chat run with custom input data.',
         description='Trigger an on-demand execution of a pipeline with provided payload. Prerequisites: Call pipeline.list to obtain pipeline_uuid. Side effect: Executes pipeline logic and consumes compute.',
+        risk='write',
+        exposure='all',
+    ),
+    'workflow.list': OperationDoc(
+        domain='workflow',
+        label={'zh_Hans': '列出工作流', 'en_US': 'List Workflows'},
+        summary='List workflows in this workspace.',
+        description='Returns workflow summaries and IDs for workflow.get.',
+        risk='read',
+        exposure='all',
+    ),
+    'workflow.get': OperationDoc(
+        domain='workflow',
+        label={'zh_Hans': '查看工作流', 'en_US': 'Get Workflow'},
+        summary='Read a saved workflow and its validation issues.',
+        description='Use an ID from workflow.list to inspect the graph before running it.',
+        risk='read',
+        exposure='all',
+    ),
+    'workflow.test': OperationDoc(
+        domain='workflow',
+        label={'zh_Hans': '试运行工作流', 'en_US': 'Test Workflow'},
+        summary='Run a saved workflow or test an unsaved graph.',
+        description='Returns the execution ID, replies and steps. A draft graph also requires resource.manage. Tests can invoke models and create execution records.',
         risk='write',
         exposure='all',
     ),

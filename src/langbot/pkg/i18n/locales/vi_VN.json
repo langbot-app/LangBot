@@ -181,5 +181,6 @@
   "Artifact access requires an active run lease": "Truy cập tài nguyên cần có thời hạn thuê thực thi còn hiệu lực",
   "Artifact knowledge ingestion requires an account or API key": "Nhập Artifact vào cơ sở tri thức yêu cầu tài khoản hoặc khóa API",
   "Artifact ZIP ingestion is not supported; use the existing document upload entrypoint": "Không hỗ trợ nhập ZIP qua Artifact; hãy sử dụng chức năng tải tài liệu lên hiện có",
-  "Knowledge base deletion is pending; retry deletion before admitting new files": "Việc xóa cơ sở tri thức chưa hoàn tất; hãy thử xóa lại trước khi thêm tệp mới"
+  "Knowledge base deletion is pending; retry deletion before admitting new files": "Việc xóa cơ sở tri thức chưa hoàn tất; hãy thử xóa lại trước khi thêm tệp mới",
+  "Usage: /{command} {usage}": "Cách dùng: /{command} {usage}"
 }

@@ -13,6 +13,7 @@ export interface WorkspaceQuotaItem {
 export interface WorkspaceQuotaStatus {
   bots: WorkspaceQuotaItem;
   pipelines: WorkspaceQuotaItem;
+  workflows: WorkspaceQuotaItem;
   knowledgeBases: WorkspaceQuotaItem;
   extensions: WorkspaceQuotaItem;
   botsReached: boolean;
@@ -56,8 +57,13 @@ export function useWorkspaceQuotaStatus(): WorkspaceQuotaStatus {
 
   const botQuota = quotaItem(bots.length, limitation?.max_bots, loaded);
   const pipelineQuota = quotaItem(
-    pipelines.length,
+    pipelines.filter((item) => item.kind !== 'workflow').length,
     limitation?.max_pipelines,
+    loaded,
+  );
+  const workflowQuota = quotaItem(
+    pipelines.filter((item) => item.kind === 'workflow').length,
+    limitation?.max_workflows,
     loaded,
   );
   const knowledgeBaseQuota = quotaItem(
@@ -74,6 +80,7 @@ export function useWorkspaceQuotaStatus(): WorkspaceQuotaStatus {
   return {
     bots: botQuota,
     pipelines: pipelineQuota,
+    workflows: workflowQuota,
     knowledgeBases: knowledgeBaseQuota,
     extensions: extensionQuota,
     botsReached: botQuota.disabled,

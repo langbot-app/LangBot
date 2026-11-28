@@ -30,6 +30,7 @@ from ..api.http.service import totp as totp_service
 from ..api.http.service import model as model_service
 from ..api.http.service import provider as provider_service
 from ..api.http.service import pipeline as pipeline_service
+from ..api.http.service import workflow as workflow_service
 from ..api.http.service import agent as agent_service
 from ..api.http.service import bot as bot_service
 from ..api.http.service import knowledge as knowledge_service
@@ -67,6 +68,7 @@ from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
 from ..api.application import ApplicationAPI
 
 if TYPE_CHECKING:
+    from ..workflow.scheduler import WorkflowScheduler
     from ..agent.runner import RunnerRegistry, AgentRunOrchestrator, RunnerDefaultConfigService
 
 
@@ -212,6 +214,9 @@ class Application:
     apikey_service: apikey_service.ApiKeyService = None
 
     webhook_service: webhook_service.WebhookService = None
+
+    workflow_service: workflow_service.WorkflowService = None
+    workflow_scheduler: WorkflowScheduler | None = None
 
     telemetry: telemetry_module.TelemetryManager = None
 
@@ -429,6 +434,12 @@ class Application:
                     core_entities.LifecycleControlScope.PLATFORM,
                 ],
             )
+            if getattr(self, 'workflow_scheduler', None) is not None:
+                self.task_mgr.create_task(
+                    self.workflow_scheduler.run(),
+                    name='workflow-scheduler',
+                    scopes=[core_entities.LifecycleControlScope.APPLICATION],
+                )
             if self.alert_service is not None:
                 self.task_mgr.create_task(
                     self.alert_service.run(),

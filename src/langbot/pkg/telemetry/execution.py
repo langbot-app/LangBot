@@ -49,7 +49,7 @@ from .resources import attach as resources_attach
 from .resources import detach as resources_detach
 from .trace import TraceState
 
-MODES = frozenset({'pipeline', 'agent', 'event_processor', 'none'})
+MODES = frozenset({'pipeline', 'agent', 'event_processor', 'workflow', 'none'})
 OUTCOMES = frozenset(
     {'success', 'failed', 'cancelled', 'timeout', 'skipped', 'unknown', 'ok', 'denied', 'intercepted', 'discarded'}
 )

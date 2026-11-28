@@ -778,8 +778,119 @@ function CommandDiagram() {
   );
 }
 
+function WorkflowDiagram() {
+  const { t } = useTranslation();
+  const arrowId = `workflow-arrow-${useId().replace(/:/g, '')}`;
+  // A start, a branching step and two paths, like the editor canvas.
+  const node = (
+    x: number,
+    y: number,
+    label: string,
+    tone: 'blue' | 'cyan' | 'active',
+  ) => (
+    <g key={`${x}-${y}`}>
+      <rect
+        x={x}
+        y={y}
+        width="148"
+        height="52"
+        rx="14"
+        fill={
+          tone === 'active'
+            ? LANGBOT_BLUE
+            : tone === 'cyan'
+              ? 'var(--processor-cyan-node-fill)'
+              : 'var(--processor-blue-node-fill)'
+        }
+        stroke={tone === 'cyan' ? LANGBOT_CYAN : LANGBOT_BLUE}
+        strokeOpacity={
+          tone === 'active' ? 1 : 'var(--processor-node-stroke-opacity)'
+        }
+      />
+      {tone !== 'active' && (
+        <circle
+          cx={x + 24}
+          cy={y + 26}
+          r="5"
+          fill={tone === 'cyan' ? LANGBOT_CYAN : LANGBOT_BLUE}
+        />
+      )}
+      <text
+        x={tone === 'active' ? x + 74 : x + 40}
+        y={y + 31}
+        textAnchor={tone === 'active' ? 'middle' : 'start'}
+        fill={
+          tone === 'active' ? 'var(--primary-foreground)' : 'var(--foreground)'
+        }
+        fontSize="13"
+        fontWeight="600"
+      >
+        {label}
+      </text>
+    </g>
+  );
+  const flow = (d: string, key: string) => (
+    <g key={key}>
+      <path
+        d={d}
+        fill="none"
+        stroke={LANGBOT_BLUE}
+        strokeWidth="2"
+        opacity="var(--processor-flow-opacity)"
+        markerEnd={`url(#${arrowId})`}
+      />
+      <path
+        d={d}
+        fill="none"
+        stroke={LANGBOT_BLUE}
+        strokeWidth="3"
+        strokeDasharray="4 11"
+        strokeLinecap="round"
+        className="processor-line-flow"
+        data-motion="flow"
+        data-dash-cycle="15"
+      />
+    </g>
+  );
+  return (
+    <svg
+      viewBox="0 0 760 620"
+      role="img"
+      aria-label={t('workflows.description')}
+      className="processor-diagram h-full w-full"
+      data-testid="workflow-diagram"
+    >
+      <ArrowMarker id={arrowId} />
+      <DiagramMotionStyles />
+      <rect width="760" height="620" fill="var(--card)" />
+      <text
+        x="40"
+        y="96"
+        fill="var(--muted-foreground)"
+        fontSize="13"
+        fontWeight="600"
+      >
+        {t('workflows.description')}
+      </text>
+      {flow('M380 182V218', 'a')}
+      {flow('M380 270V300H226V336', 'b')}
+      {flow('M380 300H534V336', 'c')}
+      {flow('M226 388V424', 'd')}
+      {flow('M226 476V512', 'e')}
+      {node(306, 130, t('workflows.steps.start'), 'blue')}
+      {node(306, 218, t('workflows.steps.classify'), 'active')}
+      {node(152, 336, t('workflows.steps.http'), 'cyan')}
+      {node(152, 424, t('workflows.steps.llm'), 'blue')}
+      {node(152, 512, t('workflows.steps.reply'), 'blue')}
+      {node(460, 336, t('workflows.steps.handoff'), 'cyan')}
+    </svg>
+  );
+}
+
 export default function ProcessorTypeDiagram({ kind }: { kind: AgentKind }) {
+  const { t } = useTranslation();
   if (kind === 'command_processor') return <CommandDiagram />;
+  if (kind === 'workflow') return <WorkflowDiagram />;
   if (kind === 'event_processor') return <RunnerDiagram />;
   return kind === 'agent' ? <AgentDiagram /> : <PipelineDiagram />;
 }

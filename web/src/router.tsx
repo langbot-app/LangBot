@@ -25,6 +25,7 @@ const MonitoringPage = React.lazy(() => import('@/app/home/monitoring/page'));
 const BotsPage = React.lazy(() => import('@/app/home/bots/page'));
 const AgentsPage = React.lazy(() => import('@/app/home/agents/page'));
 const PipelinesPage = React.lazy(() => import('@/app/home/pipelines/page'));
+const WorkflowsPage = React.lazy(() => import('@/app/home/workflows/page'));
 const PluginsPage = React.lazy(() => import('@/app/home/plugins/page'));
 const AddExtensionPage = React.lazy(
   () => import('@/app/home/add-extension/page'),
@@ -139,6 +140,16 @@ export const router = createBrowserRouter([
           <Suspense fallback={<PageLoading />}>
             <HomeLayout>
               <PipelinesPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/workflows',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <HomeLayout>
+              <WorkflowsPage />
             </HomeLayout>
           </Suspense>
         ),

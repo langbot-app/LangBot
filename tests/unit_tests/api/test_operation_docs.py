@@ -54,6 +54,7 @@ def in_scope_operation_ids(operations_by_id: dict[str, Operation]) -> set[str]:
             or op_id.startswith('adapter.')
             or op_id.startswith('agent.')
             or op_id.startswith('pipeline.')
+            or op_id in {'workflow.list', 'workflow.get', 'workflow.test'}
             or op_id.startswith('knowledge.')
             or op_id.startswith('plugin.')
             or op_id.startswith('mcp.')

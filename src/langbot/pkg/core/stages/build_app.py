@@ -22,6 +22,7 @@ from ...api.http.service import totp as totp_service
 from ...api.http.service import model as model_service
 from ...api.http.service import provider as provider_service
 from ...api.http.service import pipeline as pipeline_service
+from ...api.http.service import workflow as workflow_service
 from ...api.http.service import agent as agent_service
 from ...api.http.service import bot as bot_service
 from ...api.http.service import knowledge as knowledge_service
@@ -125,6 +126,10 @@ class BuildAppStage(stage.BootingStage):
 
         pipeline_service_inst = pipeline_service.PipelineService(ap)
         ap.pipeline_service = pipeline_service_inst
+        ap.workflow_service = workflow_service.WorkflowService(ap)
+        from ...workflow.scheduler import WorkflowScheduler
+
+        ap.workflow_scheduler = WorkflowScheduler(ap)
 
         agent_service_inst = agent_service.AgentService(ap)
         ap.agent_service = agent_service_inst

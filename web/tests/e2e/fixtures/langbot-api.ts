@@ -681,6 +681,10 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
   const path = url.pathname;
   const method = request.method();
 
+  if (path === '/api/v1/workflows') {
+    return fulfillJson(route, { workflows: [] });
+  }
+
   if (path === '/api/v1/system/info') {
     return fulfillJson(route, {
       debug: false,

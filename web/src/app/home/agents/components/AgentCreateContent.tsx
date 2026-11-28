@@ -1,5 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import {
+  presetGraph,
+  WORKFLOW_PRESETS,
+  type WorkflowPreset,
+} from '@/app/home/workflows/lib/presets';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
@@ -8,6 +14,7 @@ import {
   Blocks,
   Bot,
   Workflow,
+  Waypoints,
   Puzzle,
   SquareTerminal,
   Loader2,
@@ -38,6 +45,7 @@ import RunnerSelect from './RunnerSelect';
 import type { GetAgentMetadataResponseData } from '@/app/infra/entities/api';
 import { getDefaultValues } from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
 import { extractI18nObject } from '@/i18n/I18nProvider';
+import { useWorkspaceQuotaStatus } from '@/app/home/components/workspace-quota/useWorkspaceQuotaStatus';
 
 export default function AgentCreateContent({
   onCreated,
@@ -49,12 +57,15 @@ export default function AgentCreateContent({
   embedded?: boolean;
 }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const quotas = useWorkspaceQuotaStatus();
   const [kind, setKind] = useState<AgentKind>(
     allowedKinds?.includes('pipeline') || !allowedKinds
       ? 'pipeline'
       : allowedKinds[0],
   );
   const [metadata, setMetadata] = useState<GetAgentMetadataResponseData>();
+  const [preset, setPreset] = useState<WorkflowPreset>('intent');
   const [runner, setRunner] = useState('');
   const [loading, setLoading] = useState(true);
   const loadMetadata = useCallback(async () => {
@@ -150,6 +161,20 @@ export default function AgentCreateContent({
   }
 
   async function handleSubmit(values: FormValues) {
+    if (kind === 'workflow') {
+      try {
+        const result = await httpClient.createWorkflow({
+          name: values.name,
+          emoji: values.emoji,
+          graph: presetGraph(preset, t),
+        });
+        onCreated(result.workflow.uuid);
+        navigate(`/home/workflows?id=${result.workflow.uuid}`);
+      } catch (error) {
+        toast.error(String(error));
+      }
+      return;
+    }
     if (!runner) {
       toast.error(selectorLabel);
       return;
@@ -222,6 +247,13 @@ export default function AgentCreateContent({
       title: t('agents.agentType'),
       description: t('agents.agentTypeDescription'),
       bestFor: t('agents.diagram.agent.bestFor'),
+    },
+    {
+      kind: 'workflow' as const,
+      icon: Waypoints,
+      title: t('workflows.title'),
+      description: t('workflows.description'),
+      bestFor: t('workflows.bestFor'),
     },
   ].filter((option) => !allowedKinds || allowedKinds.includes(option.kind));
   const pluginOptions = [
@@ -371,7 +403,13 @@ export default function AgentCreateContent({
         <Button
           type="submit"
           form="agent-create-form"
-          disabled={form.formState.isSubmitting || loading || !runner}
+          disabled={
+            form.formState.isSubmitting ||
+            loading ||
+            (kind === 'workflow' ? quotas.workflows : quotas.pipelines)
+              .disabled ||
+            (kind !== 'workflow' && !runner)
+          }
         >
           {form.formState.isSubmitting && (
             <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
@@ -433,7 +471,43 @@ export default function AgentCreateContent({
                       onSubmit={form.handleSubmit(handleSubmit)}
                       className="space-y-4"
                     >
-                      <div className="space-y-2">
+                      {kind === 'workflow' && (
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium">
+                            {t('workflows.presets.title')}
+                          </p>
+                          <ToggleGroup
+                            type="single"
+                            value={preset}
+                            onValueChange={(value) =>
+                              value && setPreset(value as WorkflowPreset)
+                            }
+                            variant="outline"
+                            className="grid w-full grid-cols-2 gap-2"
+                          >
+                            {WORKFLOW_PRESETS.map((item) => (
+                              <ToggleGroupItem
+                                key={item}
+                                value={item}
+                                data-testid={`workflow-preset-${item}`}
+                                className={optionClass}
+                              >
+                                <span className="min-w-0 space-y-1">
+                                  <span className="block text-sm font-medium text-foreground">
+                                    {t(`workflows.presets.${item}.title`)}
+                                  </span>
+                                  <span className="block text-xs font-normal leading-relaxed text-muted-foreground">
+                                    {t(`workflows.presets.${item}.description`)}
+                                  </span>
+                                </span>
+                              </ToggleGroupItem>
+                            ))}
+                          </ToggleGroup>
+                        </div>
+                      )}
+                      <div
+                        className={kind === 'workflow' ? 'hidden' : 'space-y-2'}
+                      >
                         <p className="text-sm font-medium">{selectorLabel}</p>
                         {kind === 'command_processor' ? (
                           <RunnerSelect

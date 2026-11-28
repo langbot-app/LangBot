@@ -22,6 +22,7 @@ Chat Runner failures follow `output.misc.exception-handling`. `show-error` retur
   - **Chat**: the original stages (`GroupRespondRuleCheckStage`, `BanSessionCheckStage`, content filters, rate limit, long text, `ResponseBackStage`) stay in place and order and delegate to the runtime. The pipeline command stage was removed.
   - **Commands** (`RuntimeBot._try_handle_plugin_command`): `admit()` before execution, `send_command_reply()` for output.
   - **Agent**: `admit()` before dispatch; `ReplyStreamSession` and the `event_reply` platform tool apply the outbound side. Non-streaming: outbound filter, long text, delay, @sender, quote. Streaming: delay, @sender, quote only. Proactive `send_message` is not affected.
+  - **Workflow**: `RuntimeBot._admit_normal_message` shares admission and the normal-message hook with Agent dispatch. Admission lasts until the workflow finishes. The `reply_message` node emits `NormalMessageResponded` first, as the Agent path does, so plugins can rewrite or suppress the reply, then prepares the chain under the effective route policy and delivers it. The `send_message` node targets another conversation and bypasses the reply policy.
   - **Plugin processors** (bot subscriptions) skip inbound interception; their replies use the same outbound side.
   - **Debug chat** uses `neutral_runtime()`.
 - Drops are recorded with `failure_code: "message_policy"` and a reason such as `route:r1: safety.rate-limit` (`drop_reason`); monitoring shows them as ignored with the reason, and the route dry-run (`POST /api/v1/platform/bots/<uuid>/event-routes/dry-run`) previews them.
@@ -76,7 +77,7 @@ New bots use the defaults a new pipeline had before (`default_policy()`), with a
 
 ## Known limitations
 
-- `PromptPreProcessing` does not fire for Agents.
+- `PromptPreProcessing` does not fire for Agents or Workflows. Manual workflow runs have no bot policy.
 - `NormalMessageResponded` cannot rewrite streamed replies.
 - Native streaming on Discord and Lark cannot render the @sender / quote of the first frame (`adapters/00-index.md`).
 - The debug chat cannot preview long text, @sender and other outbound effects.

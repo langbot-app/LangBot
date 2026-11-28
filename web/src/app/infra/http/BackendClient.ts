@@ -111,6 +111,14 @@ import {
   RagMigrationStatusResp,
   ApiRespTools,
   ApiRespToolDetail,
+  ApiRespWorkflows,
+  ApiRespWorkflow,
+  ApiRespWorkflowExecutions,
+  ApiRespWorkflowExecution,
+  ApiRespWorkflowTest,
+  CreateWorkflowRequest,
+  UpdateWorkflowRequest,
+  WorkflowTestRequest,
   Skill,
   ApiRespSkills,
   ApiRespSkill,
@@ -2932,6 +2940,59 @@ export class BackendClient extends BaseHttpClient {
     }>;
   }): Promise<object> {
     return this.post('/api/v1/survey/feedback', data);
+  }
+
+  public getWorkflows(): Promise<ApiRespWorkflows> {
+    return this.get('/api/v1/workflows');
+  }
+  public getWorkflow(uuid: string): Promise<ApiRespWorkflow> {
+    return this.get(`/api/v1/workflows/${uuid}`);
+  }
+  public createWorkflow(
+    workflow: CreateWorkflowRequest,
+  ): Promise<ApiRespWorkflow> {
+    return this.post('/api/v1/workflows', workflow);
+  }
+  public updateWorkflow(
+    uuid: string,
+    workflow: UpdateWorkflowRequest,
+  ): Promise<ApiRespWorkflow> {
+    return this.put(`/api/v1/workflows/${uuid}`, workflow);
+  }
+  public deleteWorkflow(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/workflows/${uuid}`);
+  }
+  public copyWorkflow(uuid: string): Promise<ApiRespWorkflow> {
+    return this.post(`/api/v1/workflows/${uuid}/copy`);
+  }
+  public testWorkflow(
+    uuid: string,
+    input: WorkflowTestRequest,
+  ): Promise<ApiRespWorkflowTest> {
+    return this.post(`/api/v1/workflows/${uuid}/test`, input);
+  }
+  public getWorkflowNodeTypes(): Promise<{
+    node_types: { type: string; available?: boolean; reason?: string }[];
+    platform_tools?: AgentPlatformTool[];
+  }> {
+    return this.get('/api/v1/workflows/_/node-types');
+  }
+  public getWorkflowExecutions(
+    uuid: string,
+    limit = 20,
+    offset = 0,
+  ): Promise<ApiRespWorkflowExecutions> {
+    return this.get(
+      `/api/v1/workflows/${uuid}/executions?limit=${limit}&offset=${offset}`,
+    );
+  }
+  public getWorkflowExecution(
+    workflowUuid: string,
+    executionUuid: string,
+  ): Promise<ApiRespWorkflowExecution> {
+    return this.get(
+      `/api/v1/workflows/${workflowUuid}/executions/${executionUuid}`,
+    );
   }
 
   // ============ Skills API ============
