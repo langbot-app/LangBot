@@ -2,21 +2,21 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 import hashlib
 import json
-from pathlib import Path
 import time
-from typing import Any
 import uuid
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 SCHEMA_VERSION = '1'
 ACTION_STATUSES = frozenset({'running', 'succeeded', 'failed', 'timed_out', 'cancelled', 'blocked', 'expired'})
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _dump(value: Any) -> str:
@@ -66,6 +66,7 @@ class ActionWriter:
     def begin(
         self, action_name: str, *, trace_id: str | None = None, metadata: dict[str, Any] | None = None
     ) -> ActionResult:
+        trace_id = trace_id or f'Y-{uuid.uuid4().hex[:16]}'
         result = ActionResult(
             action_id=f'a-{uuid.uuid4().hex}',
             action_name=action_name,

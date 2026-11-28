@@ -17,6 +17,7 @@ def test_action_writer_records_terminal_failure_and_manifest(tmp_path: Path):
     assert record['schema_version'] == '1'
     assert record['status'] == 'failed'
     assert record['error_type'] == 'RuntimeError'
+    assert record['trace_id'].startswith('Y-')
 
     manifest = write_manifest(
         tmp_path / 'run-manifest.json',
