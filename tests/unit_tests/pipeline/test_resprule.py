@@ -355,6 +355,7 @@ async def test_prefix_is_removed_only_from_the_first_text_component(mock_app, sa
     sample_query.message_chain = platform_message.MessageChain(make_parts())
     stage = resprule.GroupRespondRuleCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
+    await bind_policy(mock_app, sample_query)
 
     result = await stage.process(sample_query, 'GroupRespondRuleCheckStage')
 
