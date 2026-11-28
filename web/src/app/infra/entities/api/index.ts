@@ -239,11 +239,7 @@ export interface ApiRespPipelines {
 }
 
 export type AgentKind =
-  | 'agent'
-  | 'pipeline'
-  | 'event_processor'
-  | 'command_processor'
-  | 'workflow';
+  'agent' | 'pipeline' | 'event_processor' | 'command_processor' | 'workflow';
 
 export interface RunnerDescriptor {
   id: string;

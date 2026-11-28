@@ -752,10 +752,24 @@ function NavItems({
             isAgents && !inPopover && sidebarData.agentsGroupByKind;
 
           const agentGroupOrder: Array<
-            'agent' | 'pipeline' | 'event_processor' | 'command_processor' | 'workflow'
-          > = ['agent', 'pipeline', 'event_processor', 'command_processor', 'workflow'];
+            | 'agent'
+            | 'pipeline'
+            | 'event_processor'
+            | 'command_processor'
+            | 'workflow'
+          > = [
+            'agent',
+            'pipeline',
+            'event_processor',
+            'command_processor',
+            'workflow',
+          ];
           const agentGroupLabelKey: Record<
-            'agent' | 'pipeline' | 'event_processor' | 'command_processor' | 'workflow',
+            | 'agent'
+            | 'pipeline'
+            | 'event_processor'
+            | 'command_processor'
+            | 'workflow',
             string
           > = {
             agent: 'agents.kindBadgeAgent',

@@ -147,7 +147,7 @@ export const router = createBrowserRouter([
       {
         path: '/home/workflows',
         element: (
-          <Suspense fallback={<Loading />}>
+          <Suspense fallback={<PageLoading />}>
             <HomeLayout>
               <WorkflowsPage />
             </HomeLayout>
