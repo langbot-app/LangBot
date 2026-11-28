@@ -267,6 +267,102 @@ class CoverageWorkflowTests(unittest.TestCase):
                     )
                 self.assertEqual(result.returncode, 0 if expected else 1, result.stderr)
 
+    def test_mapped_core_areas_avoid_full_fallback_while_foundations_stay_full(self):
+        for source, expected_units, expected_integrations in (
+            (
+                'src/langbot/pkg/plugin/handler.py',
+                {'tests/unit_tests/plugin', 'tests/unit_tests/core'},
+                {'tests/integration/plugin', 'tests/integration/pipeline'},
+            ),
+            (
+                'src/langbot/pkg/message_policy/manager.py',
+                {'tests/unit_tests/message_policy', 'tests/unit_tests/core'},
+                {'tests/integration/persistence', 'tests/integration/pipeline'},
+            ),
+            (
+                'src/langbot/pkg/skill/repository.py',
+                {'tests/unit_tests/test_skill_repository.py', 'tests/unit_tests/core'},
+                {'tests/integration/skill', 'tests/integration/plugin'},
+            ),
+            (
+                'src/langbot/pkg/storage/content.py',
+                {'tests/unit_tests/storage', 'tests/unit_tests/core'},
+                {'tests/integration/storage', 'tests/integration/persistence'},
+            ),
+            (
+                'src/langbot/pkg/workspace/mgr.py',
+                {'tests/unit_tests/workspace', 'tests/unit_tests/cloud', 'tests/unit_tests/vector'},
+                {'tests/integration/pipeline', 'tests/integration/plugin', 'tests/integration/vector'},
+            ),
+            (
+                'src/langbot/pkg/alerts/render.py',
+                {'tests/unit_tests/test_workspace_alerts.py', 'tests/unit_tests/cloud'},
+                {'tests/integration/api'},
+            ),
+            (
+                'src/langbot/pkg/notification/mgr.py',
+                {'tests/unit_tests/workspace', 'tests/unit_tests/cloud', 'tests/unit_tests/core'},
+                {'tests/integration/api'},
+            ),
+        ):
+            with self.subTest(source=source):
+                targets, integrations = select_core_tests([source], False, ROOT)
+                self.assertTrue(expected_units <= set(targets), expected_units - set(targets))
+                self.assertTrue(expected_integrations <= set(integrations), expected_integrations - set(integrations))
+                self.assertNotEqual(targets, FULL[0])
+        for foundation in (
+            'src/langbot/pkg/i18n/messages.py',
+            'src/langbot/pkg/persistence/mgr.py',
+            'src/langbot/pkg/utils/httpclient.py',
+            'src/langbot/pkg/core/app.py',
+        ):
+            with self.subTest(foundation=foundation):
+                self.assertEqual(select_core_tests([foundation], False, ROOT), FULL)
+
+    def test_local_agent_contracts_runs_in_parallel_with_e2e_and_is_gated(self):
+        local_agent = JOBS['local-agent-contracts']
+        self.assertEqual(local_agent['needs'], 'plan')
+        self.assertIn("fromJSON(needs.plan.outputs.selection)['local-agent-contracts']", local_agent['if'])
+        self.assertIn('local-agent-contracts', JOBS['coverage']['needs'])
+        local_steps = [step.get('run', '') for step in local_agent['steps']]
+        self.assertTrue(any('--required-suite local_agent' in run for run in local_steps))
+        self.assertFalse(any('pnpm' in run for run in local_steps))
+        e2e_steps = [step.get('run', '') for step in JOBS['e2e']['steps']]
+        self.assertFalse(any('--required-suite local_agent' in run for run in e2e_steps))
+
+        flags = ('CORE', 'CORE_FULL', 'SDK', 'COMPATIBILITY', 'PERSISTENCE', 'PERMISSIONS', 'BOX', 'FRONTEND')
+        for paths, selected, expect_e2e, expect_local_agent in (
+            (['web/src/app/page.tsx'], {'FRONTEND'}, True, False),
+            (['src/langbot/pkg/box/service.py'], {'CORE', 'BOX', 'SDK', 'PERMISSIONS'}, True, True),
+            (['src/langbot/pkg/discover/discover.py'], {'CORE'}, False, False),
+        ):
+            with self.subTest(paths=paths), tempfile.NamedTemporaryFile() as output:
+                subprocess.run(
+                    [sys.executable, 'tools/ci_core_tests.py', 'plan'],
+                    cwd=ROOT,
+                    env={
+                        **os.environ,
+                        **{flag: json.dumps(flag in selected) for flag in flags},
+                        'CHANGED_PATHS': json.dumps(paths),
+                        'GITHUB_EVENT_NAME': 'pull_request',
+                        'GITHUB_OUTPUT': output.name,
+                    },
+                    check=True,
+                    capture_output=True,
+                )
+                results = dict(line.split('=', 1) for line in Path(output.name).read_text().splitlines())
+                selection = json.loads(results['selection'])
+                self.assertEqual(selection['e2e'], expect_e2e)
+                self.assertEqual(selection['local-agent-contracts'], expect_local_agent)
+
+    def test_pr_workflows_protect_non_pr_runs_from_cancellation(self):
+        for filename in ('run-tests.yml', 'core-smoke.yml'):
+            with self.subTest(workflow=filename):
+                workflow = yaml.safe_load((ROOT / '.github/workflows' / filename).read_text())
+                concurrency = workflow['concurrency']
+                self.assertEqual(concurrency['cancel-in-progress'], "${{ github.event_name == 'pull_request' }}")
+                self.assertIn('github.event.pull_request.number || github.run_id', concurrency['group'])
+
 
 if __name__ == '__main__':
     unittest.main()

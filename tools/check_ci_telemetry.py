@@ -24,7 +24,7 @@ KNOWN_SERVICE_WORKFLOWS = {
 KNOWN_SERVICE_JOBS = {
     'p0-acceptance.yml': {'permissions'},
     'persistence-acceptance.yml': {'persistence-runtime'},
-    'run-tests.yml': {'e2e'},
+    'run-tests.yml': {'e2e', 'local-agent-contracts'},
 }
 ENV_NAME = 'SPACE__DISABLE_TELEMETRY'
 LOCAL_WORKFLOW_PREFIX = './.github/workflows/'

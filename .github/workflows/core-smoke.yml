@@ -16,8 +16,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: core-smoke-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded runs for the same PR; never cancel protected-branch
+  # pushes or manual dispatches.
+  group: core-smoke-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   p0:

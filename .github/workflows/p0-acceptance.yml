@@ -21,8 +21,10 @@ jobs:
       - name: Select affected acceptance paths
         id: scope
         env:
+          EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python3 scripts/p0_acceptance_scope.py
 
   persistence:

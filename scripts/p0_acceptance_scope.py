@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import PurePosixPath
+import re
 import subprocess
 
 
@@ -82,16 +83,43 @@ def select(paths):
     return dict(persistence=bool(persistence), permissions=bool(permissions), image=bool(image))
 
 
+def _is_valid_sha(value):
+    return bool(re.fullmatch('[0-9a-f]{40}', value)) and value != '0' * 40
+
+
+def resolve_diff_base(base, head, event='', pr_head=''):
+    if event == 'pull_request' and _is_valid_sha(base) and _is_valid_sha(pr_head):
+        parents = subprocess.check_output(['git', 'rev-list', '--parents', '-n', '1', head], text=True).split()[1:]
+        if len(parents) == 2 and parents[1] == pr_head:
+            is_ancestor = subprocess.run(
+                ['git', 'merge-base', '--is-ancestor', base, parents[0]],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if is_ancestor.returncode == 0:
+                return parents[0]
+    return base
+
+
 if __name__ == '__main__':
     base = os.environ.get('BASE_SHA', '')
     head = os.environ['HEAD_SHA']
+    event = os.environ.get('EVENT_NAME', '')
+    pr_head = os.environ.get('PR_HEAD_SHA', '')
     if not base or set(base) == {'0'}:
         result = dict.fromkeys(('persistence', 'permissions', 'image'), True)
     else:
-        # A rename also removes the old path, which can have a stricter lane than its destination.
-        data = subprocess.check_output(['git', 'diff', '--name-only', '--no-renames', '-z', base, head, '--'])
-        paths = [os.fsdecode(path) for path in data.split(b'\0') if path]
-        result = select(paths)
+        try:
+            effective_base = resolve_diff_base(base, head, event=event, pr_head=pr_head)
+            # A rename also removes the old path, which can have a stricter lane than its destination.
+            data = subprocess.check_output(
+                ['git', 'diff', '--name-only', '--no-renames', '-z', effective_base, head, '--']
+            )
+            paths = [os.fsdecode(path) for path in data.split(b'\0') if path]
+            result = select(paths)
+        except (subprocess.CalledProcessError, ValueError) as exc:
+            print(f'P0 change detection unavailable ({exc}); selecting all P0 suites.')
+            result = dict.fromkeys(('persistence', 'permissions', 'image'), True)
     print(json.dumps(result, sort_keys=True))
     with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
         for key, value in result.items():

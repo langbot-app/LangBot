@@ -60,4 +60,5 @@ runs:
       env:
         EVENT_NAME: ${{ github.event_name }}
         BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       run: python3 "${GITHUB_ACTION_PATH}/classify.py"
