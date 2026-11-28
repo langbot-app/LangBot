@@ -93,7 +93,11 @@ class MessagePolicyRuntime:
         required = ['content-ignore']
         if self.policy['safety']['content-filter']['check-sensitive-words']:
             required.append('ban-word-filter')
-        self.filter_chain = [cls(self.ap) for cls in filter_model.preregistered_filters if cls.name in required]
+        by_name = {cls.name: cls for cls in filter_model.preregistered_filters}
+        missing = [name for name in required if name not in by_name]
+        if missing:
+            raise ValueError(f'Content filter not found: {", ".join(missing)}')
+        self.filter_chain = [by_name[name](self.ap) for name in required]
         for content_filter in self.filter_chain:
             await content_filter.initialize()
 
