@@ -35,12 +35,12 @@
     "fumadocs-openapi": "^11.4.1",
     "fumadocs-ui": "npm:@fumadocs/base-ui@^16.15.6",
     "fumapress": "^1.2.0",
-    "hono": "^4.9.9",
+    "hono": "^4.13.16",
     "lucide-react": "^1.41.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "shiki": "^3.20.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
@@ -55,7 +55,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
     "unified": "^11.0.5",
-    "vite": "^8.2.2",
+    "vite": "^8.2.4",
     "yaml": "^2.9.0"
   }
 }

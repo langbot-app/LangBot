@@ -463,19 +463,19 @@ const getFormSchema = (t: TFunction) =>
   z
     .object({
       name: z
-        .string({ required_error: t('mcp.nameRequired') })
+        .string({ error: t('mcp.nameRequired') })
         .min(1, { message: t('mcp.nameRequired') }),
       mode: z.enum(['stdio', 'remote']),
       timeout: z
-        .number({ invalid_type_error: t('mcp.timeoutMustBeNumber') })
+        .number({ error: t('mcp.timeoutMustBeNumber') })
         .positive({ message: t('mcp.timeoutMustBePositive') })
         .default(30),
       tool_call_timeout_sec: z
-        .number({ invalid_type_error: t('mcp.timeoutMustBeNumber') })
+        .number({ error: t('mcp.timeoutMustBeNumber') })
         .nonnegative({ message: t('mcp.timeoutNonNegative') })
         .default(300),
       ssereadtimeout: z
-        .number({ invalid_type_error: t('mcp.sseTimeoutMustBeNumber') })
+        .number({ error: t('mcp.sseTimeoutMustBeNumber') })
         .positive({ message: t('mcp.timeoutMustBePositive') })
         .default(300),
       url: z.string().optional(),
