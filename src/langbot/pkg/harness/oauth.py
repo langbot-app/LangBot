@@ -173,6 +173,10 @@ class HarnessOAuthService:
             details = await HarnessHandoffs(self.ap).issue(binding_id, device_id, exc.account, workspace_uuid)
             raise HandoffRequired(details) from None
         except Exception as exc:
+            # Keep a rejected code distinguishable from a rejected password so a
+            # client with a code does not have to restart the whole sign-in.
+            if exc.__class__.__name__ == 'TotpInvalidCodeError':
+                raise ValueError('totp_invalid_code') from exc
             raise ValueError('invalid_grant') from exc
         account = await self.ap.user_service.get_user_by_email(email)
         if account is None or (device['account_uuid'] is not None and device['account_uuid'] != account.uuid):

@@ -49,6 +49,7 @@ _GRANT_ERRORS = {
     'interaction_required',
     'authorization_pending',
     'handoff_already_pending',
+    'totp_invalid_code',
     'refresh_token_reuse',
     'workspace_forbidden',
     'insufficient_scope',
@@ -211,18 +212,21 @@ class HarnessRpc:
                 raise RpcError('invalid_request')
             return await HarnessHandoffs(self.ap).poll(service, params['handoff_ticket'], harness_id, device_id, kid)
         if method == 'oauth.password':
-            if set(params) != {'email', 'password', 'workspace_uuid'}:
+            if set(params) - {'totp_code'} != {'email', 'password', 'workspace_uuid'}:
                 raise RpcError('invalid_request')
-            return await service.password_grant(
-                harness_id,
-                {
-                    'grant_type': 'password',
-                    'device_id': device_id,
-                    'username': params['email'],
-                    'password': params['password'],
-                    'workspace_uuid': params['workspace_uuid'],
-                },
-            )
+            totp_code = params.get('totp_code')
+            if totp_code is not None and (not isinstance(totp_code, str) or not 0 < len(totp_code) <= 32):
+                raise RpcError('invalid_request')
+            payload = {
+                'grant_type': 'password',
+                'device_id': device_id,
+                'username': params['email'],
+                'password': params['password'],
+                'workspace_uuid': params['workspace_uuid'],
+            }
+            if totp_code is not None:
+                payload['totp_code'] = totp_code
+            return await service.password_grant(harness_id, payload)
         if method == 'oauth.refresh':
             token = params.get('refresh_token')
             if set(params) != {'refresh_token'} or not isinstance(token, str) or not 0 < len(token) <= 256:
