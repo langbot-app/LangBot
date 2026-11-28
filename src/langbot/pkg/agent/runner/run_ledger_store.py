@@ -12,7 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from ...persistence.datetime_utils import as_naive_utc
-from ...persistence.write_admission import commit_write, write_slot
+from ...persistence.write_admission import (
+    SQLITE_RETRY_BASE_DELAY_SECONDS,
+    SQLITE_RETRY_MAX_ATTEMPTS,
+    SQLITE_RETRY_MAX_DELAY_SECONDS,
+    commit_write,
+    run_sqlite_write_with_retry,
+    sqlite_attempt_timeout,
+)
 from ...storage.media import MediaCache
 from ...utils.inflight import inflight_hub
 from ...utils.execution_lease import (
@@ -28,10 +35,41 @@ from ...entity.persistence.agent_run import AgentRun, AgentRunEvent, AgentRuntim
 UTC = datetime.timezone.utc
 RUN_STATUSES = {'created', 'queued', 'claimed', 'running', 'completed', 'failed', 'cancelled', 'timeout'}
 TERMINAL_STATUSES = {'completed', 'failed', 'cancelled', 'timeout'}
+BUSY_RETRY_ATTEMPTS = SQLITE_RETRY_MAX_ATTEMPTS
+BUSY_RETRY_BASE_DELAY = SQLITE_RETRY_BASE_DELAY_SECONDS
+BUSY_RETRY_MAX_DELAY = SQLITE_RETRY_MAX_DELAY_SECONDS
+
+_DUPLICATE_SEQUENCE_MARKERS = (
+    'agent_run_event.run_id, agent_run_event.sequence',
+    'uq_agent_run_event_run_sequence',
+)
+_DUPLICATE_RUN_ID_MARKERS = (
+    'agent_run.run_id',
+    'agent_run_run_id_key',
+    'uq_agent_run_run_id',
+)
+
+_T = typing.TypeVar('_T')
 
 
 class TerminalRunTransitionError(ValueError):
     """A run already in a terminal status was asked to move to another one."""
+
+
+def _is_duplicate_sequence(exc: BaseException) -> bool:
+    """Return True when the (run_id, sequence) unique index rejected an insert."""
+    if not isinstance(exc, sqlalchemy.exc.IntegrityError):
+        return False
+    message = str(exc)
+    return any(marker in message for marker in _DUPLICATE_SEQUENCE_MARKERS)
+
+
+def _is_duplicate_run_id(exc: BaseException) -> bool:
+    """Return True when the agent_run.run_id unique index rejected an insert."""
+    if not isinstance(exc, sqlalchemy.exc.IntegrityError):
+        return False
+    message = str(exc)
+    return any(marker in message for marker in _DUPLICATE_RUN_ID_MARKERS)
 
 
 def _utc_now() -> datetime.datetime:
@@ -124,6 +162,27 @@ class RunLedgerStore:
         self.engine = engine
         self._session_factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
+    async def _run_write_tx(
+        self,
+        operation: typing.Callable[[AsyncSession], typing.Awaitable[_T]],
+        *,
+        retry_duplicates: bool = False,
+    ) -> _T:
+        async def _attempt(attempt_remaining: float) -> _T:
+            async with self._session_factory() as session:
+                async with sqlite_attempt_timeout(session, self.engine, attempt_remaining):
+                    return await operation(session)
+
+        return await run_sqlite_write_with_retry(
+            self.engine,
+            _attempt,
+            slot_operation='ledger',
+            max_attempts=BUSY_RETRY_ATTEMPTS,
+            base_delay_seconds=BUSY_RETRY_BASE_DELAY,
+            max_delay_seconds=BUSY_RETRY_MAX_DELAY,
+            is_retryable=_is_duplicate_sequence if retry_duplicates else None,
+        )
+
     async def create_run(
         self,
         *,
@@ -150,10 +209,11 @@ class RunLedgerStore:
         leased = status == 'running' and queue_name is None
         if leased:
             await register_execution_scope(self.engine, workspace_id)
-        async with write_slot(self.engine), self._session_factory() as session:
+
+        async def _tx(session: AsyncSession) -> tuple[dict[str, typing.Any], bool]:
             existing = await self._get_run_row(session, run_id)
             if existing is not None:
-                return self._run_to_dict(existing)
+                return self._run_to_dict(existing), False
 
             run = AgentRun(
                 run_id=run_id,
@@ -179,8 +239,19 @@ class RunLedgerStore:
             )
             session.add(run)
             await commit_write(session)
-            inflight_hub.notify(run.workspace_id)
-            return self._run_to_dict(run)
+            return self._run_to_dict(run), True
+
+        try:
+            record, created = await self._run_write_tx(_tx)
+        except sqlalchemy.exc.IntegrityError as exc:
+            if _is_duplicate_run_id(exc):
+                existing = await self.get_run(run_id)
+                if existing is not None:
+                    return existing
+            raise
+        if created:
+            inflight_hub.notify(record['workspace_id'])
+        return record
 
     async def claim_next_run(
         self,
@@ -196,7 +267,8 @@ class RunLedgerStore:
         strict_thread: bool = False,
     ) -> dict[str, typing.Any] | None:
         """Claim the next queued or expired-leased run for a runtime."""
-        async with write_slot(self.engine), self._session_factory() as session:
+
+        async def _tx(session: AsyncSession) -> dict[str, typing.Any] | None:
             now = _utc_now()
             lease_expires_at = now + datetime.timedelta(seconds=max(int(lease_seconds), 1))
             query = sqlalchemy.select(AgentRun).where(
@@ -237,8 +309,12 @@ class RunLedgerStore:
             run.last_claimed_at = as_naive_utc(now)
             run.updated_at = as_naive_utc(now)
             await commit_write(session)
-            inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run, include_claim_token=True)
+
+        claimed = await self._run_write_tx(_tx)
+        if claimed is not None:
+            inflight_hub.notify(claimed['workspace_id'])
+        return claimed
 
     async def renew_claim(
         self,
@@ -249,7 +325,8 @@ class RunLedgerStore:
         lease_seconds: int = 60,
     ) -> dict[str, typing.Any] | None:
         """Extend a current claim lease if the token still matches."""
-        async with write_slot(self.engine), self._session_factory() as session:
+
+        async def _tx(session: AsyncSession) -> dict[str, typing.Any] | None:
             now = _utc_now()
             run = await self._get_run_row(session, run_id)
             if run is None or not _claim_is_active(run, runtime_id=runtime_id, claim_token=claim_token, now=now):
@@ -258,8 +335,12 @@ class RunLedgerStore:
             run.claim_lease_expires_at = as_naive_utc(now + datetime.timedelta(seconds=max(int(lease_seconds), 1)))
             run.updated_at = as_naive_utc(now)
             await commit_write(session)
-            inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
+
+        renewed = await self._run_write_tx(_tx)
+        if renewed is not None:
+            inflight_hub.notify(renewed['workspace_id'])
+        return renewed
 
     async def release_claim(
         self,
@@ -272,7 +353,8 @@ class RunLedgerStore:
     ) -> dict[str, typing.Any] | None:
         """Release a current claim lease if the token still matches."""
         status = _validate_run_status(status)
-        async with write_slot(self.engine), self._session_factory() as session:
+
+        async def _tx(session: AsyncSession) -> dict[str, typing.Any] | None:
             now = _utc_now()
             run = await self._get_run_row(session, run_id)
             if run is None or not _claim_is_active(run, runtime_id=runtime_id, claim_token=claim_token, now=now):
@@ -287,8 +369,12 @@ class RunLedgerStore:
             if status in TERMINAL_STATUSES:
                 run.finished_at = run.finished_at or as_naive_utc(now)
             await commit_write(session)
-            inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
+
+        released = await self._run_write_tx(_tx)
+        if released is not None:
+            inflight_hub.notify(released['workspace_id'])
+        return released
 
     async def release_expired_claims(
         self,
@@ -303,7 +389,7 @@ class RunLedgerStore:
         current_time = as_naive_utc(now or _utc_now())
         limit = min(max(int(limit), 1), 500)
 
-        async with write_slot(self.engine), self._session_factory() as session:
+        async def _tx(session: AsyncSession) -> list[dict[str, typing.Any]]:
             result = await session.execute(
                 sqlalchemy.select(AgentRun)
                 .where(
@@ -327,6 +413,8 @@ class RunLedgerStore:
             await commit_write(session)
             return [self._run_to_dict(run) for run in runs]
 
+        return await self._run_write_tx(_tx)
+
     async def append_event(
         self,
         *,
@@ -343,11 +431,39 @@ class RunLedgerStore:
         If the same run_id + sequence already exists, the existing row is
         returned. This supports retrying append calls idempotently.
         """
-        async with write_slot(self.engine), self._session_factory() as session:
-            if sequence is None:
-                if not await self._lock_run(session, run_id):
-                    raise ValueError(f'Run {run_id} not found')
-                sequence = await self._next_host_sequence(session, run_id)
+        try:
+            appended = await self._run_write_tx(
+                lambda session: self._append_event_once(
+                    session,
+                    run_id=run_id,
+                    sequence=sequence,
+                    event_type=event_type,
+                    data=data,
+                    usage=usage,
+                    source=source,
+                    metadata=metadata,
+                ),
+                retry_duplicates=sequence is None,
+            )
+        except sqlalchemy.exc.IntegrityError as exc:
+            existing = await self._find_event_sequence(run_id=run_id, sequence=sequence, error=exc)
+            if existing is not None:
+                return existing
+            raise
+        inflight_hub.notify_run(run_id, event_type)
+        return appended
+
+    async def _find_event_sequence(
+        self,
+        *,
+        run_id: str,
+        sequence: int | None,
+        error: sqlalchemy.exc.IntegrityError,
+    ) -> dict[str, typing.Any] | None:
+        """Resolve a duplicate explicit (run_id, sequence) insert to the stored row."""
+        if sequence is None or not _is_duplicate_sequence(error):
+            return None
+        async with self._session_factory() as session:
             result = await session.execute(
                 sqlalchemy.select(AgentRunEvent).where(
                     AgentRunEvent.run_id == run_id,
@@ -355,31 +471,51 @@ class RunLedgerStore:
                 )
             )
             existing = result.scalars().first()
-            if existing is not None:
-                return self._event_to_dict(existing)
+            return self._event_to_dict(existing) if existing is not None else None
 
-            row = AgentRunEvent(
-                run_id=run_id,
-                sequence=sequence,
-                type=event_type,
-                data_json=_json_dumps(data or {}),
-                usage_json=_json_dumps(usage),
-                created_at=as_naive_utc(_utc_now()),
-                source=source,
-                metadata_json=_json_dumps(metadata),
+    async def _append_event_once(
+        self,
+        session: AsyncSession,
+        *,
+        run_id: str,
+        sequence: int | None,
+        event_type: str,
+        data: dict[str, typing.Any] | None,
+        usage: dict[str, typing.Any] | None,
+        source: str,
+        metadata: dict[str, typing.Any] | None,
+    ) -> dict[str, typing.Any]:
+        """Execute one replay-safe event append transaction."""
+        if sequence is None:
+            if not await self._lock_run(session, run_id):
+                raise ValueError(f'Run {run_id} not found')
+            sequence = await self._next_host_sequence(session, run_id)
+
+        now = as_naive_utc(_utc_now())
+        row = AgentRunEvent(
+            run_id=run_id,
+            sequence=sequence,
+            type=event_type,
+            data_json=_json_dumps(data or {}),
+            usage_json=_json_dumps(usage),
+            created_at=now,
+            source=source,
+            metadata_json=_json_dumps(metadata),
+        )
+        session.add(row)
+        if isinstance(usage, dict):
+            # Flush first so a duplicate (run_id, sequence) rolls back before mutating AgentRun.
+            await session.flush()
+            # Usage events are cumulative snapshots. Promote the latest
+            # snapshot to the run row so cancellation/timeout recovery
+            # does not depend on receiving a terminal result.
+            await session.execute(
+                sqlalchemy.update(AgentRun)
+                .where(AgentRun.run_id == run_id)
+                .values(usage_json=_json_dumps(usage), updated_at=now)
             )
-            session.add(row)
-            if isinstance(usage, dict):
-                # Usage events are cumulative snapshots. Promote the latest
-                # snapshot to the run row so cancellation/timeout recovery
-                # does not depend on receiving a terminal result.
-                run = await self._get_run_row(session, run_id)
-                if run is not None:
-                    run.usage_json = _json_dumps(usage)
-                    run.updated_at = as_naive_utc(_utc_now())
-            await commit_write(session)
-            inflight_hub.notify_run(run_id, event_type)
-            return self._event_to_dict(row)
+        await commit_write(session)
+        return self._event_to_dict(row)
 
     async def _lock_run(self, session: AsyncSession, run_id: str) -> bool:
         # A write takes the same per-run gate on SQLite and PostgreSQL.
@@ -416,7 +552,8 @@ class RunLedgerStore:
 
     async def pin_skill_revision(self, run_id: str, workspace_id: str, name: str, revision: str) -> str:
         """Pin a Host-owned revision without overwriting concurrent run metadata."""
-        async with write_slot(self.engine), self._session_factory() as session:
+
+        async def _tx(session: AsyncSession) -> str:
             run = await self._get_run_row(session, run_id)
             if run is None or run.workspace_id != workspace_id or run.status in TERMINAL_STATUSES:
                 raise ValueError('Skill activation requires an active run in the current Workspace')
@@ -441,6 +578,8 @@ class RunLedgerStore:
             await commit_write(session)
             return revision
 
+        return await self._run_write_tx(_tx)
+
     async def finalize_run(
         self,
         *,
@@ -453,57 +592,80 @@ class RunLedgerStore:
     ) -> dict[str, typing.Any] | None:
         """Update a run to a terminal or current status."""
         status = _validate_run_status(status)
-        async with write_slot(self.engine), self._session_factory() as session:
-            if metadata is not None and not await self._lock_run(session, run_id):
-                return None
-            now = _utc_now()
-            run = await self._get_run_row(session, run_id)
-            if run is None:
-                return None
-
-            # A Host whose lease lapsed (for example a stalled event loop) may still
-            # finish the run it owns; its real outcome replaces the interruption.
-            reclaim_interrupted = (
-                run.status == 'failed'
-                and run.status_reason == INTERRUPTED_REASON
-                and run.execution_owner_id == EXECUTION_OWNER_ID
-                and status in TERMINAL_STATUSES
+        finalized = await self._run_write_tx(
+            lambda session: self._finalize_run_once(
+                session,
+                run_id=run_id,
+                status=status,
+                status_reason=status_reason,
+                usage=usage,
+                cost=cost,
+                metadata=metadata,
             )
-            if run.status in TERMINAL_STATUSES and run.status != status and not reclaim_interrupted:
-                raise TerminalRunTransitionError(
-                    f'Cannot transition terminal run {run_id} from {run.status} to {status}'
-                )
-            if reclaim_interrupted:
-                run.finished_at = None
-                run.status_reason = None
+        )
+        if finalized is not None:
+            inflight_hub.notify(finalized['workspace_id'])
+        return finalized
 
-            run.status = status
-            if status_reason is not None:
-                run.status_reason = status_reason
-            run.updated_at = as_naive_utc(now)
-            if status in TERMINAL_STATUSES:
-                run.finished_at = run.finished_at or as_naive_utc(now)
-                run.claimed_by_runtime_id = None
-                run.claim_token = None
-                run.claim_lease_expires_at = None
-            if usage is not None:
-                run.usage_json = _json_dumps(usage)
-            if cost is not None:
-                run.cost_json = _json_dumps(cost)
-            if metadata is not None:
-                # A finalizer may replay an old snapshot of the Host's ACK or external queue attempt.
-                reserved = ('cancel_ack', 'retry_count') if run.queue_name is not None else ('cancel_ack',)
-                metadata = {k: v for k, v in metadata.items() if k not in reserved}
-                # Discard legacy image bytes before merging; new metadata still uses the write contract.
-                existing_metadata = MediaCache.redact_inline_images(_json_loads(run.metadata_json, {}))
-                if isinstance(existing_metadata, dict):
-                    existing_metadata.update(metadata)
-                    run.metadata_json = _json_dumps(existing_metadata)
-                else:
-                    run.metadata_json = _json_dumps(metadata)
-            await commit_write(session)
-            inflight_hub.notify(run.workspace_id)
-            return self._run_to_dict(run)
+    async def _finalize_run_once(
+        self,
+        session: AsyncSession,
+        *,
+        run_id: str,
+        status: str,
+        status_reason: str | None,
+        usage: dict[str, typing.Any] | None,
+        cost: dict[str, typing.Any] | None,
+        metadata: dict[str, typing.Any] | None,
+    ) -> dict[str, typing.Any] | None:
+        """Execute one replay-safe finalize transaction under the per-run write gate."""
+        if not await self._lock_run(session, run_id):
+            return None
+        now = _utc_now()
+        run = await self._get_run_row(session, run_id)
+        if run is None:
+            return None
+
+        # A Host whose lease lapsed (for example a stalled event loop) may still
+        # finish the run it owns; its real outcome replaces the interruption.
+        reclaim_interrupted = (
+            run.status == 'failed'
+            and run.status_reason == INTERRUPTED_REASON
+            and run.execution_owner_id == EXECUTION_OWNER_ID
+            and status in TERMINAL_STATUSES
+        )
+        if run.status in TERMINAL_STATUSES and run.status != status and not reclaim_interrupted:
+            raise TerminalRunTransitionError(f'Cannot transition terminal run {run_id} from {run.status} to {status}')
+        if reclaim_interrupted:
+            run.finished_at = None
+            run.status_reason = None
+
+        run.status = status
+        if status_reason is not None:
+            run.status_reason = status_reason
+        run.updated_at = as_naive_utc(now)
+        if status in TERMINAL_STATUSES:
+            run.finished_at = run.finished_at or as_naive_utc(now)
+            run.claimed_by_runtime_id = None
+            run.claim_token = None
+            run.claim_lease_expires_at = None
+        if usage is not None:
+            run.usage_json = _json_dumps(usage)
+        if cost is not None:
+            run.cost_json = _json_dumps(cost)
+        if metadata is not None:
+            # A finalizer may replay an old snapshot of the Host's ACK or external queue attempt.
+            reserved = ('cancel_ack', 'retry_count') if run.queue_name is not None else ('cancel_ack',)
+            filtered_metadata = {k: v for k, v in metadata.items() if k not in reserved}
+            # Discard legacy image bytes before merging; new metadata still uses the write contract.
+            existing_metadata = MediaCache.redact_inline_images(_json_loads(run.metadata_json, {}))
+            if isinstance(existing_metadata, dict):
+                existing_metadata.update(filtered_metadata)
+                run.metadata_json = _json_dumps(existing_metadata)
+            else:
+                run.metadata_json = _json_dumps(filtered_metadata)
+        await commit_write(session)
+        return self._run_to_dict(run)
 
     async def validate_active_claim(
         self,
@@ -527,7 +689,8 @@ class RunLedgerStore:
         status_reason: str | None = None,
     ) -> dict[str, typing.Any] | None:
         """Record a cancellation request."""
-        async with write_slot(self.engine), self._session_factory() as session:
+
+        async def _tx(session: AsyncSession) -> dict[str, typing.Any] | None:
             now = _utc_now()
             run = await self._get_run_row(session, run_id)
             if run is None or run.status in TERMINAL_STATUSES:
@@ -536,8 +699,12 @@ class RunLedgerStore:
             run.updated_at = as_naive_utc(now)
             run.status_reason = status_reason or run.status_reason
             await commit_write(session)
-            inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
+
+        cancelled = await self._run_write_tx(_tx)
+        if cancelled is not None:
+            inflight_hub.notify(cancelled['workspace_id'])
+        return cancelled
 
     async def retry_run(
         self,
@@ -552,7 +719,8 @@ class RunLedgerStore:
         stored on the run so dispatchers can make the next attempt observable
         and idempotent.
         """
-        async with write_slot(self.engine), self._session_factory() as session:
+
+        async def _tx(session: AsyncSession) -> dict[str, typing.Any] | None:
             if not await self._lock_run(session, run_id):
                 return None
             now = _utc_now()
@@ -583,15 +751,20 @@ class RunLedgerStore:
             run.metadata_json = _json_dumps(metadata)
             run.updated_at = as_naive_utc(now)
             await commit_write(session)
-            inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
+
+        retried = await self._run_write_tx(_tx)
+        if retried is not None:
+            inflight_hub.notify(retried['workspace_id'])
+        return retried
 
     async def create_recovery_run(
         self, *, source_run_id: str, run_id: str, event_id: str, metadata: dict[str, typing.Any]
     ) -> tuple[dict[str, typing.Any], bool]:
         """Create one fresh Host execution without overwriting the source attempt."""
-        now = as_naive_utc(_utc_now())
-        async with write_slot(self.engine), self._session_factory() as session:
+
+        async def _tx(session: AsyncSession) -> tuple[dict[str, typing.Any], bool]:
+            now = as_naive_utc(_utc_now())
             source = await self._get_run_row(session, source_run_id)
             if source is None or source.status not in TERMINAL_STATUSES:
                 raise ValueError('Only terminal runs can be retried or resumed')
@@ -633,8 +806,12 @@ class RunLedgerStore:
             )
             session.add(child)
             await commit_write(session)
-            inflight_hub.notify(child.workspace_id)
             return self._run_to_dict(child), True
+
+        record, created = await self._run_write_tx(_tx)
+        if created:
+            inflight_hub.notify(record['workspace_id'])
+        return record, created
 
     async def get_run_authorization(self, run_id: str) -> dict[str, typing.Any]:
         """Read Host-only recovery provenance, never plugin-supplied metadata."""
@@ -644,7 +821,8 @@ class RunLedgerStore:
 
     async def authorize_recovery_run(self, run_id: str, *, authorization: dict, deadline_at: float | None) -> None:
         """Replace inherited authority with grants rebuilt from the current configuration."""
-        async with write_slot(self.engine), self._session_factory() as session:
+
+        async def _tx(session: AsyncSession) -> None:
             updated = await session.execute(
                 sqlalchemy.update(AgentRun)
                 .where(AgentRun.run_id == run_id, AgentRun.status == 'running')
@@ -653,6 +831,8 @@ class RunLedgerStore:
             if updated.rowcount != 1:
                 raise ValueError('Recovery run is no longer active')
             await commit_write(session)
+
+        await self._run_write_tx(_tx)
 
     async def acknowledge_cancel(
         self,
@@ -665,9 +845,10 @@ class RunLedgerStore:
     ) -> dict[str, typing.Any] | None:
         """Record pending or confirmed cleanup once per attempt, with its Host audit."""
         cleanup_confirmed = bool(cleanup_confirmed)
-        async with write_slot(self.engine), self._session_factory() as session:
+
+        async def _tx(session: AsyncSession) -> tuple[dict[str, typing.Any] | None, str | None]:
             if not await self._lock_run(session, run_id):
-                return None
+                return None, None
             run = await self._get_run_row(session, run_id)
             metadata = MediaCache.redact_inline_images(_run_metadata(run))
             if not isinstance(metadata, dict):
@@ -681,7 +862,7 @@ class RunLedgerStore:
             previous = metadata.get('cancel_ack')
             previous_state = previous.get('cleanup_confirmed') if isinstance(previous, dict) else None
             if previous_state is True and not cleanup_confirmed:
-                return self._run_to_dict(run)
+                return self._run_to_dict(run), None
             now = as_naive_utc(_utc_now())
             data = {'cleanup_confirmed': cleanup_confirmed, 'reason': reason}
             if attempt:
@@ -703,7 +884,7 @@ class RunLedgerStore:
                     and last_payload.get('retry_count', 0) == attempt
                     and last_payload.get('cleanup_confirmed') is cleanup_confirmed
                 ):
-                    return self._run_to_dict(run)
+                    return self._run_to_dict(run), None
                 # Older Hosts could commit the ACK without its event. Audit this retry at its actual time.
             else:
                 metadata['cancel_ack'] = {'acknowledged_at': _datetime_to_epoch(now), **data}
@@ -726,9 +907,13 @@ class RunLedgerStore:
                     )
                 )
             await commit_write(session)
-            inflight_hub.notify(run.workspace_id)
-            inflight_hub.notify_run(run_id, events[-1][0])
-            return self._run_to_dict(run)
+            return self._run_to_dict(run), events[-1][0]
+
+        acked, last_event_type = await self._run_write_tx(_tx, retry_duplicates=True)
+        if acked is not None and last_event_type is not None:
+            inflight_hub.notify(acked['workspace_id'])
+            inflight_hub.notify_run(run_id, last_event_type)
+        return acked
 
     async def get_run(self, run_id: str) -> dict[str, typing.Any] | None:
         """Get one run by run_id."""
@@ -750,7 +935,8 @@ class RunLedgerStore:
         heartbeat_deadline_seconds: int = 60,
     ) -> dict[str, typing.Any]:
         """Create or update a runtime registry row and record a heartbeat."""
-        async with write_slot(self.engine), self._session_factory() as session:
+
+        async def _tx(session: AsyncSession) -> dict[str, typing.Any]:
             now = _utc_now()
             runtime = await self._get_runtime_row(session, runtime_id)
             if runtime is None:
@@ -772,6 +958,8 @@ class RunLedgerStore:
             await commit_write(session)
             return self._runtime_to_dict(runtime)
 
+        return await self._run_write_tx(_tx)
+
     async def heartbeat_runtime(
         self,
         *,
@@ -783,7 +971,8 @@ class RunLedgerStore:
         metadata: dict[str, typing.Any] | None = None,
     ) -> dict[str, typing.Any] | None:
         """Refresh a runtime heartbeat."""
-        async with write_slot(self.engine), self._session_factory() as session:
+
+        async def _tx(session: AsyncSession) -> dict[str, typing.Any] | None:
             now = _utc_now()
             runtime = await self._get_runtime_row(session, runtime_id)
             if runtime is None:
@@ -808,6 +997,8 @@ class RunLedgerStore:
                     runtime.metadata_json = _json_dumps(metadata)
             await commit_write(session)
             return self._runtime_to_dict(runtime)
+
+        return await self._run_write_tx(_tx)
 
     async def get_runtime(self, runtime_id: str) -> dict[str, typing.Any] | None:
         """Get one runtime by runtime_id."""
@@ -896,7 +1087,8 @@ class RunLedgerStore:
                         AgentRuntime.last_heartbeat_at < current_time - stale_after_delta,
                     )
                 )
-        async with write_slot(self.engine), self._session_factory() as session:
+
+        async def _tx(session: AsyncSession) -> list[dict[str, typing.Any]]:
             result = await session.execute(
                 sqlalchemy.select(AgentRuntime).where(
                     sqlalchemy.or_(*stale_conditions),
@@ -909,6 +1101,8 @@ class RunLedgerStore:
                 runtime.updated_at = current_time
             await commit_write(session)
             return [self._runtime_to_dict(runtime) for runtime in runtimes]
+
+        return await self._run_write_tx(_tx)
 
     async def list_runs(
         self,

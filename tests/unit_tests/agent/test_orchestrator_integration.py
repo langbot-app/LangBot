@@ -2425,3 +2425,139 @@ async def test_repeated_cancel_during_box_cleanup_expires_outputs_and_unregister
     assert expired == [run_id]
     assert not hasattr(query, '_box_binding')
     assert await get_session_registry().get(run_id) is None
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_recovers_from_transient_sqlite_busy_on_ledger_writes(clean_agent_state, monkeypatch):
+    """Transient SQLite busy contention on run.completed / finalize_run still completes cleanly. (#2747)"""
+    import sqlite3
+    import sqlalchemy
+
+    connector = FakePluginConnector(
+        results=[
+            {'type': 'message.completed', 'sequence': 1, 'data': {'message': {'role': 'assistant', 'content': 'ok'}}},
+            {'type': 'run.completed', 'sequence': 2, 'data': {'finish_reason': 'stop'}},
+        ]
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
+    store = orchestrator.journal._get_run_ledger_store()
+    real_append = store._append_event_once
+    real_finalize = store._finalize_run_once
+    append_busy = {'hit': False}
+    finalize_busy = {'hit': False}
+
+    def _busy():
+        orig = sqlite3.OperationalError('database is locked')
+        orig.sqlite_errorcode = sqlite3.SQLITE_BUSY
+        return sqlalchemy.exc.OperationalError('SQLITE_BUSY', {}, orig)
+
+    async def flaky_append(session, **kwargs):
+        if kwargs.get('event_type') == 'run.completed' and not append_busy['hit']:
+            append_busy['hit'] = True
+            raise _busy()
+        return await real_append(session, **kwargs)
+
+    async def flaky_finalize(session, **kwargs):
+        if kwargs.get('status') == 'completed' and not finalize_busy['hit']:
+            finalize_busy['hit'] = True
+            raise _busy()
+        return await real_finalize(session, **kwargs)
+
+    monkeypatch.setattr(store, '_append_event_once', flaky_append)
+    monkeypatch.setattr(store, '_finalize_run_once', flaky_finalize)
+    monkeypatch.setattr('langbot.pkg.agent.runner.run_ledger_store.BUSY_RETRY_BASE_DELAY', 0)
+
+    messages = [result async for result in orchestrator.run_from_query(make_query())]
+    run_id = connector.contexts[0]['run_id']
+    run = await RunLedgerStore(clean_agent_state).get_run(run_id)
+    events, *_ = await RunLedgerStore(clean_agent_state).page_run_events(run_id=run_id, limit=10)
+
+    assert append_busy['hit'] and finalize_busy['hit']
+    assert [msg.content for msg in messages] == ['ok']
+    assert run['status'] == 'completed'
+    assert [item['sequence'] for item in events] == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_marks_reply_delivered_when_terminal_event_append_fails_permanently(
+    clean_agent_state, monkeypatch
+):
+    """If run.completed permanently fails to persist after reply delivery, run stays failed with reply_delivered=True."""
+    import sqlite3
+    import sqlalchemy
+
+    connector = FakePluginConnector(
+        results=[
+            {'type': 'message.completed', 'sequence': 1, 'data': {'message': {'role': 'assistant', 'content': 'sent'}}},
+            {'type': 'run.completed', 'sequence': 2, 'data': {'finish_reason': 'stop'}},
+        ]
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
+    store = orchestrator.journal._get_run_ledger_store()
+    real_append = store._append_event_once
+
+    async def fail_completed_event(session, **kwargs):
+        if kwargs.get('event_type') == 'run.completed':
+            orig = sqlite3.OperationalError('database is locked')
+            orig.sqlite_errorcode = sqlite3.SQLITE_BUSY
+            raise sqlalchemy.exc.OperationalError('INSERT agent_run_event', {}, orig)
+        return await real_append(session, **kwargs)
+
+    monkeypatch.setattr(store, '_append_event_once', fail_completed_event)
+    monkeypatch.setattr('langbot.pkg.agent.runner.run_ledger_store.BUSY_RETRY_ATTEMPTS', 2)
+    monkeypatch.setattr('langbot.pkg.agent.runner.run_ledger_store.BUSY_RETRY_BASE_DELAY', 0)
+
+    delivered: list[str] = []
+    with pytest.raises(sqlalchemy.exc.OperationalError, match='database is locked'):
+        async for result in orchestrator.run_from_query(make_query()):
+            delivered.append(result.content)
+
+    run_id = connector.contexts[0]['run_id']
+    run = await RunLedgerStore(clean_agent_state).get_run(run_id)
+    events, *_ = await RunLedgerStore(clean_agent_state).page_run_events(run_id=run_id, limit=10)
+
+    assert delivered == ['sent']
+    assert run['status'] == 'failed'
+    assert run['metadata']['reply_delivered'] is True
+    assert [item['type'] for item in events] == ['message.completed']
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_does_not_downgrade_to_failed_when_completed_finalize_fails(clean_agent_state, monkeypatch):
+    """Once run.completed is durably persisted, a failed finalize_run(completed) must not stamp status='failed'."""
+    import sqlite3
+    import sqlalchemy
+
+    connector = FakePluginConnector(
+        results=[
+            {'type': 'message.completed', 'sequence': 1, 'data': {'message': {'role': 'assistant', 'content': 'sent'}}},
+            {'type': 'run.completed', 'sequence': 2, 'data': {'finish_reason': 'stop'}},
+        ]
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
+    store = orchestrator.journal._get_run_ledger_store()
+    real_finalize = store._finalize_run_once
+    attempted_statuses: list[str] = []
+
+    async def fail_completed_finalize(session, **kwargs):
+        attempted_statuses.append(kwargs['status'])
+        if kwargs['status'] == 'completed':
+            orig = sqlite3.OperationalError('database is locked')
+            orig.sqlite_errorcode = sqlite3.SQLITE_BUSY
+            raise sqlalchemy.exc.OperationalError('UPDATE agent_run', {}, orig)
+        return await real_finalize(session, **kwargs)
+
+    monkeypatch.setattr(store, '_finalize_run_once', fail_completed_finalize)
+    monkeypatch.setattr('langbot.pkg.agent.runner.run_ledger_store.BUSY_RETRY_ATTEMPTS', 2)
+    monkeypatch.setattr('langbot.pkg.agent.runner.run_ledger_store.BUSY_RETRY_BASE_DELAY', 0)
+
+    with pytest.raises(sqlalchemy.exc.OperationalError, match='database is locked'):
+        [result async for result in orchestrator.run_from_query(make_query())]
+
+    run_id = connector.contexts[0]['run_id']
+    run = await RunLedgerStore(clean_agent_state).get_run(run_id)
+    events, *_ = await RunLedgerStore(clean_agent_state).page_run_events(run_id=run_id, limit=10)
+
+    assert attempted_statuses == ['completed', 'completed']
+    assert run['status'] == 'running'
+    assert [item['type'] for item in events] == ['message.completed', 'run.completed']

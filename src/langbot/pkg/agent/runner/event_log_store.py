@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from ...persistence.datetime_utils import as_naive_utc
+from ...persistence.write_admission import commit_write, run_sqlite_write_with_retry, sqlite_attempt_timeout
 
 from ...entity.persistence.event_log import EventLog
 from ...entity.persistence.agent_run import AgentRun
@@ -140,9 +141,14 @@ class EventLogStore:
         if session is not None:
             await self._append_in_transaction(session, values, input_json)
         else:
-            async with self._session_factory() as owned:
-                await self._append_in_transaction(owned, values, input_json)
-                await owned.commit()
+
+            async def _attempt(attempt_remaining: float) -> None:
+                async with self._session_factory() as owned:
+                    async with sqlite_attempt_timeout(owned, self.engine, attempt_remaining):
+                        await self._append_in_transaction(owned, values, input_json)
+                        await commit_write(owned)
+
+            await run_sqlite_write_with_retry(self.engine, _attempt, slot_operation='ledger')
         return event_id
 
     async def _append_in_transaction(self, session, values, input_json):
