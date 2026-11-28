@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 
+import regex
 from jinja2 import TemplateError
 
 from .templates import references, render as render
@@ -25,11 +26,11 @@ CATALOG = {
     'random': _step('logic', 'value', 'mode items weights min max seed'),
     'code': _step('logic', '', 'language code inputs outputs'),
     'history': _step('logic', 'messages text', 'scope limit since_hours'),
-    'condition': _step('logic', 'matched', 'cases', 'cases'),
+    'condition': _step('logic', 'matched error', 'cases', 'cases'),
     'remember': _step('logic', 'value', 'scope items'),
     'reply': _step('action', 'sent', 'content'),
     'send': _step('action', 'sent', 'bot_uuid target_type target_id content'),
-    'http': _step('action', 'status body json', 'method url headers body timeout on_error'),
+    'http': _step('action', 'status body json error', 'method url headers body timeout on_error'),
     'handoff': _step('action', config='target_type target_uuid text', terminal=True),
 }
 
@@ -123,8 +124,19 @@ def validate(graph, *, models=None, targets=None):
             if not isinstance(rows, list) or not rows:
                 issue('empty_category' if kind == 'classify' else 'required_missing', ident, group)
             else:
-                for row in rows:
+                for row_index, row in enumerate(rows):
                     key = row.get('id') if isinstance(row, dict) else None
+                    if kind == 'condition' and isinstance(row, dict) and isinstance(row.get('rules'), list):
+                        for index, rule in enumerate(row['rules']):
+                            if not isinstance(rule, dict) or rule.get('op') != 'regex':
+                                continue
+                            pattern = rule.get('right', '')
+                            if isinstance(pattern, str) and any(mark in pattern for mark in ('{{', '{%', '{#')):
+                                continue
+                            try:
+                                regex.compile(pattern)
+                            except (TypeError, regex.error):
+                                issue('invalid_regex', ident, f'cases.{row_index}.rules.{index}.right')
                     if (
                         not isinstance(key, str)
                         or not key

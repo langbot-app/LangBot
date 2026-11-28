@@ -72,7 +72,12 @@ async def execute_tree(
                     branch = None
                 finally:
                     step['finished_at'] = datetime.now()
-                step.update(outputs=outputs, branch=branch, status='failed' if step['error'] else 'completed')
+                step.update(outputs=outputs, branch=branch)
+                if kind in ('condition', 'http'):
+                    step['error'] = outputs.get('error')
+                if kind == 'http' and step['error'] and inputs.get('on_error') != 'continue':
+                    return steps, f'{step["node_name"]}: {step["error"]}'
+                step['status'] = 'failed' if kind != 'condition' and step['error'] else 'completed'
                 results[current] = outputs
                 current = edges.get((current, branch))
     except TimeoutError:

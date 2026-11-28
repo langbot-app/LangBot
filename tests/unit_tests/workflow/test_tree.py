@@ -66,7 +66,7 @@ async def test_memory_and_branch():
     graph['edges'][-1]['branch'] = 'yes'
     from langbot.pkg.workflow.memory import RunMemory
 
-    store = RunMemory(None, 'workspace', 'workflow', 'user', None)
+    store = RunMemory(None, 'workspace', 'workflow', 'qq', 'user', None)
     runtime = SimpleNamespace(reply=AsyncMock(return_value=None))
     steps, error = await execute_tree(
         graph,
@@ -195,3 +195,70 @@ async def test_llm_passes_images_only_when_enabled(use_images):
     else:
         assert content == 'describe'
         media.get_media.assert_not_awaited()
+
+
+def test_invalid_regex_is_reported_on_save():
+    case = {'id': 'c1', 'rules': [{'left': '{{start.text}}', 'op': 'regex', 'right': '(unclosed'}]}
+    issues = validate(path(node('start'), node('condition', cases=[case])))
+    assert {'code': 'invalid_regex', 'severity': 'error', 'node_id': 'condition', 'field': 'cases.0.rules.0.right'} in (
+        issues
+    )
+
+
+async def test_catastrophic_regex_times_out_instead_of_blocking():
+    import time
+
+    from langbot.pkg.workflow.steps import run_step
+
+    case = {'id': 'c1', 'rules': [{'left': 'a' * 40 + '!', 'op': 'regex', 'right': '(a|aa)+$'}]}
+    started = time.monotonic()
+    outputs, branch = await run_step(
+        'condition', {'cases': [case]}, {}, ap=None, runtime=None, memory={}, save_memory=None, history=[]
+    )
+    assert time.monotonic() - started < 2
+    assert branch == 'else'
+    assert 'timed out' in outputs['error']
+
+
+def test_user_and_group_memory_are_platform_scoped():
+    from langbot.pkg.workflow.memory import RunMemory
+
+    qq = RunMemory(None, 'workspace', 'workflow', 'qq', '123', '456')
+    telegram = RunMemory(None, 'workspace', 'workflow', 'telegram', '123', None)
+    assert qq.ids['user'] == 'qq:123' != telegram.ids['user']
+    assert qq.ids['group'] == 'qq:456'
+    assert telegram.ids['group'] is None
+
+
+@pytest.mark.parametrize('policy', ['continue', 'stop'])
+async def test_http_non_2xx_keeps_status(monkeypatch, policy):
+    from langbot.pkg.workflow import steps as workflow_steps
+
+    async def not_found(config):
+        return {'status': 404, 'body': 'missing', 'json': None, 'error': 'HTTP 404 Not Found'}
+
+    monkeypatch.setattr(workflow_steps, 'request', not_found)
+    graph = path(
+        node('start'),
+        node('http', url='https://example.com/x', on_error=policy),
+        node('reply', text='{{http.status}}'),
+    )
+    runtime = SimpleNamespace(reply=AsyncMock(return_value=None))
+    steps, error = await execute_tree(
+        graph,
+        {'text': 'hi'},
+        ap=None,
+        runtime=runtime,
+        memory={},
+        save_memory=None,
+        history=[],
+        models=None,
+        targets=None,
+    )
+    assert steps[1]['outputs']['status'] == 404
+    if policy == 'continue':
+        assert error is None
+        assert steps[-1]['inputs']['text'] == '404'
+    else:
+        assert error == 'http: HTTP 404 Not Found'
+        assert len(steps) == 2

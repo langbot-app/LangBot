@@ -339,6 +339,7 @@ class WorkflowService:
                     self.ap.persistence_mgr,
                     workspace,
                     workflow_uuid,
+                    message['platform'],
                     message['sender_id'],
                     message['group_id'],
                     test=runtime.test,
