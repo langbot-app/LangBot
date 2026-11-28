@@ -179,6 +179,8 @@ class BoxService:
         # round-trip for every Runner Box acquisition and clear it on reconnect.
         self._runtime_backend_info: dict | None = None
         self._runtime_backend_info_lock = asyncio.Lock()
+        self._managed_process_capabilities: dict[str, bool] = {}
+        self._managed_process_capabilities_lock = asyncio.Lock()
         self._connector_error: str = ''
         self._reconnecting = False
         # Optional explicit override for shares_filesystem_with_box. None means
@@ -200,6 +202,7 @@ class BoxService:
 
     async def initialize(self):
         self._runtime_backend_info = None
+        self._managed_process_capabilities.clear()
         if not self._enabled:
             # Disabled by config: do NOT connect to a remote runtime, do NOT
             # fork a stdio subprocess. Every consumer of box_service should
@@ -295,6 +298,7 @@ class BoxService:
         self._reconnecting = True
         self._available = False
         self._runtime_backend_info = None
+        self._managed_process_capabilities.clear()
         self._connector_error = 'Disconnected from Box runtime'
         self.ap.logger.warning('Box runtime disconnected, sandbox features temporarily disabled.')
         reconnect = self._reconnect_loop(connector)
@@ -324,6 +328,7 @@ class BoxService:
                         await self._purge_attachment_dirs()
                     self._available = True
                     self._runtime_backend_info = None
+                    self._managed_process_capabilities.clear()
                     self._connector_error = ''
                     self.ap.logger.info('Box runtime reconnected, sandbox features restored.')
                     return
@@ -524,13 +529,22 @@ class BoxService:
         except Exception:
             return False
 
-    async def prepare_skill_artifact(self, context: TenantContext, name: str, revision: str) -> dict:
+    async def prepare_skill_artifact(
+        self,
+        context: TenantContext,
+        name: str,
+        revision: str,
+        *,
+        skip_probe: bool = False,
+    ) -> dict:
         """Prepare an already-authorized pinned publication in the Runtime cache.
 
         This Host-only seam does not grant a plugin or run access to a Skill.
         Callers must resolve their resource authorization before using it.
         """
+        timing_started = time.perf_counter()
         execution_context = await self.require_workspace_sandbox(context)
+        placement_ms = (time.perf_counter() - timing_started) * 1000
         prepare = getattr(self.client, 'prepare_artifact', None)
         if not callable(prepare):
             raise BoxValidationError('Runtime artifact caching requires a compatible SDK; update Core and SDK together')
@@ -538,9 +552,22 @@ class BoxService:
 
         if not revision:
             raise BoxValidationError('Runtime artifacts require an explicit pinned revision')
-        package = await self.ap.skill_repository.get_skill_package(
-            execution_context, name, revision, metadata_only=True
-        )
+        metadata_uow_ms = 0.0
+        probe_rpc_ms = 0.0
+        content_read_ms = 0.0
+        transfer_rpc_ms = 0.0
+        cache_hit = False
+        archive_bytes = 0
+        if skip_probe:
+            content_started = time.perf_counter()
+            package = await self.ap.skill_repository.get_skill_package(execution_context, name, revision)
+            content_read_ms = (time.perf_counter() - content_started) * 1000
+        else:
+            metadata_started = time.perf_counter()
+            package = await self.ap.skill_repository.get_skill_package(
+                execution_context, name, revision, metadata_only=True
+            )
+            metadata_uow_ms = (time.perf_counter() - metadata_started) * 1000
         descriptor = BoxArtifactDescriptor(
             content_digest=package['revision'],
             manifest=package['manifest'],
@@ -549,17 +576,33 @@ class BoxService:
         )
         if descriptor.content_digest != revision:
             raise BoxValidationError('Skill package does not match the pinned revision')
-        receipt = await prepare(
-            descriptor, package.get('content'), action_context=self._action_context(execution_context)
-        )
-        if receipt.get('ready') is not True and 'content' not in package:
-            content_package = await self.ap.skill_repository.get_skill_package(execution_context, name, revision)
-            if any(content_package[key] != package[key] for key in ('revision', 'manifest', 'size', 'sha256')):
-                raise BoxValidationError('Skill package metadata changed during artifact preparation')
-            receipt = await prepare(
-                descriptor, content_package['content'], action_context=self._action_context(execution_context)
-            )
+        initial_content = package.get('content')
+        if initial_content is not None:
+            archive_bytes = len(initial_content)
+            transfer_started = time.perf_counter()
+            receipt = await prepare(descriptor, initial_content, action_context=self._action_context(execution_context))
+            transfer_rpc_ms = (time.perf_counter() - transfer_started) * 1000
+        else:
+            probe_started = time.perf_counter()
+            receipt = await prepare(descriptor, None, action_context=self._action_context(execution_context))
+            probe_rpc_ms = (time.perf_counter() - probe_started) * 1000
+            if receipt.get('ready') is True:
+                cache_hit = True
+            else:
+                content_started = time.perf_counter()
+                content_package = await self.ap.skill_repository.get_skill_package(execution_context, name, revision)
+                content_read_ms = (time.perf_counter() - content_started) * 1000
+                if any(content_package[key] != package[key] for key in ('revision', 'manifest', 'size', 'sha256')):
+                    raise BoxValidationError('Skill package metadata changed during artifact preparation')
+                archive_bytes = len(content_package['content'])
+                transfer_started = time.perf_counter()
+                receipt = await prepare(
+                    descriptor, content_package['content'], action_context=self._action_context(execution_context)
+                )
+                transfer_rpc_ms = (time.perf_counter() - transfer_started) * 1000
+        post_started = time.perf_counter()
         await self._validated_execution_context(execution_context)
+        post_placement_ms = (time.perf_counter() - post_started) * 1000
         expected_mount = f'{ARTIFACT_MOUNT_ROOT}/{revision[7:]}'
         if (
             receipt.get('ready') is not True
@@ -567,19 +610,39 @@ class BoxService:
             or receipt.get('mount_path') != expected_mount
         ):
             raise BoxValidationError('Runtime artifact receipt does not match the pinned publication')
+        self.ap.logger.info(
+            'box_artifact_prepare_timing '
+            f'workspace_uuid={execution_context.workspace_uuid} skill={name} '
+            f'skip_probe={skip_probe} cache_hit={cache_hit} '
+            f'placement_ms={placement_ms:.3f} metadata_uow_ms={metadata_uow_ms:.3f} '
+            f'probe_rpc_ms={probe_rpc_ms:.3f} content_read_ms={content_read_ms:.3f} '
+            f'transfer_rpc_ms={transfer_rpc_ms:.3f} post_placement_ms={post_placement_ms:.3f} '
+            f'archive_bytes={archive_bytes} '
+            f'total_ms={(time.perf_counter() - timing_started) * 1000:.3f}'
+        )
         return receipt
 
-    async def prepare_execution_artifacts(self, query, context: TenantContext | None = None) -> list[dict]:
+    async def prepare_execution_artifacts(
+        self,
+        query,
+        context: TenantContext | None = None,
+        *,
+        on_cache_miss: bool = False,
+    ) -> list[dict]:
         """Compose Runtime references only from the current run's authorized pins."""
         if self.file_transfer_mode != 'network' or query is None:
             return []
         from ..provider.tools.loaders.skill import get_activated_skills
 
         context = context or self._query_execution_context(query)
-        references = {}
+        unique_skills: dict[str, str] = {}
         for name, skill in get_activated_skills(query).items():
             revision = str(skill.get('revision') or '')
-            receipt = await self.prepare_skill_artifact(context, name, revision)
+            unique_skills.setdefault(revision, name)
+        skip_probe = on_cache_miss and len(unique_skills) == 1
+        references = {}
+        for revision, name in unique_skills.items():
+            receipt = await self.prepare_skill_artifact(context, name, revision, skip_probe=skip_probe)
             references[revision] = {'content_digest': receipt['content_digest']}
         return list(references.values())
 
@@ -841,6 +904,8 @@ class BoxService:
         telemetry_features.increment(self.ap, 'sandbox', 'execs', query=query)
         prepare_ms = (time.perf_counter() - timing_started) * 1000
         rpc_started = time.perf_counter()
+        artifact_prepare_ms = 0.0
+        artifact_cache_miss = False
         try:
             try:
                 result = await self.client.execute(
@@ -854,7 +919,10 @@ class BoxService:
 
                 if not isinstance(exc, BoxArtifactNotPreparedError):
                     raise
-                await self.prepare_execution_artifacts(query, execution_context)
+                artifact_cache_miss = True
+                artifact_prepare_started = time.perf_counter()
+                await self.prepare_execution_artifacts(query, execution_context, on_cache_miss=True)
+                artifact_prepare_ms = (time.perf_counter() - artifact_prepare_started) * 1000
                 result = await self.client.execute(spec, action_context=self._action_context(execution_context))
             rpc_ms = (time.perf_counter() - rpc_started) * 1000
             # A placement may be cut over while a long-running sandbox call is
@@ -878,6 +946,8 @@ class BoxService:
             f'query_id={query.query_id} session_id={spec.session_id} '
             f'placement_ms={placement_ms:.3f} prepare_ms={prepare_ms:.3f} '
             f'rpc_ms={rpc_ms:.3f} post_ms={post_ms:.3f} '
+            f'artifact_prepare_ms={artifact_prepare_ms:.3f} '
+            f'artifact_cache_miss={artifact_cache_miss} '
             f'total_ms={(time.perf_counter() - timing_started) * 1000:.3f}'
         )
         self.ap.logger.info(
@@ -2096,9 +2166,26 @@ class BoxService:
                 payload['workspace_max_sessions' if key == 'max_sessions' else key] = value
         return payload
 
+    def _record_managed_process_capabilities(self, items: list[dict]) -> None:
+        for item in items:
+            if (
+                isinstance(item, dict)
+                and isinstance(item.get('name'), str)
+                and isinstance(item.get('managed_processes'), bool)
+            ):
+                self._managed_process_capabilities[item['name']] = item['managed_processes']
+
     async def backend_supports_managed_processes(self, backend: str) -> bool:
-        items = await self.client.get_backends()
-        return any(item['name'] == backend and item.get('managed_processes', False) for item in items)
+        cached = self._managed_process_capabilities.get(backend)
+        if cached is not None:
+            return cached
+        async with self._managed_process_capabilities_lock:
+            cached = self._managed_process_capabilities.get(backend)
+            if cached is not None:
+                return cached
+            items = await self.client.get_backends()
+            self._record_managed_process_capabilities(items)
+            return any(item['name'] == backend and item.get('managed_processes', False) for item in items)
 
     async def get_workspace_backend_settings(
         self,
@@ -2138,6 +2225,7 @@ class BoxService:
             if model is not None:
                 options['e2b_config'] = model
             backends = await self.client.get_backends(**options)
+            self._record_managed_process_capabilities(backends)
             backends = [dict(item, limit_capabilities=self._limit_capabilities(item)) for item in backends]
             if self._cloud_managed:
                 backends = [
@@ -2758,18 +2846,36 @@ class BoxService:
             and error.get('workspace_uuid') == execution_context.workspace_uuid
         ]
 
+    def _sync_runtime_backend_info(self, backend_info: object) -> None:
+        if isinstance(backend_info, dict) and backend_info.get('available') is True and backend_info.get('name'):
+            self._runtime_backend_info = dict(backend_info)
+        elif isinstance(backend_info, dict) and backend_info.get('available') is False:
+            self._runtime_backend_info = None
+
+    def _can_reuse_runtime_backend_status(self, selected: str, backend_info: object) -> bool:
+        if not isinstance(backend_info, dict):
+            return False
+        if backend_info.get('name') != selected or not isinstance(backend_info.get('available'), bool):
+            return False
+        if self._cloud_managed:
+            return self._admission_policy is not None and selected == self._admission_policy.required_backend
+        return selected == 'docker'
+
     async def get_backend_status(self) -> dict:
         """Return instance-level backend readiness without tenant resource data."""
 
         if not self._available:
             return {'available': False, 'enabled': self._enabled, 'connector_error': self._connector_error}
         backend = await self.client.get_backend_info()
+        self._sync_runtime_backend_info(backend)
         return {'available': bool(backend.get('available', False)), 'enabled': self._enabled, 'backend': backend}
 
     async def get_status(self, context: TenantContext) -> dict:
+        timing_started = time.perf_counter()
         execution_context = await self._validated_execution_context(context)
         if self._cloud_managed and self._available:
             await self._require_validated_workspace_sandbox(execution_context)
+        placement_ms = (time.perf_counter() - timing_started) * 1000
         action_context = self._action_context(execution_context)
         recent_error_count = len(self.get_recent_errors(execution_context))
         if not self._available:
@@ -2780,6 +2886,7 @@ class BoxService:
                 'recent_error_count': recent_error_count,
                 'connector_error': self._connector_error,
             }
+        runtime_rpc_started = time.perf_counter()
         try:
             runtime_status = await self.client.get_status(action_context=action_context)
         except Exception as exc:
@@ -2792,6 +2899,7 @@ class BoxService:
                 'recent_error_count': recent_error_count,
                 'connector_error': str(exc),
             }
+        runtime_rpc_ms = (time.perf_counter() - runtime_rpc_started) * 1000
         # Backend state can be unavailable even when the connector is healthy
         # (operator selected nsjail but the binary is missing, Docker daemon
         # went down after the runtime started, E2B credentials wrong, ...).
@@ -2801,27 +2909,43 @@ class BoxService:
         # detailed ``backend`` object stays in the payload so the dialog
         # can still show which backend was tried.
         backend_info = runtime_status.get('backend') if isinstance(runtime_status, dict) else None
-        from .settings import get_backend
+        self._sync_runtime_backend_info(backend_info)
+        from .settings import get_settings
 
-        selected = await get_backend(self.ap, execution_context.workspace_uuid)
+        settings_started = time.perf_counter()
+        saved = await get_settings(self.ap, execution_context.workspace_uuid)
+        settings_uow_ms = (time.perf_counter() - settings_started) * 1000
+        selected = saved.get('backend')
+        probe_mode = 'default_only'
+        probe_ms = 0.0
+        post_placement_ms = 0.0
         if selected is not None:
-            if (
-                self.file_transfer_mode == 'network'
-                and selected == 'docker'
-                and isinstance(backend_info, dict)
-                and backend_info.get('name') == 'docker'
-            ):
-                # Runtime already checked this daemon; do not wait for unrelated backend probes.
+            if self._can_reuse_runtime_backend_status(selected, backend_info):
+                probe_mode = 'matched_runtime'
+                post_started = time.perf_counter()
                 await self._validated_execution_context(context)
+                post_placement_ms = (time.perf_counter() - post_started) * 1000
+            elif (
+                self._cloud_managed
+                and self._admission_policy is not None
+                and selected != self._admission_policy.required_backend
+            ):
+                probe_mode = 'cloud_policy_restricted'
+                post_started = time.perf_counter()
+                await self._validated_execution_context(context)
+                post_placement_ms = (time.perf_counter() - post_started) * 1000
+                backend_info = {'name': selected, 'available': False, 'reason': 'policy_restricted'}
+                runtime_status = {**runtime_status, 'backend': backend_info}
             else:
+                probe_mode = 'full_enumeration'
+                probe_started = time.perf_counter()
                 candidates = (await self.get_workspace_backend_settings(context))['backends']
+                probe_ms = (time.perf_counter() - probe_started) * 1000
                 backend_info = next(
                     (item for item in candidates if item['name'] == selected), {'name': selected, 'available': False}
                 )
                 runtime_status = {**runtime_status, 'backend': backend_info}
-        from .settings import get_settings
-
-        values = ((await get_settings(self.ap, execution_context.workspace_uuid)).get('limits') or {}).get('config', {})
+        values = (saved.get('limits') or {}).get('config', {})
         capacity = runtime_status.get('capacity') or {}
         workspace_cap = values.get('max_sessions') or (_get_box_config(self.ap).get('workspace_limit_caps') or {}).get(
             'max_sessions'
@@ -2849,4 +2973,14 @@ class BoxService:
                     'No supported sandbox backend (Docker / nsjail / E2B) is available. '
                     'Trusted local development may explicitly select the unsafe host backend.'
                 )
+        self.ap.logger.info(
+            'box_status_timing '
+            f'workspace_uuid={execution_context.workspace_uuid} '
+            f'mode={self.file_transfer_mode} selected_backend={selected or "default"} '
+            f'probe_mode={probe_mode} '
+            f'placement_ms={placement_ms:.3f} runtime_rpc_ms={runtime_rpc_ms:.3f} '
+            f'settings_uow_ms={settings_uow_ms:.3f} probe_ms={probe_ms:.3f} '
+            f'post_placement_ms={post_placement_ms:.3f} '
+            f'total_ms={(time.perf_counter() - timing_started) * 1000:.3f}'
+        )
         return payload

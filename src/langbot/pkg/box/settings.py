@@ -45,8 +45,9 @@ async def set_backend(
     ap, workspace_uuid: str, backend: str, *, e2b_config: dict | None = None, limits: dict | None = None
 ) -> None:
     values = {BACKEND_KEY: backend}
+    existing = await get_settings(ap, workspace_uuid) if (e2b_config is not None or limits is not None) else None
     if e2b_config is not None:
-        current = (await get_settings(ap, workspace_uuid))['e2b']
+        current = existing['e2b'] if existing is not None else None
         entry = (
             current
             if current and current['config'] == e2b_config
@@ -54,7 +55,7 @@ async def set_backend(
         )
         values[E2B_KEY] = json.dumps(entry)
     if limits is not None:
-        current = (await get_settings(ap, workspace_uuid))['limits']
+        current = existing['limits'] if existing is not None else None
         entry = current if current and current['config'] == limits else {'config': limits, 'revision': uuid.uuid4().hex}
         values[LIMITS_KEY] = json.dumps(entry)
     try:
