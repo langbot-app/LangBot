@@ -917,7 +917,7 @@ class TestNativeToolLoaderSkillPaths:
         [('text', 'overwrite'), ('text', 'append'), ('base64', 'overwrite'), ('base64', 'append')],
     )
     async def test_skill_write_rejection_names_the_ignored_options(self, encoding, mode):
-        """The global write schema advertises encoding/mode, so a skill-path rejection must name them."""
+        """Activated skill writes are rejected and report the options that did not apply."""
         from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
         from langbot.pkg.provider.tools.loaders.skill import register_activated_skill
 
@@ -945,15 +945,6 @@ class TestNativeToolLoaderSkillPaths:
             assert f'"{encoding}" encoding' in result['error']
             assert f'"{mode}" mode' in result['error']
             assert '/workspace/skill-drafts' in result['error']
-
-    def test_write_schema_scopes_encoding_and_mode_to_non_skill_paths(self):
-        from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
-
-        loader = NativeToolLoader(_make_ap())
-        properties = loader._build_write_tool().parameters['properties']
-
-        for option in ('encoding', 'mode'):
-            assert '/workspace/.skills/<skill-name>/...' in properties[option]['description']
 
 
 @pytest.mark.asyncio

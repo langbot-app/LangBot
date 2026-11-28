@@ -380,32 +380,33 @@ async def test_read_binary_file_as_base64_chunk():
         assert result['next_byte_offset'] == 3
 
 
+def test_write_schema_scopes_encoding_and_mode_to_non_skill_paths(tmp_path):
+    loader, _ = _make_loader_with_workspace(str(tmp_path))
+    properties = loader._build_write_tool().parameters['properties']
+
+    for option in ('encoding', 'mode'):
+        assert 'Only applies outside /workspace/.skills/<skill-name>/...' in properties[option]['description']
+
+
 @pytest.mark.asyncio
-async def test_write_base64_file_append():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        loader, _ = _make_loader_with_workspace(tmpdir)
+@pytest.mark.parametrize('encoding', ['text', 'base64'])
+@pytest.mark.parametrize('mode', ['overwrite', 'append'])
+async def test_write_non_skill_path_honors_encoding_and_mode(tmp_path, encoding, mode):
+    loader, _ = _make_loader_with_workspace(str(tmp_path))
+    target = tmp_path / 'blob.bin'
+    original = b'existing:'
+    target.write_bytes(original)
+    payload = b'hello' if encoding == 'text' else b'\x00\xff'
+    content = payload.decode('ascii') if encoding == 'text' else base64.b64encode(payload).decode('ascii')
 
-        first = base64.b64encode(b'\x00\x01').decode('ascii')
-        second = base64.b64encode(b'\x02\x03').decode('ascii')
-        await loader.invoke_tool(
-            'write',
-            {'path': '/workspace/blob.bin', 'content': first, 'encoding': 'base64'},
-            _make_query(),
-        )
-        result = await loader.invoke_tool(
-            'write',
-            {
-                'path': '/workspace/blob.bin',
-                'content': second,
-                'encoding': 'base64',
-                'mode': 'append',
-            },
-            _make_query(),
-        )
+    result = await loader.invoke_tool(
+        'write',
+        {'path': '/workspace/blob.bin', 'content': content, 'encoding': encoding, 'mode': mode},
+        _make_query(),
+    )
 
-        assert result['ok'] is True
-        with open(os.path.join(tmpdir, 'blob.bin'), 'rb') as f:
-            assert f.read() == b'\x00\x01\x02\x03'
+    assert result['ok'] is True
+    assert target.read_bytes() == (original + payload if mode == 'append' else payload)
 
 
 @pytest.mark.asyncio
