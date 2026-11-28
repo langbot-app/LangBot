@@ -164,7 +164,9 @@ class HarnessOAuthService:
         if device is None:
             raise ValueError('invalid_device')
         try:
-            await self.ap.user_service.authenticate(email, password)
+            # A supplied code is verified inline; without one a second-factor
+            # account falls through to the browser handoff below.
+            await self.ap.user_service.authenticate(email, password, payload.get('totp_code'))
         except TotpRequiredError as exc:
             if exc.account is None or device['account_uuid'] not in (None, exc.account.uuid):
                 raise ValueError('invalid_grant') from None
