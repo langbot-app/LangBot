@@ -3,8 +3,10 @@ from pathlib import Path
 import threading
 import time
 
+import pytest
+
 from tools.regression.arrival_schedule import run_open_loop
-from tools.regression.observability_contract import ActionWriter, ObservationWriter, write_manifest
+from tools.regression.observability_contract import ActionWriter, ObservationWriter, write_manifest, write_trace_index
 
 
 def test_action_writer_records_terminal_failure_and_manifest(tmp_path: Path):
@@ -50,6 +52,54 @@ def test_manifest_marks_missing_observation_source_incomplete(tmp_path: Path):
     )
     assert manifest['completeness'] == 'incomplete'
     assert manifest['missing_sources'] == ['regression_gate']
+
+
+def test_trace_index_groups_action_and_arrival_evidence(tmp_path: Path):
+    actions = tmp_path / 'actions.jsonl'
+    arrivals = tmp_path / 'arrivals.jsonl'
+    actions.write_text(
+        json.dumps({'trace_id': 'Y-1', 'action_id': 'a-1', 'status': 'succeeded'}) + '\n'
+        + json.dumps({'action_id': 'a-2', 'status': 'expired'})
+        + '\n'
+    )
+    arrivals.write_text(json.dumps({'trace_id': 'Y-1', 'action_id': 'a-1', 'arrival_id': 0}) + '\n')
+
+    index_path = tmp_path / 'trace-index.json'
+    index = write_trace_index(index_path, [actions, arrivals], run_id='run-1')
+
+    assert index['traces'] == 1
+    assert index['indexed_records'] == 2
+    assert index['unindexed_records'] == 1
+    entry = index['entries'][0]
+    assert entry['action_ids'] == ['a-1']
+    assert {(ref['artifact'], ref['line']) for ref in entry['evidence']} == {
+        ('actions.jsonl', 1),
+        ('arrivals.jsonl', 1),
+    }
+    manifest = write_manifest(
+        tmp_path / 'run-manifest.json',
+        run_id='run-1',
+        expected_sources=[],
+        artifacts=[actions, arrivals, index_path],
+        trace_index=index_path,
+    )
+    assert manifest['completeness'] == 'complete'
+    assert manifest['trace_index']['traces'] == 1
+
+
+def test_trace_index_rejects_corrupt_jsonl(tmp_path: Path):
+    evidence = tmp_path / 'actions.jsonl'
+    evidence.write_text('{broken\n')
+
+    with pytest.raises(ValueError, match='invalid JSONL'):
+        write_trace_index(tmp_path / 'trace-index.json', [evidence])
+
+
+def test_trace_index_keeps_missing_artifact_visible(tmp_path: Path):
+    index = write_trace_index(tmp_path / 'trace-index.json', [tmp_path / 'missing.jsonl'])
+
+    assert index['missing_artifacts'] == [str(tmp_path / 'missing.jsonl')]
+    assert index['unindexed_records'] == 0
 
 
 def test_open_loop_records_failed_action_without_breaking_accounting(tmp_path: Path):

@@ -149,6 +149,7 @@ def write_manifest(
     expected_sources: list[str],
     observed_sources: set[str] | list[str] | None = None,
     artifacts: list[Path],
+    trace_index: Path | None = None,
 ) -> dict[str, Any]:
     rows, missing = [], []
     for artifact in artifacts:
@@ -173,5 +174,83 @@ def write_manifest(
         'missing_artifacts': missing,
         'completeness': 'complete' if not missing and not missing_sources else 'incomplete',
     }
+    if trace_index is not None:
+        index = json.loads(trace_index.read_text(encoding='utf-8')) if trace_index.exists() else {}
+        manifest['trace_index'] = {
+            'path': str(trace_index),
+            'traces': index.get('traces', 0),
+            'indexed_records': index.get('indexed_records', 0),
+            'unindexed_records': index.get('unindexed_records', 0),
+            'missing_artifacts': index.get('missing_artifacts', []),
+        }
+        if manifest['trace_index']['missing_artifacts']:
+            manifest['completeness'] = 'incomplete'
     path.write_text(_dump(manifest) + '\n', encoding='utf-8')
     return manifest
+
+
+def write_trace_index(path: Path, artifacts: list[Path], *, run_id: str | None = None) -> dict[str, Any]:
+    """Index trace-bearing JSONL evidence without inferring missing links."""
+
+    entries: dict[str, dict[str, Any]] = {}
+    unindexed_by_artifact: dict[str, int] = {}
+    missing_artifacts: list[str] = []
+    indexed_records = 0
+    for artifact in artifacts:
+        if not artifact.exists():
+            missing_artifacts.append(str(artifact))
+            continue
+        with artifact.open(encoding='utf-8') as stream:
+            for line_number, line in enumerate(stream, 1):
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f'invalid JSONL in {artifact}:{line_number}: {exc.msg}') from exc
+                if not isinstance(record, dict):
+                    raise ValueError(f'JSONL record in {artifact}:{line_number} must be an object')
+                trace_id = record.get('trace_id')
+                if not isinstance(trace_id, str) or not trace_id:
+                    key = str(artifact)
+                    unindexed_by_artifact[key] = unindexed_by_artifact.get(key, 0) + 1
+                    continue
+                entry = entries.setdefault(
+                    trace_id,
+                    {
+                        'trace_id': trace_id,
+                        'action_ids': [],
+                        'observation_ids': [],
+                        'evidence': [],
+                    },
+                )
+                for field, target in (('action_id', 'action_ids'), ('observation_id', 'observation_ids')):
+                    value = record.get(field)
+                    if isinstance(value, str) and value and value not in entry[target]:
+                        entry[target].append(value)
+                artifact_ref = (
+                    str(artifact.relative_to(path.parent))
+                    if artifact.is_relative_to(path.parent)
+                    else str(artifact)
+                )
+                entry['evidence'].append(
+                    {
+                        'artifact': artifact_ref,
+                        'line': line_number,
+                    }
+                )
+                indexed_records += 1
+    index = {
+        'schema_version': SCHEMA_VERSION,
+        'run_id': run_id,
+        'created_at': _now(),
+        'traces': len(entries),
+        'indexed_records': indexed_records,
+        'unindexed_records': sum(unindexed_by_artifact.values()),
+        'unindexed_by_artifact': unindexed_by_artifact,
+        'missing_artifacts': missing_artifacts,
+        'entries': [entries[key] for key in sorted(entries)],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_dump(index) + '\n', encoding='utf-8')
+    return index
