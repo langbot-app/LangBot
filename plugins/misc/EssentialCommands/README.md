@@ -1,5 +1,7 @@
 # EssentialCommands
 
+> **Deprecated.** Replaced by LangBot built-in system commands (requires a newer LangBot Core). On a newer Core, uninstall this plugin; the upgrade check offers to do it for you.
+
 Essential commands, previously included in LangBot, provides commands below:
 
 - `!cmd` - Show all registered command
