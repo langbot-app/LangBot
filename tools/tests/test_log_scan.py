@@ -22,6 +22,7 @@ def test_records():
         'runtime',
     )
     assert (old.level, old.file, old.line, old.msg) == ('WARN', 'app.py', 42, 'retry')
+    assert (old.log_line, unified.log_line, warning.log_line) == (1, 2, 5)
     assert (unified.service, unified.module, unified.func, unified.trace, unified.exc_type) == (
         'core',
         'CORE.PIPELINE',

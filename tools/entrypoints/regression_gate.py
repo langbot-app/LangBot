@@ -12,10 +12,15 @@ import time
 
 from tools.entrypoints.regression_suite import Suite, validate
 from tools.regression.observations import read_process_snapshot, read_system_snapshot
-from tools.regression.observability_contract import ObservationWriter, write_manifest, write_trace_index
+from tools.regression.observability_contract import (
+    ObservationWriter,
+    reconcile_inflight_actions,
+    write_manifest,
+    write_trace_index,
+)
 
 
-def supervise(command, output, budget, pids, env=None):
+def supervise(command, output, budget, pids, env=None, *, service_logs=None):
     output.mkdir(parents=True, exist_ok=False, mode=0o700)
     started = time.monotonic()
     samples, errors = [], []
@@ -36,16 +41,19 @@ def supervise(command, output, budget, pids, env=None):
                     'processes': {},
                     'system': read_system_snapshot(),
                 }
+                sample_errors = []
                 for name, pid in pids.items():
                     try:
                         sample['processes'][name] = read_process_snapshot(pid)
                     except (RuntimeError, OSError) as exc:
-                        errors.append(f'{name}: {exc}')
+                        sample_errors.append(f'{name}: {exc}')
+                errors.extend(sample_errors)
                 samples.append(sample)
                 observations.write(
                     'regression_gate',
                     sample,
-                    missing_reasons=errors[-1:] if errors else [],
+                    scope='global',
+                    missing_reasons=sample_errors,
                 )
                 remaining = budget - (time.monotonic() - started)
                 try:
@@ -83,15 +91,56 @@ def supervise(command, output, budget, pids, env=None):
         },
     }
     (output / 'gate.json').write_text(json.dumps(result, indent=2) + '\n')
+    interrupted_reason = None
+    if timed_out:
+        interrupted_reason = 'timeout'
+    elif process.returncode == -signal.SIGKILL:
+        interrupted_reason = 'sigkill'
+    elif process.returncode in (-signal.SIGTERM, -signal.SIGINT):
+        interrupted_reason = 'cancelled'
+    elif process.returncode is not None and process.returncode < 0:
+        interrupted_reason = f'signal_{-process.returncode}'
+
+    action_paths = []
+    seen_action_paths = set()
+    for inflight in sorted(output.rglob('*.inflight.jsonl')):
+        actions_path = inflight.with_name(inflight.name.removesuffix('.inflight.jsonl') + '.jsonl')
+        recovered = reconcile_inflight_actions(
+            actions_path,
+            inflight_path=inflight,
+            reason=interrupted_reason or 'process_exited',
+        )
+        if (recovered or actions_path.exists()) and actions_path not in seen_action_paths:
+            seen_action_paths.add(actions_path)
+            action_paths.append(actions_path)
+    for actions_path in sorted(output.rglob('actions.jsonl')):
+        if actions_path not in seen_action_paths:
+            seen_action_paths.add(actions_path)
+            action_paths.append(actions_path)
+
     trace_index = output / 'trace-index.json'
-    write_trace_index(trace_index, [output / 'observations.jsonl'], run_id=output.name)
+    write_trace_index(
+        trace_index,
+        [output / 'observations.jsonl', *action_paths],
+        run_id=output.name,
+        service_logs=service_logs,
+        allow_corrupt=True,
+    )
     write_manifest(
         output / 'run-manifest.json',
         run_id=output.name,
         expected_sources=['regression_gate'],
         observed_sources=observations.sources,
-        artifacts=[output / 'resources.jsonl', output / 'observations.jsonl', output / 'gate.json', trace_index],
+        artifacts=[
+            output / 'resources.jsonl',
+            output / 'observations.jsonl',
+            output / 'gate.json',
+            *action_paths,
+            trace_index,
+        ],
         trace_index=trace_index,
+        service_logs=service_logs,
+        interrupted_reason=interrupted_reason,
     )
     return result
 
@@ -109,6 +158,9 @@ def main():
     pids = dict(profile.get('observe', {}).get('pids', {}))
     for name, path in profile.get('observe', {}).get('pid_files', {}).items():
         pids[name] = int(Path(suite.path(path)).read_text().strip())
+    service_logs = {
+        name: Path(suite.path(path)) for name, path in profile.get('observe', {}).get('service_logs', {}).items()
+    }
     result = supervise(
         [
             sys.executable,
@@ -123,6 +175,7 @@ def main():
         args.output,
         60,
         pids,
+        service_logs=service_logs or None,
     )
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result['passed'] else 1)

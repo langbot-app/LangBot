@@ -5,6 +5,7 @@ from collections import Counter, deque
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
 from tools.regression.mixload_pacing import planned_group_slots
+from tools.regression.observability_contract import _interrupt_reason_for_exception
 
 
 def run_open_loop(
@@ -41,17 +42,20 @@ def run_open_loop(
     queue_peak = 0
     at_deadline = None
 
-    def finish(arrival, outcome, row=None, *, error=None):
+    def finish(arrival, outcome, row=None, *, error=None, interrupt_reason=None):
         counts[outcome] += 1
         action = arrival.pop('_action_result', None)
         settle(arrival, outcome, row)
         if action_writer is not None and action is not None:
+            if interrupt_reason is not None:
+                action.metadata['interrupt_reason'] = interrupt_reason
             status = {
                 'dispatched': 'succeeded',
                 'dropped': 'blocked',
                 'blocked': 'blocked',
                 'expired': 'expired',
                 'failed': 'failed',
+                'interrupted': 'interrupted',
             }[outcome]
             action_writer.finish(action, status, error=error)
 
@@ -106,7 +110,10 @@ def run_open_loop(
             else:
                 pending.append(item)
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    pool = ThreadPoolExecutor(max_workers=workers)
+    timed_out_drain = False
+    aborted = False
+    try:
         while True:
             completed()
             now = time.monotonic()
@@ -147,8 +154,9 @@ def run_open_loop(
                     while pending:
                         item = pending.popleft()
                         finish(item, 'blocked' if blocked(item['serialization_key']) else 'expired')
-                    if not active:
-                        break
+                    if active:
+                        timed_out_drain = True
+                    break
                 if active:
                     wait(active, timeout=0.05, return_when=FIRST_COMPLETED)
                 continue
@@ -181,15 +189,31 @@ def run_open_loop(
         # No queued request is admitted during drain, even if a slot becomes free.
         for future in list(active):
             item = active.pop(future)
+            if timed_out_drain and not future.done():
+                future.cancel()
+                finish(
+                    item,
+                    'interrupted',
+                    error=TimeoutError('drain timeout exceeded'),
+                    interrupt_reason='timeout',
+                )
+                continue
             try:
                 row = future.result()
             except Exception as exc:  # noqa: BLE001
                 finish(item, 'failed', error=exc)
                 continue
             finish(item, 'expired' if row is None else 'dispatched', row)
+    except BaseException as exc:
+        aborted = True
+        if action_writer is not None:
+            action_writer.interrupt_active(reason=_interrupt_reason_for_exception(exc), error=exc)
+        raise
+    finally:
+        pool.shutdown(wait=not (timed_out_drain or aborted), cancel_futures=timed_out_drain or aborted)
 
     dispatched = counts['dispatched']
-    undispatched = sum(counts[name] for name in ('dropped', 'expired', 'blocked', 'failed'))
+    undispatched = sum(counts[name] for name in ('dropped', 'expired', 'blocked', 'failed', 'interrupted'))
     return {
         'scheduled': scheduled,
         'dispatched': dispatched,
@@ -197,6 +221,7 @@ def run_open_loop(
         'expired': counts['expired'],
         'blocked': counts['blocked'],
         'failed': counts['failed'],
+        'interrupted': counts['interrupted'],
         'queue_capacity': queue_capacity,
         'queue_peak': queue_peak,
         'queued_at_deadline': at_deadline,

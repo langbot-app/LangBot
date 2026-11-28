@@ -178,6 +178,18 @@ print(json.dumps({'ok': True, 'data': {'status': 'completed', 'reply': 'CLI_OK'}
             self.assertLess(rows[0]['dispatch_elapsed'], 0.4)
             self.assertGreater(rows[0]['completed_elapsed'], 0.4)
             self.assertNotIn('group_id', rows[0])
+            self.assertTrue(rows[0]['trace_id'].startswith('Y-'))
+            matched_arrival = next(item for item in arrivals if item['arrival_id'] == rows[0]['arrival_id'])
+            self.assertEqual(rows[0]['action_id'], matched_arrival['action_id'])
+            self.assertEqual(rows[0]['trace_id'], matched_arrival['trace_id'])
+            trace_index = json.loads((output / 'trace-index.json').read_text())
+            self.assertEqual(trace_index['unindexed_records'], 0)
+            self.assertEqual(trace_index['missing_trace_observations'], 0)
+            self.assertTrue(
+                any(
+                    ref['artifact'] == 'requests.jsonl' for entry in trace_index['entries'] for ref in entry['evidence']
+                )
+            )
             self.assertEqual(sorted(item['arrival_id'] for item in arrivals), list(range(40)))
             self.assertTrue(all(item['serialization_key'] is None for item in arrivals))
 

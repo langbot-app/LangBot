@@ -10,8 +10,10 @@ import json
 import math
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sqlite3
+import sys
 import threading
 import time
 import urllib.error
@@ -20,7 +22,12 @@ import uuid
 from tools.regression.evidence import check_attachment, check_fields, check_response, checked
 from tools.regression.http_bot import group_request, valid_group_settings
 from tools.regression.observations import read_endpoint_snapshot, read_process_snapshot, read_system_snapshot
-from tools.regression.observability_contract import ActionWriter, write_manifest, write_trace_index
+from tools.regression.observability_contract import (
+    ActionWriter,
+    _interrupt_reason_for_exception,
+    write_manifest,
+    write_trace_index,
+)
 from tools.regression.run_ledger import (
     UnresolvedRun,
     check_run,
@@ -288,6 +295,13 @@ def main():
     parser.add_argument('--container', action='append', default=[])
     parser.add_argument('--box-data-root', type=Path, help='Dynamically sample Box containers mounted under this root')
     parser.add_argument(
+        '--service-log',
+        action='append',
+        default=[],
+        metavar='[NAME=]PATH',
+        help='Service log file to hash in run-manifest.json and index timings in trace-index.json',
+    )
+    parser.add_argument(
         '--shared-case-sequence', action='store_true', help='Share the weighted case sequence across workers'
     )
     args = parser.parse_args()
@@ -360,6 +374,14 @@ def main():
     queue_capacity = None if args.drain_all and args.queue_capacity == 0 else args.queue_capacity
     pids = {name: int(pid) for name, pid in (value.split('=', 1) for value in args.pid)}
     endpoints = dict(value.split('=', 1) for value in args.health)
+    service_logs = []
+    for item in args.service_log:
+        name, sep, raw_path = item.partition('=')
+        if sep and name and raw_path:
+            service_logs.append((Path(raw_path), name))
+        else:
+            log_path = Path(item)
+            service_logs.append((log_path, log_path.stem))
     rows = []
     verified_ids = set()
     conversations = set()
@@ -601,6 +623,10 @@ def main():
                 queue_seconds=max(0, row['elapsed'] - arrival['scheduled_elapsed']),
                 arrival_seconds=max(0, completed - arrival['scheduled_elapsed']),
             )
+            if 'action_id' in arrival:
+                row['action_id'] = arrival['action_id']
+            if 'trace_id' in arrival:
+                row['trace_id'] = arrival['trace_id']
         with group_condition:
             rows.append(row)
             with (args.output / 'requests.jsonl').open('a') as stream:
@@ -739,6 +765,7 @@ def main():
                 'dropped': 'client waiting queue full',
                 'blocked': 'group has a failed or unknown previous request',
                 'expired': 'observation aborted' if stop.is_set() else 'load deadline reached before dispatch',
+                'interrupted': 'drain timeout or interruption before action completed',
             }[outcome]
         with (args.output / 'arrivals.jsonl').open('a') as stream:
             stream.write(json.dumps(record, ensure_ascii=False) + '\n')
@@ -750,6 +777,18 @@ def main():
         deadline = started + args.duration
     sampler = threading.Thread(target=sampling_guard)
     sampler.start()
+    previous_sigterm = None
+    received_sigterm = False
+    interrupt_reason = None
+    interrupt_error = None
+    if action_writer is not None and threading.current_thread() is threading.main_thread():
+
+        def _handle_sigterm(_signum, _frame):
+            nonlocal received_sigterm
+            received_sigterm = True
+            raise KeyboardInterrupt('received SIGTERM')
+
+        previous_sigterm = signal.signal(signal.SIGTERM, _handle_sigterm)
     try:
         if args.arrival_mode == 'open-loop':
             from tools.regression.arrival_schedule import run_open_loop
@@ -771,6 +810,8 @@ def main():
                 action_writer=action_writer,
                 action_name='regression_arrival',
             )
+            if arrivals.get('interrupted'):
+                interrupt_reason = 'timeout'
             if action_writer is not None:
                 action_writer.close()
         else:
@@ -783,9 +824,49 @@ def main():
         load_elapsed = time.monotonic() - started
         phase[0] = 'cooldown'
         stop.wait(args.cooldown)
+    except BaseException as exc:
+        interrupt_error = exc
+        interrupt_reason = _interrupt_reason_for_exception(exc)
+        if action_writer is not None:
+            action_writer.interrupt_active(reason=interrupt_reason, error=exc)
+        raise
     finally:
+        if previous_sigterm is not None:
+            signal.signal(signal.SIGTERM, previous_sigterm)
         stop.set()
         sampler.join()
+        if action_writer is not None and interrupt_error is not None:
+            trace_index = args.output / 'trace-index.json'
+            index_artifacts = [
+                path
+                for path in (
+                    args.output / 'actions.jsonl',
+                    args.output / 'arrivals.jsonl',
+                    args.output / 'requests.jsonl',
+                )
+                if path.exists()
+            ]
+            write_trace_index(
+                trace_index,
+                index_artifacts,
+                run_id=args.output.name,
+                service_logs=service_logs,
+            )
+            write_manifest(
+                args.output / 'run-manifest.json',
+                run_id=args.output.name,
+                expected_sources=['regression_arrival'],
+                observed_sources=action_writer.sources,
+                artifacts=[*index_artifacts, trace_index],
+                trace_index=trace_index,
+                service_logs=service_logs,
+                interrupted_reason=interrupt_reason,
+            )
+            if received_sigterm:
+                sys.stdout.flush()
+                sys.stderr.flush()
+                signal.signal(signal.SIGTERM, signal.SIG_DFL)
+                os.kill(os.getpid(), signal.SIGTERM)
     summary = {
         'duration_requested_seconds': args.duration,
         'load_elapsed_seconds': load_elapsed,
@@ -914,8 +995,9 @@ def main():
         trace_index = args.output / 'trace-index.json'
         write_trace_index(
             trace_index,
-            [args.output / 'actions.jsonl', args.output / 'arrivals.jsonl'],
+            [args.output / 'actions.jsonl', args.output / 'arrivals.jsonl', args.output / 'requests.jsonl'],
             run_id=args.output.name,
+            service_logs=service_logs,
         )
         write_manifest(
             args.output / 'run-manifest.json',
@@ -925,10 +1007,13 @@ def main():
             artifacts=[
                 args.output / 'actions.jsonl',
                 args.output / 'arrivals.jsonl',
+                args.output / 'requests.jsonl',
                 args.output / 'summary.json',
                 trace_index,
             ],
             trace_index=trace_index,
+            service_logs=service_logs,
+            interrupted_reason=interrupt_reason,
         )
     print(json.dumps(summary, indent=2), flush=True)
     if (
@@ -943,7 +1028,10 @@ def main():
         or sampling_errors
         or (
             arrivals is not None
-            and (not arrivals['conserved'] or any(arrivals[name] for name in ('dropped', 'expired', 'blocked')))
+            and (
+                not arrivals['conserved']
+                or any(arrivals[name] for name in ('dropped', 'expired', 'blocked', 'interrupted'))
+            )
         )
         or summary.get('group_failures')
         or (args.ledger_db and not summary['ledger_closeout']['matched'])
