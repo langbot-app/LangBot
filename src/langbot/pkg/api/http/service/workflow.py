@@ -18,7 +18,7 @@ from ....workflow.tree import execute_tree
 from ....workflow.triggers import validate_triggers
 from ....workflow.memory import RunMemory
 from ....workflow.runtime import WorkflowRuntime
-from ....entity.persistence.model import LLMModel
+from ....entity.persistence.model import ASRModel, LLMModel, TTSModel
 from ....storage.media import MediaCache
 from .tenant import TenantContext, require_workspace_uuid, scope_statement
 
@@ -72,6 +72,22 @@ class WorkflowService:
             }
             for row in result.all()
         ]
+
+    async def workflows_with_trigger(self, context, kind: str) -> list[dict]:
+        """Enabled workflows of the Workspace that declare a trigger of ``kind``."""
+        model = persistence_workflow.Workflow
+        rows = await self.ap.persistence_mgr.execute_async(
+            scope_statement(sqlalchemy.select(model).where(model.is_enabled.is_(True)), model, context)
+        )
+        workflows = []
+        for row in rows.all():
+            triggers = row.triggers if isinstance(row.triggers, list) else []
+            if any(isinstance(item, dict) and item.get('type') == kind for item in triggers):
+                workflows.append(self.ap.persistence_mgr.serialize_model(model, row, masked_columns=['workspace_uuid']))
+        return workflows
+
+    async def command_workflows(self, context) -> list[dict]:
+        return await self.workflows_with_trigger(context, 'command')
 
     async def get_workflow(self, context: TenantContext, workflow_uuid: str) -> dict | None:
         model = persistence_workflow.Workflow
@@ -187,14 +203,20 @@ class WorkflowService:
         nodes = graph.get('nodes', []) if isinstance(graph, dict) else []
         nodes = [node for node in nodes if isinstance(node, dict)] if isinstance(nodes, list) else []
         model_ids = set()
-        if any(node.get('type') in ('llm', 'classify', 'extract') for node in nodes):
-            model_ids.update(
-                (
-                    await self.ap.persistence_mgr.execute_async(
-                        scope_statement(sqlalchemy.select(LLMModel.uuid), LLMModel, context)
-                    )
-                ).scalars()
-            )
+        kinds = {node.get('type') for node in nodes}
+        for model, used_by in (
+            (LLMModel, {'llm', 'classify', 'extract'}),
+            (TTSModel, {'tts'}),
+            (ASRModel, {'asr'}),
+        ):
+            if kinds & used_by:
+                model_ids.update(
+                    (
+                        await self.ap.persistence_mgr.execute_async(
+                            scope_statement(sqlalchemy.select(model.uuid), model, context)
+                        )
+                    ).scalars()
+                )
         targets = set()
         if any(node.get('type') == 'handoff' for node in nodes):
             for kind, model in (
@@ -299,9 +321,9 @@ class WorkflowService:
             text=message_context.message_content,
             trigger=trigger_type if trigger_type not in ('test', 'workflow') else 'message',
             bot_uuid=execution_context.bot_uuid or '',
-            args={},
-            payload={},
-            target={},
+            args=(trigger_data or {}).get('args', {}) if trigger_type == 'command' else {},
+            payload=(trigger_data or {}).get('payload', {}) if trigger_type == 'webhook' else {},
+            target=(trigger_data or {}).get('target', {}) if trigger_type == 'schedule' else {},
             event=trigger_data if trigger_type == 'event' else {},
             images=[],
             voice=None,

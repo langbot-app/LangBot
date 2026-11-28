@@ -181,5 +181,6 @@
   "Artifact access requires an active run lease": "アーティファクトへのアクセスには有効な実行リースが必要です",
   "Artifact knowledge ingestion requires an account or API key": "Artifact のナレッジ取り込みにはアカウントまたは API キーが必要です",
   "Artifact ZIP ingestion is not supported; use the existing document upload entrypoint": "Artifact による ZIP の取り込みには対応していません。既存のドキュメントアップロードを使用してください",
-  "Knowledge base deletion is pending; retry deletion before admitting new files": "ナレッジベースの削除が未完了です。新しいファイルを追加する前に削除を再試行してください"
+  "Knowledge base deletion is pending; retry deletion before admitting new files": "ナレッジベースの削除が未完了です。新しいファイルを追加する前に削除を再試行してください",
+  "Usage: /{command} {usage}": "使い方：/{command} {usage}"
 }

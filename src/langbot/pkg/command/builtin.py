@@ -37,6 +37,20 @@ async def _help(bot, event, settings, is_admin):
         if can_run(settings.get('plugin_permissions', {}).get(f'{owner}/{name}', 'everyone'), is_admin):
             localized = descriptions(manifest)
             lines.append(f'{prefix}{name} — {localized.get(language.get()) or localized.get("en_US", name)}')
+    service = getattr(bot.ap, 'workflow_service', None)
+    if service is not None:
+        for workflow in await service.command_workflows(bot.execution_context):
+            for trigger in workflow.get('triggers') or []:
+                bots = trigger.get('bots', 'all')
+                if trigger.get('type') != 'command' or trigger['name'] in seen:
+                    continue
+                if bots != 'all' and bot.bot_entity.uuid not in bots:
+                    continue
+                if trigger.get('admin_only') and not is_admin:
+                    continue
+                seen.add(trigger['name'])
+                usage = ''.join(f' <{arg["name"]}>' for arg in trigger.get('args') or [])
+                lines.append(f'{prefix}{trigger["name"]}{usage} — {trigger.get("description") or workflow["name"]}')
     return '\n'.join(lines)
 
 

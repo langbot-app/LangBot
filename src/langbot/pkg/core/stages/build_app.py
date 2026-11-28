@@ -127,6 +127,9 @@ class BuildAppStage(stage.BootingStage):
         pipeline_service_inst = pipeline_service.PipelineService(ap)
         ap.pipeline_service = pipeline_service_inst
         ap.workflow_service = workflow_service.WorkflowService(ap)
+        from ...workflow.scheduler import WorkflowScheduler
+
+        ap.workflow_scheduler = WorkflowScheduler(ap)
 
         agent_service_inst = agent_service.AgentService(ap)
         ap.agent_service = agent_service_inst

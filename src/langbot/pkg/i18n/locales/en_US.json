@@ -181,5 +181,6 @@
   "Artifact access requires an active run lease": "Artifact access requires an active run lease",
   "Artifact knowledge ingestion requires an account or API key": "Artifact knowledge ingestion requires an account or API key",
   "Artifact ZIP ingestion is not supported; use the existing document upload entrypoint": "Artifact ZIP ingestion is not supported; use the existing document upload entrypoint",
-  "Knowledge base deletion is pending; retry deletion before admitting new files": "Knowledge base deletion is pending; retry deletion before admitting new files"
+  "Knowledge base deletion is pending; retry deletion before admitting new files": "Knowledge base deletion is pending; retry deletion before admitting new files",
+  "Usage: /{command} {usage}": "Usage: /{command} {usage}"
 }

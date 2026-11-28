@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hmac
+
 import quart
 
 from ....authz import Permission, has_permission
@@ -17,6 +19,50 @@ class WorkflowsRouterGroup(group.RouterGroup):
         return self.success(data=data)
 
     async def initialize(self) -> None:
+        @self.route(
+            '/hooks/<bot_uuid>/<workflow_uuid>/<secret>',
+            methods=['POST'],
+            auth_type=group.AuthType.NONE,
+        )
+        async def _(bot_uuid: str, workflow_uuid: str, secret: str) -> str:
+            from ....service.workflow import WorkflowExecutionFailedError
+
+            if (quart.request.content_length or 0) > 256 * 1024:
+                return self.http_status(413, -1, 'Payload too large')
+            payload = await quart.request.get_json(silent=True)
+            if payload is None:
+                payload = {}
+            if not isinstance(payload, dict):
+                return self.http_status(400, -1, 'The webhook body must be a JSON object')
+            bot = next(
+                (item for item in tuple(self.ap.platform_mgr.bots) if item.bot_entity.uuid == bot_uuid and item.enable),
+                None,
+            )
+            if bot is None:
+                return self.http_status(404, -1, 'Webhook not found')
+
+            async def run():
+                workflow = await self.ap.workflow_service.get_workflow(bot.execution_context, workflow_uuid)
+                if not workflow or not workflow.get('is_enabled', True):
+                    return None
+                if not any(
+                    trigger.get('type') == 'webhook'
+                    and trigger.get('bot_uuid') == bot_uuid
+                    and hmac.compare_digest(str(trigger.get('secret', '')), secret)
+                    for trigger in workflow.get('triggers') or []
+                ):
+                    return None
+                try:
+                    execution_uuid, _ = await bot.run_triggered_workflow(workflow, 'webhook', {'payload': payload})
+                    return {'execution_uuid': execution_uuid, 'status': 'completed'}
+                except WorkflowExecutionFailedError as exc:
+                    return {'execution_uuid': exc.execution_id, 'status': 'failed', 'error': exc.message}
+
+            result = await bot._run_event_delivery(run)
+            if result is None:
+                return self.http_status(404, -1, 'Webhook not found')
+            return self.success(data=result)
+
         @self.route(
             '', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY, permission=Permission.RESOURCE_VIEW
         )

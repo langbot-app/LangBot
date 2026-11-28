@@ -81,7 +81,7 @@ async def run_step(kind, config, message, *, ap, runtime, memory, save_memory, h
 
     if kind == 'random':
         return {'value': operations.draw(config, now)}, None
-    if kind in ('code', 'knowledge', 'history'):
+    if kind in ('code', 'knowledge', 'history', 'tts', 'asr', 'platform'):
         return await getattr(operations, kind)(config, ap, runtime), None
     if kind == 'start':
         return message, None
@@ -153,10 +153,16 @@ async def run_step(kind, config, message, *, ap, runtime, memory, save_memory, h
                     parts.append(At(target=part['user_id']))
                 case 'image' | 'voice':
                     ref = part.get('ref') or part.get('url')
-                    if ref in message.get('images', []) or (ref and ref == message.get('voice')):
-                        pass
-                    else:
-                        await asyncio.to_thread(assert_safe_outbound_url, ref)
+                    if isinstance(ref, str) and ref.startswith('/api/v1/files/media/'):
+                        # Cached media (incoming files, synthesized speech) is embedded:
+                        # adapters cannot fetch a relative LangBot URL.
+                        from .operations import media_bytes
+
+                        data, mime = await media_bytes(ap, ref)
+                        encoded = f'data:{mime};base64,{base64.b64encode(data).decode("ascii")}'
+                        parts.append(Image(base64=encoded) if part['type'] == 'image' else Voice(base64=encoded))
+                        continue
+                    await asyncio.to_thread(assert_safe_outbound_url, ref)
                     parts.append(Image(url=ref) if part['type'] == 'image' else Voice(url=ref))
                 case _:
                     raise ValueError('Unknown workflow message part')

@@ -92,3 +92,93 @@ async def history(config, ap, runtime):
         for row in reversed(rows)
     ]
     return {'messages': messages, 'text': '\n'.join(f'{item["sender_name"]}: {item["text"]}' for item in messages)}
+
+
+MEDIA_PREFIX = '/api/v1/files/media/'
+
+
+async def media_bytes(ap, ref):
+    """Load a cached media reference (`/api/v1/files/media/<file>`) as bytes and MIME type."""
+    if not isinstance(ref, str) or not ref.startswith(MEDIA_PREFIX):
+        raise ValueError('Expected a voice or image from an earlier step')
+    media = await ap.storage_mgr.media_cache.get_media(ref.rsplit('/', 1)[1])
+    if media is None:
+        raise ValueError('The media file is no longer available')
+    return media
+
+
+async def save_media(ap, data, mime):
+    _, key, _ = await ap.storage_mgr.media_cache.save_media(data, mime)
+    return MEDIA_PREFIX + key.rsplit('/', 1)[1]
+
+
+async def tts(config, ap, runtime):
+    model = await ap.model_mgr.get_tts_model_by_uuid(runtime.execution_context, config['model_uuid'])
+    if model is None:
+        raise ValueError('Text-to-speech model not found')
+    text = str(config.get('text') or '').strip()
+    if not text:
+        raise ValueError('Nothing to read aloud')
+    extra = dict(getattr(model, 'extra_args', None) or getattr(model.model_entity, 'extra_args', None) or {})
+    extra = {'response_format': 'mp3', **({'voice': extra['voice']} if extra.get('voice') else {})}
+    if config.get('voice'):
+        extra['voice'] = config['voice']
+    audio, mime = await model.provider.invoke_tts(
+        model=model, text=text, extra_args=extra, execution_context=model.execution_context
+    )
+    return {'voice': await save_media(ap, audio, mime)}
+
+
+async def asr(config, ap, runtime):
+    from ..utils import audio as audio_utils
+
+    model = await ap.model_mgr.get_asr_model_by_uuid(runtime.execution_context, config['model_uuid'])
+    if model is None:
+        raise ValueError('Speech-to-text model not found')
+    audio, mime = await media_bytes(ap, config.get('voice'))
+    source = audio_utils.detect_audio_format(audio)
+    target = source if source in ('wav', 'mp3', 'ogg', 'm4a', 'flac') else 'wav'
+    if source != target:
+        if not audio_utils.is_ffmpeg_available():
+            raise ValueError(f'Cannot convert {source} audio without ffmpeg')
+        audio = await audio_utils.transcode_audio(audio, target, source)
+    text = await model.provider.invoke_asr(
+        model=model, audio=audio, mime=f'audio/{target}', execution_context=model.execution_context
+    )
+    return {'text': (text or '').strip()}
+
+
+def _plain(value):
+    if hasattr(value, 'model_dump'):
+        return value.model_dump(mode='json')
+    if isinstance(value, (list, tuple)):
+        return [_plain(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _plain(item) for key, item in value.items()}
+    return value
+
+
+async def platform(config, ap, runtime):
+    bot_uuid = config.get('bot_uuid') or runtime.execution_context.bot_uuid
+    if not bot_uuid:
+        raise ValueError('Choose the bot that performs this action')
+    bot = await ap.platform_mgr.get_bot_by_uuid(runtime.execution_context, bot_uuid)
+    if bot is None:
+        raise ValueError('The bot is not running')
+    action = config['action']
+    params = dict(config.get('params') or {})
+    supported = bot.adapter.get_supported_apis()
+    if action not in supported:
+        raise ValueError(f'{action} is not supported by this platform')
+    if action in ('send_message', 'reply_message'):
+        raise ValueError('Use the send or reply step to send messages')
+    if action == 'mute_member' and 'duration' in params:
+        params['duration'] = int(params['duration'] or 0)
+    if action == 'call_platform_api':
+        result = await bot.adapter.call_platform_api(params.get('action', ''), params.get('params') or {})
+    else:
+        method = getattr(bot.adapter, action, None)
+        if method is None:
+            raise ValueError(f'{action} is not implemented by this platform')
+        result = await method(**params)
+    return {'result': _plain(result)}

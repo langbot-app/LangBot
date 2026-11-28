@@ -1246,7 +1246,7 @@ class RuntimeBot:
         """Match a plugin command, returning its trace if policy blocked delivery."""
         matched = await self._match_plugin_command(event)
         if matched is None:
-            return False
+            return await self._try_handle_workflow_command(event, adapter, node)
         from ..telemetry import trace as trace_mod
 
         trace_mod.admit()
@@ -2228,7 +2228,119 @@ class RuntimeBot:
         except Exception as e:
             await self.logger.error(f'Failed to record discarded message: {e}')
 
-    async def _dispatch_eba_workflow(self, event, adapter, binding, query=None, altered=None, node=None):
+    def _command_body(self, event):
+        """Text after the bot's command prefix, or None when the message is not a command."""
+        settings = getattr(self.bot_entity, 'command_settings', None) or {}
+        if not isinstance(settings, dict) or not settings.get('enabled', True):
+            return None
+        if isinstance(event, PlatformCommandEvent):
+            return f'{event.command_name} {event.command_args}'.strip() or None
+        text = self._command_text_from_event(event)
+        prefixes = settings.get('prefixes', ['/'])
+        if not isinstance(prefixes, list) or not prefixes:
+            prefixes = ['/']
+        for prefix in sorted((p for p in prefixes if isinstance(p, str) and p), key=len, reverse=True):
+            if text and text.startswith(prefix):
+                return text[len(prefix) :].strip() or None
+        return None
+
+    async def _try_handle_workflow_command(self, event, adapter, node=''):
+        """Run a workflow whose command trigger matches; system and plugin commands win first."""
+        from ..workflow.triggers import triggers_of
+
+        service = getattr(self.ap, 'workflow_service', None)
+        if service is None or not isinstance(event, platform_events.MessageReceivedEvent):
+            return False
+        body = self._command_body(event)
+        if not body:
+            return False
+        name, _, rest = body.partition(' ')
+        for workflow in await service.command_workflows(self.execution_context):
+            for trigger in triggers_of(workflow, 'command'):
+                bots = trigger.get('bots', 'all')
+                if name not in (trigger['name'], *(trigger.get('aliases') or [])):
+                    continue
+                if bots != 'all' and self.bot_entity.uuid not in bots:
+                    continue
+                return await self._run_workflow_command(event, adapter, workflow, trigger, body, rest.strip(), node)
+        return False
+
+    async def _run_workflow_command(self, event, adapter, workflow, trigger, body, rest, node):
+        from ..telemetry import trace as trace_mod
+        from ..workflow.triggers import parse_command_args
+
+        trace_mod.admit()
+        query = getattr(event, '_entry_query', None)
+        runtime = getattr(query, '_message_policy', None)
+        binding = {
+            **(getattr(event, '_selected_route', None) or {}),
+            'id': f'command:{trigger["name"]}',
+            'target_type': 'workflow',
+            'target_uuid': workflow['uuid'],
+        }
+
+        async def answer(text):
+            chain = platform_message.MessageChain([platform_message.Plain(text=text)])
+            if runtime is not None:
+                await runtime.send_command_reply(query, chain)
+            else:
+                await adapter.reply_message(message_source=event.to_legacy_event(), message=chain, quote_origin=False)
+
+        if trigger.get('admin_only'):
+            is_admin = await self.ap.cmd_mgr.is_admin(
+                self.execution_context.workspace_uuid, self.bot_entity.uuid, 'person', event.sender.id, event.sender.id
+            )
+            if not is_admin:
+                settings = getattr(self.bot_entity, 'command_settings', None) or {}
+                if settings.get('denied_reply', 'silent') == 'notice':
+                    await answer(t('Permission denied'))
+                return True
+        args, missing = parse_command_args(trigger, rest)
+        if missing:
+            usage = ' '.join(f'<{arg["name"]}>' for arg in trigger.get('args') or [])
+            await answer(t('Usage: /{command} {usage}', command=trigger['name'], usage=usage))
+            return True
+        async with runtime.admit(query, body) if runtime is not None else contextlib.nullcontext() as item:
+            if item:
+                return await self._record_policy_drop(event, binding, item)
+            return await self._dispatch_eba_workflow(
+                event, adapter, binding, query=query, node=node or None, command={'args': args}
+            )
+
+    async def run_triggered_workflow(self, workflow, trigger_type, data, target=None):
+        """Run a schedule or webhook trigger through this bot; replies go to ``target``."""
+        from ..workflow.entities import MessageContext
+        from ..workflow.runtime import WorkflowRuntime
+
+        await self.assert_execution_active()
+
+        async def reply_sender(chain, quote):
+            if target is None:
+                raise ValueError('Nothing to reply to here; use the send step')
+            await self.adapter.send_message(target['type'], target['id'], chain)
+
+        runtime = WorkflowRuntime(self.execution_context, reply_sender, self.adapter.send_message)
+        payload = data.get('payload') if isinstance(data.get('payload'), dict) else {}
+        message_context = MessageContext(
+            message_id='',
+            message_content=str(payload.get('text', '')) if trigger_type == 'webhook' else '',
+            sender_id='',
+            platform=type(self.adapter).__name__,
+            conversation_id=target['id'] if target else '',
+            is_group=bool(target and target['type'] == 'group'),
+            group_id=target['id'] if target and target['type'] == 'group' else None,
+        )
+        return await self.ap.workflow_service.execute_workflow(
+            self.execution_context,
+            workflow['uuid'],
+            trigger_type=trigger_type,
+            trigger_data=data,
+            message_context=message_context,
+            session_id=f'{target["type"]}_{target["id"]}' if target else trigger_type,
+            runtime=runtime,
+        )
+
+    async def _dispatch_eba_workflow(self, event, adapter, binding, query=None, altered=None, node=None, command=None):
         from ..api.http.service.workflow import WorkflowExecutionFailedError
         from ..telemetry import trace as trace_mod
         from ..workflow.entities import MessageContext
@@ -2243,7 +2355,7 @@ class RuntimeBot:
         workflow = await self.ap.workflow_service.get_workflow(self.execution_context, target_uuid)
         if not workflow or not workflow.get('is_enabled', True):
             failure_code, reason = 'processor_not_found', 'Workflow not found or disabled'
-        elif not accepts_event(workflow, event.type):
+        elif command is None and not accepts_event(workflow, event.type):
             failure_code, reason = 'processor_incompatible', 'Workflow has no trigger for this event'
         if failure_code is None:
             reply_type, reply_id, _ = self._infer_reply_target(event)
@@ -2327,10 +2439,11 @@ class RuntimeBot:
                         await self.ap.workflow_service.execute_workflow(
                             self.execution_context,
                             target_uuid,
-                            trigger_type='message' if is_message else 'event',
-                            trigger_data=event.model_dump(
-                                mode='json', exclude={'source_platform_object', 'legacy_event'}
-                            ),
+                            trigger_type='command' if command else 'message' if is_message else 'event',
+                            trigger_data={
+                                **event.model_dump(mode='json', exclude={'source_platform_object', 'legacy_event'}),
+                                **({'args': command['args']} if command else {}),
+                            },
                             message_context=message_context,
                             session_id=f'{reply_type}_{reply_id}',
                             user_id=message_context.sender_id,
