@@ -12,12 +12,14 @@ import time
 
 from tools.entrypoints.regression_suite import Suite, validate
 from tools.regression.observations import read_process_snapshot, read_system_snapshot
+from tools.regression.observability_contract import ObservationWriter, write_manifest
 
 
 def supervise(command, output, budget, pids, env=None):
     output.mkdir(parents=True, exist_ok=False, mode=0o700)
     started = time.monotonic()
     samples, errors = [], []
+    observations = ObservationWriter(output / 'observations.jsonl')
     timed_out = False
     with (output / 'suite.log').open('w') as log:
         process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True)
@@ -40,6 +42,11 @@ def supervise(command, output, budget, pids, env=None):
                     except (RuntimeError, OSError) as exc:
                         errors.append(f'{name}: {exc}')
                 samples.append(sample)
+                observations.write(
+                    'regression_gate',
+                    sample,
+                    missing_reasons=errors[-1:] if errors else [],
+                )
                 remaining = budget - (time.monotonic() - started)
                 try:
                     process.wait(timeout=max(0, min(1, remaining)))
@@ -76,6 +83,13 @@ def supervise(command, output, budget, pids, env=None):
         },
     }
     (output / 'gate.json').write_text(json.dumps(result, indent=2) + '\n')
+    write_manifest(
+        output / 'run-manifest.json',
+        run_id=output.name,
+        expected_sources=['regression_gate'],
+        observed_sources=observations.sources,
+        artifacts=[output / 'resources.jsonl', output / 'observations.jsonl', output / 'gate.json'],
+    )
     return result
 
 

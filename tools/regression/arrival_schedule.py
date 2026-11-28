@@ -21,6 +21,8 @@ def run_open_loop(
     stop,
     drain_all=False,
     drain_timeout=300,
+    action_writer=None,
+    action_name='arrival',
 ):
     """Schedule every arrival and optionally drain all admitted work.
 
@@ -39,9 +41,19 @@ def run_open_loop(
     queue_peak = 0
     at_deadline = None
 
-    def finish(arrival, outcome, row=None):
+    def finish(arrival, outcome, row=None, *, error=None):
         counts[outcome] += 1
+        action = arrival.pop('_action_result', None)
         settle(arrival, outcome, row)
+        if action_writer is not None and action is not None:
+            status = {
+                'dispatched': 'succeeded',
+                'dropped': 'blocked',
+                'blocked': 'blocked',
+                'expired': 'expired',
+                'failed': 'failed',
+            }[outcome]
+            action_writer.finish(action, status, error=error)
 
     def invoke(item):
         if stop.is_set() or (not drain_all and time.monotonic() >= deadline):
@@ -49,11 +61,14 @@ def run_open_loop(
         return execute(item)
 
     def arrival(index):
-        return {
+        item = {
             'arrival_id': index,
             'scheduled_elapsed': index / rps,
             'serialization_key': key_for(index),
         }
+        if action_writer is not None:
+            item['_action_result'] = action_writer.begin(action_name, metadata={'arrival_id': index})
+        return item
 
     def completed():
         for future in list(active):
@@ -63,7 +78,11 @@ def run_open_loop(
             key = item['serialization_key']
             if key is not None:
                 busy.remove(key)
-            row = future.result()
+            try:
+                row = future.result()
+            except Exception as exc:
+                finish(item, 'failed', error=exc)
+                continue
             finish(item, 'expired' if row is None else 'dispatched', row)
 
     def dispatch(pool):
@@ -161,17 +180,22 @@ def run_open_loop(
         # No queued request is admitted during drain, even if a slot becomes free.
         for future in list(active):
             item = active.pop(future)
-            row = future.result()
+            try:
+                row = future.result()
+            except Exception as exc:
+                finish(item, 'failed', error=exc)
+                continue
             finish(item, 'expired' if row is None else 'dispatched', row)
 
     dispatched = counts['dispatched']
-    undispatched = sum(counts[name] for name in ('dropped', 'expired', 'blocked'))
+    undispatched = sum(counts[name] for name in ('dropped', 'expired', 'blocked', 'failed'))
     return {
         'scheduled': scheduled,
         'dispatched': dispatched,
         'dropped': counts['dropped'],
         'expired': counts['expired'],
         'blocked': counts['blocked'],
+        'failed': counts['failed'],
         'queue_capacity': queue_capacity,
         'queue_peak': queue_peak,
         'queued_at_deadline': at_deadline,
