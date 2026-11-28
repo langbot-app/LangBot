@@ -304,4 +304,73 @@ async def test_password_grant_raises_handoff_for_a_second_factor_account(tmp_pat
 def _link_kid(link):
     """The enrollment link carries the instance key kid it was issued against."""
     return link['kid']
-    return link['kid']
+
+
+async def _issued_grant(ap, engine, account, device, key, kid):
+    """Complete a handoff so a real binding, device claim and grant exist."""
+    handoffs = HarnessHandoffs(ap)
+    binding, dev = device['binding_id'], device['device_id']
+    ticket = (await handoffs.issue(binding, dev, account, (await ap.workspace_service.get_singleton_workspace()).uuid))[
+        'handoff_ticket'
+    ]
+    assert await handoffs.decide(ticket, code=_code(key)) == 'approved'
+    return await handoffs.poll(HarnessOAuthService(ap), ticket, binding, dev, kid)
+
+
+@pytest.mark.asyncio
+async def test_refresh_rotates_and_invalidates_the_previous_token(tmp_path, monkeypatch):
+    ap, engine, account, workspace, credential, key, service, devices, kid = await _setup(tmp_path, monkeypatch)
+    try:
+        first = await _issued_grant(ap, engine, account, devices[0], key, kid)
+        binding, device = devices[0]['binding_id'], devices[0]['device_id']
+
+        second = await service.refresh_grant(first['refresh_token'], binding_id=binding, device_id=device)
+        assert second['refresh_token'] != first['refresh_token']
+        assert second['access_token']
+
+        # The superseded token is now the previous hash: replaying it is reuse.
+        with pytest.raises(ValueError) as raised:
+            await service.refresh_grant(first['refresh_token'], binding_id=binding, device_id=device)
+        assert str(raised.value) == 'refresh_token_reuse'
+
+        # Reuse revokes the whole family, so the current token dies too.
+        async with engine.connect() as conn:
+            row = (await conn.execute(sa.select(HarnessOAuthGrant.__table__))).mappings().one()
+        assert row['revoked_at'] is not None
+        assert row['refresh_generation'] == 1
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_refresh_rejects_an_expired_grant(tmp_path, monkeypatch):
+    ap, engine, account, workspace, credential, key, service, devices, kid = await _setup(tmp_path, monkeypatch)
+    try:
+        issued = await _issued_grant(ap, engine, account, devices[0], key, kid)
+        async with engine.begin() as conn:
+            await conn.execute(sa.update(HarnessOAuthGrant).values(refresh_expires_at=int(time.time()) - 1))
+
+        with pytest.raises(ValueError) as raised:
+            await service.refresh_grant(
+                issued['refresh_token'], binding_id=devices[0]['binding_id'], device_id=devices[0]['device_id']
+            )
+        assert str(raised.value) == 'invalid_grant'
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_refresh_is_bound_to_its_own_device(tmp_path, monkeypatch):
+    ap, engine, account, workspace, credential, key, service, devices, kid = await _setup(tmp_path, monkeypatch)
+    try:
+        issued = await _issued_grant(ap, engine, account, devices[0], key, kid)
+
+        with pytest.raises(ValueError) as raised:
+            await service.refresh_grant(
+                issued['refresh_token'],
+                binding_id=devices[1]['binding_id'],
+                device_id=devices[1]['device_id'],
+            )
+        assert str(raised.value) == 'invalid_grant'
+    finally:
+        await engine.dispose()
