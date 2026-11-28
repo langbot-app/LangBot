@@ -323,6 +323,16 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         self._known_desired_states: dict[str, PluginInstallationDesiredState] = {}
         self._workspace_installations: dict[str, set[str]] = {}
         self._installation_failures: dict[str, dict[str, str]] = {}
+        self._workspace_sync_revision = 0
+        self._workspace_sync_cache: contextvars.ContextVar[
+            dict[tuple[str, str, int, str, int], tuple[int, list[persistence_plugin.PluginSetting]]] | None
+        ] = contextvars.ContextVar(
+            f'{self.__class__.__name__}_{id(self)}_workspace_sync_cache',
+            default=None,
+        )
+        self._plugin_registration_cache: dict[
+            tuple[int, str, str, int, str, str], dict[str, frozenset[str] | None] | None
+        ] = {}
         self._state_lock = asyncio.Lock()
         self._control_token = str(os.environ.get(PLUGIN_RUNTIME_CONTROL_TOKEN_ENV) or '').strip()
         self._transport_task: asyncio.Task | None = None
@@ -337,6 +347,137 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             'failed_installations': 0,
             'missing_artifacts': 0,
         }
+
+    def _invalidate_workspace_caches(self, workspace_uuid: str | None = None) -> None:
+        """Invalidate request-local sync and runtime registration observations."""
+
+        self._workspace_sync_revision += 1
+        self._workspace_sync_cache.set({})
+        if workspace_uuid is None:
+            self._plugin_registration_cache.clear()
+            return
+        self._plugin_registration_cache = {
+            key: value for key, value in self._plugin_registration_cache.items() if key[2] != workspace_uuid
+        }
+
+    @staticmethod
+    def _workspace_sync_cache_key(execution_context: ExecutionContext) -> tuple[str, str, int, str, int] | None:
+        if not execution_context.query_uuid:
+            return None
+        return (
+            execution_context.instance_uuid,
+            execution_context.workspace_uuid,
+            execution_context.placement_generation,
+            execution_context.query_uuid,
+            execution_context.entitlement_revision,
+        )
+
+    def _cached_workspace_settings(
+        self,
+        execution_context: ExecutionContext,
+    ) -> list[persistence_plugin.PluginSetting] | None:
+        key = self._workspace_sync_cache_key(execution_context)
+        cache = self._workspace_sync_cache.get()
+        if key is None or cache is None:
+            return None
+        entry = cache.get(key)
+        if entry is None or entry[0] != self._workspace_sync_revision:
+            return None
+        settings = entry[1]
+        desired_ids = {setting.installation_uuid for setting in settings}
+        known_ids = {
+            installation_uuid
+            for installation_uuid, desired in self._known_desired_states.items()
+            if desired.binding.workspace_uuid == execution_context.workspace_uuid
+        }
+        if desired_ids != known_ids:
+            return None
+        for setting in settings:
+            desired = self._known_desired_states.get(setting.installation_uuid)
+            if desired is None or setting.installation_uuid in self._installation_failures:
+                return None
+            if desired.enabled != setting.enabled or desired.binding != self._binding_from_setting(
+                execution_context, setting
+            ):
+                return None
+        return settings
+
+    def _cache_workspace_settings(
+        self,
+        execution_context: ExecutionContext,
+        settings: list[persistence_plugin.PluginSetting] | None,
+    ) -> None:
+        key = self._workspace_sync_cache_key(execution_context)
+        if key is None or settings is None:
+            return
+        cache = self._workspace_sync_cache.get()
+        if cache is None:
+            cache = {}
+            self._workspace_sync_cache.set(cache)
+        cache[key] = (self._workspace_sync_revision, settings)
+
+    @staticmethod
+    def _registration_cache_key(
+        runtime_handler: Any, binding: InstallationBinding
+    ) -> tuple[int, str, str, int, str, str]:
+        return (
+            id(runtime_handler),
+            binding.instance_uuid,
+            binding.workspace_uuid,
+            binding.placement_generation,
+            binding.installation_uuid,
+            binding.artifact_digest,
+        )
+
+    async def _registered_events_for_binding(
+        self,
+        runtime_handler: Any,
+        binding: InstallationBinding,
+    ) -> dict[str, frozenset[str] | None] | None:
+        """Read and cache Runtime event registrations when the protocol supports it."""
+
+        key = self._registration_cache_key(runtime_handler, binding)
+        if key in self._plugin_registration_cache:
+            return self._plugin_registration_cache[key]
+        list_registrations = getattr(runtime_handler, 'list_plugin_registrations', None)
+        if not asyncio.iscoroutinefunction(list_registrations):
+            self._plugin_registration_cache[key] = None
+            return None
+        try:
+            with runtime_handler.installation_scope(binding):
+                registrations = await list_registrations(None)
+        except Exception:
+            # Registration discovery is an optimization. Unknown registrations
+            # must retain the existing dispatch path.
+            self._plugin_registration_cache[key] = None
+            return None
+        if registrations is None or not isinstance(registrations, dict):
+            self._plugin_registration_cache[key] = None
+            return None
+        normalized: dict[str, frozenset[str] | None] = {}
+        for plugin_id, registration in registrations.items():
+            if not isinstance(registration, dict):
+                normalized[str(plugin_id)] = None
+                continue
+            events = registration.get('events')
+            normalized[str(plugin_id)] = None if events is None else frozenset(str(event) for event in events)
+        self._plugin_registration_cache[key] = normalized
+        return normalized
+
+    async def _filter_event_bindings(
+        self,
+        runtime_handler: Any,
+        bindings: list[InstallationBinding],
+        event_name: str,
+    ) -> list[InstallationBinding]:
+        filtered: list[InstallationBinding] = []
+        for binding in bindings:
+            registrations = await self._registered_events_for_binding(runtime_handler, binding)
+            if registrations is None or any(
+                events is None or event_name in events for events in registrations.values()
+            ):
+                filtered.append(binding)
+        return filtered
 
     def _align_plugin_file_transfer_root(self) -> None:
         """Use the Runtime's plugin file-transfer root when running shared.
@@ -1024,6 +1165,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             instance_uuid=instance_uuid,
             workspace_uuid=workspace_uuid,
             placement_generation=generation,
+            bot_uuid=getattr(context, 'bot_uuid', None),
+            pipeline_uuid=getattr(context, 'pipeline_uuid', None),
+            query_uuid=getattr(context, 'query_uuid', None),
             trigger_principal=getattr(context, 'principal', None),
             entitlement_revision=getattr(context, 'entitlement_revision', 0),
         )
@@ -1054,7 +1198,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     self._installation_failures.pop(installation_uuid, None)
 
             for installation_uuid, desired in desired_by_uuid.items():
-                if self._known_desired_states.get(installation_uuid) == desired:
+                if (
+                    self._known_desired_states.get(installation_uuid) == desired
+                    and installation_uuid not in self._installation_failures
+                ):
                     continue
                 setting = next(item for item in settings if item.installation_uuid == installation_uuid)
                 if setting.permission_declaration is None:
@@ -1069,7 +1216,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 except PluginInstallationFailedError:
                     # The failure is retained per installation. Continue
                     # restoring the remaining desired state in this Workspace.
-                    pass
+                    self._invalidate_workspace_caches(execution_context.workspace_uuid)
+                    continue
                 self._known_desired_states[installation_uuid] = desired
             if desired_by_uuid:
                 self._workspace_installations[execution_context.workspace_uuid] = set(desired_by_uuid)
@@ -1079,6 +1227,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     None,
                 )
         if changed:
+            self._invalidate_workspace_caches(execution_context.workspace_uuid)
             await self._refresh_platform_commands(execution_context)
         return settings
 
@@ -1284,6 +1433,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
     async def _stop_transport(self) -> None:
         self._connected.clear()
+        self._invalidate_workspace_caches()
         runtime_handler = getattr(self, 'handler', None)
         if runtime_handler is not None:
             with contextlib.suppress(Exception, asyncio.CancelledError):
@@ -1407,7 +1557,11 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     ) from exc
         if not self._runtime_available():
             raise PluginRuntimeNotConnectedError('Plugin runtime is not connected')
+        cached_settings = self._cached_workspace_settings(execution_context)
+        if cached_settings is not None:
+            return execution_context, cached_settings
         settings = await self._synchronize_workspace(execution_context)
+        self._cache_workspace_settings(execution_context, settings)
         return execution_context, settings
 
     async def require_workspace_context(self, context: TenantContext) -> ExecutionContext:
@@ -2332,6 +2486,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 )
                 self._known_desired_states[binding.installation_uuid] = desired
                 self._workspace_installations.setdefault(binding.workspace_uuid, set()).add(binding.installation_uuid)
+                # The durable row is now authoritative. Any request-local
+                # sync result predating this commit must reconcile again, even
+                # if the Runtime apply below is interrupted.
+                self._invalidate_workspace_caches(binding.workspace_uuid)
         except Exception:
             await self._delete_artifact_if_unreferenced(execution_context, artifact_digest)
             raise
@@ -2352,10 +2510,18 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 'applying plugin update' if operation == 'upgrade' else 'installing or starting plugin'
             )
             task_context.metadata['progress_percent'] = 62
-        await self._apply_desired_state(
-            desired,
-            artifact_package=file_bytes,
-        )
+        try:
+            await self._apply_desired_state(
+                desired,
+                artifact_package=file_bytes,
+            )
+        except BaseException:
+            # Do not publish a desired state as applied before the Runtime has
+            # accepted it. A later request must be able to recover a durable
+            # installation whose in-memory publication was interrupted.
+            self._known_desired_states.pop(binding.installation_uuid, None)
+            self._invalidate_workspace_caches(binding.workspace_uuid)
+            raise
         if previous_digest is not None and previous_digest != artifact_digest:
             await self._delete_artifact_if_unreferenced(execution_context, previous_digest)
         if not desired.enabled:
@@ -2433,6 +2599,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         runtime_handler = self._runtime_handler()
         execution_context, setting = await self._setting_for_plugin(plugin_author, plugin_name)
         binding = self._binding_from_setting(execution_context, setting)
+        self._invalidate_workspace_caches(execution_context.workspace_uuid)
         is_legacy_oss = self.runtime_profile == 'oss_dev' and (
             not isinstance(setting.install_info, dict)
             or setting.install_info.get('_artifact_storage') != _PLUGIN_ARTIFACT_STORAGE_MARKER
@@ -2442,9 +2609,6 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             with runtime_handler.installation_scope(bridge):
                 async for _ in runtime_handler.delete_plugin(plugin_author, plugin_name):
                     pass
-        await runtime_handler.remove_plugin_installation(binding)
-        runtime_handler.unregister_installation_binding(binding)
-
         async def delete(execute):
             await execute(
                 sqlalchemy.delete(persistence_plugin.PluginSetting)
@@ -2465,19 +2629,24 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     .where(persistence_bstorage.BinaryStorage.owner == f'{plugin_author}/{plugin_name}')
                 )
 
-        tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
-        if callable(tenant_uow):
-            async with tenant_uow(execution_context.workspace_uuid) as uow:
-                await delete(uow.execute)
-        else:
-            await delete(self.ap.persistence_mgr.execute_async)
+        async with self._state_lock:
+            await runtime_handler.remove_plugin_installation(binding)
+            runtime_handler.unregister_installation_binding(binding)
 
-        self._known_desired_states.pop(binding.installation_uuid, None)
-        workspace_installations = self._workspace_installations.get(binding.workspace_uuid)
-        if workspace_installations is not None:
-            workspace_installations.discard(binding.installation_uuid)
-            if not workspace_installations:
-                self._workspace_installations.pop(binding.workspace_uuid, None)
+            tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
+            if callable(tenant_uow):
+                async with tenant_uow(execution_context.workspace_uuid) as uow:
+                    await delete(uow.execute)
+            else:
+                await delete(self.ap.persistence_mgr.execute_async)
+
+            self._known_desired_states.pop(binding.installation_uuid, None)
+            workspace_installations = self._workspace_installations.get(binding.workspace_uuid)
+            if workspace_installations is not None:
+                workspace_installations.discard(binding.installation_uuid)
+                if not workspace_installations:
+                    self._workspace_installations.pop(binding.workspace_uuid, None)
+            self._invalidate_workspace_caches(execution_context.workspace_uuid)
         if task_context is not None:
             task_context.set_current_action('plugin removed')
         await self._refresh_runner_registry()
@@ -2709,6 +2878,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             enabled=True,
             execution_mode=self._execution_mode_from_setting(setting),
         )
+        # The permission row is committed by the application service before
+        # this Runtime update. Force any request-local snapshot to reread it.
+        self._invalidate_workspace_caches(execution.workspace_uuid)
         async with self._state_lock:
             self._runtime_handler().register_installation_binding(
                 binding,
@@ -2739,6 +2911,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             result = await self.ap.persistence_mgr.execute_async(statement)
         if result.rowcount != 1:
             raise RuntimeError('Plugin configuration changed concurrently')
+        self._invalidate_workspace_caches(execution_context.workspace_uuid)
         binding = InstallationBinding(
             instance_uuid=execution_context.instance_uuid,
             workspace_uuid=execution_context.workspace_uuid,
@@ -2915,6 +3088,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         response_sources: list[dict[str, Any]] = []
         # Reuse the settings read under the reconciliation lock for this dispatch.
         bindings = await self._operation_bindings(include_plugins=bound_plugins, settings=settings)
+        if len(bindings) > 1 and getattr(runtime_handler, 'supports_event_batch', False) is not True:
+            bindings = await self._filter_event_bindings(runtime_handler, bindings, event_ctx.event_name)
         batch = (
             bindings if len(bindings) > 1 and getattr(runtime_handler, 'supports_event_batch', False) is True else None
         )

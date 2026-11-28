@@ -1051,3 +1051,79 @@ async def test_event_dispatch_reuses_reconciled_settings_and_refreshes_next_even
     assert connector._load_workspace_settings.await_count == 2
     connector.handler.emit_event.assert_awaited_once()
     connector._apply_desired_state.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_workspace_sync_cache_recovers_after_persisted_installation_publish_failure():
+    binding = execution_binding('workspace-a')
+    setting = plugin_setting('01', 'a' * 64)
+    connector = shared_connector([[binding]], {'workspace-a': [setting]})
+    connector.handler = runtime_handler()
+    execution_context = ExecutionContext(
+        instance_uuid='instance-a',
+        workspace_uuid='workspace-a',
+        placement_generation=1,
+        query_uuid='query-a',
+    )
+
+    await connector._prepare_workspace_context(execution_context)
+    assert connector._load_workspace_settings.await_count == 1
+    await connector._prepare_workspace_context(execution_context)
+    assert connector._load_workspace_settings.await_count == 1
+
+    # Model a durable install whose in-memory publication did not complete.
+    connector._known_desired_states.pop(setting.installation_uuid)
+    connector._invalidate_workspace_caches('workspace-a')
+    await connector._prepare_workspace_context(execution_context)
+
+    assert connector._load_workspace_settings.await_count == 2
+    assert connector.handler.apply_plugin_installation.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_event_dispatch_filters_bindings_without_matching_registration():
+    from langbot_plugin.api.entities.events import PersonMessageReceived
+    from tests.factories import text_query
+
+    binding = execution_binding('workspace-a')
+    setting_a = plugin_setting('01', 'a' * 64)
+    setting_b = plugin_setting('02', 'b' * 64)
+    connector = shared_connector([[binding]], {'workspace-a': [setting_a, setting_b]})
+    handler = runtime_handler()
+    connector.handler = handler
+    handler.supports_event_batch = False
+    handler.list_plugin_registrations = AsyncMock(
+        side_effect=[
+            {'author/plugin': {'events': ['PersonMessageReceived']}},
+            {'author/plugin-2': {'events': []}},
+        ]
+    )
+
+    async def emit(event_context, **_kwargs):
+        return {
+            'event_context': event_context,
+            'emitted_plugins': ['listener'],
+            'response_sources': [],
+        }
+
+    handler.emit_event = AsyncMock(side_effect=emit)
+    query = text_query('hello')
+    object.__setattr__(
+        query,
+        '_execution_context',
+        ExecutionContext(instance_uuid='instance-a', workspace_uuid='workspace-a', placement_generation=1),
+    )
+    event = PersonMessageReceived(
+        query=query,
+        launcher_type=query.launcher_type.value,
+        launcher_id=query.launcher_id,
+        sender_id=query.sender_id,
+        message_event=query.message_event,
+        message_chain=query.message_chain,
+    )
+
+    await connector.emit_event(event)
+
+    assert handler.list_plugin_registrations.await_count == 2
+    handler.emit_event.assert_awaited_once()
+    assert handler.emit_event.await_args.args[0]['event_context']['event_name'] == 'PersonMessageReceived'
