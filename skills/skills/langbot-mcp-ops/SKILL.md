@@ -110,6 +110,12 @@ unsaved `graph` also requires `resource.manage` and does not change the saved wo
 Manual runs do not send messages to a bot; nodes requiring an explicit bot fail.
 `session_type` is `person` or `group`. Execution details are available through
 `GET /api/v1/workflows/<uuid>/executions/<execution_uuid>`.
+`workflow_data.triggers` lists how a workflow starts: `{type: message}` (needs a bot route),
+`{type: command, name, aliases, args: [{name, required}], admin_only, bots: "all" | [bot_uuid]}`,
+`{type: schedule, cron | every (minutes), bot_uuid, targets: [{type: person|group, id}]}` evaluated in
+`workflow_data.timezone`, `{type: event, events: [...]}` (needs a bot route per event) and
+`{type: webhook, bot_uuid}` (the secret is generated on save; POST JSON to
+`/api/v1/workflows/hooks/<bot_uuid>/<workflow_uuid>/<secret>`). Test a command by sending `/name args`.
 
 Slack quick setup: create a disabled `slack-omni` bot draft first, then use
 `start_slack_setup` with the user's App Configuration access/refresh tokens.
