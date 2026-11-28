@@ -7,16 +7,15 @@ settings:
 overrides:
   js-yaml: '>=4.3.2 <5'
   form-data: '>=4.0.6'
-  minimatch@>=3.0.0 <3.1.3: 3.1.3
-  minimatch@>=9.0.0 <9.0.7: 9.0.7
+  minimatch@>=3.0.0 <3.1.5: 3.1.5
+  minimatch@>=7.0.0 <11.0.1: 11.0.1
   picomatch@>=2.0.0 <2.3.2: 2.3.2
   picomatch@>=4.0.0 <4.0.4: 4.0.4
   flatted: '>=3.4.2'
-  follow-redirects: '>=1.16.1'
+  follow-redirects: '>=1.16.2'
   brace-expansion@<1.1.21: 1.1.21
   brace-expansion@>=3.0.0 <5.0.12: 5.0.12
-  minimatch@3.1.3>brace-expansion: 1.1.21
-  minimatch@9.0.7>brace-expansion: 5.0.12
+  minimatch@3.1.5>brace-expansion: 1.1.21
   nanoid@<3.3.18: 3.3.18
   '@humanfs/node': '>=0.16.8'
   source-map-js: '>=1.2.2'
@@ -36,7 +35,7 @@ dependencies:
     version: 4.6.2
   '@hookform/resolvers':
     specifier: ^5.0.1
-    version: 5.9.1(react-hook-form@7.90.0)(zod@3.25.76)
+    version: 5.9.1(react-hook-form@7.90.0)(zod@4.6.7)
   '@radix-ui/react-alert-dialog':
     specifier: ^1.1.15
     version: 1.1.24(@types/react-dom@19.2.7)(@types/react@19.2.18)(react-dom@19.2.1)(react@19.2.1)
@@ -131,8 +130,8 @@ dependencies:
     specifier: ^11.11.1
     version: 11.12.0
   i18next:
-    specifier: ^25.1.2
-    version: 25.10.10(typescript@5.9.3)
+    specifier: ^26.3.4
+    version: 26.7.2(typescript@5.9.3)
   i18next-browser-languagedetector:
     specifier: ^8.1.0
     version: 8.2.1
@@ -165,7 +164,7 @@ dependencies:
     version: 7.90.0(@types/react@19.2.18)(react@19.2.1)
   react-i18next:
     specifier: ^15.5.1
-    version: 15.7.4(i18next@25.10.10)(react-dom@19.2.1)(react@19.2.1)(typescript@5.9.3)
+    version: 15.7.4(i18next@26.7.2)(react-dom@19.2.1)(react@19.2.1)(typescript@5.9.3)
   react-markdown:
     specifier: ^10.1.0
     version: 10.1.0(@types/react@19.2.18)(react@19.2.1)
@@ -215,8 +214,8 @@ dependencies:
     specifier: ^8.3.4
     version: 8.3.4(@types/node@20.19.43)
   zod:
-    specifier: ^3.24.4
-    version: 3.25.76
+    specifier: ^4.6.6
+    version: 4.6.7
 
 devDependencies:
   '@playwright/test':
@@ -456,7 +455,7 @@ packages:
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
     dev: false
 
-  /@hookform/resolvers@5.9.1(react-hook-form@7.90.0)(zod@3.25.76):
+  /@hookform/resolvers@5.9.1(react-hook-form@7.90.0)(zod@4.6.7):
     resolution: {integrity: sha512-7b7vsbraJxKgjVSA1Nur9tLwj539WGJUBLA7QNvXnFoT2pM5Z7G+6rlukk4B2/QrTZy6huRtH6wKeESPKuIr6w==}
     peerDependencies:
       '@sinclair/typebox': '>=0.25.24'
@@ -536,7 +535,7 @@ packages:
     dependencies:
       '@standard-schema/utils': 0.3.0
       react-hook-form: 7.90.0(@types/react@19.2.18)(react@19.2.1)
-      zod: 3.25.76
+      zod: 4.6.7
     dev: false
 
   /@humanfs/core@0.19.2:
@@ -568,6 +567,10 @@ packages:
   /@humanwhocodes/retry@0.4.3:
     resolution: {integrity: sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ==}
     engines: {node: '>=18.18'}
+    dev: true
+
+  /@isaacs/nonrecursive-glob-match@1.1.0:
+    resolution: {integrity: sha512-GPm/Dbvk5RLmhRnxXIa7nTpK0xtl4E0wj0MslsuNiJ1FIROU+2+9lgUC/dgF7Ey4QCWhfEsgxilMRMCdHPfDfw==}
     dev: true
 
   /@jridgewell/gen-mapping@0.3.13:
@@ -2489,7 +2492,7 @@ packages:
       '@typescript-eslint/types': 8.71.1
       '@typescript-eslint/visitor-keys': 8.71.1
       debug: 4.4.3
-      minimatch: 10.2.6
+      minimatch: 11.0.1
       semver: 7.8.5
       tinyglobby: 0.2.17
       ts-api-utils: 2.5.0(typescript@5.9.3)
@@ -2715,7 +2718,7 @@ packages:
   /axios@1.20.0:
     resolution: {integrity: sha512-r8aOh8j9cGKpgQAqpzrUHnSIc6a59Y3Xf/cv8sy1DrHCkZHzQGEuoq1tARk6qSyDdtQGSDgpb9kFlruzPvrgwg==}
     dependencies:
-      follow-redirects: 1.16.1
+      follow-redirects: 1.16.3
       form-data: 4.0.6
       https-proxy-agent: 5.0.1
       proxy-from-env: 2.1.0
@@ -3349,7 +3352,7 @@ packages:
       estraverse: 5.3.0
       hasown: 2.0.4
       jsx-ast-utils: 3.3.5
-      minimatch: 3.1.3
+      minimatch: 3.1.5
       object.entries: 1.1.9
       object.fromentries: 2.0.8
       object.values: 1.2.1
@@ -3576,8 +3579,8 @@ packages:
     resolution: {integrity: sha512-5+ybhBZANEJxaH3X5evAFatUxLfEHSr7n6kYJ+1Qd0mUqr4eu9gIf6GDbWHf8RJijHrjjO8G+la14SlL2SeS1Q==}
     dev: true
 
-  /follow-redirects@1.16.1:
-    resolution: {integrity: sha512-FNvFGzoMLWmE6Yj9spb/zjd7yiNCHiAW9/Tg9CXrQ8wuu32HtlJOwWO11OJafl5FfY3DxTdQ0vj42zU1kvv5jg==}
+  /follow-redirects@1.16.3:
+    resolution: {integrity: sha512-toOSoqN6d51Wjf1aOFJYcoVv1aND9rj/CwjLU0Vz40oDuSpWDayCeKe4JpL5NL0WdFvoOOCI3BRo69HahjbR1A==}
     engines: {node: '>=4.0'}
     peerDependencies:
       debug: '*'
@@ -3941,15 +3944,14 @@ packages:
       '@babel/runtime': 7.29.10
     dev: false
 
-  /i18next@25.10.10(typescript@5.9.3):
-    resolution: {integrity: sha512-cqUW2Z3EkRx7NqSyywjkgCLK7KLCL6IFVFcONG7nVYIJ3ekZ1/N5jUsihHV6Bq37NfhgtczxJcxduELtjTwkuQ==}
+  /i18next@26.7.2(typescript@5.9.3):
+    resolution: {integrity: sha512-RsOY3BeaCDdkk52NeJSFAXELQ2rQXBO/tOub6L8ue2ICPfR/FRDWDOfEDg4xMPd1SqO5goVYQ6i72qWEUB/PPw==}
     peerDependencies:
-      typescript: ^5 || ^6
+      typescript: ^5 || ^6 || ^7
     peerDependenciesMeta:
       typescript:
         optional: true
     dependencies:
-      '@babel/runtime': 7.29.10
       typescript: 5.9.3
     dev: false
 
@@ -5137,17 +5139,12 @@ packages:
     engines: {node: '>=18'}
     dev: true
 
-  /minimatch@10.2.6:
-    resolution: {integrity: sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A==}
+  /minimatch@11.0.1:
+    resolution: {integrity: sha512-t+Vn6DX4wPCxS23y03C0uhF7S1jpi1GfqPrnlEipCJaA2ykiNbMkVlDutZtmvLfRcUN6R8AYVlzTsQrT4RZoLQ==}
     engines: {node: 18 || 20 || >=22}
     dependencies:
+      '@isaacs/nonrecursive-glob-match': 1.1.0
       brace-expansion: 5.0.12
-    dev: true
-
-  /minimatch@3.1.3:
-    resolution: {integrity: sha512-M2GCs7Vk83NxkUyQV1bkABc4yxgz9kILhHImZiBPAZ9ybuvCb0/H7lEl5XvIg3g+9d4eNotkZA5IWwYl0tibaA==}
-    dependencies:
-      brace-expansion: 1.1.21
     dev: true
 
   /minimatch@3.1.5:
@@ -5557,7 +5554,7 @@ packages:
       react: 19.2.1
     dev: false
 
-  /react-i18next@15.7.4(i18next@25.10.10)(react-dom@19.2.1)(react@19.2.1)(typescript@5.9.3):
+  /react-i18next@15.7.4(i18next@26.7.2)(react-dom@19.2.1)(react@19.2.1)(typescript@5.9.3):
     resolution: {integrity: sha512-nyU8iKNrI5uDJch0z9+Y5XEr34b0wkyYj3Rp+tfbahxtlswxSCjcUL9H0nqXo9IR3/t5Y5PKIA3fx3MfUyR9Xw==}
     peerDependencies:
       i18next: '>= 23.4.0'
@@ -5575,7 +5572,7 @@ packages:
     dependencies:
       '@babel/runtime': 7.29.10
       html-parse-stringify: 3.1.0
-      i18next: 25.10.10(typescript@5.9.3)
+      i18next: 26.7.2(typescript@5.9.3)
       react: 19.2.1
       react-dom: 19.2.1(react@19.2.1)
       typescript: 5.9.3
@@ -6757,8 +6754,8 @@ packages:
     engines: {node: '>=10'}
     dev: true
 
-  /zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+  /zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
     dev: false
 
   /zwitch@2.0.4:
