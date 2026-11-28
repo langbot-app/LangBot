@@ -192,6 +192,7 @@ def write_manifest(
 def write_trace_index(path: Path, artifacts: list[Path], *, run_id: str | None = None) -> dict[str, Any]:
     """Index trace-bearing JSONL evidence without inferring missing links."""
 
+    # shortcut: build the index at run close, upgrade to streaming for very large evidence sets.
     entries: dict[str, dict[str, Any]] = {}
     unindexed_by_artifact: dict[str, int] = {}
     missing_artifacts: list[str] = []

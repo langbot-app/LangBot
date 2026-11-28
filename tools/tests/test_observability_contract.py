@@ -55,6 +55,7 @@ def test_manifest_marks_missing_observation_source_incomplete(tmp_path: Path):
 def test_trace_index_groups_action_and_arrival_evidence(tmp_path: Path):
     actions = tmp_path / 'actions.jsonl'
     arrivals = tmp_path / 'arrivals.jsonl'
+    observations = tmp_path / 'observations.jsonl'
     actions.write_text(
         json.dumps({'trace_id': 'Y-1', 'action_id': 'a-1', 'status': 'succeeded'})
         + '\n'
@@ -62,18 +63,21 @@ def test_trace_index_groups_action_and_arrival_evidence(tmp_path: Path):
         + '\n'
     )
     arrivals.write_text(json.dumps({'trace_id': 'Y-1', 'action_id': 'a-1', 'arrival_id': 0}) + '\n')
+    observations.write_text(json.dumps({'trace_id': 'Y-1', 'observation_id': 'o-1', 'values': {}}) + '\n')
 
     index_path = tmp_path / 'trace-index.json'
-    index = write_trace_index(index_path, [actions, arrivals], run_id='run-1')
+    index = write_trace_index(index_path, [actions, arrivals, observations], run_id='run-1')
 
     assert index['traces'] == 1
-    assert index['indexed_records'] == 2
+    assert index['indexed_records'] == 3
     assert index['unindexed_records'] == 1
     entry = index['entries'][0]
     assert entry['action_ids'] == ['a-1']
+    assert entry['observation_ids'] == ['o-1']
     assert {(ref['artifact'], ref['line']) for ref in entry['evidence']} == {
         ('actions.jsonl', 1),
         ('arrivals.jsonl', 1),
+        ('observations.jsonl', 1),
     }
     manifest = write_manifest(
         tmp_path / 'run-manifest.json',
@@ -99,10 +103,20 @@ def test_trace_index_rejects_corrupt_jsonl(tmp_path: Path):
 
 
 def test_trace_index_keeps_missing_artifact_visible(tmp_path: Path):
-    index = write_trace_index(tmp_path / 'trace-index.json', [tmp_path / 'missing.jsonl'])
+    index_path = tmp_path / 'trace-index.json'
+    missing = tmp_path / 'missing.jsonl'
+    index = write_trace_index(index_path, [missing])
 
-    assert index['missing_artifacts'] == [str(tmp_path / 'missing.jsonl')]
+    assert index['missing_artifacts'] == [str(missing)]
     assert index['unindexed_records'] == 0
+    manifest = write_manifest(
+        tmp_path / 'run-manifest.json',
+        run_id='run-3',
+        expected_sources=[],
+        artifacts=[index_path],
+        trace_index=index_path,
+    )
+    assert manifest['completeness'] == 'incomplete'
 
 
 def test_open_loop_records_failed_action_without_breaking_accounting(tmp_path: Path):
