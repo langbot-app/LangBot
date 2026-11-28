@@ -521,6 +521,7 @@ async def test_workspace_reads_do_not_wait_for_an_installation_apply():
     connector = PluginRuntimeConnector(app, AsyncMock())
     connector.handler = runtime_handler()
     connector._current_execution_context = AsyncMock(return_value=execution_context)
+    connector._validate_execution_context = AsyncMock(return_value=execution_context)
     mock_archive_admission(connector, digest)
     connector._inspect_plugin_package = Mock(return_value=('author', 'plugin'))
     connector._store_artifact_package = AsyncMock()
