@@ -1,8 +1,8 @@
 """Bounded fixed-arrival scheduling with explicit outcomes for undispatched work."""
 
+import time
 from collections import Counter, deque
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-import time
 
 from tools.regression.mixload_pacing import planned_group_slots
 
@@ -67,7 +67,8 @@ def run_open_loop(
             'serialization_key': key_for(index),
         }
         if action_writer is not None:
-            item['_action_result'] = action_writer.begin(action_name, metadata={'arrival_id': index})
+            action = action_writer.begin(action_name, metadata={'arrival_id': index})
+            item.update(action_id=action.action_id, trace_id=action.trace_id, _action_result=action)
         return item
 
     def completed():
@@ -80,7 +81,7 @@ def run_open_loop(
                 busy.remove(key)
             try:
                 row = future.result()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 finish(item, 'failed', error=exc)
                 continue
             finish(item, 'expired' if row is None else 'dispatched', row)
@@ -182,7 +183,7 @@ def run_open_loop(
             item = active.pop(future)
             try:
                 row = future.result()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 finish(item, 'failed', error=exc)
                 continue
             finish(item, 'expired' if row is None else 'dispatched', row)
