@@ -10,7 +10,6 @@ import base64
 import contextlib
 import contextvars
 import copy
-import traceback
 import uuid
 from dataclasses import dataclass
 
@@ -1270,7 +1269,11 @@ class RuntimeConnectionHandler(handler.Handler):
                     data={},
                 )
             except Exception as e:
-                traceback.print_exc()
+                self.ap.logger.exception(
+                    'Failed to initialize plugin settings for %s/%s',
+                    plugin_author,
+                    plugin_name,
+                )
                 return handler.ActionResponse.error(
                     message=f'Failed to initialize plugin settings: {e}',
                 )
@@ -2127,7 +2130,7 @@ class RuntimeConnectionHandler(handler.Handler):
                     return handler.ActionResponse.success(data={'result': result})
                 return handler.ActionResponse.success(data={'tool_response': result})
             except Exception as e:
-                traceback.print_exc()
+                self.ap.logger.exception('Failed to execute tool %s', tool_name)
                 return handler.ActionResponse.error(
                     message=f'Failed to execute tool {tool_name}: {e}',
                 )
@@ -2192,7 +2195,7 @@ class RuntimeConnectionHandler(handler.Handler):
 
                 return handler.ActionResponse.success(data={'tool': tool_detail})
             except Exception as e:
-                traceback.print_exc()
+                self.ap.logger.exception('Failed to get tool detail for %s', tool_name)
                 return handler.ActionResponse.error(
                     message=f'Failed to get tool detail for {tool_name}: {e}',
                 )

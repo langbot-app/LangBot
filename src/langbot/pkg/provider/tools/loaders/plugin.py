@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import typing
-import traceback
 
 from langbot_plugin.api.entities.events import pipeline_query
 
@@ -82,8 +81,7 @@ class PluginToolLoader(loader.ToolLoader):
                 query_uuid=query.query_uuid,
             )
         except Exception as e:
-            self.ap.logger.error(f'执行函数 {name} 时发生错误: {e}')
-            traceback.print_exc()
+            self.ap.logger.exception('Failed to execute plugin tool %s', name)
             return f'error occurred when executing function {name}: {e}'
 
     async def shutdown(self):

@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import logging
+import os
+from pathlib import Path
 import signal
+import subprocess
+import sys
+import textwrap
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from langbot.pkg.core import boot
+from tools.regression.service_logs import records as parse_service_logs
 
 
 @pytest.mark.asyncio
@@ -34,10 +41,8 @@ async def test_make_app_shuts_down_partially_built_application(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_main_signal_handler_handles_sigint_before_app_created(monkeypatch):
+async def test_main_signal_handler_handles_sigint_before_app_created(monkeypatch, caplog):
     captured_handler = {}
-    print_exc = Mock()
-    monkeypatch.setattr(boot.traceback, 'print_exc', print_exc)
     # Signal handling must not touch a potentially blocked stdout stream.
     monkeypatch.setattr(boot, 'print', Mock(side_effect=AssertionError('stdout must not be used')), raising=False)
 
@@ -50,9 +55,10 @@ async def test_main_signal_handler_handles_sigint_before_app_created(monkeypatch
     monkeypatch.setattr(signal, 'signal', fake_signal)
     monkeypatch.setattr(boot, 'make_app', fake_make_app)
 
-    await boot.main(SimpleNamespace())
+    with caplog.at_level(logging.ERROR, logger='langbot'):
+        await boot.main(SimpleNamespace())
 
-    print_exc.assert_not_called()
+    assert caplog.records == []
 
 
 @pytest.mark.asyncio
@@ -83,7 +89,7 @@ async def test_main_signal_handler_disposes_created_app(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_main_reports_app_run_failure_and_still_shuts_down(monkeypatch):
+async def test_main_reports_app_run_failure_and_still_shuts_down(monkeypatch, caplog, capsys):
     app_inst = SimpleNamespace(shutdown_called=False)
 
     async def shutdown():
@@ -97,13 +103,100 @@ async def test_main_reports_app_run_failure_and_still_shuts_down(monkeypatch):
         app_inst.run = run
         return app_inst
 
-    print_exc = Mock()
     monkeypatch.setattr(signal, 'signal', lambda *_args: None)
     monkeypatch.setattr(boot, 'make_app', fake_make_app)
-    monkeypatch.setattr(boot.traceback, 'print_exc', print_exc)
 
-    with pytest.raises(RuntimeError, match='run failed'):
-        await boot.main(SimpleNamespace())
+    with caplog.at_level(logging.ERROR, logger='langbot'):
+        with pytest.raises(SystemExit) as exc_info:
+            await boot.main(SimpleNamespace())
 
-    print_exc.assert_called_once()
+    assert exc_info.value.code == 1
     assert app_inst.shutdown_called is True
+    assert capsys.readouterr().err == ''
+    assert len(caplog.records) == 1
+    assert caplog.records[0].levelno == logging.ERROR
+    assert caplog.records[0].exc_info is not None
+    assert str(caplog.records[0].exc_info[1]) == 'run failed'
+
+
+@pytest.mark.parametrize('after_logger_setup', [False, True], ids=['before-logger-setup', 'after-logger-setup'])
+def test_main_logs_single_leveled_traceback_before_and_after_logger_setup(tmp_path, after_logger_setup):
+    script = textwrap.dedent("""\
+        import asyncio
+        import os
+        from pathlib import Path
+        from types import SimpleNamespace
+
+        from langbot.pkg.core import boot
+        from langbot.pkg.core.bootutils import log as logmod
+
+        Path('data/logs').mkdir(parents=True, exist_ok=True)
+        logmod.LOG_DIR = str(Path('data/logs'))
+
+        class FakeApp:
+            def __init__(self):
+                self.event_loop = None
+                self.logger = None
+                self.log_cache = None
+
+            async def initialize(self):
+                pass
+
+            async def shutdown(self):
+                Path('cleaned.txt').write_text('ok', encoding='utf-8')
+
+        class FailingStage:
+            async def run(self, ap):
+                raise RuntimeError('boot boom')
+
+        boot.app.Application = FakeApp
+        boot.stage.preregistered_stages['FailingStage'] = FailingStage
+        if os.environ['AFTER_LOGGER_SETUP'] == '1':
+            boot.stage_order = ['SetupLoggerStage', 'FailingStage']
+        else:
+            boot.stage_order = ['FailingStage']
+
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(boot.main(loop))
+        finally:
+            loop.close()
+    """)
+    env = dict(
+        os.environ,
+        PYTHONPATH=str(Path(boot.__file__).resolve().parents[3]),
+        PYTHONIOENCODING='utf-8',
+        AFTER_LOGGER_SETUP=str(int(after_logger_setup)),
+        NO_COLOR='1',
+    )
+    proc = subprocess.run(
+        [sys.executable, '-c', script],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+
+    assert proc.returncode == 1
+    assert (tmp_path / 'cleaned.txt').read_text(encoding='utf-8') == 'ok'
+
+    combined = proc.stdout + proc.stderr
+    assert combined.count('Traceback (most recent call last):') == 1, combined
+
+    parsed = list(parse_service_logs(combined.splitlines(), 'core'))
+    error_records = [rec for rec in parsed if rec.level == 'ERROR']
+    assert len(error_records) == 1, parsed
+    record = error_records[0]
+    assert record.service == 'core'
+    assert 'LangBot core failed' in record.msg
+    assert 'RuntimeError: boot boom' in record.msg
+    assert any('Traceback (most recent call last):' in line for line in record.continuation)
+    assert any('RuntimeError: boot boom' in line for line in record.continuation)
+
+    if after_logger_setup:
+        wf_files = list((tmp_path / 'data/logs').glob('*.log.wf'))
+        assert len(wf_files) == 1
+        wf_text = wf_files[0].read_text(encoding='utf-8')
+        assert 'ERROR [CORE.BOOT]' in wf_text
+        assert 'RuntimeError: boot boom' in wf_text
