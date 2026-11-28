@@ -7,7 +7,7 @@ Tests the actual RateLimit implementation from pkg.pipeline.ratelimit
 import pytest
 import asyncio
 import time
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 from importlib import import_module
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
@@ -142,6 +142,25 @@ class TestFixedWindowAlgo:
         # Second request denied
         result2 = await algo.require_access(sample_query, provider_session.LauncherTypes.PERSON, '12345')
         assert result2 is False
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('window', [0, -5, None, 'x'])
+    async def test_fixedwin_invalid_window_is_one_second(self, mock_app_for_algo, sample_query, window):
+        """Legacy policies with window-length 0 raised ZeroDivisionError (LANG-741)."""
+        fixedwin = get_fixedwin_module()
+
+        sample_query.pipeline_config = {
+            'safety': {'rate-limit': {'window-length': window, 'limitation': 1, 'strategy': 'drop'}}
+        }
+
+        algo = fixedwin.FixedWindowAlgo(mock_app_for_algo)
+        await algo.initialize()
+
+        with patch.object(fixedwin.time, 'time', return_value=1_000_000.2):
+            assert await algo.require_access(sample_query, provider_session.LauncherTypes.PERSON, '1') is True
+            assert await algo.require_access(sample_query, provider_session.LauncherTypes.PERSON, '1') is False
+        with patch.object(fixedwin.time, 'time', return_value=1_000_001.2):
+            assert await algo.require_access(sample_query, provider_session.LauncherTypes.PERSON, '1') is True
 
     @pytest.mark.asyncio
     async def test_fixedwin_container_persists(self, mock_app_for_algo, sample_query_with_rate_limit):
