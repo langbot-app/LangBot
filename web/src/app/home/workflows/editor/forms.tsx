@@ -33,8 +33,8 @@ export interface FormProps {
   set: (patch: Config) => void;
 }
 
-const str = (value: unknown) => (typeof value === 'string' ? value : '');
-const rowsOf = (value: unknown): Row[] =>
+export const str = (value: unknown) => (typeof value === 'string' ? value : '');
+export const rowsOf = (value: unknown): Row[] =>
   Array.isArray(value) ? (value as Row[]) : [];
 
 function nextId(rows: Row[], prefix: string) {
@@ -44,7 +44,7 @@ function nextId(rows: Row[], prefix: string) {
   return `${prefix}${index}`;
 }
 
-function Advanced({ children }: { children: ReactNode }) {
+export function Advanced({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   return (
@@ -62,7 +62,7 @@ function Advanced({ children }: { children: ReactNode }) {
   );
 }
 
-function RowList({
+export function RowList({
   rows,
   render,
   onAdd,
@@ -112,7 +112,7 @@ function RowList({
   );
 }
 
-function OnError({ config, set }: Omit<FormProps, 'step'>) {
+export function OnError({ config, set }: Omit<FormProps, 'step'>) {
   const { t } = useTranslation();
   return (
     <Field label={t('workflows.form.onError')}>

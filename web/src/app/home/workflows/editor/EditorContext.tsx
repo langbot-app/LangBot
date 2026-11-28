@@ -1,15 +1,22 @@
 import { createContext, useContext } from 'react';
 import type {
   Agent,
+  ASRModel,
+  KnowledgeBase,
   LLMModel,
+  TTSModel,
   WorkflowGraph,
   WorkflowIssue,
   WorkflowStepRun,
   WorkflowSummary,
+  WorkflowTrigger,
 } from '@/app/infra/entities/api';
 
 export interface EditorResources {
   models: LLMModel[];
+  ttsModels: TTSModel[];
+  asrModels: ASRModel[];
+  knowledgeBases: KnowledgeBase[];
   processors: Agent[];
   workflows: WorkflowSummary[];
   bots: { uuid: string; name: string }[];
@@ -28,6 +35,13 @@ export interface EditorState {
   lastRun: Record<string, WorkflowStepRun>;
   resources: EditorResources;
   readOnly: boolean;
+  /** Triggers live on the workflow, edited from the start step. */
+  triggers: WorkflowTrigger[];
+  setTriggers: (
+    update: (triggers: WorkflowTrigger[]) => WorkflowTrigger[],
+  ) => void;
+  timezone: string;
+  setTimezone: (timezone: string) => void;
 }
 
 export const EditorContext = createContext<EditorState | null>(null);

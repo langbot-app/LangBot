@@ -1,5 +1,6 @@
 import type { TFunction } from 'i18next';
-import type { WorkflowStep } from '@/app/infra/entities/api';
+import type { WorkflowStep, WorkflowTrigger } from '@/app/infra/entities/api';
+import { triggerSummary } from './TriggersEditor';
 import { parseTemplate } from '../lib/template';
 import type { EditorResources } from './EditorContext';
 
@@ -24,6 +25,7 @@ export function stepSummary(
   t: TFunction,
   resources: EditorResources,
   label: Label,
+  triggers: WorkflowTrigger[] = [],
 ): string {
   const config = step.config;
   const model = () =>
@@ -33,7 +35,9 @@ export function stepSummary(
     Array.isArray(config[key]) ? (config[key] as unknown[]).length : 0;
   switch (step.type) {
     case 'start':
-      return t('workflows.summary.start');
+      return triggers.length
+        ? triggers.map((trigger) => triggerSummary(trigger, t)).join(' · ')
+        : t('workflows.summary.start');
     case 'llm':
       return model();
     case 'classify':

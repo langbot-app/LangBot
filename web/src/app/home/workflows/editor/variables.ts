@@ -32,19 +32,51 @@ export function useOutputLabel() {
 /** Variables a step may reference: outputs of its ancestors plus memory. */
 export function useVariableGroups(stepId: string): VariableGroup[] {
   const { t } = useTranslation();
-  const { graph, lastRun } = useEditor();
+  const { graph, lastRun, triggers } = useEditor();
   const outputLabel = useOutputLabel();
   const ancestors = ancestorsOf(graph, stepId);
+  const startKeys = (): string[] => {
+    const kinds = new Set(triggers.map((trigger) => trigger.type));
+    const keys: string[] = [];
+    if (kinds.has('message') || kinds.has('command') || kinds.has('event')) {
+      keys.push(
+        ...stepOutputs({ id: 'start', type: 'start', name: '', config: {} }),
+      );
+    }
+    for (const trigger of triggers) {
+      if (trigger.type === 'command') {
+        for (const arg of (trigger.args as { name?: string }[]) ?? []) {
+          if (arg.name) keys.push(`args.${arg.name}`);
+        }
+      }
+    }
+    if (kinds.has('event')) keys.push('event');
+    if (kinds.has('webhook')) keys.push('payload');
+    if (kinds.has('schedule')) keys.push('target');
+    return [...new Set(keys)];
+  };
   const groups: VariableGroup[] = ancestors
     .map((step) => ({
       key: step.id,
       title: step.name || t(`workflows.steps.${step.type}`),
       step,
-      options: stepOutputs(step).map((key) => ({
-        path: `${step.id}.${key}`,
-        label: outputLabel(key),
-        sample: lastRun[step.id]?.outputs?.[key],
-      })),
+      options: (step.type === 'start' ? startKeys() : stepOutputs(step)).map(
+        (key) => ({
+          path: `${step.id}.${key}`,
+          label: key.startsWith('args.')
+            ? `${outputLabel('args')} · ${key.slice(5)}`
+            : outputLabel(key),
+          sample: key
+            .split('.')
+            .reduce<unknown>(
+              (value, part) =>
+                value && typeof value === 'object'
+                  ? (value as Record<string, unknown>)[part]
+                  : undefined,
+              lastRun[step.id]?.outputs,
+            ),
+        }),
+      ),
     }))
     .filter((group) => group.options.length > 0);
   const memory = ancestors.flatMap(rememberedKeys);
@@ -91,7 +123,7 @@ export function refLabel(
   const name = step.name || t(`workflows.steps.${step.type}`);
   const key = rest.join('.');
   return {
-    text: `${name} · ${outputLabel(rest[0] ?? '')}${rest.length > 1 ? `.${rest.slice(1).join('.')}` : ''}`,
+    text: [name, outputLabel(rest[0] ?? ''), ...rest.slice(1)].join(' · '),
     known: Boolean(STEP_META[step.type]) && key !== '',
   };
 }

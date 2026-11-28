@@ -100,7 +100,8 @@ function Link({ slot, active }: { slot: Slot; active?: boolean }) {
 
 function StepCard({ step }: { step: WorkflowStep }) {
   const { t } = useTranslation();
-  const { selected, select, issues, lastRun, resources } = useEditor();
+  const { selected, select, issues, lastRun, resources, triggers } =
+    useEditor();
   const label = useRefLabel();
   const meta = STEP_META[step.type];
   const Icon = meta?.icon ?? CircleAlert;
@@ -114,7 +115,7 @@ function StepCard({ step }: { step: WorkflowStep }) {
       ? t('workflows.canvas.ran', {
           duration: run.duration_ms ?? 0,
         }) + (run.branch ? ` · → ${branchLabel(step, run.branch, t)}` : '')
-      : stepSummary(step, t, resources, label);
+      : stepSummary(step, t, resources, label, triggers);
   return (
     <button
       type="button"

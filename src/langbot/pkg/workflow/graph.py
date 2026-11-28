@@ -28,7 +28,7 @@ CATALOG = {
     'history': _step('logic', 'messages text', 'scope limit since_hours'),
     'tts': _step('ai', 'voice', 'model_uuid text voice'),
     'asr': _step('ai', 'text', 'model_uuid voice'),
-    'platform': _step('action', 'result', 'bot_uuid action params'),
+    'platform': _step('action', 'result error', 'bot_uuid action params on_error'),
     'condition': _step('logic', 'matched error', 'cases', 'cases'),
     'remember': _step('logic', 'value', 'scope items'),
     'reply': _step('action', 'sent', 'content'),

@@ -40,6 +40,7 @@ import type {
   WorkflowGraph,
   WorkflowIssue,
   WorkflowStepRun,
+  WorkflowTrigger,
 } from '@/app/infra/entities/api';
 import { EditorContext, type EditorResources } from './editor/EditorContext';
 import StepCanvas from './editor/StepCanvas';
@@ -50,11 +51,26 @@ import { parseIssue } from './lib/issues';
 
 const EMPTY_RESOURCES: EditorResources = {
   models: [],
+  ttsModels: [],
+  asrModels: [],
+  knowledgeBases: [],
   processors: [],
   workflows: [],
   bots: [],
   availableTypes: null,
 };
+
+function snapshot(value: {
+  graph: WorkflowGraph;
+  triggers?: WorkflowTrigger[];
+  timezone?: string;
+}) {
+  return JSON.stringify([
+    value.graph,
+    value.triggers ?? [{ type: 'message' }],
+    value.timezone || 'UTC',
+  ]);
+}
 
 function errorText(error: unknown) {
   return (
@@ -75,6 +91,8 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [graph, setGraphState] = useState<WorkflowGraph | null>(null);
   const [saved, setSaved] = useState('');
+  const [triggers, setTriggersState] = useState<WorkflowTrigger[]>([]);
+  const [timezone, setTimezone] = useState('UTC');
   const [issues, setIssues] = useState<WorkflowIssue[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [lastRun, setLastRun] = useState<Record<string, WorkflowStepRun>>({});
@@ -89,7 +107,9 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
       const response = await backendClient.getWorkflow(id);
       setWorkflow(response.workflow);
       setGraphState(response.workflow.graph);
-      setSaved(JSON.stringify(response.workflow.graph));
+      setTriggersState(response.workflow.triggers ?? [{ type: 'message' }]);
+      setTimezone(response.workflow.timezone || 'UTC');
+      setSaved(snapshot(response.workflow));
       setIssues(response.issues ?? []);
     } catch (error) {
       toast.error(`${t('workflows.loadError')} ${errorText(error)}`);
@@ -112,10 +132,16 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
       backendClient.getWorkflows(),
       backendClient.getBots(),
       backendClient.getWorkflowNodeTypes(),
-    ]).then(([models, agents, workflows, bots, types]) => {
+      backendClient.getProviderTTSModels(),
+      backendClient.getProviderASRModels(),
+      backendClient.getKnowledgeBases(),
+    ]).then(([models, agents, workflows, bots, types, tts, asr, bases]) => {
       if (!alive) return;
       setResources({
         models: models.status === 'fulfilled' ? models.value.models : [],
+        ttsModels: tts.status === 'fulfilled' ? tts.value.models : [],
+        asrModels: asr.status === 'fulfilled' ? asr.value.models : [],
+        knowledgeBases: bases.status === 'fulfilled' ? bases.value.bases : [],
         processors: agents.status === 'fulfilled' ? agents.value.agents : [],
         workflows:
           workflows.status === 'fulfilled' ? workflows.value.workflows : [],
@@ -145,7 +171,13 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
     return () => setDetailEntityName(null);
   }, [workflow, setDetailEntityName]);
 
-  const dirty = graph !== null && JSON.stringify(graph) !== saved;
+  const dirty =
+    graph !== null && snapshot({ graph, triggers, timezone }) !== saved;
+  const setTriggers = useCallback(
+    (update: (current: WorkflowTrigger[]) => WorkflowTrigger[]) =>
+      setTriggersState((current) => update(current)),
+    [],
+  );
 
   const setGraph = useCallback(
     (update: (current: WorkflowGraph) => WorkflowGraph) =>
@@ -157,9 +189,14 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
     if (!graph || saving) return;
     setSaving(true);
     try {
-      const response = await backendClient.updateWorkflow(id, { graph });
+      const response = await backendClient.updateWorkflow(id, {
+        graph,
+        triggers,
+        timezone,
+      });
       setWorkflow(response.workflow);
-      setSaved(JSON.stringify(response.workflow.graph));
+      setTriggersState(response.workflow.triggers ?? triggers);
+      setSaved(snapshot(response.workflow));
       setGraphState(response.workflow.graph);
       setIssues(response.issues ?? []);
       const errors = (response.issues ?? []).filter(
@@ -286,8 +323,24 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
         lastRun,
         resources,
         readOnly: !canManage,
+        triggers,
+        setTriggers,
+        timezone,
+        setTimezone,
       },
-    [id, graph, setGraph, selected, issues, lastRun, resources, canManage],
+    [
+      id,
+      graph,
+      setGraph,
+      selected,
+      issues,
+      lastRun,
+      resources,
+      canManage,
+      triggers,
+      setTriggers,
+      timezone,
+    ],
   );
 
   if (!workflow || !editor) {

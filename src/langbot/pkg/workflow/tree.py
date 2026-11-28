@@ -65,9 +65,13 @@ async def execute_tree(
                     )
                 except Exception as exc:
                     step['error'] = str(exc) or type(exc).__name__
-                    if kind not in ('llm', 'http') or inputs.get('on_error') != 'continue':
+                    if kind not in ('llm', 'http', 'platform') or inputs.get('on_error') != 'continue':
                         return steps, f'{step["node_name"]}: {step["error"]}'
-                    outputs = {'text': ''} if kind == 'llm' else {'status': 0, 'body': '', 'json': None}
+                    outputs = {
+                        'llm': {'text': ''},
+                        'http': {'status': 0, 'body': '', 'json': None},
+                        'platform': {'result': None},
+                    }[kind]
                     outputs['error'] = step['error']
                     branch = None
                 finally:

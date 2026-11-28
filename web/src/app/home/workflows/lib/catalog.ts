@@ -236,6 +236,13 @@ export const EDITABLE_TYPES = new Set<WorkflowStepType>([
   'send',
   'http',
   'handoff',
+  'knowledge',
+  'random',
+  'history',
+  'code',
+  'tts',
+  'asr',
+  'platform',
 ]);
 
 /** Order of steps in the picker; types the server does not offer are hidden. */

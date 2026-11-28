@@ -65,17 +65,25 @@ export function ModelSelect({
   value,
   onChange,
   invalid,
+  kind = 'llm',
 }: {
   value: string;
   onChange: (value: string) => void;
   invalid?: boolean;
+  kind?: 'llm' | 'tts' | 'asr';
 }) {
   const { t } = useTranslation();
   const { resources } = useEditor();
-  if (!resources.models.length) {
+  const models =
+    kind === 'tts'
+      ? resources.ttsModels
+      : kind === 'asr'
+        ? resources.asrModels
+        : resources.models;
+  if (!models.length) {
     return (
       <p className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
-        {t('workflows.form.noModels')}
+        {t(`workflows.form.noModels${kind === 'llm' ? '' : 'Speech'}`)}
       </p>
     );
   }
@@ -88,8 +96,8 @@ export function ModelSelect({
         <SelectValue placeholder={t('workflows.form.pickModel')} />
       </SelectTrigger>
       <SelectContent>
-        {resources.models.map((model) => (
-          <SelectItem key={model.uuid} value={model.uuid}>
+        {models.map((model) => (
+          <SelectItem key={model.uuid} value={model.uuid!}>
             {model.name}
           </SelectItem>
         ))}

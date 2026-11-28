@@ -1380,6 +1380,7 @@ export interface UpdateWorkflowRequest {
   is_enabled?: boolean;
   graph?: WorkflowGraph;
   triggers?: WorkflowTrigger[];
+  timezone?: string;
 }
 
 export interface Skill {

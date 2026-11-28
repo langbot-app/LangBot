@@ -34,9 +34,19 @@ import {
   RememberForm,
   ReplyForm,
   SendForm,
-  StartForm,
   type FormProps,
 } from './forms';
+import {
+  AsrForm,
+  Attachments,
+  CodeForm,
+  HistoryForm,
+  KnowledgeForm,
+  PlatformForm,
+  RandomForm,
+  TtsForm,
+} from './forms-more';
+import TriggersEditor from './TriggersEditor';
 
 const FORMS: Partial<Record<string, (props: FormProps) => React.ReactNode>> = {
   llm: LlmForm,
@@ -48,6 +58,13 @@ const FORMS: Partial<Record<string, (props: FormProps) => React.ReactNode>> = {
   send: SendForm,
   http: HttpForm,
   handoff: HandoffForm,
+  knowledge: KnowledgeForm,
+  random: RandomForm,
+  history: HistoryForm,
+  code: CodeForm,
+  tts: TtsForm,
+  asr: AsrForm,
+  platform: PlatformForm,
 };
 
 function RunValues({ title, value }: { title: string; value: unknown }) {
@@ -81,6 +98,19 @@ export default function StepPanel({ id }: { id: string }) {
       const target = stepById(current, id);
       if (!target) return current;
       const config = { ...target.config, ...patch };
+      if (
+        (target.type === 'reply' || target.type === 'send') &&
+        !('content' in patch) &&
+        (config.image || config.voice)
+      ) {
+        // Text edits keep the attached image/voice in the sent message.
+        config.content = [
+          ...(config.text ? [{ type: 'text', text: config.text }] : []),
+          ...(config.image ? [{ type: 'image', ref: config.image }] : []),
+          ...(config.voice ? [{ type: 'voice', ref: config.voice }] : []),
+        ];
+      }
+      if (config.content === undefined) delete config.content;
       let next = updateStep(current, id, { config });
       const branching = STEP_META[target.type]?.branching;
       if (branching && branching in patch) {
@@ -160,9 +190,14 @@ export default function StepPanel({ id }: { id: string }) {
         className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4"
       >
         {step.type === 'start' ? (
-          <StartForm />
+          <TriggersEditor />
         ) : Form ? (
-          <Form step={step} config={step.config} set={set} />
+          <>
+            <Form step={step} config={step.config} set={set} />
+            {(step.type === 'reply' || step.type === 'send') && (
+              <Attachments step={step} config={step.config} set={set} />
+            )}
+          </>
         ) : (
           <p className="text-sm text-muted-foreground">
             {t('workflows.form.unsupported')}
