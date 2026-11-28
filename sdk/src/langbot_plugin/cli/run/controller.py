@@ -32,6 +32,7 @@ from langbot_plugin.api.definition.components.knowledge_engine.engine import (
     KnowledgeEngine,
 )
 from langbot_plugin.api.definition.components.page import Page
+from langbot_plugin.api.definition.components.webhook import Webhook
 from langbot_plugin.api.definition.components.parser.parser import Parser
 from langbot_plugin.api.definition.components.runner.runner import Runner
 from langbot_plugin.entities.io.errors import ConnectionClosedError
@@ -412,6 +413,7 @@ class PluginRuntimeController:
             KnowledgeEngine,
             Parser,
             Page,
+            Webhook,
             Runner,
         ]
 

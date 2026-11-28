@@ -1,9 +1,11 @@
 import pipelineMigration from './pipeline-migration/es-ES';
 import pluginPermissions from './plugin-permissions/es-ES';
 import pluginCompat from './plugin-compat/es-ES';
+import pluginWebhooks from './plugin-webhooks/es-ES';
 const esES = {
   pluginPermissions,
   pluginCompat,
+  pluginWebhooks,
   planRevision: {
     subscribedOn: 'Fecha de suscripción: {{date}}',
     latestQuota: 'Cuotas más recientes de este plan',
@@ -2578,6 +2580,7 @@ const esES = {
       KnowledgeEngine: 'Motor de conocimiento',
       Parser: 'Analizador',
       Page: 'Página',
+      Webhook: 'Webhook',
       Runner: 'Ejecutor',
     },
     uploadLocal: 'Subir local',
@@ -3038,6 +3041,7 @@ const esES = {
       KnowledgeEngine: 'Motor de conocimiento',
       Parser: 'Analizador',
       Page: 'Página',
+      Webhook: 'Webhook',
       Runner: 'Ejecutor',
     },
     filterByType: 'Tipo',

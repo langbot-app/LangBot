@@ -3,9 +3,11 @@ import wxoaMenu from './wxoa-menu/ja-JP';
 import pipelineMigration from './pipeline-migration/ja-JP';
 import pluginPermissions from './plugin-permissions/ja-JP';
 import pluginCompat from './plugin-compat/ja-JP';
+import pluginWebhooks from './plugin-webhooks/ja-JP';
 const jaJP = {
   pluginPermissions,
   pluginCompat,
+  pluginWebhooks,
   planRevision: {
     subscribedOn: '契約日：{{date}}',
     latestQuota: 'このプランの最新の利用枠',
@@ -2560,6 +2562,7 @@ const jaJP = {
       KnowledgeEngine: '知識エンジン',
       Parser: 'パーサー',
       Page: 'ページ',
+      Webhook: 'Webhook',
       Runner: 'ランナー',
     },
     uploadLocal: 'ローカルアップロード',
@@ -3017,6 +3020,7 @@ const jaJP = {
       KnowledgeEngine: '知識エンジン',
       Parser: 'パーサー',
       Page: 'ページ',
+      Webhook: 'Webhook',
       Runner: 'ランナー',
     },
     filterByType: 'タイプ',

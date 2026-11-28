@@ -164,6 +164,7 @@ In this repo:
 - `pkg/plugin/handler.py` exposes LangBot actions to the runtime and calls runtime actions for plugin operations.
 - `pkg/provider/tools/loaders/plugin.py` exposes plugin Tool components to LLM runners.
 - EventListener hooks are bot message lifecycle hooks: `RuntimeBot` emits `*MessageReceived` / `*CommandSent` and platform notifications, Chat stages and Agent delivery emit normal-message and response events, and only Chat emits prompt-processing events. Plugins are enabled per bot through `message_policy.plugins`.
+- Webhook components are public ingress: `api/http/controller/groups/plugin_webhooks.py` serves `/plugins/webhooks/<installation_uuid>/<name>[/<path>]` without authentication, resolves the Workspace from the connector's desired-state projection (never request headers, like `/bots/<bot_uuid>`), and forwards the raw request (≤1 MiB, no `Cookie`) through `webhook_request` under that installation's binding. The plugin verifies the caller.
 - [Certified plugin policy](dev-docs/architecture/certified-plugins.md) defines Core's archive-fact, admission, and tenant-log-visibility boundary; the SDK remains responsible for certificate verification.
 
 In `sdk/`:

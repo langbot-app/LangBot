@@ -2286,3 +2286,32 @@ async def test_emit_event_reports_only_the_plugin_that_prevented_default():
             "plugin": {"author": "tester", "name": "taker"},
         }
     ]
+
+
+async def test_handle_webhook_request_routes_to_declared_component():
+    manager = _manager()
+    plugin = _plugin(components=[_component("Webhook", "orders")])
+    handler = FakeHandler(plugin)
+    handler.call_webhook = AsyncMock(return_value={"response": {"status": 204}})
+    plugin._runtime_plugin_handler = handler
+    other = _plugin(name="other", components=[_component("Webhook", "orders")])
+    other._runtime_plugin_handler = FakeHandler(other)
+    other._runtime_plugin_handler.call_webhook = AsyncMock(
+        side_effect=AssertionError("wrong plugin")
+    )
+    manager.plugins = [other, plugin]
+
+    result = await manager.handle_webhook_request(
+        "tester", "demo", "orders", {"method": "POST"}
+    )
+
+    assert result == {"response": {"status": 204}}
+    handler.call_webhook.assert_awaited_once_with(
+        webhook_name="orders", request={"method": "POST"}
+    )
+    assert await manager.handle_webhook_request("tester", "demo", "missing", {}) == {
+        "error": "webhook_not_found"
+    }
+    assert await manager.handle_webhook_request("tester", "absent", "orders", {}) == {
+        "error": "plugin_not_found"
+    }

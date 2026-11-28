@@ -831,6 +831,23 @@ class PluginsRouterGroup(group.RouterGroup):
             return self.success(data=result.get('data'))
 
         @self.route(
+            '/<author>/<plugin_name>/webhooks',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
+            """List the public webhook URLs exposed by a plugin's Webhook components."""
+            await self._require_authenticated_plugin_runtime_context(request_context)
+            from .....plugin.errors import PluginNotInstalledError
+
+            try:
+                webhooks = await self.ap.plugin_connector.list_plugin_webhooks(author, plugin_name)
+            except PluginNotInstalledError:
+                return self.http_status(404, -1, 'plugin not found')
+            return self.success(data={'webhooks': webhooks})
+
+        @self.route(
             '/github/refs',
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,

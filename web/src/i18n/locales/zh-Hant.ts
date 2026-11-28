@@ -3,9 +3,11 @@ import wxoaMenu from './wxoa-menu/zh-Hant';
 import pipelineMigration from './pipeline-migration/zh-Hant';
 import pluginPermissions from './plugin-permissions/zh-Hant';
 import pluginCompat from './plugin-compat/zh-Hant';
+import pluginWebhooks from './plugin-webhooks/zh-Hant';
 const zhHant = {
   pluginPermissions,
   pluginCompat,
+  pluginWebhooks,
   planRevision: {
     subscribedOn: '訂閱日期：{{date}}',
     latestQuota: '該方案最新配額',
@@ -2382,6 +2384,7 @@ const zhHant = {
       KnowledgeEngine: '知識引擎',
       Parser: '解析器',
       Page: '擴展頁',
+      Webhook: 'Webhook',
       Runner: '運行器',
     },
     uploadLocal: '本地上傳',
@@ -2816,6 +2819,7 @@ const zhHant = {
       KnowledgeEngine: '知識引擎',
       Parser: '解析器',
       Page: '擴展頁',
+      Webhook: 'Webhook',
       Runner: '運行器',
     },
     filterByType: '類型',

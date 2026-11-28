@@ -3,9 +3,11 @@ import wxoaMenu from './wxoa-menu/en-US';
 import pipelineMigration from './pipeline-migration/en-US';
 import pluginPermissions from './plugin-permissions/en-US';
 import pluginCompat from './plugin-compat/en-US';
+import pluginWebhooks from './plugin-webhooks/en-US';
 const enUS = {
   pluginPermissions,
   pluginCompat,
+  pluginWebhooks,
   planRevision: {
     subscribedOn: 'Subscribed on {{date}}',
     latestQuota: 'Latest quotas for this plan',
@@ -2551,6 +2553,7 @@ const enUS = {
       KnowledgeEngine: 'Knowledge Engine',
       Parser: 'Parser',
       Page: 'Page',
+      Webhook: 'Webhook',
       Runner: 'Runner',
     },
     uploadLocal: 'Upload Local',
@@ -3005,6 +3008,7 @@ const enUS = {
       KnowledgeEngine: 'Knowledge Engine',
       Parser: 'Parser',
       Page: 'Page',
+      Webhook: 'Webhook',
       Runner: 'Runner',
     },
     filterByType: 'Type',

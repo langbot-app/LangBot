@@ -2814,6 +2814,89 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         with runtime_handler.installation_scope(binding):
             return await runtime_handler.handle_page_api(plugin_author, plugin_name, page_id, endpoint, method, body)
 
+    async def handle_public_webhook(
+        self,
+        installation_uuid: str,
+        webhook_name: str,
+        request: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Route one public plugin webhook request to its installation.
+
+        Like Bot webhooks, the opaque installation UUID in the URL is the only
+        routing key: the Workspace comes from Core's own desired-state
+        projection, never from request headers. Returns ``None`` when the URL
+        does not resolve to an enabled installation in this Core process.
+        """
+        try:
+            normalized = str(uuid.UUID(installation_uuid))
+        except (ValueError, AttributeError, TypeError):
+            return None
+        if not self.is_enable_plugin or not self._runtime_available():
+            return {'error': 'plugin_runtime_unavailable'}
+
+        desired = self._known_desired_states.get(normalized)
+        if desired is not None:
+            execution_context = self._execution_from_binding(desired.binding)
+        elif self.runtime_profile == 'oss_dev':
+            execution_context = self._execution_from_binding(
+                await self.ap.workspace_service.get_local_execution_binding()
+            )
+        else:
+            return None
+
+        try:
+            execution_context, settings = await self._prepare_workspace_context(execution_context)
+        except WorkspaceNotFoundError:
+            return None
+        if settings is None:
+            settings = await self._load_workspace_settings(execution_context)
+        setting = next((item for item in settings if item.installation_uuid == normalized), None)
+        if setting is None:
+            return None
+        if not setting.enabled:
+            return {'error': 'plugin_disabled'}
+
+        binding = await self._target_binding(setting.plugin_author, setting.plugin_name)
+        runtime_handler = self._runtime_handler()
+        with runtime_handler.installation_scope(binding):
+            return await runtime_handler.handle_webhook_request(
+                setting.plugin_author,
+                setting.plugin_name,
+                webhook_name,
+                request,
+            )
+
+    async def list_plugin_webhooks(self, plugin_author: str, plugin_name: str) -> list[dict[str, Any]]:
+        """Describe the public webhook URLs of one installed plugin."""
+        _, setting = await self._setting_for_plugin(plugin_author, plugin_name)
+        info = await self.get_plugin_info(plugin_author, plugin_name)
+        components = (info or {}).get('components') or []
+        api_config = self.ap.instance_config.data.get('api', {})
+        webhook_prefix = str(api_config.get('webhook_prefix', 'http://127.0.0.1:5300') or '').rstrip('/')
+        extra_webhook_prefix = str(api_config.get('extra_webhook_prefix', '') or '').rstrip('/')
+        webhooks: list[dict[str, Any]] = []
+        for component in components:
+            manifest = ((component or {}).get('manifest') or {}).get('manifest') or {}
+            if manifest.get('kind') != 'Webhook':
+                continue
+            metadata = manifest.get('metadata') or {}
+            name = str(metadata.get('name') or '')
+            if not name:
+                continue
+            path = f'/plugins/webhooks/{setting.installation_uuid}/{name}'
+            webhooks.append(
+                {
+                    'name': name,
+                    'label': metadata.get('label') or {},
+                    'description': metadata.get('description') or {},
+                    'webhook_url': path,
+                    'webhook_full_url': f'{webhook_prefix}{path}',
+                    'extra_webhook_full_url': f'{extra_webhook_prefix}{path}' if extra_webhook_prefix else '',
+                    'enabled': bool(setting.enabled),
+                }
+            )
+        return webhooks
+
     async def get_debug_info(self, execution_context: ExecutionContext) -> dict[str, Any]:
         """Get debug information including debug key and WS URL"""
         if not self.is_enable_plugin or not self._runtime_available():

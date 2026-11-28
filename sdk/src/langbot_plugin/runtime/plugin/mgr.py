@@ -48,6 +48,7 @@ from langbot_plugin.api.definition.components.knowledge_engine.engine import (
     KnowledgeEngine,
 )
 from langbot_plugin.api.definition.components.parser.parser import Parser
+from langbot_plugin.api.definition.components.webhook import Webhook
 from langbot_plugin.entities.io.actions.enums import (
     RuntimeToLangBotAction,
 )
@@ -3486,6 +3487,39 @@ class PluginManager:
             method=method,
             body=body,
         )
+
+    async def handle_webhook_request(
+        self,
+        plugin_author: str,
+        plugin_name: str,
+        webhook_name: str,
+        request: dict[str, typing.Any],
+    ) -> dict[str, typing.Any]:
+        """Deliver one public webhook request to the bound installation.
+
+        The plugin is resolved inside the current control binding, so a shared
+        Runtime only ever routes to the installation Core resolved from the
+        opaque webhook URL.
+        """
+        for plugin in self._plugins_for_current_scope():
+            if (
+                plugin.manifest.metadata.author != plugin_author
+                or plugin.manifest.metadata.name != plugin_name
+            ):
+                continue
+            if not any(
+                component.manifest.kind == Webhook.__kind__
+                and component.manifest.metadata.name == webhook_name
+                for component in plugin.components
+            ):
+                return {"error": "webhook_not_found"}
+            if plugin._runtime_plugin_handler is None:
+                return {"error": "plugin_not_connected"}
+            return await plugin._runtime_plugin_handler.call_webhook(
+                webhook_name=webhook_name,
+                request=request,
+            )
+        return {"error": "plugin_not_found"}
 
     async def list_tools(
         self,

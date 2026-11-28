@@ -1,0 +1,128 @@
+---
+title: "组件：Webhook"
+---
+
+Webhook 组件为插件开放一个公开的 HTTP 地址。外部系统（订单系统、CI、监控告警、表单服务等）可以在事件发生时向这个地址推送请求，插件收到后可以调用 LangBot API，例如[主动给用户发消息](/zh/plugin/dev/apis/common#发送主动消息)。
+
+## 适用场景
+
+- **事件通知**：订单发货、工单更新、告警触发后，把消息推送给对应的用户或群
+- **接入第三方回调**：GitHub、支付平台等按自己格式推送的 Webhook，插件可以读取原始请求体并校验签名
+- **外部触发**：外部脚本调用一个地址，让插件执行一段逻辑
+
+## 地址格式
+
+插件安装后，每个 Webhook 组件都有一个固定地址：
+
+```text
+{webhook_prefix}/plugins/webhooks/{安装 ID}/{组件名}[/{子路径}]
+```
+
+- `webhook_prefix` 与机器人 Webhook 回调地址使用同一个配置项（`api.webhook_prefix`），需要保证外部系统能够访问。
+- 子路径可选，`/plugins/webhooks/.../notify/github/push` 中的 `/github/push` 会作为 `request.path` 传给插件。
+- 地址在插件详情页的 **Webhook 地址** 卡片中展示，可以直接复制。卸载后重新安装插件会生成新的地址。
+
+<img width="420" src="/images/zh/plugin/dev/components/plugin-webhook-urls.png" />
+
+## 添加 Webhook 组件
+
+在 `manifest.yaml` 中添加组件发现配置：
+
+```yaml
+spec:
+  permissions:
+    capabilities:
+    - bot.message.send   # 需要主动发消息时声明
+  components:
+    Webhook:
+      fromDirs:
+      - path: components/webhooks/
+```
+
+在 `components/webhooks/` 下新建清单 `notify.yaml`。`metadata.name` 会出现在地址中，只能使用字母、数字、`_`、`-`、`.`；`spec` 字段必须存在，没有配置项时写 `{}`：
+
+```yaml
+apiVersion: v1
+kind: Webhook
+metadata:
+  name: notify
+  label:
+    en_US: Order notifications
+    zh_Hans: 订单通知
+  description:
+    en_US: Point your order system here.
+    zh_Hans: 把订单系统的回调地址填成这里。
+spec: {}
+execution:
+  python:
+    path: notify.py
+    attr: NotifyWebhook
+```
+
+## 处理请求
+
+继承 `Webhook` 并实现 `handle`。下面的例子校验共享令牌，然后把订单事件主动发给对应用户：
+
+```python
+import hmac
+
+from langbot_plugin.api.definition.components.webhook import (
+    Webhook,
+    WebhookRequest,
+    WebhookResponse,
+)
+from langbot_plugin.api.entities.builtin.platform import message as platform_message
+
+
+class NotifyWebhook(Webhook):
+    async def handle(self, request: WebhookRequest) -> WebhookResponse:
+        token = self.get_plugin_config().get("token", "")
+        if not token or not hmac.compare_digest(request.headers.get("x-token", ""), token):
+            return WebhookResponse.json({"error": "unauthorized"}, status=401)
+
+        event = request.json_body()
+        await self.plugin.send_message(
+            bot_uuid=event["bot_uuid"],
+            target_type="person",
+            target_id=event["user"],
+            message_chain=platform_message.MessageChain(
+                [platform_message.Plain(text=f"订单 {event['order']} 已发货")]
+            ),
+        )
+        return WebhookResponse.json({"delivered": True}, status=202)
+```
+
+`handle` 运行时已绑定当前插件安装，可以像事件监听器一样使用 `send_message`、插件存储、`invoke_llm` 等 API。
+
+### WebhookRequest
+
+| 字段 | 说明 |
+| --- | --- |
+| `method` | 大写的 HTTP 方法，支持 `GET`、`POST`、`PUT`、`PATCH`、`DELETE` |
+| `path` | 组件名之后的子路径，为空或以 `/` 开头 |
+| `query` | 查询参数（重复的键取最后一个值） |
+| `headers` | 请求头，键为小写；`Cookie` 不会转发 |
+| `body` | 原始请求体（`bytes`），用于签名校验 |
+| `remote_addr` | LangBot 看到的客户端地址，可能是反向代理 |
+
+辅助方法：`request.json_body()` 把请求体解析为 JSON，`request.text()` 解码为文本。
+
+### WebhookResponse
+
+可以返回 `WebhookResponse.json(data, status)`、`WebhookResponse.text(text, status)`、`WebhookResponse.empty(204)`，或直接构造 `WebhookResponse(status=..., headers=..., body=...)`。直接返回 `None`、`str`、`bytes` 或可序列化为 JSON 的值时会自动转换。
+
+## 安全与限制
+
+<Warning>
+Webhook 地址无需登录即可访问，知道地址的人都可以调用。请在插件中校验来源，例如共享令牌或第三方平台提供的 HMAC 签名（使用 `request.body` 计算），不要信任未校验的请求内容。
+</Warning>
+
+- 请求体上限 1 MiB，超过时 LangBot 直接返回 `413`。
+- 响应体上限 1 MiB；插件处理超时（约 30 秒）返回 `504`。
+- 插件停用时返回 `403`，地址不存在返回 `404`，插件处理出错返回 `502`。
+- 响应中的 `Set-Cookie` 等头不会返回给调用方。
+- 主动发消息受各平台规则限制，例如公众号只能在用户 48 小时内互动后发送客服消息。
+
+## 把外部账号和聊天用户对应起来
+
+外部系统通常只知道自己的用户 ID。常见做法是让用户在聊天中执行一个[命令](/zh/plugin/dev/components/command)完成绑定，插件把外部 ID 与 `bot_uuid`、会话类型和会话 ID 的对应关系写入插件存储；收到推送时再查出对应会话并发送消息。

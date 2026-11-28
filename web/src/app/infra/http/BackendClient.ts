@@ -120,7 +120,11 @@ import {
   UpgradeChecksResponse,
   ApiRespLangBotModelAvailability,
 } from '@/app/infra/entities/api';
-import { Plugin, PluginCompatibility } from '@/app/infra/entities/plugin';
+import {
+  Plugin,
+  PluginCompatibility,
+  PluginWebhook,
+} from '@/app/infra/entities/plugin';
 import type {
   PluginLogEntry,
   PluginSpaceUploadConfig,
@@ -1223,6 +1227,13 @@ export class BackendClient extends BaseHttpClient {
 
   public getPlugin(author: string, name: string): Promise<ApiRespPlugin> {
     return this.get(`/api/v1/plugins/${author}/${name}`);
+  }
+
+  public getPluginWebhooks(
+    author: string,
+    name: string,
+  ): Promise<{ webhooks: PluginWebhook[] }> {
+    return this.get(`/api/v1/plugins/${author}/${name}/webhooks`);
   }
 
   public getPluginConfig(

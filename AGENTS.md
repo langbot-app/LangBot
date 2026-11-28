@@ -118,7 +118,7 @@ EBA adapters live in `src/langbot/pkg/platform/adapters/<platform>/`. `pkg/platf
 
 ## Plugin Development
 
-- SDK, `lbp` CLI and Plugin Runtime: `sdk/` (package `langbot-plugin`). Author docs: `docs/en/plugin/dev/` (`basic-info`, `permissions`, `components/*` for EventListener, Command, Tool, Runner, KnowledgeEngine, KnowledgeRetriever, Parser, Page, and `apis/*` for common, messages, platform, workspace, agent-run, llm-requests, pipeline-events).
+- SDK, `lbp` CLI and Plugin Runtime: `sdk/` (package `langbot-plugin`). Author docs: `docs/en/plugin/dev/` (`basic-info`, `permissions`, `components/*` for EventListener, Command, Tool, Runner, KnowledgeEngine, KnowledgeRetriever, Parser, Page, Webhook, and `apis/*` for common, messages, platform, workspace, agent-run, llm-requests, pipeline-events).
 - API catalogs: plugins call Workspace operations through `self.plugin.workspace.<domain>.<op>()` (runners: `ctx.api.workspace`), limited to operations declared in `spec.permissions` and granted by a member. `self.plugin.workspace.list()` returns the granted catalog at runtime; the full catalogs come from `ApplicationAPI.operation_catalog()` and `scripts/export_execution_catalog.py`. Runners expose only `ctx.resources.workspace_operations` to models.
 - Reference implementations: `plugins/` (start from `plugins/catalog.json`; `misc/HelloPlugin` is the minimal example, `Runner/LocalAgent` the full Runner).
 - Workflow and pitfalls: the `langbot-plugin-dev` skill. Release rules: `plugins/RELEASING.md`.

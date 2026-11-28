@@ -1,0 +1,128 @@
+---
+title: "Component: Webhook"
+---
+
+A Webhook component gives a plugin a public HTTP URL. External systems (order systems, CI, monitoring alerts, form services, ...) can push requests to it when something happens, and the plugin can then call LangBot APIs, for example to [send a proactive message](/en/plugin/dev/apis/common#send-proactive-message) to a user.
+
+## Use Cases
+
+- **Event notifications**: forward shipped orders, ticket updates or alerts to the right user or group
+- **Third-party callbacks**: receive webhooks in the sender's own format (GitHub, payment providers, ...) and verify their signatures against the raw body
+- **External triggers**: let a script call a URL to run plugin logic
+
+## URL Format
+
+After installation, every Webhook component has a fixed URL:
+
+```text
+{webhook_prefix}/plugins/webhooks/{installation id}/{component name}[/{sub path}]
+```
+
+- `webhook_prefix` is the same setting used for Bot webhook callbacks (`api.webhook_prefix`); external systems must be able to reach it.
+- The sub path is optional: for `/plugins/webhooks/.../notify/github/push`, the plugin receives `/github/push` as `request.path`.
+- The plugin detail page shows the URLs in a **Webhook URLs** card with a copy button. Uninstalling and reinstalling the plugin generates new URLs.
+
+<img width="420" src="/images/en/plugin/dev/components/plugin-webhook-urls.png" />
+
+## Adding a Webhook Component
+
+Add component discovery to `manifest.yaml`:
+
+```yaml
+spec:
+  permissions:
+    capabilities:
+    - bot.message.send   # declare it if the plugin sends proactive messages
+  components:
+    Webhook:
+      fromDirs:
+      - path: components/webhooks/
+```
+
+Create the manifest `components/webhooks/notify.yaml`. `metadata.name` appears in the URL and may only contain letters, digits, `_`, `-` and `.`. The `spec` field is required; use `{}` when there is nothing to configure:
+
+```yaml
+apiVersion: v1
+kind: Webhook
+metadata:
+  name: notify
+  label:
+    en_US: Order notifications
+    zh_Hans: 订单通知
+  description:
+    en_US: Point your order system here.
+    zh_Hans: 把订单系统的回调地址填成这里。
+spec: {}
+execution:
+  python:
+    path: notify.py
+    attr: NotifyWebhook
+```
+
+## Handling Requests
+
+Subclass `Webhook` and implement `handle`. This example checks a shared token and then messages the user the order belongs to:
+
+```python
+import hmac
+
+from langbot_plugin.api.definition.components.webhook import (
+    Webhook,
+    WebhookRequest,
+    WebhookResponse,
+)
+from langbot_plugin.api.entities.builtin.platform import message as platform_message
+
+
+class NotifyWebhook(Webhook):
+    async def handle(self, request: WebhookRequest) -> WebhookResponse:
+        token = self.get_plugin_config().get("token", "")
+        if not token or not hmac.compare_digest(request.headers.get("x-token", ""), token):
+            return WebhookResponse.json({"error": "unauthorized"}, status=401)
+
+        event = request.json_body()
+        await self.plugin.send_message(
+            bot_uuid=event["bot_uuid"],
+            target_type="person",
+            target_id=event["user"],
+            message_chain=platform_message.MessageChain(
+                [platform_message.Plain(text=f"Order {event['order']} has shipped")]
+            ),
+        )
+        return WebhookResponse.json({"delivered": True}, status=202)
+```
+
+`handle` runs bound to the plugin installation, so `send_message`, plugin storage, `invoke_llm` and the other APIs work just as they do in an event listener.
+
+### WebhookRequest
+
+| Field | Description |
+| --- | --- |
+| `method` | Upper-case HTTP method: `GET`, `POST`, `PUT`, `PATCH` or `DELETE` |
+| `path` | Sub path after the component name, empty or starting with `/` |
+| `query` | Query parameters (the last value wins for repeated keys) |
+| `headers` | Request headers with lower-case names; `Cookie` is never forwarded |
+| `body` | Raw request body (`bytes`) for signature verification |
+| `remote_addr` | Client address as seen by LangBot (may be a reverse proxy) |
+
+Helpers: `request.json_body()` parses the body as JSON and `request.text()` decodes it as text.
+
+### WebhookResponse
+
+Return `WebhookResponse.json(data, status)`, `WebhookResponse.text(text, status)`, `WebhookResponse.empty(204)`, or build `WebhookResponse(status=..., headers=..., body=...)` directly. Returning `None`, `str`, `bytes` or a JSON-serializable value is converted automatically.
+
+## Security and Limits
+
+<Warning>
+Webhook URLs are public: anyone who knows the URL can call it. Verify every caller in the plugin, for example with a shared token or the HMAC signature a third-party platform provides (computed over `request.body`), and never trust unverified request content.
+</Warning>
+
+- Request bodies are limited to 1 MiB; larger requests get `413` from LangBot.
+- Response bodies are limited to 1 MiB; a handler that runs longer than about 30 seconds yields `504`.
+- A disabled plugin returns `403`, an unknown URL `404`, and a handler error `502`.
+- Headers such as `Set-Cookie` are never returned to the caller.
+- Proactive messages are subject to each platform's rules; for example, WeChat Official Accounts can only send customer-service messages within 48 hours of the user's last interaction.
+
+## Mapping External Accounts to Chat Users
+
+External systems usually only know their own user IDs. A common pattern is a [command](/en/plugin/dev/components/command) the user runs in chat to link accounts: the plugin stores the external ID together with `bot_uuid`, the session type and the session ID in plugin storage, then looks them up when a push arrives.

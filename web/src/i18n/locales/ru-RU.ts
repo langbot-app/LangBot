@@ -1,9 +1,11 @@
 import pipelineMigration from './pipeline-migration/ru-RU';
 import pluginPermissions from './plugin-permissions/ru-RU';
 import pluginCompat from './plugin-compat/ru-RU';
+import pluginWebhooks from './plugin-webhooks/ru-RU';
 const ruRU = {
   pluginPermissions,
   pluginCompat,
+  pluginWebhooks,
   planRevision: {
     subscribedOn: 'Дата подписки: {{date}}',
     latestQuota: 'Актуальные квоты этого плана',
@@ -2571,6 +2573,7 @@ const ruRU = {
       KnowledgeEngine: 'Движок знаний',
       Parser: 'Парсер',
       Page: 'Страница',
+      Webhook: 'Webhook',
       Runner: 'Исполнитель',
     },
     uploadLocal: 'Загрузить локально',
@@ -3024,6 +3027,7 @@ const ruRU = {
       KnowledgeEngine: 'Движок знаний',
       Parser: 'Парсер',
       Page: 'Страница',
+      Webhook: 'Webhook',
       Runner: 'Исполнитель',
     },
     filterByType: 'Тип',

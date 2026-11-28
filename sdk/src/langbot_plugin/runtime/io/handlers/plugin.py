@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 # Timeout for long-running operations like command execution and tool calls (3 minutes)
 LONG_RUNNING_OPERATION_TIMEOUT = 180.0
 KNOWLEDGE_RETRIEVAL_TIMEOUT = 120.0
+WEBHOOK_REQUEST_TIMEOUT = 30.0
 
 _UNTRUSTED_SCOPE_FIELDS = frozenset(
     {
@@ -1385,6 +1386,17 @@ class PluginConnectionHandler(handler.Handler):
             timeout=30,
         )
         return resp
+
+    async def call_webhook(
+        self,
+        webhook_name: str,
+        request: dict[str, Any],
+    ) -> dict[str, Any]:
+        return await self.call_action(
+            RuntimeToPluginAction.WEBHOOK_REQUEST,
+            {"webhook_name": webhook_name, "request": request},
+            timeout=WEBHOOK_REQUEST_TIMEOUT,
+        )
 
     async def emit_event(self, event_context: dict[str, Any]) -> dict[str, Any]:
         resp = await self.call_action(
