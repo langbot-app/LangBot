@@ -135,7 +135,7 @@ function getValueSchema(spec: DynamicFormValueSpec) {
       return z.object({
         primary: z.string(),
         fallbacks: z.array(z.string()),
-        reasoning: z.record(z.string()),
+        reasoning: z.record(z.string(), z.string()),
       });
     case DynamicFormItemType.JSON:
       return z.custom(isJsonValue);
