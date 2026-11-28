@@ -12,7 +12,7 @@ import time
 
 from tools.entrypoints.regression_suite import Suite, validate
 from tools.regression.observations import read_process_snapshot, read_system_snapshot
-from tools.regression.observability_contract import ObservationWriter, write_manifest
+from tools.regression.observability_contract import ObservationWriter, write_manifest, write_trace_index
 
 
 def supervise(command, output, budget, pids, env=None):
@@ -83,12 +83,15 @@ def supervise(command, output, budget, pids, env=None):
         },
     }
     (output / 'gate.json').write_text(json.dumps(result, indent=2) + '\n')
+    trace_index = output / 'trace-index.json'
+    write_trace_index(trace_index, [output / 'observations.jsonl'], run_id=output.name)
     write_manifest(
         output / 'run-manifest.json',
         run_id=output.name,
         expected_sources=['regression_gate'],
         observed_sources=observations.sources,
-        artifacts=[output / 'resources.jsonl', output / 'observations.jsonl', output / 'gate.json'],
+        artifacts=[output / 'resources.jsonl', output / 'observations.jsonl', output / 'gate.json', trace_index],
+        trace_index=trace_index,
     )
     return result
 

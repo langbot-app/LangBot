@@ -20,7 +20,7 @@ import uuid
 from tools.regression.evidence import check_attachment, check_fields, check_response, checked
 from tools.regression.http_bot import group_request, valid_group_settings
 from tools.regression.observations import read_endpoint_snapshot, read_process_snapshot, read_system_snapshot
-from tools.regression.observability_contract import ActionWriter, write_manifest
+from tools.regression.observability_contract import ActionWriter, write_manifest, write_trace_index
 from tools.regression.run_ledger import (
     UnresolvedRun,
     check_run,
@@ -354,6 +354,8 @@ def main():
         parser.error('verification timeout must be positive')
     args.output.mkdir(parents=True, exist_ok=False)
     action_writer = ActionWriter(args.output / 'actions.jsonl') if args.arrival_mode == 'open-loop' else None
+    if action_writer is not None:
+        (args.output / 'arrivals.jsonl').touch()
     sender_workers = args.sender_workers or args.workers
     queue_capacity = None if args.drain_all and args.queue_capacity == 0 else args.queue_capacity
     pids = {name: int(pid) for name, pid in (value.split('=', 1) for value in args.pid)}
@@ -906,12 +908,24 @@ def main():
             )
     (args.output / 'summary.json').write_text(json.dumps(summary, indent=2))
     if action_writer is not None:
+        trace_index = args.output / 'trace-index.json'
+        write_trace_index(
+            trace_index,
+            [args.output / 'actions.jsonl', args.output / 'arrivals.jsonl'],
+            run_id=args.output.name,
+        )
         write_manifest(
             args.output / 'run-manifest.json',
             run_id=args.output.name,
             expected_sources=['regression_arrival'],
             observed_sources=action_writer.sources,
-            artifacts=[args.output / 'actions.jsonl', args.output / 'summary.json'],
+            artifacts=[
+                args.output / 'actions.jsonl',
+                args.output / 'arrivals.jsonl',
+                args.output / 'summary.json',
+                trace_index,
+            ],
+            trace_index=trace_index,
         )
     print(json.dumps(summary, indent=2), flush=True)
     if (

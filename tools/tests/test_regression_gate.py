@@ -33,6 +33,8 @@ class GateTest(unittest.TestCase):
             self.assertEqual(observations[0]['source'], 'regression_gate')
             manifest = json.loads((output / 'run-manifest.json').read_text())
             self.assertEqual(manifest['completeness'], 'complete')
+            self.assertEqual(manifest['trace_index']['traces'], 0)
+            self.assertTrue((output / 'trace-index.json').is_file())
 
     def test_timeout_is_failed_without_retry(self):
         with tempfile.TemporaryDirectory() as directory:
