@@ -207,6 +207,9 @@ class PersistenceManager:
         if self.mode == PersistenceMode.RELEASE_MIGRATION:
             async with self._release_migration_lock():
                 await self._initialize_managed_schema()
+                from . import bot_command_migration
+
+                await bot_command_migration.migrate_global_command_config_for_release(self.ap, engine)
                 await self._validate_release_schema()
             from .resource_urls import install
 
