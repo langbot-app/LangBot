@@ -7,10 +7,15 @@ function workflowLocale(language) {
     new URL(`../../src/i18n/locales/${language}.ts`, import.meta.url),
     'utf8',
   );
-  const start = source.indexOf('  workflows: {');
-  const body = source
-    .slice(start + '  workflows: '.length, source.lastIndexOf('\n};'))
-    .replace(/,\s*$/, '');
+  const start = source.indexOf('  workflows: {') + '  workflows: '.length;
+  // Take the balanced object literal; other sections may follow it.
+  let depth = 0;
+  let end = start;
+  for (; end < source.length; end += 1) {
+    if (source[end] === '{') depth += 1;
+    if (source[end] === '}' && --depth === 0) break;
+  }
+  const body = source.slice(start, end + 1);
   return Function(`return (${body})`)();
 }
 
