@@ -1639,6 +1639,17 @@ class TestPostgreSQLTenantRuntime:
             cloud_manager.create_tables.assert_not_awaited()
             cloud_manager._run_alembic_migrations.assert_not_awaited()
 
+            membership_role = f'lb_member_{role_suffix}'
+            await create_role(membership_role)
+            async with postgres_engine.connect() as conn:
+                for options in ('INHERIT TRUE, SET FALSE', 'INHERIT FALSE, SET TRUE'):
+                    await conn.execute(text(f'GRANT {quote(runtime_role)} TO {quote(membership_role)} WITH {options}'))
+                    try:
+                        with pytest.raises(RuntimeError, match='must not participate in role memberships'):
+                            await cloud_manager._validate_configured_runtime_postgres_role(require_current_user=True)
+                    finally:
+                        await conn.execute(text(f'REVOKE {quote(runtime_role)} FROM {quote(membership_role)}'))
+
             directory_fingerprint = hashlib.sha256(b'directory-snapshot').hexdigest()
             async with cloud_manager.directory_projection_uow(instance_uuid) as directory:
                 assert set((await directory.session.scalars(sa.select(Workspace.uuid))).all()) == {

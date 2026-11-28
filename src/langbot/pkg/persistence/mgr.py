@@ -682,9 +682,20 @@ class PersistenceManager:
             JOIN pg_roles granted_role ON granted_role.oid = membership.roleid
             JOIN pg_roles member_role ON member_role.oid = membership.member
             JOIN pg_roles grantor_role ON grantor_role.oid = membership.grantor
-            WHERE membership.roleid = :runtime_oid
-               OR membership.member = :runtime_oid
+            -- Exempt only the admin-only grant PostgreSQL records under the
+            -- bootstrap superuser (OID 10) for a non-superuser role creator.
+            -- Neither INHERIT nor SET ROLE access is allowed by that grant.
+            WHERE membership.member = :runtime_oid
                OR membership.grantor = :runtime_oid
+               OR (
+                   membership.roleid = :runtime_oid
+                   AND NOT (
+                       membership.grantor = 10::oid
+                       AND membership.admin_option
+                       AND NOT membership.inherit_option
+                       AND NOT membership.set_option
+                   )
+               )
             ORDER BY granted_role.rolname, member_role.rolname
             """
         )
