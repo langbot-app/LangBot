@@ -15,6 +15,7 @@ import {
   WorkflowNodeDefinition,
   WorkflowEdgeDefinition,
   WorkflowNodeTypeMetadata,
+  WorkflowPortDefinition,
   WorkflowNodeCategory,
 } from '@/app/infra/entities/api';
 import {
@@ -313,6 +314,60 @@ const withWorkflowEdgeStyle = (edge: WorkflowEdge): WorkflowEdge => {
   };
 };
 
+// React Flow reports measuring and selection as changes; neither edits the
+// saved definition, so they must not mark the workflow as unsaved.
+function editsDefinition(change: { type: string }): boolean {
+  return change.type !== 'dimensions' && change.type !== 'select';
+}
+
+function matchNodeType(
+  types: WorkflowNodeTypeMetadata[],
+  type: string,
+): WorkflowNodeTypeMetadata | undefined {
+  const short = type.includes('.') ? type.split('.').pop()! : type;
+  return types.find(
+    (item) =>
+      item.type === type ||
+      (item.type.includes('.') ? item.type.split('.').pop()! : item.type) ===
+        short,
+  );
+}
+
+// Definitions written through the API, MCP or lbctl carry only node types.
+// Ports and labels come from the node type metadata so edges can attach to
+// their named ports and nodes show their display name.
+function withNodeTypePorts(
+  nodes: WorkflowNode[],
+  types: WorkflowNodeTypeMetadata[],
+): WorkflowNode[] {
+  if (!types.length) return nodes;
+  return nodes.map((node) => {
+    const { data } = node;
+    const missingInputs = !data.inputs?.length;
+    const missingOutputs = !data.outputs?.length;
+    const missingLabel = !data.label || data.label === data.type;
+    if (!missingInputs && !missingOutputs && !missingLabel) return node;
+    const meta = matchNodeType(types, data.type);
+    if (!meta) return node;
+    const port = (item: WorkflowPortDefinition) => ({
+      name: item.name,
+      type: item.type,
+      label: item.label,
+    });
+    return {
+      ...node,
+      data: {
+        ...data,
+        label: missingLabel
+          ? sharedGetNodeTypeLabel(data.type, meta.label)
+          : data.label,
+        inputs: missingInputs ? (meta.inputs || []).map(port) : data.inputs,
+        outputs: missingOutputs ? (meta.outputs || []).map(port) : data.outputs,
+      },
+    } as WorkflowNode;
+  });
+}
+
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Initial state
   currentWorkflow: null,
@@ -335,20 +390,25 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   setNodes: (nodes) => set({ nodes, isDirty: true }),
   setEdges: (edges) => set({ edges, isDirty: true }),
   setNodeTypes: (types, categories) =>
-    set({ nodeTypes: types, nodeCategories: categories }),
+    set((state) => ({
+      nodeTypes: types,
+      nodeCategories: categories,
+      // Node types can arrive after the definition; fill ports then.
+      nodes: withNodeTypePorts(state.nodes, types),
+    })),
 
   // Node change handlers
   onNodesChange: (changes) => {
     set((state) => ({
       nodes: applyNodeChanges(changes, state.nodes) as WorkflowNode[],
-      isDirty: true,
+      isDirty: state.isDirty || changes.some(editsDefinition),
     }));
   },
 
   onEdgesChange: (changes) => {
     set((state) => ({
       edges: applyEdgeChanges(changes, state.edges) as WorkflowEdge[],
-      isDirty: true,
+      isDirty: state.isDirty || changes.some(editsDefinition),
     }));
   },
 
@@ -604,7 +664,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   // Load from API format
   fromWorkflowDefinition: (apiNodes, apiEdges) => {
-    const nodes: WorkflowNode[] = apiNodes.map((node) => ({
+    const rawNodes: WorkflowNode[] = apiNodes.map((node) => ({
       id: node.id,
       type: 'workflowNode',
       position: node.position,
@@ -616,6 +676,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         outputs: node.outputs,
       },
     }));
+    const nodes = withNodeTypePorts(rawNodes, get().nodeTypes);
 
     const edges: WorkflowEdge[] = apiEdges
       .map((edge) => ({

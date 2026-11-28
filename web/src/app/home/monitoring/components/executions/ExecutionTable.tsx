@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import {
   Bot,
+  Network,
   Workflow,
   Puzzle,
   CircleDashed,
@@ -22,6 +23,7 @@ import type { ExecutionRow } from '@/app/infra/entities/api/monitoring-execution
 import { eventPatternLabel } from '@/app/home/components/event-patterns/event-pattern-groups';
 import { formatRunDuration } from '@/app/home/agents/components/processor-run-timing';
 import { formatDateTime } from '../../utils/dateUtils';
+import { SidebarDataContext } from '@/app/home/components/home-sidebar/sidebarDataStore';
 
 interface ExecutionTableProps {
   rows: ExecutionRow[];
@@ -66,6 +68,8 @@ export function executionKindLabel(row: ExecutionRow, t: TFunction): string {
   if (KIND_GROUPS.includes(row.target_kind)) {
     if (row.target_kind === 'event_processor')
       return t('monitoring.execution.kind.processor');
+    if (row.target_kind === 'event' && workflowHandlerId(row.handled_by))
+      return t('workflows.title');
     if (row.target_kind === 'event')
       return row.handling && row.handling !== 'ai'
         ? t(`monitoring.execution.handling.${row.handling}`)
@@ -79,7 +83,13 @@ export function executionKindLabel(row: ExecutionRow, t: TFunction): string {
  * Name of an ingress event that started no processor: the command, policy
  * rule or plugin that handled it, else "not handled".
  */
-export function eventRowTitle(row: ExecutionRow, t: TFunction): string {
+export function eventRowTitle(
+  row: ExecutionRow,
+  t: TFunction,
+  workflowName?: (uuid: string) => string | undefined,
+): string {
+  const workflow = workflowHandlerId(row.handled_by);
+  if (workflow) return workflowName?.(workflow) || t('workflows.title');
   if (row.handling === 'command' && row.command_name)
     return `/${row.command_name}`;
   if (row.handling === 'policy' && row.policy_item)
@@ -91,8 +101,38 @@ export function eventRowTitle(row: ExecutionRow, t: TFunction): string {
   return t('monitoring.unified.unhandled');
 }
 
+// `workflow:<uuid>` when a bot route delivered the message to a Workflow.
+export function workflowHandlerId(
+  handledBy: string | null | undefined,
+): string | null {
+  if (!handledBy || !handledBy.startsWith('workflow:')) return null;
+  return handledBy.slice('workflow:'.length) || null;
+}
+
+// Resolves Workflow names from the sidebar list; Workflow runs have no
+// processor row, so the event row only carries the UUID.
+export function useWorkflowName(): (uuid: string) => string | undefined {
+  const sidebar = useContext(SidebarDataContext);
+  return (uuid) =>
+    sidebar?.pipelines.find(
+      (item) => item.kind === 'workflow' && item.id === uuid,
+    )?.name;
+}
+
 export function ExecutionKindBadge({ row }: { row: ExecutionRow }) {
   const { t } = useTranslation();
+  if (row.target_kind === 'event' && workflowHandlerId(row.handled_by)) {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1 whitespace-nowrap border-indigo-200/70 bg-indigo-50/70 text-indigo-700 dark:border-indigo-800/50 dark:bg-indigo-950/30 dark:text-indigo-300"
+        data-testid="execution-kind-workflow"
+      >
+        <Network className="size-3 shrink-0" aria-hidden="true" />
+        {executionKindLabel(row, t)}
+      </Badge>
+    );
+  }
   if (row.target_kind === 'event' && row.handling && row.handling !== 'ai') {
     const Icon =
       row.handling === 'command'
@@ -303,6 +343,7 @@ export default function ExecutionTable({
   onSelect,
 }: ExecutionTableProps) {
   const { t } = useTranslation();
+  const workflowName = useWorkflowName();
 
   return (
     // The page hands this table a fixed-height region: the table's own scroll
@@ -356,7 +397,7 @@ export default function ExecutionTable({
                       <ExecutionKindBadge row={row} />
                       <span className="truncate font-medium">
                         {row.source === 'event'
-                          ? eventRowTitle(row, t)
+                          ? eventRowTitle(row, t, workflowName)
                           : executionProcessorLabel(row)}
                       </span>
                     </div>

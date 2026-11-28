@@ -73,3 +73,19 @@ test('workflow quota is separate from pipeline quota', () => {
   assert.match(source, /filter\(\(item\) => item.kind === 'workflow'\)/);
   assert.match(source, /limitation\?\.max_workflows/);
 });
+
+test('monitoring names workflow-handled messages instead of "unhandled"', () => {
+  const source = fs.readFileSync(
+    new URL(
+      '../../src/app/home/monitoring/components/executions/ExecutionTable.tsx',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  assert.match(source, /handledBy\.startsWith\('workflow:'\)/);
+  assert.match(
+    source,
+    /workflowName\?\.\(workflow\) \|\| t\('workflows\.title'\)/,
+  );
+  assert.match(source, /data-testid="execution-kind-workflow"/);
+});

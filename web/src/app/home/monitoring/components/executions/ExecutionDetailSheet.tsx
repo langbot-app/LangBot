@@ -47,6 +47,7 @@ import {
   executionStatusLabel,
   ExecutionHandlingBadge,
   eventRowTitle,
+  useWorkflowName,
   PluginHandledBadge,
 } from './ExecutionTable';
 import PolicyTimeline from './PolicyTimeline';
@@ -151,6 +152,7 @@ export default function ExecutionDetailSheet({
   onSelect: (row: ExecutionSelection) => void;
 }) {
   const { t } = useTranslation();
+  const workflowName = useWorkflowName();
   const workspace = useCurrentWorkspace()?.workspace.uuid;
   const [detail, setDetail] = useState<ExecutionDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -702,7 +704,7 @@ export default function ExecutionDetailSheet({
               <h2 className="text-lg font-semibold">
                 {record
                   ? record.source === 'event'
-                    ? eventRowTitle(record, t)
+                    ? eventRowTitle(record, t, workflowName)
                     : executionProcessorLabel(record)
                   : t('monitoring.execution.detail.title')}
               </h2>

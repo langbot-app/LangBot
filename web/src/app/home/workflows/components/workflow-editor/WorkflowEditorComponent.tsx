@@ -523,7 +523,7 @@ function WorkflowEditorInner() {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  <p>{t('common.undo')} (Ctrl+Z)</p>
+                  <p>{t('workflows.undo')} (Ctrl+Z)</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -540,7 +540,7 @@ function WorkflowEditorInner() {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  <p>{t('common.redo')} (Ctrl+Shift+Z)</p>
+                  <p>{t('workflows.redo')} (Ctrl+Shift+Z)</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -656,8 +656,8 @@ function WorkflowEditorInner() {
               <div className="flex items-center gap-2">
                 <Keyboard className="size-3" />
                 <span>
-                  Ctrl+Z/Y: {t('common.undo')}/{t('common.redo')} | Ctrl+C/V:{' '}
-                  {t('common.copy')}/{t('workflows.paste')} | Del:{' '}
+                  Ctrl+Z/Y: {t('workflows.undo')}/{t('workflows.redo')} |
+                  Ctrl+C/V: {t('common.copy')}/{t('workflows.paste')} | Del:{' '}
                   {t('common.delete')}
                 </span>
               </div>

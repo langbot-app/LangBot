@@ -1,40 +1,20 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { backendClient } from '@/app/infra/http';
+import { CircleAlert, FlaskConical, Loader2, Play } from 'lucide-react';
+import { backendClient, useCurrentWorkspace } from '@/app/infra/http';
 import type { WorkflowExecution } from '@/app/infra/entities/api';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { useCurrentWorkspace } from '@/app/infra/http';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useWorkflowStore } from '../../store/useWorkflowStore';
-
-export function ExecutionDetail({
-  execution,
-}: {
-  execution: WorkflowExecution;
-}) {
-  return (
-    <div className="space-y-3">
-      <p>
-        {execution.uuid}: {execution.status}
-      </p>
-      {execution.error && <p role="alert">{execution.error}</p>}
-      {execution.node_executions?.map((node) => (
-        <details key={node.node_id} className="rounded border p-3">
-          <summary>
-            {node.node_id} ({node.node_type}): {node.status}
-          </summary>
-          <pre className="overflow-auto whitespace-pre-wrap text-xs">
-            {JSON.stringify(
-              { inputs: node.inputs, outputs: node.outputs, error: node.error },
-              null,
-              2,
-            )}
-          </pre>
-        </details>
-      ))}
-    </div>
-  );
-}
+import { ExecutionDetail } from '../workflow-executions/ExecutionDetail';
 
 export default function WorkflowDebugDialog({
   workflowId,
@@ -46,14 +26,15 @@ export default function WorkflowDebugDialog({
   const [message, setMessage] = useState('');
   const [sessionType, setSessionType] = useState<'person' | 'group'>('person');
   const [running, setRunning] = useState(false);
-  const [replies, setReplies] = useState<string[]>([]);
+  const [replies, setReplies] = useState<string[] | null>(null);
   const [execution, setExecution] = useState<WorkflowExecution>();
   const [error, setError] = useState('');
+
   async function run() {
     useWorkflowStore.getState().clearNodeExecutionResults();
     setRunning(true);
     setError('');
-    setReplies([]);
+    setReplies(null);
     setExecution(undefined);
     try {
       const result = await backendClient.runWorkflow(workflowId, {
@@ -80,38 +61,119 @@ export default function WorkflowDebugDialog({
       setRunning(false);
     }
   }
+
   return (
-    <div className="space-y-4 overflow-auto p-2">
-      <h2>{t('workflows.testRun')}</h2>
-      <Textarea
-        aria-label={t('workflows.testInput')}
-        value={message}
-        onChange={(event) => setMessage(event.target.value)}
-      />
-      <select
-        aria-label={t('workflows.sessionType')}
-        value={sessionType}
-        onChange={(event) =>
-          setSessionType(event.target.value as 'person' | 'group')
-        }
-      >
-        <option value="person">{t('workflows.person')}</option>
-        <option value="group">{t('workflows.group')}</option>
-      </select>
-      <Button
-        onClick={() => void run()}
-        disabled={!canRun || running || !message.trim()}
-      >
-        {running ? t('common.loading') : t('workflows.testRun')}
-      </Button>
-      {error && <p role="alert">{error}</p>}
-      <h3>{t('workflows.replies')}</h3>
-      {replies.map((reply, index) => (
-        <pre key={index} className="whitespace-pre-wrap">
-          {reply}
-        </pre>
-      ))}
-      {execution && <ExecutionDetail execution={execution} />}
+    <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(280px,380px)_1fr]">
+      <div className="flex h-fit flex-col gap-4 rounded-xl border bg-card p-4">
+        <div className="space-y-1">
+          <p className="text-sm font-medium">{t('workflows.testRun')}</p>
+          <p className="text-xs text-muted-foreground">
+            {t('workflows.run.runHint')}
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="workflow-test-message">
+            {t('workflows.testInput')}
+          </Label>
+          <Textarea
+            id="workflow-test-message"
+            rows={5}
+            value={message}
+            placeholder={t('workflows.run.messagePlaceholder')}
+            onChange={(event) => setMessage(event.target.value)}
+            onKeyDown={(event) => {
+              if (
+                event.key === 'Enter' &&
+                (event.metaKey || event.ctrlKey) &&
+                canRun &&
+                !running &&
+                message.trim()
+              ) {
+                event.preventDefault();
+                void run();
+              }
+            }}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>{t('workflows.sessionType')}</Label>
+          <Select
+            value={sessionType}
+            onValueChange={(value) =>
+              setSessionType(value as 'person' | 'group')
+            }
+          >
+            <SelectTrigger
+              className="w-full"
+              aria-label={t('workflows.sessionType')}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="person">{t('workflows.person')}</SelectItem>
+              <SelectItem value="group">{t('workflows.group')}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Button
+          onClick={() => void run()}
+          disabled={!canRun || running || !message.trim()}
+        >
+          {running ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Play className="size-4" />
+          )}
+          {t('workflows.run.start')}
+        </Button>
+        {!canRun && (
+          <p className="text-xs text-muted-foreground">
+            {t('workflows.run.noPermission')}
+          </p>
+        )}
+      </div>
+
+      <div className="min-h-0 space-y-4 overflow-y-auto">
+        {error && (
+          <p
+            role="alert"
+            className="flex items-start gap-2 rounded-xl border border-red-200/70 bg-red-50/70 p-3 text-sm text-red-700 dark:border-red-800/50 dark:bg-red-950/30 dark:text-red-300"
+          >
+            <CircleAlert className="mt-0.5 size-4 shrink-0" />
+            <span className="break-all">{error}</span>
+          </p>
+        )}
+        {replies === null && !error ? (
+          <div className="flex h-full min-h-80 flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-8 text-center">
+            <FlaskConical className="size-8 text-muted-foreground" />
+            <p className="max-w-sm text-sm text-muted-foreground">
+              {running ? t('workflows.run.running') : t('workflows.run.empty')}
+            </p>
+          </div>
+        ) : (
+          replies !== null && (
+            <div className="space-y-2 rounded-xl border bg-card p-4">
+              <p className="text-sm font-medium">{t('workflows.replies')}</p>
+              {replies.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {t('workflows.run.noReplies')}
+                </p>
+              ) : (
+                replies.map((reply, index) => (
+                  <div
+                    key={index}
+                    data-testid="workflow-test-reply"
+                    className="w-fit max-w-full rounded-2xl rounded-tl-sm bg-muted px-3.5 py-2 text-sm whitespace-pre-wrap break-words"
+                  >
+                    {reply}
+                  </div>
+                ))
+              )}
+            </div>
+          )
+        )}
+        {execution && <ExecutionDetail execution={execution} />}
+      </div>
     </div>
   );
 }

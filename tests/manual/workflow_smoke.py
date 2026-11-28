@@ -58,7 +58,7 @@ async def smoke(base_url, api_key, screenshot=None):
                         'id': 'reply',
                         'type': 'action.reply_message',
                         'position': {'x': 500, 'y': 0},
-                        'config': {'message_template': 'Echo {{input}}'},
+                        'config': {'message_template': 'Echo {{message}}'},
                     },
                 ],
                 'edges': [
@@ -74,7 +74,7 @@ async def smoke(base_url, api_key, screenshot=None):
                         'source': 'condition',
                         'source_port': 'true',
                         'target': 'reply',
-                        'target_port': 'input',
+                        'target_port': 'message',
                     },
                 ],
             },

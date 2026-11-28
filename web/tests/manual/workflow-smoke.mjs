@@ -25,16 +25,32 @@ try {
     `http://127.0.0.1:15345/home/workflows?id=${process.env.WORKFLOW_SMOKE_UUID}`,
   );
   await page.getByRole('tab', { name: /Execution/ }).click({ timeout: 60000 });
-  const completed = page.getByRole('button', { name: /— completed/ });
-  await expect(completed).toHaveCount(2);
-  await completed.first().click();
-  await expect(page.locator('summary')).toHaveCount(3);
+  const rows = page.getByTestId('workflow-execution-row');
+  await expect(rows).toHaveCount(3);
+  await expect(rows.filter({ hasText: 'Completed' })).toHaveCount(3);
+  await rows.nth(1).click();
+  const detail = page.getByTestId('workflow-execution-detail');
+  await expect(detail.getByText('Bot message')).toBeVisible();
+  await expect(detail.getByText('Steps (3)')).toBeVisible();
   await page.screenshot({
     path: process.env.WORKFLOW_SMOKE_SCREENSHOT,
     fullPage: true,
   });
+  // Messages a bot route delivered to the Workflow are named in monitoring.
+  await page.goto('http://127.0.0.1:15345/home/monitoring');
+  const workflowRows = page.getByTestId('execution-kind-workflow');
+  await expect(workflowRows.first()).toBeVisible({ timeout: 60000 });
+  await expect(
+    page.getByText('Workflow EBA smoke', { exact: true }).first(),
+  ).toBeVisible();
+  await page.screenshot({
+    path: process.env.WORKFLOW_SMOKE_SCREENSHOT.replace(
+      /\.png$/,
+      '-monitoring.png',
+    ),
+  });
   console.log(
-    'Real WebUI: two completed executions, three persisted node records',
+    'Real WebUI: three completed executions, three persisted node records, Workflow rows named in monitoring',
   );
 } finally {
   await browser?.close();
