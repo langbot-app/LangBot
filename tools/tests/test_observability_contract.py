@@ -62,7 +62,7 @@ def test_trace_index_groups_action_and_arrival_evidence(tmp_path: Path):
         + json.dumps({'action_id': 'a-2', 'status': 'expired'})
         + '\n'
     )
-    arrivals.write_text(json.dumps({'trace_id': 'Y-1', 'action_id': 'a-1', 'arrival_id': 0}) + '\n')
+    arrivals.write_text(json.dumps({'trace_id': 'Y-1', 'action_id': 'a-1', 'run_id': 'run-1', 'arrival_id': 0}) + '\n')
     observations.write_text(json.dumps({'trace_id': 'Y-1', 'observation_id': 'o-1', 'values': {}}) + '\n')
 
     index_path = tmp_path / 'trace-index.json'
@@ -74,6 +74,7 @@ def test_trace_index_groups_action_and_arrival_evidence(tmp_path: Path):
     entry = index['entries'][0]
     assert entry['action_ids'] == ['a-1']
     assert entry['observation_ids'] == ['o-1']
+    assert entry['run_ids'] == ['run-1']
     assert {(ref['artifact'], ref['line']) for ref in entry['evidence']} == {
         ('actions.jsonl', 1),
         ('arrivals.jsonl', 1),
