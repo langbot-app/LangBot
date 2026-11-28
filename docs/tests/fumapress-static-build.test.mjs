@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { access, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { flexsearchStaticClient } from "fumadocs-core/search/client/flexsearch-static";
 import { collectMdxDocuments } from "../scripts/prepare-fumapress.mjs";
 import { zhOnlyArticleRoutes } from "./article-routes.mjs";
 import { LANGS, PLATFORMS, SOURCES } from "../scripts/recipes-data.mjs";
@@ -379,7 +380,8 @@ test("the exact 17 zh-only sources publish no fallback en or ja routes", async (
   assert.deepEqual(actual, zhOnlyRoutes);
 
   const searchableOutputs = await Promise.all(
-    ["sitemap.xml", "llms.txt", "llms-full.txt", "api/search"].map((file) => readFile(path.join(publicRoot, file), "utf8")),
+    ["sitemap.xml", "llms.txt", "llms-full.txt", ...locales.map((locale) => `api/search/${locale}.json`)]
+      .map((file) => readFile(path.join(publicRoot, file), "utf8")),
   );
   for (const sourceRoute of zhOnlyRoutes) {
     const route = sourceRoute === "index" ? "" : sourceRoute.replace(/\/index$/, "");
@@ -484,9 +486,30 @@ test("generated pages contain no internal .html route links", async () => {
 });
 
 
-test("static search stays within Cloudflare Pages' 25 MiB file limit", async () => {
-  const search = await stat(path.join(publicRoot, "api/search"));
-  assert.ok(search.size <= 25 * 1024 * 1024, `search artifact is ${search.size} bytes`);
+test("localized static search shards fit Cloudflare Pages and return localized results", async (t) => {
+  const searchRoot = path.join(publicRoot, "api/search");
+  assert.ok((await stat(searchRoot)).isDirectory(), "the combined search file is replaced by a directory");
+  const requested = [];
+  t.mock.method(globalThis, "fetch", async (url) => {
+    const match = /^\/docs\/api\/search\/(en|zh|ja)\.json$/.exec(url);
+    assert.ok(match, `Unexpected search request: ${url}`);
+    requested.push(match[1]);
+    return new Response(await readFile(path.join(searchRoot, `${match[1]}.json`)));
+  });
+  globalThis.window = {};
+  t.after(() => { delete globalThis.window; });
+  for (const locale of locales) {
+    const search = await stat(path.join(searchRoot, `${locale}.json`));
+    assert.ok(search.size <= 25 * 1024 * 1024, `${locale} search artifact is ${search.size} bytes`);
+    const shard = JSON.parse(await readFile(path.join(searchRoot, `${locale}.json`), "utf8"));
+    assert.equal(shard.type, "i18n");
+    assert.deepEqual(Object.keys(shard.raw), [locale]);
+    const client = flexsearchStaticClient({ locale, from: `/docs/api/search/${locale}.json` });
+    const results = await client.search("LangBot");
+    assert.ok(results.length, `${locale}: expected LangBot search results`);
+    for (const { url } of results) assert.match(url, new RegExp(`^/${locale}/`));
+  }
+  assert.deepEqual(requested, locales);
 });
 
 

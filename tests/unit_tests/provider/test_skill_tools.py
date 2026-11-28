@@ -911,6 +911,41 @@ class TestNativeToolLoaderSkillPaths:
             assert 'immutable' in result['error']
             assert '/workspace/skill-drafts' in result['error']
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ('encoding', 'mode'),
+        [('text', 'overwrite'), ('text', 'append'), ('base64', 'overwrite'), ('base64', 'append')],
+    )
+    async def test_skill_write_rejection_names_the_ignored_options(self, encoding, mode):
+        """Activated skill writes are rejected and report the options that did not apply."""
+        from langbot.pkg.provider.tools.loaders.native import NativeToolLoader
+        from langbot.pkg.provider.tools.loaders.skill import register_activated_skill
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ap = _make_ap()
+            ap.box_service = SimpleNamespace(available=True, default_workspace=tmpdir)
+            skill = _make_skill_data(name='demo', package_root=tmpdir)
+            ap.skill_mgr = _make_skill_manager({'demo': skill})
+            loader = NativeToolLoader(ap)
+            query = _make_bound_query(query_id='immutable-options')
+            register_activated_skill(query, skill)
+
+            result = await loader.invoke_tool(
+                'write',
+                {
+                    'path': '/workspace/.skills/demo/notes.txt',
+                    'content': 'hi',
+                    'encoding': encoding,
+                    'mode': mode,
+                },
+                query,
+            )
+
+            assert result['ok'] is False
+            assert f'"{encoding}" encoding' in result['error']
+            assert f'"{mode}" mode' in result['error']
+            assert '/workspace/skill-drafts' in result['error']
+
 
 @pytest.mark.asyncio
 async def test_native_skill_tools_require_runner_box_binding():

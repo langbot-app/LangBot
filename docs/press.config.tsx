@@ -13,6 +13,7 @@ import { Bot, ExternalLink } from "lucide-react";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { LocalePreferenceProvider } from "./src/locale-preference-provider";
+import { LocaleSearchDialog } from "./src/locale-search-dialog";
 
 const RECIPE_TITLE_FILLER = /\b(?:Connect|to|Build|a|AI|Bot|with)\b|^把|接入|^用 |搭建|机器人|を|に接続する|で|の|ボットを作る/g;
 
@@ -463,6 +464,17 @@ export default defineConfig({
         return { id: page.url, title, description: isRecipe ? undefined : description, url: page.url, structuredData };
       },
     }),
+    {
+      name: "langbot:static-search-shards",
+      init() {
+        if (this.mode !== "static") return;
+        const data = (this.data["core:provider"] ??= {});
+        (data.transformers ??= []).push((props) => {
+          if (props.search) props.search.SearchDialog = LocaleSearchDialog;
+          return props;
+        });
+      },
+    },
     mintlifyPlugin({ path: "content/fumapress-docs.json", features: { navbar: false } }),
     {
       name: "langbot:sectioned-navigation",

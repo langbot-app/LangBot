@@ -146,8 +146,9 @@ Use **Share to Space** on a skill's detail page to submit the current Skill pack
 | Symptom | What to check |
 |---------|---------------|
 | Skill list is empty | Workspace, Skill bindings, `skills.persistence` and `skills.root` |
-| Agent doesn't activate a skill | Whether `description` is specific, whether the Chat has the skill bound, whether the model supports function calling |
-| Files missing after activation | Files must live inside the Skill package; use the version path returned by activation |
+| Agent doesn't activate a skill | Whether `description` is specific, whether the pipeline has the skill bound, whether the model supports function calling |
+| Files missing after activation | Files must live inside the Skill package; use the version path returned by activation (`/workspace/.skills/{skill-name}/`) |
+| `write`/`edit` cannot change an activated skill | An activated revision is immutable; copy it to `/workspace/skill-drafts`, edit it there, then call `register_skill` |
 | `register_skill` errors | The path must be under `/workspace`, and the directory or subdirectories within two levels must contain `SKILL.md` |
 
 <Note>
