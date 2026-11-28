@@ -330,9 +330,6 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             f'{self.__class__.__name__}_{id(self)}_workspace_sync_cache',
             default=None,
         )
-        self._plugin_registration_cache: dict[
-            tuple[int, str, str, int, str, str], dict[str, frozenset[str] | None] | None
-        ] = {}
         self._state_lock = asyncio.Lock()
         self._control_token = str(os.environ.get(PLUGIN_RUNTIME_CONTROL_TOKEN_ENV) or '').strip()
         self._transport_task: asyncio.Task | None = None
@@ -349,26 +346,21 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         }
 
     def _invalidate_workspace_caches(self, workspace_uuid: str | None = None) -> None:
-        """Invalidate request-local sync and runtime registration observations."""
+        """Invalidate request-local synchronization observations."""
 
         self._workspace_sync_revision += 1
         self._workspace_sync_cache.set({})
-        if workspace_uuid is None:
-            self._plugin_registration_cache.clear()
-            return
-        self._plugin_registration_cache = {
-            key: value for key, value in self._plugin_registration_cache.items() if key[2] != workspace_uuid
-        }
 
     @staticmethod
     def _workspace_sync_cache_key(execution_context: ExecutionContext) -> tuple[str, str, int, str, int] | None:
-        if not execution_context.query_uuid:
+        query_uuid = getattr(execution_context, 'query_uuid', None)
+        if not query_uuid:
             return None
         return (
             execution_context.instance_uuid,
             execution_context.workspace_uuid,
             execution_context.placement_generation,
-            execution_context.query_uuid,
+            query_uuid,
             execution_context.entitlement_revision,
         )
 
@@ -385,6 +377,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             return None
         settings = entry[1]
         desired_ids = {setting.installation_uuid for setting in settings}
+        workspace_ids = self._workspace_installations.get(execution_context.workspace_uuid, set())
+        if desired_ids != workspace_ids:
+            return None
         known_ids = {
             installation_uuid
             for installation_uuid, desired in self._known_desired_states.items()
@@ -414,70 +409,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if cache is None:
             cache = {}
             self._workspace_sync_cache.set(cache)
+        cache.clear()
         cache[key] = (self._workspace_sync_revision, settings)
-
-    @staticmethod
-    def _registration_cache_key(
-        runtime_handler: Any, binding: InstallationBinding
-    ) -> tuple[int, str, str, int, str, str]:
-        return (
-            id(runtime_handler),
-            binding.instance_uuid,
-            binding.workspace_uuid,
-            binding.placement_generation,
-            binding.installation_uuid,
-            binding.artifact_digest,
-        )
-
-    async def _registered_events_for_binding(
-        self,
-        runtime_handler: Any,
-        binding: InstallationBinding,
-    ) -> dict[str, frozenset[str] | None] | None:
-        """Read and cache Runtime event registrations when the protocol supports it."""
-
-        key = self._registration_cache_key(runtime_handler, binding)
-        if key in self._plugin_registration_cache:
-            return self._plugin_registration_cache[key]
-        list_registrations = getattr(runtime_handler, 'list_plugin_registrations', None)
-        if not asyncio.iscoroutinefunction(list_registrations):
-            self._plugin_registration_cache[key] = None
-            return None
-        try:
-            with runtime_handler.installation_scope(binding):
-                registrations = await list_registrations(None)
-        except Exception:
-            # Registration discovery is an optimization. Unknown registrations
-            # must retain the existing dispatch path.
-            self._plugin_registration_cache[key] = None
-            return None
-        if registrations is None or not isinstance(registrations, dict):
-            self._plugin_registration_cache[key] = None
-            return None
-        normalized: dict[str, frozenset[str] | None] = {}
-        for plugin_id, registration in registrations.items():
-            if not isinstance(registration, dict):
-                normalized[str(plugin_id)] = None
-                continue
-            events = registration.get('events')
-            normalized[str(plugin_id)] = None if events is None else frozenset(str(event) for event in events)
-        self._plugin_registration_cache[key] = normalized
-        return normalized
-
-    async def _filter_event_bindings(
-        self,
-        runtime_handler: Any,
-        bindings: list[InstallationBinding],
-        event_name: str,
-    ) -> list[InstallationBinding]:
-        filtered: list[InstallationBinding] = []
-        for binding in bindings:
-            registrations = await self._registered_events_for_binding(runtime_handler, binding)
-            if registrations is None or any(
-                events is None or event_name in events for events in registrations.values()
-            ):
-                filtered.append(binding)
-        return filtered
 
     def _align_plugin_file_transfer_root(self) -> None:
         """Use the Runtime's plugin file-transfer root when running shared.
@@ -1140,6 +1073,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     runtime_handler.unregister_installation_binding(previous.binding)
             self._known_desired_states = all_states
             self._workspace_installations = workspace_installations
+            self._invalidate_workspace_caches()
             self.ap.logger.info(
                 'Shared plugin runtime reconcile completed: workspaces=%d desired_installations=%d '
                 'elapsed_seconds=%.3f',
@@ -1174,12 +1108,16 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
 
     async def _synchronize_workspace(
         self, execution_context: ExecutionContext
-    ) -> list[persistence_plugin.PluginSetting] | None:
+    ) -> tuple[list[persistence_plugin.PluginSetting] | None, int | None]:
         if not self.is_enable_plugin or not hasattr(self, 'handler'):
-            return None
+            return None, None
         runtime_handler = self._runtime_handler()
         changed = False
+        sync_revision: int | None = None
+        sync_revision_before: int | None = None
+        invalidate_caches = getattr(self, '_invalidate_workspace_caches', None)
         async with self._state_lock:
+            sync_revision_before = getattr(self, '_workspace_sync_revision', None)
             # Read the durable desired state while holding the same gate used by
             # install/remove bookkeeping. Otherwise a request can load a stale
             # pre-install snapshot, wait for the installer to publish its
@@ -1216,7 +1154,8 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 except PluginInstallationFailedError:
                     # The failure is retained per installation. Continue
                     # restoring the remaining desired state in this Workspace.
-                    self._invalidate_workspace_caches(execution_context.workspace_uuid)
+                    if callable(invalidate_caches):
+                        invalidate_caches(execution_context.workspace_uuid)
                     continue
                 self._known_desired_states[installation_uuid] = desired
             if desired_by_uuid:
@@ -1226,10 +1165,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     execution_context.workspace_uuid,
                     None,
                 )
+            if changed and callable(invalidate_caches):
+                invalidate_caches(execution_context.workspace_uuid)
+            sync_revision = getattr(self, '_workspace_sync_revision', sync_revision_before)
         if changed:
-            self._invalidate_workspace_caches(execution_context.workspace_uuid)
             await self._refresh_platform_commands(execution_context)
-        return settings
+        return settings, sync_revision
 
     async def _current_execution_context(self) -> ExecutionContext:
         current = self._execution_context.get()
@@ -1560,8 +1501,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         cached_settings = self._cached_workspace_settings(execution_context)
         if cached_settings is not None:
             return execution_context, cached_settings
-        settings = await self._synchronize_workspace(execution_context)
-        self._cache_workspace_settings(execution_context, settings)
+        sync_result = await self._synchronize_workspace(execution_context)
+        if isinstance(sync_result, tuple) and len(sync_result) == 2:
+            settings, sync_revision = sync_result
+        else:
+            settings, sync_revision = sync_result, None
+        if sync_revision is not None and sync_revision == self._workspace_sync_revision:
+            self._cache_workspace_settings(execution_context, settings)
         return execution_context, settings
 
     async def require_workspace_context(self, context: TenantContext) -> ExecutionContext:
@@ -2456,11 +2402,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         await self._store_artifact_package(execution_context, artifact_digest, file_bytes)
         if task_context is not None:
             task_context.set_current_action('persisting the installation')
+        binding: InstallationBinding | None = None
         try:
             # Persist and publish the new desired generation under the same
-            # gate used by request-time reconciliation. This closes the small
-            # window where another request could observe the durable row first
-            # and perform the same slow Runtime apply while holding the gate.
+            # gate used by request-time reconciliation. The guard below also
+            # covers every interruption between the durable commit and Runtime
+            # acceptance.
             async with self._state_lock:
                 binding, previous_digest, previous_was_durable = await self._persist_installation_package(
                     execution_context,
@@ -2486,41 +2433,36 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 )
                 self._known_desired_states[binding.installation_uuid] = desired
                 self._workspace_installations.setdefault(binding.workspace_uuid, set()).add(binding.installation_uuid)
-                # The durable row is now authoritative. Any request-local
-                # sync result predating this commit must reconcile again, even
-                # if the Runtime apply below is interrupted.
                 self._invalidate_workspace_caches(binding.workspace_uuid)
-        except Exception:
-            await self._delete_artifact_if_unreferenced(execution_context, artifact_digest)
-            raise
-        certification_facts = verified_certificate.for_installation(binding.installation_uuid)
-        if certification_facts.artifact_digest != install_info['_certification']['normalized_digest']:
-            raise RuntimeError('Plugin certification digest changed before Runtime apply')
-        if not previous_was_durable and self.runtime_profile == 'oss_dev':
-            bridge = self._legacy_oss_bridge_binding(execution_context)
-            try:
-                with runtime_handler.installation_scope(bridge):
-                    async for _ in runtime_handler.delete_plugin(plugin_author, plugin_name):
-                        pass
-            except Exception as exc:
-                self.ap.logger.debug(f'Legacy OSS plugin cleanup skipped: {exc}')
-        if task_context is not None:
-            operation = task_context.metadata.get('operation')
-            task_context.set_current_action(
-                'applying plugin update' if operation == 'upgrade' else 'installing or starting plugin'
-            )
-            task_context.metadata['progress_percent'] = 62
-        try:
+
+            certification_facts = verified_certificate.for_installation(binding.installation_uuid)
+            if certification_facts.artifact_digest != install_info['_certification']['normalized_digest']:
+                raise RuntimeError('Plugin certification digest changed before Runtime apply')
+            if not previous_was_durable and self.runtime_profile == 'oss_dev':
+                bridge = self._legacy_oss_bridge_binding(execution_context)
+                try:
+                    with runtime_handler.installation_scope(bridge):
+                        async for _ in runtime_handler.delete_plugin(plugin_author, plugin_name):
+                            pass
+                except Exception as exc:
+                    self.ap.logger.debug(f'Legacy OSS plugin cleanup skipped: {exc}')
+            if task_context is not None:
+                operation = task_context.metadata.get('operation')
+                task_context.set_current_action(
+                    'applying plugin update' if operation == 'upgrade' else 'installing or starting plugin'
+                )
+                task_context.metadata['progress_percent'] = 62
             await self._apply_desired_state(
                 desired,
                 artifact_package=file_bytes,
             )
         except BaseException:
-            # Do not publish a desired state as applied before the Runtime has
-            # accepted it. A later request must be able to recover a durable
-            # installation whose in-memory publication was interrupted.
-            self._known_desired_states.pop(binding.installation_uuid, None)
-            self._invalidate_workspace_caches(binding.workspace_uuid)
+            async with self._state_lock:
+                if binding is not None:
+                    self._known_desired_states.pop(binding.installation_uuid, None)
+                self._invalidate_workspace_caches(execution_context.workspace_uuid)
+            if binding is None:
+                await self._delete_artifact_if_unreferenced(execution_context, artifact_digest)
             raise
         if previous_digest is not None and previous_digest != artifact_digest:
             await self._delete_artifact_if_unreferenced(execution_context, previous_digest)
@@ -2609,6 +2551,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             with runtime_handler.installation_scope(bridge):
                 async for _ in runtime_handler.delete_plugin(plugin_author, plugin_name):
                     pass
+
         async def delete(execute):
             await execute(
                 sqlalchemy.delete(persistence_plugin.PluginSetting)
@@ -2869,8 +2812,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             and (setting.install_info or {}).get('_artifact_storage') != _PLUGIN_ARTIFACT_STORAGE_MARKER
         ):
             runtime_handler = self._runtime_handler()
+            self._invalidate_workspace_caches(execution.workspace_uuid)
             with runtime_handler.installation_scope(self._legacy_oss_bridge_binding(execution)):
                 await runtime_handler.set_plugin_config(setting.plugin_author, setting.plugin_name, setting.config)
+            self._invalidate_workspace_caches(execution.workspace_uuid)
             return
         binding = self._binding_from_setting(execution, setting)
         desired = PluginInstallationDesiredState(
@@ -2889,6 +2834,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             )
             await self._apply_desired_state(desired)
             self._known_desired_states[binding.installation_uuid] = desired
+            self._invalidate_workspace_caches(execution.workspace_uuid)
         await self._refresh_runner_registry()
 
     async def set_plugin_config(self, plugin_author: str, plugin_name: str, config: dict[str, Any]) -> dict[str, Any]:
@@ -2941,6 +2887,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         else:
             await self._apply_desired_state(desired)
         self._known_desired_states[binding.installation_uuid] = desired
+        self._invalidate_workspace_caches(execution_context.workspace_uuid)
         return {}
 
     async def get_plugin_icon(self, plugin_author: str, plugin_name: str) -> dict[str, Any]:
@@ -3088,8 +3035,6 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         response_sources: list[dict[str, Any]] = []
         # Reuse the settings read under the reconciliation lock for this dispatch.
         bindings = await self._operation_bindings(include_plugins=bound_plugins, settings=settings)
-        if len(bindings) > 1 and getattr(runtime_handler, 'supports_event_batch', False) is not True:
-            bindings = await self._filter_event_bindings(runtime_handler, bindings, event_ctx.event_name)
         batch = (
             bindings if len(bindings) > 1 and getattr(runtime_handler, 'supports_event_batch', False) is True else None
         )
