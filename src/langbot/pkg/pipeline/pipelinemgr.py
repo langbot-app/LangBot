@@ -315,6 +315,7 @@ class RuntimePipeline:
 
             async def before_send() -> None:
                 await self._assert_execution_active(query, force=True)
+                invalidate_execution_binding_lease()
 
             reply_options = {}
             if result.structured_error:
@@ -517,6 +518,7 @@ class RuntimePipeline:
                         invalidate_execution_binding_lease()
                 else:
                     try:
+                        invalidate_execution_binding_lease()
                         result = await result
                     finally:
                         invalidate_execution_binding_lease()

@@ -769,7 +769,15 @@ async def test_notice_delivery_failure_invalidates_lease_before_recovery(tmp_pat
         policy = await harness.ap.message_policy_mgr.neutral_runtime()
         original_send_notice = policy.send_notice
 
-        async def fail_send_notice(*_args, **_kwargs):
+        async def fail_send_notice(*_args, before_send=None, **_kwargs):
+            if before_send is not None:
+                await before_send()
+            async with harness.engine.begin() as conn:
+                await conn.execute(
+                    sqlalchemy.update(WorkspaceExecutionState)
+                    .where(WorkspaceExecutionState.workspace_uuid == harness.workspace.uuid)
+                    .values(write_fenced=True)
+                )
             raise RuntimeError('delivery failed')
 
         policy.send_notice = fail_send_notice
@@ -783,10 +791,11 @@ async def test_notice_delivery_failure_invalidates_lease_before_recovery(tmp_pat
             with execution_binding_scope():
                 with pytest.raises(RuntimeError, match='delivery failed'):
                     await pipeline._check_output(query, result)
-                await ensure_execution_binding_active(harness.ap, harness.ctx)
-            # The recovery check after the failed notice must not reuse the lease
-            # established by before_send().
-            assert len(harness.binding_calls) >= before + 2
+                with pytest.raises(WorkspaceExecutionUnavailableError):
+                    await ensure_execution_binding_active(harness.ap, harness.ctx)
+            # The recovery check after before_send() must observe the fence instead
+            # of reusing the lease it established.
+            assert len(harness.binding_calls) >= before + 3
         finally:
             policy.send_notice = original_send_notice
     finally:
@@ -925,6 +934,49 @@ async def test_sync_custom_async_generator_rechecks_before_first_anext(tmp_path)
 
         pipeline.stage_containers = [StageInstContainer('CustomGenerator', CustomGeneratorStage())]
         with pytest.raises(WorkspaceGenerationMismatchError, match='stale before custom generator'):
+            await pipeline._execute_from_stage(0, query)
+        assert binding_calls == 2
+    finally:
+        await harness.engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_async_custom_stage_invalidates_lease_before_await(tmp_path):
+    harness = await _build_sqlite_pipeline_harness(
+        tmp_path,
+        outputs=[provider_message.Message(role='assistant', content='unused')],
+        stream=False,
+    )
+    try:
+        pipeline = await harness.ap.pipeline_mgr.get_pipeline_by_uuid(harness.ctx, 'pipe-1')
+        assert pipeline is not None
+        query, _session, _adapter = harness.build_query()
+        binding_calls = 0
+        original_get = harness.ap.workspace_service.get_execution_binding
+
+        async def stale_after_suspension(*args, **kwargs):
+            nonlocal binding_calls
+            binding_calls += 1
+            if binding_calls >= 2:
+                raise WorkspaceGenerationMismatchError('stale during custom stage')
+            return await original_get(*args, **kwargs)
+
+        harness.ap.workspace_service.get_execution_binding = stale_after_suspension
+
+        class CustomAsyncStage:
+            def process(self, _query, _stage_name):
+                async def run():
+                    await asyncio.sleep(0)
+                    await ensure_execution_binding_active(harness.ap, harness.ctx)
+                    return pipeline_entities.StageProcessResult(
+                        result_type=pipeline_entities.ResultType.CONTINUE,
+                        new_query=query,
+                    )
+
+                return run()
+
+        pipeline.stage_containers = [StageInstContainer('CustomAsync', CustomAsyncStage())]
+        with pytest.raises(WorkspaceGenerationMismatchError, match='stale during custom stage'):
             await pipeline._execute_from_stage(0, query)
         assert binding_calls == 2
     finally:
