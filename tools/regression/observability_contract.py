@@ -222,10 +222,15 @@ def write_trace_index(path: Path, artifacts: list[Path], *, run_id: str | None =
                         'trace_id': trace_id,
                         'action_ids': [],
                         'observation_ids': [],
+                        'run_ids': [],
                         'evidence': [],
                     },
                 )
-                for field, target in (('action_id', 'action_ids'), ('observation_id', 'observation_ids')):
+                for field, target in (
+                    ('action_id', 'action_ids'),
+                    ('observation_id', 'observation_ids'),
+                    ('run_id', 'run_ids'),
+                ):
                     value = record.get(field)
                     if isinstance(value, str) and value and value not in entry[target]:
                         entry[target].append(value)

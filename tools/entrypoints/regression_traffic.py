@@ -730,6 +730,9 @@ def main():
                 queue_seconds=row['queue_seconds'],
                 arrival_seconds=row['arrival_seconds'],
             )
+            run = row.get('run')
+            if isinstance(run, dict) and isinstance(run.get('run_id'), str) and run['run_id']:
+                record['run_id'] = run['run_id']
         else:
             record['settled_elapsed'] = time.monotonic() - started
             record['reason'] = {
