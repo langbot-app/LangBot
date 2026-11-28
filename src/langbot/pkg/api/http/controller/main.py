@@ -93,6 +93,7 @@ class HTTPController:
         # MCP server (mounted at /mcp, see ..mcp.mount). Built lazily in
         # initialize() so the service layer is ready.
         self.mcp_mount: MCPMount | None = None
+        self._routes_registered: bool = False
 
     async def initialize(self) -> None:
         # Register custom error handler for file size limit
@@ -181,6 +182,9 @@ class HTTPController:
         await hypercorn_serve(traced_app, config, shutdown_trigger=shutdown_trigger)
 
     async def register_routes(self) -> None:
+        if self._routes_registered:
+            return
+
         @self.quart_app.route('/healthz')
         async def healthz():
             get_resource_stats = getattr(
@@ -301,3 +305,5 @@ class HTTPController:
                 response.headers['Pragma'] = 'no-cache'
                 response.headers['Expires'] = '0'
             return response
+
+        self._routes_registered = True
