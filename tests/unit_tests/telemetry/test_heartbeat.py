@@ -293,3 +293,20 @@ def test_message_policy_counts_only_count_departures_from_command_defaults():
     assert changed['builtin_disabled_bots'] == 1
     assert changed['commands_disabled_bots'] == 1
     assert changed['custom_prefix_bots'] == 1
+
+
+def test_workspace_bots_only_walk_the_workspace_index():
+    heartbeat = get_heartbeat_module()
+    bot_a = SimpleNamespace(name='a')
+    bot_b = SimpleNamespace(name='b')
+    key_a = ('instance-a', 'workspace-a', 'bot-a')
+    key_b = ('instance-a', 'workspace-b', 'bot-b')
+    platform_mgr = SimpleNamespace(
+        _bots_by_key={key_a: bot_a, key_b: bot_b},
+        _bot_keys_by_workspace={'workspace-a': {key_a}, 'workspace-b': {key_b}},
+        bots=[bot_a, bot_b],
+    )
+
+    assert heartbeat._workspace_bots(platform_mgr, 'workspace-a') == [bot_a]
+    assert heartbeat._workspace_bots(platform_mgr, 'workspace-b') == [bot_b]
+    assert heartbeat._workspace_bots(platform_mgr, 'workspace-missing') == []

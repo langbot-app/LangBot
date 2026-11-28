@@ -229,6 +229,22 @@ async def _cloud_workspace_resource_counts(ap: core_app.Application, bindings) -
     return list(counts.values())
 
 
+def _workspace_bots(platform_mgr, workspace_uuid: str) -> list:
+    """Return only this Workspace's runtime bots.
+
+    ``platform_mgr.bots`` is every bot on the instance. On Cloud a heartbeat
+    cycle builds one payload per Workspace, so walking the full registry for
+    each of them is O(workspaces x bots) synchronous work (millions of policy
+    resolutions) that starves the event loop. Use the per-Workspace index.
+    """
+
+    bots_by_key = getattr(platform_mgr, '_bots_by_key', None)
+    keys_by_workspace = getattr(platform_mgr, '_bot_keys_by_workspace', None)
+    if isinstance(bots_by_key, dict) and isinstance(keys_by_workspace, dict):
+        return [bots_by_key[key] for key in keys_by_workspace.get(workspace_uuid, ()) if key in bots_by_key]
+    return list(platform_mgr.bots)
+
+
 async def build_heartbeat_payload(
     ap: core_app.Application,
     *,
@@ -272,12 +288,13 @@ async def build_heartbeat_payload(
     try:
         platform_mgr = getattr(ap, 'platform_mgr', None)
         if platform_mgr is not None and getattr(platform_mgr, 'bots', None) is not None:
-            enabled_bots = [bot for bot in platform_mgr.bots if getattr(bot, 'enable', False)]
-            features['bot_count'] = len(platform_mgr.bots)
-            features.update(_message_policy_counts(platform_mgr.bots))
+            bots = _workspace_bots(platform_mgr, workspace_uuid)
+            enabled_bots = [bot for bot in bots if getattr(bot, 'enable', False)]
+            features['bot_count'] = len(bots)
+            features.update(_message_policy_counts(bots))
             adapters = sorted({bot.adapter.__class__.__name__ for bot in enabled_bots if getattr(bot, 'adapter', None)})
             features['adapters'] = adapters
-            processors, bindings = _bot_processor_counts(platform_mgr.bots)
+            processors, bindings = _bot_processor_counts(bots)
             features['plugin_processor_count'] = processors
             features['event_binding_count'] = bindings
     except Exception:
@@ -421,15 +438,20 @@ async def build_heartbeat_payloads(ap: core_app.Application) -> list[dict]:
     resources = {
         resource['workspace_uuid']: resource for resource in await _cloud_workspace_resource_counts(ap, bindings)
     }
-    return [
-        await build_heartbeat_payload(
-            ap,
-            workspace_uuid=workspace_uuid,
-            workspace_create_ts=workspace_create_ts.get(workspace_uuid, 0),
-            workspace_resource=resources.get(workspace_uuid),
+    payloads = []
+    for workspace_uuid in workspace_uuids:
+        payloads.append(
+            await build_heartbeat_payload(
+                ap,
+                workspace_uuid=workspace_uuid,
+                workspace_create_ts=workspace_create_ts.get(workspace_uuid, 0),
+                workspace_resource=resources.get(workspace_uuid),
+            )
         )
-        for workspace_uuid in workspace_uuids
-    ]
+        # Thousands of Workspaces per cycle on Cloud: yield between them so
+        # request handling and plugin Runtime reconcile keep running.
+        await asyncio.sleep(0)
+    return payloads
 
 
 async def heartbeat_loop(ap: core_app.Application) -> None:
