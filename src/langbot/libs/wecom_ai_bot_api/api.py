@@ -526,15 +526,6 @@ class _MediaFetcher:
         return f'data:{mime};base64,{b64}', duration
 
 
-def _first(source: dict[str, Any], *keys: str) -> Any:
-    """Return the first truthy value among older/newer WeCom key spellings."""
-    for key in keys:
-        value = source.get(key)
-        if value:
-            return value
-    return None
-
-
 async def parse_wecom_bot_message(
     msg_json: dict[str, Any], encoding_aes_key: str, logger: EventLogger
 ) -> dict[str, Any]:

@@ -345,3 +345,160 @@ async def test_file_type_without_a_file_payload_does_not_crash(downloaded):
 
     assert result['file']['download_url'] is None
     assert result['file']['filename'] is None
+
+
+@pytest.mark.asyncio
+async def test_video_type_without_url_does_not_crash(downloaded):
+    result = await api.parse_wecom_bot_message(base('video', video={}), AESKEY, Logger())
+
+    assert result['video']['url'] is None
+    assert result['video']['download_url'] is None
+
+
+@pytest.mark.asyncio
+async def test_empty_url_skips_download_without_warning(downloaded):
+    logger = Logger()
+    result = await api.parse_wecom_bot_message(base('image', image={'url': ''}), '', logger)
+
+    assert 'images' not in result
+    assert downloaded == []
+    assert logger.warnings == []
+
+
+@pytest.mark.asyncio
+async def test_voice_transcoding_and_failure_fallback(downloaded, monkeypatch):
+    from langbot.pkg.utils import audio as audio_utils
+
+    monkeypatch.setattr(audio_utils, 'detect_audio_format', lambda data: 'amr')
+    monkeypatch.setattr(audio_utils, 'estimate_audio_duration', lambda data, fmt: 3.6)
+    monkeypatch.setattr(audio_utils, 'is_ffmpeg_available', lambda: True)
+
+    async def fake_transcode(data, target_fmt, src_fmt):
+        assert (target_fmt, src_fmt) == ('mp3', 'amr')
+        return b'mp3-bytes'
+
+    monkeypatch.setattr(audio_utils, 'transcode_audio', fake_transcode)
+    result = await api.parse_wecom_bot_message(
+        base('voice', voice={'url': 'https://x/v.amr', 'filesize': SMALL}), AESKEY, Logger()
+    )
+    assert result['voice']['base64'] == 'data:audio/mpeg;base64,' + base64.b64encode(b'mp3-bytes').decode()
+    assert result['voice']['length'] == 4
+
+    async def broken_transcode(data, target_fmt, src_fmt):
+        raise RuntimeError('ffmpeg failed')
+
+    monkeypatch.setattr(audio_utils, 'transcode_audio', broken_transcode)
+    logger = Logger()
+    fallback = await api.parse_wecom_bot_message(
+        base('voice', voice={'url': 'https://x/v.amr', 'filesize': SMALL}), AESKEY, logger
+    )
+    assert fallback['voice']['base64'].startswith('data:audio/amr;base64,')
+    assert fallback['voice']['length'] == 4
+    assert logger.warnings
+
+
+@pytest.mark.asyncio
+async def test_voice_failed_download_omits_inline_payload(monkeypatch):
+    async def failing(url, key, logger):
+        return None, None
+
+    monkeypatch.setattr(api, 'download_encrypted_file', failing)
+    result = await api.parse_wecom_bot_message(
+        base('voice', voice={'url': 'https://x/v.amr', 'filesize': SMALL}), AESKEY, Logger()
+    )
+    assert 'base64' not in result['voice']
+    assert 'length' not in result['voice']
+
+
+@pytest.mark.asyncio
+async def test_mixed_file_uses_downloaded_filename_fallback_and_tolerates_failure(downloaded, monkeypatch):
+    items = [
+        {'msgtype': 'file', 'file': {'url': 'https://x/f', 'filesize': SMALL}},
+        {'msgtype': 'voice', 'voice': {'url': 'https://x/v', 'filesize': SMALL, 'content': 'spoken'}},
+    ]
+    result = await api.parse_wecom_bot_message(base('mixed', mixed={'msg_item': items}), AESKEY, Logger())
+    assert result['file']['filename'] == 'remote-name.bin'
+    assert result['file']['base64'] == _data_uri('https://x/f')
+    assert result['content'] == 'spoken'
+
+    async def failing(url, key, logger):
+        return None, None
+
+    monkeypatch.setattr(api, 'download_encrypted_file', failing)
+    failed = await api.parse_wecom_bot_message(
+        base('mixed', mixed={'msg_item': [{'msgtype': 'file', 'file': {'url': 'https://x/f', 'filesize': SMALL}}]}),
+        AESKEY,
+        Logger(),
+    )
+    assert 'base64' not in failed['file']
+    assert failed['file']['filename'] is None
+
+
+@pytest.mark.asyncio
+async def test_quote_text_image_voice_and_video_branches(downloaded):
+    text_res = await api.parse_wecom_bot_message(
+        base('text', text={'content': 'x'}, quote={'msgtype': 'text', 'text': {'content': 'quoted'}}),
+        AESKEY,
+        Logger(),
+    )
+    assert text_res['quote']['content'] == 'quoted'
+
+    img_res = await api.parse_wecom_bot_message(
+        base(
+            'text',
+            text={'content': 'x'},
+            quote={'msgtype': 'image', 'image': {'url': 'https://x/qi.png', 'aeskey': 'qk'}},
+        ),
+        AESKEY,
+        Logger(),
+    )
+    assert img_res['quote']['picurl'] == _data_uri('https://x/qi.png')
+    assert img_res['quote']['images'] == [img_res['quote']['picurl']]
+    assert ('https://x/qi.png', 'qk') in downloaded
+
+    voice_res = await api.parse_wecom_bot_message(
+        base(
+            'text',
+            text={'content': 'x'},
+            quote={'msgtype': 'voice', 'voice': {'url': 'https://x/qv.amr', 'filesize': SMALL, 'content': 'q-spoken'}},
+        ),
+        AESKEY,
+        Logger(),
+    )
+    assert voice_res['quote']['content'] == 'q-spoken'
+    assert voice_res['quote']['voice']['url'] == 'https://x/qv.amr'
+
+    signed_vid = await api.parse_wecom_bot_message(
+        base(
+            'text',
+            text={'content': 'x'},
+            quote={'msgtype': 'video', 'video': {'url': 'https://x/qv.mp4', 'aeskey': 'vk'}},
+        ),
+        AESKEY,
+        Logger(),
+    )
+    assert signed_vid['quote']['video']['download_url'] == 'https://x/qv.mp4?aeskey=vk'
+
+    unsigned_vid = await api.parse_wecom_bot_message(
+        base('text', text={'content': 'x'}, quote={'msgtype': 'video', 'video': {'url': 'https://x/qv.mp4'}}),
+        AESKEY,
+        Logger(),
+    )
+    assert 'download_url' not in unsigned_vid['quote']['video']
+
+
+@pytest.mark.asyncio
+async def test_quote_mixed_keeps_images(downloaded):
+    quote = {
+        'msgtype': 'mixed',
+        'mixed': {
+            'msg_item': [
+                {'msgtype': 'image', 'image': {'url': 'https://x/qi.png', 'aeskey': 'qk'}},
+            ]
+        },
+    }
+    result = await api.parse_wecom_bot_message(base('text', text={'content': 'x'}, quote=quote), AESKEY, Logger())
+
+    assert downloaded == [('https://x/qi.png', 'qk')]
+    assert result['quote']['images'] == [_data_uri('https://x/qi.png')]
+    assert result['quote']['picurl'] == result['quote']['images'][0]
