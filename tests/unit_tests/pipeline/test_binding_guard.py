@@ -14,6 +14,7 @@ from langbot.pkg.entity.persistence.base import Base
 from langbot.pkg.entity.persistence.pipeline import LegacyPipeline
 from langbot.pkg.entity.persistence.workspace import Workspace, WorkspaceExecutionState
 from langbot.pkg.message_policy.manager import MessagePolicyManager
+from langbot.pkg.pipeline import entities as pipeline_entities
 from langbot.pkg.pipeline.binding_guard import (
     anext_tracking_suspension,
     await_tracking_suspension,
@@ -21,7 +22,7 @@ from langbot.pkg.pipeline.binding_guard import (
     execution_binding_scope,
 )
 from langbot.pkg.pipeline.controller import Controller
-from langbot.pkg.pipeline.pipelinemgr import PipelineManager
+from langbot.pkg.pipeline.pipelinemgr import PipelineManager, StageInstContainer
 from langbot.pkg.pipeline.pool import QueryPool
 from langbot.pkg.workspace import WorkspaceService
 from langbot.pkg.workspace.errors import (
@@ -750,5 +751,181 @@ async def test_suspending_local_stage_invalidates_lease_and_blocks_next_stage(tm
             harness.ap.model_mgr.get_model_by_uuid.assert_not_awaited()
         finally:
             policy.filter_inbound = orig_filter
+    finally:
+        await harness.engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_notice_delivery_failure_invalidates_lease_before_recovery(tmp_path):
+    harness = await _build_sqlite_pipeline_harness(
+        tmp_path,
+        outputs=[provider_message.Message(role='assistant', content='unused')],
+        stream=False,
+    )
+    try:
+        query, _session, _adapter = harness.build_query()
+        pipeline = await harness.ap.pipeline_mgr.get_pipeline_by_uuid(harness.ctx, 'pipe-1')
+        assert pipeline is not None
+        policy = await harness.ap.message_policy_mgr.neutral_runtime()
+        original_send_notice = policy.send_notice
+
+        async def fail_send_notice(*_args, **_kwargs):
+            raise RuntimeError('delivery failed')
+
+        policy.send_notice = fail_send_notice
+        try:
+            before = len(harness.binding_calls)
+            result = pipeline_entities.StageProcessResult(
+                result_type=pipeline_entities.ResultType.INTERRUPT,
+                new_query=query,
+                user_notice='must fail',
+            )
+            with execution_binding_scope():
+                with pytest.raises(RuntimeError, match='delivery failed'):
+                    await pipeline._check_output(query, result)
+                await ensure_execution_binding_active(harness.ap, harness.ctx)
+            # The recovery check after the failed notice must not reuse the lease
+            # established by before_send().
+            assert len(harness.binding_calls) >= before + 2
+        finally:
+            policy.send_notice = original_send_notice
+    finally:
+        await harness.engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_monitoring_status_cancel_invalidates_lease_before_terminal_cleanup(tmp_path):
+    harness = await _build_sqlite_pipeline_harness(
+        tmp_path,
+        outputs=[provider_message.Message(role='assistant', content='unused')],
+        stream=False,
+    )
+    try:
+        query, _session, _adapter = harness.build_query()
+        pipeline = await harness.ap.pipeline_mgr.get_pipeline_by_uuid(harness.ctx, 'pipe-1')
+        assert pipeline is not None
+        query.variables['_monitoring_message_id'] = 'message-1'
+        harness.ap.monitoring_service.update_message_status.side_effect = asyncio.CancelledError()
+        before = len(harness.binding_calls)
+        result = pipeline_entities.StageProcessResult(
+            result_type=pipeline_entities.ResultType.INTERRUPT,
+            new_query=query,
+            error_notice='failed stage',
+        )
+        with execution_binding_scope():
+            with pytest.raises(asyncio.CancelledError):
+                await pipeline._check_output(query, result)
+            async with harness.engine.begin() as conn:
+                await conn.execute(
+                    sqlalchemy.update(WorkspaceExecutionState)
+                    .where(WorkspaceExecutionState.workspace_uuid == harness.workspace.uuid)
+                    .values(write_fenced=True)
+                )
+            with pytest.raises(WorkspaceExecutionUnavailableError):
+                await ensure_execution_binding_active(harness.ap, harness.ctx)
+        assert len(harness.binding_calls) >= before + 2
+    finally:
+        await harness.engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_reentrant_binding_check_after_first_suspension_does_not_reuse_lease():
+    context = ExecutionContext(instance_uuid='inst-1', workspace_uuid='ws-1', placement_generation=1)
+    binding = SimpleNamespace(instance_uuid='inst-1', workspace_uuid='ws-1', placement_generation=1)
+    get_binding = AsyncMock(side_effect=[binding, WorkspaceGenerationMismatchError('fenced during await')])
+    ap = SimpleNamespace(workspace_service=SimpleNamespace(get_execution_binding=get_binding))
+
+    async def reentrant_work():
+        await asyncio.sleep(0)
+        await ensure_execution_binding_active(ap, context)
+
+    with execution_binding_scope():
+        await ensure_execution_binding_active(ap, context)
+        with pytest.raises(WorkspaceGenerationMismatchError, match='fenced during await'):
+            await await_tracking_suspension(reentrant_work())
+    assert get_binding.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_cloud_lease_hit_runs_synchronous_admission_and_projection_guards():
+    context = ExecutionContext(instance_uuid='inst-1', workspace_uuid='ws-1', placement_generation=1)
+    binding = SimpleNamespace(instance_uuid='inst-1', workspace_uuid='ws-1', placement_generation=1)
+
+    class Guards:
+        def __init__(self):
+            self.admission_calls = 0
+            self.projection_calls = 0
+            self.admission_error = None
+
+        def require_admission(self):
+            self.admission_calls += 1
+            if self.admission_error:
+                raise self.admission_error
+
+        def require_projection(self):
+            self.projection_calls += 1
+
+    guards = Guards()
+    workspace_service = SimpleNamespace(
+        get_execution_binding=AsyncMock(return_value=binding),
+        _require_deployment_admission=guards.require_admission,
+        _require_directory_projection=guards.require_projection,
+    )
+    ap = SimpleNamespace(workspace_service=workspace_service)
+
+    with execution_binding_scope():
+        await ensure_execution_binding_active(ap, context)
+        assert workspace_service.get_execution_binding.await_count == 1
+        await ensure_execution_binding_active(ap, context)
+        assert workspace_service.get_execution_binding.await_count == 1
+        assert guards.admission_calls == 1
+        assert guards.projection_calls == 1
+
+        guards.admission_error = RuntimeError('manifest expired')
+        with pytest.raises(RuntimeError, match='manifest expired'):
+            await ensure_execution_binding_active(ap, context)
+        guards.admission_error = None
+        await ensure_execution_binding_active(ap, context)
+        assert workspace_service.get_execution_binding.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_sync_custom_async_generator_rechecks_before_first_anext(tmp_path):
+    harness = await _build_sqlite_pipeline_harness(
+        tmp_path,
+        outputs=[provider_message.Message(role='assistant', content='unused')],
+        stream=False,
+    )
+    try:
+        pipeline = await harness.ap.pipeline_mgr.get_pipeline_by_uuid(harness.ctx, 'pipe-1')
+        assert pipeline is not None
+        query, _session, _adapter = harness.build_query()
+        binding_calls = 0
+        original_get = harness.ap.workspace_service.get_execution_binding
+
+        async def stale_after_entry(*args, **kwargs):
+            nonlocal binding_calls
+            binding_calls += 1
+            if binding_calls >= 2:
+                raise WorkspaceGenerationMismatchError('stale before custom generator')
+            return await original_get(*args, **kwargs)
+
+        harness.ap.workspace_service.get_execution_binding = stale_after_entry
+
+        class CustomGeneratorStage:
+            def process(self, _query, _stage_name):
+                async def generate():
+                    await ensure_execution_binding_active(harness.ap, harness.ctx)
+                    yield pipeline_entities.StageProcessResult(
+                        result_type=pipeline_entities.ResultType.CONTINUE,
+                        new_query=query,
+                    )
+
+                return generate()
+
+        pipeline.stage_containers = [StageInstContainer('CustomGenerator', CustomGeneratorStage())]
+        with pytest.raises(WorkspaceGenerationMismatchError, match='stale before custom generator'):
+            await pipeline._execute_from_stage(0, query)
+        assert binding_calls == 2
     finally:
         await harness.engine.dispose()

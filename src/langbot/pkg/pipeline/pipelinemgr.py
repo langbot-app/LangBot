@@ -234,9 +234,11 @@ class RuntimePipeline:
             await self._assert_execution_active(query)
             # The message policy of the route this message matched is laid over the
             # Messaging config, so stages and plugins read it under the legacy keys.
+            invalidate_execution_binding_lease()
             policy = await self.ap.message_policy_mgr.bind_query(query, self.pipeline_entity.config)
             # Store bound plugins and MCP servers in query for filtering
             query.variables['_pipeline_bound_plugins'] = self.bound_plugins
+            invalidate_execution_binding_lease()
             if policy is await self.ap.message_policy_mgr.neutral_runtime():
                 # No bot policy (debug chat, pipeline.run): there is no bot plugin
                 # selection, so the Chat's plugin list keeps choosing the listeners.
@@ -266,6 +268,7 @@ class RuntimePipeline:
                 bot_name = 'WebChat'
                 if query.bot_uuid:
                     try:
+                        invalidate_execution_binding_lease()
                         bot = await self.ap.bot_service.get_bot(
                             query.workspace_uuid,
                             query.bot_uuid,
@@ -284,6 +287,7 @@ class RuntimePipeline:
             finally:
                 invalidate_execution_binding_lease()
 
+            invalidate_execution_binding_lease()
             await self.process_query(query)
 
     async def deliver_runner_result(self, query: pipeline_query.Query, result: provider_message.Message) -> None:
@@ -305,6 +309,7 @@ class RuntimePipeline:
         if result.user_notice:
             if result.structured_error and '_cli_run_status' in query.variables:
                 query.variables['_cli_run_error'] = result.structured_error
+            invalidate_execution_binding_lease()
             policy = await self.ap.message_policy_mgr.for_query(query)
             result.user_notice = policy.build_notice(query.message_event, result.user_notice)
 
@@ -317,13 +322,16 @@ class RuntimePipeline:
 
                 if isinstance(query.adapter, WebSocketAdapter):
                     reply_options['error'] = result.structured_error
-            await policy.send_notice(
-                query,
-                result.user_notice,
-                before_send=before_send,
-                reply_options=reply_options,
-            )
-            invalidate_execution_binding_lease()
+            try:
+                invalidate_execution_binding_lease()
+                await policy.send_notice(
+                    query,
+                    result.user_notice,
+                    before_send=before_send,
+                    reply_options=reply_options,
+                )
+            finally:
+                invalidate_execution_binding_lease()
         if result.debug_notice:
             self.ap.logger.debug(result.debug_notice)
         if result.console_notice:
@@ -348,30 +356,40 @@ class RuntimePipeline:
 
                 # Update message status to error
                 if message_id:
-                    await self.ap.monitoring_service.update_message_status(
-                        get_query_execution_context(query),
-                        message_id=message_id,
-                        status='error',
-                        level='error',
-                    )
-                    invalidate_execution_binding_lease()
+                    try:
+                        invalidate_execution_binding_lease()
+                        await self.ap.monitoring_service.update_message_status(
+                            get_query_execution_context(query),
+                            message_id=message_id,
+                            status='error',
+                            level='error',
+                        )
+                    finally:
+                        invalidate_execution_binding_lease()
 
                 # Record error log
-                await self.ap.monitoring_service.record_error(
-                    get_query_execution_context(query),
-                    bot_id=query.bot_uuid or 'unknown',
-                    bot_name=bot_name,
-                    pipeline_id=self.pipeline_entity.uuid,
-                    pipeline_name=pipeline_name,
-                    error_type=result.structured_error['error_code'] if result.structured_error else 'PipelineError',
-                    error_message=result.error_notice,
-                    session_id=session_id,
-                    stack_trace=result.debug_notice if result.debug_notice else None,
-                    message_id=message_id,
-                )
-                invalidate_execution_binding_lease()
+                try:
+                    invalidate_execution_binding_lease()
+                    await self.ap.monitoring_service.record_error(
+                        get_query_execution_context(query),
+                        bot_id=query.bot_uuid or 'unknown',
+                        bot_name=bot_name,
+                        pipeline_id=self.pipeline_entity.uuid,
+                        pipeline_name=pipeline_name,
+                        error_type=result.structured_error['error_code']
+                        if result.structured_error
+                        else 'PipelineError',
+                        error_message=result.error_notice,
+                        session_id=session_id,
+                        stack_trace=result.debug_notice if result.debug_notice else None,
+                        message_id=message_id,
+                    )
+                finally:
+                    invalidate_execution_binding_lease()
             except Exception as e:
                 self.ap.logger.error(f'Failed to record error to monitoring: {e}')
+            finally:
+                invalidate_execution_binding_lease()
 
     async def _mark_stage_interrupt(self, query: pipeline_query.Query, stage_name: str) -> None:
         """Make rule-based drops visible: log them and attribute them in monitoring."""
@@ -405,29 +423,35 @@ class RuntimePipeline:
         query.variables['message_policy_drop'] = reason
         ingress = getattr(query, '_policy_ingress_id', None)
         if ingress:
-            await self.ap.monitoring_service.record_policy_event(
-                get_query_execution_context(query),
-                ingress,
-                {
-                    'type': 'admission',
-                    'reason': reason,
-                    'policy_layer': reason.split(':', 1)[0],
-                    'policy_item': item.split('.', 1)[1],
-                },
-            )
+            try:
+                invalidate_execution_binding_lease()
+                await self.ap.monitoring_service.record_policy_event(
+                    get_query_execution_context(query),
+                    ingress,
+                    {
+                        'type': 'admission',
+                        'reason': reason,
+                        'policy_layer': reason.split(':', 1)[0],
+                        'policy_item': item.split('.', 1)[1],
+                    },
+                )
+            finally:
+                invalidate_execution_binding_lease()
+        try:
             invalidate_execution_binding_lease()
-        await bot._record_event_route_trace(
-            event_type='message.received',
-            binding=route,
-            target_type='pipeline',
-            target_uuid=query.pipeline_uuid,
-            status='discarded',
-            failure_code='message_policy',
-            details={'policy_layer': reason.split(':', 1)[0], 'policy_item': item.split('.', 1)[1]},
-            text=reason,
-            reason=reason,
-        )
-        invalidate_execution_binding_lease()
+            await bot._record_event_route_trace(
+                event_type='message.received',
+                binding=route,
+                target_type='pipeline',
+                target_uuid=query.pipeline_uuid,
+                status='discarded',
+                failure_code='message_policy',
+                details={'policy_layer': reason.split(':', 1)[0], 'policy_item': item.split('.', 1)[1]},
+                text=reason,
+                reason=reason,
+            )
+        finally:
+            invalidate_execution_binding_lease()
 
     async def _execute_from_stage(
         self,
@@ -496,7 +520,7 @@ class RuntimePipeline:
                         result = await result
                     finally:
                         invalidate_execution_binding_lease()
-            elif not isinstance(result, typing.AsyncGenerator) and not is_local_stage:
+            elif not is_response_wrapper_stage and not is_local_stage:
                 invalidate_execution_binding_lease()
 
             if isinstance(result, pipeline_entities.StageProcessResult):  # 直接返回结果
@@ -529,6 +553,7 @@ class RuntimePipeline:
                             break
                     else:
                         try:
+                            invalidate_execution_binding_lease()
                             sub_result = await anext(iterator)
                         except StopAsyncIteration:
                             invalidate_execution_binding_lease()
@@ -587,8 +612,8 @@ class RuntimePipeline:
         from langbot_plugin.utils.log import log_scope
 
         workspace_uuid = getattr(query, 'workspace_uuid', None) or getattr(self, 'workspace_uuid', '')
-        language = await get_workspace_language(self.ap, workspace_uuid)
         invalidate_execution_binding_lease()
+        language = await get_workspace_language(self.ap, workspace_uuid)
         with (
             log_scope(trace=getattr(query, '_message_log_trace', None), workspace=workspace_uuid),
             language_scope(language),
@@ -712,6 +737,7 @@ class RuntimePipeline:
         message = platform_message.MessageChain([platform_message.Plain(text=text)])
         quote_origin = query.pipeline_config.get('output', {}).get('misc', {}).get('quote-origin', False)
         try:
+            invalidate_execution_binding_lease()
             if (
                 await query.adapter.is_stream_output_supported()
                 and last_chunk is not None
@@ -725,6 +751,7 @@ class RuntimePipeline:
                     msg_sequence=int(getattr(last_chunk, 'msg_sequence', 0) or 0) + 1,
                     is_final=True,
                 )
+                invalidate_execution_binding_lease()
                 await query.adapter.reply_message_chunk(
                     message_source=query.message_event,
                     bot_message=chunk,
@@ -733,6 +760,7 @@ class RuntimePipeline:
                     is_final=True,
                 )
             elif user_visible:
+                invalidate_execution_binding_lease()
                 await query.adapter.reply_message(
                     message_source=query.message_event,
                     message=message,
@@ -740,6 +768,8 @@ class RuntimePipeline:
                 )
         except Exception as exc:
             self.ap.logger.warning('Failed to finalize cancelled platform response: %s', exc)
+        finally:
+            invalidate_execution_binding_lease()
 
     async def _process_query(self, query: pipeline_query.Query):
         """Close monitoring on every exit, including cancellation and plugin veto."""
@@ -747,10 +777,12 @@ class RuntimePipeline:
 
         status = 'error'
         try:
+            invalidate_execution_binding_lease()
             await self._process_query_body(query)
             if not query.variables.get('_monitoring_has_error'):
                 status = 'success'
         finally:
+            invalidate_execution_binding_lease()
             try:
                 message_id = query.variables.get('_monitoring_message_id', '')
                 if message_id:
@@ -758,6 +790,7 @@ class RuntimePipeline:
                     async with asyncio.timeout(2):
                         await self._assert_execution_active(query)
                     try:
+                        invalidate_execution_binding_lease()
                         await MonitoringHelper.finish_query(self.ap, query, message_id, status)
                     finally:
                         invalidate_execution_binding_lease()
@@ -768,6 +801,7 @@ class RuntimePipeline:
 
     async def _process_query_body(self, query: pipeline_query.Query):
         """处理请求"""
+        invalidate_execution_binding_lease()
         await self._assert_execution_active(query)
         # Get monitoring metadata
         bot_name = query.variables.get('_monitoring_bot_name', 'Unknown')
@@ -784,6 +818,7 @@ class RuntimePipeline:
             from . import monitoring_helper
 
             try:
+                invalidate_execution_binding_lease()
                 message_id = await monitoring_helper.MonitoringHelper.record_query_start(
                     ap=self.ap,
                     query=query,
@@ -801,6 +836,7 @@ class RuntimePipeline:
             if hasattr(query.adapter, 'on_monitoring_message_created'):
                 await self._assert_execution_active(query)
                 try:
+                    invalidate_execution_binding_lease()
                     await query.adapter.on_monitoring_message_created(query, message_id)
                 finally:
                     invalidate_execution_binding_lease()
@@ -811,6 +847,7 @@ class RuntimePipeline:
             if not getattr(query, '_message_received_dispatched', False):
                 await self._assert_execution_active(query)
                 try:
+                    invalidate_execution_binding_lease()
                     ctx = await self.ap.plugin_connector.emit_event(
                         message_received_event(query),
                         getattr(query, '_listener_plugins', query.variables.get('_pipeline_bound_plugins')),
@@ -837,6 +874,7 @@ class RuntimePipeline:
                 if message_id:
                     try:
                         await self._assert_execution_active(query)
+                        invalidate_execution_binding_lease()
                         await monitoring_helper.MonitoringHelper.record_query_success(
                             ap=self.ap,
                             message_id=message_id,
@@ -851,6 +889,7 @@ class RuntimePipeline:
                 if getattr(query, 'resp_message_chain', None) or getattr(query, 'resp_messages', None):
                     try:
                         await self._assert_execution_active(query)
+                        invalidate_execution_binding_lease()
                         await monitoring_helper.MonitoringHelper.record_query_response(
                             ap=self.ap,
                             query=query,
@@ -886,7 +925,9 @@ class RuntimePipeline:
             try:
                 from . import monitoring_helper
 
+                invalidate_execution_binding_lease()
                 await self._assert_execution_active(query)
+                invalidate_execution_binding_lease()
                 await monitoring_helper.MonitoringHelper.record_query_error(
                     ap=self.ap,
                     query=query,

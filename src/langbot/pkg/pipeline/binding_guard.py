@@ -135,7 +135,11 @@ def ensure_execution_binding_scope() -> typing.Iterator[ExecutionBindingLease]:
     """Reuse an active same-task scope or open a fresh one for standalone calls."""
     existing = _active_same_task_lease()
     if existing is not None:
-        yield existing
+        try:
+            yield existing
+        except BaseException:
+            existing.invalidate()
+            raise
         return
     with execution_binding_scope() as lease:
         yield lease
@@ -146,6 +150,14 @@ def invalidate_execution_binding_lease() -> None:
     lease = _active_same_task_lease()
     if lease is not None:
         lease.invalidate()
+
+
+def _validate_synchronous_workspace_state(workspace_service: typing.Any) -> None:
+    """Run the WorkspaceService's zero-I/O admission and projection guards."""
+    for name in ('_require_deployment_admission', '_require_directory_projection'):
+        guard = getattr(workspace_service, name, None)
+        if callable(guard) and not isinstance(guard, unittest.mock.Mock):
+            guard()
 
 
 async def ensure_execution_binding_active(
@@ -171,6 +183,11 @@ async def ensure_execution_binding_active(
             require_instance_match=require_instance_match,
         )
     ):
+        try:
+            _validate_synchronous_workspace_state(workspace_service)
+        except BaseException:
+            lease.invalidate()
+            raise
         return execution_context
 
     if lease is not None:
@@ -198,6 +215,7 @@ def _yield_future(value: typing.Any) -> typing.Generator[typing.Any, typing.Any,
 
 
 async def _drive_after_first_yield(awaitable: typing.Any, first_yielded: typing.Any) -> typing.Any:
+    invalidate_execution_binding_lease()
     yielded = first_yielded
     try:
         while True:
