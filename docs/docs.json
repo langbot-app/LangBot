@@ -1626,6 +1626,7 @@
                 "pages": [
                   "ja/usage/models/readme",
                   "ja/usage/pipelines/readme",
+                  "ja/usage/workflows",
                   {
                     "group": "Agent プラットフォーム",
                     "pages": [
